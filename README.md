@@ -116,7 +116,7 @@ static const unsigned char knownPublicPeers[][4] = {
 ```
 
 ## License
-The Anti-Military License. See https://github.com/computor-tools/qubic-js
+The Anti-Military License. See [LICENSE.md](LICENSE.md).
 
 ## Installation and Configuration
 Please refer to https://docs.qubic.world
