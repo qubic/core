@@ -1,6 +1,8 @@
 # qubic - node
 Qubic Node Source Code - this repository contains the source code of a full qubic node.
 
+[![EFIBuild](https://github.com/qubic-network/core/actions/workflows/efi-build-develop.yml/badge.svg?branch=develop)](https://github.com/qubic-network/core/actions/workflows/efi-build-develop.yml)
+
 ## Prerequisites
 To run a qubic node, you need the following parts:
 - Bare Metal Server/Computer with at least 8 Cores (high CPU frequency with AVX2 support)
