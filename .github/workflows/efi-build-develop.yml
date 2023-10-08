@@ -7,9 +7,9 @@ name: EFIBuild
 
 on:
   push:
-    branches: [ "develop" ]
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: [ "develop" ]
+    branches: [ "main", "develop" ]
 
 env:
   # Path to the solution file relative to the root of the project.
