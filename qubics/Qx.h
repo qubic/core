@@ -7,10 +7,11 @@ struct QX2
 struct QX
 {
 public:
-	struct Transfer_input
+	struct TransferAsset_input
 	{
+		id destination;
 	};
-	struct Transfer_output
+	struct TransferAsset_output
 	{
 	};
 
@@ -23,13 +24,17 @@ private:
 	uint32 _transferFee; // Amount of qus
 	uint32 _tradeFee; // Number of billionths
 
-	PUBLIC(Transfer)
+	PUBLIC(TransferAsset)
+
+		transfer(input.destination, 1);
 	_
 
 	REGISTER_USER_FUNCTIONS
 	_
 
 	REGISTER_USER_PROCEDURES
+
+		REGISTER_USER_PROCEDURE(TransferAsset, 1);
 	_
 
 	INITIALIZE
@@ -55,7 +60,6 @@ private:
 			curId = nextId(curId);
 			transfer(curId, 0);
 		} while (!EQUAL(curId, NULL_ID));
-
 	_
 
 	END_TICK

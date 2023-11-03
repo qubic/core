@@ -6805,16 +6805,6 @@ namespace QPI
 		return ::__millisecond();
 	}
 
-	static uint32 minCandidateScore(
-	) {
-		return ::__minCandidateScore();
-	}
-
-	static uint32 minComputorScore(
-	) {
-		return ::__minComputorScore();
-	}
-
 	static uint8 minute(
 	) { // [0..59]
 		return ::__minute();
@@ -6873,10 +6863,12 @@ namespace QPI
 	#define PUBLIC(functionOrProcedure) public: static void functionOrProcedure(CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
 	#define REGISTER_USER_FUNCTIONS public: static void __registerUserFunctions() { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
-
+	
 	#define REGISTER_USER_PROCEDURES public: static void __registerUserProcedures() { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
 	#define _ ::__endFunctionOrProcedure(__functionOrProcedureId); }
+
+	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) __registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input));
 
 	#define SELF _mm256_set_epi64x(0, 0, 0, CONTRACT_INDEX)
 }
