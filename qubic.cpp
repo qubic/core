@@ -134,6 +134,7 @@ static unsigned char computorSeeds[][55 + 1] = {
 };
 
 static const unsigned char knownPublicPeers[][4] = {
+    {127,0,0,1} // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN ADDRESS
 };
 
 
@@ -143,15 +144,15 @@ static const unsigned char knownPublicPeers[][4] = {
 #define AVX512 0
 
 #define VERSION_A 1
-#define VERSION_B 177
+#define VERSION_B 178
 #define VERSION_C 0
 
 #define EPOCH 81
-#define TICK 10400000
+#define TICK 10500000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
-#define IGNORE_RESOURCE_TESTING 0
+#define IGNORE_RESOURCE_TESTING 1
 
 static unsigned short SYSTEM_FILE_NAME[] = L"system";
 static unsigned short SPECTRUM_FILE_NAME[] = L"spectrum.???";
@@ -4967,7 +4968,7 @@ static bool verify(const unsigned char* publicKey, const unsigned char* messageD
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 60000
-#define TRANSACTION_SPARSENESS 4
+#define TRANSACTION_SPARSENESS 6
 #define VOLUME_LABEL L"Qubic"
 
 #define EMPTY 0
@@ -7781,11 +7782,11 @@ static void processTick(unsigned long long processorNumber)
                             unsigned char maskedDestinationPublicKey[32];
                             *((__m256i*)maskedDestinationPublicKey) = *((__m256i*)transaction->destinationPublicKey);
                             *((unsigned int*)maskedDestinationPublicKey) &= ~(MAX_NUMBER_OF_CONTRACTS - 1);
-                            const unsigned int contractIndex = *((unsigned int*)transaction->destinationPublicKey);
+                            executedContractIndex = *((unsigned int*)transaction->destinationPublicKey);
                             if (EQUAL(*((__m256i*)maskedDestinationPublicKey), _mm256_setzero_si256())
-                                && contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
+                                && executedContractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
                             {
-                                if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
+                                if (system.epoch < contractDescriptions[executedContractIndex].constructionEpoch)
                                 {
                                     if (!transaction->amount
                                         && transaction->inputSize == sizeof(ContractIPOBid))
@@ -7798,7 +7799,7 @@ static void processTick(unsigned long long processorNumber)
                                             if (decreaseEnergy(spectrumIndex, amount))
                                             {
                                                 numberOfReleasedEntities = 0;
-                                                IPO* ipo = (IPO*)contractStates[contractIndex];
+                                                IPO* ipo = (IPO*)contractStates[executedContractIndex];
                                                 for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
                                                 {
                                                     if (contractIPOBid->price <= ipo->prices[NUMBER_OF_COMPUTORS - 1])
@@ -7855,7 +7856,7 @@ static void processTick(unsigned long long processorNumber)
                                                             ipo->prices[j--] = tmpPrice;
                                                         }
 
-                                                        contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
+                                                        contractStateChangeFlags[executedContractIndex >> 6] |= (1ULL << (executedContractIndex & 63));
                                                     }
                                                 }
                                                 for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
@@ -7868,11 +7869,13 @@ static void processTick(unsigned long long processorNumber)
                                 }
                                 else
                                 {
-                                    if (contractUserProcedures[contractIndex][transaction->inputType])
+                                    if (contractUserProcedures[executedContractIndex][transaction->inputType])
                                     {
+                                        currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
+
                                         bs->SetMem(&executedContractInput, sizeof(executedContractInput), 0);
                                         bs->CopyMem(&executedContractInput, (((unsigned char*)transaction) + sizeof(Transaction)), transaction->inputSize);
-                                        contractUserProcedures[contractIndex][transaction->inputType](contractStates[contractIndex], &executedContractInput, NULL);
+                                        contractUserProcedures[executedContractIndex][transaction->inputType](contractStates[executedContractIndex], &executedContractInput, NULL);
                                     }
                                 }
                             }
