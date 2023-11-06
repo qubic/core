@@ -17,6 +17,10 @@
 
 
 #include "uefi.h"
+
+#include "text_output.h"
+#include "time.h"
+
 #include "kangaroo_twelve.h"
 #include "four_q.h"
 
@@ -564,7 +568,6 @@ static struct
     BroadcastComputors broadcastComputors;
 } broadcastedComputors;
 
-static EFI_TIME time;
 static CHAR16 message[16384], timestampedMessage[16384];
 
 static EFI_FILE_PROTOCOL* root = NULL;
@@ -759,113 +762,6 @@ static struct
 } requestedTickTransactions;
 
 static bool disableLogging = false;
-
-static void appendText(CHAR16* dst, const CHAR16* src)
-{
-    unsigned short dstIndex = 0;
-    while (dst[dstIndex] != 0)
-    {
-        dstIndex++;
-    }
-    unsigned short srcIndex = 0;
-    while ((dst[dstIndex++] = src[srcIndex++]) != 0)
-    {
-    }
-}
-
-static void setText(CHAR16* dst, const CHAR16* src)
-{
-    dst[0] = 0;
-    appendText(dst, src);
-}
-
-static void appendNumber(CHAR16* dst, unsigned long long number, BOOLEAN separate)
-{
-    CHAR16 text[27];
-    char textLength = 0;
-    do
-    {
-        text[textLength++] = number % 10 + '0';
-    } while ((number /= 10) > 0);
-    unsigned short dstIndex = 0;
-    while (dst[dstIndex] != 0)
-    {
-        dstIndex++;
-    }
-    while (--textLength >= 0)
-    {
-        dst[dstIndex++] = text[textLength];
-        if (separate && textLength % 3 == 0 && textLength != 0)
-        {
-            dst[dstIndex++] = '\'';
-        }
-    }
-    dst[dstIndex] = 0;
-}
-
-static void setNumber(CHAR16* dst, const unsigned long long number, BOOLEAN separate)
-{
-    dst[0] = 0;
-    appendNumber(dst, number, separate);
-}
-
-static void appendIPv4Address(CHAR16* dst, EFI_IPv4_ADDRESS address)
-{
-    appendNumber(dst, address.Addr[0], FALSE);
-    appendText(dst, L".");
-    appendNumber(dst, address.Addr[1], FALSE);
-    appendText(dst, L".");
-    appendNumber(dst, address.Addr[2], FALSE);
-    appendText(dst, L".");
-    appendNumber(dst, address.Addr[3], FALSE);
-}
-static void appendErrorStatus(CHAR16* dst, const EFI_STATUS status)
-{
-    switch (status)
-    {
-    case EFI_LOAD_ERROR:			appendText(dst, L"EFI_LOAD_ERROR");				break;
-    case EFI_INVALID_PARAMETER:		appendText(dst, L"EFI_INVALID_PARAMETER");		break;
-    case EFI_UNSUPPORTED:			appendText(dst, L"EFI_UNSUPPORTED");			break;
-    case EFI_BAD_BUFFER_SIZE:		appendText(dst, L"EFI_BAD_BUFFER_SIZE");		break;
-    case EFI_BUFFER_TOO_SMALL:		appendText(dst, L"EFI_BUFFER_TOO_SMALL");		break;
-    case EFI_NOT_READY:				appendText(dst, L"EFI_NOT_READY");				break;
-    case EFI_DEVICE_ERROR:			appendText(dst, L"EFI_DEVICE_ERROR");			break;
-    case EFI_WRITE_PROTECTED:		appendText(dst, L"EFI_WRITE_PROTECTED");		break;
-    case EFI_OUT_OF_RESOURCES:		appendText(dst, L"EFI_OUT_OF_RESOURCES");		break;
-    case EFI_VOLUME_CORRUPTED:		appendText(dst, L"EFI_VOLUME_CORRUPTED");		break;
-    case EFI_VOLUME_FULL:			appendText(dst, L"EFI_VOLUME_FULL");			break;
-    case EFI_NO_MEDIA:				appendText(dst, L"EFI_NO_MEDIA");				break;
-    case EFI_MEDIA_CHANGED:			appendText(dst, L"EFI_MEDIA_CHANGED");			break;
-    case EFI_NOT_FOUND:				appendText(dst, L"EFI_NOT_FOUND");				break;
-    case EFI_ACCESS_DENIED:			appendText(dst, L"EFI_ACCESS_DENIED");			break;
-    case EFI_NO_RESPONSE:			appendText(dst, L"EFI_NO_RESPONSE");			break;
-    case EFI_NO_MAPPING:			appendText(dst, L"EFI_NO_MAPPING");				break;
-    case EFI_TIMEOUT:				appendText(dst, L"EFI_TIMEOUT");				break;
-    case EFI_NOT_STARTED:			appendText(dst, L"EFI_NOT_STARTED");			break;
-    case EFI_ALREADY_STARTED:		appendText(dst, L"EFI_ALREADY_STARTED");		break;
-    case EFI_ABORTED:				appendText(dst, L"EFI_ABORTED");				break;
-    case EFI_ICMP_ERROR:			appendText(dst, L"EFI_ICMP_ERROR");				break;
-    case EFI_TFTP_ERROR:			appendText(dst, L"EFI_TFTP_ERROR");				break;
-    case EFI_PROTOCOL_ERROR:		appendText(dst, L"EFI_PROTOCOL_ERROR");			break;
-    case EFI_INCOMPATIBLE_VERSION:	appendText(dst, L"EFI_INCOMPATIBLE_VERSION");	break;
-    case EFI_SECURITY_VIOLATION:	appendText(dst, L"EFI_SECURITY_VIOLATION");		break;
-    case EFI_CRC_ERROR:				appendText(dst, L"EFI_CRC_ERROR");				break;
-    case EFI_END_OF_MEDIA:			appendText(dst, L"EFI_END_OF_MEDIA");			break;
-    case EFI_END_OF_FILE:			appendText(dst, L"EFI_END_OF_FILE");			break;
-    case EFI_INVALID_LANGUAGE:		appendText(dst, L"EFI_INVALID_LANGUAGE");		break;
-    case EFI_COMPROMISED_DATA:		appendText(dst, L"EFI_COMPROMISED_DATA");		break;
-    case EFI_IP_ADDRESS_CONFLICT:	appendText(dst, L"EFI_IP_ADDRESS_CONFLICT");	break;
-    case EFI_HTTP_ERROR:			appendText(dst, L"EFI_HTTP_ERROR");				break;
-    case EFI_NETWORK_UNREACHABLE:	appendText(dst, L"EFI_NETWORK_UNREACHABLE");	break;
-    case EFI_HOST_UNREACHABLE:		appendText(dst, L"EFI_HOST_UNREACHABLE");		break;
-    case EFI_PROTOCOL_UNREACHABLE:	appendText(dst, L"EFI_PROTOCOL_UNREACHABLE");	break;
-    case EFI_PORT_UNREACHABLE:		appendText(dst, L"EFI_PORT_UNREACHABLE");		break;
-    case EFI_CONNECTION_FIN:		appendText(dst, L"EFI_CONNECTION_FIN");			break;
-    case EFI_CONNECTION_RESET:		appendText(dst, L"EFI_CONNECTION_RESET");		break;
-    case EFI_CONNECTION_REFUSED:	appendText(dst, L"EFI_CONNECTION_REFUSED");		break;
-    default: appendNumber(dst, status, FALSE);
-    }
-}
 
 static void log(const CHAR16* message)
 {
@@ -1254,16 +1150,6 @@ static void enableAVX()
         | 224
 #endif
         ));
-}
-
-inline int dayIndex(unsigned int year, unsigned int month, unsigned int day) // 0 = Wednesday
-{
-    return (year += (2000 - (month = (month + 9) % 12) / 10)) * 365 + year / 4 - year / 100 + year / 400 + (month * 306 + 5) / 10 + day - 1;
-}
-
-inline long long ms(unsigned char year, unsigned char month, unsigned char day, unsigned char hour, unsigned char minute, unsigned char second, unsigned short millisecond)
-{
-    return (((((long long)dayIndex(year, month, day)) * 24 + hour) * 60 + minute) * 60 + second) * 1000 + millisecond;
 }
 
 static void getUniverseDigest(__m256i* digest)
@@ -5538,19 +5424,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
     bs->SetWatchdogTimer(0, 0, 0, NULL);
 
-    {
-        bs->SetMem(&time, sizeof(time), 0);
-        time.Year = 2022;
-        time.Month = 4;
-        time.Day = 13;
-        time.Hour = 12;
-
-        EFI_TIME newTime;
-        if (!rs->GetTime(&newTime, NULL))
-        {
-            bs->CopyMem(&time, &newTime, sizeof(time));
-        }
-    }
+    initTime();
 
     st->ConOut->ClearScreen(st->ConOut);
     setText(message, L"Qubic ");
@@ -5637,11 +5511,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         {
                             clockTick = curTimeTick;
                                 
-                            EFI_TIME newTime;
-                            if (!rs->GetTime(&newTime, NULL))
-                            {
-                                bs->CopyMem(&time, &newTime, sizeof(time));
-                            }
+                            updateTime();
                         }
 
                         if (contractProcessorState == 1)
