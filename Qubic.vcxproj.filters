@@ -6,5 +6,13 @@
   <ItemGroup>
     <ClInclude Include="qpi.h" />
     <ClInclude Include="qubics\Qx.h" />
+    <ClInclude Include="smart_contracts.h" />
+    <ClInclude Include="private_settings.h" />
+    <ClInclude Include="public_settings.h" />
+    <ClInclude Include="uefi.h" />
+    <ClInclude Include="kangaroo_twelve.h" />
+    <ClInclude Include="four_q.h" />
+    <ClInclude Include="text_output.h" />
+    <ClInclude Include="time.h" />
   </ItemGroup>
 </Project>
