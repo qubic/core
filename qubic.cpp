@@ -5209,11 +5209,7 @@ static void processKeyPresses()
         case 0x0C: // 
         {
             setText(message, L"Qubic ");
-            appendNumber(message, VERSION_A, FALSE);
-            appendText(message, L".");
-            appendNumber(message, VERSION_B, FALSE);
-            appendText(message, L".");
-            appendNumber(message, VERSION_C, FALSE);
+            appendQubicVersion(message);
             appendText(message, L".");
             log(message);
 
@@ -5488,11 +5484,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
     st->ConOut->ClearScreen(st->ConOut);
     setText(message, L"Qubic ");
-    appendNumber(message, VERSION_A, FALSE);
-    appendText(message, L".");
-    appendNumber(message, VERSION_B, FALSE);
-    appendText(message, L".");
-    appendNumber(message, VERSION_C, FALSE);
+    appendQubicVersion(message);
     appendText(message, L" is launched.");
     log(message);
 
@@ -6117,11 +6109,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     saveSystem();
 
                     setText(message, L"Qubic ");
-                    appendNumber(message, VERSION_A, FALSE);
-                    appendText(message, L".");
-                    appendNumber(message, VERSION_B, FALSE);
-                    appendText(message, L".");
-                    appendNumber(message, VERSION_C, FALSE);
+                    appendQubicVersion(message);
                     appendText(message, L" is shut down.");
                     log(message);
                 }
