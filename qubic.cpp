@@ -5198,7 +5198,15 @@ static void processKeyPresses()
     {
         switch (key.ScanCode)
         {
-        case 0x0C:
+        /*
+        *
+        * F2 Key
+        * By pressing the F2 Key the node will display the current status.
+        * The status includes:
+        * Version, faulty Computors, Last Tick Date,
+        * Digest of spectrum, univers and computer, number of transactions and solutions processed
+        */
+        case 0x0C: // 
         {
             setText(message, L"Qubic ");
             appendNumber(message, VERSION_A, FALSE);
@@ -5322,7 +5330,13 @@ static void processKeyPresses()
         }
         break;
 
-        /*case 0x0D:
+        /*
+        *
+        * F3 Key
+        * By Pressing the F3 Key the node will display the current state of the mining race
+        * You can see which of your ID's is at which position.
+        *
+        case 0x0D:
         {
             unsigned int numberOfSolutions = 0;
             for (unsigned int i = 0; i < numberOfMiners; i++)
@@ -5341,6 +5355,11 @@ static void processKeyPresses()
         }
         break;*/
 
+        /*
+        * F4 Key
+        * By Pressing the F4 Key the node will dop all currently active connections.
+        * This forces the node to reconnect to known peers and can help to recover stuck situations.
+        */
         case 0x0E:
         {
             for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
@@ -5350,12 +5369,22 @@ static void processKeyPresses()
         }
         break;
 
+        /*
+        * F5 Key
+        * By Pressing the F5 Key the node will issue new votes for it's COMPUTORS.
+        * By issuing new "empty" votes a tick can by bypassed if there is no consensus. (to few computors which voted)
+        */
         case 0x0F:
         {
             forceNextTick = true;
         }
         break;
 
+        /*
+        * F6 Key
+        * By Pressing the F6 Key the current state of Qubic is saved to the disk.
+        * The Fles generated will be appended by .000
+        */
         case 0x10:
         {
             SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
@@ -5375,24 +5404,47 @@ static void processKeyPresses()
         }
         break;
 
+        /*
+        * F9 Key
+        * By Pressing the F9 Key the latestCreatedTick got's decreased by one.
+        * By decreasing this by one, the Node will resend the issued votes for its Computors.
+        */
         case 0x13:
         {
             system.latestCreatedTick--;
         }
         break;
 
+        /*
+        * F10 Key
+        * By Pressing the F10 Key the testFlags will be resetted.
+        * The Testflags are used to display debugging information to the log output.
+        */
         case 0x14:
         {
             testFlags = 0;
         }
         break;
 
+        /*
+        * F11 Key
+        * By Pressing the F11 Key the node can swtich between static and dynamic network mode
+        * static: incomming connections are blocked and peerlist will not be altered
+        * dynamic: all connections are open, peers are added and removed dynamically
+        */
         case 0x15:
         {
             listOfPeersIsStatic = !listOfPeersIsStatic;
         }
         break;
 
+        /*
+        * F12 Key
+        * By Pressing the F12 Key the node can wtich between MAIN and aux mode.
+        * MAIN: the node is issuing ticks and participate as "COMPUTOR" in the network
+        * aux: the node is running without participating active as "COMPUTOR" in the network
+        * !! IMPORTANT !! only one MAIN instance per COMPUTOR is allowed.
+        */
         case 0x16:
         {
             isMain = !isMain;
@@ -5400,12 +5452,20 @@ static void processKeyPresses()
         }
         break;
 
+        /*
+        * ESC Key
+        * By Pressing the ESC Key the node will stop
+        */
         case 0x17:
         {
             state = 1;
         }
         break;
 
+        /*
+        * PAUSE Key
+        * By Pressing the PAUSE Key you can toggle the log output
+        */
         case 0x48:
         {
             disableLogging = !disableLogging;
