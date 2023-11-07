@@ -4,7 +4,8 @@
 
 #include "public_settings.h"
 #include "kangaroo_twelve.h"
-#include "uefi.h"
+#include "memory_util.h"
+#include "m256_util.h"
 
 
 ////////// FourQ \\\\\\\\\\
@@ -1254,7 +1255,7 @@ static void wNAF_recode(unsigned long long scalar, unsigned int w, char* digits)
         index++;
     }
 
-    bs->SetMem(&digits[index], 65 - index, 0);
+    setMem(&digits[index], 65 - index, 0);
 }
 
 static void ecc_precomp_double(point_extproj_t P, point_extproj_precomp_t* Table)

@@ -14,5 +14,7 @@
     <ClInclude Include="four_q.h" />
     <ClInclude Include="text_output.h" />
     <ClInclude Include="time.h" />
+    <ClInclude Include="m256_util.h" />
+    <ClInclude Include="memory_util.h" />
   </ItemGroup>
 </Project>

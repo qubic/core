@@ -9,7 +9,7 @@
 
 ////////// C++ helpers \\\\\\\\\\
 
-#define EQUAL(a, b) (_mm256_movemask_epi8(_mm256_cmpeq_epi64(a, b)) == 0xFFFFFFFF)
+#include "m256_util.h"
 #define ACQUIRE(lock) while (_InterlockedCompareExchange8(&lock, 1, 0)) _mm_pause()
 #define RELEASE(lock) lock = 0
 
@@ -23,6 +23,7 @@
 
 #include "kangaroo_twelve.h"
 #include "four_q.h"
+#include "score.h"
 
 
 
@@ -42,7 +43,6 @@
 #define MAX_INPUT_SIZE (MAX_TRANSACTION_SIZE - (sizeof(Transaction) + SIGNATURE_SIZE))
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
-#define MAX_NUMBER_OF_PROCESSORS 32
 #define MAX_NUMBER_OF_PUBLIC_PEERS 1024
 #define MAX_NUMBER_OF_SOLUTIONS 65536 // Must be 2^N
 #define MAX_TRANSACTION_SIZE 1024ULL
