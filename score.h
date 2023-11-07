@@ -1,5 +1,11 @@
 #pragma once
 
+#include "public_settings.h"
+#include "memory_util.h"
+#include "m256_util.h"
+#include "concurrency_util.h"
+#include "kangaroo_twelve.h"
+
 ////////// Scoring algorithm \\\\\\\\\\
 
 #define SOLUTION_BUFFER_COUNT 8
@@ -40,8 +46,8 @@ static unsigned int getScoreCacheIndex(unsigned char* publicKey, unsigned char* 
 {
     unsigned char buffer[64];
     unsigned char digest[32];
-    bs->CopyMem(buffer, publicKey, 32);
-    bs->CopyMem(buffer+32, nonce, 32);
+    copyMem(buffer, publicKey, 32);
+    copyMem(buffer+32, nonce, 32);
     KangarooTwelve64To32(buffer, digest);
     unsigned int result = *((unsigned long long*)digest) % SCORE_CACHE_SIZE;
 
@@ -69,8 +75,8 @@ static int tryFetchingScoreCache(unsigned char* publicKey, unsigned char* nonce,
 static void addScoreCache(unsigned char* publicKey, unsigned char* nonce, unsigned int scoreCacheIndex, int score)
 {
     ACQUIRE(scoreCacheLock);
-    bs->CopyMem(scoreCache[scoreCacheIndex].publicKey, publicKey, 32);
-    bs->CopyMem(scoreCache[scoreCacheIndex].nonce, nonce, 32);
+    copyMem(scoreCache[scoreCacheIndex].publicKey, publicKey, 32);
+    copyMem(scoreCache[scoreCacheIndex].nonce, nonce, 32);
     scoreCache[scoreCacheIndex].score = score;
     RELEASE(scoreCacheLock);
 }
@@ -96,9 +102,9 @@ static int computeNeuron64Bit(unsigned long long A, unsigned long long B) {
     unsigned long long B_high = B & 0xaaaaaaaaaaaaaaaall;
     unsigned long long B_low = B & 0x5555555555555555ll;
     unsigned long long zero_check = ((A_low << 1) | A_high);
-    int lv = -2 * __popcnt64(A_high ^ B_high & zero_check);
+    unsigned long long lv = -2 * __popcnt64(A_high ^ B_high & zero_check);
     lv += __popcnt64(A_low & B_low);
-    return lv;
+    return int(lv);
 }
 
 static unsigned int score(const unsigned long long realProcessorNumber, unsigned char* publicKey, unsigned char* nonce)
@@ -117,8 +123,8 @@ static unsigned int score(const unsigned long long realProcessorNumber, unsigned
     unsigned long long processorNumber = realProcessorNumber % 8;
     ACQUIRE(solutionEngineLock[processorNumber]);
     char neuronValue[1000];
-    bs->SetMem(neuronValue, sizeof(neuronValue), 0);
-    bs->SetMem(synapses2Bit[processorNumber].input, sizeof(synapses2Bit[processorNumber]), 0);
+    setMem(neuronValue, sizeof(neuronValue), 0);
+    setMem(synapses2Bit[processorNumber].input, sizeof(synapses2Bit[processorNumber]), 0);
     random(publicKey, nonce, (unsigned char*)&synapses[processorNumber], sizeof(synapses[0]));
     for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++)
     {
@@ -147,8 +153,8 @@ static unsigned int score(const unsigned long long realProcessorNumber, unsigned
 
     unsigned int lengthIndex = 0;
 
-    bs->CopyMem(&neurons[processorNumber].input[0], miningData, sizeof(miningData));
-    bs->SetMem(&neurons[processorNumber].input[sizeof(miningData) / sizeof(neurons[0].input[0])], sizeof(neurons[0]) - sizeof(miningData), 0);
+    copyMem(&neurons[processorNumber].input[0], miningData, sizeof(miningData));
+    setMem(&neurons[processorNumber].input[sizeof(miningData) / sizeof(neurons[0].input[0])], sizeof(neurons[0]) - sizeof(miningData), 0);
 
     for (int i = 0; i < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
         setSynapse2Bits(neuronValue, i, neurons[processorNumber].input[i] >= 0 ? 1 : -1);
@@ -194,7 +200,7 @@ static unsigned int score(const unsigned long long realProcessorNumber, unsigned
         }
     }
 
-    bs->CopyMem(&neurons[processorNumber].output[0], &neurons[processorNumber].input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS], INFO_LENGTH * sizeof(neurons[0].input[0]));
+    copyMem(&neurons[processorNumber].output[0], &neurons[processorNumber].input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS], INFO_LENGTH * sizeof(neurons[0].input[0]));
     for (int i = 0; i < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
         setSynapse2Bits(neuronValue, i, neurons[processorNumber].output[i] >= 0 ? 1 : -1);
     }

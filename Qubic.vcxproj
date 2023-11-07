@@ -18,6 +18,7 @@
     <ClCompile Include="qubic.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="concurrency_util.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
     <ClInclude Include="score.h" />

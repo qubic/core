@@ -10,9 +10,7 @@
 ////////// C++ helpers \\\\\\\\\\
 
 #include "m256_util.h"
-#define ACQUIRE(lock) while (_InterlockedCompareExchange8(&lock, 1, 0)) _mm_pause()
-#define RELEASE(lock) lock = 0
-
+#include "concurrency_util.h"
 // TODO: Use "long long" instead of "int" for DB indices
 
 
