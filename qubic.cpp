@@ -10,9 +10,7 @@
 ////////// C++ helpers \\\\\\\\\\
 
 #include "m256_util.h"
-#define ACQUIRE(lock) while (_InterlockedCompareExchange8(&lock, 1, 0)) _mm_pause()
-#define RELEASE(lock) lock = 0
-
+#include "concurrency_util.h"
 // TODO: Use "long long" instead of "int" for DB indices
 
 
@@ -26,7 +24,6 @@
 #include "score.h"
 
 
-
 ////////// Qubic \\\\\\\\\\
 
 #define ASSETS_CAPACITY 0x1000000ULL // Must be 2^N
@@ -34,7 +31,7 @@
 #define BUFFER_SIZE 33554432
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TARGET_TICK_DURATION 4000
-#define TICK_REQUESTING_PERIOD 500
+#define TICK_REQUESTING_PERIOD 500ULL
 #define DEJAVU_SWAP_LIMIT 1000000
 #define DISSEMINATION_MULTIPLIER 4
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
@@ -57,7 +54,7 @@
 #define NUMBER_OF_OUTGOING_CONNECTIONS 4
 #define NUMBER_OF_INCOMING_CONNECTIONS 28
 #define NUMBER_OF_TRANSACTIONS_PER_TICK 1024 // Must be 2^N
-#define PEER_REFRESHING_PERIOD 120000
+#define PEER_REFRESHING_PERIOD 120000ULL
 #define PORT 21841
 #define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
 #define READING_CHUNK_SIZE 1048576
@@ -69,7 +66,7 @@
 #define SIGNATURE_SIZE 64
 #define SPECTRUM_CAPACITY 0x1000000ULL // Must be 2^N
 #define SPECTRUM_DEPTH 24 // Is derived from SPECTRUM_CAPACITY (=N)
-#define SYSTEM_DATA_SAVING_PERIOD 300000
+#define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 60000
@@ -713,19 +710,6 @@ static volatile char publicPeersLock = 0;
 static unsigned int numberOfPublicPeers = 0;
 static PublicPeer publicPeers[MAX_NUMBER_OF_PUBLIC_PEERS];
 
-static int miningData[DATA_LENGTH];
-static struct
-{
-    int input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
-    int output[INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH];
-} neurons[MAX_NUMBER_OF_PROCESSORS];
-static struct
-{
-    char input[(NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH)];
-    char output[(NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH)];
-    unsigned short lengths[MAX_INPUT_DURATION * (NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + MAX_OUTPUT_DURATION * (NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH)];
-} synapses[MAX_NUMBER_OF_PROCESSORS];
-
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
 static volatile unsigned char minerPublicKeys[MAX_NUMBER_OF_MINERS][32];
@@ -1358,98 +1342,6 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
     }
 
     RELEASE(responseQueueHeadLock);
-}
-
-static unsigned int score(const unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
-{
-    random(publicKey, nonce, (unsigned char*)&synapses[processorNumber], sizeof(synapses[0]));
-    for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++)
-    {
-        for (unsigned int anotherInputNeuronIndex = 0; anotherInputNeuronIndex < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; anotherInputNeuronIndex++)
-        {
-            const unsigned int offset = inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + anotherInputNeuronIndex;
-            synapses[processorNumber].input[offset] = (((unsigned char)synapses[processorNumber].input[offset]) % 3) - 1;
-        }
-    }
-    for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; outputNeuronIndex++)
-    {
-        for (unsigned int anotherOutputNeuronIndex = 0; anotherOutputNeuronIndex < INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; anotherOutputNeuronIndex++)
-        {
-            const unsigned int offset = outputNeuronIndex * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) + anotherOutputNeuronIndex;
-            synapses[processorNumber].output[offset] = (((unsigned char)synapses[processorNumber].output[offset]) % 3) - 1;
-        }
-    }
-    for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++)
-    {
-        synapses[processorNumber].input[inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + (DATA_LENGTH + inputNeuronIndex)] = 0;
-    }
-    for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; outputNeuronIndex++)
-    {
-        synapses[processorNumber].output[outputNeuronIndex * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) + (INFO_LENGTH + outputNeuronIndex)] = 0;
-    }
-
-    unsigned int lengthIndex = 0;
-
-    bs->CopyMem(&neurons[processorNumber].input[0], &miningData, sizeof(miningData));
-    bs->SetMem(&neurons[processorNumber].input[sizeof(miningData) / sizeof(neurons[0].input[0])], sizeof(neurons[0]) - sizeof(miningData), 0);
-
-    for (unsigned int tick = 0; tick < MAX_INPUT_DURATION; tick++)
-    {
-        unsigned short neuronIndices[NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
-        unsigned short numberOfRemainingNeurons = 0;
-        for (numberOfRemainingNeurons = 0; numberOfRemainingNeurons < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; numberOfRemainingNeurons++)
-        {
-            neuronIndices[numberOfRemainingNeurons] = numberOfRemainingNeurons;
-        }
-        while (numberOfRemainingNeurons)
-        {
-            const unsigned short neuronIndexIndex = synapses[processorNumber].lengths[lengthIndex++] % numberOfRemainingNeurons;
-            const unsigned short inputNeuronIndex = neuronIndices[neuronIndexIndex];
-            neuronIndices[neuronIndexIndex] = neuronIndices[--numberOfRemainingNeurons];
-            for (unsigned short anotherInputNeuronIndex = 0; anotherInputNeuronIndex < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; anotherInputNeuronIndex++)
-            {
-                int value = neurons[processorNumber].input[anotherInputNeuronIndex] >= 0 ? 1 : -1;
-                value *= synapses[processorNumber].input[inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + anotherInputNeuronIndex];
-                neurons[processorNumber].input[DATA_LENGTH + inputNeuronIndex] += value;
-            }
-        }
-    }
-
-    bs->CopyMem(&neurons[processorNumber].output[0], &neurons[processorNumber].input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS], INFO_LENGTH * sizeof(neurons[0].input[0]));
-
-    for (unsigned int tick = 0; tick < MAX_OUTPUT_DURATION; tick++)
-    {
-        unsigned short neuronIndices[NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH];
-        unsigned short numberOfRemainingNeurons = 0;
-        for (numberOfRemainingNeurons = 0; numberOfRemainingNeurons < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; numberOfRemainingNeurons++)
-        {
-            neuronIndices[numberOfRemainingNeurons] = numberOfRemainingNeurons;
-        }
-        while (numberOfRemainingNeurons)
-        {
-            const unsigned short neuronIndexIndex = synapses[processorNumber].lengths[lengthIndex++] % numberOfRemainingNeurons;
-            const unsigned short outputNeuronIndex = neuronIndices[neuronIndexIndex];
-            neuronIndices[neuronIndexIndex] = neuronIndices[--numberOfRemainingNeurons];
-            for (unsigned int anotherOutputNeuronIndex = 0; anotherOutputNeuronIndex < INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; anotherOutputNeuronIndex++)
-            {
-                int value = neurons[processorNumber].output[anotherOutputNeuronIndex] >= 0 ? 1 : -1;
-                value *= synapses[processorNumber].output[outputNeuronIndex * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) + anotherOutputNeuronIndex];
-                neurons[processorNumber].output[INFO_LENGTH + outputNeuronIndex] += value;
-            }
-        }
-    }
-
-    unsigned int score = 0;
-
-    for (unsigned int i = 0; i < DATA_LENGTH; i++)
-    {
-        if ((miningData[i] >= 0) == (neurons[processorNumber].output[INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + i] >= 0))
-        {
-            score++;
-        }
-    }
-
-    return score;
 }
 
 static void exchangePublicPeers(Peer* peer, Processor* processor, RequestResponseHeader* header)
@@ -4359,6 +4251,22 @@ static void saveSystem()
     }
 }
 
+static void saveScoreCache()
+{
+#if USE_SCORE_CACHE
+    const unsigned long long beginningTick = __rdtsc();
+    long long savedSize = save(SCORE_CACHE_FILE_NAME, sizeof(scoreCache), (unsigned char*)&scoreCache);
+    if (savedSize == sizeof(scoreCache))
+    {
+        setNumber(message, savedSize, TRUE);
+        appendText(message, L" bytes of the score cache data are saved (");
+        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+        appendText(message, L" microseconds).");
+        log(message);
+    }
+#endif
+}
+
 static bool initialize()
 {
     enableAVX();
@@ -4804,6 +4712,38 @@ static bool initialize()
             log(message);
         }
 
+#if USE_SCORE_CACHE
+        {
+            setText(message, L"Loading score cache...");
+            log(message);
+            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+            // init, set zero all scorecache
+            bs->SetMem((unsigned char*)scoreCache, sizeof(scoreCache), 0);            
+            loadedSize = load(SCORE_CACHE_FILE_NAME, sizeof(scoreCache), (unsigned char*)scoreCache);
+            if (loadedSize != sizeof(scoreCache))
+            {
+                if (loadedSize == -1)
+                {
+                    setText(message, L"Error while loading score cache: File does not exists (ignore this error if this is the epoch start)");
+                }
+                else if (loadedSize < sizeof(scoreCache))
+                {
+                    setText(message, L"Error while loading score cache: Score cache file is smaller than defined. System may not work properly");
+                } else 
+                {
+                    setText(message, L"Error while loading score cache: Score cache file is larger than defined. System may not work properly");
+                }
+            }
+            else 
+            {
+                setText(message, L"Loaded score cache data!");
+            }
+            log(message);
+        }
+#endif
+
         unsigned char randomSeed[32];
         bs->SetMem(randomSeed, 32, 0);
         randomSeed[0] = 17;
@@ -5070,6 +5010,14 @@ static void logInfo()
     appendNumber(message, numberOfTransmittedBytes - prevNumberOfTransmittedBytes, TRUE);
     appendText(message, L" ..."); appendNumber(message, numberOfWaitingBytes, TRUE);
     appendText(message, L").");
+#if USE_SCORE_CACHE
+    appendText(message, L" Score cache: Hit ");
+    appendNumber(message, scoreCacheHit, TRUE);
+    appendText(message, L" | Miss ");
+    appendNumber(message, scoreCacheMiss, TRUE);
+    appendText(message, L" | Unknown ");
+    appendNumber(message, scoreCacheUnknown, TRUE);
+#endif
     log(message);
     prevNumberOfProcessedRequests = numberOfProcessedRequests;
     prevNumberOfDiscardedRequests = numberOfDiscardedRequests;
@@ -5947,6 +5895,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             systemDataSavingTick = curTimeTick;
 
                             saveSystem();
+                            saveScoreCache();
                         }
 
                         if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
@@ -6107,6 +6056,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peerChildHandle);
 
                     saveSystem();
+                    saveScoreCache();
 
                     setText(message, L"Qubic ");
                     appendQubicVersion(message);
@@ -6131,5 +6081,5 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         bs->WaitForEvent(1, &st->ConIn->WaitForKey, &eventIndex);
     }
 
-	return EFI_SUCCESS;
+    return EFI_SUCCESS;
 }
