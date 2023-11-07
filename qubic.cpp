@@ -9,7 +9,7 @@
 
 ////////// C++ helpers \\\\\\\\\\
 
-#define EQUAL(a, b) (_mm256_movemask_epi8(_mm256_cmpeq_epi64(a, b)) == 0xFFFFFFFF)
+#include "m256_util.h"
 #define ACQUIRE(lock) while (_InterlockedCompareExchange8(&lock, 1, 0)) _mm_pause()
 #define RELEASE(lock) lock = 0
 
@@ -42,7 +42,6 @@
 #define MAX_INPUT_SIZE (MAX_TRANSACTION_SIZE - (sizeof(Transaction) + SIGNATURE_SIZE))
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
-#define MAX_NUMBER_OF_PROCESSORS 32
 #define MAX_NUMBER_OF_PUBLIC_PEERS 1024
 #define MAX_NUMBER_OF_SOLUTIONS 65536 // Must be 2^N
 #define MAX_TRANSACTION_SIZE 1024ULL
@@ -5160,11 +5159,7 @@ static void processKeyPresses()
         case 0x0C: // 
         {
             setText(message, L"Qubic ");
-            appendNumber(message, VERSION_A, FALSE);
-            appendText(message, L".");
-            appendNumber(message, VERSION_B, FALSE);
-            appendText(message, L".");
-            appendNumber(message, VERSION_C, FALSE);
+            appendQubicVersion(message);
             appendText(message, L".");
             log(message);
 
@@ -5439,11 +5434,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
     st->ConOut->ClearScreen(st->ConOut);
     setText(message, L"Qubic ");
-    appendNumber(message, VERSION_A, FALSE);
-    appendText(message, L".");
-    appendNumber(message, VERSION_B, FALSE);
-    appendText(message, L".");
-    appendNumber(message, VERSION_C, FALSE);
+    appendQubicVersion(message);
     appendText(message, L" is launched.");
     log(message);
 
@@ -6070,11 +6061,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     saveScoreCache();
 
                     setText(message, L"Qubic ");
-                    appendNumber(message, VERSION_A, FALSE);
-                    appendText(message, L".");
-                    appendNumber(message, VERSION_B, FALSE);
-                    appendText(message, L".");
-                    appendNumber(message, VERSION_C, FALSE);
+                    appendQubicVersion(message);
                     appendText(message, L" is shut down.");
                     log(message);
                 }

@@ -3,7 +3,7 @@
 #include <intrin.h>
 
 #include "public_settings.h"
-#include "uefi.h"
+#include "memory_util.h"
 
 
 ////////// KangarooTwelve \\\\\\\\\\
@@ -1014,7 +1014,7 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, unsigned char* d
                 if (partialBlock & 7)
                 {
                     unsigned long long lane = 0;
-                    bs->CopyMem(&lane, data + (partialBlock & 0xFFFFFFF8), partialBlock & 7);
+                    copyMem(&lane, data + (partialBlock & 0xFFFFFFF8), partialBlock & 7);
                     ((unsigned long long*)instance->state)[partialBlock >> 3] ^= lane;
                 }
             }
@@ -1034,7 +1034,7 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, unsigned char* d
                     if (_bytesInLane)
                     {
                         unsigned long long lane = 0;
-                        bs->CopyMem(&lane, (void*)_curData, _bytesInLane);
+                        copyMem(&lane, (void*)_curData, _bytesInLane);
                         ((unsigned long long*)instance->state)[_lanePosition] ^= (lane << (_offsetInLane << 3));
                     }
                     _sizeLeft -= _bytesInLane;
@@ -1061,7 +1061,7 @@ static void KangarooTwelve(unsigned char* input, unsigned int inputByteLen, unsi
     KangarooTwelve_F finalNode;
     unsigned int blockNumber, queueAbsorbedLen;
 
-    bs->SetMem(&finalNode, sizeof(KangarooTwelve_F), 0);
+    setMem(&finalNode, sizeof(KangarooTwelve_F), 0);
     const unsigned int len = inputByteLen ^ ((K12_chunkSize ^ inputByteLen) & -(K12_chunkSize < inputByteLen));
     KangarooTwelve_F_Absorb(&finalNode, input, len);
     input += len;
@@ -1084,7 +1084,7 @@ static void KangarooTwelve(unsigned char* input, unsigned int inputByteLen, unsi
         while (inputByteLen > 0)
         {
             const unsigned int len = K12_chunkSize ^ ((inputByteLen ^ K12_chunkSize) & -(inputByteLen < K12_chunkSize));
-            bs->SetMem(&queueNode, sizeof(KangarooTwelve_F), 0);
+            setMem(&queueNode, sizeof(KangarooTwelve_F), 0);
             KangarooTwelve_F_Absorb(&queueNode, input, len);
             input += len;
             inputByteLen -= len;
@@ -1123,7 +1123,7 @@ static void KangarooTwelve(unsigned char* input, unsigned int inputByteLen, unsi
         }
         else
         {
-            bs->SetMem(queueNode.state, sizeof(queueNode.state), 0);
+            setMem(queueNode.state, sizeof(queueNode.state), 0);
             queueNode.byteIOIndex = 1;
             queueAbsorbedLen = 1;
         }
@@ -1144,7 +1144,7 @@ static void KangarooTwelve(unsigned char* input, unsigned int inputByteLen, unsi
                 finalNode.byteIOIndex = (finalNode.byteIOIndex + 7) & ~7;
             }
 
-            bs->SetMem(queueNode.state, sizeof(queueNode.state), 0);
+            setMem(queueNode.state, sizeof(queueNode.state), 0);
             queueNode.byteIOIndex = 1;
             queueAbsorbedLen = 1;
         }
@@ -1190,7 +1190,7 @@ static void KangarooTwelve(unsigned char* input, unsigned int inputByteLen, unsi
     }
     finalNode.state[K12_rateInBytes - 1] ^= 0x80;
     KeccakP1600_Permute_12rounds(finalNode.state);
-    bs->CopyMem(output, finalNode.state, outputByteLen);
+    copyMem(output, finalNode.state, outputByteLen);
 }
 
 static void KangarooTwelve64To32(unsigned char* input, unsigned char* output)
@@ -2154,17 +2154,17 @@ void random(unsigned char* publicKey, unsigned char* nonce, unsigned char* outpu
     unsigned char state[200];
     *((__m256i*) & state[0]) = *((__m256i*)publicKey);
     *((__m256i*) & state[32]) = *((__m256i*)nonce);
-    bs->SetMem(&state[64], sizeof(state) - 64, 0);
+    setMem(&state[64], sizeof(state) - 64, 0);
 
     for (unsigned int i = 0; i < outputSize / sizeof(state); i++)
     {
         KeccakP1600_Permute_12rounds(state);
-        bs->CopyMem(output, state, sizeof(state));
+        copyMem(output, state, sizeof(state));
         output += sizeof(state);
     }
     if (outputSize % sizeof(state))
     {
         KeccakP1600_Permute_12rounds(state);
-        bs->CopyMem(output, state, outputSize % sizeof(state));
+        copyMem(output, state, outputSize % sizeof(state));
     }
 }

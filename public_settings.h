@@ -3,6 +3,7 @@
 ////////// Public Settings \\\\\\\\\\
 
 #define AVX512 0
+#define MAX_NUMBER_OF_PROCESSORS 32
 
 #define VERSION_A 1
 #define VERSION_B 179

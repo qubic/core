@@ -1,5 +1,6 @@
 #pragma once
 
+#include "public_settings.h"
 #include "uefi.h"
 
 
@@ -109,4 +110,13 @@ static void appendErrorStatus(CHAR16* dst, const EFI_STATUS status)
     case EFI_CONNECTION_REFUSED:	appendText(dst, L"EFI_CONNECTION_REFUSED");		break;
     default: appendNumber(dst, status, FALSE);
     }
+}
+
+static void appendQubicVersion(CHAR16* dst)
+{
+    appendNumber(dst, VERSION_A, FALSE);
+    appendText(dst, L".");
+    appendNumber(dst, VERSION_B, FALSE);
+    appendText(dst, L".");
+    appendNumber(dst, VERSION_C, FALSE);
 }

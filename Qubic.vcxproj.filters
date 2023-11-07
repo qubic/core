@@ -15,5 +15,7 @@
     <ClInclude Include="text_output.h" />
     <ClInclude Include="time.h" />
     <ClInclude Include="score.h" />
+    <ClInclude Include="m256_util.h" />
+    <ClInclude Include="memory_util.h" />
   </ItemGroup>
 </Project>
