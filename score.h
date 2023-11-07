@@ -56,20 +56,27 @@ static unsigned int getScoreCacheIndex(unsigned char* publicKey, unsigned char* 
 
 static int tryFetchingScoreCache(unsigned char* publicKey, unsigned char* nonce, unsigned int scoreCacheIndex)
 {
+    ACQUIRE(scoreCacheLock);
     unsigned char* cachedPublicKey = scoreCache[scoreCacheIndex].publicKey;
     unsigned char* cachedNonce = scoreCache[scoreCacheIndex].nonce;
+    int retVal;
     if (EQUAL(*((__m256i*)cachedPublicKey), _mm256_setzero_si256()))
     {
         scoreCacheUnknown++;
-        return -1;
+        retVal = -1;
     }
-    if (EQUAL(*((__m256i*)cachedPublicKey), *((__m256i*)publicKey)) && EQUAL(*((__m256i*)cachedNonce), *((__m256i*)nonce)))
+    else if (EQUAL(*((__m256i*)cachedPublicKey), *((__m256i*)publicKey)) && EQUAL(*((__m256i*)cachedNonce), *((__m256i*)nonce)))
     {
         scoreCacheHit++;
-        return scoreCache[scoreCacheIndex].score;
+        retVal = scoreCache[scoreCacheIndex].score;
     }
-    scoreCacheMiss++;
-    return -1;
+    else
+    {
+        scoreCacheMiss++;
+        retVal = -1;
+    }
+    RELEASE(scoreCacheLock);
+    return retVal;
 }
 
 static void addScoreCache(unsigned char* publicKey, unsigned char* nonce, unsigned int scoreCacheIndex, int score)
