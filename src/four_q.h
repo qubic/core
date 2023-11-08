@@ -2,10 +2,11 @@
 
 #include <intrin.h>
 
+#include "platform/memory.h"
+#include "platform/m256.h"
+
 #include "public_settings.h"
 #include "kangaroo_twelve.h"
-#include "memory_util.h"
-#include "m256_util.h"
 
 
 ////////// FourQ \\\\\\\\\\

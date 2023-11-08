@@ -18,12 +18,12 @@
     <ClCompile Include="qubic.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="concurrency_util.h" />
+    <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
     <ClInclude Include="score.h" />
-    <ClInclude Include="m256_util.h" />
-    <ClInclude Include="memory_util.h" />
+    <ClInclude Include="platform\m256.h" />
+    <ClInclude Include="platform\memory.h" />
     <ClInclude Include="smart_contracts\Quottery.h" />
     <ClInclude Include="smart_contracts\Qx.h" />
     <ClInclude Include="text_output.h" />
@@ -31,8 +31,8 @@
     <ClInclude Include="public_settings.h" />
     <ClInclude Include="qpi.h" />
     <ClInclude Include="smart_contracts.h" />
-    <ClInclude Include="time.h" />
-    <ClInclude Include="uefi.h" />
+    <ClInclude Include="platform\time.h" />
+    <ClInclude Include="platform\uefi.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

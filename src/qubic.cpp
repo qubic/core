@@ -9,15 +9,15 @@
 
 ////////// C++ helpers \\\\\\\\\\
 
-#include "m256_util.h"
-#include "concurrency_util.h"
+#include "platform/m256.h"
+#include "platform/concurrency.h"
 // TODO: Use "long long" instead of "int" for DB indices
 
 
-#include "uefi.h"
+#include "platform/uefi.h"
+#include "platform/time.h"
 
 #include "text_output.h"
-#include "time.h"
 
 #include "kangaroo_twelve.h"
 #include "four_q.h"

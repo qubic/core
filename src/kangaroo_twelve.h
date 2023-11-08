@@ -2,8 +2,9 @@
 
 #include <intrin.h>
 
+#include "platform/memory.h"
+
 #include "public_settings.h"
-#include "memory_util.h"
 
 
 ////////// KangarooTwelve \\\\\\\\\\

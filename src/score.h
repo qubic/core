@@ -1,9 +1,9 @@
 #pragma once
 
 #include "public_settings.h"
-#include "memory_util.h"
-#include "m256_util.h"
-#include "concurrency_util.h"
+#include "platform/memory.h"
+#include "platform/m256.h"
+#include "platform/concurrency.h"
 #include "kangaroo_twelve.h"
 
 ////////// Scoring algorithm \\\\\\\\\\

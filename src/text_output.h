@@ -1,7 +1,7 @@
 #pragma once
 
 #include "public_settings.h"
-#include "uefi.h"
+#include "platform/uefi.h"
 
 
 static void appendText(CHAR16* dst, const CHAR16* src)

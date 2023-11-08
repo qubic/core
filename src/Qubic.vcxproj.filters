@@ -8,25 +8,38 @@
     <ClInclude Include="smart_contracts.h" />
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />
-    <ClInclude Include="uefi.h" />
     <ClInclude Include="kangaroo_twelve.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="text_output.h" />
-    <ClInclude Include="time.h" />
     <ClInclude Include="score.h" />
-    <ClInclude Include="m256_util.h" />
-    <ClInclude Include="memory_util.h" />
-    <ClInclude Include="concurrency_util.h" />
     <ClInclude Include="smart_contracts\Quottery.h">
       <Filter>smart_contracts</Filter>
     </ClInclude>
     <ClInclude Include="smart_contracts\Qx.h">
       <Filter>smart_contracts</Filter>
     </ClInclude>
+    <ClInclude Include="platform\concurrency.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\m256.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\memory.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\uefi.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\time.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
       <UniqueIdentifier>{b15197d9-5a5c-4c37-9009-6c2faf0f45a8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="platform">
+      <UniqueIdentifier>{160e9f94-b706-42f6-8517-2be8ade5c99d}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>
