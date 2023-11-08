@@ -4746,14 +4746,14 @@ static bool initialize()
 
         unsigned char randomSeed[32];
         bs->SetMem(randomSeed, 32, 0);
-        randomSeed[0] = 17;
-        randomSeed[1] = 58;
-        randomSeed[2] = 136;
-        randomSeed[3] = 99;
-        randomSeed[4] = 44;
-        randomSeed[5] = 120;
-        randomSeed[6] = 251;
-        randomSeed[7] = 9;
+        randomSeed[0] = 69;
+        randomSeed[1] = 251;
+        randomSeed[2] = 191;
+        randomSeed[3] = 17;
+        randomSeed[4] = 235;
+        randomSeed[5] = 26;
+        randomSeed[6] = 118;
+        randomSeed[7] = 99;
         random(randomSeed, randomSeed, (unsigned char*)miningData, sizeof(miningData));
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
