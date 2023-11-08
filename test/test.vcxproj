@@ -58,6 +58,7 @@
     <ClInclude Include="uc32.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="m256.cpp" />
     <ClCompile Include="score.cpp" />
   </ItemGroup>
   <ItemGroup>

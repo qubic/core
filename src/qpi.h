@@ -1,5 +1,7 @@
 // Qubic Programming Interface 1.0.0
 
+#include "platform/m256.h"
+
 namespace QPI
 {
 	/*
@@ -551,7 +553,6 @@ namespace QPI
 	#define index_4194304x2 index_8388608
 	#define index_8388608x2 index_16777216
 
-	#define EQUAL(a, b) (_mm256_movemask_epi8(_mm256_cmpeq_epi64(a, b)) == 0xFFFFFFFF)
 	#define NULL_ID _mm256_setzero_si256()
 	#define NULL_INDEX (uint64)(-1)
 

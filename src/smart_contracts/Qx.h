@@ -59,7 +59,7 @@ private:
 		{
 			curId = nextId(curId);
 			transfer(curId, 0);
-		} while (!EQUAL(curId, NULL_ID));
+		} while (curId != NULL_ID);
 	_
 
 	END_TICK
