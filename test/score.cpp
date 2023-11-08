@@ -1,7 +1,7 @@
 #define NO_UEFI
 
 #include "gtest/gtest.h"
-#include "../score.h"
+#include "../src/score.h"
 #include "uc32.h"
 
 

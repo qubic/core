@@ -42,14 +42,14 @@ static unsigned char __year();
 #define CONTRACT_INDEX QX_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QX
 #define CONTRACT_STATE2_TYPE QX2
-#include "qubics/Qx.h"
+#include "smart_contracts/Qx.h"
 static CONTRACT_STATE_TYPE* _QX;
 
 #define QUOTTERY_CONTRACT_INDEX 2
 #define CONTRACT_INDEX QUOTTERY_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QUOTTERY
 #define CONTRACT_STATE2_TYPE QUOTTERY2
-#include "qubics/Quottery.h"
+#include "smart_contracts/Quottery.h"
 static CONTRACT_STATE_TYPE* _QUOTTERY;
 
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0
