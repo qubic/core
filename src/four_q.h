@@ -2,6 +2,7 @@
 
 #include <intrin.h>
 
+#include "platform/common_types.h"
 #include "platform/memory.h"
 #include "platform/m256.h"
 

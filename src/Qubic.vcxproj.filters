@@ -36,7 +36,7 @@
     <ClInclude Include="platform\logging.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="platform\no_uefi.h">
+    <ClInclude Include="platform\common_types.h">
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="platform\file_io.h">
