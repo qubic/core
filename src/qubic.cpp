@@ -16,6 +16,7 @@
 
 #include "platform/uefi.h"
 #include "platform/time.h"
+#include "platform/file_io.h"
 
 #include "text_output.h"
 
@@ -57,8 +58,6 @@
 #define PEER_REFRESHING_PERIOD 120000ULL
 #define PORT 21841
 #define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
-#define READING_CHUNK_SIZE 1048576
-#define WRITING_CHUNK_SIZE 1048576
 #define REQUEST_QUEUE_BUFFER_SIZE 1073741824
 #define REQUEST_QUEUE_LENGTH 65536 // Must be 65536
 #define RESPONSE_QUEUE_BUFFER_SIZE 1073741824
@@ -564,8 +563,6 @@ static struct
     RequestResponseHeader header;
     BroadcastComputors broadcastComputors;
 } broadcastedComputors;
-
-static EFI_FILE_PROTOCOL* root = NULL;
 
 static struct System
 {
@@ -4081,74 +4078,6 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
     bs->CloseEvent(Event);
 
     contractProcessorState = 0;
-}
-
-static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
-{
-    EFI_STATUS status;
-    EFI_FILE_PROTOCOL* file;
-    if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
-    {
-        logStatus(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
-
-        return -1;
-    }
-    else
-    {
-        long long readSize = 0;
-        while (readSize < totalSize)
-        {
-            unsigned long long size = (READING_CHUNK_SIZE <= (totalSize - readSize) ? READING_CHUNK_SIZE : (totalSize - readSize));
-            status = file->Read(file, &size, &buffer[readSize]);
-            if (status
-                || size != (READING_CHUNK_SIZE <= (totalSize - readSize) ? READING_CHUNK_SIZE : (totalSize - readSize)))
-            {
-                logStatus(L"EFI_FILE_PROTOCOL.Read() fails", status, __LINE__);
-
-                file->Close(file);
-
-                return -1;
-            }
-            readSize += size;
-        }
-        file->Close(file);
-
-        return readSize;
-    }
-}
-
-static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
-{
-    EFI_STATUS status;
-    EFI_FILE_PROTOCOL* file;
-    if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
-    {
-        logStatus(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
-
-        return -1;
-    }
-    else
-    {
-        long long writtenSize = 0;
-        while (writtenSize < totalSize)
-        {
-            unsigned long long size = (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize));
-            status = file->Write(file, &size, &buffer[writtenSize]);
-            if (status
-                || size != (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize)))
-            {
-                logStatus(L"EFI_FILE_PROTOCOL.Write() fails", status, __LINE__);
-
-                file->Close(file);
-
-                return -1;
-            }
-            writtenSize += size;
-        }
-        file->Close(file);
-
-        return writtenSize;
-    }
 }
 
 static void saveSpectrum()

@@ -21,6 +21,7 @@
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
+    <ClInclude Include="platform\file_io.h" />
     <ClInclude Include="platform\logging.h" />
     <ClInclude Include="platform\no_uefi.h" />
     <ClInclude Include="score.h" />

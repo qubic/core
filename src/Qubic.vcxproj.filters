@@ -39,6 +39,9 @@
     <ClInclude Include="platform\no_uefi.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="platform\file_io.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
