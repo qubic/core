@@ -24,6 +24,7 @@
     <ClInclude Include="platform\file_io.h" />
     <ClInclude Include="platform\logging.h" />
     <ClInclude Include="platform\no_uefi.h" />
+    <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />

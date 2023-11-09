@@ -17,6 +17,7 @@
 #include "platform/uefi.h"
 #include "platform/time.h"
 #include "platform/file_io.h"
+#include "platform/time_stamp_counter.h"
 
 #include "text_output.h"
 
@@ -665,7 +666,6 @@ static unsigned int dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
 static EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* simpleFileSystemProtocol;
 
 static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
-static unsigned long long frequency;
 static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
 static volatile long long numberOfProcessedRequests = 0, prevNumberOfProcessedRequests = 0;
@@ -4256,27 +4256,7 @@ static bool initialize()
 
     getPublicKeyFromIdentity((const unsigned char*)ARBITRATOR, (unsigned char*)&arbitratorPublicKey);
 
-    int cpuInfo[4];
-    __cpuid(cpuInfo, 0x15);
-    if (cpuInfo[2] == 0 || cpuInfo[1] == 0 || cpuInfo[0] == 0)
-    {
-        log(L"Theoretical TSC frequency = n/a.");
-    }
-    else
-    {
-        setText(message, L"Theoretical TSC frequency = ");
-        appendNumber(message, ((unsigned long long)cpuInfo[1]) * cpuInfo[2] / cpuInfo[0], TRUE);
-        appendText(message, L" Hz.");
-        log(message);
-    }
-
-    frequency = __rdtsc();
-    bs->Stall(1000000);
-    frequency = __rdtsc() - frequency;
-    setText(message, L"Practical TSC frequency = ");
-    appendNumber(message, frequency, TRUE);
-    appendText(message, L" Hz.");
-    log(message);
+    initTimeStampCounter();
 
     bs->SetMem((void*)tickLocks, sizeof(tickLocks), 0);
     bs->SetMem(&tickTicks, sizeof(tickTicks), 0);

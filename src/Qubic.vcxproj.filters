@@ -42,6 +42,9 @@
     <ClInclude Include="platform\file_io.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="platform\time_stamp_counter.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
