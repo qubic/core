@@ -1,4 +1,4 @@
-/.vs/
 /packages/
+.vs/
 x64/
 ~AutoRecover.*.vcxproj
