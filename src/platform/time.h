@@ -3,6 +3,10 @@
 #include "uefi.h"
 #include <stddef.h>
 
+#ifdef NO_UEFI
+#error "NO_UEFI implementation is missing!"
+#endif
+
 static EFI_TIME time;
 
 static void initTime()

@@ -13,6 +13,10 @@ static EFI_FILE_PROTOCOL* root = NULL;
 
 static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
 {
+#ifdef NO_UEFI
+    log(L"NO_UEFI implementation of load() is missing! No file loaded!");
+    return 0;
+#else
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
     if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
@@ -43,10 +47,15 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
 
         return readSize;
     }
+#endif
 }
 
 static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
 {
+#ifdef NO_UEFI
+    log(L"NO_UEFI implementation of save() is missing! No file saved!");
+    return 0;
+#else
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
     if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
@@ -77,4 +86,5 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
 
         return writtenSize;
     }
+#endif
 }
