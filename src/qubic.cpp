@@ -565,8 +565,6 @@ static struct
     BroadcastComputors broadcastComputors;
 } broadcastedComputors;
 
-static CHAR16 message[16384], timestampedMessage[16384];
-
 static EFI_FILE_PROTOCOL* root = NULL;
 
 static struct System
@@ -745,7 +743,6 @@ static struct
     RequestedTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
 
-static bool disableLogging = false;
 
 static void log(const CHAR16* message)
 {
@@ -803,19 +800,9 @@ static void log(const CHAR16* message)
     appendText(timestampedMessage, message);
     appendText(timestampedMessage, L"\r\n");
 
-    st->ConOut->OutputString(st->ConOut, timestampedMessage);
+    outputStringToConsole(timestampedMessage);
 }
 
-static void logStatus(const CHAR16* message, const EFI_STATUS status, const unsigned int lineNumber)
-{
-    setText(::message, message);
-    appendText(::message, L" (");
-    appendErrorStatus(::message, status);
-    appendText(::message, L") near line ");
-    appendNumber(::message, lineNumber, FALSE);
-    appendText(::message, L"!");
-    log(::message);
-}
 
 static int spectrumIndex(unsigned char* publicKey)
 {
