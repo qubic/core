@@ -4,6 +4,9 @@
 #include "platform/memory.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
+#include "platform/file_io.h"
+#include "platform/logging.h"
+#include "platform/time_stamp_counter.h"
 #include "kangaroo_twelve.h"
 
 ////////// Scoring algorithm \\\\\\\\\\
@@ -97,6 +100,65 @@ static void initEmptyScoreCache()
     RELEASE(scoreCacheLock);
 }
 #endif
+
+// Save score cache to SCORE_CACHE_FILE_NAME
+static void saveScoreCache()
+{
+#if USE_SCORE_CACHE
+    const unsigned long long beginningTick = __rdtsc();
+    ACQUIRE(scoreCacheLock);
+    long long savedSize = save(SCORE_CACHE_FILE_NAME, sizeof(scoreCache), (unsigned char*)&scoreCache);
+    RELEASE(scoreCacheLock);
+    if (savedSize == sizeof(scoreCache))
+    {
+        setNumber(message, savedSize, TRUE);
+        appendText(message, L" bytes of the score cache data are saved (");
+        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+        appendText(message, L" microseconds).");
+        log(message);
+    }
+#endif
+}
+
+// Update score cache filename with epoch and try to load file
+static bool loadScoreCache(int epoch)
+{
+    bool success = true;
+#if USE_SCORE_CACHE
+    setText(message, L"Loading score cache...");
+    log(message);
+    SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
+    SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
+    SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
+    // init, set zero all scorecache
+    initEmptyScoreCache();
+    ACQUIRE(scoreCacheLock);
+    long long loadedSize = load(SCORE_CACHE_FILE_NAME, sizeof(scoreCache), (unsigned char*)scoreCache);
+    RELEASE(scoreCacheLock);
+    if (loadedSize != sizeof(scoreCache))
+    {
+        if (loadedSize == -1)
+        {
+            setText(message, L"Error while loading score cache: File does not exists (ignore this error if this is the epoch start)");
+        }
+        else if (loadedSize < sizeof(scoreCache))
+        {
+            setText(message, L"Error while loading score cache: Score cache file is smaller than defined. System may not work properly");
+        }
+        else
+        {
+            setText(message, L"Error while loading score cache: Score cache file is larger than defined. System may not work properly");
+        }
+        success = false;
+    }
+    else
+    {
+        setText(message, L"Loaded score cache data!");
+    }
+    log(message);
+#endif
+    return success;
+}
 
 static void setSynapse2Bits(char* p_nr, unsigned int idx, const char val) {
     int pos = ((idx & 3) << 1);

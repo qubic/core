@@ -4167,22 +4167,6 @@ static void saveSystem()
     }
 }
 
-static void saveScoreCache()
-{
-#if USE_SCORE_CACHE
-    const unsigned long long beginningTick = __rdtsc();
-    long long savedSize = save(SCORE_CACHE_FILE_NAME, sizeof(scoreCache), (unsigned char*)&scoreCache);
-    if (savedSize == sizeof(scoreCache))
-    {
-        setNumber(message, savedSize, TRUE);
-        appendText(message, L" bytes of the score cache data are saved (");
-        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-        appendText(message, L" microseconds).");
-        log(message);
-    }
-#endif
-}
-
 static bool initialize()
 {
     enableAVX();
@@ -4608,37 +4592,7 @@ static bool initialize()
             log(message);
         }
 
-#if USE_SCORE_CACHE
-        {
-            setText(message, L"Loading score cache...");
-            log(message);
-            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-            // init, set zero all scorecache
-            initEmptyScoreCache();
-            loadedSize = load(SCORE_CACHE_FILE_NAME, sizeof(scoreCache), (unsigned char*)scoreCache);
-            if (loadedSize != sizeof(scoreCache))
-            {
-                if (loadedSize == -1)
-                {
-                    setText(message, L"Error while loading score cache: File does not exists (ignore this error if this is the epoch start)");
-                }
-                else if (loadedSize < sizeof(scoreCache))
-                {
-                    setText(message, L"Error while loading score cache: Score cache file is smaller than defined. System may not work properly");
-                } else 
-                {
-                    setText(message, L"Error while loading score cache: Score cache file is larger than defined. System may not work properly");
-                }
-            }
-            else 
-            {
-                setText(message, L"Loaded score cache data!");
-            }
-            log(message);
-        }
-#endif
+        loadScoreCache(system.epoch);
 
         unsigned char randomSeed[32];
         bs->SetMem(randomSeed, 32, 0);
