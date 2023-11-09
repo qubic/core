@@ -4720,7 +4720,7 @@ static bool initialize()
             SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
             SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
             // init, set zero all scorecache
-            bs->SetMem((unsigned char*)scoreCache, sizeof(scoreCache), 0);            
+            initEmptyScoreCache();
             loadedSize = load(SCORE_CACHE_FILE_NAME, sizeof(scoreCache), (unsigned char*)scoreCache);
             if (loadedSize != sizeof(scoreCache))
             {

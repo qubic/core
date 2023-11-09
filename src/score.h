@@ -29,7 +29,6 @@ struct
 } synapses2Bit[SOLUTION_BUFFER_COUNT];
 
 static volatile char solutionEngineLock[SOLUTION_BUFFER_COUNT];
-static volatile char scoreCacheLock;
 
 #if USE_SCORE_CACHE
 struct
@@ -38,10 +37,13 @@ struct
     unsigned char nonce[32];
     int score;
 } scoreCache[SCORE_CACHE_SIZE]; // set zero or load from a file on init
+
+static volatile char scoreCacheLock;
+
 static unsigned int scoreCacheHit = 0;
 static unsigned int scoreCacheMiss = 0;
 static unsigned int scoreCacheUnknown = 0;
-void KangarooTwelve64To32(unsigned char* input, unsigned char* output);
+
 static unsigned int getScoreCacheIndex(unsigned char* publicKey, unsigned char* nonce)
 {
     unsigned char buffer[64];
@@ -85,6 +87,13 @@ static void addScoreCache(unsigned char* publicKey, unsigned char* nonce, unsign
     copyMem(scoreCache[scoreCacheIndex].publicKey, publicKey, 32);
     copyMem(scoreCache[scoreCacheIndex].nonce, nonce, 32);
     scoreCache[scoreCacheIndex].score = score;
+    RELEASE(scoreCacheLock);
+}
+
+static void initEmptyScoreCache()
+{
+    ACQUIRE(scoreCacheLock);
+    setMem((unsigned char*)scoreCache, sizeof(scoreCache), 0);
     RELEASE(scoreCacheLock);
 }
 #endif
