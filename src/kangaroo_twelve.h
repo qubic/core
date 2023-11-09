@@ -19,6 +19,42 @@
 static __m512i zero, moveThetaPrev, moveThetaNext, rhoB, rhoG, rhoK, rhoM, rhoS, pi1B, pi1G, pi1K, pi1M, pi1S, pi2S1, pi2S2, pi2BG, pi2KM, pi2S3, padding;
 static __m512i K12RoundConst0, K12RoundConst1, K12RoundConst2, K12RoundConst3, K12RoundConst4, K12RoundConst5, K12RoundConst6, K12RoundConst7, K12RoundConst8, K12RoundConst9, K12RoundConst10, K12RoundConst11;
 
+static void initAVX512KangarooTwelveConstants()
+{
+    zero = _mm512_maskz_set1_epi64(0, 0);
+    moveThetaPrev = _mm512_setr_epi64(4, 0, 1, 2, 3, 5, 6, 7);
+    moveThetaNext = _mm512_setr_epi64(1, 2, 3, 4, 0, 5, 6, 7);
+    rhoB = _mm512_setr_epi64(0, 1, 62, 28, 27, 0, 0, 0);
+    rhoG = _mm512_setr_epi64(36, 44, 6, 55, 20, 0, 0, 0);
+    rhoK = _mm512_setr_epi64(3, 10, 43, 25, 39, 0, 0, 0);
+    rhoM = _mm512_setr_epi64(41, 45, 15, 21, 8, 0, 0, 0);
+    rhoS = _mm512_setr_epi64(18, 2, 61, 56, 14, 0, 0, 0);
+    pi1B = _mm512_setr_epi64(0, 3, 1, 4, 2, 5, 6, 7);
+    pi1G = _mm512_setr_epi64(1, 4, 2, 0, 3, 5, 6, 7);
+    pi1K = _mm512_setr_epi64(2, 0, 3, 1, 4, 5, 6, 7);
+    pi1M = _mm512_setr_epi64(3, 1, 4, 2, 0, 5, 6, 7);
+    pi1S = _mm512_setr_epi64(4, 2, 0, 3, 1, 5, 6, 7);
+    pi2S1 = _mm512_setr_epi64(0, 1, 2, 3, 4, 5, 8, 10);
+    pi2S2 = _mm512_setr_epi64(0, 1, 2, 3, 4, 5, 9, 11);
+    pi2BG = _mm512_setr_epi64(0, 1, 8, 9, 6, 5, 6, 7);
+    pi2KM = _mm512_setr_epi64(2, 3, 10, 11, 7, 5, 6, 7);
+    pi2S3 = _mm512_setr_epi64(4, 5, 12, 13, 4, 5, 6, 7);
+    padding = _mm512_maskz_set1_epi64(1, 0x8000000000000000);
+
+    K12RoundConst0 = _mm512_maskz_set1_epi64(1, 0x000000008000808bULL);
+    K12RoundConst1 = _mm512_maskz_set1_epi64(1, 0x800000000000008bULL);
+    K12RoundConst2 = _mm512_maskz_set1_epi64(1, 0x8000000000008089ULL);
+    K12RoundConst3 = _mm512_maskz_set1_epi64(1, 0x8000000000008003ULL);
+    K12RoundConst4 = _mm512_maskz_set1_epi64(1, 0x8000000000008002ULL);
+    K12RoundConst5 = _mm512_maskz_set1_epi64(1, 0x8000000000000080ULL);
+    K12RoundConst6 = _mm512_maskz_set1_epi64(1, 0x000000000000800aULL);
+    K12RoundConst7 = _mm512_maskz_set1_epi64(1, 0x800000008000000aULL);
+    K12RoundConst8 = _mm512_maskz_set1_epi64(1, 0x8000000080008081ULL);
+    K12RoundConst9 = _mm512_maskz_set1_epi64(1, 0x8000000000008080ULL);
+    K12RoundConst10 = _mm512_maskz_set1_epi64(1, 0x0000000080000001ULL);
+    K12RoundConst11 = _mm512_maskz_set1_epi64(1, 0x8000000080008008ULL);
+}
+
 #else
 
 #define KeccakF1600RoundConstant0   0x000000008000808bULL

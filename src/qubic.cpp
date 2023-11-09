@@ -4172,44 +4172,8 @@ static bool initialize()
     enableAVX();
 
 #if AVX512
-    zero = _mm512_maskz_set1_epi64(0, 0);
-    moveThetaPrev = _mm512_setr_epi64(4, 0, 1, 2, 3, 5, 6, 7);
-    moveThetaNext = _mm512_setr_epi64(1, 2, 3, 4, 0, 5, 6, 7);
-    rhoB = _mm512_setr_epi64(0, 1, 62, 28, 27, 0, 0, 0);
-    rhoG = _mm512_setr_epi64(36, 44, 6, 55, 20, 0, 0, 0);
-    rhoK = _mm512_setr_epi64(3, 10, 43, 25, 39, 0, 0, 0);
-    rhoM = _mm512_setr_epi64(41, 45, 15, 21, 8, 0, 0, 0);
-    rhoS = _mm512_setr_epi64(18, 2, 61, 56, 14, 0, 0, 0);
-    pi1B = _mm512_setr_epi64(0, 3, 1, 4, 2, 5, 6, 7);
-    pi1G = _mm512_setr_epi64(1, 4, 2, 0, 3, 5, 6, 7);
-    pi1K = _mm512_setr_epi64(2, 0, 3, 1, 4, 5, 6, 7);
-    pi1M = _mm512_setr_epi64(3, 1, 4, 2, 0, 5, 6, 7);
-    pi1S = _mm512_setr_epi64(4, 2, 0, 3, 1, 5, 6, 7);
-    pi2S1 = _mm512_setr_epi64(0, 1, 2, 3, 4, 5, 8, 10);
-    pi2S2 = _mm512_setr_epi64(0, 1, 2, 3, 4, 5, 9, 11);
-    pi2BG = _mm512_setr_epi64(0, 1, 8, 9, 6, 5, 6, 7);
-    pi2KM = _mm512_setr_epi64(2, 3, 10, 11, 7, 5, 6, 7);
-    pi2S3 = _mm512_setr_epi64(4, 5, 12, 13, 4, 5, 6, 7);
-    padding = _mm512_maskz_set1_epi64(1, 0x8000000000000000);
-
-    K12RoundConst0 = _mm512_maskz_set1_epi64(1, 0x000000008000808bULL);
-    K12RoundConst1 = _mm512_maskz_set1_epi64(1, 0x800000000000008bULL);
-    K12RoundConst2 = _mm512_maskz_set1_epi64(1, 0x8000000000008089ULL);
-    K12RoundConst3 = _mm512_maskz_set1_epi64(1, 0x8000000000008003ULL);
-    K12RoundConst4 = _mm512_maskz_set1_epi64(1, 0x8000000000008002ULL);
-    K12RoundConst5 = _mm512_maskz_set1_epi64(1, 0x8000000000000080ULL);
-    K12RoundConst6 = _mm512_maskz_set1_epi64(1, 0x000000000000800aULL);
-    K12RoundConst7 = _mm512_maskz_set1_epi64(1, 0x800000008000000aULL);
-    K12RoundConst8 = _mm512_maskz_set1_epi64(1, 0x8000000080008081ULL);
-    K12RoundConst9 = _mm512_maskz_set1_epi64(1, 0x8000000000008080ULL);
-    K12RoundConst10 = _mm512_maskz_set1_epi64(1, 0x0000000080000001ULL);
-    K12RoundConst11 = _mm512_maskz_set1_epi64(1, 0x8000000080008008ULL);
-
-    B1 = _mm256_set_epi64x(B14, B13, B12, B11);
-    B2 = _mm256_set_epi64x(B24, B23, B22, B21);
-    B3 = _mm256_set_epi64x(B34, B33, B32, B31);
-    B4 = _mm256_set_epi64x(B44, B43, B42, B41);
-    C = _mm256_set_epi64x(C4, C3, C2, C1);
+    initAVX512KangarooTwelveConstants();
+    initAVX512FourQConstants();
 #endif
 
     for (unsigned int contractIndex = 0; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
