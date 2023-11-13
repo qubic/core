@@ -29,11 +29,13 @@ static unsigned short __millisecond();
 static unsigned char __minute();
 static unsigned char __month();
 static __m256i __nextId(__m256i);
+static __m256i __originator();
 static void __registerUserFunction(USER_PROCEDURE, unsigned short, unsigned short);
 static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short);
 static unsigned char __second();
 static unsigned int __tick();
 static long long __transfer(__m256i, long long);
+static long long __transferAssetOwnershipAndPossession(unsigned long long, __m256i, __m256i, __m256i, long long, __m256i);
 static unsigned char __year();
 
 #include "qpi.h"

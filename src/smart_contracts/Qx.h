@@ -7,12 +7,17 @@ struct QX2
 struct QX
 {
 public:
-	struct TransferAsset_input
+	struct TransferAssetOwnershipAndPossession_input
 	{
-		id destination;
+		id issuer;
+		id possessor;
+		id newOwner;
+		unsigned long long assetName;
+		long long numberOfUnits;
 	};
-	struct TransferAsset_output
+	struct TransferAssetOwnershipAndPossession_output
 	{
+		long long transferredNumberOfUnits;
 	};
 
 private:
@@ -24,9 +29,9 @@ private:
 	uint32 _transferFee; // Amount of qus
 	uint32 _tradeFee; // Number of billionths
 
-	PUBLIC(TransferAsset)
+	PUBLIC(TransferAssetOwnershipAndPossession)
 
-		transfer(input.destination, 1);
+		output.transferredNumberOfUnits = transferAssetOwnershipAndPossession(input.assetName, input.issuer, originator(), input.possessor, input.numberOfUnits, input.newOwner) < 0 ? 0 : input.numberOfUnits;
 	_
 
 	REGISTER_USER_FUNCTIONS
@@ -34,7 +39,7 @@ private:
 
 	REGISTER_USER_PROCEDURES
 
-		REGISTER_USER_PROCEDURE(TransferAsset, 1);
+		REGISTER_USER_PROCEDURE(TransferAssetOwnershipAndPossession, 1);
 	_
 
 	INITIALIZE
@@ -53,13 +58,6 @@ private:
 	_
 
 	BEGIN_TICK
-
-		id curId = NULL_ID;
-		do
-		{
-			curId = nextId(curId);
-			transfer(curId, 0);
-		} while (curId != NULL_ID);
 	_
 
 	END_TICK
@@ -68,3 +66,4 @@ private:
 	EXPAND
 	_
 };
+

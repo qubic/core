@@ -642,6 +642,7 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static EFI_EVENT contractProcessorEvent;
+static __m256i originator;
 static __m256i currentContract;
 static unsigned char* contractStates[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])];
 static __m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
@@ -967,20 +968,27 @@ iteration:
 }
 
 static bool transferAssetOwnershipAndPossession(int sourceOwnershipIndex, int sourcePossessionIndex, unsigned char* destinationPublicKey, long long numberOfUnits,
-    int* destinationOwnershipIndex, int* destinationPossessionIndex)
+    int* destinationOwnershipIndex, int* destinationPossessionIndex,
+    bool lock)
 {
     if (numberOfUnits <= 0)
     {
         return false;
     }
 
-    ACQUIRE(universeLock);
+    if (lock)
+    {
+        ACQUIRE(universeLock);
+    }
 
     if (assets[sourceOwnershipIndex].varStruct.ownership.type != OWNERSHIP || assets[sourceOwnershipIndex].varStruct.ownership.numberOfUnits < numberOfUnits
         || assets[sourcePossessionIndex].varStruct.possession.type != POSSESSION || assets[sourcePossessionIndex].varStruct.possession.numberOfUnits < numberOfUnits
         || assets[sourcePossessionIndex].varStruct.possession.ownershipIndex != sourceOwnershipIndex)
     {
-        RELEASE(universeLock);
+        if (lock)
+        {
+            RELEASE(universeLock);
+        }
 
         return false;
     }
@@ -1028,7 +1036,10 @@ iteration:
             assetChangeFlags[*destinationOwnershipIndex >> 6] |= (1ULL << (*destinationOwnershipIndex & 63));
             assetChangeFlags[*destinationPossessionIndex >> 6] |= (1ULL << (*destinationPossessionIndex & 63));
 
-            RELEASE(universeLock);
+            if (lock)
+            {
+                RELEASE(universeLock);
+            }
 
             return true;
         }
@@ -2446,6 +2457,11 @@ static __m256i __nextId(__m256i currentId)
     return _mm256_setzero_si256();
 }
 
+static __m256i __originator()
+{
+    return ::originator;
+}
+
 static unsigned char __second()
 {
     return etalonTick.second;
@@ -2458,7 +2474,7 @@ static unsigned int __tick()
 
 static long long __transfer(__m256i destination, long long amount)
 {
-    if (((unsigned long long)amount) > MAX_AMOUNT)
+    if (amount < 0 || amount > MAX_AMOUNT)
     {
         return -((long long)(MAX_AMOUNT + 1));
     }
@@ -2485,6 +2501,110 @@ static long long __transfer(__m256i destination, long long amount)
     return remainingAmount;
 }
 
+static long long __transferAssetOwnershipAndPossession(unsigned long long assetName, __m256i issuer, __m256i owner, __m256i possessor, long long numberOfUnits, __m256i newOwner)
+{
+    if (numberOfUnits <= 0 || numberOfUnits > MAX_AMOUNT)
+    {
+        return -((long long)(MAX_AMOUNT + 1));
+    }
+
+    ACQUIRE(universeLock);
+
+    int issuanceIndex = (*((unsigned int*)&issuer)) & (ASSETS_CAPACITY - 1);
+iteration:
+    if (assets[issuanceIndex].varStruct.issuance.type == EMPTY)
+    {
+        RELEASE(universeLock);
+
+        return -numberOfUnits;
+    }
+    else
+    {
+        if (assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
+            && ((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == assetName
+            && EQUAL(*((__m256i*)assets[issuanceIndex].varStruct.issuance.publicKey), issuer))
+        {
+            int ownershipIndex = (*((unsigned int*)&owner)) & (ASSETS_CAPACITY - 1);
+        iteration2:
+            if (assets[ownershipIndex].varStruct.ownership.type == EMPTY)
+            {
+                RELEASE(universeLock);
+
+                return -numberOfUnits;
+            }
+            else
+            {
+                if (assets[ownershipIndex].varStruct.ownership.type == OWNERSHIP
+                    && assets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
+                    && EQUAL(*((__m256i*)assets[ownershipIndex].varStruct.ownership.publicKey), owner)
+                    && assets[ownershipIndex].varStruct.ownership.managingContractIndex == executedContractIndex) // TODO: This condition needs extra attention during refactoring!
+                {
+                    int possessionIndex = (*((unsigned int*)&possessor)) & (ASSETS_CAPACITY - 1);
+                iteration3:
+                    if (assets[possessionIndex].varStruct.possession.type == EMPTY)
+                    {
+                        RELEASE(universeLock);
+
+                        return -numberOfUnits;
+                    }
+                    else
+                    {
+                        if (assets[possessionIndex].varStruct.possession.type == POSSESSION
+                            && assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
+                            && EQUAL(*((__m256i*)assets[possessionIndex].varStruct.possession.publicKey), possessor))
+                        {
+                            if (assets[possessionIndex].varStruct.possession.managingContractIndex == executedContractIndex) // TODO: This condition needs extra attention during refactoring!
+                            {
+                                if (assets[possessionIndex].varStruct.possession.numberOfUnits >= numberOfUnits)
+                                {
+                                    int destinationOwnershipIndex, destinationPossessionIndex;
+                                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, (unsigned char*)&newOwner, numberOfUnits, &destinationOwnershipIndex, &destinationPossessionIndex, false);
+
+                                    RELEASE(universeLock);
+
+                                    return assets[possessionIndex].varStruct.possession.numberOfUnits;
+                                }
+                                else
+                                {
+                                    RELEASE(universeLock);
+
+                                    return assets[possessionIndex].varStruct.possession.numberOfUnits - numberOfUnits;
+                                }
+                            }
+                            else
+                            {
+                                RELEASE(universeLock);
+
+                                return -numberOfUnits;
+                            }
+                        }
+                        else
+                        {
+                            possessionIndex = (possessionIndex + 1) & (ASSETS_CAPACITY - 1);
+
+                            goto iteration3;
+                        }
+                    }
+                }
+                else
+                {
+                    ownershipIndex = (ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
+
+                    goto iteration2;
+                }
+            }
+        }
+        else
+        {
+            issuanceIndex = (issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
+
+            goto iteration;
+        }
+    }
+
+    return 0;
+}
+
 static unsigned char __year()
 {
     return etalonTick.year;
@@ -2503,6 +2623,7 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                ::originator = _mm256_setzero_si256();
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
                 contractSystemProcedures[executedContractIndex][INITIALIZE](contractStates[executedContractIndex]);
@@ -2518,6 +2639,7 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                ::originator = _mm256_setzero_si256();
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
                 contractSystemProcedures[executedContractIndex][BEGIN_EPOCH](contractStates[executedContractIndex]);
@@ -2533,6 +2655,7 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                ::originator = _mm256_setzero_si256();
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
                 contractSystemProcedures[executedContractIndex][BEGIN_TICK](contractStates[executedContractIndex]);
@@ -2548,6 +2671,7 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                ::originator = _mm256_setzero_si256();
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
                 contractSystemProcedures[executedContractIndex][END_TICK](contractStates[executedContractIndex]);
@@ -2563,6 +2687,7 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                ::originator = _mm256_setzero_si256();
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
                 contractSystemProcedures[executedContractIndex][END_EPOCH](contractStates[executedContractIndex]);
@@ -2734,6 +2859,7 @@ static void processTick(unsigned long long processorNumber)
                                 {
                                     if (contractUserProcedures[executedContractIndex][transaction->inputType])
                                     {
+                                        ::originator = *((__m256i*)transaction->sourcePublicKey);
                                         currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
                                         bs->SetMem(&executedContractInput, sizeof(executedContractInput), 0);
@@ -3173,7 +3299,7 @@ static void endEpoch()
                 if (finalPrice)
                 {
                     int destinationOwnershipIndex, destinationPossessionIndex;
-                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, ipo->publicKeys[i], 1, &destinationOwnershipIndex, &destinationPossessionIndex);
+                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, ipo->publicKeys[i], 1, &destinationOwnershipIndex, &destinationPossessionIndex, true);
                 }
             }
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
