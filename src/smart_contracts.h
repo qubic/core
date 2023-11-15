@@ -29,11 +29,13 @@ static unsigned short __millisecond();
 static unsigned char __minute();
 static unsigned char __month();
 static __m256i __nextId(__m256i);
+static __m256i __originator();
 static void __registerUserFunction(USER_PROCEDURE, unsigned short, unsigned short);
 static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short);
 static unsigned char __second();
 static unsigned int __tick();
 static long long __transfer(__m256i, long long);
+static long long __transferAssetOwnershipAndPossession(unsigned long long, __m256i, __m256i, __m256i, long long, __m256i);
 static unsigned char __year();
 
 #include "qpi.h"
@@ -42,14 +44,14 @@ static unsigned char __year();
 #define CONTRACT_INDEX QX_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QX
 #define CONTRACT_STATE2_TYPE QX2
-#include "qubics/Qx.h"
+#include "smart_contracts/Qx.h"
 static CONTRACT_STATE_TYPE* _QX;
 
 #define QUOTTERY_CONTRACT_INDEX 2
 #define CONTRACT_INDEX QUOTTERY_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QUOTTERY
 #define CONTRACT_STATE2_TYPE QUOTTERY2
-#include "qubics/Quottery.h"
+#include "smart_contracts/Quottery.h"
 static CONTRACT_STATE_TYPE* _QUOTTERY;
 
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0

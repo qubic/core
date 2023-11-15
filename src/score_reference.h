@@ -1,5 +1,9 @@
 #pragma once
 
+#include "platform/memory.h"
+#include "public_settings.h"
+#include "four_q.h"
+
 ////////// Original (reference) scoring algorithm \\\\\\\\\\
 
 static int miningData[DATA_LENGTH];
@@ -15,8 +19,9 @@ static struct
     unsigned short lengths[MAX_INPUT_DURATION * (NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + MAX_OUTPUT_DURATION * (NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH)];
 } synapses[MAX_NUMBER_OF_PROCESSORS];
 
-static unsigned int score(const unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
+static unsigned int score(unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
 {
+    processorNumber %= MAX_NUMBER_OF_PROCESSORS;
     random(publicKey, nonce, (unsigned char*)&synapses[processorNumber], sizeof(synapses[0]));
     for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++)
     {
@@ -45,8 +50,8 @@ static unsigned int score(const unsigned long long processorNumber, unsigned cha
 
     unsigned int lengthIndex = 0;
 
-    bs->CopyMem(&neurons[processorNumber].input[0], &miningData, sizeof(miningData));
-    bs->SetMem(&neurons[processorNumber].input[sizeof(miningData) / sizeof(neurons[0].input[0])], sizeof(neurons[0]) - sizeof(miningData), 0);
+    copyMem(&neurons[processorNumber].input[0], &miningData, sizeof(miningData));
+    setMem(&neurons[processorNumber].input[sizeof(miningData) / sizeof(neurons[0].input[0])], sizeof(neurons[0]) - sizeof(miningData), 0);
 
     for (unsigned int tick = 0; tick < MAX_INPUT_DURATION; tick++)
     {
@@ -70,7 +75,7 @@ static unsigned int score(const unsigned long long processorNumber, unsigned cha
         }
     }
 
-    bs->CopyMem(&neurons[processorNumber].output[0], &neurons[processorNumber].input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS], INFO_LENGTH * sizeof(neurons[0].input[0]));
+    copyMem(&neurons[processorNumber].output[0], &neurons[processorNumber].input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS], INFO_LENGTH * sizeof(neurons[0].input[0]));
 
     for (unsigned int tick = 0; tick < MAX_OUTPUT_DURATION; tick++)
     {

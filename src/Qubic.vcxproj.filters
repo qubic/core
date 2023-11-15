@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="qubic.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="qpi.h" />
+    <ClInclude Include="smart_contracts.h" />
+    <ClInclude Include="private_settings.h" />
+    <ClInclude Include="public_settings.h" />
+    <ClInclude Include="kangaroo_twelve.h" />
+    <ClInclude Include="four_q.h" />
+    <ClInclude Include="text_output.h" />
+    <ClInclude Include="score.h" />
+    <ClInclude Include="smart_contracts\Quottery.h">
+      <Filter>smart_contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="smart_contracts\Qx.h">
+      <Filter>smart_contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\concurrency.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\m256.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\memory.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\uefi.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\time.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\logging.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\common_types.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\file_io.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\time_stamp_counter.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="smart_contracts">
+      <UniqueIdentifier>{b15197d9-5a5c-4c37-9009-6c2faf0f45a8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="platform">
+      <UniqueIdentifier>{160e9f94-b706-42f6-8517-2be8ade5c99d}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

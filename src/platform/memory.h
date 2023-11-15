@@ -3,7 +3,6 @@
 #ifdef NO_UEFI
 
 #include <cstring>
-typedef unsigned short CHAR16;
 
 static inline void setMem(void* buffer, unsigned long long size, unsigned char value)
 {
@@ -16,6 +15,7 @@ static inline void copyMem(void* destination, void* source, unsigned long long l
 }
 
 #else
+
 #include "uefi.h"
 
 static inline void setMem(void* buffer, unsigned long long size, unsigned char value)
