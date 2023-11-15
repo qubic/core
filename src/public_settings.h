@@ -6,7 +6,7 @@
 #define MAX_NUMBER_OF_PROCESSORS 32
 
 #define VERSION_A 1
-#define VERSION_B 179
+#define VERSION_B 180
 #define VERSION_C 0
 
 #define EPOCH 83
