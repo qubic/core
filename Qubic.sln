@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.33414.496
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Qubic", "Qubic.vcxproj", "{6A7C1322-658B-4FD8-8150-A2F88202B57F}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Qubic", "src\Qubic.vcxproj", "{6A7C1322-658B-4FD8-8150-A2F88202B57F}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test", "test\test.vcxproj", "{30E8E249-6B00-4575-BCDF-BE2445D5E099}"
 EndProject

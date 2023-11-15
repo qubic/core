@@ -1,8 +1,46 @@
 #pragma once
 
-#include "public_settings.h"
 #include "uefi.h"
 
+static bool disableLogging = false;
+
+// message buffers:
+// - message is for public use
+// - timestampedMessage is used internally by log()
+// CAUTION: not thread-safe, no beffer overflow protection!!!
+static CHAR16 message[16384], timestampedMessage[16384];
+
+
+#ifdef NO_UEFI
+
+#include <cstdio>
+
+// Output to console on no-UEFI platform
+static inline void outputStringToConsole(CHAR16* str)
+{
+    std::wprintf(L"%ls", str);
+}
+
+// Log message to console (with line break) on non-UEFI platform
+static void log(const CHAR16* message)
+{
+    if (disableLogging)
+        return;
+    std::wprintf(L"%ls\n", message);
+}
+
+#else
+
+// Output to console on UEFI platform
+static inline void outputStringToConsole(CHAR16* str)
+{
+    st->ConOut->OutputString(st->ConOut, str);
+}
+
+// Log message to console (with line break) on UEFI platform (defined in qubic.cpp due to dependencies on time and qubic status)
+static void log(const CHAR16* message);
+
+#endif
 
 static void appendText(CHAR16* dst, const CHAR16* src)
 {
@@ -52,7 +90,6 @@ static void setNumber(CHAR16* dst, const unsigned long long number, BOOLEAN sepa
     dst[0] = 0;
     appendNumber(dst, number, separate);
 }
-
 static void appendIPv4Address(CHAR16* dst, EFI_IPv4_ADDRESS address)
 {
     appendNumber(dst, address.Addr[0], FALSE);
@@ -112,11 +149,13 @@ static void appendErrorStatus(CHAR16* dst, const EFI_STATUS status)
     }
 }
 
-static void appendQubicVersion(CHAR16* dst)
+static void logStatus(const CHAR16* message, const EFI_STATUS status, const unsigned int lineNumber)
 {
-    appendNumber(dst, VERSION_A, FALSE);
-    appendText(dst, L".");
-    appendNumber(dst, VERSION_B, FALSE);
-    appendText(dst, L".");
-    appendNumber(dst, VERSION_C, FALSE);
+    setText(::message, message);
+    appendText(::message, L" (");
+    appendErrorStatus(::message, status);
+    appendText(::message, L") near line ");
+    appendNumber(::message, lineNumber, FALSE);
+    appendText(::message, L"!");
+    log(::message);
 }

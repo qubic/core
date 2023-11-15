@@ -2,10 +2,12 @@
 
 #include <intrin.h>
 
+#include "platform/common_types.h"
+#include "platform/memory.h"
+#include "platform/m256.h"
+
 #include "public_settings.h"
 #include "kangaroo_twelve.h"
-#include "memory_util.h"
-#include "m256_util.h"
 
 
 ////////// FourQ \\\\\\\\\\
@@ -42,6 +44,16 @@
 
 #if AVX512
 static __m256i B1, B2, B3, B4, C;
+
+static void initAVX512FourQConstants()
+{
+
+    B1 = _mm256_set_epi64x(B14, B13, B12, B11);
+    B2 = _mm256_set_epi64x(B24, B23, B22, B21);
+    B3 = _mm256_set_epi64x(B34, B33, B32, B31);
+    B4 = _mm256_set_epi64x(B44, B43, B42, B41);
+    C = _mm256_set_epi64x(C4, C3, C2, C1);
+}
 #endif
 
 typedef unsigned long long felm_t[2]; // Datatype for representing 128-bit field elements

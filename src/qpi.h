@@ -1,5 +1,7 @@
 // Qubic Programming Interface 1.0.0
 
+#include "platform/m256.h"
+
 namespace QPI
 {
 	/*
@@ -551,7 +553,6 @@ namespace QPI
 	#define index_4194304x2 index_8388608
 	#define index_8388608x2 index_16777216
 
-	#define EQUAL(a, b) (_mm256_movemask_epi8(_mm256_cmpeq_epi64(a, b)) == 0xFFFFFFFF)
 	#define NULL_ID _mm256_setzero_si256()
 	#define NULL_INDEX (uint64)(-1)
 
@@ -6821,6 +6822,11 @@ namespace QPI
 		return ::__nextId(currentId);
 	}
 
+	static id originator(
+	) { // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
+		return ::__originator();
+	}
+
 	static uint8 second(
 	) { // [0..59]
 		return ::__second();
@@ -6835,8 +6841,18 @@ namespace QPI
 		id destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
 		sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
 	) { // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
-
 		return ::__transfer(destination, amount);
+	}
+
+	static sint64 transferAssetOwnershipAndPossession(
+		uint64 assetName,
+		id issuer,
+		id owner,
+		id possessor,
+		sint64 numberOfUnits,
+		id newOwner
+	) { // Returns remaining number of possessed units satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
+		return ::__transferAssetOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfUnits, newOwner);
 	}
 
 	static uint8 year(

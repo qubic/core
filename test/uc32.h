@@ -7,6 +7,7 @@ struct UC32x
     union {
         unsigned char uc32x[32];
         unsigned long long ull4[4];
+        __m256i m256i;
     };
 
     UC32x(bool random = false)
