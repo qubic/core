@@ -99,6 +99,8 @@ struct Asset
             char unitOfMeasurement[7]; // Powers of the corresponding SI base units going in alphabetical order
         } issuance;
 
+        static_assert(sizeof(issuance) == 32 + 1 + 7 + 1 + 7, "Something is wrong with the struct size.");
+
         struct
         {
             unsigned char publicKey[32];
@@ -109,6 +111,8 @@ struct Asset
             long long numberOfUnits;
         } ownership;
 
+        static_assert(sizeof(ownership) == 32 + 1 + 1 + 2 + 4 + 8, "Something is wrong with the struct size.");
+
         struct
         {
             unsigned char publicKey[32];
@@ -118,6 +122,9 @@ struct Asset
             unsigned int ownershipIndex;
             long long numberOfUnits;
         } possession;
+
+        static_assert(sizeof(possession) == 32 + 1 + 1 + 2 + 4 + 8, "Something is wrong with the struct size.");
+
     } varStruct;
 };
 
@@ -224,6 +231,9 @@ typedef struct
     unsigned char gammingNonce[32];
 } Message;
 
+static_assert(sizeof(Message) == 32 + 32 + 32, "Something is wrong with the struct size.");
+
+
 #define BROADCAST_COMPUTORS 2
 
 typedef struct
@@ -271,6 +281,9 @@ typedef struct
     unsigned char signature[SIGNATURE_SIZE];
 } Tick;
 
+static_assert(sizeof(Tick) == 8 + 8 + 16 + 6*32 + 2*32 + SIGNATURE_SIZE, "Something is wrong with the struct size.");
+
+
 typedef struct
 {
     unsigned short millisecond;
@@ -285,6 +298,9 @@ typedef struct
     unsigned char prevComputerDigest[32];
     unsigned char transactionDigest[32];
 } TickEssence;
+
+static_assert(sizeof(TickEssence) == 2 + 6 + 4*32, "Something is wrong with the struct size.");
+
 
 typedef struct
 {
@@ -328,6 +344,9 @@ typedef struct
 
     unsigned char signature[SIGNATURE_SIZE];
 } TickData;
+
+static_assert(sizeof(TickData) == 8 + 8 + sizeof(TickData::varStruct) + 32 + NUMBER_OF_TRANSACTIONS_PER_TICK*32 + 8*MAX_NUMBER_OF_CONTRACTS + SIGNATURE_SIZE, "Something is wrong with the struct size.");
+
 
 typedef struct
 {
@@ -373,6 +392,9 @@ typedef struct
     unsigned short inputSize;
 } Transaction;
 
+static_assert(sizeof(Transaction) == 32 + 32 + 8 + 4 + 2 + 2, "Something is wrong with the struct size.");
+
+
 struct ContractIPOBid
 {
     long long price;
@@ -407,6 +429,9 @@ typedef struct
     unsigned char publicKey[32];
 } RequestedEntity;
 
+static_assert(sizeof(RequestedEntity) == 32, "Something is wrong with the struct size.");
+
+
 #define RESPOND_ENTITY 32
 
 typedef struct
@@ -416,6 +441,9 @@ typedef struct
     int spectrumIndex;
     unsigned char siblings[SPECTRUM_DEPTH][32];
 } RespondedEntity;
+
+static_assert(sizeof(RespondedEntity) == sizeof(::Entity) + 4 + 4 + 32*SPECTRUM_DEPTH, "Something is wrong with the struct size.");
+
 
 #define REQUEST_CONTRACT_IPO 33
 
@@ -434,6 +462,9 @@ typedef struct
     long long prices[NUMBER_OF_COMPUTORS];
 } RespondContractIPO;
 
+static_assert(sizeof(RespondContractIPO) == 4 + 4 + 32 * NUMBER_OF_COMPUTORS + 8 * NUMBER_OF_COMPUTORS, "Something is wrong with the struct size.");
+
+
 #define END_RESPONSE 35
 
 #define REQUEST_ISSUED_ASSETS 36
@@ -442,6 +473,9 @@ typedef struct
 {
     unsigned char publicKey[32];
 } RequestIssuedAssets;
+
+static_assert(sizeof(RequestIssuedAssets) == 32, "Something is wrong with the struct size.");
+
 
 #define RESPOND_ISSUED_ASSETS 37
 
@@ -459,6 +493,9 @@ typedef struct
     unsigned char publicKey[32];
 } RequestOwnedAssets;
 
+static_assert(sizeof(RequestOwnedAssets) == 32, "Something is wrong with the struct size.");
+
+
 #define RESPOND_OWNED_ASSETS 39
 
 typedef struct
@@ -475,6 +512,9 @@ typedef struct
 {
     unsigned char publicKey[32];
 } RequestPossessedAssets;
+
+static_assert(sizeof(RequestPossessedAssets) == 32, "Something is wrong with the struct size.");
+
 
 #define RESPOND_POSSESSED_ASSETS 41
 

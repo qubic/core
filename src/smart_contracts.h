@@ -16,6 +16,9 @@ struct Entity
     unsigned int latestIncomingTransferTick, latestOutgoingTransferTick;
 };
 
+static_assert(sizeof(::Entity) == 32 + 2*8 + 2*4 + 2*4, "Something is wrong with the struct size.");
+
+
 static __m256i __arbitrator();
 static void __beginFunctionOrProcedure(const unsigned int);
 static __m256i __computor(unsigned short);
