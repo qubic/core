@@ -50,6 +50,10 @@ static unsigned char __year();
 #include "smart_contracts/Qx.h"
 static CONTRACT_STATE_TYPE* _QX;
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
 #define QUOTTERY_CONTRACT_INDEX 2
 #define CONTRACT_INDEX QUOTTERY_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QUOTTERY

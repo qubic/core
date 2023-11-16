@@ -1217,7 +1217,7 @@ static void getComputerDigest(__m256i* digest)
             }
             else
             {
-                KangarooTwelve((unsigned char*)contractStates[digestIndex], size, (unsigned char*)&contractStateDigests[digestIndex], 32);
+                KangarooTwelve((unsigned char*)contractStates[digestIndex], (unsigned int)size, (unsigned char*)&contractStateDigests[digestIndex], 32);
             }
         }
     }
@@ -3400,7 +3400,7 @@ static void endEpoch()
     }
     for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
-        const unsigned int revenue = (transactionCounters[computorIndex] >= sortedTransactionCounters[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)transactionCounters[computorIndex])) / sortedTransactionCounters[QUORUM - 1]);
+        const long long revenue = (transactionCounters[computorIndex] >= sortedTransactionCounters[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)transactionCounters[computorIndex])) / sortedTransactionCounters[QUORUM - 1]);
         increaseEnergy(broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex], revenue);
         arbitratorRevenue -= revenue;
     }
