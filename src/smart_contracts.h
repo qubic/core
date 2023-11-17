@@ -30,6 +30,7 @@ static bool __getEntity(__m256i, ::Entity&);
 static unsigned char __hour();
 static long long __invocationReward();
 static __m256i __invocator();
+static long long __issueAsset(unsigned long long, __m256i, char, long long, unsigned long long);
 static unsigned short __millisecond();
 static unsigned char __minute();
 static unsigned char __month();

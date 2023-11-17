@@ -944,7 +944,7 @@ static bool decreaseEnergy(const int index, long long amount)
     return false;
 }
 
-static void issueAsset(unsigned char* issuerPublicKey, char name[7], char numberOfDecimalPlaces, char unitOfMeasurement[7], long long numberOfUnits,
+static void issueAsset(unsigned char* issuerPublicKey, char name[7], char numberOfDecimalPlaces, char unitOfMeasurement[7], long long numberOfUnits, unsigned short managingContractIndex,
     int* issuanceIndex, int* ownershipIndex, int* possessionIndex)
 {
     *issuanceIndex = (*((unsigned int*)issuerPublicKey)) & (ASSETS_CAPACITY - 1);
@@ -966,7 +966,7 @@ iteration:
         {
             *((__m256i*)assets[*ownershipIndex].varStruct.ownership.publicKey) = *((__m256i*)issuerPublicKey);
             assets[*ownershipIndex].varStruct.ownership.type = OWNERSHIP;
-            assets[*ownershipIndex].varStruct.ownership.managingContractIndex = QX_CONTRACT_INDEX;
+            assets[*ownershipIndex].varStruct.ownership.managingContractIndex = managingContractIndex;
             assets[*ownershipIndex].varStruct.ownership.issuanceIndex = *issuanceIndex;
             assets[*ownershipIndex].varStruct.ownership.numberOfUnits = numberOfUnits;
 
@@ -976,7 +976,7 @@ iteration:
             {
                 *((__m256i*)assets[*possessionIndex].varStruct.possession.publicKey) = *((__m256i*)issuerPublicKey);
                 assets[*possessionIndex].varStruct.possession.type = POSSESSION;
-                assets[*possessionIndex].varStruct.possession.managingContractIndex = QX_CONTRACT_INDEX;
+                assets[*possessionIndex].varStruct.possession.managingContractIndex = managingContractIndex;
                 assets[*possessionIndex].varStruct.possession.ownershipIndex = *ownershipIndex;
                 assets[*possessionIndex].varStruct.possession.numberOfUnits = numberOfUnits;
 
@@ -2478,6 +2478,68 @@ static __m256i __invocator()
     return ::invocator;
 }
 
+static long long __issueAsset(unsigned long long name, __m256i issuer, char numberOfDecimalPlaces, long long numberOfUnits, unsigned long long unitOfMeasurement)
+{
+    if (((unsigned char)name) < 'A' || ((unsigned char)name) > 'Z'
+        || name > 0xFFFFFFFFFFFFFF)
+    {
+        return 0;
+    }
+    for (unsigned int i = 1; i < 7; i++)
+    {
+        if (!((unsigned char)(name >> (i * 8))))
+        {
+            while (++i < 7)
+            {
+                if ((unsigned char)(name >> (i * 8)))
+                {
+                    return 0;
+                }
+            }
+
+            break;
+        }
+    }
+    for (unsigned int i = 1; i < 7; i++)
+    {
+        if (!((unsigned char)(name >> (i * 8)))
+            || (((unsigned char)(name >> (i * 8))) >= '0' && ((unsigned char)(name >> (i * 8))) <= '9')
+            || (((unsigned char)(name >> (i * 8))) >= 'A' && ((unsigned char)(name >> (i * 8))) <= 'Z'))
+        {
+            // Do nothing
+        }
+        else
+        {
+            return 0;
+        }
+    }
+
+    unsigned long long issuerBuffer[4];
+    *((__m256i*)issuerBuffer) = issuer;
+    if (issuerBuffer[0] != executedContractIndex
+        && !issuerBuffer[1] && !issuerBuffer[2] && !issuerBuffer[3]) // Contracts cannot set Quorum or other contracts as issuers
+    {
+        return 0;
+    }
+
+    if (numberOfUnits <= 0 || numberOfUnits > MAX_AMOUNT)
+    {
+        return 0;
+    }
+
+    if (unitOfMeasurement > 0xFFFFFFFFFFFFFF)
+    {
+        return 0;
+    }
+
+    char nameBuffer[7] = { name, name >> 8, name >> 16, name >> 24, name >> 32, name >> 40, name >> 48 };
+    char unitOfMeasurementBuffer[7] = { unitOfMeasurement, unitOfMeasurement >> 8, unitOfMeasurement >> 16, unitOfMeasurement >> 24, unitOfMeasurement >> 32, unitOfMeasurement >> 40, unitOfMeasurement >> 48 };
+    int issuanceIndex, ownershipIndex, possessionIndex;
+    issueAsset((unsigned char*)&issuer, nameBuffer, numberOfDecimalPlaces, unitOfMeasurementBuffer, numberOfUnits, executedContractIndex, &issuanceIndex, &ownershipIndex, &possessionIndex);
+
+    return numberOfUnits;
+}
+
 static unsigned short __millisecond()
 {
     return etalonTick.millisecond;
@@ -2829,8 +2891,8 @@ static void processTick(unsigned long long processorNumber)
                             {
                                 unsigned char maskedDestinationPublicKey[32];
                                 *((__m256i*)maskedDestinationPublicKey) = *((__m256i*)transaction->destinationPublicKey);
-                                *((unsigned int*)maskedDestinationPublicKey) &= ~(MAX_NUMBER_OF_CONTRACTS - 1);
-                                executedContractIndex = *((unsigned int*)transaction->destinationPublicKey);
+                                *((unsigned long long*)maskedDestinationPublicKey) &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
+                                executedContractIndex = *((unsigned long long*)transaction->destinationPublicKey);
                                 if (EQUAL(*((__m256i*)maskedDestinationPublicKey), _mm256_setzero_si256())
                                     && executedContractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
                                 {
@@ -3334,7 +3396,7 @@ static void endEpoch()
             if (finalPrice)
             {
                 __m256i zero = _mm256_setzero_si256();
-                issueAsset((unsigned char*)&zero, (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, &issuanceIndex, &ownershipIndex, &possessionIndex);
+                issueAsset((unsigned char*)&zero, (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex);
             }
             numberOfReleasedEntities = 0;
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)

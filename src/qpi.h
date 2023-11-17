@@ -6811,6 +6811,16 @@ namespace QPI
 		return ::__invocator();
 	}
 
+	static sint64 issueAsset(
+		uint64 name,
+		id issuer,
+		sint8 numberOfDecimalPlaces,
+		sint64 numberOfUnits,
+		uint64 unitOfMeasurement
+	) {
+		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfUnits, unitOfMeasurement);
+	}
+
 	static uint16 millisecond(
 	) { // [0..999]
 		return ::__millisecond();
