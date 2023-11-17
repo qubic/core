@@ -31,7 +31,22 @@ private:
 
 	PUBLIC(TransferAssetOwnershipAndPossession)
 
-		output.transferredNumberOfUnits = transferAssetOwnershipAndPossession(input.assetName, input.issuer, originator(), input.possessor, input.numberOfUnits, input.newOwner) < 0 ? 0 : input.numberOfUnits;
+		if (invocationReward() < state._transferFee)
+		{
+			if (invocationReward() > 0)
+			{
+				transfer(invocator(), invocationReward());
+			}
+		}
+		else
+		{
+			if (invocationReward() > state._transferFee)
+			{
+				transfer(invocator(), invocationReward() - state._transferFee);
+			}
+
+			output.transferredNumberOfUnits = transferAssetOwnershipAndPossession(input.assetName, input.issuer, originator(), input.possessor, input.numberOfUnits, input.newOwner) < 0 ? 0 : input.numberOfUnits;
+		}
 	_
 
 	REGISTER_USER_FUNCTIONS

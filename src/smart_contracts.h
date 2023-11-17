@@ -28,6 +28,8 @@ static void __endFunctionOrProcedure(const unsigned int);
 static unsigned short __epoch();
 static bool __getEntity(__m256i, ::Entity&);
 static unsigned char __hour();
+static long long __invocationReward();
+static __m256i __invocator();
 static unsigned short __millisecond();
 static unsigned char __minute();
 static unsigned char __month();
