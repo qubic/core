@@ -2532,8 +2532,8 @@ static long long __issueAsset(unsigned long long name, __m256i issuer, char numb
         return 0;
     }
 
-    char nameBuffer[7] = { name, name >> 8, name >> 16, name >> 24, name >> 32, name >> 40, name >> 48 };
-    char unitOfMeasurementBuffer[7] = { unitOfMeasurement, unitOfMeasurement >> 8, unitOfMeasurement >> 16, unitOfMeasurement >> 24, unitOfMeasurement >> 32, unitOfMeasurement >> 40, unitOfMeasurement >> 48 };
+    char nameBuffer[7] = { char(name), char(name >> 8), char(name >> 16), char(name >> 24), char(name >> 32), char(name >> 40), char(name >> 48) };
+    char unitOfMeasurementBuffer[7] = { char(unitOfMeasurement), char(unitOfMeasurement >> 8), char(unitOfMeasurement >> 16), char(unitOfMeasurement >> 24), char(unitOfMeasurement >> 32), char(unitOfMeasurement >> 40), char(unitOfMeasurement >> 48) };
     int issuanceIndex, ownershipIndex, possessionIndex;
     issueAsset((unsigned char*)&issuer, nameBuffer, numberOfDecimalPlaces, unitOfMeasurementBuffer, numberOfUnits, executedContractIndex, &issuanceIndex, &ownershipIndex, &possessionIndex);
 
