@@ -36,8 +36,8 @@ static volatile char solutionEngineLock[SOLUTION_BUFFER_COUNT];
 #if USE_SCORE_CACHE
 struct
 {
-    unsigned char publicKey[32];
-    unsigned char nonce[32];
+    m256i publicKey;
+    m256i nonce;
     int score;
 } scoreCache[SCORE_CACHE_SIZE]; // set zero or load from a file on init
 
@@ -47,30 +47,28 @@ static unsigned int scoreCacheHit = 0;
 static unsigned int scoreCacheMiss = 0;
 static unsigned int scoreCacheUnknown = 0;
 
-static unsigned int getScoreCacheIndex(unsigned char* publicKey, unsigned char* nonce)
+static unsigned int getScoreCacheIndex(const m256i& publicKey, const m256i& nonce)
 {
-    unsigned char buffer[64];
+    m256i buffer[2] = { publicKey, nonce };
     unsigned char digest[32];
-    copyMem(buffer, publicKey, 32);
-    copyMem(buffer+32, nonce, 32);
     KangarooTwelve64To32(buffer, digest);
     unsigned int result = *((unsigned long long*)digest) % SCORE_CACHE_SIZE;
 
     return result;
 }
 
-static int tryFetchingScoreCache(unsigned char* publicKey, unsigned char* nonce, unsigned int scoreCacheIndex)
+static int tryFetchingScoreCache(const m256i& publicKey, const m256i& nonce, unsigned int scoreCacheIndex)
 {
     ACQUIRE(scoreCacheLock);
-    unsigned char* cachedPublicKey = scoreCache[scoreCacheIndex].publicKey;
-    unsigned char* cachedNonce = scoreCache[scoreCacheIndex].nonce;
+    const m256i& cachedPublicKey = scoreCache[scoreCacheIndex].publicKey;
+    const m256i& cachedNonce = scoreCache[scoreCacheIndex].nonce;
     int retVal;
-    if (EQUAL(*((__m256i*)cachedPublicKey), _mm256_setzero_si256()))
+    if (isZero(cachedPublicKey))
     {
         scoreCacheUnknown++;
         retVal = -1;
     }
-    else if (EQUAL(*((__m256i*)cachedPublicKey), *((__m256i*)publicKey)) && EQUAL(*((__m256i*)cachedNonce), *((__m256i*)nonce)))
+    else if (cachedPublicKey == publicKey && cachedNonce == nonce)
     {
         scoreCacheHit++;
         retVal = scoreCache[scoreCacheIndex].score;
@@ -84,11 +82,11 @@ static int tryFetchingScoreCache(unsigned char* publicKey, unsigned char* nonce,
     return retVal;
 }
 
-static void addScoreCache(unsigned char* publicKey, unsigned char* nonce, unsigned int scoreCacheIndex, int score)
+static void addScoreCache(const m256i& publicKey, const m256i& nonce, unsigned int scoreCacheIndex, int score)
 {
     ACQUIRE(scoreCacheLock);
-    copyMem(scoreCache[scoreCacheIndex].publicKey, publicKey, 32);
-    copyMem(scoreCache[scoreCacheIndex].nonce, nonce, 32);
+    scoreCache[scoreCacheIndex].publicKey = publicKey;
+    scoreCache[scoreCacheIndex].nonce = nonce;
     scoreCache[scoreCacheIndex].score = score;
     RELEASE(scoreCacheLock);
 }
@@ -185,7 +183,7 @@ static int computeNeuron64Bit(unsigned long long A, unsigned long long B) {
     return int(lv);
 }
 
-static unsigned int score(const unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
+static unsigned int score(const unsigned long long processorNumber, const m256i& publicKey, const m256i& nonce)
 {
     int score = 0;
 #if USE_SCORE_CACHE
@@ -203,7 +201,7 @@ static unsigned int score(const unsigned long long processorNumber, unsigned cha
     char neuronValue[1000];
     setMem(neuronValue, sizeof(neuronValue), 0);
     setMem(synapses2Bit[solutionBufIdx].input, sizeof(synapses2Bit[solutionBufIdx]), 0);
-    random(publicKey, nonce, (unsigned char*)&synapses[solutionBufIdx], sizeof(synapses[0]));
+    random(publicKey.m256i_u8, nonce.m256i_u8, (unsigned char*)&synapses[solutionBufIdx], sizeof(synapses[0]));
     for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++)
     {
         for (unsigned int anotherInputNeuronIndex = 0; anotherInputNeuronIndex < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; anotherInputNeuronIndex++)
