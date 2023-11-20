@@ -1727,7 +1727,12 @@ static void broadcastTransaction(Peer* peer, Processor* processor, RequestRespon
             {
                 ACQUIRE(entityPendingTransactionsLock);
 
-                if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick)
+                // Pending transactions pool follows the rule: A transaction with a higher tick overwrites previous transaction from the same address.
+                // The second filter is to avoid accident made by users/devs (setting scheduled tick too high) and get locked until end of epoch.
+                // It also makes sense that a node doesn't need to store a transaction that is scheduled on a tick that node will never reach.
+                // Notice: MAX_NUMBER_OF_TICKS_PER_EPOCH is not set globally since every node may have different TARGET_TICK_DURATION time due to memory limitation.
+                if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
+                    && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                 {
                     bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
                     KangarooTwelve((unsigned char*)request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
