@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-#include "../../src/score_reference.h"
+#include "../../test/score_reference.h"
 
 #include "../../test/uc32.h"
 

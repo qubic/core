@@ -55,6 +55,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="score_reference.h" />
     <ClInclude Include="uc32.h" />
   </ItemGroup>
   <ItemGroup>
