@@ -1,8 +1,8 @@
 #pragma once
 
-#include "platform/memory.h"
-#include "public_settings.h"
-#include "four_q.h"
+#include "../src/platform/memory.h"
+#include "../src/public_settings.h"
+#include "../src/four_q.h"
 
 ////////// Original (reference) scoring algorithm \\\\\\\\\\
 

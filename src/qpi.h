@@ -6801,6 +6801,26 @@ namespace QPI
 		return ::__hour();
 	}
 
+	static sint64 invocationReward(
+	) {
+		return ::__invocationReward();
+	}
+
+	static id invocator(
+	) { // Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
+		return ::__invocator();
+	}
+
+	static sint64 issueAsset(
+		uint64 name,
+		id issuer,
+		sint8 numberOfDecimalPlaces,
+		sint64 numberOfUnits,
+		uint64 unitOfMeasurement
+	) {
+		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfUnits, unitOfMeasurement);
+	}
+
 	static uint16 millisecond(
 	) { // [0..999]
 		return ::__millisecond();

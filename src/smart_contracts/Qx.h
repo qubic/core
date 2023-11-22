@@ -7,6 +7,18 @@ struct QX2
 struct QX
 {
 public:
+	struct IssueAsset_input
+	{
+		uint64 name;
+		sint64 numberOfUnits;
+		uint64 unitOfMeasurement;
+		sint8 numberOfDecimalPlaces;
+	};
+	struct IssueAsset_output
+	{
+		long long issuedNumberOfUnits;
+	};
+
 	struct TransferAssetOwnershipAndPossession_input
 	{
 		id issuer;
@@ -29,9 +41,46 @@ private:
 	uint32 _transferFee; // Amount of qus
 	uint32 _tradeFee; // Number of billionths
 
+	PUBLIC(IssueAsset)
+
+		if (invocationReward() < state._assetIssuanceFee)
+		{
+			if (invocationReward() > 0)
+			{
+				transfer(invocator(), invocationReward());
+			}
+		}
+		else
+		{
+			if (invocationReward() > state._assetIssuanceFee)
+			{
+				transfer(invocator(), invocationReward() - state._assetIssuanceFee);
+			}
+			state._earnedAmount += state._assetIssuanceFee;
+
+			output.issuedNumberOfUnits = issueAsset(input.name, invocator(), input.numberOfDecimalPlaces, input.numberOfUnits, input.unitOfMeasurement);
+		}
+	_
+
 	PUBLIC(TransferAssetOwnershipAndPossession)
 
-		output.transferredNumberOfUnits = transferAssetOwnershipAndPossession(input.assetName, input.issuer, originator(), input.possessor, input.numberOfUnits, input.newOwner) < 0 ? 0 : input.numberOfUnits;
+		if (invocationReward() < state._transferFee)
+		{
+			if (invocationReward() > 0)
+			{
+				transfer(invocator(), invocationReward());
+			}
+		}
+		else
+		{
+			if (invocationReward() > state._transferFee)
+			{
+				transfer(invocator(), invocationReward() - state._transferFee);
+			}
+			state._earnedAmount += state._transferFee;
+
+			output.transferredNumberOfUnits = transferAssetOwnershipAndPossession(input.assetName, input.issuer, invocator(), input.possessor, input.numberOfUnits, input.newOwner) < 0 ? 0 : input.numberOfUnits;
+		}
 	_
 
 	REGISTER_USER_FUNCTIONS
@@ -39,7 +88,8 @@ private:
 
 	REGISTER_USER_PROCEDURES
 
-		REGISTER_USER_PROCEDURE(TransferAssetOwnershipAndPossession, 1);
+		REGISTER_USER_PROCEDURE(IssueAsset, 1);
+		REGISTER_USER_PROCEDURE(TransferAssetOwnershipAndPossession, 2);
 	_
 
 	INITIALIZE

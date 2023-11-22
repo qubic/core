@@ -16,6 +16,9 @@ struct Entity
     unsigned int latestIncomingTransferTick, latestOutgoingTransferTick;
 };
 
+static_assert(sizeof(::Entity) == 32 + 2*8 + 2*4 + 2*4, "Something is wrong with the struct size.");
+
+
 static __m256i __arbitrator();
 static void __beginFunctionOrProcedure(const unsigned int);
 static __m256i __computor(unsigned short);
@@ -25,6 +28,9 @@ static void __endFunctionOrProcedure(const unsigned int);
 static unsigned short __epoch();
 static bool __getEntity(__m256i, ::Entity&);
 static unsigned char __hour();
+static long long __invocationReward();
+static __m256i __invocator();
+static long long __issueAsset(unsigned long long, __m256i, char, long long, unsigned long long);
 static unsigned short __millisecond();
 static unsigned char __minute();
 static unsigned char __month();
@@ -46,6 +52,10 @@ static unsigned char __year();
 #define CONTRACT_STATE2_TYPE QX2
 #include "smart_contracts/Qx.h"
 static CONTRACT_STATE_TYPE* _QX;
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
 
 #define QUOTTERY_CONTRACT_INDEX 2
 #define CONTRACT_INDEX QUOTTERY_CONTRACT_INDEX

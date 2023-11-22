@@ -663,7 +663,7 @@ static void KeccakP1600_Permute_12rounds(unsigned char* state)
 #endif
 }
 
-static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, unsigned char* data, unsigned long long dataByteLen)
+static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned char* data, unsigned long long dataByteLen)
 {
     unsigned long long i = 0;
     while (i < dataByteLen)
@@ -1092,7 +1092,7 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, unsigned char* d
     }
 }
 
-static void KangarooTwelve(unsigned char* input, unsigned int inputByteLen, unsigned char* output, unsigned int outputByteLen)
+static void KangarooTwelve(const unsigned char* input, unsigned int inputByteLen, unsigned char* output, unsigned int outputByteLen)
 {
     KangarooTwelve_F queueNode;
     KangarooTwelve_F finalNode;
@@ -1230,7 +1230,12 @@ static void KangarooTwelve(unsigned char* input, unsigned int inputByteLen, unsi
     copyMem(output, finalNode.state, outputByteLen);
 }
 
-static void KangarooTwelve64To32(unsigned char* input, unsigned char* output)
+static inline void KangarooTwelve(const void* input, unsigned int inputByteLen, void* output, unsigned int outputByteLen)
+{
+    KangarooTwelve((const unsigned char*)input, inputByteLen, (unsigned char*)output, outputByteLen);
+}
+
+static void KangarooTwelve64To32(const unsigned char* input, unsigned char* output)
 {
 #if AVX512
     __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, input);
@@ -2186,7 +2191,12 @@ static void KangarooTwelve64To32(unsigned char* input, unsigned char* output)
 #endif
 }
 
-void random(unsigned char* publicKey, unsigned char* nonce, unsigned char* output, unsigned int outputSize)
+static void KangarooTwelve64To32(const void* input, void* output)
+{
+    KangarooTwelve64To32((const unsigned char*)input, (unsigned char*)output);
+}
+
+void random(const unsigned char* publicKey, const unsigned char* nonce, unsigned char* output, unsigned int outputSize)
 {
     unsigned char state[200];
     *((__m256i*) & state[0]) = *((__m256i*)publicKey);
