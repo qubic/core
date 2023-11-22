@@ -181,7 +181,7 @@ static void neuronU64To1Bit(unsigned long long u64, unsigned char* positive, uns
     }
 }
 
-static unsigned int score(const unsigned long long processor_Number, unsigned char* publicKey, unsigned char* nonce)
+static unsigned int score(const unsigned long long processor_Number, const m256i& publicKey, const m256i& nonce)
 {
     int score = 0;
 #if USE_SCORE_CACHE
@@ -203,7 +203,7 @@ static unsigned int score(const unsigned long long processor_Number, unsigned ch
 #define SYNAPSE_MISSING_BYTES (8-(SYNAPSE_CHUNK_SIZE_BIT % 8))
 #define LAST_ELEMENT_MASK (0xFFFFFFFFFFFFFFFFULL >> (SYNAPSE_MISSING_BYTES*8))
     unsigned char nrVal1Bit[SYNAPSE_CHUNK_SIZE_BIT_ROUND_UP];
-    random(publicKey, nonce, (unsigned char*)&synapses[solutionBufIdx], sizeof(synapses[0]));
+    random(publicKey.m256i_u8, nonce.m256i_u8, (unsigned char*)&synapses[solutionBufIdx], sizeof(synapses[0]));
 
     for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++)
     {
