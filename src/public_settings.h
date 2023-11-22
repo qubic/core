@@ -31,12 +31,12 @@ static unsigned short UNIVERSE_FILE_NAME[] = L"universe.???";
 static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";
 static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 
-#define DATA_LENGTH 1000
-#define INFO_LENGTH 1000
-#define NUMBER_OF_INPUT_NEURONS 1000
-#define NUMBER_OF_OUTPUT_NEURONS 1000
+#define DATA_LENGTH 1200
+#define INFO_LENGTH 1200
+#define NUMBER_OF_INPUT_NEURONS 1200
+#define NUMBER_OF_OUTPUT_NEURONS 1200
 #define MAX_INPUT_DURATION 200
 #define MAX_OUTPUT_DURATION 200
-#define SOLUTION_THRESHOLD 583
+#define SOLUTION_THRESHOLD 690
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 1000000 // the larger the better
