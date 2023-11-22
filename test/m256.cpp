@@ -115,6 +115,20 @@ TEST(TestCore256BitClass, ConstructAssignCompare) {
     v5 = v5;
     EXPECT_TRUE(v5 == v5);
     EXPECT_FALSE(v5 != v5);
+
+    // Non-aligned assignment and comparison
+    unsigned char buffer_u8_64[64];
+    for (int i = 0; i < 64; ++i)
+        buffer_u8_64[i] = 7 + i;
+    for (int i = 0; i < 32; ++i)
+    {
+        v1 = buffer_u8_64 + i;
+        EXPECT_TRUE(v1 == buffer_u8_64 + i);
+        EXPECT_FALSE(v1 != buffer_u8_64 + i);
+        EXPECT_FALSE(isZero(v1));
+        for (int j = 0; j < 32; ++j)
+            EXPECT_EQ(v1.m256i_u8[j], 7 + i + j);
+    }
 }
 
 TEST(TestCore256BitFunctionsIntrinsicType, isZero) {
