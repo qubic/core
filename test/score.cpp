@@ -6,9 +6,13 @@
 #include "../src/score.h"
 
 // reference implementation
-namespace ref_impl {
 #include "score_reference.h"
-}
+ScoreReferenceImplementation<
+    DATA_LENGTH, INFO_LENGTH,
+    NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
+    MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
+    MAX_NUMBER_OF_PROCESSORS
+> score_ref_impl;
 
 #include "uc32.h"
 
@@ -16,7 +20,7 @@ namespace ref_impl {
 bool test_score(const unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
 {
     unsigned int current = score(processorNumber, publicKey, nonce);
-    unsigned int reference = ref_impl::score(processorNumber, publicKey, nonce);
+    unsigned int reference = score_ref_impl(processorNumber, publicKey, nonce);
     std::cout << "current score() returns " << current << ", reference score() returns " << reference << std::endl;
     return current == reference;
 }
