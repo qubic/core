@@ -756,6 +756,12 @@ static volatile char publicPeersLock = 0;
 static unsigned int numberOfPublicPeers = 0;
 static PublicPeer publicPeers[MAX_NUMBER_OF_PUBLIC_PEERS];
 
+static ScoreFunction<
+    DATA_LENGTH, INFO_LENGTH,
+    NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
+    MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
+    MAX_NUMBER_OF_PROCESSORS
+> score;
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
 static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS];
@@ -4828,7 +4834,7 @@ static bool initialize()
             log(message);
         }
 
-        loadScoreCache(system.epoch);
+        score.loadScoreCache(system.epoch);
 
         unsigned char randomSeed[32];
         bs->SetMem(randomSeed, 32, 0);
@@ -4840,7 +4846,7 @@ static bool initialize()
         randomSeed[5] = RANDOM_SEED5;
         randomSeed[6] = RANDOM_SEED6;
         randomSeed[7] = RANDOM_SEED7;
-        random(randomSeed, randomSeed, (unsigned char*)miningData, sizeof(miningData));
+        random(randomSeed, randomSeed, (unsigned char*)score.miningData, sizeof(score.miningData));
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
@@ -5098,11 +5104,11 @@ static void logInfo()
     appendText(message, L").");
 #if USE_SCORE_CACHE
     appendText(message, L" Score cache: Hit ");
-    appendNumber(message, scoreCacheHit, TRUE);
+    appendNumber(message, score.scoreCacheHit, TRUE);
     appendText(message, L" | Miss ");
-    appendNumber(message, scoreCacheMiss, TRUE);
+    appendNumber(message, score.scoreCacheMiss, TRUE);
     appendText(message, L" | Unknown ");
-    appendNumber(message, scoreCacheUnknown, TRUE);
+    appendNumber(message, score.scoreCacheUnknown, TRUE);
 #endif
     log(message);
     prevNumberOfProcessedRequests = numberOfProcessedRequests;
@@ -5981,7 +5987,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             systemDataSavingTick = curTimeTick;
 
                             saveSystem();
-                            saveScoreCache();
+                            score.saveScoreCache();
                         }
 
                         if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
@@ -6142,7 +6148,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peerChildHandle);
 
                     saveSystem();
-                    saveScoreCache();
+                    score.saveScoreCache();
 
                     setText(message, L"Qubic ");
                     appendQubicVersion(message);
