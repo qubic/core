@@ -111,6 +111,21 @@ struct ScoreFunction
     }
 #endif
 
+    void initMiningData()
+    {
+        unsigned char randomSeed[32];
+        setMem(randomSeed, 32, 0);
+        randomSeed[0] = RANDOM_SEED0;
+        randomSeed[1] = RANDOM_SEED1;
+        randomSeed[2] = RANDOM_SEED2;
+        randomSeed[3] = RANDOM_SEED3;
+        randomSeed[4] = RANDOM_SEED4;
+        randomSeed[5] = RANDOM_SEED5;
+        randomSeed[6] = RANDOM_SEED6;
+        randomSeed[7] = RANDOM_SEED7;
+        random(randomSeed, randomSeed, (unsigned char*)miningData, sizeof(miningData));
+    }
+
     // Save score cache to SCORE_CACHE_FILE_NAME
     void saveScoreCache()
     {

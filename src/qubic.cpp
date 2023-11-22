@@ -4835,18 +4835,7 @@ static bool initialize()
         }
 
         score.loadScoreCache(system.epoch);
-
-        unsigned char randomSeed[32];
-        bs->SetMem(randomSeed, 32, 0);
-        randomSeed[0] = RANDOM_SEED0;
-        randomSeed[1] = RANDOM_SEED1;
-        randomSeed[2] = RANDOM_SEED2;
-        randomSeed[3] = RANDOM_SEED3;
-        randomSeed[4] = RANDOM_SEED4;
-        randomSeed[5] = RANDOM_SEED5;
-        randomSeed[6] = RANDOM_SEED6;
-        randomSeed[7] = RANDOM_SEED7;
-        random(randomSeed, randomSeed, (unsigned char*)score.miningData, sizeof(score.miningData));
+        score.initMiningData();
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
