@@ -27,17 +27,19 @@ static struct
 
 struct
 {
-    char input[(NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) / 4];
-    char output[(NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) / 4];
-} synapses2Bit[SOLUTION_BUFFER_COUNT];
+    char input_positive[(NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) / 8];
+    char input_negative[(NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) / 8];
+    char output_positive[(NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) / 8];
+    char output_negative[(NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) / 8];
+} synapses1Bit[SOLUTION_BUFFER_COUNT];
 
 static volatile char solutionEngineLock[SOLUTION_BUFFER_COUNT];
 
 #if USE_SCORE_CACHE
 struct
 {
-    unsigned char publicKey[32];
-    unsigned char nonce[32];
+    m256i publicKey;
+    m256i nonce;
     int score;
 } scoreCache[SCORE_CACHE_SIZE]; // set zero or load from a file on init
 
@@ -47,30 +49,28 @@ static unsigned int scoreCacheHit = 0;
 static unsigned int scoreCacheMiss = 0;
 static unsigned int scoreCacheUnknown = 0;
 
-static unsigned int getScoreCacheIndex(unsigned char* publicKey, unsigned char* nonce)
+static unsigned int getScoreCacheIndex(const m256i& publicKey, const m256i& nonce)
 {
-    unsigned char buffer[64];
+    m256i buffer[2] = { publicKey, nonce };
     unsigned char digest[32];
-    copyMem(buffer, publicKey, 32);
-    copyMem(buffer+32, nonce, 32);
     KangarooTwelve64To32(buffer, digest);
     unsigned int result = *((unsigned long long*)digest) % SCORE_CACHE_SIZE;
 
     return result;
 }
 
-static int tryFetchingScoreCache(unsigned char* publicKey, unsigned char* nonce, unsigned int scoreCacheIndex)
+static int tryFetchingScoreCache(const m256i& publicKey, const m256i& nonce, unsigned int scoreCacheIndex)
 {
     ACQUIRE(scoreCacheLock);
-    unsigned char* cachedPublicKey = scoreCache[scoreCacheIndex].publicKey;
-    unsigned char* cachedNonce = scoreCache[scoreCacheIndex].nonce;
+    const m256i& cachedPublicKey = scoreCache[scoreCacheIndex].publicKey;
+    const m256i& cachedNonce = scoreCache[scoreCacheIndex].nonce;
     int retVal;
-    if (EQUAL(*((__m256i*)cachedPublicKey), _mm256_setzero_si256()))
+    if (isZero(cachedPublicKey))
     {
         scoreCacheUnknown++;
         retVal = -1;
     }
-    else if (EQUAL(*((__m256i*)cachedPublicKey), *((__m256i*)publicKey)) && EQUAL(*((__m256i*)cachedNonce), *((__m256i*)nonce)))
+    else if (cachedPublicKey == publicKey && cachedNonce == nonce)
     {
         scoreCacheHit++;
         retVal = scoreCache[scoreCacheIndex].score;
@@ -84,11 +84,11 @@ static int tryFetchingScoreCache(unsigned char* publicKey, unsigned char* nonce,
     return retVal;
 }
 
-static void addScoreCache(unsigned char* publicKey, unsigned char* nonce, unsigned int scoreCacheIndex, int score)
+static void addScoreCache(const m256i& publicKey, const m256i& nonce, unsigned int scoreCacheIndex, int score)
 {
     ACQUIRE(scoreCacheLock);
-    copyMem(scoreCache[scoreCacheIndex].publicKey, publicKey, 32);
-    copyMem(scoreCache[scoreCacheIndex].nonce, nonce, 32);
+    scoreCache[scoreCacheIndex].publicKey = publicKey;
+    scoreCache[scoreCacheIndex].nonce = nonce;
     scoreCache[scoreCacheIndex].score = score;
     RELEASE(scoreCacheLock);
 }
@@ -160,32 +160,28 @@ static bool loadScoreCache(int epoch)
     return success;
 }
 
-static void setSynapse2Bits(char* p_nr, unsigned int idx, const char val) {
-    int pos = ((idx & 3) << 1);
-    *((unsigned char*)(&p_nr[idx >> 2])) = (*((unsigned char*)(&p_nr[idx >> 2])) & ~(3 << pos)) | ((val & 3) << pos);
+static void setBitNeuron(unsigned char* A, int idx) {
+    int m = idx & 7;
+    idx = idx >> 3;
+    A[idx] |= ((unsigned char)1 << m);
+}
+static void clearBitNeuron(unsigned char* A, int idx) {
+    int m = idx & 7;
+    idx = idx >> 3;
+    A[idx] &= ~((unsigned char)1 << m);
+}
+static void neuronU64To1Bit(unsigned long long u64, unsigned char* positive, unsigned char* negative) {
+    for (int m = 0; m < 8; m++)
+    {
+        char val = char(((u64 >> (m * 8)) & 0xff) % 3) - 1;
+        *positive &= ~((unsigned char)1 << m); // clear bit
+        *positive |= ((unsigned char)(val > 0) << m); // set bit
+        *negative &= ~((unsigned char)1 << m); // clear bit
+        *negative |= ((unsigned char)(val < 0) << m); // set bit
+    }
 }
 
-static void setZeroSynapse2Bits(char* p_nr, unsigned int idx) {
-    *((unsigned char*)(&p_nr[idx >> 2])) &= ~(3 << ((idx & 3) << 1));
-}
-
-static char getSynapse2Bits(char* p_nr, unsigned int idx) {
-    char r = (((char*)p_nr)[idx >> 2] >> ((idx & 3) << 1)) & 3;
-    return -2 * (r >> 1) + (r & 1);
-}
-
-static int computeNeuron64Bit(unsigned long long A, unsigned long long B) {
-    unsigned long long A_high = A & 0xaaaaaaaaaaaaaaaall; // b10101010 10101010 high part of A
-    unsigned long long A_low = A & 0x5555555555555555ll; // b01010101 01010101 low part of A
-    unsigned long long B_high = B & 0xaaaaaaaaaaaaaaaall;
-    unsigned long long B_low = B & 0x5555555555555555ll;
-    unsigned long long zero_check = ((A_low << 1) | A_high);
-    unsigned long long lv = -2 * __popcnt64(A_high ^ B_high & zero_check);
-    lv += __popcnt64(A_low & B_low);
-    return int(lv);
-}
-
-static unsigned int score(const unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
+static unsigned int score(const unsigned long long processor_Number, unsigned char* publicKey, unsigned char* nonce)
 {
     int score = 0;
 #if USE_SCORE_CACHE
@@ -198,44 +194,62 @@ static unsigned int score(const unsigned long long processorNumber, unsigned cha
     score = 0;
 #endif
 
-    const unsigned long long solutionBufIdx = processorNumber % SOLUTION_BUFFER_COUNT;
+    const unsigned long long solutionBufIdx = processor_Number % SOLUTION_BUFFER_COUNT;
     ACQUIRE(solutionEngineLock[solutionBufIdx]);
-    char neuronValue[1000];
-    setMem(neuronValue, sizeof(neuronValue), 0);
-    setMem(synapses2Bit[solutionBufIdx].input, sizeof(synapses2Bit[solutionBufIdx]), 0);
+#define SYNAPSE_CHUNK_SIZE (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH)
+#define SYNAPSE_CHUNK_SIZE_BIT (SYNAPSE_CHUNK_SIZE>>3)
+#define SYNAPSE_CHUNK_SIZE_BIT_ROUND_UP (((SYNAPSE_CHUNK_SIZE_BIT+7)>>3)<<3)
+#define NEURON_SCANNED_ROUND (SYNAPSE_CHUNK_SIZE_BIT_ROUND_UP >> 3)
+#define SYNAPSE_MISSING_BYTES (8-(SYNAPSE_CHUNK_SIZE_BIT % 8))
+#define LAST_ELEMENT_MASK (0xFFFFFFFFFFFFFFFFULL >> (SYNAPSE_MISSING_BYTES*8))
+    unsigned char nrVal1Bit[SYNAPSE_CHUNK_SIZE_BIT_ROUND_UP];
     random(publicKey, nonce, (unsigned char*)&synapses[solutionBufIdx], sizeof(synapses[0]));
+
     for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++)
     {
-        for (unsigned int anotherInputNeuronIndex = 0; anotherInputNeuronIndex < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; anotherInputNeuronIndex++)
+        unsigned long long* p = (unsigned long long*)(synapses[solutionBufIdx].input + inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH));
+        for (unsigned int anotherInputNeuronIndex = 0; anotherInputNeuronIndex < (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) / 8; anotherInputNeuronIndex++)
         {
-            const unsigned int offset = inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + anotherInputNeuronIndex;
-            setSynapse2Bits((char*)(synapses2Bit[solutionBufIdx].input), offset, char(((unsigned char)synapses[solutionBufIdx].input[offset]) % 3) - 1);
+            const unsigned int offset = inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) / 8 + anotherInputNeuronIndex;
+            neuronU64To1Bit(p[anotherInputNeuronIndex], (unsigned char*)synapses1Bit[solutionBufIdx].input_positive + offset,
+                (unsigned char*)synapses1Bit[solutionBufIdx].input_negative + offset);
         }
     }
     for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; outputNeuronIndex++)
     {
-        for (unsigned int anotherOutputNeuronIndex = 0; anotherOutputNeuronIndex < INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; anotherOutputNeuronIndex++)
+        unsigned long long* p = (unsigned long long*)(synapses[solutionBufIdx].output + outputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH));
+        for (unsigned int anotherOutputNeuronIndex = 0; anotherOutputNeuronIndex < (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) / 8; anotherOutputNeuronIndex++)
         {
-            const unsigned int offset = outputNeuronIndex * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) + anotherOutputNeuronIndex;
-            setSynapse2Bits((char*)(synapses2Bit[solutionBufIdx].output), offset, char(((unsigned char)synapses[solutionBufIdx].output[offset]) % 3) - 1);
+            const unsigned int offset = outputNeuronIndex * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) / 8 + anotherOutputNeuronIndex;
+            neuronU64To1Bit(p[anotherOutputNeuronIndex], (unsigned char*)synapses1Bit[solutionBufIdx].output_positive + offset,
+                (unsigned char*)synapses1Bit[solutionBufIdx].output_negative + offset);
         }
     }
+
     for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++)
     {
-        setZeroSynapse2Bits((char*)(synapses2Bit[solutionBufIdx].input), inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + (DATA_LENGTH + inputNeuronIndex));
+        clearBitNeuron((unsigned char*)synapses1Bit[solutionBufIdx].input_positive, inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + (DATA_LENGTH + inputNeuronIndex));
+        clearBitNeuron((unsigned char*)synapses1Bit[solutionBufIdx].input_negative, inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + (DATA_LENGTH + inputNeuronIndex));
     }
     for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; outputNeuronIndex++)
     {
-        setZeroSynapse2Bits((char*)(synapses2Bit[solutionBufIdx].output), outputNeuronIndex * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) + (INFO_LENGTH + outputNeuronIndex));
+        clearBitNeuron((unsigned char*)synapses1Bit[solutionBufIdx].output_positive, outputNeuronIndex * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) + (INFO_LENGTH + outputNeuronIndex));
+        clearBitNeuron((unsigned char*)synapses1Bit[solutionBufIdx].output_negative, outputNeuronIndex * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) + (INFO_LENGTH + outputNeuronIndex));
     }
 
     unsigned int lengthIndex = 0;
 
-    copyMem(&neurons[solutionBufIdx].input[0], miningData, sizeof(miningData));
+    copyMem(&neurons[solutionBufIdx].input[0], miningData, DATA_LENGTH * sizeof(miningData[0]));
     setMem(&neurons[solutionBufIdx].input[sizeof(miningData) / sizeof(neurons[0].input[0])], sizeof(neurons[0]) - sizeof(miningData), 0);
+    setMem(nrVal1Bit, sizeof(nrVal1Bit), 0);
 
     for (int i = 0; i < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
-        setSynapse2Bits(neuronValue, i, neurons[solutionBufIdx].input[i] >= 0 ? 1 : -1);
+        if (neurons[solutionBufIdx].input[i] < 0) {
+            setBitNeuron(nrVal1Bit, i);
+        }
+        else {
+            clearBitNeuron(nrVal1Bit, i);
+        }
     }
 
     for (unsigned int tick = 0; tick < MAX_INPUT_DURATION; tick++)
@@ -251,36 +265,44 @@ static unsigned int score(const unsigned long long processorNumber, unsigned cha
             const unsigned short neuronIndexIndex = synapses[solutionBufIdx].lengths[lengthIndex++] % numberOfRemainingNeurons;
             const unsigned short inputNeuronIndex = neuronIndices[neuronIndexIndex];
             neuronIndices[neuronIndexIndex] = neuronIndices[--numberOfRemainingNeurons];
+            unsigned long long* sy_pos = (unsigned long long*)(synapses1Bit[solutionBufIdx].input_positive + (inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH)) / 8);
+            unsigned long long* sy_neg = (unsigned long long*)(synapses1Bit[solutionBufIdx].input_negative + (inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH)) / 8);
 
-            // hot position
-            int left = (DATA_LENGTH + inputNeuronIndex) / 32;
-            unsigned long long* sy_ptr = (unsigned long long*)(synapses2Bit[solutionBufIdx].input + (inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH)) / 4);
-            for (int i = 0; i < left; i++) {
-                unsigned long long A = sy_ptr[i];
-                unsigned long long B = ((unsigned long long*)neuronValue)[i];
-                int lv = computeNeuron64Bit(A, B);
+            int lv = 0;
+            for (int i = 0; i < (NEURON_SCANNED_ROUND-1); i++) {
+                unsigned long long A0 = sy_pos[i];
+                unsigned long long A1 = sy_neg[i];
+                unsigned long long B = ((unsigned long long*)nrVal1Bit)[i];
+                int s = __popcnt64(A0 ^ B);
+                s -= __popcnt64(A1 ^ B);
+                lv += s;
+            }
+            {
+                unsigned long long A0 = (*(unsigned long long*)(sy_pos + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
+                unsigned long long A1 = (*(unsigned long long*)(sy_neg + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
+                unsigned long long B = (*(unsigned long long*)(nrVal1Bit + (NEURON_SCANNED_ROUND - 1) * 8)) & LAST_ELEMENT_MASK;
+                int s = __popcnt64(A0 ^ B);
+                s -= __popcnt64(A1 ^ B);
+                lv += s;
                 neurons[solutionBufIdx].input[DATA_LENGTH + inputNeuronIndex] += lv;
+                if (neurons[solutionBufIdx].input[DATA_LENGTH + inputNeuronIndex] < 0) {
+                    setBitNeuron(nrVal1Bit, DATA_LENGTH + inputNeuronIndex);
+                }
+                else {
+                    clearBitNeuron(nrVal1Bit, DATA_LENGTH + inputNeuronIndex);
+                }
             }
-            for (int i = left * 32; i < (left + 1) * 32; i++) {
-                int value = neurons[solutionBufIdx].input[i] >= 0 ? 1 : -1;
-                char sy = getSynapse2Bits((char*)synapses2Bit[solutionBufIdx].input, inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + i);
-                value *= sy;
-                neurons[solutionBufIdx].input[DATA_LENGTH + inputNeuronIndex] += value;
-            }
-            // update hot position
-            for (int i = (left + 1); i < (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) / 32; i++) {
-                unsigned long long A = sy_ptr[i];
-                unsigned long long B = ((unsigned long long*)neuronValue)[i];
-                int lv = computeNeuron64Bit(A, B);
-                neurons[solutionBufIdx].input[DATA_LENGTH + inputNeuronIndex] += lv;
-            }
-            setSynapse2Bits(neuronValue, DATA_LENGTH + inputNeuronIndex, neurons[solutionBufIdx].input[DATA_LENGTH + inputNeuronIndex] >= 0 ? 1 : -1);
         }
     }
 
     copyMem(&neurons[solutionBufIdx].output[0], &neurons[solutionBufIdx].input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS], INFO_LENGTH * sizeof(neurons[0].input[0]));
     for (int i = 0; i < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
-        setSynapse2Bits(neuronValue, i, neurons[solutionBufIdx].output[i] >= 0 ? 1 : -1);
+        if (neurons[solutionBufIdx].output[i] < 0) {
+            setBitNeuron(nrVal1Bit, i);
+        }
+        else {
+            clearBitNeuron(nrVal1Bit, i);
+        }
     }
     for (unsigned int tick = 0; tick < MAX_OUTPUT_DURATION; tick++)
     {
@@ -295,35 +317,32 @@ static unsigned int score(const unsigned long long processorNumber, unsigned cha
             const unsigned short neuronIndexIndex = synapses[solutionBufIdx].lengths[lengthIndex++] % numberOfRemainingNeurons;
             const unsigned short outputNeuronIndex = neuronIndices[neuronIndexIndex];
             neuronIndices[neuronIndexIndex] = neuronIndices[--numberOfRemainingNeurons];
-            // hot position
-            int left = (INFO_LENGTH + outputNeuronIndex) / 32;
-            unsigned long long* sy_ptr = (unsigned long long*)(synapses2Bit[solutionBufIdx].output + (outputNeuronIndex * (DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH)) / 4);
+            unsigned long long* sy_pos = (unsigned long long*)(synapses1Bit[solutionBufIdx].output_positive + (outputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH)) / 8);
+            unsigned long long* sy_neg = (unsigned long long*)(synapses1Bit[solutionBufIdx].output_negative + (outputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH)) / 8);
+            int lv = 0;
+            for (int i = 0; i < (NEURON_SCANNED_ROUND - 1); i++) {
+                unsigned long long A0 = sy_pos[i];
+                unsigned long long A1 = sy_neg[i];
+                unsigned long long B = ((unsigned long long*)nrVal1Bit)[i];
+                int s = __popcnt64(A0 ^ B);
+                s -= __popcnt64(A1 ^ B);
+                lv += s;
+            }
             {
-                int i = 0;
-                while (i < left)
-                {
-                    unsigned long long A = sy_ptr[i];
-                    unsigned long long B = ((unsigned long long*)neuronValue)[i];
-                    int lv = computeNeuron64Bit(A, B);
-                    neurons[solutionBufIdx].output[INFO_LENGTH + outputNeuronIndex] += lv;
-                    i++;
+                unsigned long long A0 = (*(unsigned long long*)(sy_pos + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
+                unsigned long long A1 = (*(unsigned long long*)(sy_neg + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
+                unsigned long long B = (*(unsigned long long*)(nrVal1Bit + (NEURON_SCANNED_ROUND - 1) * 8)) & LAST_ELEMENT_MASK;
+                int s = __popcnt64(A0 ^ B);
+                s -= __popcnt64(A1 ^ B);
+                lv += s;
+                neurons[solutionBufIdx].output[INFO_LENGTH + outputNeuronIndex] += lv;
+                if (neurons[solutionBufIdx].output[INFO_LENGTH + outputNeuronIndex] < 0) {
+                    setBitNeuron(nrVal1Bit, INFO_LENGTH + outputNeuronIndex);
+                }
+                else {
+                    clearBitNeuron(nrVal1Bit, INFO_LENGTH + outputNeuronIndex);
                 }
             }
-
-            for (int i = left * 32; i < (left + 1) * 32; i++) {
-                int value = neurons[solutionBufIdx].output[i] >= 0 ? 1 : -1;
-                char sy = getSynapse2Bits((char*)synapses2Bit[solutionBufIdx].output, outputNeuronIndex * (DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH) + i);
-                value *= sy;
-                neurons[solutionBufIdx].output[INFO_LENGTH + outputNeuronIndex] += value;
-            }
-            // update hot position
-            for (int i = (left + 1); i < (DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH) / 32; i++) {
-                unsigned long long A = sy_ptr[i];
-                unsigned long long B = ((unsigned long long*)neuronValue)[i];
-                int lv = computeNeuron64Bit(A, B);
-                neurons[solutionBufIdx].output[INFO_LENGTH + outputNeuronIndex] += lv;
-            }
-            setSynapse2Bits(neuronValue, INFO_LENGTH + outputNeuronIndex, neurons[solutionBufIdx].output[INFO_LENGTH + outputNeuronIndex] >= 0 ? 1 : -1);
         }
     }
 
@@ -334,7 +353,6 @@ static unsigned int score(const unsigned long long processorNumber, unsigned cha
             score++;
         }
     }
-
     RELEASE(solutionEngineLock[solutionBufIdx]);
 #if USE_SCORE_CACHE
     addScoreCache(publicKey, nonce, scoreCacheIndex, score);

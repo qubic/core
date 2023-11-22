@@ -27,7 +27,7 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
     }
     else
     {
-        long long readSize = 0;
+        unsigned long long readSize = 0;
         while (readSize < totalSize)
         {
             unsigned long long size = (READING_CHUNK_SIZE <= (totalSize - readSize) ? READING_CHUNK_SIZE : (totalSize - readSize));
@@ -66,7 +66,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
     }
     else
     {
-        long long writtenSize = 0;
+        unsigned long long writtenSize = 0;
         while (writtenSize < totalSize)
         {
             unsigned long long size = (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize));

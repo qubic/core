@@ -9,7 +9,7 @@ static inline void setMem(void* buffer, unsigned long long size, unsigned char v
     memset(buffer, value, size);
 }
 
-static inline void copyMem(void* destination, void* source, unsigned long long length)
+static inline void copyMem(void* destination, const void* source, unsigned long long length)
 {
     memcpy(destination, source, length);
 }
@@ -23,9 +23,9 @@ static inline void setMem(void* buffer, unsigned long long size, unsigned char v
     bs->SetMem(buffer, size, value);
 }
 
-static inline void copyMem(void* destination, void* source, unsigned long long length)
+static inline void copyMem(void* destination, const void* source, unsigned long long length)
 {
-    bs->CopyMem(destination, source, length);
+    bs->CopyMem(destination, (void*)source, length);
 }
 
 #endif
