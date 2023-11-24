@@ -2535,10 +2535,7 @@ static long long __issueAsset(unsigned long long name, __m256i issuer, char numb
         }
     }
 
-    unsigned long long issuerBuffer[4];
-    *((__m256i*)issuerBuffer) = issuer;
-    if (issuerBuffer[0] != executedContractIndex
-        && !issuerBuffer[1] && !issuerBuffer[2] && !issuerBuffer[3]) // Contracts cannot set Quorum or other contracts as issuers
+    if (issuer != currentContract && issuer != __invocator())
     {
         return 0;
     }
