@@ -71,7 +71,6 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 60000
 #define TRANSACTION_SPARSENESS 6
-#define VOLUME_LABEL L"Qubic"
 
 #define EMPTY 0
 #define ISSUANCE 1
@@ -713,8 +712,6 @@ static unsigned int numberOfReleasedEntities;
 static unsigned long long* dejavu0 = NULL;
 static unsigned long long* dejavu1 = NULL;
 static unsigned int dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
-
-static EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* simpleFileSystemProtocol;
 
 static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
@@ -4510,110 +4507,10 @@ static bool initialize()
     requestedTickTransactions.header.setType(REQUEST_TICK_TRANSACTIONS);
     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
+    if (!initFilesystem())
+        return false;
+
     EFI_STATUS status;
-
-    EFI_GUID simpleFileSystemProtocolGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
-    unsigned long long numberOfHandles;
-    EFI_HANDLE* handles;
-    if (status = bs->LocateHandleBuffer(ByProtocol, &simpleFileSystemProtocolGuid, NULL, &numberOfHandles, &handles))
-    {
-        logStatus(L"EFI_BOOT_SERVICES.LocateHandleBuffer() fails", status, __LINE__);
-
-        return false;
-    }
-    else
-    {
-        for (unsigned int i = 0; i < numberOfHandles; i++)
-        {
-            if (status = bs->OpenProtocol(handles[i], &simpleFileSystemProtocolGuid, (void**)&simpleFileSystemProtocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL))
-            {
-                logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
-
-                bs->FreePool(handles);
-
-                return false;
-            }
-            else
-            {
-                if (status = simpleFileSystemProtocol->OpenVolume(simpleFileSystemProtocol, (void**)&root))
-                {
-                    logStatus(L"EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.OpenVolume() fails", status, __LINE__);
-
-                    bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
-                    bs->FreePool(handles);
-
-                    return false;
-                }
-                else
-                {
-                    EFI_GUID fileSystemInfoId = EFI_FILE_SYSTEM_INFO_ID;
-                    EFI_FILE_SYSTEM_INFO info;
-                    unsigned long long size = sizeof(info);
-                    if (status = root->GetInfo(root, &fileSystemInfoId, &size, &info))
-                    {
-                        logStatus(L"EFI_FILE_PROTOCOL.GetInfo() fails", status, __LINE__);
-
-                        bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
-                        bs->FreePool(handles);
-
-                        return false;
-                    }
-                    else
-                    {
-                        setText(message, L"Volume #");
-                        appendNumber(message, i, FALSE);
-                        appendText(message, L" (");
-                        appendText(message, info.VolumeLabel);
-                        appendText(message, L"): ");
-                        appendNumber(message, info.FreeSpace, TRUE);
-                        appendText(message, L" / ");
-                        appendNumber(message, info.VolumeSize, TRUE);
-                        appendText(message, L" free bytes | Read-");
-                        appendText(message, info.ReadOnly ? L"only." : L"Write.");
-                        log(message);
-
-                        bool matches = true;
-                        for (unsigned int j = 0; j < sizeof(info.VolumeLabel) / sizeof(info.VolumeLabel[0]); j++)
-                        {
-                            if (info.VolumeLabel[j] != VOLUME_LABEL[j] && info.VolumeLabel[j] != (VOLUME_LABEL[j] ^ 0x20))
-                            {
-                                matches = false;
-
-                                break;
-                            }
-                            if (!VOLUME_LABEL[j])
-                            {
-                                break;
-                            }
-                        }
-                        if (matches)
-                        {
-                            break;
-                        }
-                        else
-                        {
-                            bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
-                            simpleFileSystemProtocol = NULL;
-                        }
-                    }
-                }
-            }
-        }
-
-        bs->FreePool(handles);
-    }
-
-    if (!simpleFileSystemProtocol)
-    {
-        bs->LocateProtocol(&simpleFileSystemProtocolGuid, NULL, (void**)&simpleFileSystemProtocol);
-    }
-    if (status = simpleFileSystemProtocol->OpenVolume(simpleFileSystemProtocol, (void**)&root))
-    {
-        logStatus(L"EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.OpenVolume() fails", status, __LINE__);
-
-        return false;
-    }
-    else
     {
         if (status = bs->AllocatePool(EfiRuntimeServicesData, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS * sizeof(Tick), (void**)&ticks))
         {
