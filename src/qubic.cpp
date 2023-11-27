@@ -25,12 +25,13 @@
 #include "four_q.h"
 #include "score.h"
 
+#include "network_messages.h"
 
 ////////// Qubic \\\\\\\\\\
 
 #define ASSETS_CAPACITY 0x1000000ULL // Must be 2^N
 #define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
-#define BUFFER_SIZE 33554432
+#define BUFFER_SIZE 33554432 // Must be >= RequestResponseHeader::max_size (maximum message size)
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TARGET_TICK_DURATION 3000
 #define TICK_REQUESTING_PERIOD 500ULL
@@ -159,60 +160,6 @@ typedef struct
     void* buffer;
 } Processor;
 
-struct RequestResponseHeader
-{
-private:
-    unsigned char _size[3];
-    unsigned char _type;
-    unsigned int _dejavu;
-
-public:
-    inline unsigned int size()
-    {
-        return (*((unsigned int*)_size)) & 0xFFFFFF;
-    }
-
-    inline void setSize(unsigned int size)
-    {
-        _size[0] = (unsigned char)size;
-        _size[1] = (unsigned char)(size >> 8);
-        _size[2] = (unsigned char)(size >> 16);
-    }
-
-    inline bool isDejavuZero()
-    {
-        return !_dejavu;
-    }
-
-    inline unsigned int dejavu()
-    {
-        return _dejavu;
-    }
-
-    inline void setDejavu(unsigned int dejavu)
-    {
-        _dejavu = dejavu;
-    }
-
-    inline void randomizeDejavu()
-    {
-        _rdrand32_step(&_dejavu);
-        if (!_dejavu)
-        {
-            _dejavu = 1;
-        }
-    }
-
-    inline unsigned char type()
-    {
-        return _type;
-    }
-
-    inline void setType(const unsigned char type)
-    {
-        _type = type;
-    }
-};
 
 #define EXCHANGE_PUBLIC_PEERS 0
 
@@ -1373,7 +1320,15 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
     {
         responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueBufferHead];
-        responseHeader->setSize(sizeof(RequestResponseHeader) + dataSize);
+        if (!responseHeader->checkAndSetSize(sizeof(RequestResponseHeader) + dataSize))
+        {
+            setText(message, L"Error: Message size ");
+            appendNumber(message, sizeof(RequestResponseHeader) + dataSize, TRUE);
+            appendText(message, L" of message of type ");
+            appendNumber(message, type, FALSE);
+            appendText(message, L" exceeds maximum message size!");
+            log(message);
+        }
         responseHeader->setType(type);
         responseHeader->setDejavu(dejavu);
         if (data)
@@ -4485,7 +4440,7 @@ static bool initialize()
     bs->SetMem(peers, sizeof(peers), 0);
     bs->SetMem(publicPeers, sizeof(publicPeers), 0);
 
-    broadcastedComputors.header.setSize(sizeof(broadcastedComputors.header) + sizeof(broadcastedComputors.broadcastComputors));
+    broadcastedComputors.header.setSize<sizeof(broadcastedComputors.header) + sizeof(broadcastedComputors.broadcastComputors)>();
     broadcastedComputors.header.setType(BROADCAST_COMPUTORS);
     broadcastedComputors.broadcastComputors.computors.epoch = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4497,13 +4452,13 @@ static bool initialize()
     }
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
-    requestedComputors.header.setSize(sizeof(requestedComputors));
+    requestedComputors.header.setSize<sizeof(requestedComputors)>();
     requestedComputors.header.setType(REQUEST_COMPUTORS);
-    requestedQuorumTick.header.setSize(sizeof(requestedQuorumTick));
+    requestedQuorumTick.header.setSize<sizeof(requestedQuorumTick)>();
     requestedQuorumTick.header.setType(REQUEST_QUORUM_TICK);
-    requestedTickData.header.setSize(sizeof(requestedTickData));
+    requestedTickData.header.setSize<sizeof(requestedTickData)>();
     requestedTickData.header.setType(REQUEST_TICK_DATA);
-    requestedTickTransactions.header.setSize(sizeof(requestedTickTransactions));
+    requestedTickTransactions.header.setSize<sizeof(requestedTickTransactions)>();
     requestedTickTransactions.header.setType(REQUEST_TICK_TRANSACTIONS);
     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
@@ -5595,7 +5550,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                                     }
 
                                     RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
-                                    requestHeader->setSize(sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers));
+                                    requestHeader->setSize<sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers)>();
                                     requestHeader->randomizeDejavu();
                                     requestHeader->setType(EXCHANGE_PUBLIC_PEERS);
                                     peers[i].dataToTransmitSize = requestHeader->size();
