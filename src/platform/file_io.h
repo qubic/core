@@ -92,7 +92,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
 
 static bool initFilesystem()
 {
-    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* simpleFileSystemProtocol;
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* simpleFileSystemProtocol = NULL;
 
     EFI_STATUS status;
 
