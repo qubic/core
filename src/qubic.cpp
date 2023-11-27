@@ -26,12 +26,12 @@
 #include "score.h"
 
 #include "network_messages.h"
+#include "tcp4.h"
 
 ////////// Qubic \\\\\\\\\\
 
 #define ASSETS_CAPACITY 0x1000000ULL // Must be 2^N
 #define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
-#define BUFFER_SIZE 33554432 // Must be >= RequestResponseHeader::max_size (maximum message size)
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TARGET_TICK_DURATION 3000
 #define TICK_REQUESTING_PERIOD 500ULL
@@ -688,10 +688,6 @@ static volatile char responseQueueHeadLock = 0;
 static volatile unsigned long long queueProcessingNumerator = 0, queueProcessingDenominator = 0;
 static volatile unsigned long long tickerLoopNumerator = 0, tickerLoopDenominator = 0;
 
-static EFI_GUID tcp4ServiceBindingProtocolGuid = EFI_TCP4_SERVICE_BINDING_PROTOCOL_GUID;
-static EFI_SERVICE_BINDING_PROTOCOL* tcp4ServiceBindingProtocol;
-static EFI_GUID tcp4ProtocolGuid = EFI_TCP4_PROTOCOL_GUID;
-static EFI_TCP4_PROTOCOL* peerTcp4Protocol;
 static Peer peers[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
 static volatile long long numberOfReceivedBytes = 0, prevNumberOfReceivedBytes = 0;
 static volatile long long numberOfTransmittedBytes = 0, prevNumberOfTransmittedBytes = 0;
@@ -1237,14 +1233,17 @@ static void closePeer(Peer* peer)
 
 static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 {
+    // The sending buffer may queue multiple messages, each of which may need to transmitted in many small packets.
     if (peer->tcp4Protocol && peer->isConnectedAccepted && !peer->isClosing)
     {
         if (peer->dataToTransmitSize + requestResponseHeader->size() > BUFFER_SIZE)
         {
+            // Buffer is full, which indicates a problem
             closePeer(peer);
         }
         else
         {
+            // Add message to buffer
             bs->CopyMem(&peer->dataToTransmit[peer->dataToTransmitSize], requestResponseHeader, requestResponseHeader->size());
             peer->dataToTransmitSize += requestResponseHeader->size();
 
@@ -2229,124 +2228,6 @@ static void requestProcessor(void* ProcedureArgument)
                 queueProcessingDenominator++;
 
                 _InterlockedIncrement64(&numberOfProcessedRequests);
-            }
-        }
-    }
-}
-
-static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsigned short port, EFI_TCP4_PROTOCOL** tcp4Protocol)
-{
-    EFI_STATUS status;
-    EFI_HANDLE childHandle = NULL;
-    if (status = tcp4ServiceBindingProtocol->CreateChild(tcp4ServiceBindingProtocol, &childHandle))
-    {
-        logStatus(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL.CreateChild() fails", status, __LINE__);
-
-        return NULL;
-    }
-    else
-    {
-        if (status = bs->OpenProtocol(childHandle, &tcp4ProtocolGuid, (void**)tcp4Protocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL))
-        {
-            logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
-
-            return NULL;
-        }
-        else
-        {
-            EFI_TCP4_CONFIG_DATA configData;
-            bs->SetMem(&configData, sizeof(configData), 0);
-            configData.TimeToLive = 64;
-            configData.AccessPoint.UseDefaultAddress = TRUE;
-            if (!remoteAddress)
-            {
-                configData.AccessPoint.StationPort = port;
-            }
-            else
-            {
-                *((int*)configData.AccessPoint.RemoteAddress.Addr) = *((int*)remoteAddress);
-                configData.AccessPoint.RemotePort = port;
-                configData.AccessPoint.ActiveFlag = TRUE;
-            }
-            EFI_TCP4_OPTION option;
-            bs->SetMem(&option, sizeof(option), 0);
-            option.ReceiveBufferSize = BUFFER_SIZE;
-            option.SendBufferSize = BUFFER_SIZE;
-            option.KeepAliveProbes = 1;
-            option.EnableWindowScaling = TRUE;
-            configData.ControlOption = &option;
-
-            if ((status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
-                && status != EFI_NO_MAPPING)
-            {
-                logStatus(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
-
-                return NULL;
-            }
-            else
-            {
-                EFI_IP4_MODE_DATA modeData;
-
-                if (status == EFI_NO_MAPPING)
-                {
-                    while (!(status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, NULL, &modeData, NULL, NULL))
-                        && !modeData.IsConfigured)
-                    {
-                        _mm_pause();
-                    }
-                    if (!status)
-                    {
-                        if (status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
-                        {
-                            logStatus(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
-
-                            return NULL;
-                        }
-                    }
-                }
-
-                if (status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, &configData, &modeData, NULL, NULL))
-                {
-                    logStatus(L"EFI_TCP4_PROTOCOL.GetModeData() fails", status, __LINE__);
-
-                    return NULL;
-                }
-                else
-                {
-                    if (!modeData.IsStarted || !modeData.IsConfigured)
-                    {
-                        log(L"EFI_TCP4_PROTOCOL is not configured!");
-
-                        return NULL;
-                    }
-                    else
-                    {
-                        if (!remoteAddress)
-                        {
-                            setText(message, L"Local address = ");
-                            appendIPv4Address(message, configData.AccessPoint.StationAddress);
-                            appendText(message, L":");
-                            appendNumber(message, configData.AccessPoint.StationPort, FALSE);
-                            appendText(message, L".");
-                            log(message);
-
-                            log(L"Routes:");
-                            for (unsigned int i = 0; i < modeData.RouteCount; i++)
-                            {
-                                setText(message, L"Address = ");
-                                appendIPv4Address(message, modeData.RouteTable[i].SubnetAddress);
-                                appendText(message, L" | mask = ");
-                                appendIPv4Address(message, modeData.RouteTable[i].SubnetMask);
-                                appendText(message, L" | gateway = ");
-                                appendIPv4Address(message, modeData.RouteTable[i].GatewayAddress);
-                                appendText(message, L".");
-                                log(message);
-                            }
-                        }
-
-                        return childHandle;
-                    }
-                }
             }
         }
     }
@@ -4747,11 +4628,16 @@ static bool initialize()
         addPublicPeer((unsigned char*)knownPublicPeers[i]);
     }
 
+    if (!initTcp4(PORT))
+        return false;
+
     return true;
 }
 
 static void deinitialize()
 {
+    deinitTcp4();
+
     bs->SetMem(computorSeeds, sizeof(computorSeeds), 0);
     bs->SetMem(computorSubseeds, sizeof(computorSubseeds), 0);
     bs->SetMem(computorPrivateKeys, sizeof(computorPrivateKeys), 0);
@@ -5414,15 +5300,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             appendText(message, L" processors are being used.");
             log(message);
 
-            if (status = bs->LocateProtocol(&tcp4ServiceBindingProtocolGuid, NULL, (void**)&tcp4ServiceBindingProtocol))
-            {
-                logStatus(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL is not located", status, __LINE__);
-            }
-            else
-            {
-                const EFI_HANDLE peerChildHandle = getTcp4Protocol(NULL, PORT, &peerTcp4Protocol);
-                if (peerChildHandle)
-                {
+            // needs reformatting
                     unsigned int salt;
                     _rdrand32_step(&salt);
 
@@ -5625,6 +5503,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                                                         KangarooTwelve(requestResponseHeader, header & 0xFFFFFF, &saltedId, sizeof(saltedId));
                                                         *((unsigned int*)requestResponseHeader) = header;
 
+                                                        // Initiate transfer of already received packet to processing thread
+                                                        // (or drop it without processing if Dejavu filter tells to ignore it)
                                                         if (!((dejavu0[saltedId >> 6] | dejavu1[saltedId >> 6]) & (1ULL << (saltedId & 63))))
                                                         {
                                                             if ((requestQueueBufferHead >= requestQueueBufferTail || requestQueueBufferHead + requestResponseHeader->size() < requestQueueBufferTail)
@@ -5689,6 +5569,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                                             }
                                             else
                                             {
+                                                // Initiate receiving data. At the same moment buffer may already contain a message of
+                                                // up to 16MB size, we don't wait for this message to be passed on to processing thread.
                                                 if (status = peers[i].tcp4Protocol->Receive(peers[i].tcp4Protocol, &peers[i].receiveToken))
                                                 {
                                                     if (status != EFI_CONNECTION_FIN)
@@ -5982,9 +5864,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                     }
 
-                    bs->CloseProtocol(peerChildHandle, &tcp4ProtocolGuid, ih, NULL);
-                    tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peerChildHandle);
-
                     saveSystem();
                     score.saveScoreCache();
 
@@ -5992,8 +5871,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     appendQubicVersion(message);
                     appendText(message, L" is shut down.");
                     log(message);
-                }
-            }
         }
     }
     else

@@ -46,6 +46,7 @@
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="network_messages.h" />
+    <ClInclude Include="tcp4.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
