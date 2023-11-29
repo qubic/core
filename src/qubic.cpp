@@ -2740,9 +2740,12 @@ static void processTick(unsigned long long processorNumber)
                             }
                             else
                             {
+                                // Contracts are identified by their index stored in the first 64 bits of the id, all
+                                // other bits are zeroed. However, the max number of contracts is limited to 2^32 - 1,
+                                // only 32 bits are used for the contract index.
                                 m256i maskedDestinationPublicKey = transaction->destinationPublicKey;
                                 maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
-                                executedContractIndex = transaction->destinationPublicKey.m256i_u64[0];
+                                executedContractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
                                 if (isZero(maskedDestinationPublicKey)
                                     && executedContractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
                                 {
