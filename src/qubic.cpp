@@ -3515,10 +3515,7 @@ static void endEpoch()
     broadcastedComputors.broadcastComputors.computors.epoch = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[0]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[1]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[2]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[3]);
+        broadcastedComputors.broadcastComputors.computors.publicKeys[i].setRandomValue();
     }
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
@@ -4297,10 +4294,7 @@ static bool initialize()
     getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
     if (isZero(operatorPublicKey))
     {
-        _rdrand64_step(&operatorPublicKey.m256i_u64[0]);
-        _rdrand64_step(&operatorPublicKey.m256i_u64[1]);
-        _rdrand64_step(&operatorPublicKey.m256i_u64[2]);
-        _rdrand64_step(&operatorPublicKey.m256i_u64[3]);
+        operatorPublicKey.setRandomValue();
     }
 
     for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
@@ -4329,10 +4323,7 @@ static bool initialize()
     broadcastedComputors.broadcastComputors.computors.epoch = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[0]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[1]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[2]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[3]);
+        broadcastedComputors.broadcastComputors.computors.publicKeys[i].setRandomValue();
     }
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
