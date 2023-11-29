@@ -144,10 +144,12 @@ static inline const __m256i& __m256i_convert(const unsigned char a[32])
     return *((__m256i*)a);
 }
 
+/*
 static inline bool EQUAL(const __m256i& a, const __m256i& b)
 {
     return _mm256_movemask_epi8(_mm256_cmpeq_epi64(a, b)) == 0xFFFFFFFF;
 }
+*/
 
 template <typename TA, typename TB>
 static inline bool operator==(const TA& a, const TB& b)

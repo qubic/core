@@ -4882,11 +4882,11 @@ namespace QPI
 			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
 			for (uint64 i = 0; i < capacity(); i++)
 			{
-				if (EQUAL(_values[index], value))
+				if (_values[index] == value)
 				{
 					return index;
 				}
-				if (EQUAL(_values[index], NULL_ID))
+				if (isZero(_values[index]))
 				{
 					_values[index] = value;
 					_population++;
@@ -4910,11 +4910,11 @@ namespace QPI
 			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
 			for (uint64 i = 0; i < capacity(); i++)
 			{
-				if (EQUAL(_values[index], value))
+				if (_values[index] == value)
 				{
 					return index;
 				}
-				if (EQUAL(_values[index], NULL_ID))
+				if (isZero(_values[index]))
 				{
 					return NULL_INDEX;
 				}
