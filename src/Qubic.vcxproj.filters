@@ -45,6 +45,8 @@
     <ClInclude Include="platform\time_stamp_counter.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="network_messages.h" />
+    <ClInclude Include="tcp4.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">

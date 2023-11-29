@@ -18,6 +18,7 @@
     <ClCompile Include="qubic.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="network_messages.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
@@ -30,6 +31,7 @@
     <ClInclude Include="platform\memory.h" />
     <ClInclude Include="smart_contracts\Quottery.h" />
     <ClInclude Include="smart_contracts\Qx.h" />
+    <ClInclude Include="tcp4.h" />
     <ClInclude Include="text_output.h" />
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />

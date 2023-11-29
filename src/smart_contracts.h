@@ -1,6 +1,6 @@
 #pragma once
 
-#include <intrin.h>
+#include "platform/m256.h"
 
 ////////// Smart contracts \\\\\\\\\\
 
@@ -10,7 +10,7 @@ typedef void (*USER_PROCEDURE)(void*, void*, void*);
 
 struct Entity
 {
-    unsigned char publicKey[32];
+    m256i publicKey;
     long long incomingAmount, outgoingAmount;
     unsigned int numberOfIncomingTransfers, numberOfOutgoingTransfers;
     unsigned int latestIncomingTransferTick, latestOutgoingTransferTick;
@@ -74,9 +74,12 @@ struct Contract0State
 
 struct IPO
 {
-    unsigned char publicKeys[NUMBER_OF_COMPUTORS][32];
+    m256i publicKeys[NUMBER_OF_COMPUTORS];
     long long prices[NUMBER_OF_COMPUTORS];
 };
+
+static_assert(sizeof(IPO) == 32 * NUMBER_OF_COMPUTORS + 8 * NUMBER_OF_COMPUTORS, "Something is wrong with the struct size.");
+
 
 constexpr struct ContractDescription
 {

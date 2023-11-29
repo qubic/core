@@ -49,6 +49,8 @@ private:
 			{
 				transfer(invocator(), invocationReward());
 			}
+
+			output.issuedNumberOfUnits = 0;
 		}
 		else
 		{
@@ -70,6 +72,8 @@ private:
 			{
 				transfer(invocator(), invocationReward());
 			}
+
+			output.transferredNumberOfUnits = 0;
 		}
 		else
 		{
