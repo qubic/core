@@ -32,7 +32,7 @@ namespace QPI
 	typedef unsigned int uint32;
 	typedef signed long long sint64;
 	typedef unsigned long long uint64;
-	typedef __m256i id;
+	typedef m256i id;
 
 	#define bit_2x bit_2
 	#define bit_4x bit_4

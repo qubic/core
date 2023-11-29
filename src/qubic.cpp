@@ -550,7 +550,7 @@ static m256i operatorPublicKey;
 static m256i computorSubseeds[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 static m256i computorPrivateKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 static m256i computorPublicKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
-static __m256i arbitratorPublicKey;
+static m256i arbitratorPublicKey;
 
 static struct
 {
@@ -624,11 +624,11 @@ static unsigned char* entityPendingTransactions = NULL;
 static unsigned char* entityPendingTransactionDigests = NULL;
 static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY];
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
-static __m256i* spectrumDigests = NULL;
+static m256i* spectrumDigests = NULL;
 
 static volatile char universeLock = 0;
 static Asset* assets = NULL;
-static __m256i* assetDigests = NULL;
+static m256i* assetDigests = NULL;
 static unsigned long long* assetChangeFlags = NULL;
 static char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
@@ -637,11 +637,11 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static EFI_EVENT contractProcessorEvent;
-static __m256i originator, invocator;
+static m256i originator, invocator;
 static long long invocationReward;
-static __m256i currentContract;
+static m256i currentContract;
 static unsigned char* contractStates[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])];
-static __m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
+static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 static unsigned long long* contractStateChangeFlags = NULL;
 static unsigned long long* functionFlags = NULL;
 static unsigned char executedContractInput[65536];
@@ -2263,14 +2263,14 @@ static void __registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short
     contractUserProcedureInputSizes[executedContractIndex][inputType] = inputSize;
 }
 
-static __m256i __arbitrator()
+static const m256i& __arbitrator()
 {
     return arbitratorPublicKey;
 }
 
-static __m256i __computor(unsigned short computorIndex)
+static const m256i& __computor(unsigned short computorIndex)
 {
-    return broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS].m256i_intr();
+    return broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
 }
 
 static unsigned char __day()
@@ -2288,7 +2288,7 @@ static unsigned short __epoch()
     return system.epoch;
 }
 
-static bool __getEntity(__m256i id, ::Entity& entity)
+static bool __getEntity(const m256i& id, ::Entity& entity)
 {
     int index = spectrumIndex(id);
     if (index < 0)
@@ -2327,12 +2327,12 @@ static long long __invocationReward()
     return ::invocationReward;
 }
 
-static __m256i __invocator()
+static const m256i& __invocator()
 {
     return ::invocator;
 }
 
-static long long __issueAsset(unsigned long long name, __m256i issuer, char numberOfDecimalPlaces, long long numberOfUnits, unsigned long long unitOfMeasurement)
+static long long __issueAsset(unsigned long long name, const m256i& issuer, char numberOfDecimalPlaces, long long numberOfUnits, unsigned long long unitOfMeasurement)
 {
     if (((unsigned char)name) < 'A' || ((unsigned char)name) > 'Z'
         || name > 0xFFFFFFFFFFFFFF)
@@ -2406,12 +2406,12 @@ static unsigned char __month()
     return etalonTick.month;
 }
 
-static __m256i __nextId(__m256i currentId)
+static m256i __nextId(const m256i& currentId)
 {
     int index = spectrumIndex(currentId);
     while (++index < SPECTRUM_CAPACITY)
     {
-        const __m256i& nextId = spectrum[index].publicKey.m256i_intr();
+        const m256i& nextId = spectrum[index].publicKey;
         if (!isZero(nextId))
         {
             return nextId;
@@ -2421,7 +2421,7 @@ static __m256i __nextId(__m256i currentId)
     return _mm256_setzero_si256();
 }
 
-static __m256i __originator()
+static m256i __originator()
 {
     return ::originator;
 }
@@ -2436,7 +2436,7 @@ static unsigned int __tick()
     return system.tick;
 }
 
-static long long __transfer(__m256i destination, long long amount)
+static long long __transfer(const m256i& destination, long long amount)
 {
     if (amount < 0 || amount > MAX_AMOUNT)
     {
@@ -2459,13 +2459,13 @@ static long long __transfer(__m256i destination, long long amount)
 
     if (decreaseEnergy(index, amount))
     {
-        increaseEnergy((unsigned char*)&destination, amount);
+        increaseEnergy(destination, amount);
     }
 
     return remainingAmount;
 }
 
-static long long __transferAssetOwnershipAndPossession(unsigned long long assetName, __m256i issuer, __m256i owner, __m256i possessor, long long numberOfUnits, __m256i newOwner)
+static long long __transferAssetOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfUnits, const m256i& newOwner)
 {
     if (numberOfUnits <= 0 || numberOfUnits > MAX_AMOUNT)
     {
@@ -2474,7 +2474,7 @@ static long long __transferAssetOwnershipAndPossession(unsigned long long assetN
 
     ACQUIRE(universeLock);
 
-    int issuanceIndex = (*((unsigned int*)&issuer)) & (ASSETS_CAPACITY - 1);
+    int issuanceIndex = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
 iteration:
     if (assets[issuanceIndex].varStruct.issuance.type == EMPTY)
     {
@@ -2488,7 +2488,7 @@ iteration:
             && ((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == assetName
             && assets[issuanceIndex].varStruct.issuance.publicKey == issuer)
         {
-            int ownershipIndex = (*((unsigned int*)&owner)) & (ASSETS_CAPACITY - 1);
+            int ownershipIndex = owner.m256i_u32[0] & (ASSETS_CAPACITY - 1);
         iteration2:
             if (assets[ownershipIndex].varStruct.ownership.type == EMPTY)
             {
@@ -2503,7 +2503,7 @@ iteration:
                     && assets[ownershipIndex].varStruct.ownership.publicKey == owner
                     && assets[ownershipIndex].varStruct.ownership.managingContractIndex == executedContractIndex) // TODO: This condition needs extra attention during refactoring!
                 {
-                    int possessionIndex = (*((unsigned int*)&possessor)) & (ASSETS_CAPACITY - 1);
+                    int possessionIndex = possessor.m256i_u32[0] & (ASSETS_CAPACITY - 1);
                 iteration3:
                     if (assets[possessionIndex].varStruct.possession.type == EMPTY)
                     {
@@ -2522,7 +2522,7 @@ iteration:
                                 if (assets[possessionIndex].varStruct.possession.numberOfUnits >= numberOfUnits)
                                 {
                                     int destinationOwnershipIndex, destinationPossessionIndex;
-                                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, (unsigned char*)&newOwner, numberOfUnits, &destinationOwnershipIndex, &destinationPossessionIndex, false);
+                                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, newOwner, numberOfUnits, &destinationOwnershipIndex, &destinationPossessionIndex, false);
 
                                     RELEASE(universeLock);
 
@@ -2834,7 +2834,7 @@ static void processTick(unsigned long long processorNumber)
                                     {
                                         if (contractUserProcedures[executedContractIndex][transaction->inputType])
                                         {
-                                            ::originator = transaction->sourcePublicKey.m256i_intr();
+                                            ::originator = transaction->sourcePublicKey;
                                             ::invocator = ::originator;
                                             ::invocationReward = transaction->amount;
                                             currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
@@ -3250,7 +3250,7 @@ static void endEpoch()
             int issuanceIndex, ownershipIndex, possessionIndex;
             if (finalPrice)
             {
-                __m256i zero = _mm256_setzero_si256();
+                m256i zero = _mm256_setzero_si256();
                 issueAsset(zero, (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex);
             }
             numberOfReleasedEntities = 0;
@@ -3940,7 +3940,7 @@ static void tickProcessor(void*)
                         }
 
                         TickEssence tickEssence;
-                        __m256i etalonTickEssenceDigest;
+                        m256i etalonTickEssenceDigest;
 
                         *((unsigned long long*) & tickEssence.millisecond) = *((unsigned long long*) & etalonTick.millisecond);
                         tickEssence.prevSpectrumDigest = etalonTick.prevSpectrumDigest;
@@ -3987,7 +3987,7 @@ static void tickProcessor(void*)
                                                 tickEssence.prevUniverseDigest = tick->prevUniverseDigest;
                                                 tickEssence.prevComputerDigest = tick->prevComputerDigest;
                                                 tickEssence.transactionDigest = tick->transactionDigest;
-                                                __m256i tickEssenceDigest;
+                                                m256i tickEssenceDigest;
                                                 KangarooTwelve(&tickEssence, sizeof(TickEssence), &tickEssenceDigest, 32);
                                                 if (tickEssenceDigest == etalonTickEssenceDigest)
                                                 {

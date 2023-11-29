@@ -7,11 +7,11 @@
 
 
 TEST(TestCoreQPI, IndexStruct) {
-    __m256i test1 = m256i(1, 2, 3, 4).m256i_intr();
-    __m256i test2 = m256i(3, 100, 579, 5431).m256i_intr();
-    __m256i test3 = m256i(1, 100, 579, 5431).m256i_intr();
-    __m256i test4 = m256i(123456789, 100, 579, 5431).m256i_intr();
-    __m256i test5 = m256i(12345689, 100, 579, 5431).m256i_intr();
+    m256i test1(1, 2, 3, 4);
+    m256i test2(3, 100, 579, 5431);
+    m256i test3(1, 100, 579, 5431);
+    m256i test4(123456789, 100, 579, 5431);
+    m256i test5(12345689, 100, 579, 5431);
 
     // ==== TEST index_2x ====
     // for valid init you either need to call reset or load the data from a file

@@ -19,29 +19,29 @@ struct Entity
 static_assert(sizeof(::Entity) == 32 + 2*8 + 2*4 + 2*4, "Something is wrong with the struct size.");
 
 
-static __m256i __arbitrator();
+static const m256i& __arbitrator();
 static void __beginFunctionOrProcedure(const unsigned int);
-static __m256i __computor(unsigned short);
+static const m256i& __computor(unsigned short);
 static unsigned char __day();
 static unsigned char __dayOfWeek(unsigned char, unsigned char, unsigned char);
 static void __endFunctionOrProcedure(const unsigned int);
 static unsigned short __epoch();
-static bool __getEntity(__m256i, ::Entity&);
+static bool __getEntity(const m256i&, ::Entity&);
 static unsigned char __hour();
 static long long __invocationReward();
-static __m256i __invocator();
-static long long __issueAsset(unsigned long long, __m256i, char, long long, unsigned long long);
+static const m256i& __invocator();
+static long long __issueAsset(unsigned long long, const m256i&, char, long long, unsigned long long);
 static unsigned short __millisecond();
 static unsigned char __minute();
 static unsigned char __month();
-static __m256i __nextId(__m256i);
-static __m256i __originator();
+static m256i __nextId(const m256i&);
+static m256i __originator();
 static void __registerUserFunction(USER_PROCEDURE, unsigned short, unsigned short);
 static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short);
 static unsigned char __second();
 static unsigned int __tick();
-static long long __transfer(__m256i, long long);
-static long long __transferAssetOwnershipAndPossession(unsigned long long, __m256i, __m256i, __m256i, long long, __m256i);
+static long long __transfer(const m256i&, long long);
+static long long __transferAssetOwnershipAndPossession(unsigned long long, const m256i&, const m256i&, const m256i&, long long, const m256i&);
 static unsigned char __year();
 
 #include "qpi.h"
