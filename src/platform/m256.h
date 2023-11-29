@@ -15,6 +15,14 @@ union m256i
 
     m256i() = default;
 
+    m256i(unsigned long long ull0, unsigned long long ull1, unsigned long long ull2, unsigned long long ull3)
+    {
+        m256i_u64[0] = ull0;
+        m256i_u64[1] = ull1;
+        m256i_u64[2] = ull2;
+        m256i_u64[3] = ull3;
+    }
+
     m256i(const unsigned char value[32])
     {
         assign(*(m256i*)value);
@@ -104,6 +112,13 @@ union m256i
         return *(const __m256i*) this;
     }
 
+    void setRandomValue()
+    {
+        _rdrand64_step(&m256i_u64[0]);
+        _rdrand64_step(&m256i_u64[1]);
+        _rdrand64_step(&m256i_u64[2]);
+        _rdrand64_step(&m256i_u64[3]);
+    }
 };
 
 static_assert(sizeof(m256i) == 32, "m256 has unexpected size!");
