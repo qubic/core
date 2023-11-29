@@ -25,12 +25,13 @@
 #include "four_q.h"
 #include "score.h"
 
+#include "network_messages.h"
+#include "tcp4.h"
 
 ////////// Qubic \\\\\\\\\\
 
 #define ASSETS_CAPACITY 0x1000000ULL // Must be 2^N
 #define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
-#define BUFFER_SIZE 33554432
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TARGET_TICK_DURATION 3000
 #define TICK_REQUESTING_PERIOD 500ULL
@@ -71,7 +72,6 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 60000
 #define TRANSACTION_SPARSENESS 6
-#define VOLUME_LABEL L"Qubic"
 
 #define EMPTY 0
 #define ISSUANCE 1
@@ -160,60 +160,6 @@ typedef struct
     void* buffer;
 } Processor;
 
-struct RequestResponseHeader
-{
-private:
-    unsigned char _size[3];
-    unsigned char _type;
-    unsigned int _dejavu;
-
-public:
-    inline unsigned int size()
-    {
-        return (*((unsigned int*)_size)) & 0xFFFFFF;
-    }
-
-    inline void setSize(unsigned int size)
-    {
-        _size[0] = (unsigned char)size;
-        _size[1] = (unsigned char)(size >> 8);
-        _size[2] = (unsigned char)(size >> 16);
-    }
-
-    inline bool isDejavuZero()
-    {
-        return !_dejavu;
-    }
-
-    inline unsigned int dejavu()
-    {
-        return _dejavu;
-    }
-
-    inline void setDejavu(unsigned int dejavu)
-    {
-        _dejavu = dejavu;
-    }
-
-    inline void randomizeDejavu()
-    {
-        _rdrand32_step(&_dejavu);
-        if (!_dejavu)
-        {
-            _dejavu = 1;
-        }
-    }
-
-    inline unsigned char type()
-    {
-        return _type;
-    }
-
-    inline void setType(const unsigned char type)
-    {
-        _type = type;
-    }
-};
 
 #define EXCHANGE_PUBLIC_PEERS 0
 
@@ -593,7 +539,7 @@ struct SpecialCommandSetProposalAndBallotResponse
 
 static const unsigned short revenuePoints[1 + 1024] = { 0, 710, 1125, 1420, 1648, 1835, 1993, 2129, 2250, 2358, 2455, 2545, 2627, 2702, 2773, 2839, 2901, 2960, 3015, 3068, 3118, 3165, 3211, 3254, 3296, 3336, 3375, 3412, 3448, 3483, 3516, 3549, 3580, 3611, 3641, 3670, 3698, 3725, 3751, 3777, 3803, 3827, 3851, 3875, 3898, 3921, 3943, 3964, 3985, 4006, 4026, 4046, 4066, 4085, 4104, 4122, 4140, 4158, 4175, 4193, 4210, 4226, 4243, 4259, 4275, 4290, 4306, 4321, 4336, 4350, 4365, 4379, 4393, 4407, 4421, 4435, 4448, 4461, 4474, 4487, 4500, 4512, 4525, 4537, 4549, 4561, 4573, 4585, 4596, 4608, 4619, 4630, 4641, 4652, 4663, 4674, 4685, 4695, 4705, 4716, 4726, 4736, 4746, 4756, 4766, 4775, 4785, 4795, 4804, 4813, 4823, 4832, 4841, 4850, 4859, 4868, 4876, 4885, 4894, 4902, 4911, 4919, 4928, 4936, 4944, 4952, 4960, 4968, 4976, 4984, 4992, 5000, 5008, 5015, 5023, 5031, 5038, 5046, 5053, 5060, 5068, 5075, 5082, 5089, 5096, 5103, 5110, 5117, 5124, 5131, 5138, 5144, 5151, 5158, 5164, 5171, 5178, 5184, 5191, 5197, 5203, 5210, 5216, 5222, 5228, 5235, 5241, 5247, 5253, 5259, 5265, 5271, 5277, 5283, 5289, 5295, 5300, 5306, 5312, 5318, 5323, 5329, 5335, 5340, 5346, 5351, 5357, 5362, 5368, 5373, 5378, 5384, 5389, 5394, 5400, 5405, 5410, 5415, 5420, 5425, 5431, 5436, 5441, 5446, 5451, 5456, 5461, 5466, 5471, 5475, 5480, 5485, 5490, 5495, 5500, 5504, 5509, 5514, 5518, 5523, 5528, 5532, 5537, 5542, 5546, 5551, 5555, 5560, 5564, 5569, 5573, 5577, 5582, 5586, 5591, 5595, 5599, 5604, 5608, 5612, 5616, 5621, 5625, 5629, 5633, 5637, 5642, 5646, 5650, 5654, 5658, 5662, 5666, 5670, 5674, 5678, 5682, 5686, 5690, 5694, 5698, 5702, 5706, 5710, 5714, 5718, 5721, 5725, 5729, 5733, 5737, 5740, 5744, 5748, 5752, 5755, 5759, 5763, 5766, 5770, 5774, 5777, 5781, 5785, 5788, 5792, 5795, 5799, 5802, 5806, 5809, 5813, 5816, 5820, 5823, 5827, 5830, 5834, 5837, 5841, 5844, 5847, 5851, 5854, 5858, 5861, 5864, 5868, 5871, 5874, 5878, 5881, 5884, 5887, 5891, 5894, 5897, 5900, 5904, 5907, 5910, 5913, 5916, 5919, 5923, 5926, 5929, 5932, 5935, 5938, 5941, 5944, 5948, 5951, 5954, 5957, 5960, 5963, 5966, 5969, 5972, 5975, 5978, 5981, 5984, 5987, 5990, 5993, 5996, 5999, 6001, 6004, 6007, 6010, 6013, 6016, 6019, 6022, 6025, 6027, 6030, 6033, 6036, 6039, 6041, 6044, 6047, 6050, 6053, 6055, 6058, 6061, 6064, 6066, 6069, 6072, 6075, 6077, 6080, 6083, 6085, 6088, 6091, 6093, 6096, 6099, 6101, 6104, 6107, 6109, 6112, 6115, 6117, 6120, 6122, 6125, 6128, 6130, 6133, 6135, 6138, 6140, 6143, 6145, 6148, 6151, 6153, 6156, 6158, 6161, 6163, 6166, 6168, 6170, 6173, 6175, 6178, 6180, 6183, 6185, 6188, 6190, 6193, 6195, 6197, 6200, 6202, 6205, 6207, 6209, 6212, 6214, 6216, 6219, 6221, 6224, 6226, 6228, 6231, 6233, 6235, 6238, 6240, 6242, 6244, 6247, 6249, 6251, 6254, 6256, 6258, 6260, 6263, 6265, 6267, 6269, 6272, 6274, 6276, 6278, 6281, 6283, 6285, 6287, 6289, 6292, 6294, 6296, 6298, 6300, 6303, 6305, 6307, 6309, 6311, 6313, 6316, 6318, 6320, 6322, 6324, 6326, 6328, 6330, 6333, 6335, 6337, 6339, 6341, 6343, 6345, 6347, 6349, 6351, 6353, 6356, 6358, 6360, 6362, 6364, 6366, 6368, 6370, 6372, 6374, 6376, 6378, 6380, 6382, 6384, 6386, 6388, 6390, 6392, 6394, 6396, 6398, 6400, 6402, 6404, 6406, 6408, 6410, 6412, 6414, 6416, 6418, 6420, 6421, 6423, 6425, 6427, 6429, 6431, 6433, 6435, 6437, 6439, 6441, 6443, 6444, 6446, 6448, 6450, 6452, 6454, 6456, 6458, 6459, 6461, 6463, 6465, 6467, 6469, 6471, 6472, 6474, 6476, 6478, 6480, 6482, 6483, 6485, 6487, 6489, 6491, 6493, 6494, 6496, 6498, 6500, 6502, 6503, 6505, 6507, 6509, 6510, 6512, 6514, 6516, 6518, 6519, 6521, 6523, 6525, 6526, 6528, 6530, 6532, 6533, 6535, 6537, 6538, 6540, 6542, 6544, 6545, 6547, 6549, 6550, 6552, 6554, 6556, 6557, 6559, 6561, 6562, 6564, 6566, 6567, 6569, 6571, 6572, 6574, 6576, 6577, 6579, 6581, 6582, 6584, 6586, 6587, 6589, 6591, 6592, 6594, 6596, 6597, 6599, 6600, 6602, 6604, 6605, 6607, 6609, 6610, 6612, 6613, 6615, 6617, 6618, 6620, 6621, 6623, 6625, 6626, 6628, 6629, 6631, 6632, 6634, 6636, 6637, 6639, 6640, 6642, 6643, 6645, 6647, 6648, 6650, 6651, 6653, 6654, 6656, 6657, 6659, 6660, 6662, 6663, 6665, 6667, 6668, 6670, 6671, 6673, 6674, 6676, 6677, 6679, 6680, 6682, 6683, 6685, 6686, 6688, 6689, 6691, 6692, 6694, 6695, 6697, 6698, 6699, 6701, 6702, 6704, 6705, 6707, 6708, 6710, 6711, 6713, 6714, 6716, 6717, 6718, 6720, 6721, 6723, 6724, 6726, 6727, 6729, 6730, 6731, 6733, 6734, 6736, 6737, 6739, 6740, 6741, 6743, 6744, 6746, 6747, 6748, 6750, 6751, 6753, 6754, 6755, 6757, 6758, 6760, 6761, 6762, 6764, 6765, 6767, 6768, 6769, 6771, 6772, 6773, 6775, 6776, 6778, 6779, 6780, 6782, 6783, 6784, 6786, 6787, 6788, 6790, 6791, 6793, 6794, 6795, 6797, 6798, 6799, 6801, 6802, 6803, 6805, 6806, 6807, 6809, 6810, 6811, 6813, 6814, 6815, 6816, 6818, 6819, 6820, 6822, 6823, 6824, 6826, 6827, 6828, 6830, 6831, 6832, 6833, 6835, 6836, 6837, 6839, 6840, 6841, 6842, 6844, 6845, 6846, 6848, 6849, 6850, 6851, 6853, 6854, 6855, 6856, 6858, 6859, 6860, 6862, 6863, 6864, 6865, 6867, 6868, 6869, 6870, 6872, 6873, 6874, 6875, 6877, 6878, 6879, 6880, 6882, 6883, 6884, 6885, 6886, 6888, 6889, 6890, 6891, 6893, 6894, 6895, 6896, 6897, 6899, 6900, 6901, 6902, 6904, 6905, 6906, 6907, 6908, 6910, 6911, 6912, 6913, 6914, 6916, 6917, 6918, 6919, 6920, 6921, 6923, 6924, 6925, 6926, 6927, 6929, 6930, 6931, 6932, 6933, 6934, 6936, 6937, 6938, 6939, 6940, 6941, 6943, 6944, 6945, 6946, 6947, 6948, 6950, 6951, 6952, 6953, 6954, 6955, 6957, 6958, 6959, 6960, 6961, 6962, 6963, 6965, 6966, 6967, 6968, 6969, 6970, 6971, 6972, 6974, 6975, 6976, 6977, 6978, 6979, 6980, 6981, 6983, 6984, 6985, 6986, 6987, 6988, 6989, 6990, 6991, 6993, 6994, 6995, 6996, 6997, 6998, 6999, 7000, 7001, 7003, 7004, 7005, 7006, 7007, 7008, 7009, 7010, 7011, 7012, 7013, 7015, 7016, 7017, 7018, 7019, 7020, 7021, 7022, 7023, 7024, 7025, 7026, 7027, 7029, 7030, 7031, 7032, 7033, 7034, 7035, 7036, 7037, 7038, 7039, 7040, 7041, 7042, 7043, 7044, 7046, 7047, 7048, 7049, 7050, 7051, 7052, 7053, 7054, 7055, 7056, 7057, 7058, 7059, 7060, 7061, 7062, 7063, 7064, 7065, 7066, 7067, 7068, 7069, 7070, 7071, 7073, 7074, 7075, 7076, 7077, 7078, 7079, 7080, 7081, 7082, 7083, 7084, 7085, 7086, 7087, 7088, 7089, 7090, 7091, 7092, 7093, 7094, 7095, 7096, 7097, 7098, 7099 };
 
-static volatile int state = 0;
+static volatile int shutDownNode = 0;
 static volatile bool isMain = false;
 static volatile bool listOfPeersIsStatic = false;
 static volatile bool forceNextTick = false;
@@ -714,8 +660,6 @@ static unsigned long long* dejavu0 = NULL;
 static unsigned long long* dejavu1 = NULL;
 static unsigned int dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
 
-static EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* simpleFileSystemProtocol;
-
 static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
@@ -744,10 +688,6 @@ static volatile char responseQueueHeadLock = 0;
 static volatile unsigned long long queueProcessingNumerator = 0, queueProcessingDenominator = 0;
 static volatile unsigned long long tickerLoopNumerator = 0, tickerLoopDenominator = 0;
 
-static EFI_GUID tcp4ServiceBindingProtocolGuid = EFI_TCP4_SERVICE_BINDING_PROTOCOL_GUID;
-static EFI_SERVICE_BINDING_PROTOCOL* tcp4ServiceBindingProtocol;
-static EFI_GUID tcp4ProtocolGuid = EFI_TCP4_PROTOCOL_GUID;
-static EFI_TCP4_PROTOCOL* peerTcp4Protocol;
 static Peer peers[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
 static volatile long long numberOfReceivedBytes = 0, prevNumberOfReceivedBytes = 0;
 static volatile long long numberOfTransmittedBytes = 0, prevNumberOfTransmittedBytes = 0;
@@ -756,6 +696,12 @@ static volatile char publicPeersLock = 0;
 static unsigned int numberOfPublicPeers = 0;
 static PublicPeer publicPeers[MAX_NUMBER_OF_PUBLIC_PEERS];
 
+static ScoreFunction<
+    DATA_LENGTH, INFO_LENGTH,
+    NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
+    MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
+    MAX_NUMBER_OF_PROCESSORS
+> score;
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
 static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS];
@@ -1287,14 +1233,17 @@ static void closePeer(Peer* peer)
 
 static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 {
+    // The sending buffer may queue multiple messages, each of which may need to transmitted in many small packets.
     if (peer->tcp4Protocol && peer->isConnectedAccepted && !peer->isClosing)
     {
         if (peer->dataToTransmitSize + requestResponseHeader->size() > BUFFER_SIZE)
         {
+            // Buffer is full, which indicates a problem
             closePeer(peer);
         }
         else
         {
+            // Add message to buffer
             bs->CopyMem(&peer->dataToTransmit[peer->dataToTransmitSize], requestResponseHeader, requestResponseHeader->size());
             peer->dataToTransmitSize += requestResponseHeader->size();
 
@@ -1370,7 +1319,15 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
     {
         responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueBufferHead];
-        responseHeader->setSize(sizeof(RequestResponseHeader) + dataSize);
+        if (!responseHeader->checkAndSetSize(sizeof(RequestResponseHeader) + dataSize))
+        {
+            setText(message, L"Error: Message size ");
+            appendNumber(message, sizeof(RequestResponseHeader) + dataSize, TRUE);
+            appendText(message, L" of message of type ");
+            appendNumber(message, type, FALSE);
+            appendText(message, L" exceeds maximum message size!");
+            log(message);
+        }
         responseHeader->setType(type);
         responseHeader->setDejavu(dejavu);
         if (data)
@@ -2074,7 +2031,7 @@ static void processSpecialCommand(Peer* peer, Processor* processor, RequestRespo
             {
             case SPECIAL_COMMAND_SHUT_DOWN:
             {
-                state = 1;
+                shutDownNode = 1;
             }
             break;
 
@@ -2128,7 +2085,7 @@ static void requestProcessor(void* ProcedureArgument)
 
     Processor* processor = (Processor*)ProcedureArgument;
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
-    while (!state)
+    while (!shutDownNode)
     {
         if (requestQueueElementTail == requestQueueElementHead)
         {
@@ -2276,124 +2233,6 @@ static void requestProcessor(void* ProcedureArgument)
     }
 }
 
-static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsigned short port, EFI_TCP4_PROTOCOL** tcp4Protocol)
-{
-    EFI_STATUS status;
-    EFI_HANDLE childHandle = NULL;
-    if (status = tcp4ServiceBindingProtocol->CreateChild(tcp4ServiceBindingProtocol, &childHandle))
-    {
-        logStatus(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL.CreateChild() fails", status, __LINE__);
-
-        return NULL;
-    }
-    else
-    {
-        if (status = bs->OpenProtocol(childHandle, &tcp4ProtocolGuid, (void**)tcp4Protocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL))
-        {
-            logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
-
-            return NULL;
-        }
-        else
-        {
-            EFI_TCP4_CONFIG_DATA configData;
-            bs->SetMem(&configData, sizeof(configData), 0);
-            configData.TimeToLive = 64;
-            configData.AccessPoint.UseDefaultAddress = TRUE;
-            if (!remoteAddress)
-            {
-                configData.AccessPoint.StationPort = port;
-            }
-            else
-            {
-                *((int*)configData.AccessPoint.RemoteAddress.Addr) = *((int*)remoteAddress);
-                configData.AccessPoint.RemotePort = port;
-                configData.AccessPoint.ActiveFlag = TRUE;
-            }
-            EFI_TCP4_OPTION option;
-            bs->SetMem(&option, sizeof(option), 0);
-            option.ReceiveBufferSize = BUFFER_SIZE;
-            option.SendBufferSize = BUFFER_SIZE;
-            option.KeepAliveProbes = 1;
-            option.EnableWindowScaling = TRUE;
-            configData.ControlOption = &option;
-
-            if ((status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
-                && status != EFI_NO_MAPPING)
-            {
-                logStatus(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
-
-                return NULL;
-            }
-            else
-            {
-                EFI_IP4_MODE_DATA modeData;
-
-                if (status == EFI_NO_MAPPING)
-                {
-                    while (!(status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, NULL, &modeData, NULL, NULL))
-                        && !modeData.IsConfigured)
-                    {
-                        _mm_pause();
-                    }
-                    if (!status)
-                    {
-                        if (status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
-                        {
-                            logStatus(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
-
-                            return NULL;
-                        }
-                    }
-                }
-
-                if (status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, &configData, &modeData, NULL, NULL))
-                {
-                    logStatus(L"EFI_TCP4_PROTOCOL.GetModeData() fails", status, __LINE__);
-
-                    return NULL;
-                }
-                else
-                {
-                    if (!modeData.IsStarted || !modeData.IsConfigured)
-                    {
-                        log(L"EFI_TCP4_PROTOCOL is not configured!");
-
-                        return NULL;
-                    }
-                    else
-                    {
-                        if (!remoteAddress)
-                        {
-                            setText(message, L"Local address = ");
-                            appendIPv4Address(message, configData.AccessPoint.StationAddress);
-                            appendText(message, L":");
-                            appendNumber(message, configData.AccessPoint.StationPort, FALSE);
-                            appendText(message, L".");
-                            log(message);
-
-                            log(L"Routes:");
-                            for (unsigned int i = 0; i < modeData.RouteCount; i++)
-                            {
-                                setText(message, L"Address = ");
-                                appendIPv4Address(message, modeData.RouteTable[i].SubnetAddress);
-                                appendText(message, L" | mask = ");
-                                appendIPv4Address(message, modeData.RouteTable[i].SubnetMask);
-                                appendText(message, L" | gateway = ");
-                                appendIPv4Address(message, modeData.RouteTable[i].GatewayAddress);
-                                appendText(message, L".");
-                                log(message);
-                            }
-                        }
-
-                        return childHandle;
-                    }
-                }
-            }
-        }
-    }
-}
-
 static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
     if (functionFlags[functionOrProcedureId >> 6] & (1ULL << (functionOrProcedureId & 63)))
@@ -2529,10 +2368,7 @@ static long long __issueAsset(unsigned long long name, __m256i issuer, char numb
         }
     }
 
-    unsigned long long issuerBuffer[4];
-    *((__m256i*)issuerBuffer) = issuer;
-    if (issuerBuffer[0] != executedContractIndex
-        && !issuerBuffer[1] && !issuerBuffer[2] && !issuerBuffer[3]) // Contracts cannot set Quorum or other contracts as issuers
+    if (issuer != currentContract && issuer != __invocator())
     {
         return 0;
     }
@@ -2904,9 +2740,12 @@ static void processTick(unsigned long long processorNumber)
                             }
                             else
                             {
+                                // Contracts are identified by their index stored in the first 64 bits of the id, all
+                                // other bits are zeroed. However, the max number of contracts is limited to 2^32 - 1,
+                                // only 32 bits are used for the contract index.
                                 m256i maskedDestinationPublicKey = transaction->destinationPublicKey;
                                 maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
-                                executedContractIndex = transaction->destinationPublicKey.m256i_u64[0];
+                                executedContractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
                                 if (isZero(maskedDestinationPublicKey)
                                     && executedContractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
                                 {
@@ -3694,7 +3533,7 @@ static void tickProcessor(void*)
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
     unsigned int latestProcessedTick = 0;
-    while (!state)
+    while (!shutDownNode)
     {
         const unsigned long long curTimeTick = __rdtsc();
 
@@ -4485,7 +4324,7 @@ static bool initialize()
     bs->SetMem(peers, sizeof(peers), 0);
     bs->SetMem(publicPeers, sizeof(publicPeers), 0);
 
-    broadcastedComputors.header.setSize(sizeof(broadcastedComputors.header) + sizeof(broadcastedComputors.broadcastComputors));
+    broadcastedComputors.header.setSize<sizeof(broadcastedComputors.header) + sizeof(broadcastedComputors.broadcastComputors)>();
     broadcastedComputors.header.setType(BROADCAST_COMPUTORS);
     broadcastedComputors.broadcastComputors.computors.epoch = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4497,120 +4336,20 @@ static bool initialize()
     }
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
-    requestedComputors.header.setSize(sizeof(requestedComputors));
+    requestedComputors.header.setSize<sizeof(requestedComputors)>();
     requestedComputors.header.setType(REQUEST_COMPUTORS);
-    requestedQuorumTick.header.setSize(sizeof(requestedQuorumTick));
+    requestedQuorumTick.header.setSize<sizeof(requestedQuorumTick)>();
     requestedQuorumTick.header.setType(REQUEST_QUORUM_TICK);
-    requestedTickData.header.setSize(sizeof(requestedTickData));
+    requestedTickData.header.setSize<sizeof(requestedTickData)>();
     requestedTickData.header.setType(REQUEST_TICK_DATA);
-    requestedTickTransactions.header.setSize(sizeof(requestedTickTransactions));
+    requestedTickTransactions.header.setSize<sizeof(requestedTickTransactions)>();
     requestedTickTransactions.header.setType(REQUEST_TICK_TRANSACTIONS);
     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
+    if (!initFilesystem())
+        return false;
+
     EFI_STATUS status;
-
-    EFI_GUID simpleFileSystemProtocolGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
-    unsigned long long numberOfHandles;
-    EFI_HANDLE* handles;
-    if (status = bs->LocateHandleBuffer(ByProtocol, &simpleFileSystemProtocolGuid, NULL, &numberOfHandles, &handles))
-    {
-        logStatus(L"EFI_BOOT_SERVICES.LocateHandleBuffer() fails", status, __LINE__);
-
-        return false;
-    }
-    else
-    {
-        for (unsigned int i = 0; i < numberOfHandles; i++)
-        {
-            if (status = bs->OpenProtocol(handles[i], &simpleFileSystemProtocolGuid, (void**)&simpleFileSystemProtocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL))
-            {
-                logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
-
-                bs->FreePool(handles);
-
-                return false;
-            }
-            else
-            {
-                if (status = simpleFileSystemProtocol->OpenVolume(simpleFileSystemProtocol, (void**)&root))
-                {
-                    logStatus(L"EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.OpenVolume() fails", status, __LINE__);
-
-                    bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
-                    bs->FreePool(handles);
-
-                    return false;
-                }
-                else
-                {
-                    EFI_GUID fileSystemInfoId = EFI_FILE_SYSTEM_INFO_ID;
-                    EFI_FILE_SYSTEM_INFO info;
-                    unsigned long long size = sizeof(info);
-                    if (status = root->GetInfo(root, &fileSystemInfoId, &size, &info))
-                    {
-                        logStatus(L"EFI_FILE_PROTOCOL.GetInfo() fails", status, __LINE__);
-
-                        bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
-                        bs->FreePool(handles);
-
-                        return false;
-                    }
-                    else
-                    {
-                        setText(message, L"Volume #");
-                        appendNumber(message, i, FALSE);
-                        appendText(message, L" (");
-                        appendText(message, info.VolumeLabel);
-                        appendText(message, L"): ");
-                        appendNumber(message, info.FreeSpace, TRUE);
-                        appendText(message, L" / ");
-                        appendNumber(message, info.VolumeSize, TRUE);
-                        appendText(message, L" free bytes | Read-");
-                        appendText(message, info.ReadOnly ? L"only." : L"Write.");
-                        log(message);
-
-                        bool matches = true;
-                        for (unsigned int j = 0; j < sizeof(info.VolumeLabel) / sizeof(info.VolumeLabel[0]); j++)
-                        {
-                            if (info.VolumeLabel[j] != VOLUME_LABEL[j] && info.VolumeLabel[j] != (VOLUME_LABEL[j] ^ 0x20))
-                            {
-                                matches = false;
-
-                                break;
-                            }
-                            if (!VOLUME_LABEL[j])
-                            {
-                                break;
-                            }
-                        }
-                        if (matches)
-                        {
-                            break;
-                        }
-                        else
-                        {
-                            bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
-                            simpleFileSystemProtocol = NULL;
-                        }
-                    }
-                }
-            }
-        }
-
-        bs->FreePool(handles);
-    }
-
-    if (!simpleFileSystemProtocol)
-    {
-        bs->LocateProtocol(&simpleFileSystemProtocolGuid, NULL, (void**)&simpleFileSystemProtocol);
-    }
-    if (status = simpleFileSystemProtocol->OpenVolume(simpleFileSystemProtocol, (void**)&root))
-    {
-        logStatus(L"EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.OpenVolume() fails", status, __LINE__);
-
-        return false;
-    }
-    else
     {
         if (status = bs->AllocatePool(EfiRuntimeServicesData, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS * sizeof(Tick), (void**)&ticks))
         {
@@ -4828,19 +4567,8 @@ static bool initialize()
             log(message);
         }
 
-        loadScoreCache(system.epoch);
-
-        unsigned char randomSeed[32];
-        bs->SetMem(randomSeed, 32, 0);
-        randomSeed[0] = RANDOM_SEED0;
-        randomSeed[1] = RANDOM_SEED1;
-        randomSeed[2] = RANDOM_SEED2;
-        randomSeed[3] = RANDOM_SEED3;
-        randomSeed[4] = RANDOM_SEED4;
-        randomSeed[5] = RANDOM_SEED5;
-        randomSeed[6] = RANDOM_SEED6;
-        randomSeed[7] = RANDOM_SEED7;
-        random(randomSeed, randomSeed, (unsigned char*)miningData, sizeof(miningData));
+        score.loadScoreCache(system.epoch);
+        score.initMiningData();
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
@@ -4903,11 +4631,16 @@ static bool initialize()
         addPublicPeer((unsigned char*)knownPublicPeers[i]);
     }
 
+    if (!initTcp4(PORT))
+        return false;
+
     return true;
 }
 
 static void deinitialize()
 {
+    deinitTcp4();
+
     bs->SetMem(computorSeeds, sizeof(computorSeeds), 0);
     bs->SetMem(computorSubseeds, sizeof(computorSubseeds), 0);
     bs->SetMem(computorPrivateKeys, sizeof(computorPrivateKeys), 0);
@@ -5098,11 +4831,11 @@ static void logInfo()
     appendText(message, L").");
 #if USE_SCORE_CACHE
     appendText(message, L" Score cache: Hit ");
-    appendNumber(message, scoreCacheHit, TRUE);
+    appendNumber(message, score.scoreCacheHit, TRUE);
     appendText(message, L" | Miss ");
-    appendNumber(message, scoreCacheMiss, TRUE);
+    appendNumber(message, score.scoreCacheMiss, TRUE);
     appendText(message, L" | Unknown ");
-    appendNumber(message, scoreCacheUnknown, TRUE);
+    appendNumber(message, score.scoreCacheUnknown, TRUE);
 #endif
     log(message);
     prevNumberOfProcessedRequests = numberOfProcessedRequests;
@@ -5488,7 +5221,7 @@ static void processKeyPresses()
         */
         case 0x17:
         {
-            state = 1;
+            shutDownNode = 1;
         }
         break;
 
@@ -5570,586 +5303,578 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             appendText(message, L" processors are being used.");
             log(message);
 
-            if (status = bs->LocateProtocol(&tcp4ServiceBindingProtocolGuid, NULL, (void**)&tcp4ServiceBindingProtocol))
+            // -----------------------------------------------------
+            // Main loop
+            unsigned int salt;
+            _rdrand32_step(&salt);
+
+            unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
+            unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
+            while (!shutDownNode)
             {
-                logStatus(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL is not located", status, __LINE__);
-            }
-            else
-            {
-                const EFI_HANDLE peerChildHandle = getTcp4Protocol(NULL, PORT, &peerTcp4Protocol);
-                if (peerChildHandle)
+                if (criticalSituation == 1)
                 {
-                    unsigned int salt;
-                    _rdrand32_step(&salt);
+                    log(L"CRITICAL SITUATION #1!!!");
+                }
 
-                    unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
-                    unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
-                    while (!state)
-                    {
-                        if (criticalSituation == 1)
-                        {
-                            log(L"CRITICAL SITUATION #1!!!");
-                        }
+                const unsigned long long curTimeTick = __rdtsc();
 
-                        const unsigned long long curTimeTick = __rdtsc();
-
-                        if (curTimeTick - clockTick >= (frequency >> 1))
-                        {
-                            clockTick = curTimeTick;
+                if (curTimeTick - clockTick >= (frequency >> 1))
+                {
+                    clockTick = curTimeTick;
                                 
-                            updateTime();
-                        }
+                    updateTime();
+                }
 
-                        if (contractProcessorState == 1)
+                if (contractProcessorState == 1)
+                {
+                    contractProcessorState = 2;
+                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
+                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, contractProcessor, computingProcessorNumber, contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL);
+                }
+                /*if (!computationProcessorState && (computation || __computation))
+                {
+                    numberOfAllSCs++;
+                    computationProcessorState = 1;
+                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &computationProcessorEvent);
+                    if (status = mpServicesProtocol->StartupThisAP(mpServicesProtocol, computationProcessor, computingProcessorNumber, computationProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL))
+                    {
+                        numberOfNonLaunchedSCs++;
+                        logStatus(L"EFI_MP_SERVICES_PROTOCOL.StartupThisAP() fails", status, __LINE__);
+                    }
+                }*/
+
+                peerTcp4Protocol->Poll(peerTcp4Protocol);
+
+                for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+                {
+                    if (((unsigned long long)peers[i].tcp4Protocol)
+                        && peers[i].connectAcceptToken.CompletionToken.Status != -1)
+                    {
+                        peers[i].isConnectingAccepting = FALSE;
+
+                        if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
                         {
-                            contractProcessorState = 2;
-                            bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
-                            mpServicesProtocol->StartupThisAP(mpServicesProtocol, contractProcessor, computingProcessorNumber, contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL);
-                        }
-                        /*if (!computationProcessorState && (computation || __computation))
-                        {
-                            numberOfAllSCs++;
-                            computationProcessorState = 1;
-                            bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &computationProcessorEvent);
-                            if (status = mpServicesProtocol->StartupThisAP(mpServicesProtocol, computationProcessor, computingProcessorNumber, computationProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL))
+                            if (peers[i].connectAcceptToken.CompletionToken.Status)
                             {
-                                numberOfNonLaunchedSCs++;
-                                logStatus(L"EFI_MP_SERVICES_PROTOCOL.StartupThisAP() fails", status, __LINE__);
+                                peers[i].connectAcceptToken.CompletionToken.Status = -1;
+                                forget(*((int*)peers[i].address));
+                                closePeer(&peers[i]);
                             }
-                        }*/
-
-                        peerTcp4Protocol->Poll(peerTcp4Protocol);
-
-                        for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
-                        {
-                            if (((unsigned long long)peers[i].tcp4Protocol)
-                                && peers[i].connectAcceptToken.CompletionToken.Status != -1)
+                            else
                             {
-                                peers[i].isConnectingAccepting = FALSE;
-
-                                if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
+                                peers[i].connectAcceptToken.CompletionToken.Status = -1;
+                                if (peers[i].isClosing)
                                 {
-                                    if (peers[i].connectAcceptToken.CompletionToken.Status)
-                                    {
-                                        peers[i].connectAcceptToken.CompletionToken.Status = -1;
-                                        forget(*((int*)peers[i].address));
-                                        closePeer(&peers[i]);
-                                    }
-                                    else
-                                    {
-                                        peers[i].connectAcceptToken.CompletionToken.Status = -1;
-                                        if (peers[i].isClosing)
-                                        {
-                                            closePeer(&peers[i]);
-                                        }
-                                        else
-                                        {
-                                            peers[i].isConnectedAccepted = TRUE;
-                                        }
-                                    }
+                                    closePeer(&peers[i]);
                                 }
                                 else
                                 {
-                                    if (peers[i].connectAcceptToken.CompletionToken.Status)
+                                    peers[i].isConnectedAccepted = TRUE;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            if (peers[i].connectAcceptToken.CompletionToken.Status)
+                            {
+                                peers[i].connectAcceptToken.CompletionToken.Status = -1;
+                                peers[i].tcp4Protocol = NULL;
+                            }
+                            else
+                            {
+                                peers[i].connectAcceptToken.CompletionToken.Status = -1;
+                                if (peers[i].isClosing)
+                                {
+                                    closePeer(&peers[i]);
+                                }
+                                else
+                                {
+                                    if (status = bs->OpenProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, (void**)&peers[i].tcp4Protocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL))
                                     {
-                                        peers[i].connectAcceptToken.CompletionToken.Status = -1;
+                                        logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
+
+                                        tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
                                         peers[i].tcp4Protocol = NULL;
                                     }
                                     else
                                     {
-                                        peers[i].connectAcceptToken.CompletionToken.Status = -1;
-                                        if (peers[i].isClosing)
-                                        {
-                                            closePeer(&peers[i]);
-                                        }
-                                        else
-                                        {
-                                            if (status = bs->OpenProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, (void**)&peers[i].tcp4Protocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL))
-                                            {
-                                                logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
-
-                                                tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
-                                                peers[i].tcp4Protocol = NULL;
-                                            }
-                                            else
-                                            {
-                                                peers[i].isConnectedAccepted = TRUE;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (peers[i].isConnectedAccepted)
-                                {
-                                    ExchangePublicPeers* request = (ExchangePublicPeers*)&peers[i].dataToTransmit[sizeof(RequestResponseHeader)];
-                                    bool noVerifiedPublicPeers = true;
-                                    for (unsigned int k = 0; k < numberOfPublicPeers; k++)
-                                    {
-                                        if (publicPeers[k].isVerified)
-                                        {
-                                            noVerifiedPublicPeers = false;
-
-                                            break;
-                                        }
-                                    }
-                                    for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS; j++)
-                                    {
-                                        const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                        if (publicPeers[publicPeerIndex].isVerified || noVerifiedPublicPeers)
-                                        {
-                                            *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
-                                        }
-                                        else
-                                        {
-                                            j--;
-                                        }
-                                    }
-
-                                    RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
-                                    requestHeader->setSize(sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers));
-                                    requestHeader->randomizeDejavu();
-                                    requestHeader->setType(EXCHANGE_PUBLIC_PEERS);
-                                    peers[i].dataToTransmitSize = requestHeader->size();
-                                    _InterlockedIncrement64(&numberOfDisseminatedRequests);
-
-                                    if (!broadcastedComputors.broadcastComputors.computors.epoch
-                                        || broadcastedComputors.broadcastComputors.computors.epoch != system.epoch)
-                                    {
-                                        requestedComputors.header.randomizeDejavu();
-                                        bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
-                                        peers[i].dataToTransmitSize += requestedComputors.header.size();
-                                        _InterlockedIncrement64(&numberOfDisseminatedRequests);
+                                        peers[i].isConnectedAccepted = TRUE;
                                     }
                                 }
                             }
+                        }
 
-                            if (((unsigned long long)peers[i].tcp4Protocol) > 1)
+                        if (peers[i].isConnectedAccepted)
+                        {
+                            ExchangePublicPeers* request = (ExchangePublicPeers*)&peers[i].dataToTransmit[sizeof(RequestResponseHeader)];
+                            bool noVerifiedPublicPeers = true;
+                            for (unsigned int k = 0; k < numberOfPublicPeers; k++)
                             {
-                                peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
-                            }
-
-                            if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-                            {
-                                if (peers[i].receiveToken.CompletionToken.Status != -1)
+                                if (publicPeers[k].isVerified)
                                 {
-                                    peers[i].isReceiving = FALSE;
-                                    if (peers[i].receiveToken.CompletionToken.Status)
-                                    {
-                                        peers[i].receiveToken.CompletionToken.Status = -1;
-                                        closePeer(&peers[i]);
-                                    }
-                                    else
-                                    {
-                                        peers[i].receiveToken.CompletionToken.Status = -1;
-                                        if (peers[i].isClosing)
-                                        {
-                                            closePeer(&peers[i]);
-                                        }
-                                        else
-                                        {
-                                            numberOfReceivedBytes += peers[i].receiveData.DataLength;
-                                            *((unsigned long long*)&peers[i].receiveData.FragmentTable[0].FragmentBuffer) += peers[i].receiveData.DataLength;
+                                    noVerifiedPublicPeers = false;
 
-                                        iteration:
-                                            unsigned int receivedDataSize = (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
-
-                                            if (receivedDataSize >= sizeof(RequestResponseHeader))
-                                            {
-                                                RequestResponseHeader* requestResponseHeader = (RequestResponseHeader*)peers[i].receiveBuffer;
-                                                if (requestResponseHeader->size() < sizeof(RequestResponseHeader))
-                                                {
-                                                    setText(message, L"Forgetting ");
-                                                    appendNumber(message, peers[i].address[0], FALSE);
-                                                    appendText(message, L".");
-                                                    appendNumber(message, peers[i].address[1], FALSE);
-                                                    appendText(message, L".");
-                                                    appendNumber(message, peers[i].address[2], FALSE);
-                                                    appendText(message, L".");
-                                                    appendNumber(message, peers[i].address[3], FALSE);
-                                                    appendText(message, L"...");
-                                                    forget(*((int*)peers[i].address));
-                                                    closePeer(&peers[i]);
-                                                }
-                                                else
-                                                {
-                                                    if (receivedDataSize >= requestResponseHeader->size())
-                                                    {
-                                                        unsigned int saltedId;
-
-                                                        const unsigned int header = *((unsigned int*)requestResponseHeader);
-                                                        *((unsigned int*)requestResponseHeader) = salt;
-                                                        KangarooTwelve(requestResponseHeader, header & 0xFFFFFF, &saltedId, sizeof(saltedId));
-                                                        *((unsigned int*)requestResponseHeader) = header;
-
-                                                        if (!((dejavu0[saltedId >> 6] | dejavu1[saltedId >> 6]) & (1ULL << (saltedId & 63))))
-                                                        {
-                                                            if ((requestQueueBufferHead >= requestQueueBufferTail || requestQueueBufferHead + requestResponseHeader->size() < requestQueueBufferTail)
-                                                                && (unsigned short)(requestQueueElementHead + 1) != requestQueueElementTail)
-                                                            {
-                                                                dejavu0[saltedId >> 6] |= (1ULL << (saltedId & 63));
-
-                                                                requestQueueElements[requestQueueElementHead].offset = requestQueueBufferHead;
-                                                                bs->CopyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
-                                                                requestQueueBufferHead += requestResponseHeader->size();
-                                                                requestQueueElements[requestQueueElementHead].peer = &peers[i];
-                                                                if (requestQueueBufferHead > REQUEST_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
-                                                                {
-                                                                    requestQueueBufferHead = 0;
-                                                                }
-                                                                // TODO: Place a fence
-                                                                requestQueueElementHead++;
-
-                                                                if (!(--dejavuSwapCounter))
-                                                                {
-                                                                    unsigned long long* tmp = dejavu1;
-                                                                    dejavu1 = dejavu0;
-                                                                    bs->SetMem(dejavu0 = tmp, 536870912, 0);
-                                                                    dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
-                                                                }
-                                                            }
-                                                            else
-                                                            {
-                                                                _InterlockedIncrement64(&numberOfDiscardedRequests);
-                                                            }
-                                                        }
-                                                        else
-                                                        {
-                                                            _InterlockedIncrement64(&numberOfDuplicateRequests);
-                                                        }
-
-                                                        bs->CopyMem(peers[i].receiveBuffer, ((char*)peers[i].receiveBuffer) + requestResponseHeader->size(), receivedDataSize -= requestResponseHeader->size());
-                                                        peers[i].receiveData.FragmentTable[0].FragmentBuffer = ((char*)peers[i].receiveBuffer) + receivedDataSize;
-
-                                                        goto iteration;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                                    break;
                                 }
                             }
-                            if (((unsigned long long)peers[i].tcp4Protocol) > 1)
+                            for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS; j++)
                             {
-                                if (!peers[i].isReceiving && peers[i].isConnectedAccepted && !peers[i].isClosing)
+                                const unsigned int publicPeerIndex = random(numberOfPublicPeers);
+                                if (publicPeers[publicPeerIndex].isVerified || noVerifiedPublicPeers)
                                 {
-                                    if ((((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer)) < BUFFER_SIZE)
-                                    {
-                                        peers[i].receiveData.DataLength = peers[i].receiveData.FragmentTable[0].FragmentLength = BUFFER_SIZE - (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
-                                        if (peers[i].receiveData.DataLength)
-                                        {
-                                            EFI_TCP4_CONNECTION_STATE state;
-                                            if ((status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL))
-                                                || state == Tcp4StateClosed)
-                                            {
-                                                closePeer(&peers[i]);
-                                            }
-                                            else
-                                            {
-                                                if (status = peers[i].tcp4Protocol->Receive(peers[i].tcp4Protocol, &peers[i].receiveToken))
-                                                {
-                                                    if (status != EFI_CONNECTION_FIN)
-                                                    {
-                                                        logStatus(L"EFI_TCP4_PROTOCOL.Receive() fails", status, __LINE__);
-                                                    }
-
-                                                    closePeer(&peers[i]);
-                                                }
-                                                else
-                                                {
-                                                    peers[i].isReceiving = TRUE;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-                            {
-                                if (peers[i].transmitToken.CompletionToken.Status != -1)
-                                {
-                                    peers[i].isTransmitting = FALSE;
-                                    if (peers[i].transmitToken.CompletionToken.Status)
-                                    {
-                                        peers[i].transmitToken.CompletionToken.Status = -1;
-                                        closePeer(&peers[i]);
-                                    }
-                                    else
-                                    {
-                                        peers[i].transmitToken.CompletionToken.Status = -1;
-                                        if (peers[i].isClosing)
-                                        {
-                                            closePeer(&peers[i]);
-                                        }
-                                        else
-                                        {
-                                            numberOfTransmittedBytes += peers[i].transmitData.DataLength;
-                                        }
-                                    }
-                                }
-                            }
-                            if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-                            {
-                                if (peers[i].dataToTransmitSize && !peers[i].isTransmitting && peers[i].isConnectedAccepted && !peers[i].isClosing)
-                                {
-                                    bs->CopyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
-                                    peers[i].dataToTransmitSize = 0;
-                                    if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
-                                    {
-                                        logStatus(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
-
-                                        closePeer(&peers[i]);
-                                    }
-                                    else
-                                    {
-                                        peers[i].isTransmitting = TRUE;
-                                    }
-                                }
-                            }
-
-                            if (!peers[i].tcp4Protocol)
-                            {
-                                if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
-                                {
-                                    *((int*)peers[i].address) = *((int*)publicPeers[random(numberOfPublicPeers)].address);
-
-                                    unsigned int j;
-                                    for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
-                                    {
-                                        if (peers[j].tcp4Protocol && *((int*)peers[j].address) == *((int*)peers[i].address))
-                                        {
-                                            break;
-                                        }
-                                    }
-                                    if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
-                                    {
-                                        if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address, PORT, &peers[i].tcp4Protocol))
-                                        {
-                                            peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                                            peers[i].dataToTransmitSize = 0;
-                                            peers[i].isReceiving = FALSE;
-                                            peers[i].isTransmitting = FALSE;
-                                            peers[i].exchangedPublicPeers = FALSE;
-                                            peers[i].isClosing = FALSE;
-
-                                            if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
-                                            {
-                                                logStatus(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
-
-                                                bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
-                                                tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
-                                                peers[i].tcp4Protocol = NULL;
-                                            }
-                                            else
-                                            {
-                                                peers[i].isConnectingAccepting = TRUE;
-                                            }
-                                        }
-                                        else
-                                        {
-                                            peers[i].tcp4Protocol = NULL;
-                                        }
-                                    }
+                                    *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
                                 }
                                 else
                                 {
-                                    if (!listOfPeersIsStatic)
-                                    {
-                                        peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                                        peers[i].dataToTransmitSize = 0;
-                                        peers[i].isReceiving = FALSE;
-                                        peers[i].isTransmitting = FALSE;
-                                        peers[i].exchangedPublicPeers = FALSE;
-                                        peers[i].isClosing = FALSE;
-
-                                        if (status = peerTcp4Protocol->Accept(peerTcp4Protocol, &peers[i].connectAcceptToken))
-                                        {
-                                            logStatus(L"EFI_TCP4_PROTOCOL.Accept() fails", status, __LINE__);
-                                        }
-                                        else
-                                        {
-                                            peers[i].isConnectingAccepting = TRUE;
-                                            peers[i].tcp4Protocol = (EFI_TCP4_PROTOCOL*)1;
-                                        }
-                                    }
+                                    j--;
                                 }
                             }
-                        }
 
-                        if (curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
-                        {
-                            systemDataSavingTick = curTimeTick;
+                            RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
+                            requestHeader->setSize<sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers)>();
+                            requestHeader->randomizeDejavu();
+                            requestHeader->setType(EXCHANGE_PUBLIC_PEERS);
+                            peers[i].dataToTransmitSize = requestHeader->size();
+                            _InterlockedIncrement64(&numberOfDisseminatedRequests);
 
-                            saveSystem();
-                            saveScoreCache();
-                        }
-
-                        if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
-                        {
-                            peerRefreshingTick = curTimeTick;
-
-                            for (unsigned int i = 0; i < (NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS) / 4; i++)
+                            if (!broadcastedComputors.broadcastComputors.computors.epoch
+                                || broadcastedComputors.broadcastComputors.computors.epoch != system.epoch)
                             {
-                                closePeer(&peers[random(NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS)]);
+                                requestedComputors.header.randomizeDejavu();
+                                bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
+                                peers[i].dataToTransmitSize += requestedComputors.header.size();
+                                _InterlockedIncrement64(&numberOfDisseminatedRequests);
                             }
-                        }
-
-                        if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000)
-                        {
-                            tickRequestingTick = curTimeTick;
-
-                            if (tickRequestingIndicator == tickTotalNumberOfComputors)
-                            {
-                                requestedQuorumTick.header.randomizeDejavu();
-                                requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
-                                bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
-                                const unsigned int baseOffset = (system.tick - system.initialTick) * NUMBER_OF_COMPUTORS;
-                                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                                {
-                                    const Tick* tick = &ticks[baseOffset + i];
-                                    if (tick->epoch == system.epoch)
-                                    {
-                                        requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags[i >> 3] |= (1 << (i & 7));
-                                    }
-                                }
-                                pushToAny(&requestedQuorumTick.header);
-                            }
-                            tickRequestingIndicator = tickTotalNumberOfComputors;
-                            if (futureTickRequestingIndicator == futureTickTotalNumberOfComputors)
-                            {
-                                requestedQuorumTick.header.randomizeDejavu();
-                                requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
-                                bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
-                                const unsigned int baseOffset = (system.tick + 1 - system.initialTick) * NUMBER_OF_COMPUTORS;
-                                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                                {
-                                    const Tick* tick = &ticks[baseOffset + i];
-                                    if (tick->epoch == system.epoch)
-                                    {
-                                        requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags[i >> 3] |= (1 << (i & 7));
-                                    }
-                                }
-                                pushToAny(&requestedQuorumTick.header);
-                            }
-                            futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
-                            
-                            if (tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
-                                || targetNextTickDataDigestIsKnown)
-                            {
-                                requestedTickData.header.randomizeDejavu();
-                                requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
-                                pushToAny(&requestedTickData.header);
-                            }
-                            if (tickData[system.tick + 2 - system.initialTick].epoch != system.epoch)
-                            {
-                                requestedTickData.header.randomizeDejavu();
-                                requestedTickData.requestTickData.requestedTickData.tick = system.tick + 2;
-                                pushToAny(&requestedTickData.header);
-                            }
-
-                            if (requestedTickTransactions.requestedTickTransactions.tick)
-                            {
-                                requestedTickTransactions.header.randomizeDejavu();
-                                pushToAny(&requestedTickTransactions.header);
-
-                                requestedTickTransactions.requestedTickTransactions.tick = 0;
-                            }
-                        }
-
-                        const unsigned short responseQueueElementHead = ::responseQueueElementHead;
-                        if (responseQueueElementTail != responseQueueElementHead)
-                        {
-                            while (responseQueueElementTail != responseQueueElementHead)
-                            {
-                                RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueElements[responseQueueElementTail].offset];
-                                if (responseQueueElements[responseQueueElementTail].peer)
-                                {
-                                    push(responseQueueElements[responseQueueElementTail].peer, responseHeader);
-                                }
-                                else
-                                {
-                                    pushToSeveral(responseHeader);
-                                }
-                                responseQueueBufferTail += responseHeader->size();
-                                if (responseQueueBufferTail > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
-                                {
-                                    responseQueueBufferTail = 0;
-                                }
-                                // TODO: Place a fence
-                                responseQueueElementTail++;
-                            }
-                        }
-
-                        if (systemMustBeSaved)
-                        {
-                            systemMustBeSaved = false;
-                            saveSystem();
-                        }
-                        if (spectrumMustBeSaved)
-                        {
-                            spectrumMustBeSaved = false;
-                            saveSpectrum();
-                        }
-                        if (universeMustBeSaved)
-                        {
-                            universeMustBeSaved = false;
-                            saveUniverse();
-                        }
-                        if (computerMustBeSaved)
-                        {
-                            computerMustBeSaved = false;
-                            saveComputer();
-                        }
-
-                        processKeyPresses();
-
-                        if (curTimeTick - loggingTick >= frequency)
-                        {
-                            loggingTick = curTimeTick;
-
-                            logInfo();
-
-                            if (mainLoopDenominator)
-                            {
-                                setText(message, L"Main loop duration = ");
-                                appendNumber(message, (mainLoopNumerator / mainLoopDenominator) * 1000000 / frequency, TRUE);
-                                appendText(message, L" mcs.");
-                                log(message);
-                            }
-                            mainLoopNumerator = 0;
-                            mainLoopDenominator = 0;
-
-                            if (tickerLoopDenominator)
-                            {
-                                setText(message, L"Ticker loop duration = ");
-                                appendNumber(message, (tickerLoopNumerator / tickerLoopDenominator) * 1000000 / frequency, TRUE);
-                                appendText(message, L" microseconds. Latest created tick = ");
-                                appendNumber(message, system.latestCreatedTick, TRUE);
-                                appendText(message, L".");
-                                log(message);
-                            }
-                            tickerLoopNumerator = 0;
-                            tickerLoopDenominator = 0;
-                        }
-                        else
-                        {
-                            mainLoopNumerator += __rdtsc() - curTimeTick;
-                            mainLoopDenominator++;
                         }
                     }
 
-                    bs->CloseProtocol(peerChildHandle, &tcp4ProtocolGuid, ih, NULL);
-                    tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peerChildHandle);
+                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
+                    {
+                        peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
+                    }
+
+                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
+                    {
+                        if (peers[i].receiveToken.CompletionToken.Status != -1)
+                        {
+                            peers[i].isReceiving = FALSE;
+                            if (peers[i].receiveToken.CompletionToken.Status)
+                            {
+                                peers[i].receiveToken.CompletionToken.Status = -1;
+                                closePeer(&peers[i]);
+                            }
+                            else
+                            {
+                                peers[i].receiveToken.CompletionToken.Status = -1;
+                                if (peers[i].isClosing)
+                                {
+                                    closePeer(&peers[i]);
+                                }
+                                else
+                                {
+                                    numberOfReceivedBytes += peers[i].receiveData.DataLength;
+                                    *((unsigned long long*)&peers[i].receiveData.FragmentTable[0].FragmentBuffer) += peers[i].receiveData.DataLength;
+
+                                iteration:
+                                    unsigned int receivedDataSize = (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
+
+                                    if (receivedDataSize >= sizeof(RequestResponseHeader))
+                                    {
+                                        RequestResponseHeader* requestResponseHeader = (RequestResponseHeader*)peers[i].receiveBuffer;
+                                        if (requestResponseHeader->size() < sizeof(RequestResponseHeader))
+                                        {
+                                            setText(message, L"Forgetting ");
+                                            appendNumber(message, peers[i].address[0], FALSE);
+                                            appendText(message, L".");
+                                            appendNumber(message, peers[i].address[1], FALSE);
+                                            appendText(message, L".");
+                                            appendNumber(message, peers[i].address[2], FALSE);
+                                            appendText(message, L".");
+                                            appendNumber(message, peers[i].address[3], FALSE);
+                                            appendText(message, L"...");
+                                            forget(*((int*)peers[i].address));
+                                            closePeer(&peers[i]);
+                                        }
+                                        else
+                                        {
+                                            if (receivedDataSize >= requestResponseHeader->size())
+                                            {
+                                                unsigned int saltedId;
+
+                                                const unsigned int header = *((unsigned int*)requestResponseHeader);
+                                                *((unsigned int*)requestResponseHeader) = salt;
+                                                KangarooTwelve(requestResponseHeader, header & 0xFFFFFF, &saltedId, sizeof(saltedId));
+                                                *((unsigned int*)requestResponseHeader) = header;
+
+                                                // Initiate transfer of already received packet to processing thread
+                                                // (or drop it without processing if Dejavu filter tells to ignore it)
+                                                if (!((dejavu0[saltedId >> 6] | dejavu1[saltedId >> 6]) & (1ULL << (saltedId & 63))))
+                                                {
+                                                    if ((requestQueueBufferHead >= requestQueueBufferTail || requestQueueBufferHead + requestResponseHeader->size() < requestQueueBufferTail)
+                                                        && (unsigned short)(requestQueueElementHead + 1) != requestQueueElementTail)
+                                                    {
+                                                        dejavu0[saltedId >> 6] |= (1ULL << (saltedId & 63));
+
+                                                        requestQueueElements[requestQueueElementHead].offset = requestQueueBufferHead;
+                                                        bs->CopyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
+                                                        requestQueueBufferHead += requestResponseHeader->size();
+                                                        requestQueueElements[requestQueueElementHead].peer = &peers[i];
+                                                        if (requestQueueBufferHead > REQUEST_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
+                                                        {
+                                                            requestQueueBufferHead = 0;
+                                                        }
+                                                        // TODO: Place a fence
+                                                        requestQueueElementHead++;
+
+                                                        if (!(--dejavuSwapCounter))
+                                                        {
+                                                            unsigned long long* tmp = dejavu1;
+                                                            dejavu1 = dejavu0;
+                                                            bs->SetMem(dejavu0 = tmp, 536870912, 0);
+                                                            dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        _InterlockedIncrement64(&numberOfDiscardedRequests);
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    _InterlockedIncrement64(&numberOfDuplicateRequests);
+                                                }
+
+                                                bs->CopyMem(peers[i].receiveBuffer, ((char*)peers[i].receiveBuffer) + requestResponseHeader->size(), receivedDataSize -= requestResponseHeader->size());
+                                                peers[i].receiveData.FragmentTable[0].FragmentBuffer = ((char*)peers[i].receiveBuffer) + receivedDataSize;
+
+                                                goto iteration;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
+                    {
+                        if (!peers[i].isReceiving && peers[i].isConnectedAccepted && !peers[i].isClosing)
+                        {
+                            if ((((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer)) < BUFFER_SIZE)
+                            {
+                                peers[i].receiveData.DataLength = peers[i].receiveData.FragmentTable[0].FragmentLength = BUFFER_SIZE - (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
+                                if (peers[i].receiveData.DataLength)
+                                {
+                                    EFI_TCP4_CONNECTION_STATE state;
+                                    if ((status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL))
+                                        || state == Tcp4StateClosed)
+                                    {
+                                        closePeer(&peers[i]);
+                                    }
+                                    else
+                                    {
+                                        // Initiate receiving data. At the same moment buffer may already contain a message of
+                                        // up to 16MB size, we don't wait for this message to be passed on to processing thread.
+                                        if (status = peers[i].tcp4Protocol->Receive(peers[i].tcp4Protocol, &peers[i].receiveToken))
+                                        {
+                                            if (status != EFI_CONNECTION_FIN)
+                                            {
+                                                logStatus(L"EFI_TCP4_PROTOCOL.Receive() fails", status, __LINE__);
+                                            }
+
+                                            closePeer(&peers[i]);
+                                        }
+                                        else
+                                        {
+                                            peers[i].isReceiving = TRUE;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
+                    {
+                        if (peers[i].transmitToken.CompletionToken.Status != -1)
+                        {
+                            peers[i].isTransmitting = FALSE;
+                            if (peers[i].transmitToken.CompletionToken.Status)
+                            {
+                                peers[i].transmitToken.CompletionToken.Status = -1;
+                                closePeer(&peers[i]);
+                            }
+                            else
+                            {
+                                peers[i].transmitToken.CompletionToken.Status = -1;
+                                if (peers[i].isClosing)
+                                {
+                                    closePeer(&peers[i]);
+                                }
+                                else
+                                {
+                                    numberOfTransmittedBytes += peers[i].transmitData.DataLength;
+                                }
+                            }
+                        }
+                    }
+                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
+                    {
+                        if (peers[i].dataToTransmitSize && !peers[i].isTransmitting && peers[i].isConnectedAccepted && !peers[i].isClosing)
+                        {
+                            bs->CopyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
+                            peers[i].dataToTransmitSize = 0;
+                            if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
+                            {
+                                logStatus(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
+
+                                closePeer(&peers[i]);
+                            }
+                            else
+                            {
+                                peers[i].isTransmitting = TRUE;
+                            }
+                        }
+                    }
+
+                    if (!peers[i].tcp4Protocol)
+                    {
+                        if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
+                        {
+                            *((int*)peers[i].address) = *((int*)publicPeers[random(numberOfPublicPeers)].address);
+
+                            unsigned int j;
+                            for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
+                            {
+                                if (peers[j].tcp4Protocol && *((int*)peers[j].address) == *((int*)peers[i].address))
+                                {
+                                    break;
+                                }
+                            }
+                            if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
+                            {
+                                if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address, PORT, &peers[i].tcp4Protocol))
+                                {
+                                    peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
+                                    peers[i].dataToTransmitSize = 0;
+                                    peers[i].isReceiving = FALSE;
+                                    peers[i].isTransmitting = FALSE;
+                                    peers[i].exchangedPublicPeers = FALSE;
+                                    peers[i].isClosing = FALSE;
+
+                                    if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
+                                    {
+                                        logStatus(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
+
+                                        bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
+                                        tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
+                                        peers[i].tcp4Protocol = NULL;
+                                    }
+                                    else
+                                    {
+                                        peers[i].isConnectingAccepting = TRUE;
+                                    }
+                                }
+                                else
+                                {
+                                    peers[i].tcp4Protocol = NULL;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            if (!listOfPeersIsStatic)
+                            {
+                                peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
+                                peers[i].dataToTransmitSize = 0;
+                                peers[i].isReceiving = FALSE;
+                                peers[i].isTransmitting = FALSE;
+                                peers[i].exchangedPublicPeers = FALSE;
+                                peers[i].isClosing = FALSE;
+
+                                if (status = peerTcp4Protocol->Accept(peerTcp4Protocol, &peers[i].connectAcceptToken))
+                                {
+                                    logStatus(L"EFI_TCP4_PROTOCOL.Accept() fails", status, __LINE__);
+                                }
+                                else
+                                {
+                                    peers[i].isConnectingAccepting = TRUE;
+                                    peers[i].tcp4Protocol = (EFI_TCP4_PROTOCOL*)1;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
+                {
+                    systemDataSavingTick = curTimeTick;
 
                     saveSystem();
-                    saveScoreCache();
+                    score.saveScoreCache();
+                }
 
-                    setText(message, L"Qubic ");
-                    appendQubicVersion(message);
-                    appendText(message, L" is shut down.");
-                    log(message);
+                if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
+                {
+                    peerRefreshingTick = curTimeTick;
+
+                    for (unsigned int i = 0; i < (NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS) / 4; i++)
+                    {
+                        closePeer(&peers[random(NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS)]);
+                    }
+                }
+
+                if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000)
+                {
+                    tickRequestingTick = curTimeTick;
+
+                    if (tickRequestingIndicator == tickTotalNumberOfComputors)
+                    {
+                        requestedQuorumTick.header.randomizeDejavu();
+                        requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
+                        bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
+                        const unsigned int baseOffset = (system.tick - system.initialTick) * NUMBER_OF_COMPUTORS;
+                        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                        {
+                            const Tick* tick = &ticks[baseOffset + i];
+                            if (tick->epoch == system.epoch)
+                            {
+                                requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags[i >> 3] |= (1 << (i & 7));
+                            }
+                        }
+                        pushToAny(&requestedQuorumTick.header);
+                    }
+                    tickRequestingIndicator = tickTotalNumberOfComputors;
+                    if (futureTickRequestingIndicator == futureTickTotalNumberOfComputors)
+                    {
+                        requestedQuorumTick.header.randomizeDejavu();
+                        requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
+                        bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
+                        const unsigned int baseOffset = (system.tick + 1 - system.initialTick) * NUMBER_OF_COMPUTORS;
+                        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                        {
+                            const Tick* tick = &ticks[baseOffset + i];
+                            if (tick->epoch == system.epoch)
+                            {
+                                requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags[i >> 3] |= (1 << (i & 7));
+                            }
+                        }
+                        pushToAny(&requestedQuorumTick.header);
+                    }
+                    futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
+ 
+                    if (tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
+                        || targetNextTickDataDigestIsKnown)
+                    {
+                        requestedTickData.header.randomizeDejavu();
+                        requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
+                        pushToAny(&requestedTickData.header);
+                    }
+                    if (tickData[system.tick + 2 - system.initialTick].epoch != system.epoch)
+                    {
+                        requestedTickData.header.randomizeDejavu();
+                        requestedTickData.requestTickData.requestedTickData.tick = system.tick + 2;
+                        pushToAny(&requestedTickData.header);
+                    }
+
+                    if (requestedTickTransactions.requestedTickTransactions.tick)
+                    {
+                        requestedTickTransactions.header.randomizeDejavu();
+                        pushToAny(&requestedTickTransactions.header);
+
+                        requestedTickTransactions.requestedTickTransactions.tick = 0;
+                    }
+                }
+
+                const unsigned short responseQueueElementHead = ::responseQueueElementHead;
+                if (responseQueueElementTail != responseQueueElementHead)
+                {
+                    while (responseQueueElementTail != responseQueueElementHead)
+                    {
+                        RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueElements[responseQueueElementTail].offset];
+                        if (responseQueueElements[responseQueueElementTail].peer)
+                        {
+                            push(responseQueueElements[responseQueueElementTail].peer, responseHeader);
+                        }
+                        else
+                        {
+                            pushToSeveral(responseHeader);
+                        }
+                        responseQueueBufferTail += responseHeader->size();
+                        if (responseQueueBufferTail > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
+                        {
+                            responseQueueBufferTail = 0;
+                        }
+                        // TODO: Place a fence
+                        responseQueueElementTail++;
+                    }
+                }
+
+                if (systemMustBeSaved)
+                {
+                    systemMustBeSaved = false;
+                    saveSystem();
+                }
+                if (spectrumMustBeSaved)
+                {
+                    spectrumMustBeSaved = false;
+                    saveSpectrum();
+                }
+                if (universeMustBeSaved)
+                {
+                    universeMustBeSaved = false;
+                    saveUniverse();
+                }
+                if (computerMustBeSaved)
+                {
+                    computerMustBeSaved = false;
+                    saveComputer();
+                }
+
+                processKeyPresses();
+
+                if (curTimeTick - loggingTick >= frequency)
+                {
+                    loggingTick = curTimeTick;
+
+                    logInfo();
+
+                    if (mainLoopDenominator)
+                    {
+                        setText(message, L"Main loop duration = ");
+                        appendNumber(message, (mainLoopNumerator / mainLoopDenominator) * 1000000 / frequency, TRUE);
+                        appendText(message, L" mcs.");
+                        log(message);
+                    }
+                    mainLoopNumerator = 0;
+                    mainLoopDenominator = 0;
+
+                    if (tickerLoopDenominator)
+                    {
+                        setText(message, L"Ticker loop duration = ");
+                        appendNumber(message, (tickerLoopNumerator / tickerLoopDenominator) * 1000000 / frequency, TRUE);
+                        appendText(message, L" microseconds. Latest created tick = ");
+                        appendNumber(message, system.latestCreatedTick, TRUE);
+                        appendText(message, L".");
+                        log(message);
+                    }
+                    tickerLoopNumerator = 0;
+                    tickerLoopDenominator = 0;
+                }
+                else
+                {
+                    mainLoopNumerator += __rdtsc() - curTimeTick;
+                    mainLoopDenominator++;
                 }
             }
+
+            saveSystem();
+            score.saveScoreCache();
+
+            setText(message, L"Qubic ");
+            appendQubicVersion(message);
+            appendText(message, L" is shut down.");
+            log(message);
         }
     }
     else
@@ -6160,7 +5885,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     deinitialize();
 
     bs->Stall(1000000);
-    if (!state)
+    if (!shutDownNode)
     {
         st->ConIn->Reset(st->ConIn, FALSE);
         unsigned long long eventIndex;
