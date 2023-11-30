@@ -6,6 +6,7 @@
 
 typedef void (*SYSTEM_PROCEDURE)(void*);
 typedef void (*EXPAND_PROCEDURE)(void*, void*);
+typedef void (*USER_FUNCTION)(void*, void*, void*);
 typedef void (*USER_PROCEDURE)(void*, void*, void*);
 
 struct Entity
@@ -36,8 +37,8 @@ static unsigned char __minute();
 static unsigned char __month();
 static m256i __nextId(const m256i&);
 static m256i __originator();
-static void __registerUserFunction(USER_PROCEDURE, unsigned short, unsigned short);
-static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short);
+static void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short);
+static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short);
 static unsigned char __second();
 static unsigned int __tick();
 static long long __transfer(const m256i&, long long);
@@ -94,8 +95,12 @@ constexpr struct ContractDescription
 
 static SYSTEM_PROCEDURE contractSystemProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][5];
 static EXPAND_PROCEDURE contractExpandProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])];
+static USER_FUNCTION contractUserFunctions[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
+static unsigned short contractUserFunctionInputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
+static unsigned short contractUserFunctionOutputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
 static USER_PROCEDURE contractUserProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
 static unsigned short contractUserProcedureInputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
+static unsigned short contractUserProcedureOutputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
 
 #pragma warning(push)
 #pragma warning(disable: 4005)

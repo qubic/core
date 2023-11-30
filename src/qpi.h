@@ -5117,7 +5117,9 @@ namespace QPI
 
 	#define _ ::__endFunctionOrProcedure(__functionOrProcedureId); }
 
-	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) __registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input));
+	#define REGISTER_USER_FUNCTION(userFunction, inputType) __registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output));
+
+	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) __registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output));
 
 	#define SELF _mm256_set_epi64x(0, 0, 0, CONTRACT_INDEX)
 }

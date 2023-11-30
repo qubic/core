@@ -478,6 +478,31 @@ typedef struct
     // TODO: Add siblings
 } RespondPossessedAssets;
 
+
+struct RequestContractFunction // Invokes contract function
+{
+    unsigned int contractIndex;
+    unsigned short inputType;
+    unsigned short inputSize;
+    // Variable-size input
+
+    static constexpr unsigned char type()
+    {
+        return 42;
+    }
+};
+
+
+struct RespondContractFunction // Returns result of contract function invocation
+{
+    // Variable-size output; the size must be 0 if the invocation has failed for whatever reason (e.g. no a function registered for [inputType], or the function has timed out)
+
+    static constexpr unsigned char type()
+    {
+        return 43;
+    }
+};
+
 struct ComputorProposal
 {
     unsigned char uriSize;
@@ -643,8 +668,12 @@ static m256i currentContract;
 static unsigned char* contractStates[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])];
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 static unsigned long long* contractStateChangeFlags = NULL;
-static unsigned long long* functionFlags = NULL;
-static unsigned char executedContractInput[65536];
+static volatile char contractStateCopyLock = 0;
+static char* contractStateCopy = NULL;
+static char contractFunctionInputs[MAX_NUMBER_OF_PROCESSORS][65536];
+static char* contractFunctionOutputs[MAX_NUMBER_OF_PROCESSORS];
+static char executedContractInput[65536];
+static char executedContractOutput[RequestResponseHeader::max_size + 1];
 
 static volatile char tickLocks[NUMBER_OF_COMPUTORS];
 static bool targetNextTickDataDigestIsKnown = false;
@@ -2015,6 +2044,40 @@ iteration:
     RELEASE(universeLock);
 }
 
+static void requestContractFunction(Peer* peer, const unsigned long long processorNumber, Processor* processor, RequestResponseHeader* header)
+{
+    // TODO: Invoked function may enter endless loop, so a timeout (and restart) is required for request processing threads
+    // TODO: Enable parallel execution of contract functions
+
+    RespondContractFunction* response = (RespondContractFunction*)contractFunctionOutputs[processorNumber];
+
+    RequestContractFunction* request = (RequestContractFunction*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    executedContractIndex = request->contractIndex;
+    if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
+        || !executedContractIndex || executedContractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
+        || system.epoch < contractDescriptions[executedContractIndex].constructionEpoch
+        || !contractUserFunctions[executedContractIndex][request->inputType])
+    {
+        enqueueResponse(peer, 0, response->type(), header->dejavu(), NULL);
+    }
+    else
+    {
+        ::originator = _mm256_setzero_si256();
+        ::invocator = ::originator;
+        ::invocationReward = 0;
+        currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
+
+        bs->SetMem(&contractFunctionInputs[processorNumber], sizeof(contractFunctionInputs[processorNumber]), 0);
+        bs->CopyMem(&contractFunctionInputs[processorNumber], (((unsigned char*)request) + sizeof(RequestContractFunction)), request->inputSize);
+        ACQUIRE(contractStateCopyLock); // A single contract state buffer is used because of lack of memory, if we could afford we would use a buffer per request processing thread
+        bs->CopyMem(contractStateCopy, contractStates[executedContractIndex], contractDescriptions[executedContractIndex].stateSize);
+        contractUserFunctions[executedContractIndex][request->inputType](contractStateCopy, &contractFunctionInputs[processorNumber], response);
+        RELEASE(contractStateCopyLock);
+
+        enqueueResponse(peer, contractUserFunctionOutputSizes[executedContractIndex][request->inputType], response->type(), header->dejavu(), response);
+    }
+}
+
 static void processSpecialCommand(Peer* peer, Processor* processor, RequestResponseHeader* header)
 {
     SpecialCommand* request = (SpecialCommand*)((char*)processor->buffer + sizeof(RequestResponseHeader));
@@ -2217,6 +2280,12 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestContractFunction::type():
+                {
+                    requestContractFunction(peer, processorNumber, processor, header);
+                }
+                break;
+
                 case PROCESS_SPECIAL_COMMAND:
                 {
                     processSpecialCommand(peer, processor, header);
@@ -2235,32 +2304,26 @@ static void requestProcessor(void* ProcedureArgument)
 
 static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
-    if (functionFlags[functionOrProcedureId >> 6] & (1ULL << (functionOrProcedureId & 63)))
-    {
-        // TODO
-    }
-    else
-    {
-        functionFlags[functionOrProcedureId >> 6] |= (1ULL << (functionOrProcedureId & 63));
-    }
+    // TODO
 }
 
 static void __endFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
-    functionFlags[functionOrProcedureId >> 6] &= ~(1ULL << (functionOrProcedureId & 63));
-
     contractStateChangeFlags[functionOrProcedureId >> (22 + 6)] |= (1ULL << ((functionOrProcedureId >> 22) & 63));
 }
 
-static void __registerUserFunction(unsigned short inputType, unsigned short inputSize)
+static void __registerUserFunction(USER_FUNCTION userFunction, unsigned short inputType, unsigned short inputSize, unsigned short outputSize)
 {
-    // TODO
+    contractUserFunctions[executedContractIndex][inputType] = userFunction;
+    contractUserFunctionInputSizes[executedContractIndex][inputType] = inputSize;
+    contractUserFunctionInputSizes[executedContractIndex][inputType] = outputSize;
 }
 
-static void __registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize)
+static void __registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize, unsigned short outputSize)
 {
     contractUserProcedures[executedContractIndex][inputType] = userProcedure;
     contractUserProcedureInputSizes[executedContractIndex][inputType] = inputSize;
+    contractUserProcedureInputSizes[executedContractIndex][inputType] = outputSize;
 }
 
 static const m256i& __arbitrator()
@@ -2841,7 +2904,7 @@ static void processTick(unsigned long long processorNumber)
 
                                             bs->SetMem(&executedContractInput, sizeof(executedContractInput), 0);
                                             bs->CopyMem(&executedContractInput, (((unsigned char*)transaction) + sizeof(Transaction)), transaction->inputSize);
-                                            contractUserProcedures[executedContractIndex][transaction->inputType](contractStates[executedContractIndex], &executedContractInput, NULL);
+                                            contractUserProcedures[executedContractIndex][transaction->inputType](contractStates[executedContractIndex], &executedContractInput, &executedContractOutput);
                                         }
                                     }
                                 }
@@ -4289,7 +4352,12 @@ static bool initialize()
         contractStates[contractIndex] = NULL;
     }
     bs->SetMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
+    bs->SetMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
     bs->SetMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
+    for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
+    {
+        contractFunctionOutputs[processorIndex] = NULL;
+    }
 
     getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
     if (isZero(operatorPublicKey))
@@ -4403,14 +4471,22 @@ static bool initialize()
             }
         }
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&functionFlags)))
+            || (status = bs->AllocatePool(EfiRuntimeServicesData, MAX_CONTRACT_STATE_SIZE, (void**)&contractStateCopy)))
         {
             logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
         bs->SetMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);
-        bs->SetMem(functionFlags, 536870912, 0);
+        for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
+        {
+            if (status = bs->AllocatePool(EfiRuntimeServicesData, RequestResponseHeader::max_size - sizeof(RequestResponseHeader), (void**)&contractFunctionOutputs[processorIndex]))
+            {
+                logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+
+                return false;
+            }
+        }
 
         bs->SetMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
@@ -4669,9 +4745,16 @@ static void deinitialize()
         bs->FreePool(reorgBuffer);
     }
 
-    if (functionFlags)
+    for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
     {
-        bs->FreePool(functionFlags);
+        if (contractFunctionOutputs[processorIndex])
+        {
+            bs->FreePool(contractFunctionOutputs[processorIndex]);
+        }
+    }
+    if (contractStateCopy)
+    {
+        bs->FreePool(contractStateCopy);
     }
     if (contractStateChangeFlags)
     {
