@@ -11,5 +11,19 @@ static unsigned char computorSeeds[][55 + 1] = {
 };
 
 static const unsigned char knownPublicPeers[][4] = {
-    {127,0,0,1} // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN ADDRESS
+    {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
+};
+
+#define LOG_BUFFER_SIZE 16777216 // Must be below [4 GiB minus 16 B minus 16 MiB], each log reader gets own buffer
+#define LOG_QU_TRANSFERS 0 // "0" disables logging, "1" enables it
+#define LOG_ASSET_ISSUANCES 0
+#define LOG_ASSET_OWNERSHIP_CHANGES 0
+#define LOG_ASSET_POSSESSION_CHANGES 0
+#define LOG_CONTRACT_ERROR_MESSAGES 0
+#define LOG_CONTRACT_WARNING_MESSAGES 0
+#define LOG_CONTRACT_INFORMATION_MESSAGES 0
+#define LOG_CONTRACT_DEBUG_MESSAGES 0
+#define LOG_CUSTOM_MESSAGES 0
+static unsigned long long logReaderPasscodes[][4] = {
+    {0, 0, 0, 0}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN RANDOM NUMBERS IN [0..18446744073709551615] RANGE IF LOGGING IS ENABLED
 };

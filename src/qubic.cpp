@@ -503,6 +503,29 @@ struct RespondContractFunction // Returns result of contract function invocation
     }
 };
 
+
+struct RequestLog // Fetches log
+{
+    unsigned long long passcode[4];
+
+    static constexpr unsigned char type()
+    {
+        return 44;
+    }
+};
+
+
+struct RespondLog // Returns buffered log; clears the buffer; make sure you fetch log quickly enough, if the buffer is overflown log stops being written into it till the node restart
+{
+    // Variable-size log;
+
+    static constexpr unsigned char type()
+    {
+        return 45;
+    }
+};
+
+
 struct ComputorProposal
 {
     unsigned char uriSize;
@@ -689,6 +712,21 @@ static unsigned long long* dejavu0 = NULL;
 static unsigned long long* dejavu1 = NULL;
 static unsigned int dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
 
+#define QU_TRANSFER 0
+#define ASSET_ISSUANCE 1
+#define ASSET_OWNERSHIP_CHANGE 2
+#define ASSET_POSSESSION_CHANGE 3
+#define CONTRACT_ERROR_MESSAGE 4
+#define CONTRACT_WARNING_MESSAGE 5
+#define CONTRACT_INFORMATION_MESSAGE 6
+#define CONTRACT_DEBUG_MESSAGE 7
+#define CUSTOM_MESSAGE 255
+static volatile char logBufferLocks[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
+static char* logBuffers[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { NULL };
+static unsigned int logBufferTails[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
+static bool logBufferOverflownFlags[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { false };
+static unsigned int nextQuTransferIndex, nextAssetIssuanceIndex, nextAssetOwnershipChangeIndex, nextAssetPossessionChangeIndex, nextContractErrorMessageIndex, nextContractWarningMessageIndex, nextContractInformationMessageIndex, nextContractDebugMessageIndex, nextCustomMessageIndex;
+
 static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
@@ -765,6 +803,130 @@ static struct
     RequestResponseHeader header;
     RequestedTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
+
+
+static void resetLogIndices()
+{
+    nextQuTransferIndex = 0;
+    nextAssetIssuanceIndex = 0;
+    nextAssetOwnershipChangeIndex = 0;
+    nextAssetPossessionChangeIndex = 0;
+    nextContractErrorMessageIndex = 0;
+    nextContractWarningMessageIndex = 0;
+    nextContractInformationMessageIndex = 0;
+    nextContractDebugMessageIndex = 0;
+    nextCustomMessageIndex = 0;
+}
+
+static void logMessage(unsigned int messageSize, unsigned char messageType, void* message)
+{
+    for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+    {
+        ACQUIRE(logBufferLocks[logReaderIndex]);
+
+        if (!logBufferOverflownFlags[logReaderIndex] && logBufferTails[logReaderIndex] + 16 + messageSize <= LOG_BUFFER_SIZE)
+        {
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 0))) = (unsigned char)(time.Year - 2000);
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 1))) = time.Month;
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 2))) = time.Day;
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 3))) = time.Hour;
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 4))) = time.Minute;
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 5))) = time.Second;
+
+            *((unsigned short*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 6))) = system.epoch;
+            *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 8))) = system.tick;
+
+            *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 12))) = messageSize | (messageType << 24);
+            bs->CopyMem(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 16), message, messageSize);
+            logBufferTails[logReaderIndex] += 16 + messageSize;
+        }
+        else
+        {
+            logBufferOverflownFlags[logReaderIndex] = true;
+        }
+
+        RELEASE(logBufferLocks[logReaderIndex]);
+    }
+}
+
+struct QuTransfer
+{
+    m256i sourcePublicKey;
+    m256i destinationPublicKey;
+    long long amount;
+};
+
+template <typename T>
+static void logQuTransfer(T message)
+{
+#if LOG_QU_TRANSFERS
+    logMessage(sizeof(message), QU_TRANSFER, &message);
+#endif
+}
+
+template <typename T>
+static void logAssetIssuance(T message)
+{
+#if LOG_ASSET_ISSUANCE
+    logMessage(sizeof(message), ASSET_ISSUANCE, &message);
+#endif
+}
+
+template <typename T>
+static void logAssetOwnershipChange(T message)
+{
+#if LOG_ASSET_OWNERSHIP_CHANGE
+    logMessage(sizeof(message), ASSET_OWNERSHIP_CHANGE, &message);
+#endif
+}
+
+template <typename T>
+static void logAssetPossessionChange(T message)
+{
+#if LOG_ASSET_POSSESSION_CHANGE
+    logMessage(sizeof(message), ASSET_POSSESSION_CHANGE, &message);
+#endif
+}
+
+template <typename T>
+static void logContractErrorMessage(T message)
+{
+#if LOG_CONTRACT_ERROR_MESSAGE
+    logMessage(sizeof(message), CONTRACT_ERROR_MESSAGE, &message);
+#endif
+}
+
+template <typename T>
+static void logContractWarningMessage(T message)
+{
+#if LOG_CONTRACT_WARNING_MESSAGE
+    logMessage(sizeof(message), CONTRACT_WARNING_MESSAGE, &message);
+#endif
+}
+
+template <typename T>
+static void logContractInformationMessage(T message)
+{
+#if LOG_CONTRACT_INFORMATION_MESSAGE
+    logMessage(sizeof(message), CONTRACT_INFORMATION_MESSAGE, &message);
+#endif
+}
+
+template <typename T>
+static void logContractDebugMessage(T message)
+{
+#if LOG_CONTRACT_DEBUG_MESSAGE
+    logMessage(sizeof(message), CONTRACT_DEBUG_MESSAGE, &message);
+#endif
+}
+
+template <typename T>
+static void logCustomMessage(T message)
+{
+#if LOG_CUSTOM_MESSAGE
+    logMessage(sizeof(message), CUSTOM_MESSAGE, &message);
+#endif
+}
 
 
 static void log(const CHAR16* message)
@@ -2078,6 +2240,39 @@ static void requestContractFunction(Peer* peer, const unsigned long long process
     }
 }
 
+static void requestLog(Peer* peer, Processor* processor, RequestResponseHeader* header)
+{
+    RequestLog* request = (RequestLog*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+    {
+        if (request->passcode[0] == logReaderPasscodes[logReaderIndex][0]
+            && request->passcode[1] == logReaderPasscodes[logReaderIndex][1]
+            && request->passcode[2] == logReaderPasscodes[logReaderIndex][2]
+            && request->passcode[3] == logReaderPasscodes[logReaderIndex][3])
+        {
+            ACQUIRE(logBufferLocks[logReaderIndex]);
+
+            if (logBufferOverflownFlags[logReaderIndex])
+            {
+                RELEASE(logBufferLocks[logReaderIndex]);
+
+                break;
+            }
+            else
+            {
+                enqueueResponse(peer, logBufferTails[logReaderIndex], RespondLog::type(), header->dejavu(), logBuffers[logReaderIndex]);
+                logBufferTails[logReaderIndex] = 0;
+            }
+
+            RELEASE(logBufferLocks[logReaderIndex]);
+
+            return;
+        }
+    }
+
+    enqueueResponse(peer, 0, RespondLog::type(), header->dejavu(), NULL);
+}
+
 static void processSpecialCommand(Peer* peer, Processor* processor, RequestResponseHeader* header)
 {
     SpecialCommand* request = (SpecialCommand*)((char*)processor->buffer + sizeof(RequestResponseHeader));
@@ -2283,6 +2478,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case RequestContractFunction::type():
                 {
                     requestContractFunction(peer, processorNumber, processor, header);
+                }
+                break;
+
+                case RequestLog::type():
+                {
+                    requestLog(peer, processor, header);
                 }
                 break;
 
@@ -2523,6 +2724,8 @@ static long long __transfer(const m256i& destination, long long amount)
     if (decreaseEnergy(index, amount))
     {
         increaseEnergy(destination, amount);
+        const QuTransfer quTransfer = { currentContract , destination , amount };
+        logQuTransfer(quTransfer);
     }
 
     return remainingAmount;
@@ -2796,6 +2999,8 @@ static void processTick(unsigned long long processorNumber)
                         if (decreaseEnergy(spectrumIndex, transaction->amount))
                         {
                             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
+                            const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
+                            logQuTransfer(quTransfer);
 
                             if (isZero(transaction->destinationPublicKey))
                             {
@@ -2824,6 +3029,9 @@ static void processTick(unsigned long long processorNumber)
                                                 const long long amount = contractIPOBid->price * contractIPOBid->quantity;
                                                 if (decreaseEnergy(spectrumIndex, amount))
                                                 {
+                                                    const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
+                                                    logQuTransfer(quTransfer);
+
                                                     numberOfReleasedEntities = 0;
                                                     IPO* ipo = (IPO*)contractStates[executedContractIndex];
                                                     for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
@@ -2888,6 +3096,8 @@ static void processTick(unsigned long long processorNumber)
                                                     for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
                                                     {
                                                         increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
+                                                        const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                                                        logQuTransfer(quTransfer);
                                                     }
                                                 }
                                             }
@@ -3348,6 +3558,8 @@ static void endEpoch()
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
+                const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                logQuTransfer(quTransfer);
             }
 
             contract0State->contractFeeReserves[contractIndex] = finalPrice * NUMBER_OF_COMPUTORS;
@@ -3405,10 +3617,14 @@ static void endEpoch()
     {
         const long long revenue = (transactionCounters[computorIndex] >= sortedTransactionCounters[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)transactionCounters[computorIndex])) / sortedTransactionCounters[QUORUM - 1]);
         increaseEnergy(broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex], revenue);
+        const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex] , revenue };
+        logQuTransfer(quTransfer);
         arbitratorRevenue -= revenue;
     }
 
     increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
+    const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
+    logQuTransfer(quTransfer);
 
     {
         ACQUIRE(spectrumLock);
@@ -4207,6 +4423,8 @@ static void tickProcessor(void*)
 
                                     system.tick++;
 
+                                    resetLogIndices();
+
                                     testFlags = 0;
 
                                     tickPhase = 0;
@@ -4488,6 +4706,18 @@ static bool initialize()
             }
         }
 
+#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFORMATION_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+        for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+        {
+            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers[logReaderIndex]))
+            {
+                logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+
+                return false;
+            }
+        }
+#endif
+
         bs->SetMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
         system.version = VERSION_B;
@@ -4501,6 +4731,8 @@ static bool initialize()
             system.initialTick = TICK;
         }
         system.tick = system.initialTick;
+
+        resetLogIndices();
 
         etalonTick.epoch = system.epoch;
         etalonTick.tick = system.initialTick;
@@ -4744,6 +4976,16 @@ static void deinitialize()
     {
         bs->FreePool(reorgBuffer);
     }
+
+#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFORMATION_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+    for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+    {
+        if (logBuffers[logReaderIndex])
+        {
+            bs->FreePool(logBuffers[logReaderIndex]);
+        }
+    }
+#endif
 
     for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
     {
