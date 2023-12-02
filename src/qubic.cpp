@@ -2841,8 +2841,11 @@ static long long __transfer(const m256i& destination, long long amount)
     if (decreaseEnergy(index, amount))
     {
         increaseEnergy(destination, amount);
-        const QuTransfer quTransfer = { currentContract , destination , amount };
-        logQuTransfer(quTransfer);
+        if (amount)
+        {
+            const QuTransfer quTransfer = { currentContract , destination , amount };
+            logQuTransfer(quTransfer);
+        }
     }
 
     return remainingAmount;
@@ -3126,8 +3129,11 @@ static void processTick(unsigned long long processorNumber)
                         if (decreaseEnergy(spectrumIndex, transaction->amount))
                         {
                             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
-                            const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
-                            logQuTransfer(quTransfer);
+                            if (transaction->amount)
+                            {
+                                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
+                                logQuTransfer(quTransfer);
+                            }
 
                             if (isZero(transaction->destinationPublicKey))
                             {
@@ -3746,8 +3752,11 @@ static void endEpoch()
     {
         const long long revenue = (transactionCounters[computorIndex] >= sortedTransactionCounters[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)transactionCounters[computorIndex])) / sortedTransactionCounters[QUORUM - 1]);
         increaseEnergy(broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex], revenue);
-        const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex] , revenue };
-        logQuTransfer(quTransfer);
+        if (revenue)
+        {
+            const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex] , revenue };
+            logQuTransfer(quTransfer);
+        }
         arbitratorRevenue -= revenue;
     }
 
