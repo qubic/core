@@ -725,7 +725,6 @@ static volatile char logBufferLocks[sizeof(logReaderPasscodes) / sizeof(logReade
 static char* logBuffers[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { NULL };
 static unsigned int logBufferTails[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
 static bool logBufferOverflownFlags[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { false };
-static unsigned int nextQuTransferIndex, nextAssetIssuanceIndex, nextAssetOwnershipChangeIndex, nextAssetPossessionChangeIndex, nextContractErrorMessageIndex, nextContractWarningMessageIndex, nextContractInformationMessageIndex, nextContractDebugMessageIndex, nextCustomMessageIndex;
 
 static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
@@ -804,19 +803,6 @@ static struct
     RequestedTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
 
-
-static void resetLogIndices()
-{
-    nextQuTransferIndex = 0;
-    nextAssetIssuanceIndex = 0;
-    nextAssetOwnershipChangeIndex = 0;
-    nextAssetPossessionChangeIndex = 0;
-    nextContractErrorMessageIndex = 0;
-    nextContractWarningMessageIndex = 0;
-    nextContractInformationMessageIndex = 0;
-    nextContractDebugMessageIndex = 0;
-    nextCustomMessageIndex = 0;
-}
 
 static void logMessage(unsigned int messageSize, unsigned char messageType, void* message)
 {
@@ -4423,8 +4409,6 @@ static void tickProcessor(void*)
 
                                     system.tick++;
 
-                                    resetLogIndices();
-
                                     testFlags = 0;
 
                                     tickPhase = 0;
@@ -4731,8 +4715,6 @@ static bool initialize()
             system.initialTick = TICK;
         }
         system.tick = system.initialTick;
-
-        resetLogIndices();
 
         etalonTick.epoch = system.epoch;
         etalonTick.tick = system.initialTick;
