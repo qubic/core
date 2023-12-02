@@ -841,77 +841,179 @@ struct QuTransfer
     m256i sourcePublicKey;
     m256i destinationPublicKey;
     long long amount;
+
+    char _terminator; // Only data before "_terminator" are logged
 };
 
 template <typename T>
 static void logQuTransfer(T message)
 {
 #if LOG_QU_TRANSFERS
-    logMessage(sizeof(message), QU_TRANSFER, &message);
+    logMessage(offsetof(T, _terminator), QU_TRANSFER, &message);
 #endif
 }
+
+struct AssetIssuance
+{
+    m256i issuerPublicKey;
+    long long numberOfUnits;
+    char name[7];
+    char numberOfDecimalPlaces;
+    char unitOfMeasurement[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
 
 template <typename T>
 static void logAssetIssuance(T message)
 {
-#if LOG_ASSET_ISSUANCE
-    logMessage(sizeof(message), ASSET_ISSUANCE, &message);
+#if LOG_ASSET_ISSUANCES
+    logMessage(offsetof(T, _terminator), ASSET_ISSUANCE, &message);
 #endif
 }
+
+struct AssetOwnershipChange
+{
+    m256i sourcePublicKey;
+    m256i destinationPublicKey;
+    m256i issuerPublicKey;
+    long long numberOfUnits;
+    char name[7];
+    char numberOfDecimalPlaces;
+    char unitOfMeasurement[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
 
 template <typename T>
 static void logAssetOwnershipChange(T message)
 {
-#if LOG_ASSET_OWNERSHIP_CHANGE
-    logMessage(sizeof(message), ASSET_OWNERSHIP_CHANGE, &message);
+#if LOG_ASSET_OWNERSHIP_CHANGES
+    logMessage(offsetof(T, _terminator), ASSET_OWNERSHIP_CHANGE, &message);
 #endif
 }
+
+struct AssetPossessionChange
+{
+    m256i sourcePublicKey;
+    m256i destinationPublicKey;
+    m256i issuerPublicKey;
+    long long numberOfUnits;
+    char name[7];
+    char numberOfDecimalPlaces;
+    char unitOfMeasurement[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
 
 template <typename T>
 static void logAssetPossessionChange(T message)
 {
-#if LOG_ASSET_POSSESSION_CHANGE
-    logMessage(sizeof(message), ASSET_POSSESSION_CHANGE, &message);
+#if LOG_ASSET_POSSESSION_CHANGES
+    logMessage(offsetof(T, _terminator), ASSET_POSSESSION_CHANGE, &message);
 #endif
 }
 
-template <typename T>
-static void logContractErrorMessage(T message)
+struct DummyContractErrorMessage
 {
-#if LOG_CONTRACT_ERROR_MESSAGE
-    logMessage(sizeof(message), CONTRACT_ERROR_MESSAGE, &message);
+    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
+    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void __logContractErrorMessage(T message)
+{
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract error message structure");
+
+#if LOG_CONTRACT_ERROR_MESSAGES
+    *((unsigned int*)&message) = executedContractIndex;
+    logMessage(offsetof(T, _terminator), CONTRACT_ERROR_MESSAGE, &message);
 #endif
 }
 
-template <typename T>
-static void logContractWarningMessage(T message)
+struct DummyContractWarningMessage
 {
-#if LOG_CONTRACT_WARNING_MESSAGE
-    logMessage(sizeof(message), CONTRACT_WARNING_MESSAGE, &message);
+    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
+    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void __logContractWarningMessage(T message)
+{
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract warning message structure");
+
+#if LOG_CONTRACT_WARNING_MESSAGES
+    *((unsigned int*)&message) = executedContractIndex;
+    logMessage(offsetof(T, _terminator), CONTRACT_WARNING_MESSAGE, &message);
 #endif
 }
 
-template <typename T>
-static void logContractInformationMessage(T message)
+struct DummyContractInfoMessage
 {
-#if LOG_CONTRACT_INFORMATION_MESSAGE
-    logMessage(sizeof(message), CONTRACT_INFORMATION_MESSAGE, &message);
+    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
+    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void __logContractInfoMessage(T message)
+{
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract info message structure");
+
+#if LOG_CONTRACT_INFO_MESSAGES
+    *((unsigned int*)&message) = executedContractIndex;
+    logMessage(offsetof(T, _terminator), CONTRACT_INFORMATION_MESSAGE, &message);
 #endif
 }
 
-template <typename T>
-static void logContractDebugMessage(T message)
+struct DummyContractDebugMessage
 {
-#if LOG_CONTRACT_DEBUG_MESSAGE
-    logMessage(sizeof(message), CONTRACT_DEBUG_MESSAGE, &message);
+    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
+    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void __logContractDebugMessage(T message)
+{
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract debug message structure");
+
+#if LOG_CONTRACT_DEBUG_MESSAGES
+    *((unsigned int*)&message) = executedContractIndex;
+    logMessage(offsetof(T, _terminator), CONTRACT_DEBUG_MESSAGE, &message);
 #endif
 }
+
+struct DummyCustomMessage
+{
+    unsigned long long _type; // Assign a random unique number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
 
 template <typename T>
 static void logCustomMessage(T message)
 {
-#if LOG_CUSTOM_MESSAGE
-    logMessage(sizeof(message), CUSTOM_MESSAGE, &message);
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid custom message structure");
+
+#if LOG_CUSTOM_MESSAGES
+    logMessage(offsetof(T, _terminator), CUSTOM_MESSAGE, &message);
 #endif
 }
 
@@ -1118,6 +1220,14 @@ iteration:
                 assetChangeFlags[*possessionIndex >> 6] |= (1ULL << (*possessionIndex & 63));
 
                 RELEASE(universeLock);
+
+                AssetIssuance assetIssuance;
+                assetIssuance.issuerPublicKey = issuerPublicKey;
+                assetIssuance.numberOfUnits = numberOfUnits;
+                *((unsigned long long*)&assetIssuance.name) = *((unsigned long long*)&name); // Order must be preserved!
+                assetIssuance.numberOfDecimalPlaces = numberOfDecimalPlaces; // Order must be preserved!
+                *((unsigned long long*)&assetIssuance.unitOfMeasurement) = *((unsigned long long*)&unitOfMeasurement); // Order must be preserved!
+                logAssetIssuance(assetIssuance);
             }
             else
             {
@@ -1214,6 +1324,26 @@ iteration:
             {
                 RELEASE(universeLock);
             }
+
+            AssetOwnershipChange assetOwnershipChange;
+            assetOwnershipChange.sourcePublicKey = assets[sourceOwnershipIndex].varStruct.ownership.publicKey;
+            assetOwnershipChange.destinationPublicKey = destinationPublicKey;
+            assetOwnershipChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
+            assetOwnershipChange.numberOfUnits = numberOfUnits;
+            *((unsigned long long*)&assetOwnershipChange.name) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
+            assetOwnershipChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
+            *((unsigned long long*)&assetOwnershipChange.unitOfMeasurement) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
+            logAssetOwnershipChange(assetOwnershipChange);
+
+            AssetPossessionChange assetPossessionChange;
+            assetPossessionChange.sourcePublicKey = assets[sourcePossessionIndex].varStruct.possession.publicKey;
+            assetPossessionChange.destinationPublicKey = destinationPublicKey;
+            assetPossessionChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
+            assetPossessionChange.numberOfUnits = numberOfUnits;
+            *((unsigned long long*)&assetPossessionChange.name) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
+            assetPossessionChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
+            *((unsigned long long*)&assetPossessionChange.unitOfMeasurement) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
+            logAssetPossessionChange(assetPossessionChange);
 
             return true;
         }
@@ -4703,7 +4833,7 @@ static bool initialize()
             }
         }
 
-#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFORMATION_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
         for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
         {
             if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers[logReaderIndex]))
@@ -4972,7 +5102,7 @@ static void deinitialize()
         bs->FreePool(reorgBuffer);
     }
 
-#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFORMATION_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
     for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
     {
         if (logBuffers[logReaderIndex])

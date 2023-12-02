@@ -5107,6 +5107,14 @@ namespace QPI
 
 	#define EXPAND public: static void __expand(CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
+	#define LOG_DEBUG(message) __logContractDebugMessage(message);
+
+	#define LOG_ERROR(message) __logContractErrorMessage(message);
+
+	#define LOG_INFO(message) __logContractInfoMessage(message);
+
+	#define LOG_WARNING(message) __logContractWarningMessage(message);
+
 	#define PRIVATE(functionOrProcedure) private: static void functionOrProcedure(CONTRACT_STATE_TYPE& statetate, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
 	#define PUBLIC(functionOrProcedure) public: static void functionOrProcedure(CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);

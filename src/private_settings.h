@@ -21,7 +21,7 @@ static const unsigned char knownPublicPeers[][4] = {
 #define LOG_ASSET_POSSESSION_CHANGES 0
 #define LOG_CONTRACT_ERROR_MESSAGES 0
 #define LOG_CONTRACT_WARNING_MESSAGES 0
-#define LOG_CONTRACT_INFORMATION_MESSAGES 0
+#define LOG_CONTRACT_INFO_MESSAGES 0
 #define LOG_CONTRACT_DEBUG_MESSAGES 0
 #define LOG_CUSTOM_MESSAGES 0
 static unsigned long long logReaderPasscodes[][4] = {
