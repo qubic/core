@@ -691,6 +691,7 @@ static m256i currentContract;
 static unsigned char* contractStates[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])];
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 static unsigned long long* contractStateChangeFlags = NULL;
+static unsigned long long contractTotalExecutionTicks[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])] = { 0 };
 static volatile char contractStateCopyLock = 0;
 static char* contractStateCopy = NULL;
 static char contractFunctionInputs[MAX_NUMBER_OF_PROCESSORS][65536];
@@ -2844,7 +2845,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][INITIALIZE](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -2862,7 +2865,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][BEGIN_EPOCH](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -2880,7 +2885,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][BEGIN_TICK](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -2898,7 +2905,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][END_TICK](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -2916,7 +2925,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][END_EPOCH](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -3100,7 +3111,9 @@ static void processTick(unsigned long long processorNumber)
 
                                             bs->SetMem(&executedContractInput, sizeof(executedContractInput), 0);
                                             bs->CopyMem(&executedContractInput, (((unsigned char*)transaction) + sizeof(Transaction)), transaction->inputSize);
+                                            const unsigned long long startTick = __rdtsc();
                                             contractUserProcedures[executedContractIndex][transaction->inputType](contractStates[executedContractIndex], &executedContractInput, &executedContractOutput);
+                                            contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
                                         }
                                     }
                                 }
@@ -5162,19 +5175,13 @@ static void logInfo()
         {
             appendText(message, alphabet[ownComputorIndices[i] / 26]);
             appendText(message, alphabet[ownComputorIndices[i] % 26]);
-            appendText(message, i ? L"[" : L"[in ");
-            appendNumber(message, ((ownComputorIndices[i] + NUMBER_OF_COMPUTORS) - system.tick % NUMBER_OF_COMPUTORS) % NUMBER_OF_COMPUTORS, FALSE);
-            if (!i)
-            {
-                appendText(message, L" ticks");
-            }
             if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
             {
-                appendText(message, L"]+");
+                appendText(message, L"+");
             }
             else
             {
-                appendText(message, L"].");
+                appendText(message, L".");
             }
         }
     }
@@ -5252,7 +5259,9 @@ static void logInfo()
     {
         appendText(message, L"?");
     }
-    appendText(message, L" mcs.");
+    appendText(message, L" mcs | Total Qx execution time = ");
+    appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] / frequency, TRUE);
+    appendText(message, L" s.");
     log(message);
 }
 
