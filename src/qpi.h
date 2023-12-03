@@ -5130,6 +5130,13 @@ namespace QPI
 		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfUnits, unitOfMeasurement);
 	}
 
+	template <typename T>
+	static id K12(
+		T data
+	) {
+		return __K12(data);
+	}
+
 	static uint16 millisecond(
 	) { // [0..999]
 		return ::__millisecond();

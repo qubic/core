@@ -2960,6 +2960,16 @@ static unsigned char __year()
     return etalonTick.year;
 }
 
+template <typename T>
+static __m256i __K12(T data)
+{
+    __m256i digest;
+
+    KangarooTwelve(&data, sizeof(data), &digest, sizeof(digest));
+
+    return digest;
+}
+
 static void contractProcessor(void*)
 {
     enableAVX();
