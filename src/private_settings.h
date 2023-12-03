@@ -14,7 +14,7 @@ static const unsigned char knownPublicPeers[][4] = {
     {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
 };
 
-#define LOG_BUFFER_SIZE 16777216 // Must be below [4 GiB minus 16 B minus 16 MiB], each log reader gets own buffer
+#define LOG_BUFFER_SIZE 16777200 // Must be less or equal to 16777200
 #define LOG_QU_TRANSFERS 0 // "0" disables logging, "1" enables it
 #define LOG_ASSET_ISSUANCES 0
 #define LOG_ASSET_OWNERSHIP_CHANGES 0
