@@ -2961,9 +2961,9 @@ static unsigned char __year()
 }
 
 template <typename T>
-static __m256i __K12(T data)
+static m256i __K12(T data)
 {
-    __m256i digest;
+    m256i digest;
 
     KangarooTwelve(&data, sizeof(data), &digest, sizeof(digest));
 

@@ -32,7 +32,7 @@ static unsigned char __hour();
 static long long __invocationReward();
 static const m256i& __invocator();
 static long long __issueAsset(unsigned long long, const m256i&, char, long long, unsigned long long);
-template <typename T> static __m256i __K12(T);
+template <typename T> static m256i __K12(T);
 template <typename T> static void __logContractDebugMessage(T);
 template <typename T> static void __logContractErrorMessage(T);
 template <typename T> static void __logContractInfoMessage(T);
