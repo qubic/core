@@ -1119,6 +1119,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct sint8_64
@@ -1544,6 +1549,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct uint8_64
@@ -1951,6 +1961,11 @@ namespace QPI
 		inline void set(uint32 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
+		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
 		}
 	};
 
@@ -2377,6 +2392,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct uint16_32
@@ -2784,6 +2804,11 @@ namespace QPI
 		inline void set(uint32 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
+		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
 		}
 	};
 
@@ -3210,6 +3235,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct uint32_16
@@ -3617,6 +3647,11 @@ namespace QPI
 		inline void set(uint32 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
+		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
 		}
 	};
 
@@ -4043,6 +4078,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct uint64_8
@@ -4433,6 +4473,63 @@ namespace QPI
 		inline void set(uint32 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
+		}
+	};
+
+	struct id_1
+	{
+	private:
+		id _value;
+
+	public:
+		inline id get(uint32 index)
+		{
+			return _value;
+		}
+
+		inline void set(uint32 index, id value)
+		{
+			_value = value;
+		}
+
+		inline void set(sint8_32 value)
+		{
+			_value = _mm256_set_epi8(value.get(31), value.get(30), value.get(29), value.get(28), value.get(27), value.get(26), value.get(25), value.get(24), value.get(23), value.get(22), value.get(21), value.get(20), value.get(19), value.get(18), value.get(17), value.get(16), value.get(15), value.get(14), value.get(13), value.get(12), value.get(11), value.get(10), value.get(9), value.get(8), value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(uint8_32 value)
+		{
+			_value = _mm256_set_epi8(value.get(31), value.get(30), value.get(29), value.get(28), value.get(27), value.get(26), value.get(25), value.get(24), value.get(23), value.get(22), value.get(21), value.get(20), value.get(19), value.get(18), value.get(17), value.get(16), value.get(15), value.get(14), value.get(13), value.get(12), value.get(11), value.get(10), value.get(9), value.get(8), value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(sint16_16 value)
+		{
+			_value = _mm256_set_epi16(value.get(15), value.get(14), value.get(13), value.get(12), value.get(11), value.get(10), value.get(9), value.get(8), value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(uint16_16 value)
+		{
+			_value = _mm256_set_epi16(value.get(15), value.get(14), value.get(13), value.get(12), value.get(11), value.get(10), value.get(9), value.get(8), value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(sint32_8 value)
+		{
+			_value = _mm256_set_epi32(value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(uint32_8 value)
+		{
+			_value = _mm256_set_epi32(value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(sint64_4 value)
+		{
+			_value = _mm256_set_epi64x(value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(uint64_4 value)
+		{
+			_value = _mm256_set_epi64x(value.get(3), value.get(2), value.get(1), value.get(0));
 		}
 	};
 
