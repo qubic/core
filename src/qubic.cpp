@@ -634,10 +634,9 @@ static struct System
         m256i nonce;
     } solutions[MAX_NUMBER_OF_SOLUTIONS];
 
-    // This cannot be changed to m256i without changing the sizeof(System) and breaking the system file, because __m256i is aligned to 32 bytes and m256i is not.
-    __m256i futureComputors[NUMBER_OF_COMPUTORS];
+    m256i futureComputors[NUMBER_OF_COMPUTORS];
 } system;
-static_assert(sizeof(System) == 4562112, "Unexpected size");
+static_assert(sizeof(System) == 4562096, "Unexpected size");
 static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
 static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
 static unsigned int tickPhase = 0, tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, futureTickTotalNumberOfComputors = 0;
@@ -3398,11 +3397,11 @@ static void processTick(unsigned long long processorNumber)
 
                                                     for (unsigned int i = 0; i < QUORUM; i++)
                                                     {
-                                                        system.futureComputors[i] = *(__m256i*)&minerPublicKeys[i];
+                                                        system.futureComputors[i] = minerPublicKeys[i];
                                                     }
                                                     for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
                                                     {
-                                                        system.futureComputors[i] = competitorPublicKeys[i - QUORUM].m256i_intr();
+                                                        system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
                                                     }
                                                 }
                                             }
