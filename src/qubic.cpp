@@ -5803,6 +5803,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                 {
+                    // handle new connections
                     if (((unsigned long long)peers[i].tcp4Protocol)
                         && peers[i].connectAcceptToken.CompletionToken.Status != -1)
                     {
@@ -5812,6 +5813,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         {
                             if (peers[i].connectAcceptToken.CompletionToken.Status)
                             {
+                                // connection error
                                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
                                 forget(*((int*)peers[i].address));
                                 closePeer(&peers[i]);
@@ -5833,6 +5835,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         {
                             if (peers[i].connectAcceptToken.CompletionToken.Status)
                             {
+                                // connection error
                                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
                                 peers[i].tcp4Protocol = NULL;
                             }
@@ -5860,8 +5863,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             }
                         }
 
+                        // new connection has been established
                         if (peers[i].isConnectedAccepted)
                         {
+                            // prepare and send ExchangePublicPeers message
                             ExchangePublicPeers* request = (ExchangePublicPeers*)&peers[i].dataToTransmit[sizeof(RequestResponseHeader)];
                             bool noVerifiedPublicPeers = true;
                             for (unsigned int k = 0; k < numberOfPublicPeers; k++)
@@ -5893,6 +5898,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             peers[i].dataToTransmitSize = requestHeader->size();
                             _InterlockedIncrement64(&numberOfDisseminatedRequests);
 
+                            // send REQUEST_COMPUTORS message at beginning of epoch
                             if (!broadcastedComputors.broadcastComputors.computors.epoch
                                 || broadcastedComputors.broadcastComputors.computors.epoch != system.epoch)
                             {
@@ -5904,11 +5910,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                     }
 
+                    // poll to receive incoming data and transmit outgoing segments
                     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
                     {
                         peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
                     }
 
+                    // process received data
                     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
                     {
                         if (peers[i].receiveToken.CompletionToken.Status != -1)
@@ -6015,6 +6023,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (!peers[i].isReceiving && peers[i].isConnectedAccepted && !peers[i].isClosing)
                         {
+                            // check that receive buffer has enough space (less than BUFFER_SIZE is used)
                             if ((((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer)) < BUFFER_SIZE)
                             {
                                 peers[i].receiveData.DataLength = peers[i].receiveData.FragmentTable[0].FragmentLength = BUFFER_SIZE - (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
@@ -6051,11 +6060,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
                     {
+                        // check if transmission is completed
                         if (peers[i].transmitToken.CompletionToken.Status != -1)
                         {
                             peers[i].isTransmitting = FALSE;
                             if (peers[i].transmitToken.CompletionToken.Status)
                             {
+                                // transmission error
                                 peers[i].transmitToken.CompletionToken.Status = -1;
                                 closePeer(&peers[i]);
                             }
@@ -6068,6 +6079,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                                 }
                                 else
                                 {
+                                    // success
                                     numberOfTransmittedBytes += peers[i].transmitData.DataLength;
                                 }
                             }
@@ -6077,6 +6089,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (peers[i].dataToTransmitSize && !peers[i].isTransmitting && peers[i].isConnectedAccepted && !peers[i].isClosing)
                         {
+                            // initiate transmission
                             bs->CopyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
                             peers[i].dataToTransmitSize = 0;
                             if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
@@ -6094,8 +6107,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     if (!peers[i].tcp4Protocol)
                     {
+                        // peer slot without active connection
                         if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
                         {
+                            // outgoing connection:
+                            // randomly select public peer and try to connect if we do not
+                            // yet have an outgoing connection to it
+
                             *((int*)peers[i].address) = *((int*)publicPeers[random(numberOfPublicPeers)].address);
 
                             unsigned int j;
@@ -6138,6 +6156,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                         else
                         {
+                            // incoming connection:
+                            // accept connections if peer list is not static
                             if (!listOfPeersIsStatic)
                             {
                                 peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
