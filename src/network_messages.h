@@ -75,3 +75,11 @@ public:
         _type = type;
     }
 };
+
+#define EXCHANGE_PUBLIC_PEERS 0
+#define NUMBER_OF_EXCHANGED_PEERS 4
+
+typedef struct
+{
+    unsigned char peers[NUMBER_OF_EXCHANGED_PEERS][4];
+} ExchangePublicPeers;

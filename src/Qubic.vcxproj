@@ -15,12 +15,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="network_messages.h" />
+    <ClInclude Include="peers.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
     <ClInclude Include="platform\file_io.h" />
     <ClInclude Include="platform\logging.h" />
     <ClInclude Include="platform\common_types.h" />
+    <ClInclude Include="platform\random.h" />
     <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />
