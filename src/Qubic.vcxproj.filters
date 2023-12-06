@@ -47,6 +47,10 @@
     </ClInclude>
     <ClInclude Include="network_messages.h" />
     <ClInclude Include="tcp4.h" />
+    <ClInclude Include="peers.h" />
+    <ClInclude Include="platform\random.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">

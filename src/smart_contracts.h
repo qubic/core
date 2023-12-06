@@ -6,6 +6,7 @@
 
 typedef void (*SYSTEM_PROCEDURE)(void*);
 typedef void (*EXPAND_PROCEDURE)(void*, void*);
+typedef void (*USER_FUNCTION)(void*, void*, void*);
 typedef void (*USER_PROCEDURE)(void*, void*, void*);
 
 struct Entity
@@ -19,29 +20,34 @@ struct Entity
 static_assert(sizeof(::Entity) == 32 + 2*8 + 2*4 + 2*4, "Something is wrong with the struct size.");
 
 
-static __m256i __arbitrator();
+static const m256i& __arbitrator();
 static void __beginFunctionOrProcedure(const unsigned int);
-static __m256i __computor(unsigned short);
+static const m256i& __computor(unsigned short);
 static unsigned char __day();
 static unsigned char __dayOfWeek(unsigned char, unsigned char, unsigned char);
 static void __endFunctionOrProcedure(const unsigned int);
 static unsigned short __epoch();
-static bool __getEntity(__m256i, ::Entity&);
+static bool __getEntity(const m256i&, ::Entity&);
 static unsigned char __hour();
 static long long __invocationReward();
-static __m256i __invocator();
-static long long __issueAsset(unsigned long long, __m256i, char, long long, unsigned long long);
+static const m256i& __invocator();
+static long long __issueAsset(unsigned long long, const m256i&, char, long long, unsigned long long);
+template <typename T> static m256i __K12(T);
+template <typename T> static void __logContractDebugMessage(T);
+template <typename T> static void __logContractErrorMessage(T);
+template <typename T> static void __logContractInfoMessage(T);
+template <typename T> static void __logContractWarningMessage(T);
 static unsigned short __millisecond();
 static unsigned char __minute();
 static unsigned char __month();
-static __m256i __nextId(__m256i);
-static __m256i __originator();
-static void __registerUserFunction(USER_PROCEDURE, unsigned short, unsigned short);
-static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short);
+static m256i __nextId(const m256i&);
+static m256i __originator();
+static void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short);
+static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short);
 static unsigned char __second();
 static unsigned int __tick();
-static long long __transfer(__m256i, long long);
-static long long __transferAssetOwnershipAndPossession(unsigned long long, __m256i, __m256i, __m256i, long long, __m256i);
+static long long __transfer(const m256i&, long long);
+static long long __transferAssetOwnershipAndPossession(unsigned long long, const m256i&, const m256i&, const m256i&, long long, const m256i&);
 static unsigned char __year();
 
 #include "qpi.h"
@@ -94,8 +100,12 @@ constexpr struct ContractDescription
 
 static SYSTEM_PROCEDURE contractSystemProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][5];
 static EXPAND_PROCEDURE contractExpandProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])];
+static USER_FUNCTION contractUserFunctions[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
+static unsigned short contractUserFunctionInputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
+static unsigned short contractUserFunctionOutputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
 static USER_PROCEDURE contractUserProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
 static unsigned short contractUserProcedureInputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
+static unsigned short contractUserProcedureOutputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
 
 #pragma warning(push)
 #pragma warning(disable: 4005)

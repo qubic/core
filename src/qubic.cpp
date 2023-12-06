@@ -27,6 +27,7 @@
 
 #include "network_messages.h"
 #include "tcp4.h"
+#include "peers.h"
 
 ////////// Qubic \\\\\\\\\\
 
@@ -35,17 +36,14 @@
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TARGET_TICK_DURATION 3000
 #define TICK_REQUESTING_PERIOD 500ULL
-#define DEJAVU_SWAP_LIMIT 1000000
-#define DISSEMINATION_MULTIPLIER 4
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define ISSUANCE_RATE 1000000000000LL
 #define MAX_AMOUNT (ISSUANCE_RATE * 1000ULL)
-#define MAX_INPUT_SIZE (MAX_TRANSACTION_SIZE - (sizeof(Transaction) + SIGNATURE_SIZE))
+#define MAX_INPUT_SIZE 1024ULL
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
-#define MAX_NUMBER_OF_PUBLIC_PEERS 1024
 #define MAX_NUMBER_OF_SOLUTIONS 65536 // Must be 2^N
-#define MAX_TRANSACTION_SIZE 1024ULL
+#define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
 #define NUMBER_OF_COMPUTORS 676
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
@@ -53,17 +51,10 @@
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define MESSAGE_TYPE_SOLUTION 0
-#define NUMBER_OF_EXCHANGED_PEERS 4
-#define NUMBER_OF_OUTGOING_CONNECTIONS 4
-#define NUMBER_OF_INCOMING_CONNECTIONS 28
 #define NUMBER_OF_TRANSACTIONS_PER_TICK 1024 // Must be 2^N
 #define PEER_REFRESHING_PERIOD 120000ULL
 #define PORT 21841
 #define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
-#define REQUEST_QUEUE_BUFFER_SIZE 1073741824
-#define REQUEST_QUEUE_LENGTH 65536 // Must be 65536
-#define RESPONSE_QUEUE_BUFFER_SIZE 1073741824
-#define RESPONSE_QUEUE_LENGTH 65536 // Must be 65536
 #define SIGNATURE_SIZE 64
 #define SPECTRUM_CAPACITY 0x1000000ULL // Must be 2^N
 #define SPECTRUM_DEPTH 24 // Is derived from SPECTRUM_CAPACITY (=N)
@@ -71,7 +62,7 @@
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 60000
-#define TRANSACTION_SPARSENESS 6
+#define TRANSACTION_SPARSENESS 7
 
 #define EMPTY 0
 #define ISSUANCE 1
@@ -128,30 +119,7 @@ struct Asset
     } varStruct;
 };
 
-typedef struct
-{
-    EFI_TCP4_PROTOCOL* tcp4Protocol;
-    EFI_TCP4_LISTEN_TOKEN connectAcceptToken;
-    unsigned char address[4];
-    void* receiveBuffer;
-    EFI_TCP4_RECEIVE_DATA receiveData;
-    EFI_TCP4_IO_TOKEN receiveToken;
-    EFI_TCP4_TRANSMIT_DATA transmitData;
-    EFI_TCP4_IO_TOKEN transmitToken;
-    char* dataToTransmit;
-    unsigned int dataToTransmitSize;
-    BOOLEAN isConnectingAccepting;
-    BOOLEAN isConnectedAccepted;
-    BOOLEAN isReceiving, isTransmitting;
-    BOOLEAN exchangedPublicPeers;
-    BOOLEAN isClosing;
-} Peer;
 
-typedef struct
-{
-    bool isVerified;
-    unsigned char address[4];
-} PublicPeer;
 
 typedef struct
 {
@@ -161,12 +129,6 @@ typedef struct
 } Processor;
 
 
-#define EXCHANGE_PUBLIC_PEERS 0
-
-typedef struct
-{
-    unsigned char peers[NUMBER_OF_EXCHANGED_PEERS][4];
-} ExchangePublicPeers;
 
 #define BROADCAST_MESSAGE 1
 
@@ -478,6 +440,54 @@ typedef struct
     // TODO: Add siblings
 } RespondPossessedAssets;
 
+
+struct RequestContractFunction // Invokes contract function
+{
+    unsigned int contractIndex;
+    unsigned short inputType;
+    unsigned short inputSize;
+    // Variable-size input
+
+    static constexpr unsigned char type()
+    {
+        return 42;
+    }
+};
+
+
+struct RespondContractFunction // Returns result of contract function invocation
+{
+    // Variable-size output; the size must be 0 if the invocation has failed for whatever reason (e.g. no a function registered for [inputType], or the function has timed out)
+
+    static constexpr unsigned char type()
+    {
+        return 43;
+    }
+};
+
+
+struct RequestLog // Fetches log
+{
+    unsigned long long passcode[4];
+
+    static constexpr unsigned char type()
+    {
+        return 44;
+    }
+};
+
+
+struct RespondLog // Returns buffered log; clears the buffer; make sure you fetch log quickly enough, if the buffer is overflown log stops being written into it till the node restart
+{
+    // Variable-size log;
+
+    static constexpr unsigned char type()
+    {
+        return 45;
+    }
+};
+
+
 struct ComputorProposal
 {
     unsigned char uriSize;
@@ -541,7 +551,6 @@ static const unsigned short revenuePoints[1 + 1024] = { 0, 710, 1125, 1420, 1648
 
 static volatile int shutDownNode = 0;
 static volatile bool isMain = false;
-static volatile bool listOfPeersIsStatic = false;
 static volatile bool forceNextTick = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
@@ -550,7 +559,7 @@ static m256i operatorPublicKey;
 static m256i computorSubseeds[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 static m256i computorPrivateKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 static m256i computorPublicKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
-static __m256i arbitratorPublicKey;
+static m256i arbitratorPublicKey;
 
 static struct
 {
@@ -586,10 +595,9 @@ static struct System
         m256i nonce;
     } solutions[MAX_NUMBER_OF_SOLUTIONS];
 
-    // This cannot be changed to m256i without changing the sizeof(System) and breaking the system file, because __m256i is aligned to 32 bytes and m256i is not.
-    __m256i futureComputors[NUMBER_OF_COMPUTORS];
+    m256i futureComputors[NUMBER_OF_COMPUTORS];
 } system;
-static_assert(sizeof(System) == 4562112, "Unexpected size");
+static_assert(sizeof(System) == 4562096, "Unexpected size");
 static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
 static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
 static unsigned int tickPhase = 0, tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, futureTickTotalNumberOfComputors = 0;
@@ -624,11 +632,11 @@ static unsigned char* entityPendingTransactions = NULL;
 static unsigned char* entityPendingTransactionDigests = NULL;
 static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY];
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
-static __m256i* spectrumDigests = NULL;
+static m256i* spectrumDigests = NULL;
 
 static volatile char universeLock = 0;
 static Asset* assets = NULL;
-static __m256i* assetDigests = NULL;
+static m256i* assetDigests = NULL;
 static unsigned long long* assetChangeFlags = NULL;
 static char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
@@ -637,14 +645,19 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static EFI_EVENT contractProcessorEvent;
-static __m256i originator, invocator;
+static m256i originator, invocator;
 static long long invocationReward;
-static __m256i currentContract;
+static m256i currentContract;
 static unsigned char* contractStates[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])];
-static __m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
+static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 static unsigned long long* contractStateChangeFlags = NULL;
-static unsigned long long* functionFlags = NULL;
-static unsigned char executedContractInput[65536];
+static unsigned long long contractTotalExecutionTicks[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])] = { 0 };
+static volatile char contractStateCopyLock = 0;
+static char* contractStateCopy = NULL;
+static char contractFunctionInputs[MAX_NUMBER_OF_PROCESSORS][65536];
+static char* contractFunctionOutputs[MAX_NUMBER_OF_PROCESSORS];
+static char executedContractInput[65536];
+static char executedContractOutput[RequestResponseHeader::max_size + 1];
 
 static volatile char tickLocks[NUMBER_OF_COMPUTORS];
 static bool targetNextTickDataDigestIsKnown = false;
@@ -656,45 +669,23 @@ static m256i releasedPublicKeys[NUMBER_OF_COMPUTORS];
 static long long releasedAmounts[NUMBER_OF_COMPUTORS];
 static unsigned int numberOfReleasedEntities;
 
-static unsigned long long* dejavu0 = NULL;
-static unsigned long long* dejavu1 = NULL;
-static unsigned int dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
+#define QU_TRANSFER 0
+#define ASSET_ISSUANCE 1
+#define ASSET_OWNERSHIP_CHANGE 2
+#define ASSET_POSSESSION_CHANGE 3
+#define CONTRACT_ERROR_MESSAGE 4
+#define CONTRACT_WARNING_MESSAGE 5
+#define CONTRACT_INFORMATION_MESSAGE 6
+#define CONTRACT_DEBUG_MESSAGE 7
+#define CUSTOM_MESSAGE 255
+static volatile char logBufferLocks[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
+static char* logBuffers[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { NULL };
+static unsigned int logBufferTails[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
+static bool logBufferOverflownFlags[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { false };
 
 static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
-static volatile long long numberOfProcessedRequests = 0, prevNumberOfProcessedRequests = 0;
-static volatile long long numberOfDiscardedRequests = 0, prevNumberOfDiscardedRequests = 0;
-static volatile long long numberOfDuplicateRequests = 0, prevNumberOfDuplicateRequests = 0;
-static volatile long long numberOfDisseminatedRequests = 0, prevNumberOfDisseminatedRequests = 0;
-static unsigned char* requestQueueBuffer = NULL;
-static unsigned char* responseQueueBuffer = NULL;
-static struct Request
-{
-    Peer* peer;
-    unsigned int offset;
-} requestQueueElements[REQUEST_QUEUE_LENGTH];
-static struct Response
-{
-    Peer* peer;
-    unsigned int offset;
-} responseQueueElements[RESPONSE_QUEUE_LENGTH];
-static volatile unsigned int requestQueueBufferHead = 0, requestQueueBufferTail = 0;
-static volatile unsigned int responseQueueBufferHead = 0, responseQueueBufferTail = 0;
-static volatile unsigned short requestQueueElementHead = 0, requestQueueElementTail = 0;
-static volatile unsigned short responseQueueElementHead = 0, responseQueueElementTail = 0;
-static volatile char requestQueueTailLock = 0;
-static volatile char responseQueueHeadLock = 0;
-static volatile unsigned long long queueProcessingNumerator = 0, queueProcessingDenominator = 0;
-static volatile unsigned long long tickerLoopNumerator = 0, tickerLoopDenominator = 0;
-
-static Peer peers[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
-static volatile long long numberOfReceivedBytes = 0, prevNumberOfReceivedBytes = 0;
-static volatile long long numberOfTransmittedBytes = 0, prevNumberOfTransmittedBytes = 0;
-
-static volatile char publicPeersLock = 0;
-static unsigned int numberOfPublicPeers = 0;
-static PublicPeer publicPeers[MAX_NUMBER_OF_PUBLIC_PEERS];
 
 static ScoreFunction<
     DATA_LENGTH, INFO_LENGTH,
@@ -736,6 +727,219 @@ static struct
     RequestResponseHeader header;
     RequestedTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
+
+
+static void logMessage(unsigned int messageSize, unsigned char messageType, void* message)
+{
+    for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+    {
+        ACQUIRE(logBufferLocks[logReaderIndex]);
+
+        if (!logBufferOverflownFlags[logReaderIndex] && logBufferTails[logReaderIndex] + 16 + messageSize <= LOG_BUFFER_SIZE)
+        {
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 0))) = (unsigned char)(time.Year - 2000);
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 1))) = time.Month;
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 2))) = time.Day;
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 3))) = time.Hour;
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 4))) = time.Minute;
+            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 5))) = time.Second;
+
+            *((unsigned short*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 6))) = system.epoch;
+            *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 8))) = system.tick;
+
+            *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 12))) = messageSize | (messageType << 24);
+            bs->CopyMem(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 16), message, messageSize);
+            logBufferTails[logReaderIndex] += 16 + messageSize;
+        }
+        else
+        {
+            logBufferOverflownFlags[logReaderIndex] = true;
+        }
+
+        RELEASE(logBufferLocks[logReaderIndex]);
+    }
+}
+
+struct QuTransfer
+{
+    m256i sourcePublicKey;
+    m256i destinationPublicKey;
+    long long amount;
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void logQuTransfer(T message)
+{
+#if LOG_QU_TRANSFERS
+    logMessage(offsetof(T, _terminator), QU_TRANSFER, &message);
+#endif
+}
+
+struct AssetIssuance
+{
+    m256i issuerPublicKey;
+    long long numberOfUnits;
+    char name[7];
+    char numberOfDecimalPlaces;
+    char unitOfMeasurement[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void logAssetIssuance(T message)
+{
+#if LOG_ASSET_ISSUANCES
+    logMessage(offsetof(T, _terminator), ASSET_ISSUANCE, &message);
+#endif
+}
+
+struct AssetOwnershipChange
+{
+    m256i sourcePublicKey;
+    m256i destinationPublicKey;
+    m256i issuerPublicKey;
+    long long numberOfUnits;
+    char name[7];
+    char numberOfDecimalPlaces;
+    char unitOfMeasurement[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void logAssetOwnershipChange(T message)
+{
+#if LOG_ASSET_OWNERSHIP_CHANGES
+    logMessage(offsetof(T, _terminator), ASSET_OWNERSHIP_CHANGE, &message);
+#endif
+}
+
+struct AssetPossessionChange
+{
+    m256i sourcePublicKey;
+    m256i destinationPublicKey;
+    m256i issuerPublicKey;
+    long long numberOfUnits;
+    char name[7];
+    char numberOfDecimalPlaces;
+    char unitOfMeasurement[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void logAssetPossessionChange(T message)
+{
+#if LOG_ASSET_POSSESSION_CHANGES
+    logMessage(offsetof(T, _terminator), ASSET_POSSESSION_CHANGE, &message);
+#endif
+}
+
+struct DummyContractErrorMessage
+{
+    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
+    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void __logContractErrorMessage(T message)
+{
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract error message structure");
+
+#if LOG_CONTRACT_ERROR_MESSAGES
+    *((unsigned int*)&message) = executedContractIndex;
+    logMessage(offsetof(T, _terminator), CONTRACT_ERROR_MESSAGE, &message);
+#endif
+}
+
+struct DummyContractWarningMessage
+{
+    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
+    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void __logContractWarningMessage(T message)
+{
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract warning message structure");
+
+#if LOG_CONTRACT_WARNING_MESSAGES
+    *((unsigned int*)&message) = executedContractIndex;
+    logMessage(offsetof(T, _terminator), CONTRACT_WARNING_MESSAGE, &message);
+#endif
+}
+
+struct DummyContractInfoMessage
+{
+    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
+    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void __logContractInfoMessage(T message)
+{
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract info message structure");
+
+#if LOG_CONTRACT_INFO_MESSAGES
+    *((unsigned int*)&message) = executedContractIndex;
+    logMessage(offsetof(T, _terminator), CONTRACT_INFORMATION_MESSAGE, &message);
+#endif
+}
+
+struct DummyContractDebugMessage
+{
+    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
+    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void __logContractDebugMessage(T message)
+{
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract debug message structure");
+
+#if LOG_CONTRACT_DEBUG_MESSAGES
+    *((unsigned int*)&message) = executedContractIndex;
+    logMessage(offsetof(T, _terminator), CONTRACT_DEBUG_MESSAGE, &message);
+#endif
+}
+
+struct DummyCustomMessage
+{
+    unsigned long long _type; // Assign a random unique number to distinguish messages of different types
+
+    // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void logCustomMessage(T message)
+{
+    static_assert(offsetof(T, _terminator) >= 8, "Invalid custom message structure");
+
+#if LOG_CUSTOM_MESSAGES
+    logMessage(offsetof(T, _terminator), CUSTOM_MESSAGE, &message);
+#endif
+}
 
 
 static void log(const CHAR16* message)
@@ -940,6 +1144,14 @@ iteration:
                 assetChangeFlags[*possessionIndex >> 6] |= (1ULL << (*possessionIndex & 63));
 
                 RELEASE(universeLock);
+
+                AssetIssuance assetIssuance;
+                assetIssuance.issuerPublicKey = issuerPublicKey;
+                assetIssuance.numberOfUnits = numberOfUnits;
+                *((unsigned long long*)&assetIssuance.name) = *((unsigned long long*)&name); // Order must be preserved!
+                assetIssuance.numberOfDecimalPlaces = numberOfDecimalPlaces; // Order must be preserved!
+                *((unsigned long long*)&assetIssuance.unitOfMeasurement) = *((unsigned long long*)&unitOfMeasurement); // Order must be preserved!
+                logAssetIssuance(assetIssuance);
             }
             else
             {
@@ -1037,6 +1249,26 @@ iteration:
                 RELEASE(universeLock);
             }
 
+            AssetOwnershipChange assetOwnershipChange;
+            assetOwnershipChange.sourcePublicKey = assets[sourceOwnershipIndex].varStruct.ownership.publicKey;
+            assetOwnershipChange.destinationPublicKey = destinationPublicKey;
+            assetOwnershipChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
+            assetOwnershipChange.numberOfUnits = numberOfUnits;
+            *((unsigned long long*)&assetOwnershipChange.name) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
+            assetOwnershipChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
+            *((unsigned long long*)&assetOwnershipChange.unitOfMeasurement) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
+            logAssetOwnershipChange(assetOwnershipChange);
+
+            AssetPossessionChange assetPossessionChange;
+            assetPossessionChange.sourcePublicKey = assets[sourcePossessionIndex].varStruct.possession.publicKey;
+            assetPossessionChange.destinationPublicKey = destinationPublicKey;
+            assetPossessionChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
+            assetPossessionChange.numberOfUnits = numberOfUnits;
+            *((unsigned long long*)&assetPossessionChange.name) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
+            assetPossessionChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
+            *((unsigned long long*)&assetPossessionChange.unitOfMeasurement) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
+            logAssetPossessionChange(assetPossessionChange);
+
             return true;
         }
         else
@@ -1052,69 +1284,6 @@ iteration:
 
         goto iteration;
     }
-}
-
-inline static unsigned int random(const unsigned int range)
-{
-    unsigned int value;
-    _rdrand32_step(&value);
-
-    return value % range;
-}
-
-static void forget(int address)
-{
-    if (listOfPeersIsStatic)
-    {
-        return;
-    }
-
-    ACQUIRE(publicPeersLock);
-
-    for (unsigned int i = 0; numberOfPublicPeers > NUMBER_OF_EXCHANGED_PEERS && i < numberOfPublicPeers; i++)
-    {
-        if (*((int*)publicPeers[i].address) == address)
-        {
-            if (!publicPeers[i].isVerified && i != --numberOfPublicPeers)
-            {
-                bs->CopyMem(&publicPeers[i], &publicPeers[numberOfPublicPeers], sizeof(PublicPeer));
-            }
-
-            break;
-        }
-    }
-
-    RELEASE(publicPeersLock);
-}
-
-static void addPublicPeer(unsigned char address[4])
-{
-    if ((!address[0])
-        || (address[0] == 127)
-        || (address[0] == 10)
-        || (address[0] == 172 && address[1] >= 16 && address[1] <= 31)
-        || (address[0] == 192 && address[1] == 168)
-        || (address[0] == 255))
-    {
-        return;
-    }
-    for (unsigned int i = 0; i < numberOfPublicPeers; i++)
-    {
-        if (*((int*)address) == *((int*)publicPeers[i].address))
-        {
-            return;
-        }
-    }
-
-    ACQUIRE(publicPeersLock);
-
-    if (numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS)
-    {
-        publicPeers[numberOfPublicPeers].isVerified = false;
-        *((int*)publicPeers[numberOfPublicPeers++].address) = *((int*)address);
-    }
-
-    RELEASE(publicPeersLock);
 }
 
 static void enableAVX()
@@ -1199,152 +1368,6 @@ static void getComputerDigest(m256i& digest)
     digest = contractStateDigests[(MAX_NUMBER_OF_CONTRACTS * 2 - 1) - 1];
 }
 
-static void closePeer(Peer* peer)
-{
-    if (((unsigned long long)peer->tcp4Protocol) > 1)
-    {
-        if (!peer->isClosing)
-        {
-            EFI_STATUS status;
-            if (status = peer->tcp4Protocol->Configure(peer->tcp4Protocol, NULL))
-            {
-                logStatus(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
-            }
-
-            peer->isClosing = TRUE;
-        }
-
-        if (!peer->isConnectingAccepting && !peer->isReceiving && !peer->isTransmitting)
-        {
-            bs->CloseProtocol(peer->connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
-            EFI_STATUS status;
-            if (status = tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peer->connectAcceptToken.NewChildHandle))
-            {
-                logStatus(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL.DestroyChild() fails", status, __LINE__);
-            }
-
-            peer->isConnectedAccepted = FALSE;
-            peer->exchangedPublicPeers = FALSE;
-            peer->isClosing = FALSE;
-            peer->tcp4Protocol = NULL;
-        }
-    }
-}
-
-static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
-{
-    // The sending buffer may queue multiple messages, each of which may need to transmitted in many small packets.
-    if (peer->tcp4Protocol && peer->isConnectedAccepted && !peer->isClosing)
-    {
-        if (peer->dataToTransmitSize + requestResponseHeader->size() > BUFFER_SIZE)
-        {
-            // Buffer is full, which indicates a problem
-            closePeer(peer);
-        }
-        else
-        {
-            // Add message to buffer
-            bs->CopyMem(&peer->dataToTransmit[peer->dataToTransmitSize], requestResponseHeader, requestResponseHeader->size());
-            peer->dataToTransmitSize += requestResponseHeader->size();
-
-            _InterlockedIncrement64(&numberOfDisseminatedRequests);
-        }
-    }
-}
-
-static void pushToAny(RequestResponseHeader* requestResponseHeader)
-{
-    unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
-    unsigned short numberOfSuitablePeers = 0;
-    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
-    {
-        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
-        {
-            suitablePeerIndices[numberOfSuitablePeers++] = i;
-        }
-    }
-    if (numberOfSuitablePeers)
-    {
-        push(&peers[suitablePeerIndices[random(numberOfSuitablePeers)]], requestResponseHeader);
-    }
-}
-
-static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
-{
-    unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
-    unsigned short numberOfSuitablePeers = 0;
-    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
-    {
-        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
-        {
-            suitablePeerIndices[numberOfSuitablePeers++] = i;
-        }
-    }
-    unsigned short numberOfRemainingSuitablePeers = DISSEMINATION_MULTIPLIER;
-    while (numberOfRemainingSuitablePeers-- && numberOfSuitablePeers)
-    {
-        const unsigned short index = random(numberOfSuitablePeers);
-        push(&peers[suitablePeerIndices[index]], requestResponseHeader);
-        suitablePeerIndices[index] = suitablePeerIndices[--numberOfSuitablePeers];
-    }
-}
-
-static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
-{
-    ACQUIRE(responseQueueHeadLock);
-
-    if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + responseHeader->size() < responseQueueBufferTail)
-        && (unsigned short)(responseQueueElementHead + 1) != responseQueueElementTail)
-    {
-        responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
-        bs->CopyMem(&responseQueueBuffer[responseQueueBufferHead], responseHeader, responseHeader->size());
-        responseQueueBufferHead += responseHeader->size();
-        responseQueueElements[responseQueueElementHead].peer = peer;
-        if (responseQueueBufferHead > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
-        {
-            responseQueueBufferHead = 0;
-        }
-        responseQueueElementHead++;
-    }
-
-    RELEASE(responseQueueHeadLock);
-}
-
-static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, void* data)
-{
-    ACQUIRE(responseQueueHeadLock);
-
-    if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + sizeof(RequestResponseHeader) + dataSize < responseQueueBufferTail)
-        && (unsigned short)(responseQueueElementHead + 1) != responseQueueElementTail)
-    {
-        responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
-        RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueBufferHead];
-        if (!responseHeader->checkAndSetSize(sizeof(RequestResponseHeader) + dataSize))
-        {
-            setText(message, L"Error: Message size ");
-            appendNumber(message, sizeof(RequestResponseHeader) + dataSize, TRUE);
-            appendText(message, L" of message of type ");
-            appendNumber(message, type, FALSE);
-            appendText(message, L" exceeds maximum message size!");
-            log(message);
-        }
-        responseHeader->setType(type);
-        responseHeader->setDejavu(dejavu);
-        if (data)
-        {
-            bs->CopyMem(&responseQueueBuffer[responseQueueBufferHead + sizeof(RequestResponseHeader)], data, dataSize);
-        }
-        responseQueueBufferHead += responseHeader->size();
-        responseQueueElements[responseQueueElementHead].peer = peer;
-        if (responseQueueBufferHead > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
-        {
-            responseQueueBufferHead = 0;
-        }
-        responseQueueElementHead++;
-    }
-
-    RELEASE(responseQueueHeadLock);
-}
 
 static void exchangePublicPeers(Peer* peer, Processor* processor, RequestResponseHeader* header)
 {
@@ -2015,6 +2038,73 @@ iteration:
     RELEASE(universeLock);
 }
 
+static void requestContractFunction(Peer* peer, const unsigned long long processorNumber, Processor* processor, RequestResponseHeader* header)
+{
+    // TODO: Invoked function may enter endless loop, so a timeout (and restart) is required for request processing threads
+    // TODO: Enable parallel execution of contract functions
+
+    RespondContractFunction* response = (RespondContractFunction*)contractFunctionOutputs[processorNumber];
+
+    RequestContractFunction* request = (RequestContractFunction*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    executedContractIndex = request->contractIndex;
+    if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
+        || !executedContractIndex || executedContractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
+        || system.epoch < contractDescriptions[executedContractIndex].constructionEpoch
+        || !contractUserFunctions[executedContractIndex][request->inputType])
+    {
+        enqueueResponse(peer, 0, response->type(), header->dejavu(), NULL);
+    }
+    else
+    {
+        ::originator = _mm256_setzero_si256();
+        ::invocator = ::originator;
+        ::invocationReward = 0;
+        currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
+
+        bs->SetMem(&contractFunctionInputs[processorNumber], sizeof(contractFunctionInputs[processorNumber]), 0);
+        bs->CopyMem(&contractFunctionInputs[processorNumber], (((unsigned char*)request) + sizeof(RequestContractFunction)), request->inputSize);
+        ACQUIRE(contractStateCopyLock); // A single contract state buffer is used because of lack of memory, if we could afford we would use a buffer per request processing thread
+        bs->CopyMem(contractStateCopy, contractStates[executedContractIndex], contractDescriptions[executedContractIndex].stateSize);
+        contractUserFunctions[executedContractIndex][request->inputType](contractStateCopy, &contractFunctionInputs[processorNumber], response);
+        RELEASE(contractStateCopyLock);
+
+        enqueueResponse(peer, contractUserFunctionOutputSizes[executedContractIndex][request->inputType], response->type(), header->dejavu(), response);
+    }
+}
+
+static void requestLog(Peer* peer, Processor* processor, RequestResponseHeader* header)
+{
+    RequestLog* request = (RequestLog*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+    {
+        if (request->passcode[0] == logReaderPasscodes[logReaderIndex][0]
+            && request->passcode[1] == logReaderPasscodes[logReaderIndex][1]
+            && request->passcode[2] == logReaderPasscodes[logReaderIndex][2]
+            && request->passcode[3] == logReaderPasscodes[logReaderIndex][3])
+        {
+            ACQUIRE(logBufferLocks[logReaderIndex]);
+
+            if (logBufferOverflownFlags[logReaderIndex])
+            {
+                RELEASE(logBufferLocks[logReaderIndex]);
+
+                break;
+            }
+            else
+            {
+                enqueueResponse(peer, logBufferTails[logReaderIndex], RespondLog::type(), header->dejavu(), logBuffers[logReaderIndex]);
+                logBufferTails[logReaderIndex] = 0;
+            }
+
+            RELEASE(logBufferLocks[logReaderIndex]);
+
+            return;
+        }
+    }
+
+    enqueueResponse(peer, 0, RespondLog::type(), header->dejavu(), NULL);
+}
+
 static void processSpecialCommand(Peer* peer, Processor* processor, RequestResponseHeader* header)
 {
     SpecialCommand* request = (SpecialCommand*)((char*)processor->buffer + sizeof(RequestResponseHeader));
@@ -2217,6 +2307,18 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestContractFunction::type():
+                {
+                    requestContractFunction(peer, processorNumber, processor, header);
+                }
+                break;
+
+                case RequestLog::type():
+                {
+                    requestLog(peer, processor, header);
+                }
+                break;
+
                 case PROCESS_SPECIAL_COMMAND:
                 {
                     processSpecialCommand(peer, processor, header);
@@ -2235,42 +2337,36 @@ static void requestProcessor(void* ProcedureArgument)
 
 static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
-    if (functionFlags[functionOrProcedureId >> 6] & (1ULL << (functionOrProcedureId & 63)))
-    {
-        // TODO
-    }
-    else
-    {
-        functionFlags[functionOrProcedureId >> 6] |= (1ULL << (functionOrProcedureId & 63));
-    }
+    // TODO
 }
 
 static void __endFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
-    functionFlags[functionOrProcedureId >> 6] &= ~(1ULL << (functionOrProcedureId & 63));
-
     contractStateChangeFlags[functionOrProcedureId >> (22 + 6)] |= (1ULL << ((functionOrProcedureId >> 22) & 63));
 }
 
-static void __registerUserFunction(unsigned short inputType, unsigned short inputSize)
+static void __registerUserFunction(USER_FUNCTION userFunction, unsigned short inputType, unsigned short inputSize, unsigned short outputSize)
 {
-    // TODO
+    contractUserFunctions[executedContractIndex][inputType] = userFunction;
+    contractUserFunctionInputSizes[executedContractIndex][inputType] = inputSize;
+    contractUserFunctionInputSizes[executedContractIndex][inputType] = outputSize;
 }
 
-static void __registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize)
+static void __registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize, unsigned short outputSize)
 {
     contractUserProcedures[executedContractIndex][inputType] = userProcedure;
     contractUserProcedureInputSizes[executedContractIndex][inputType] = inputSize;
+    contractUserProcedureInputSizes[executedContractIndex][inputType] = outputSize;
 }
 
-static __m256i __arbitrator()
+static const m256i& __arbitrator()
 {
     return arbitratorPublicKey;
 }
 
-static __m256i __computor(unsigned short computorIndex)
+static const m256i& __computor(unsigned short computorIndex)
 {
-    return broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS].m256i_intr();
+    return broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
 }
 
 static unsigned char __day()
@@ -2288,7 +2384,7 @@ static unsigned short __epoch()
     return system.epoch;
 }
 
-static bool __getEntity(__m256i id, ::Entity& entity)
+static bool __getEntity(const m256i& id, ::Entity& entity)
 {
     int index = spectrumIndex(id);
     if (index < 0)
@@ -2327,12 +2423,12 @@ static long long __invocationReward()
     return ::invocationReward;
 }
 
-static __m256i __invocator()
+static const m256i& __invocator()
 {
     return ::invocator;
 }
 
-static long long __issueAsset(unsigned long long name, __m256i issuer, char numberOfDecimalPlaces, long long numberOfUnits, unsigned long long unitOfMeasurement)
+static long long __issueAsset(unsigned long long name, const m256i& issuer, char numberOfDecimalPlaces, long long numberOfUnits, unsigned long long unitOfMeasurement)
 {
     if (((unsigned char)name) < 'A' || ((unsigned char)name) > 'Z'
         || name > 0xFFFFFFFFFFFFFF)
@@ -2406,12 +2502,12 @@ static unsigned char __month()
     return etalonTick.month;
 }
 
-static __m256i __nextId(__m256i currentId)
+static m256i __nextId(const m256i& currentId)
 {
     int index = spectrumIndex(currentId);
     while (++index < SPECTRUM_CAPACITY)
     {
-        const __m256i& nextId = spectrum[index].publicKey.m256i_intr();
+        const m256i& nextId = spectrum[index].publicKey;
         if (!isZero(nextId))
         {
             return nextId;
@@ -2421,7 +2517,7 @@ static __m256i __nextId(__m256i currentId)
     return _mm256_setzero_si256();
 }
 
-static __m256i __originator()
+static m256i __originator()
 {
     return ::originator;
 }
@@ -2436,7 +2532,7 @@ static unsigned int __tick()
     return system.tick;
 }
 
-static long long __transfer(__m256i destination, long long amount)
+static long long __transfer(const m256i& destination, long long amount)
 {
     if (amount < 0 || amount > MAX_AMOUNT)
     {
@@ -2459,13 +2555,18 @@ static long long __transfer(__m256i destination, long long amount)
 
     if (decreaseEnergy(index, amount))
     {
-        increaseEnergy((unsigned char*)&destination, amount);
+        increaseEnergy(destination, amount);
+        if (amount)
+        {
+            const QuTransfer quTransfer = { currentContract , destination , amount };
+            logQuTransfer(quTransfer);
+        }
     }
 
     return remainingAmount;
 }
 
-static long long __transferAssetOwnershipAndPossession(unsigned long long assetName, __m256i issuer, __m256i owner, __m256i possessor, long long numberOfUnits, __m256i newOwner)
+static long long __transferAssetOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfUnits, const m256i& newOwner)
 {
     if (numberOfUnits <= 0 || numberOfUnits > MAX_AMOUNT)
     {
@@ -2474,7 +2575,7 @@ static long long __transferAssetOwnershipAndPossession(unsigned long long assetN
 
     ACQUIRE(universeLock);
 
-    int issuanceIndex = (*((unsigned int*)&issuer)) & (ASSETS_CAPACITY - 1);
+    int issuanceIndex = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
 iteration:
     if (assets[issuanceIndex].varStruct.issuance.type == EMPTY)
     {
@@ -2488,7 +2589,7 @@ iteration:
             && ((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == assetName
             && assets[issuanceIndex].varStruct.issuance.publicKey == issuer)
         {
-            int ownershipIndex = (*((unsigned int*)&owner)) & (ASSETS_CAPACITY - 1);
+            int ownershipIndex = owner.m256i_u32[0] & (ASSETS_CAPACITY - 1);
         iteration2:
             if (assets[ownershipIndex].varStruct.ownership.type == EMPTY)
             {
@@ -2503,7 +2604,7 @@ iteration:
                     && assets[ownershipIndex].varStruct.ownership.publicKey == owner
                     && assets[ownershipIndex].varStruct.ownership.managingContractIndex == executedContractIndex) // TODO: This condition needs extra attention during refactoring!
                 {
-                    int possessionIndex = (*((unsigned int*)&possessor)) & (ASSETS_CAPACITY - 1);
+                    int possessionIndex = possessor.m256i_u32[0] & (ASSETS_CAPACITY - 1);
                 iteration3:
                     if (assets[possessionIndex].varStruct.possession.type == EMPTY)
                     {
@@ -2522,7 +2623,7 @@ iteration:
                                 if (assets[possessionIndex].varStruct.possession.numberOfUnits >= numberOfUnits)
                                 {
                                     int destinationOwnershipIndex, destinationPossessionIndex;
-                                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, (unsigned char*)&newOwner, numberOfUnits, &destinationOwnershipIndex, &destinationPossessionIndex, false);
+                                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, newOwner, numberOfUnits, &destinationOwnershipIndex, &destinationPossessionIndex, false);
 
                                     RELEASE(universeLock);
 
@@ -2574,6 +2675,16 @@ static unsigned char __year()
     return etalonTick.year;
 }
 
+template <typename T>
+static m256i __K12(T data)
+{
+    m256i digest;
+
+    KangarooTwelve(&data, sizeof(data), &digest, sizeof(digest));
+
+    return digest;
+}
+
 static void contractProcessor(void*)
 {
     enableAVX();
@@ -2592,7 +2703,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][INITIALIZE](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -2610,7 +2723,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][BEGIN_EPOCH](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -2628,7 +2743,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][BEGIN_TICK](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -2646,7 +2763,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][END_TICK](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -2664,7 +2783,9 @@ static void contractProcessor(void*)
                 ::invocationReward = 0;
                 currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
+                const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][END_EPOCH](contractStates[executedContractIndex]);
+                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
             }
         }
     }
@@ -2733,6 +2854,11 @@ static void processTick(unsigned long long processorNumber)
                         if (decreaseEnergy(spectrumIndex, transaction->amount))
                         {
                             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
+                            if (transaction->amount)
+                            {
+                                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
+                                logQuTransfer(quTransfer);
+                            }
 
                             if (isZero(transaction->destinationPublicKey))
                             {
@@ -2761,6 +2887,9 @@ static void processTick(unsigned long long processorNumber)
                                                 const long long amount = contractIPOBid->price * contractIPOBid->quantity;
                                                 if (decreaseEnergy(spectrumIndex, amount))
                                                 {
+                                                    const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
+                                                    logQuTransfer(quTransfer);
+
                                                     numberOfReleasedEntities = 0;
                                                     IPO* ipo = (IPO*)contractStates[executedContractIndex];
                                                     for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
@@ -2825,6 +2954,8 @@ static void processTick(unsigned long long processorNumber)
                                                     for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
                                                     {
                                                         increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
+                                                        const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                                                        logQuTransfer(quTransfer);
                                                     }
                                                 }
                                             }
@@ -2834,14 +2965,16 @@ static void processTick(unsigned long long processorNumber)
                                     {
                                         if (contractUserProcedures[executedContractIndex][transaction->inputType])
                                         {
-                                            ::originator = transaction->sourcePublicKey.m256i_intr();
+                                            ::originator = transaction->sourcePublicKey;
                                             ::invocator = ::originator;
                                             ::invocationReward = transaction->amount;
                                             currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
                                             bs->SetMem(&executedContractInput, sizeof(executedContractInput), 0);
                                             bs->CopyMem(&executedContractInput, (((unsigned char*)transaction) + sizeof(Transaction)), transaction->inputSize);
-                                            contractUserProcedures[executedContractIndex][transaction->inputType](contractStates[executedContractIndex], &executedContractInput, NULL);
+                                            const unsigned long long startTick = __rdtsc();
+                                            contractUserProcedures[executedContractIndex][transaction->inputType](contractStates[executedContractIndex], &executedContractInput, &executedContractOutput);
+                                            contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
                                         }
                                     }
                                 }
@@ -2980,11 +3113,11 @@ static void processTick(unsigned long long processorNumber)
 
                                                     for (unsigned int i = 0; i < QUORUM; i++)
                                                     {
-                                                        system.futureComputors[i] = *(__m256i*)&minerPublicKeys[i];
+                                                        system.futureComputors[i] = minerPublicKeys[i];
                                                     }
                                                     for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
                                                     {
-                                                        system.futureComputors[i] = competitorPublicKeys[i - QUORUM].m256i_intr();
+                                                        system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
                                                     }
                                                 }
                                             }
@@ -3250,7 +3383,7 @@ static void endEpoch()
             int issuanceIndex, ownershipIndex, possessionIndex;
             if (finalPrice)
             {
-                __m256i zero = _mm256_setzero_si256();
+                m256i zero = _mm256_setzero_si256();
                 issueAsset(zero, (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex);
             }
             numberOfReleasedEntities = 0;
@@ -3285,6 +3418,8 @@ static void endEpoch()
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
+                const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                logQuTransfer(quTransfer);
             }
 
             contract0State->contractFeeReserves[contractIndex] = finalPrice * NUMBER_OF_COMPUTORS;
@@ -3342,10 +3477,17 @@ static void endEpoch()
     {
         const long long revenue = (transactionCounters[computorIndex] >= sortedTransactionCounters[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)transactionCounters[computorIndex])) / sortedTransactionCounters[QUORUM - 1]);
         increaseEnergy(broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex], revenue);
+        if (revenue)
+        {
+            const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex] , revenue };
+            logQuTransfer(quTransfer);
+        }
         arbitratorRevenue -= revenue;
     }
 
     increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
+    const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
+    logQuTransfer(quTransfer);
 
     {
         ACQUIRE(spectrumLock);
@@ -3515,10 +3657,7 @@ static void endEpoch()
     broadcastedComputors.broadcastComputors.computors.epoch = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[0]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[1]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[2]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[3]);
+        broadcastedComputors.broadcastComputors.computors.publicKeys[i].setRandomValue();
     }
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
@@ -3943,7 +4082,7 @@ static void tickProcessor(void*)
                         }
 
                         TickEssence tickEssence;
-                        __m256i etalonTickEssenceDigest;
+                        m256i etalonTickEssenceDigest;
 
                         *((unsigned long long*) & tickEssence.millisecond) = *((unsigned long long*) & etalonTick.millisecond);
                         tickEssence.prevSpectrumDigest = etalonTick.prevSpectrumDigest;
@@ -3990,7 +4129,7 @@ static void tickProcessor(void*)
                                                 tickEssence.prevUniverseDigest = tick->prevUniverseDigest;
                                                 tickEssence.prevComputerDigest = tick->prevComputerDigest;
                                                 tickEssence.transactionDigest = tick->transactionDigest;
-                                                __m256i tickEssenceDigest;
+                                                m256i tickEssenceDigest;
                                                 KangarooTwelve(&tickEssence, sizeof(TickEssence), &tickEssenceDigest, 32);
                                                 if (tickEssenceDigest == etalonTickEssenceDigest)
                                                 {
@@ -4292,15 +4431,17 @@ static bool initialize()
         contractStates[contractIndex] = NULL;
     }
     bs->SetMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
+    bs->SetMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
     bs->SetMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
+    for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
+    {
+        contractFunctionOutputs[processorIndex] = NULL;
+    }
 
     getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
     if (isZero(operatorPublicKey))
     {
-        _rdrand64_step(&operatorPublicKey.m256i_u64[0]);
-        _rdrand64_step(&operatorPublicKey.m256i_u64[1]);
-        _rdrand64_step(&operatorPublicKey.m256i_u64[2]);
-        _rdrand64_step(&operatorPublicKey.m256i_u64[3]);
+        operatorPublicKey.setRandomValue();
     }
 
     for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
@@ -4329,10 +4470,7 @@ static bool initialize()
     broadcastedComputors.broadcastComputors.computors.epoch = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[0]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[1]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[2]);
-        _rdrand64_step(&broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u64[3]);
+        broadcastedComputors.broadcastComputors.computors.publicKeys[i].setRandomValue();
     }
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
@@ -4412,14 +4550,34 @@ static bool initialize()
             }
         }
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&functionFlags)))
+            || (status = bs->AllocatePool(EfiRuntimeServicesData, MAX_CONTRACT_STATE_SIZE, (void**)&contractStateCopy)))
         {
             logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
         bs->SetMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);
-        bs->SetMem(functionFlags, 536870912, 0);
+        for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
+        {
+            if (status = bs->AllocatePool(EfiRuntimeServicesData, RequestResponseHeader::max_size - sizeof(RequestResponseHeader), (void**)&contractFunctionOutputs[processorIndex]))
+            {
+                logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+
+                return false;
+            }
+        }
+
+#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+        for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+        {
+            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers[logReaderIndex]))
+            {
+                logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+
+                return false;
+            }
+        }
+#endif
 
         bs->SetMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
@@ -4678,9 +4836,26 @@ static void deinitialize()
         bs->FreePool(reorgBuffer);
     }
 
-    if (functionFlags)
+#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+    for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
     {
-        bs->FreePool(functionFlags);
+        if (logBuffers[logReaderIndex])
+        {
+            bs->FreePool(logBuffers[logReaderIndex]);
+        }
+    }
+#endif
+
+    for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
+    {
+        if (contractFunctionOutputs[processorIndex])
+        {
+            bs->FreePool(contractFunctionOutputs[processorIndex]);
+        }
+    }
+    if (contractStateCopy)
+    {
+        bs->FreePool(contractStateCopy);
     }
     if (contractStateChangeFlags)
     {
@@ -4864,19 +5039,13 @@ static void logInfo()
         {
             appendText(message, alphabet[ownComputorIndices[i] / 26]);
             appendText(message, alphabet[ownComputorIndices[i] % 26]);
-            appendText(message, i ? L"[" : L"[in ");
-            appendNumber(message, ((ownComputorIndices[i] + NUMBER_OF_COMPUTORS) - system.tick % NUMBER_OF_COMPUTORS) % NUMBER_OF_COMPUTORS, FALSE);
-            if (!i)
-            {
-                appendText(message, L" ticks");
-            }
             if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
             {
-                appendText(message, L"]+");
+                appendText(message, L"+");
             }
             else
             {
-                appendText(message, L"].");
+                appendText(message, L".");
             }
         }
     }
@@ -4954,7 +5123,9 @@ static void logInfo()
     {
         appendText(message, L"?");
     }
-    appendText(message, L" mcs.");
+    appendText(message, L" mcs | Total Qx execution time = ");
+    appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] / frequency, TRUE);
+    appendText(message, L" s.");
     log(message);
 }
 
@@ -5348,362 +5519,58 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                 {
-                    if (((unsigned long long)peers[i].tcp4Protocol)
-                        && peers[i].connectAcceptToken.CompletionToken.Status != -1)
+                    // handle new connections
+                    if (peerConnectionNewlyEstabilished(i))
                     {
-                        peers[i].isConnectingAccepting = FALSE;
-
-                        if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
+                        // new connection established:
+                        // prepare and send ExchangePublicPeers message
+                        ExchangePublicPeers* request = (ExchangePublicPeers*)&peers[i].dataToTransmit[sizeof(RequestResponseHeader)];
+                        bool noVerifiedPublicPeers = true;
+                        for (unsigned int k = 0; k < numberOfPublicPeers; k++)
                         {
-                            if (peers[i].connectAcceptToken.CompletionToken.Status)
+                            if (publicPeers[k].isVerified)
                             {
-                                peers[i].connectAcceptToken.CompletionToken.Status = -1;
-                                forget(*((int*)peers[i].address));
-                                closePeer(&peers[i]);
+                                noVerifiedPublicPeers = false;
+
+                                break;
+                            }
+                        }
+                        for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS; j++)
+                        {
+                            const unsigned int publicPeerIndex = random(numberOfPublicPeers);
+                            if (publicPeers[publicPeerIndex].isVerified || noVerifiedPublicPeers)
+                            {
+                                *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
                             }
                             else
                             {
-                                peers[i].connectAcceptToken.CompletionToken.Status = -1;
-                                if (peers[i].isClosing)
-                                {
-                                    closePeer(&peers[i]);
-                                }
-                                else
-                                {
-                                    peers[i].isConnectedAccepted = TRUE;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (peers[i].connectAcceptToken.CompletionToken.Status)
-                            {
-                                peers[i].connectAcceptToken.CompletionToken.Status = -1;
-                                peers[i].tcp4Protocol = NULL;
-                            }
-                            else
-                            {
-                                peers[i].connectAcceptToken.CompletionToken.Status = -1;
-                                if (peers[i].isClosing)
-                                {
-                                    closePeer(&peers[i]);
-                                }
-                                else
-                                {
-                                    if (status = bs->OpenProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, (void**)&peers[i].tcp4Protocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL))
-                                    {
-                                        logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
-
-                                        tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
-                                        peers[i].tcp4Protocol = NULL;
-                                    }
-                                    else
-                                    {
-                                        peers[i].isConnectedAccepted = TRUE;
-                                    }
-                                }
+                                j--;
                             }
                         }
 
-                        if (peers[i].isConnectedAccepted)
+                        RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
+                        requestHeader->setSize<sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers)>();
+                        requestHeader->randomizeDejavu();
+                        requestHeader->setType(EXCHANGE_PUBLIC_PEERS);
+                        peers[i].dataToTransmitSize = requestHeader->size();
+                        _InterlockedIncrement64(&numberOfDisseminatedRequests);
+
+                        // send REQUEST_COMPUTORS message at beginning of epoch
+                        if (!broadcastedComputors.broadcastComputors.computors.epoch
+                            || broadcastedComputors.broadcastComputors.computors.epoch != system.epoch)
                         {
-                            ExchangePublicPeers* request = (ExchangePublicPeers*)&peers[i].dataToTransmit[sizeof(RequestResponseHeader)];
-                            bool noVerifiedPublicPeers = true;
-                            for (unsigned int k = 0; k < numberOfPublicPeers; k++)
-                            {
-                                if (publicPeers[k].isVerified)
-                                {
-                                    noVerifiedPublicPeers = false;
-
-                                    break;
-                                }
-                            }
-                            for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS; j++)
-                            {
-                                const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isVerified || noVerifiedPublicPeers)
-                                {
-                                    *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
-                                }
-                                else
-                                {
-                                    j--;
-                                }
-                            }
-
-                            RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
-                            requestHeader->setSize<sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers)>();
-                            requestHeader->randomizeDejavu();
-                            requestHeader->setType(EXCHANGE_PUBLIC_PEERS);
-                            peers[i].dataToTransmitSize = requestHeader->size();
+                            requestedComputors.header.randomizeDejavu();
+                            bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
+                            peers[i].dataToTransmitSize += requestedComputors.header.size();
                             _InterlockedIncrement64(&numberOfDisseminatedRequests);
-
-                            if (!broadcastedComputors.broadcastComputors.computors.epoch
-                                || broadcastedComputors.broadcastComputors.computors.epoch != system.epoch)
-                            {
-                                requestedComputors.header.randomizeDejavu();
-                                bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
-                                peers[i].dataToTransmitSize += requestedComputors.header.size();
-                                _InterlockedIncrement64(&numberOfDisseminatedRequests);
-                            }
                         }
                     }
 
-                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-                    {
-                        peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
-                    }
+                    // receive and transmit on active connections
+                    peerReceiveAndTransmit(i, salt);
 
-                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-                    {
-                        if (peers[i].receiveToken.CompletionToken.Status != -1)
-                        {
-                            peers[i].isReceiving = FALSE;
-                            if (peers[i].receiveToken.CompletionToken.Status)
-                            {
-                                peers[i].receiveToken.CompletionToken.Status = -1;
-                                closePeer(&peers[i]);
-                            }
-                            else
-                            {
-                                peers[i].receiveToken.CompletionToken.Status = -1;
-                                if (peers[i].isClosing)
-                                {
-                                    closePeer(&peers[i]);
-                                }
-                                else
-                                {
-                                    numberOfReceivedBytes += peers[i].receiveData.DataLength;
-                                    *((unsigned long long*)&peers[i].receiveData.FragmentTable[0].FragmentBuffer) += peers[i].receiveData.DataLength;
-
-                                iteration:
-                                    unsigned int receivedDataSize = (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
-
-                                    if (receivedDataSize >= sizeof(RequestResponseHeader))
-                                    {
-                                        RequestResponseHeader* requestResponseHeader = (RequestResponseHeader*)peers[i].receiveBuffer;
-                                        if (requestResponseHeader->size() < sizeof(RequestResponseHeader))
-                                        {
-                                            setText(message, L"Forgetting ");
-                                            appendNumber(message, peers[i].address[0], FALSE);
-                                            appendText(message, L".");
-                                            appendNumber(message, peers[i].address[1], FALSE);
-                                            appendText(message, L".");
-                                            appendNumber(message, peers[i].address[2], FALSE);
-                                            appendText(message, L".");
-                                            appendNumber(message, peers[i].address[3], FALSE);
-                                            appendText(message, L"...");
-                                            forget(*((int*)peers[i].address));
-                                            closePeer(&peers[i]);
-                                        }
-                                        else
-                                        {
-                                            if (receivedDataSize >= requestResponseHeader->size())
-                                            {
-                                                unsigned int saltedId;
-
-                                                const unsigned int header = *((unsigned int*)requestResponseHeader);
-                                                *((unsigned int*)requestResponseHeader) = salt;
-                                                KangarooTwelve(requestResponseHeader, header & 0xFFFFFF, &saltedId, sizeof(saltedId));
-                                                *((unsigned int*)requestResponseHeader) = header;
-
-                                                // Initiate transfer of already received packet to processing thread
-                                                // (or drop it without processing if Dejavu filter tells to ignore it)
-                                                if (!((dejavu0[saltedId >> 6] | dejavu1[saltedId >> 6]) & (1ULL << (saltedId & 63))))
-                                                {
-                                                    if ((requestQueueBufferHead >= requestQueueBufferTail || requestQueueBufferHead + requestResponseHeader->size() < requestQueueBufferTail)
-                                                        && (unsigned short)(requestQueueElementHead + 1) != requestQueueElementTail)
-                                                    {
-                                                        dejavu0[saltedId >> 6] |= (1ULL << (saltedId & 63));
-
-                                                        requestQueueElements[requestQueueElementHead].offset = requestQueueBufferHead;
-                                                        bs->CopyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
-                                                        requestQueueBufferHead += requestResponseHeader->size();
-                                                        requestQueueElements[requestQueueElementHead].peer = &peers[i];
-                                                        if (requestQueueBufferHead > REQUEST_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
-                                                        {
-                                                            requestQueueBufferHead = 0;
-                                                        }
-                                                        // TODO: Place a fence
-                                                        requestQueueElementHead++;
-
-                                                        if (!(--dejavuSwapCounter))
-                                                        {
-                                                            unsigned long long* tmp = dejavu1;
-                                                            dejavu1 = dejavu0;
-                                                            bs->SetMem(dejavu0 = tmp, 536870912, 0);
-                                                            dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
-                                                        }
-                                                    }
-                                                    else
-                                                    {
-                                                        _InterlockedIncrement64(&numberOfDiscardedRequests);
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    _InterlockedIncrement64(&numberOfDuplicateRequests);
-                                                }
-
-                                                bs->CopyMem(peers[i].receiveBuffer, ((char*)peers[i].receiveBuffer) + requestResponseHeader->size(), receivedDataSize -= requestResponseHeader->size());
-                                                peers[i].receiveData.FragmentTable[0].FragmentBuffer = ((char*)peers[i].receiveBuffer) + receivedDataSize;
-
-                                                goto iteration;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-                    {
-                        if (!peers[i].isReceiving && peers[i].isConnectedAccepted && !peers[i].isClosing)
-                        {
-                            if ((((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer)) < BUFFER_SIZE)
-                            {
-                                peers[i].receiveData.DataLength = peers[i].receiveData.FragmentTable[0].FragmentLength = BUFFER_SIZE - (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
-                                if (peers[i].receiveData.DataLength)
-                                {
-                                    EFI_TCP4_CONNECTION_STATE state;
-                                    if ((status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL))
-                                        || state == Tcp4StateClosed)
-                                    {
-                                        closePeer(&peers[i]);
-                                    }
-                                    else
-                                    {
-                                        // Initiate receiving data. At the same moment buffer may already contain a message of
-                                        // up to 16MB size, we don't wait for this message to be passed on to processing thread.
-                                        if (status = peers[i].tcp4Protocol->Receive(peers[i].tcp4Protocol, &peers[i].receiveToken))
-                                        {
-                                            if (status != EFI_CONNECTION_FIN)
-                                            {
-                                                logStatus(L"EFI_TCP4_PROTOCOL.Receive() fails", status, __LINE__);
-                                            }
-
-                                            closePeer(&peers[i]);
-                                        }
-                                        else
-                                        {
-                                            peers[i].isReceiving = TRUE;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-                    {
-                        if (peers[i].transmitToken.CompletionToken.Status != -1)
-                        {
-                            peers[i].isTransmitting = FALSE;
-                            if (peers[i].transmitToken.CompletionToken.Status)
-                            {
-                                peers[i].transmitToken.CompletionToken.Status = -1;
-                                closePeer(&peers[i]);
-                            }
-                            else
-                            {
-                                peers[i].transmitToken.CompletionToken.Status = -1;
-                                if (peers[i].isClosing)
-                                {
-                                    closePeer(&peers[i]);
-                                }
-                                else
-                                {
-                                    numberOfTransmittedBytes += peers[i].transmitData.DataLength;
-                                }
-                            }
-                        }
-                    }
-                    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-                    {
-                        if (peers[i].dataToTransmitSize && !peers[i].isTransmitting && peers[i].isConnectedAccepted && !peers[i].isClosing)
-                        {
-                            bs->CopyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
-                            peers[i].dataToTransmitSize = 0;
-                            if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
-                            {
-                                logStatus(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
-
-                                closePeer(&peers[i]);
-                            }
-                            else
-                            {
-                                peers[i].isTransmitting = TRUE;
-                            }
-                        }
-                    }
-
-                    if (!peers[i].tcp4Protocol)
-                    {
-                        if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
-                        {
-                            *((int*)peers[i].address) = *((int*)publicPeers[random(numberOfPublicPeers)].address);
-
-                            unsigned int j;
-                            for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
-                            {
-                                if (peers[j].tcp4Protocol && *((int*)peers[j].address) == *((int*)peers[i].address))
-                                {
-                                    break;
-                                }
-                            }
-                            if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
-                            {
-                                if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address, PORT, &peers[i].tcp4Protocol))
-                                {
-                                    peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                                    peers[i].dataToTransmitSize = 0;
-                                    peers[i].isReceiving = FALSE;
-                                    peers[i].isTransmitting = FALSE;
-                                    peers[i].exchangedPublicPeers = FALSE;
-                                    peers[i].isClosing = FALSE;
-
-                                    if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
-                                    {
-                                        logStatus(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
-
-                                        bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
-                                        tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
-                                        peers[i].tcp4Protocol = NULL;
-                                    }
-                                    else
-                                    {
-                                        peers[i].isConnectingAccepting = TRUE;
-                                    }
-                                }
-                                else
-                                {
-                                    peers[i].tcp4Protocol = NULL;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (!listOfPeersIsStatic)
-                            {
-                                peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                                peers[i].dataToTransmitSize = 0;
-                                peers[i].isReceiving = FALSE;
-                                peers[i].isTransmitting = FALSE;
-                                peers[i].exchangedPublicPeers = FALSE;
-                                peers[i].isClosing = FALSE;
-
-                                if (status = peerTcp4Protocol->Accept(peerTcp4Protocol, &peers[i].connectAcceptToken))
-                                {
-                                    logStatus(L"EFI_TCP4_PROTOCOL.Accept() fails", status, __LINE__);
-                                }
-                                else
-                                {
-                                    peers[i].isConnectingAccepting = TRUE;
-                                    peers[i].tcp4Protocol = (EFI_TCP4_PROTOCOL*)1;
-                                }
-                            }
-                        }
-                    }
+                    // reconnect if this peer slot has no active connection
+                    peerReconnectIfInactive(i, PORT);
                 }
 
                 if (curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)

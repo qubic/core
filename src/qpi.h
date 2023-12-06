@@ -32,7 +32,7 @@ namespace QPI
 	typedef unsigned int uint32;
 	typedef signed long long sint64;
 	typedef unsigned long long uint64;
-	typedef __m256i id;
+	typedef m256i id;
 
 	#define bit_2x bit_2
 	#define bit_4x bit_4
@@ -274,30 +274,31 @@ namespace QPI
 	#define id_4194304x id_4194304
 	#define id_8388608x id_8388608
 	#define id_16777216x id_16777216
-	#define index_2x index_2
-	#define index_4x index_4
-	#define index_8x index_8
-	#define index_16x index_16
-	#define index_32x index_32
-	#define index_64x index_64
-	#define index_128x index_128
-	#define index_256x index_256
-	#define index_512x index_512
-	#define index_1024x index_1024
-	#define index_2048x index_2048
-	#define index_4096x index_4096
-	#define index_8192x index_8192
-	#define index_16384x index_16384
-	#define index_32768x index_32768
-	#define index_65536x index_65536
-	#define index_131072x index_131072
-	#define index_262144x index_262144
-	#define index_524288x index_524288
-	#define index_1048576x index_1048576
-	#define index_2097152x index_2097152
-	#define index_4194304x index_4194304
-	#define index_8388608x index_8388608
-	#define index_16777216x index_16777216
+	#define index_2x index_<2>
+	#define index_4x index_<4>
+	#define index_8x index_<8>
+	#define index_16x index_<16>
+	#define index_32x index_<32>
+	#define index_64x index_<64>
+	#define index_128x index_<128>
+	#define index_256x index_<256>
+	#define index_512x index_<512>
+	#define index_1024x index_<1024>
+	#define index_2048x index_<2048>
+	#define index_4096x index_<4096>
+	#define index_8192x index_<8192>
+	#define index_16384x index_<16384>
+	#define index_32768x index_<32768>
+	#define index_65536x index_<65536>
+	#define index_131072x index_<131072>
+	#define index_262144x index_<262144>
+	#define index_524288x index_<524288>
+	#define index_1048576x index_<1048576>
+	#define index_2097152x index_<2097152>
+	#define index_4194304x index_<4194304>
+	#define index_8388608x index_<8388608>
+	#define index_16777216x index_<16777216>
+	#define index_33554432x index_<33554432>
 
 	#define bit_2x2 bit_4
 	#define bit_4x2 bit_8
@@ -529,32 +530,33 @@ namespace QPI
 	#define id_2097152x2 id_4194304
 	#define id_4194304x2 id_8388608
 	#define id_8388608x2 id_16777216
-	#define index_2x2 index_4
-	#define index_4x2 index_8
-	#define index_8x2 index_16
-	#define index_16x2 index_32
-	#define index_32x2 index_64
-	#define index_64x2 index_128
-	#define index_128x2 index_256
-	#define index_256x2 index_512
-	#define index_512x2 index_1024
-	#define index_1024x2 index_2048
-	#define index_2048x2 index_4096
-	#define index_4096x2 index_8192
-	#define index_8192x2 index_16384
-	#define index_16384x2 index_32768
-	#define index_32768x2 index_65536
-	#define index_65536x2 index_131072
-	#define index_131072x2 index_262144
-	#define index_262144x2 index_524288
-	#define index_524288x2 index_1048576
-	#define index_1048576x2 index_2097152
-	#define index_2097152x2 index_4194304
-	#define index_4194304x2 index_8388608
-	#define index_8388608x2 index_16777216
+	#define index_2x2 index_<4>
+	#define index_4x2 index_<8>
+	#define index_8x2 index_<16>
+	#define index_16x2 index_<32>
+	#define index_32x2 index_<64>
+	#define index_64x2 index_<128>
+	#define index_128x2 index_<256>
+	#define index_256x2 index_<512>
+	#define index_512x2 index_<1024>
+	#define index_1024x2 index_<2048>
+	#define index_2048x2 index_<4096>
+	#define index_4096x2 index_<8192>
+	#define index_8192x2 index_<16384>
+	#define index_16384x2 index_<32768>
+	#define index_32768x2 index_<65536>
+	#define index_65536x2 index_<131072>
+	#define index_131072x2 index_<262144>
+	#define index_262144x2 index_<524288>
+	#define index_524288x2 index_<1048576>
+	#define index_1048576x2 index_<2097152>
+	#define index_2097152x2 index_<4194304>
+	#define index_4194304x2 index_<8388608>
+	#define index_8388608x2 index_<16777216>
+	#define index_16777216x2 index_<33554432>
 
 	#define NULL_ID _mm256_setzero_si256()
-	#define NULL_INDEX (uint64)(-1)
+	constexpr uint64 NULL_INDEX = (uint64)(-1);
 
 	#define _A 0
 	#define _B 1
@@ -1117,6 +1119,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct sint8_64
@@ -1542,6 +1549,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct uint8_64
@@ -1949,6 +1961,11 @@ namespace QPI
 		inline void set(uint32 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
+		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
 		}
 	};
 
@@ -2375,6 +2392,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct uint16_32
@@ -2782,6 +2804,11 @@ namespace QPI
 		inline void set(uint32 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
+		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
 		}
 	};
 
@@ -3208,6 +3235,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct uint32_16
@@ -3615,6 +3647,11 @@ namespace QPI
 		inline void set(uint32 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
+		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
 		}
 	};
 
@@ -4041,6 +4078,11 @@ namespace QPI
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
+
+		inline void set(id value)
+		{
+			*((id*)_values) = value;
+		}
 	};
 
 	struct uint64_8
@@ -4431,6 +4473,63 @@ namespace QPI
 		inline void set(uint32 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
+		}
+	};
+
+	struct id_1
+	{
+	private:
+		id _value;
+
+	public:
+		inline id get(uint32 index)
+		{
+			return _value;
+		}
+
+		inline void set(uint32 index, id value)
+		{
+			_value = value;
+		}
+
+		inline void set(sint8_32 value)
+		{
+			_value = _mm256_set_epi8(value.get(31), value.get(30), value.get(29), value.get(28), value.get(27), value.get(26), value.get(25), value.get(24), value.get(23), value.get(22), value.get(21), value.get(20), value.get(19), value.get(18), value.get(17), value.get(16), value.get(15), value.get(14), value.get(13), value.get(12), value.get(11), value.get(10), value.get(9), value.get(8), value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(uint8_32 value)
+		{
+			_value = _mm256_set_epi8(value.get(31), value.get(30), value.get(29), value.get(28), value.get(27), value.get(26), value.get(25), value.get(24), value.get(23), value.get(22), value.get(21), value.get(20), value.get(19), value.get(18), value.get(17), value.get(16), value.get(15), value.get(14), value.get(13), value.get(12), value.get(11), value.get(10), value.get(9), value.get(8), value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(sint16_16 value)
+		{
+			_value = _mm256_set_epi16(value.get(15), value.get(14), value.get(13), value.get(12), value.get(11), value.get(10), value.get(9), value.get(8), value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(uint16_16 value)
+		{
+			_value = _mm256_set_epi16(value.get(15), value.get(14), value.get(13), value.get(12), value.get(11), value.get(10), value.get(9), value.get(8), value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(sint32_8 value)
+		{
+			_value = _mm256_set_epi32(value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(uint32_8 value)
+		{
+			_value = _mm256_set_epi32(value.get(7), value.get(6), value.get(5), value.get(4), value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(sint64_4 value)
+		{
+			_value = _mm256_set_epi64x(value.get(3), value.get(2), value.get(1), value.get(0));
+		}
+
+		inline void set(uint64_4 value)
+		{
+			_value = _mm256_set_epi64x(value.get(3), value.get(2), value.get(1), value.get(0));
 		}
 	};
 
@@ -4859,10 +4958,19 @@ namespace QPI
 		}
 	};
 
-	struct index_2
+	template <unsigned int N>
+	struct index_
 	{
 	private:
-		id _values[2];
+		static_assert(
+			N == 2 || N == 4 || N == 8 || N == 16 || N == 32 || N == 64 || N == 128 || N == 256 ||
+			N == 512 || N == 1024 || N == 2048 || N == 4096 || N == 8192 || N == 16384 || N == 32768 || N == 65536 ||
+			N == 131072 || N == 262144 || N == 524288 || N == 1048576 || N == 2097152 || N == 4194304 || N == 8388608 ||
+			N == 16777216 || N == 33554432,
+			"Size of index must be 2 to the power of n. At least 2, at most 33554432."
+		);
+
+		id _values[N];
 		uint64 _population;
 
 	public:
@@ -4871,11 +4979,11 @@ namespace QPI
 			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
 			for (uint64 i = 0; i < capacity(); i++)
 			{
-				if (EQUAL(_values[index], value))
+				if (_values[index] == value)
 				{
 					return index;
 				}
-				if (EQUAL(_values[index], NULL_ID))
+				if (isZero(_values[index]))
 				{
 					_values[index] = value;
 					_population++;
@@ -4899,1811 +5007,11 @@ namespace QPI
 			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
 			for (uint64 i = 0; i < capacity(); i++)
 			{
-				if (EQUAL(_values[index], value))
+				if (_values[index] == value)
 				{
 					return index;
 				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_4
-	{
-	private:
-		id _values[4];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_8
-	{
-	private:
-		id _values[8];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_16
-	{
-	private:
-		id _values[16];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_32
-	{
-	private:
-		id _values[32];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_64
-	{
-	private:
-		id _values[64];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_128
-	{
-	private:
-		id _values[128];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_256
-	{
-	private:
-		id _values[256];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_512
-	{
-	private:
-		id _values[512];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_1024
-	{
-	private:
-		id _values[1024];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_2048
-	{
-	private:
-		id _values[2048];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_4096
-	{
-	private:
-		id _values[4096];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_8192
-	{
-	private:
-		id _values[8192];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_16384
-	{
-	private:
-		id _values[16384];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_32768
-	{
-	private:
-		id _values[32768];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_65536
-	{
-	private:
-		id _values[65536];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_131072
-	{
-	private:
-		id _values[131072];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_262144
-	{
-	private:
-		id _values[262144];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_524288
-	{
-	private:
-		id _values[524288];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_1048576
-	{
-	private:
-		id _values[1048576];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_2097152
-	{
-	private:
-		id _values[2097152];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_4194304
-	{
-	private:
-		id _values[4194304];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_8388608
-	{
-	private:
-		id _values[8388608];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_16777216
-	{
-	private:
-		id _values[16777216];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					return NULL_INDEX;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 population()
-		{
-			return _population;
-		}
-
-		void reset()
-		{
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				_values[i] = NULL_ID;
-			}
-			_population = 0;
-		}
-
-		inline id value(uint64 index)
-		{
-			return _values[index & (capacity() - 1)];
-		}
-	};
-
-	struct index_16777216x2
-	{
-	private:
-		id _values[33554432];
-		uint64 _population;
-
-	public:
-		uint64 add(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
-				{
-					_values[index] = value;
-					_population++;
-
-					return index;
-				}
-
-				index = (index + 1) & (capacity() - 1);
-			}
-
-			return NULL_INDEX;
-		}
-
-		inline uint64 capacity()
-		{
-			return sizeof(_values) / sizeof(_values[0]);
-		}
-
-		uint64 index(id value)
-		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
-			{
-				if (EQUAL(_values[index], value))
-				{
-					return index;
-				}
-				if (EQUAL(_values[index], NULL_ID))
+				if (isZero(_values[index]))
 				{
 					return NULL_INDEX;
 				}
@@ -6760,6 +5068,7 @@ namespace QPI
 
 	//////////
 
+#if !defined(NO_UEFI)
 	static id arbitrator(
 	) {
 		return ::__arbitrator();
@@ -6821,6 +5130,13 @@ namespace QPI
 		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfUnits, unitOfMeasurement);
 	}
 
+	template <typename T>
+	static id K12(
+		T data
+	) {
+		return __K12(data);
+	}
+
 	static uint16 millisecond(
 	) { // [0..999]
 		return ::__millisecond();
@@ -6879,6 +5195,7 @@ namespace QPI
 	) { // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 		return ::__year();
 	}
+#endif
 
 	//////////
 
@@ -6894,6 +5211,14 @@ namespace QPI
 
 	#define EXPAND public: static void __expand(CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
+	#define LOG_DEBUG(message) __logContractDebugMessage(message);
+
+	#define LOG_ERROR(message) __logContractErrorMessage(message);
+
+	#define LOG_INFO(message) __logContractInfoMessage(message);
+
+	#define LOG_WARNING(message) __logContractWarningMessage(message);
+
 	#define PRIVATE(functionOrProcedure) private: static void functionOrProcedure(CONTRACT_STATE_TYPE& statetate, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
 	#define PUBLIC(functionOrProcedure) public: static void functionOrProcedure(CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
@@ -6904,7 +5229,9 @@ namespace QPI
 
 	#define _ ::__endFunctionOrProcedure(__functionOrProcedureId); }
 
-	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) __registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input));
+	#define REGISTER_USER_FUNCTION(userFunction, inputType) __registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output));
+
+	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) __registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output));
 
 	#define SELF _mm256_set_epi64x(0, 0, 0, CONTRACT_INDEX)
 }

@@ -2,7 +2,6 @@
 
 #include "gtest/gtest.h"
 #include "../src/platform/m256.h"
-#include "uc32.h"
 
 
 TEST(TestCore256BitClass, ConstructAssignCompare) {
@@ -132,38 +131,38 @@ TEST(TestCore256BitClass, ConstructAssignCompare) {
 }
 
 TEST(TestCore256BitFunctionsIntrinsicType, isZero) {
-    EXPECT_TRUE(isZero(UC32x(0, 0, 0, 0).m256i));
-    EXPECT_FALSE(isZero(UC32x(1, 0, 0, 0).m256i));
-    EXPECT_FALSE(isZero(UC32x(0, 1, 0, 0).m256i));
-    EXPECT_FALSE(isZero(UC32x(0, 0, 1, 0).m256i));
-    EXPECT_FALSE(isZero(UC32x(0, 0, 0, 1).m256i));
-    EXPECT_FALSE(isZero(UC32x(-1, -1, -1, -1).m256i));
+    EXPECT_TRUE(isZero(m256i(0, 0, 0, 0).m256i_intr()));
+    EXPECT_FALSE(isZero(m256i(1, 0, 0, 0).m256i_intr()));
+    EXPECT_FALSE(isZero(m256i(0, 1, 0, 0).m256i_intr()));
+    EXPECT_FALSE(isZero(m256i(0, 0, 1, 0).m256i_intr()));
+    EXPECT_FALSE(isZero(m256i(0, 0, 0, 1).m256i_intr()));
+    EXPECT_FALSE(isZero(m256i(-1, -1, -1, -1).m256i_intr()));
 }
 
 TEST(TestCore256BitFunctionsIntrinsicType, operatorEqual) {
-    EXPECT_TRUE(UC32x(0, 0, 0, 0).m256i == UC32x(0, 0, 0, 0).m256i);
-    EXPECT_FALSE(UC32x(0, 0, 0, 0).m256i == UC32x(0, 0, 0, 1).m256i);
-    EXPECT_FALSE(UC32x(0, 0, 0, 0).m256i == UC32x(0, 0, 1, 0).m256i);
-    EXPECT_FALSE(UC32x(0, 0, 0, 0).m256i == UC32x(0, 1, 0, 0).m256i);
-    EXPECT_FALSE(UC32x(0, 0, 0, 0).m256i == UC32x(1, 0, 0, 0).m256i);
+    EXPECT_TRUE(m256i(0, 0, 0, 0).m256i_intr() == m256i(0, 0, 0, 0).m256i_intr());
+    EXPECT_FALSE(m256i(0, 0, 0, 0).m256i_intr() == m256i(0, 0, 0, 1).m256i_intr());
+    EXPECT_FALSE(m256i(0, 0, 0, 0).m256i_intr() == m256i(0, 0, 1, 0).m256i_intr());
+    EXPECT_FALSE(m256i(0, 0, 0, 0).m256i_intr() == m256i(0, 1, 0, 0).m256i_intr());
+    EXPECT_FALSE(m256i(0, 0, 0, 0).m256i_intr() == m256i(1, 0, 0, 0).m256i_intr());
 
-    EXPECT_TRUE(UC32x(42, 42, 42, 42).m256i == UC32x(42, 42, 42, 42).m256i);
-    EXPECT_FALSE(UC32x(0, 42, 42, 42).m256i == UC32x(42, 42, 42, 42).m256i);
-    EXPECT_FALSE(UC32x(42, 0, 42, 42).m256i == UC32x(42, 42, 42, 42).m256i);
-    EXPECT_FALSE(UC32x(42, 42, 0, 42).m256i == UC32x(42, 42, 42, 42).m256i);
-    EXPECT_FALSE(UC32x(42, 42, 42, 0).m256i == UC32x(42, 42, 42, 42).m256i);
+    EXPECT_TRUE(m256i(42, 42, 42, 42).m256i_intr() == m256i(42, 42, 42, 42).m256i_intr());
+    EXPECT_FALSE(m256i(0, 42, 42, 42).m256i_intr() == m256i(42, 42, 42, 42).m256i_intr());
+    EXPECT_FALSE(m256i(42, 0, 42, 42).m256i_intr() == m256i(42, 42, 42, 42).m256i_intr());
+    EXPECT_FALSE(m256i(42, 42, 0, 42).m256i_intr() == m256i(42, 42, 42, 42).m256i_intr());
+    EXPECT_FALSE(m256i(42, 42, 42, 0).m256i_intr() == m256i(42, 42, 42, 42).m256i_intr());
 }
 
 TEST(TestCore256BitFunctions, operatorNotEqual) {
-    EXPECT_FALSE(UC32x(0, 0, 0, 0).m256i != UC32x(0, 0, 0, 0).m256i);
-    EXPECT_TRUE(UC32x(0, 0, 0, 0).m256i != UC32x(0, 0, 0, 1).m256i);
-    EXPECT_TRUE(UC32x(0, 0, 0, 0).m256i != UC32x(0, 0, 1, 0).m256i);
-    EXPECT_TRUE(UC32x(0, 0, 0, 0).m256i != UC32x(0, 1, 0, 0).m256i);
-    EXPECT_TRUE(UC32x(0, 0, 0, 0).m256i != UC32x(1, 0, 0, 0).m256i);
+    EXPECT_FALSE(m256i(0, 0, 0, 0).m256i_intr() != m256i(0, 0, 0, 0).m256i_intr());
+    EXPECT_TRUE(m256i(0, 0, 0, 0).m256i_intr() != m256i(0, 0, 0, 1).m256i_intr());
+    EXPECT_TRUE(m256i(0, 0, 0, 0).m256i_intr() != m256i(0, 0, 1, 0).m256i_intr());
+    EXPECT_TRUE(m256i(0, 0, 0, 0).m256i_intr() != m256i(0, 1, 0, 0).m256i_intr());
+    EXPECT_TRUE(m256i(0, 0, 0, 0).m256i_intr() != m256i(1, 0, 0, 0).m256i_intr());
 
-    EXPECT_FALSE(UC32x(42, 42, 42, 42).m256i != UC32x(42, 42, 42, 42).m256i);
-    EXPECT_TRUE(UC32x(0, 42, 42, 42).m256i != UC32x(42, 42, 42, 42).m256i);
-    EXPECT_TRUE(UC32x(42, 0, 42, 42).m256i != UC32x(42, 42, 42, 42).m256i);
-    EXPECT_TRUE(UC32x(42, 42, 0, 42).m256i != UC32x(42, 42, 42, 42).m256i);
-    EXPECT_TRUE(UC32x(42, 42, 42, 0).m256i != UC32x(42, 42, 42, 42).m256i);
+    EXPECT_FALSE(m256i(42, 42, 42, 42).m256i_intr() != m256i(42, 42, 42, 42).m256i_intr());
+    EXPECT_TRUE(m256i(0, 42, 42, 42).m256i_intr() != m256i(42, 42, 42, 42).m256i_intr());
+    EXPECT_TRUE(m256i(42, 0, 42, 42).m256i_intr() != m256i(42, 42, 42, 42).m256i_intr());
+    EXPECT_TRUE(m256i(42, 42, 0, 42).m256i_intr() != m256i(42, 42, 42, 42).m256i_intr());
+    EXPECT_TRUE(m256i(42, 42, 42, 0).m256i_intr() != m256i(42, 42, 42, 42).m256i_intr());
 }
