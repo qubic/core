@@ -1833,5 +1833,5 @@ static bool verify(const unsigned char* publicKey, const unsigned char* messageD
 
     encode(A, (unsigned char*)A);
 
-    return EQUAL(*((__m256i*)A), *((__m256i*)signature));
+    return *((__m256i*)A) == *((__m256i*)signature);
 }

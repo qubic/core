@@ -5,6 +5,9 @@
 #include "uefi.h"
 #include "logging.h"
 
+// If you get an error reading and writing files, set the chunk sizes below to
+// the cluster size set for formatting you disk. If you have no idea about the
+// cluster size, try 32768.
 #define READING_CHUNK_SIZE 1048576
 #define WRITING_CHUNK_SIZE 1048576
 #define VOLUME_LABEL L"Qubic"
@@ -36,6 +39,7 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
             if (status
                 || size != (READING_CHUNK_SIZE <= (totalSize - readSize) ? READING_CHUNK_SIZE : (totalSize - readSize)))
             {
+                // If this error occurs, see the definition of READING_CHUNK_SIZE above.
                 logStatus(L"EFI_FILE_PROTOCOL.Read() fails", status, __LINE__);
 
                 file->Close(file);
@@ -75,6 +79,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
             if (status
                 || size != (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize)))
             {
+                // If this error occurs, see the definition of WRITING_CHUNK_SIZE above.
                 logStatus(L"EFI_FILE_PROTOCOL.Write() fails", status, __LINE__);
 
                 file->Close(file);

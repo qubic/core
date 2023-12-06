@@ -7,6 +7,16 @@ struct QX2
 struct QX
 {
 public:
+	struct Fees_input
+	{
+	};
+	struct Fees_output
+	{
+		uint32 assetIssuanceFee; // Amount of qus
+		uint32 transferFee; // Amount of qus
+		uint32 tradeFee; // Number of billionths
+	};
+
 	struct IssueAsset_input
 	{
 		uint64 name;
@@ -40,6 +50,13 @@ private:
 	uint32 _assetIssuanceFee; // Amount of qus
 	uint32 _transferFee; // Amount of qus
 	uint32 _tradeFee; // Number of billionths
+
+	PUBLIC(Fees)
+
+		output.assetIssuanceFee = state._assetIssuanceFee;
+		output.transferFee = state._transferFee;
+		output.tradeFee = state._tradeFee;
+	_
 
 	PUBLIC(IssueAsset)
 
@@ -88,6 +105,8 @@ private:
 	_
 
 	REGISTER_USER_FUNCTIONS
+
+		REGISTER_USER_FUNCTION(Fees, 1);
 	_
 
 	REGISTER_USER_PROCEDURES
