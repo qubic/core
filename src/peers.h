@@ -459,6 +459,8 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                                     else
                                     {
                                         _InterlockedIncrement64(&numberOfDiscardedRequests);
+
+                                        enqueueResponse(&peers[i], 0, TryAgain::type(), requestResponseHeader->dejavu(), NULL);
                                     }
                                 }
                                 else
