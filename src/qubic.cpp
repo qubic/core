@@ -1086,7 +1086,7 @@ static void getComputerDigest(m256i& digest)
 }
 
 
-static void exchangePublicPeers(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header)
 {
     if (!peer->exchangedPublicPeers)
     {
@@ -1106,7 +1106,7 @@ static void exchangePublicPeers(Peer* peer, Processor* processor, RequestRespons
         }
     }
 
-    ExchangePublicPeers* request = (ExchangePublicPeers*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    ExchangePublicPeers* request = header->getPayload<ExchangePublicPeers>();
     for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; j++)
     {
         if (!listOfPeersIsStatic)
@@ -1116,9 +1116,9 @@ static void exchangePublicPeers(Peer* peer, Processor* processor, RequestRespons
     }
 }
 
-static void broadcastMessage(const unsigned long long processorNumber, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastMessage(const unsigned long long processorNumber, RequestResponseHeader* header)
 {
-    Message* request = (Message*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    Message* request = header->getPayload<Message>();
     if (header->size() <= sizeof(RequestResponseHeader) + sizeof(Message) + MAX_MESSAGE_PAYLOAD_SIZE + SIGNATURE_SIZE
         && header->size() >= sizeof(RequestResponseHeader) + sizeof(Message) + SIGNATURE_SIZE)
     {
@@ -1234,9 +1234,9 @@ static void broadcastMessage(const unsigned long long processorNumber, Processor
     }
 }
 
-static void broadcastComputors(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 {
-    BroadcastComputors* request = (BroadcastComputors*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    BroadcastComputors* request = header->getPayload<BroadcastComputors>();
     if (request->computors.epoch > broadcastedComputors.broadcastComputors.computors.epoch)
     {
         unsigned char digest[32];
@@ -1273,9 +1273,9 @@ static void broadcastComputors(Peer* peer, Processor* processor, RequestResponse
     }
 }
 
-static void broadcastTick(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
 {
-    BroadcastTick* request = (BroadcastTick*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    BroadcastTick* request = header->getPayload<BroadcastTick>();
     if (request->tick.computorIndex < NUMBER_OF_COMPUTORS
         && request->tick.epoch == system.epoch
         && request->tick.tick >= system.tick && request->tick.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
@@ -1325,9 +1325,9 @@ static void broadcastTick(Peer* peer, Processor* processor, RequestResponseHeade
     }
 }
 
-static void broadcastFutureTickData(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* header)
 {
-    BroadcastFutureTickData* request = (BroadcastFutureTickData*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    BroadcastFutureTickData* request = header->getPayload<BroadcastFutureTickData>();
     if (request->tickData.epoch == system.epoch
         && request->tickData.tick > system.tick && request->tickData.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
         && request->tickData.tick % NUMBER_OF_COMPUTORS == request->tickData.computorIndex
@@ -1413,9 +1413,9 @@ static void broadcastFutureTickData(Peer* peer, Processor* processor, RequestRes
     }
 }
 
-static void broadcastTransaction(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* header)
 {
-    Transaction* request = (Transaction*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    Transaction* request = header->getPayload<Transaction>();
     if (request->amount >= 0 && request->amount <= MAX_AMOUNT
         && request->inputSize <= MAX_INPUT_SIZE && request->inputSize == header->size() - sizeof(RequestResponseHeader) - sizeof(Transaction) - SIGNATURE_SIZE)
     {
@@ -1478,7 +1478,7 @@ static void broadcastTransaction(Peer* peer, Processor* processor, RequestRespon
     }
 }
 
-static void requestComputors(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
     if (broadcastedComputors.broadcastComputors.computors.epoch)
     {
@@ -1490,9 +1490,9 @@ static void requestComputors(Peer* peer, Processor* processor, RequestResponseHe
     }
 }
 
-static void requestQuorumTick(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 {
-    RequestQuorumTick* request = (RequestQuorumTick*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestQuorumTick* request = header->getPayload<RequestQuorumTick>();
     if (request->quorumTick.tick >= system.initialTick && request->quorumTick.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
     {
         unsigned short computorIndices[NUMBER_OF_COMPUTORS];
@@ -1520,9 +1520,9 @@ static void requestQuorumTick(Peer* peer, Processor* processor, RequestResponseH
     enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
 }
 
-static void requestTickData(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 {
-    RequestTickData* request = (RequestTickData*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestTickData* request = header->getPayload<RequestTickData>();
     if (request->requestedTickData.tick > system.initialTick && request->requestedTickData.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
         && tickData[request->requestedTickData.tick - system.initialTick].epoch == system.epoch)
     {
@@ -1534,9 +1534,9 @@ static void requestTickData(Peer* peer, Processor* processor, RequestResponseHea
     }
 }
 
-static void requestTickTransactions(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* header)
 {
-    RequestedTickTransactions* request = (RequestedTickTransactions*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestedTickTransactions* request = header->getPayload<RequestedTickTransactions>();
     if (request->tick >= system.initialTick && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
     {
         unsigned short tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
@@ -1562,7 +1562,7 @@ static void requestTickTransactions(Peer* peer, Processor* processor, RequestRes
     enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
 }
 
-static void requestCurrentTickInfo(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
 {
     CurrentTickInfo currentTickInfo;
 
@@ -1588,11 +1588,11 @@ static void requestCurrentTickInfo(Peer* peer, Processor* processor, RequestResp
     enqueueResponse(peer, sizeof(currentTickInfo), RESPOND_CURRENT_TICK_INFO, header->dejavu(), &currentTickInfo);
 }
 
-static void requestEntity(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
 {
     RespondedEntity respondedEntity;
 
-    RequestedEntity* request = (RequestedEntity*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestedEntity* request = header->getPayload<RequestedEntity>();
     respondedEntity.entity.publicKey = request->publicKey;
     respondedEntity.spectrumIndex = spectrumIndex(respondedEntity.entity.publicKey);
     respondedEntity.tick = system.tick;
@@ -1624,11 +1624,11 @@ static void requestEntity(Peer* peer, Processor* processor, RequestResponseHeade
     enqueueResponse(peer, sizeof(respondedEntity), RESPOND_ENTITY, header->dejavu(), &respondedEntity);
 }
 
-static void requestContractIPO(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
 {
     RespondContractIPO respondContractIPO;
 
-    RequestContractIPO* request = (RequestContractIPO*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestContractIPO* request = header->getPayload<RequestContractIPO>();
     respondContractIPO.contractIndex = request->contractIndex;
     respondContractIPO.tick = system.tick;
     if (request->contractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
@@ -1647,11 +1647,11 @@ static void requestContractIPO(Peer* peer, Processor* processor, RequestResponse
     enqueueResponse(peer, sizeof(respondContractIPO), RESPOND_CONTRACT_IPO, header->dejavu(), &respondContractIPO);
 }
 
-static void requestIssuedAssets(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestIssuedAssets(Peer* peer, RequestResponseHeader* header)
 {
     RespondIssuedAssets response;
 
-    RequestIssuedAssets* request = (RequestIssuedAssets*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestIssuedAssets* request = header->getPayload<RequestIssuedAssets>();
 
     unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
 
@@ -1682,11 +1682,11 @@ iteration:
     RELEASE(universeLock);
 }
 
-static void requestOwnedAssets(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestOwnedAssets(Peer* peer, RequestResponseHeader* header)
 {
     RespondOwnedAssets response;
 
-    RequestOwnedAssets* request = (RequestOwnedAssets*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestOwnedAssets* request = header->getPayload<RequestOwnedAssets>();
 
     unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
 
@@ -1718,11 +1718,11 @@ iteration:
     RELEASE(universeLock);
 }
 
-static void requestPossessedAssets(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestPossessedAssets(Peer* peer, RequestResponseHeader* header)
 {
     RespondPossessedAssets response;
 
-    RequestPossessedAssets* request = (RequestPossessedAssets*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestPossessedAssets* request = header->getPayload<RequestPossessedAssets>();
 
     unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
 
@@ -1755,14 +1755,14 @@ iteration:
     RELEASE(universeLock);
 }
 
-static void requestContractFunction(Peer* peer, const unsigned long long processorNumber, Processor* processor, RequestResponseHeader* header)
+static void processRequestContractFunction(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
 {
     // TODO: Invoked function may enter endless loop, so a timeout (and restart) is required for request processing threads
     // TODO: Enable parallel execution of contract functions
 
     RespondContractFunction* response = (RespondContractFunction*)contractFunctionOutputs[processorNumber];
 
-    RequestContractFunction* request = (RequestContractFunction*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestContractFunction* request = header->getPayload<RequestContractFunction>();
     executedContractIndex = request->contractIndex;
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
         || !executedContractIndex || executedContractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
@@ -1789,15 +1789,15 @@ static void requestContractFunction(Peer* peer, const unsigned long long process
     }
 }
 
-static void processSpecialCommand(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 {
-    SpecialCommand* request = (SpecialCommand*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    SpecialCommand* request = header->getPayload<SpecialCommand>();
     if (header->size() >= sizeof(RequestResponseHeader) + sizeof(SpecialCommand) + SIGNATURE_SIZE
         && (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) > system.latestOperatorNonce)
     {
         unsigned char digest[32];
         KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
-        if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)processor->buffer + (header->size() - SIGNATURE_SIZE))))
+        if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
         {
             system.latestOperatorNonce = request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF;
 
@@ -1811,7 +1811,7 @@ static void processSpecialCommand(Peer* peer, Processor* processor, RequestRespo
 
             case SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST:
             {
-                SpecialCommandGetProposalAndBallotRequest* request = (SpecialCommandGetProposalAndBallotRequest*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+                SpecialCommandGetProposalAndBallotRequest* request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
                 if (request->computorIndex < NUMBER_OF_COMPUTORS)
                 {
                     SpecialCommandGetProposalAndBallotResponse response;
@@ -1829,7 +1829,7 @@ static void processSpecialCommand(Peer* peer, Processor* processor, RequestRespo
 
             case SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_REQUEST:
             {
-                SpecialCommandSetProposalAndBallotRequest* request = (SpecialCommandSetProposalAndBallotRequest*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+                SpecialCommandSetProposalAndBallotRequest* request = header->getPayload<SpecialCommandSetProposalAndBallotRequest>();
                 if (request->computorIndex < NUMBER_OF_COMPUTORS)
                 {
                     bs->CopyMem(&system.proposals[request->computorIndex], &request->proposal, sizeof(ComputorProposal));
@@ -1897,103 +1897,103 @@ static void requestProcessor(void* ProcedureArgument)
                 {
                 case EXCHANGE_PUBLIC_PEERS:
                 {
-                    exchangePublicPeers(peer, processor, header);
+                    processExchangePublicPeers(peer, header);
                 }
                 break;
 
                 case BROADCAST_MESSAGE:
                 {
-                    broadcastMessage(processorNumber, processor, header);
+                    processBroadcastMessage(processorNumber, header);
                 }
                 break;
 
                 case BROADCAST_COMPUTORS:
                 {
-                    broadcastComputors(peer, processor, header);
+                    processBroadcastComputors(peer, header);
                 }
                 break;
 
                 case BROADCAST_TICK:
                 {
-                    broadcastTick(peer, processor, header);
+                    processBroadcastTick(peer, header);
                 }
                 break;
 
                 case BROADCAST_FUTURE_TICK_DATA:
                 {
-                    broadcastFutureTickData(peer, processor, header);
+                    processBroadcastFutureTickData(peer, header);
                 }
                 break;
 
                 case BROADCAST_TRANSACTION:
                 {
-                    broadcastTransaction(peer, processor, header);
+                    processBroadcastTransaction(peer, header);
                 }
                 break;
 
                 case REQUEST_COMPUTORS:
                 {
-                    requestComputors(peer, processor, header);
+                    processRequestComputors(peer, header);
                 }
                 break;
 
                 case REQUEST_QUORUM_TICK:
                 {
-                    requestQuorumTick(peer, processor, header);
+                    processRequestQuorumTick(peer, header);
                 }
                 break;
 
                 case REQUEST_TICK_DATA:
                 {
-                    requestTickData(peer, processor, header);
+                    processRequestTickData(peer, header);
                 }
                 break;
 
                 case REQUEST_TICK_TRANSACTIONS:
                 {
-                    requestTickTransactions(peer, processor, header);
+                    processRequestTickTransactions(peer, header);
                 }
                 break;
 
                 case REQUEST_CURRENT_TICK_INFO:
                 {
-                    requestCurrentTickInfo(peer, processor, header);
+                    processRequestCurrentTickInfo(peer, header);
                 }
                 break;
 
                 case REQUEST_ENTITY:
                 {
-                    requestEntity(peer, processor, header);
+                    processRequestEntity(peer, header);
                 }
                 break;
 
                 case REQUEST_CONTRACT_IPO:
                 {
-                    requestContractIPO(peer, processor, header);
+                    processRequestContractIPO(peer, header);
                 }
                 break;
 
                 case REQUEST_ISSUED_ASSETS:
                 {
-                    requestIssuedAssets(peer, processor, header);
+                    processRequestIssuedAssets(peer, header);
                 }
                 break;
 
                 case REQUEST_OWNED_ASSETS:
                 {
-                    requestOwnedAssets(peer, processor, header);
+                    processRequestOwnedAssets(peer, header);
                 }
                 break;
 
                 case REQUEST_POSSESSED_ASSETS:
                 {
-                    requestPossessedAssets(peer, processor, header);
+                    processRequestPossessedAssets(peer, header);
                 }
                 break;
 
                 case RequestContractFunction::type():
                 {
-                    requestContractFunction(peer, processorNumber, processor, header);
+                    processRequestContractFunction(peer, processorNumber, header);
                 }
                 break;
 
@@ -2005,7 +2005,7 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case PROCESS_SPECIAL_COMMAND:
                 {
-                    processSpecialCommand(peer, processor, header);
+                    processSpecialCommand(peer, header);
                 }
                 break;
                 }

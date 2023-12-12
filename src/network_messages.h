@@ -76,6 +76,7 @@ public:
     }
 
     // Return pointer to payload, which is stored behind the header.
+    // The type() is not checked against the PayloadType!
     template <typename PayloadType>
     inline PayloadType* getPayload()
     {
