@@ -299,16 +299,16 @@ struct ScoreFunction
                     unsigned long long A0 = sy_pos[i];
                     unsigned long long A1 = sy_neg[i];
                     unsigned long long B = ((unsigned long long*)nrVal1Bit)[i];
-                    int s = __popcnt64(A0 ^ B);
-                    s -= __popcnt64(A1 ^ B);
+                    int s = (int)__popcnt64(A0 ^ B);
+                    s -= (int)__popcnt64(A1 ^ B);
                     lv += s;
                 }
                 {
                     unsigned long long A0 = (*(unsigned long long*)(sy_pos + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
                     unsigned long long A1 = (*(unsigned long long*)(sy_neg + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
                     unsigned long long B = (*(unsigned long long*)(nrVal1Bit + (NEURON_SCANNED_ROUND - 1) * 8)) & LAST_ELEMENT_MASK;
-                    int s = __popcnt64(A0 ^ B);
-                    s -= __popcnt64(A1 ^ B);
+                    int s = (int)__popcnt64(A0 ^ B);
+                    s -= (int)__popcnt64(A1 ^ B);
                     lv += s;
                     neurons[solutionBufIdx].input[dataLength + inputNeuronIndex] += lv;
                     if (neurons[solutionBufIdx].input[dataLength + inputNeuronIndex] < 0) {
@@ -350,16 +350,16 @@ struct ScoreFunction
                     unsigned long long A0 = sy_pos[i];
                     unsigned long long A1 = sy_neg[i];
                     unsigned long long B = ((unsigned long long*)nrVal1Bit)[i];
-                    int s = __popcnt64(A0 ^ B);
-                    s -= __popcnt64(A1 ^ B);
+                    int s = (int)__popcnt64(A0 ^ B);
+                    s -= (int)__popcnt64(A1 ^ B);
                     lv += s;
                 }
                 {
                     unsigned long long A0 = (*(unsigned long long*)(sy_pos + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
                     unsigned long long A1 = (*(unsigned long long*)(sy_neg + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
                     unsigned long long B = (*(unsigned long long*)(nrVal1Bit + (NEURON_SCANNED_ROUND - 1) * 8)) & LAST_ELEMENT_MASK;
-                    int s = __popcnt64(A0 ^ B);
-                    s -= __popcnt64(A1 ^ B);
+                    int s = (int)__popcnt64(A0 ^ B);
+                    s -= (int)__popcnt64(A1 ^ B);
                     lv += s;
                     neurons[solutionBufIdx].output[infoLength + outputNeuronIndex] += lv;
                     if (neurons[solutionBufIdx].output[infoLength + outputNeuronIndex] < 0) {
