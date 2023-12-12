@@ -29,6 +29,9 @@
 #include "tcp4.h"
 #include "peers.h"
 
+#include "system.h"
+
+
 ////////// Qubic \\\\\\\\\\
 
 #define ASSETS_CAPACITY 0x1000000ULL // Must be 2^N
@@ -42,10 +45,8 @@
 #define MAX_INPUT_SIZE 1024ULL
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
-#define MAX_NUMBER_OF_SOLUTIONS 65536 // Must be 2^N
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
-#define NUMBER_OF_COMPUTORS 676
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #define MAX_CONTRACT_STATE_SIZE 1073741824
 #define MAX_UNIVERSE_SIZE 1073741824
@@ -488,17 +489,6 @@ struct RespondLog // Returns buffered log; clears the buffer; make sure you fetc
 };
 
 
-struct ComputorProposal
-{
-    unsigned char uriSize;
-    unsigned char uri[255];
-};
-struct ComputorBallot
-{
-    unsigned char zero;
-    unsigned char votes[(NUMBER_OF_COMPUTORS * 3 + 7) / 8];
-    unsigned char quasiRandomNumber;
-};
 
 #define PROCESS_SPECIAL_COMMAND 255
 
@@ -567,37 +557,7 @@ static struct
     BroadcastComputors broadcastComputors;
 } broadcastedComputors;
 
-static struct System
-{
-    short version;
-    unsigned short epoch;
-    unsigned int tick;
-    unsigned int initialTick;
-    unsigned int latestCreatedTick, latestLedTick;
-
-    unsigned short initialMillisecond;
-    unsigned char initialSecond;
-    unsigned char initialMinute;
-    unsigned char initialHour;
-    unsigned char initialDay;
-    unsigned char initialMonth;
-    unsigned char initialYear;
-
-    unsigned long long latestOperatorNonce;
-
-    ComputorProposal proposals[NUMBER_OF_COMPUTORS];
-    ComputorBallot ballots[NUMBER_OF_COMPUTORS];
-
-    unsigned int numberOfSolutions;
-    struct Solution
-    {
-        m256i computorPublicKey;
-        m256i nonce;
-    } solutions[MAX_NUMBER_OF_SOLUTIONS];
-
-    m256i futureComputors[NUMBER_OF_COMPUTORS];
-} system;
-static_assert(sizeof(System) == 4562096, "Unexpected size");
+// data closely related to system
 static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
 static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
 static unsigned int tickPhase = 0, tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, futureTickTotalNumberOfComputors = 0;

@@ -30,6 +30,7 @@
     <ClInclude Include="smart_contracts\Quottery.h" />
     <ClInclude Include="smart_contracts\Qx.h" />
     <ClInclude Include="smart_contracts\Random.h" />
+    <ClInclude Include="system.h" />
     <ClInclude Include="tcp4.h" />
     <ClInclude Include="text_output.h" />
     <ClInclude Include="private_settings.h" />

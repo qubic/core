@@ -54,6 +54,7 @@
     <ClInclude Include="smart_contracts\Random.h">
       <Filter>smart_contracts</Filter>
     </ClInclude>
+    <ClInclude Include="system.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
