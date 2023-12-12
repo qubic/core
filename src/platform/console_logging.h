@@ -2,11 +2,11 @@
 
 #include "uefi.h"
 
-static bool disableLogging = false;
+static bool disableConsoleLogging = false;
 
 // message buffers:
 // - message is for public use
-// - timestampedMessage is used internally by log()
+// - timestampedMessage is used internally by logToConsole()
 // CAUTION: not thread-safe, no beffer overflow protection!!!
 static CHAR16 message[16384], timestampedMessage[16384];
 
@@ -22,9 +22,9 @@ static inline void outputStringToConsole(CHAR16* str)
 }
 
 // Log message to console (with line break) on non-UEFI platform
-static void log(const CHAR16* message)
+static void logToConsole(const CHAR16* message)
 {
-    if (disableLogging)
+    if (disableConsoleLogging)
         return;
     std::wprintf(L"%ls\n", message);
 }
@@ -38,7 +38,7 @@ static inline void outputStringToConsole(CHAR16* str)
 }
 
 // Log message to console (with line break) on UEFI platform (defined in qubic.cpp due to dependencies on time and qubic status)
-static void log(const CHAR16* message);
+static void logToConsole(const CHAR16* message);
 
 #endif
 
@@ -149,7 +149,7 @@ static void appendErrorStatus(CHAR16* dst, const EFI_STATUS status)
     }
 }
 
-static void logStatus(const CHAR16* message, const EFI_STATUS status, const unsigned int lineNumber)
+static void logStatusToConsole(const CHAR16* message, const EFI_STATUS status, const unsigned int lineNumber)
 {
     setText(::message, message);
     appendText(::message, L" (");
@@ -157,5 +157,5 @@ static void logStatus(const CHAR16* message, const EFI_STATUS status, const unsi
     appendText(::message, L") near line ");
     appendNumber(::message, lineNumber, FALSE);
     appendText(::message, L"!");
-    log(::message);
+    logToConsole(::message);
 }

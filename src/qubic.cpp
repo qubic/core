@@ -538,9 +538,9 @@ static struct
 
 
 
-static void log(const CHAR16* message)
+static void logToConsole(const CHAR16* message)
 {
-    if (disableLogging)
+    if (disableConsoleLogging)
     {
         return;
     }
@@ -3496,7 +3496,7 @@ static void saveSpectrum()
         appendText(message, L" bytes of the spectrum data are saved (");
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
-        log(message);
+        logToConsole(message);
     }
 }
 
@@ -3533,7 +3533,7 @@ static void saveComputer()
         appendText(message, L" bytes of the computer data are saved (");
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
-        log(message);
+        logToConsole(message);
     }
 }
 
@@ -3547,7 +3547,7 @@ static void saveSystem()
         appendText(message, L" bytes of the system data are saved (");
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
-        log(message);
+        logToConsole(message);
     }
 }
 
@@ -3625,7 +3625,7 @@ static bool initialize()
     {
         if (status = bs->AllocatePool(EfiRuntimeServicesData, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS * sizeof(Tick), (void**)&ticks))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -3635,7 +3635,7 @@ static bool initialize()
             || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * 32ULL, (void**)&entityPendingTransactionDigests)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -3649,7 +3649,7 @@ static bool initialize()
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset), (void**)&reorgBuffer))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -3657,7 +3657,7 @@ static bool initialize()
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity), (void**)&spectrum))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL, (void**)&spectrumDigests)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -3671,7 +3671,7 @@ static bool initialize()
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
             if (status = bs->AllocatePool(EfiRuntimeServicesData, size, (void**)&contractStates[contractIndex]))
             {
-                logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
                 return false;
             }
@@ -3679,7 +3679,7 @@ static bool initialize()
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, MAX_CONTRACT_STATE_SIZE, (void**)&contractStateCopy)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -3688,7 +3688,7 @@ static bool initialize()
         {
             if (status = bs->AllocatePool(EfiRuntimeServicesData, RequestResponseHeader::max_size - sizeof(RequestResponseHeader), (void**)&contractFunctionOutputs[processorIndex]))
             {
-                logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
                 return false;
             }
@@ -3731,7 +3731,7 @@ static bool initialize()
         long long loadedSize = load(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum);
         if (loadedSize != SPECTRUM_CAPACITY * sizeof(::Entity))
         {
-            logStatus(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+            logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
 
             return false;
         }
@@ -3760,7 +3760,7 @@ static bool initialize()
             appendText(message, L" bytes of the spectrum data are hashed (");
             appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
             appendText(message, L" microseconds).");
-            log(message);
+            logToConsole(message);
 
             CHAR16 digestChars[60 + 1];
             unsigned long long totalAmount = 0;
@@ -3782,7 +3782,7 @@ static bool initialize()
             appendText(message, L" entities (digest = ");
             appendText(message, digestChars);
             appendText(message, L").");
-            log(message);
+            logToConsole(message);
         }
 
         if (!loadUniverse())
@@ -3806,7 +3806,7 @@ static bool initialize()
                 loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex]);
                 if (loadedSize != contractDescriptions[contractIndex].stateSize)
                 {
-                    logStatus(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+                    logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
 
                     return false;
                 }
@@ -3822,7 +3822,7 @@ static bool initialize()
             getIdentity((unsigned char*)&digest, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
         }
 
         score.loadScoreCache(system.epoch);
@@ -3830,7 +3830,7 @@ static bool initialize()
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -3842,7 +3842,7 @@ static bool initialize()
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu0))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu1)))
     {
-        logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
         return false;
     }
@@ -3852,7 +3852,7 @@ static bool initialize()
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer)))
     {
-        logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
         return false;
     }
@@ -3865,7 +3865,7 @@ static bool initialize()
             || (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, (void**)&peers[i].dataToTransmit)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -3873,7 +3873,7 @@ static bool initialize()
             || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
             || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.CreateEvent() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.CreateEvent() fails", status, __LINE__);
 
             return false;
         }
@@ -4093,7 +4093,7 @@ static void logInfo()
     appendText(message, L" | Unknown ");
     appendNumber(message, score.scoreCacheUnknown, TRUE);
 #endif
-    log(message);
+    logToConsole(message);
     prevNumberOfProcessedRequests = numberOfProcessedRequests;
     prevNumberOfDiscardedRequests = numberOfDiscardedRequests;
     prevNumberOfDuplicateRequests = numberOfDuplicateRequests;
@@ -4130,7 +4130,7 @@ static void logInfo()
             }
         }
     }
-    log(message);
+    logToConsole(message);
 
     unsigned int numberOfPendingTransactions = 0;
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
@@ -4182,7 +4182,7 @@ static void logInfo()
     }
     appendNumber(message, numberOfPendingTransactions, TRUE);
     appendText(message, L" pending transactions.");
-    log(message);
+    logToConsole(message);
 
     unsigned int filledRequestQueueBufferSize = (requestQueueBufferHead >= requestQueueBufferTail) ? (requestQueueBufferHead - requestQueueBufferTail) : (REQUEST_QUEUE_BUFFER_SIZE - (requestQueueBufferTail - requestQueueBufferHead));
     unsigned int filledResponseQueueBufferSize = (responseQueueBufferHead >= responseQueueBufferTail) ? (responseQueueBufferHead - responseQueueBufferTail) : (RESPONSE_QUEUE_BUFFER_SIZE - (responseQueueBufferTail - responseQueueBufferHead));
@@ -4207,7 +4207,7 @@ static void logInfo()
     appendText(message, L" mcs | Total Qx execution time = ");
     appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] / frequency, TRUE);
     appendText(message, L" s.");
-    log(message);
+    logToConsole(message);
 }
 
 static void processKeyPresses()
@@ -4230,7 +4230,7 @@ static void processKeyPresses()
             setText(message, L"Qubic ");
             appendQubicVersion(message);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
 
             unsigned int numberOfFaultyComputors = 0;
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4247,14 +4247,14 @@ static void processKeyPresses()
                     }
                     appendNumber(message, amount, TRUE);
                     appendText(message, L" qus");
-                    log(message);
+                    logToConsole(message);
 
                     numberOfFaultyComputors++;
                 }
             }
             setNumber(message, numberOfFaultyComputors, TRUE);
             appendText(message, L" faulty computors.");
-            log(message);
+            logToConsole(message);
 
             setText(message, L"Tick time was set to ");
             appendNumber(message, etalonTick.year / 10, FALSE);
@@ -4279,7 +4279,7 @@ static void processKeyPresses()
             appendNumber(message, etalonTick.millisecond % 100 / 10, FALSE);
             appendNumber(message, etalonTick.millisecond % 10, FALSE);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
 
             CHAR16 digestChars[60 + 1];
 
@@ -4302,7 +4302,7 @@ static void processKeyPresses()
             appendText(message, L"); ");
             appendNumber(message, numberOfTransactions, TRUE);
             appendText(message, L" transactions.");
-            log(message);
+            logToConsole(message);
 
             m256i digest;
 
@@ -4311,14 +4311,14 @@ static void processKeyPresses()
             getIdentity((unsigned char*)&digest, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
 
             setText(message, L"Computer digest = ");
             getComputerDigest(digest);
             getIdentity((unsigned char*)&digest, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
 
             unsigned int numberOfPublishedSolutions = 0, numberOfRecordedSolutions = 0;
             for (unsigned int i = 0; i < system.numberOfSolutions; i++)
@@ -4339,9 +4339,9 @@ static void processKeyPresses()
             appendText(message, L"/");
             appendNumber(message, system.numberOfSolutions, TRUE);
             appendText(message, L" solutions.");
-            log(message);
+            logToConsole(message);
 
-            log(isMain ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
+            logToConsole(isMain ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
         }
         break;
 
@@ -4366,7 +4366,7 @@ static void processKeyPresses()
             appendText(message, L", min candidate score = ");
             appendNumber(message, minimumCandidateScore, TRUE);
             appendText(message, L").");
-            log(message);
+            logToConsole(message);
         }
         break;*/
 
@@ -4463,7 +4463,7 @@ static void processKeyPresses()
         case 0x16:
         {
             isMain = !isMain;
-            log(isMain ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
+            logToConsole(isMain ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
         }
         break;
 
@@ -4483,7 +4483,7 @@ static void processKeyPresses()
         */
         case 0x48:
         {
-            disableLogging = !disableLogging;
+            disableConsoleLogging = !disableConsoleLogging;
         }
         break;
         }
@@ -4505,7 +4505,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     setText(message, L"Qubic ");
     appendQubicVersion(message);
     appendText(message, L" is launched.");
-    log(message);
+    logToConsole(message);
 
     if (initialize())
     {
@@ -4524,7 +4524,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             {
                 if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &processors[numberOfProcessors].buffer))
                 {
-                    logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                    logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
                     numberOfProcessors = 0;
 
@@ -4545,7 +4545,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         }
         if (numberOfProcessors < 3)
         {
-            log(L"At least 4 healthy enabled processors are required!");
+            logToConsole(L"At least 4 healthy enabled processors are required!");
         }
         else
         {
@@ -4553,7 +4553,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             appendText(message, L"/");
             appendNumber(message, numberOfAllProcessors, TRUE);
             appendText(message, L" processors are being used.");
-            log(message);
+            logToConsole(message);
 
             // -----------------------------------------------------
             // Main loop
@@ -4566,7 +4566,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             {
                 if (criticalSituation == 1)
                 {
-                    log(L"CRITICAL SITUATION #1!!!");
+                    logToConsole(L"CRITICAL SITUATION #1!!!");
                 }
 
                 const unsigned long long curTimeTick = __rdtsc();
@@ -4592,7 +4592,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     if (status = mpServicesProtocol->StartupThisAP(mpServicesProtocol, computationProcessor, computingProcessorNumber, computationProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL))
                     {
                         numberOfNonLaunchedSCs++;
-                        logStatus(L"EFI_MP_SERVICES_PROTOCOL.StartupThisAP() fails", status, __LINE__);
+                        logStatusToConsole(L"EFI_MP_SERVICES_PROTOCOL.StartupThisAP() fails", status, __LINE__);
                     }
                 }*/
 
@@ -4792,7 +4792,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         setText(message, L"Main loop duration = ");
                         appendNumber(message, (mainLoopNumerator / mainLoopDenominator) * 1000000 / frequency, TRUE);
                         appendText(message, L" mcs.");
-                        log(message);
+                        logToConsole(message);
                     }
                     mainLoopNumerator = 0;
                     mainLoopDenominator = 0;
@@ -4804,7 +4804,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         appendText(message, L" microseconds. Latest created tick = ");
                         appendNumber(message, system.latestCreatedTick, TRUE);
                         appendText(message, L".");
-                        log(message);
+                        logToConsole(message);
                     }
                     tickerLoopNumerator = 0;
                     tickerLoopDenominator = 0;
@@ -4822,12 +4822,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             setText(message, L"Qubic ");
             appendQubicVersion(message);
             appendText(message, L" is shut down.");
-            log(message);
+            logToConsole(message);
         }
     }
     else
     {
-        log(L"Initialization fails!");
+        logToConsole(L"Initialization fails!");
     }
 
     deinitialize();

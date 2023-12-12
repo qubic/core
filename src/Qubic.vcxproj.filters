@@ -33,7 +33,7 @@
     <ClInclude Include="platform\time.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="platform\logging.h">
+    <ClInclude Include="platform\console_logging.h">
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="platform\common_types.h">

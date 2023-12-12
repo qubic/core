@@ -56,7 +56,7 @@ static bool initLogging()
     {
         if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers[logReaderIndex]))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }

@@ -146,7 +146,7 @@ static bool initAssets()
         || (status = bs->AllocatePool(EfiRuntimeServicesData, (ASSETS_CAPACITY * 2 - 1) * 32ULL, (void**)&assetDigests))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, ASSETS_CAPACITY / 8, (void**)&assetChangeFlags)))
     {
-        logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
         return false;
     }
@@ -400,7 +400,7 @@ iteration:
     if (universeIndex >= ASSETS_CAPACITY
         || assets[universeIndex].varStruct.issuance.type == EMPTY)
     {
-        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
+        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
     }
     else
     {
@@ -435,7 +435,7 @@ iteration:
     if (universeIndex >= ASSETS_CAPACITY
         || assets[universeIndex].varStruct.issuance.type == EMPTY)
     {
-        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
+        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
     }
     else
     {
@@ -471,7 +471,7 @@ iteration:
     if (universeIndex >= ASSETS_CAPACITY
         || assets[universeIndex].varStruct.issuance.type == EMPTY)
     {
-        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
+        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
     }
     else
     {
@@ -508,7 +508,7 @@ static void saveUniverse()
         appendText(message, L" bytes of the universe data are saved (");
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
-        log(message);
+        logToConsole(message);
     }
 }
 
@@ -520,7 +520,7 @@ static bool loadUniverse()
     long long loadedSize = load(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets);
     if (loadedSize != ASSETS_CAPACITY * sizeof(Asset))
     {
-        logStatus(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+        logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
 
         return false;
     }
@@ -532,7 +532,7 @@ static bool loadUniverse()
         getIdentity((unsigned char*)&digest, digestChars, true);
         appendText(message, digestChars);
         appendText(message, L".");
-        log(message);
+        logToConsole(message);
     }
     return true;
 }

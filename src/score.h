@@ -4,7 +4,7 @@
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/file_io.h"
-#include "platform/logging.h"
+#include "platform/console_logging.h"
 #include "platform/time_stamp_counter.h"
 #include "kangaroo_twelve.h"
 
@@ -140,7 +140,7 @@ struct ScoreFunction
             appendText(message, L" bytes of the score cache data are saved (");
             appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
             appendText(message, L" microseconds).");
-            log(message);
+            logToConsole(message);
         }
 #endif
     }
@@ -151,7 +151,7 @@ struct ScoreFunction
         bool success = true;
 #if USE_SCORE_CACHE
         setText(message, L"Loading score cache...");
-        log(message);
+        logToConsole(message);
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
@@ -180,7 +180,7 @@ struct ScoreFunction
         {
             setText(message, L"Loaded score cache data!");
         }
-        log(message);
+        logToConsole(message);
 #endif
         return success;
     }

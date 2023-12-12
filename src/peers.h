@@ -98,7 +98,7 @@ static void closePeer(Peer* peer)
             EFI_STATUS status;
             if (status = peer->tcp4Protocol->Configure(peer->tcp4Protocol, NULL))
             {
-                logStatus(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
             }
 
             peer->isClosing = TRUE;
@@ -110,7 +110,7 @@ static void closePeer(Peer* peer)
             EFI_STATUS status;
             if (status = tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peer->connectAcceptToken.NewChildHandle))
             {
-                logStatus(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL.DestroyChild() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL.DestroyChild() fails", status, __LINE__);
             }
 
             peer->isConnectedAccepted = FALSE;
@@ -216,7 +216,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
             appendText(message, L" of message of type ");
             appendNumber(message, type, FALSE);
             appendText(message, L" exceeds maximum message size!");
-            log(message);
+            logToConsole(message);
         }
         responseHeader->setType(type);
         responseHeader->setDejavu(dejavu);
@@ -342,7 +342,7 @@ static bool peerConnectionNewlyEstabilished(unsigned int i)
                     EFI_STATUS status = bs->OpenProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, (void**)&peers[i].tcp4Protocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
                     if (status)
                     {
-                        logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
+                        logStatusToConsole(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
 
                         tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
                         peers[i].tcp4Protocol = NULL;
@@ -503,7 +503,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                         {
                             if (status != EFI_CONNECTION_FIN)
                             {
-                                logStatus(L"EFI_TCP4_PROTOCOL.Receive() fails", status, __LINE__);
+                                logStatusToConsole(L"EFI_TCP4_PROTOCOL.Receive() fails", status, __LINE__);
                             }
 
                             closePeer(&peers[i]);
@@ -554,7 +554,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             peers[i].dataToTransmitSize = 0;
             if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
             {
-                logStatus(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
 
                 closePeer(&peers[i]);
             }
@@ -601,7 +601,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 
                     if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
                     {
-                        logStatus(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
+                        logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
 
                         bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
                         tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
@@ -633,7 +633,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 
                 if (status = peerTcp4Protocol->Accept(peerTcp4Protocol, &peers[i].connectAcceptToken))
                 {
-                    logStatus(L"EFI_TCP4_PROTOCOL.Accept() fails", status, __LINE__);
+                    logStatusToConsole(L"EFI_TCP4_PROTOCOL.Accept() fails", status, __LINE__);
                 }
                 else
                 {
