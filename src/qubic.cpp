@@ -2033,7 +2033,7 @@ static void __registerUserFunction(USER_FUNCTION userFunction, unsigned short in
 {
     contractUserFunctions[executedContractIndex][inputType] = userFunction;
     contractUserFunctionInputSizes[executedContractIndex][inputType] = inputSize;
-    contractUserFunctionInputSizes[executedContractIndex][inputType] = outputSize;
+    contractUserFunctionOutputSizes[executedContractIndex][inputType] = outputSize;
 }
 
 static void __registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize, unsigned short outputSize)
