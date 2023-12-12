@@ -5120,10 +5120,10 @@ namespace QPI
 		uint64 name,
 		id issuer,
 		sint8 numberOfDecimalPlaces,
-		sint64 numberOfUnits,
+		sint64 numberOfShares,
 		uint64 unitOfMeasurement
 	) {
-		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfUnits, unitOfMeasurement);
+		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfShares, unitOfMeasurement);
 	}
 
 	template <typename T>
@@ -5176,15 +5176,15 @@ namespace QPI
 		return ::__transfer(destination, amount);
 	}
 
-	static sint64 transferAssetOwnershipAndPossession(
+	static sint64 transferShareOwnershipAndPossession(
 		uint64 assetName,
 		id issuer,
 		id owner,
 		id possessor,
-		sint64 numberOfUnits,
+		sint64 numberOfShares,
 		id newOwner
-	) { // Returns remaining number of possessed units satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
-		return ::__transferAssetOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfUnits, newOwner);
+	) { // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
+		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwner);
 	}
 
 	static uint8 year(

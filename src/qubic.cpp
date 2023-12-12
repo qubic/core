@@ -99,7 +99,7 @@ struct Asset
             char padding[1];
             unsigned short managingContractIndex;
             unsigned int issuanceIndex;
-            long long numberOfUnits;
+            long long numberOfShares;
         } ownership;
 
         static_assert(sizeof(ownership) == 32 + 1 + 1 + 2 + 4 + 8, "Something is wrong with the struct size.");
@@ -111,7 +111,7 @@ struct Asset
             char padding[1];
             unsigned short managingContractIndex;
             unsigned int ownershipIndex;
-            long long numberOfUnits;
+            long long numberOfShares;
         } possession;
 
         static_assert(sizeof(possession) == 32 + 1 + 1 + 2 + 4 + 8, "Something is wrong with the struct size.");
@@ -780,7 +780,7 @@ static void logQuTransfer(T message)
 struct AssetIssuance
 {
     m256i issuerPublicKey;
-    long long numberOfUnits;
+    long long numberOfShares;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -801,7 +801,7 @@ struct AssetOwnershipChange
     m256i sourcePublicKey;
     m256i destinationPublicKey;
     m256i issuerPublicKey;
-    long long numberOfUnits;
+    long long numberOfShares;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -822,7 +822,7 @@ struct AssetPossessionChange
     m256i sourcePublicKey;
     m256i destinationPublicKey;
     m256i issuerPublicKey;
-    long long numberOfUnits;
+    long long numberOfShares;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -1103,7 +1103,7 @@ static bool decreaseEnergy(const int index, long long amount)
     return false;
 }
 
-static void issueAsset(const m256i& issuerPublicKey, char name[7], char numberOfDecimalPlaces, char unitOfMeasurement[7], long long numberOfUnits, unsigned short managingContractIndex,
+static void issueAsset(const m256i& issuerPublicKey, char name[7], char numberOfDecimalPlaces, char unitOfMeasurement[7], long long numberOfShares, unsigned short managingContractIndex,
     int* issuanceIndex, int* ownershipIndex, int* possessionIndex)
 {
     *issuanceIndex = issuerPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
@@ -1127,7 +1127,7 @@ iteration:
             assets[*ownershipIndex].varStruct.ownership.type = OWNERSHIP;
             assets[*ownershipIndex].varStruct.ownership.managingContractIndex = managingContractIndex;
             assets[*ownershipIndex].varStruct.ownership.issuanceIndex = *issuanceIndex;
-            assets[*ownershipIndex].varStruct.ownership.numberOfUnits = numberOfUnits;
+            assets[*ownershipIndex].varStruct.ownership.numberOfShares = numberOfShares;
 
             *possessionIndex = (*ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
         iteration3:
@@ -1137,7 +1137,7 @@ iteration:
                 assets[*possessionIndex].varStruct.possession.type = POSSESSION;
                 assets[*possessionIndex].varStruct.possession.managingContractIndex = managingContractIndex;
                 assets[*possessionIndex].varStruct.possession.ownershipIndex = *ownershipIndex;
-                assets[*possessionIndex].varStruct.possession.numberOfUnits = numberOfUnits;
+                assets[*possessionIndex].varStruct.possession.numberOfShares = numberOfShares;
 
                 assetChangeFlags[*issuanceIndex >> 6] |= (1ULL << (*issuanceIndex & 63));
                 assetChangeFlags[*ownershipIndex >> 6] |= (1ULL << (*ownershipIndex & 63));
@@ -1147,7 +1147,7 @@ iteration:
 
                 AssetIssuance assetIssuance;
                 assetIssuance.issuerPublicKey = issuerPublicKey;
-                assetIssuance.numberOfUnits = numberOfUnits;
+                assetIssuance.numberOfShares = numberOfShares;
                 *((unsigned long long*)&assetIssuance.name) = *((unsigned long long*)&name); // Order must be preserved!
                 assetIssuance.numberOfDecimalPlaces = numberOfDecimalPlaces; // Order must be preserved!
                 *((unsigned long long*)&assetIssuance.unitOfMeasurement) = *((unsigned long long*)&unitOfMeasurement); // Order must be preserved!
@@ -1175,11 +1175,11 @@ iteration:
     }
 }
 
-static bool transferAssetOwnershipAndPossession(int sourceOwnershipIndex, int sourcePossessionIndex, const m256i& destinationPublicKey, long long numberOfUnits,
+static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int sourcePossessionIndex, const m256i& destinationPublicKey, long long numberOfShares,
     int* destinationOwnershipIndex, int* destinationPossessionIndex,
     bool lock)
 {
-    if (numberOfUnits <= 0)
+    if (numberOfShares <= 0)
     {
         return false;
     }
@@ -1189,8 +1189,8 @@ static bool transferAssetOwnershipAndPossession(int sourceOwnershipIndex, int so
         ACQUIRE(universeLock);
     }
 
-    if (assets[sourceOwnershipIndex].varStruct.ownership.type != OWNERSHIP || assets[sourceOwnershipIndex].varStruct.ownership.numberOfUnits < numberOfUnits
-        || assets[sourcePossessionIndex].varStruct.possession.type != POSSESSION || assets[sourcePossessionIndex].varStruct.possession.numberOfUnits < numberOfUnits
+    if (assets[sourceOwnershipIndex].varStruct.ownership.type != OWNERSHIP || assets[sourceOwnershipIndex].varStruct.ownership.numberOfShares < numberOfShares
+        || assets[sourcePossessionIndex].varStruct.possession.type != POSSESSION || assets[sourcePossessionIndex].varStruct.possession.numberOfShares < numberOfShares
         || assets[sourcePossessionIndex].varStruct.possession.ownershipIndex != sourceOwnershipIndex)
     {
         if (lock)
@@ -1209,7 +1209,7 @@ iteration:
             && assets[*destinationOwnershipIndex].varStruct.ownership.issuanceIndex == assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex
             && assets[*destinationOwnershipIndex].varStruct.ownership.publicKey == destinationPublicKey))
     {
-        assets[sourceOwnershipIndex].varStruct.ownership.numberOfUnits -= numberOfUnits;
+        assets[sourceOwnershipIndex].varStruct.ownership.numberOfShares -= numberOfShares;
 
         if (assets[*destinationOwnershipIndex].varStruct.ownership.type == EMPTY)
         {
@@ -1218,7 +1218,7 @@ iteration:
             assets[*destinationOwnershipIndex].varStruct.ownership.managingContractIndex = assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex;
             assets[*destinationOwnershipIndex].varStruct.ownership.issuanceIndex = assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex;
         }
-        assets[*destinationOwnershipIndex].varStruct.ownership.numberOfUnits += numberOfUnits;
+        assets[*destinationOwnershipIndex].varStruct.ownership.numberOfShares += numberOfShares;
 
         *destinationPossessionIndex = destinationPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
     iteration2:
@@ -1228,7 +1228,7 @@ iteration:
                 && assets[*destinationPossessionIndex].varStruct.possession.ownershipIndex == *destinationOwnershipIndex
                 && assets[*destinationPossessionIndex].varStruct.possession.publicKey == destinationPublicKey))
         {
-            assets[sourcePossessionIndex].varStruct.possession.numberOfUnits -= numberOfUnits;
+            assets[sourcePossessionIndex].varStruct.possession.numberOfShares -= numberOfShares;
 
             if (assets[*destinationPossessionIndex].varStruct.possession.type == EMPTY)
             {
@@ -1237,7 +1237,7 @@ iteration:
                 assets[*destinationPossessionIndex].varStruct.possession.managingContractIndex = assets[sourcePossessionIndex].varStruct.possession.managingContractIndex;
                 assets[*destinationPossessionIndex].varStruct.possession.ownershipIndex = *destinationOwnershipIndex;
             }
-            assets[*destinationPossessionIndex].varStruct.possession.numberOfUnits += numberOfUnits;
+            assets[*destinationPossessionIndex].varStruct.possession.numberOfShares += numberOfShares;
 
             assetChangeFlags[sourceOwnershipIndex >> 6] |= (1ULL << (sourceOwnershipIndex & 63));
             assetChangeFlags[sourcePossessionIndex >> 6] |= (1ULL << (sourcePossessionIndex & 63));
@@ -1253,7 +1253,7 @@ iteration:
             assetOwnershipChange.sourcePublicKey = assets[sourceOwnershipIndex].varStruct.ownership.publicKey;
             assetOwnershipChange.destinationPublicKey = destinationPublicKey;
             assetOwnershipChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
-            assetOwnershipChange.numberOfUnits = numberOfUnits;
+            assetOwnershipChange.numberOfShares = numberOfShares;
             *((unsigned long long*)&assetOwnershipChange.name) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
             assetOwnershipChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
             *((unsigned long long*)&assetOwnershipChange.unitOfMeasurement) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
@@ -1263,7 +1263,7 @@ iteration:
             assetPossessionChange.sourcePublicKey = assets[sourcePossessionIndex].varStruct.possession.publicKey;
             assetPossessionChange.destinationPublicKey = destinationPublicKey;
             assetPossessionChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
-            assetPossessionChange.numberOfUnits = numberOfUnits;
+            assetPossessionChange.numberOfShares = numberOfShares;
             *((unsigned long long*)&assetPossessionChange.name) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
             assetPossessionChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
             *((unsigned long long*)&assetPossessionChange.unitOfMeasurement) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
@@ -2428,7 +2428,7 @@ static const m256i& __invocator()
     return ::invocator;
 }
 
-static long long __issueAsset(unsigned long long name, const m256i& issuer, char numberOfDecimalPlaces, long long numberOfUnits, unsigned long long unitOfMeasurement)
+static long long __issueAsset(unsigned long long name, const m256i& issuer, char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement)
 {
     if (((unsigned char)name) < 'A' || ((unsigned char)name) > 'Z'
         || name > 0xFFFFFFFFFFFFFF)
@@ -2469,7 +2469,7 @@ static long long __issueAsset(unsigned long long name, const m256i& issuer, char
         return 0;
     }
 
-    if (numberOfUnits <= 0 || numberOfUnits > MAX_AMOUNT)
+    if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
     {
         return 0;
     }
@@ -2482,9 +2482,9 @@ static long long __issueAsset(unsigned long long name, const m256i& issuer, char
     char nameBuffer[7] = { char(name), char(name >> 8), char(name >> 16), char(name >> 24), char(name >> 32), char(name >> 40), char(name >> 48) };
     char unitOfMeasurementBuffer[7] = { char(unitOfMeasurement), char(unitOfMeasurement >> 8), char(unitOfMeasurement >> 16), char(unitOfMeasurement >> 24), char(unitOfMeasurement >> 32), char(unitOfMeasurement >> 40), char(unitOfMeasurement >> 48) };
     int issuanceIndex, ownershipIndex, possessionIndex;
-    issueAsset(issuer, nameBuffer, numberOfDecimalPlaces, unitOfMeasurementBuffer, numberOfUnits, executedContractIndex, &issuanceIndex, &ownershipIndex, &possessionIndex);
+    issueAsset(issuer, nameBuffer, numberOfDecimalPlaces, unitOfMeasurementBuffer, numberOfShares, executedContractIndex, &issuanceIndex, &ownershipIndex, &possessionIndex);
 
-    return numberOfUnits;
+    return numberOfShares;
 }
 
 static unsigned short __millisecond()
@@ -2566,9 +2566,9 @@ static long long __transfer(const m256i& destination, long long amount)
     return remainingAmount;
 }
 
-static long long __transferAssetOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfUnits, const m256i& newOwner)
+static long long __transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwner)
 {
-    if (numberOfUnits <= 0 || numberOfUnits > MAX_AMOUNT)
+    if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
     {
         return -((long long)(MAX_AMOUNT + 1));
     }
@@ -2581,7 +2581,7 @@ iteration:
     {
         RELEASE(universeLock);
 
-        return -numberOfUnits;
+        return -numberOfShares;
     }
     else
     {
@@ -2595,7 +2595,7 @@ iteration:
             {
                 RELEASE(universeLock);
 
-                return -numberOfUnits;
+                return -numberOfShares;
             }
             else
             {
@@ -2610,7 +2610,7 @@ iteration:
                     {
                         RELEASE(universeLock);
 
-                        return -numberOfUnits;
+                        return -numberOfShares;
                     }
                     else
                     {
@@ -2620,27 +2620,27 @@ iteration:
                         {
                             if (assets[possessionIndex].varStruct.possession.managingContractIndex == executedContractIndex) // TODO: This condition needs extra attention during refactoring!
                             {
-                                if (assets[possessionIndex].varStruct.possession.numberOfUnits >= numberOfUnits)
+                                if (assets[possessionIndex].varStruct.possession.numberOfShares >= numberOfShares)
                                 {
                                     int destinationOwnershipIndex, destinationPossessionIndex;
-                                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, newOwner, numberOfUnits, &destinationOwnershipIndex, &destinationPossessionIndex, false);
+                                    transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwner, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
 
                                     RELEASE(universeLock);
 
-                                    return assets[possessionIndex].varStruct.possession.numberOfUnits;
+                                    return assets[possessionIndex].varStruct.possession.numberOfShares;
                                 }
                                 else
                                 {
                                     RELEASE(universeLock);
 
-                                    return assets[possessionIndex].varStruct.possession.numberOfUnits - numberOfUnits;
+                                    return assets[possessionIndex].varStruct.possession.numberOfShares - numberOfShares;
                                 }
                             }
                             else
                             {
                                 RELEASE(universeLock);
 
-                                return -numberOfUnits;
+                                return -numberOfShares;
                             }
                         }
                         else
@@ -3412,7 +3412,7 @@ static void endEpoch()
                 if (finalPrice)
                 {
                     int destinationOwnershipIndex, destinationPossessionIndex;
-                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, ipo->publicKeys[i], 1, &destinationOwnershipIndex, &destinationPossessionIndex, true);
+                    transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, ipo->publicKeys[i], 1, &destinationOwnershipIndex, &destinationPossessionIndex, true);
                 }
             }
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
@@ -3553,7 +3553,7 @@ static void endEpoch()
         for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
         {
             if (assets[i].varStruct.possession.type == POSSESSION
-                && assets[i].varStruct.possession.numberOfUnits > 0)
+                && assets[i].varStruct.possession.numberOfShares > 0)
             {
                 const unsigned int oldOwnershipIndex = assets[i].varStruct.possession.ownershipIndex;
                 const unsigned int oldIssuanceIndex = assets[oldOwnershipIndex].varStruct.ownership.issuanceIndex;
@@ -3587,7 +3587,7 @@ static void endEpoch()
                             reorgAssets[ownershipIndex].varStruct.ownership.managingContractIndex = assets[oldOwnershipIndex].varStruct.ownership.managingContractIndex;
                             reorgAssets[ownershipIndex].varStruct.ownership.issuanceIndex = issuanceIndex;
                         }
-                        reorgAssets[ownershipIndex].varStruct.ownership.numberOfUnits += assets[i].varStruct.possession.numberOfUnits;
+                        reorgAssets[ownershipIndex].varStruct.ownership.numberOfShares += assets[i].varStruct.possession.numberOfShares;
 
                         int possessionIndex = assets[i].varStruct.possession.publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
                     iteration4:
@@ -3604,7 +3604,7 @@ static void endEpoch()
                                 reorgAssets[possessionIndex].varStruct.possession.managingContractIndex = assets[i].varStruct.possession.managingContractIndex;
                                 reorgAssets[possessionIndex].varStruct.possession.ownershipIndex = ownershipIndex;
                             }
-                            reorgAssets[possessionIndex].varStruct.possession.numberOfUnits += assets[i].varStruct.possession.numberOfUnits;
+                            reorgAssets[possessionIndex].varStruct.possession.numberOfShares += assets[i].varStruct.possession.numberOfShares;
                         }
                         else
                         {

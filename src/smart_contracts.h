@@ -47,7 +47,7 @@ static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned sho
 static unsigned char __second();
 static unsigned int __tick();
 static long long __transfer(const m256i&, long long);
-static long long __transferAssetOwnershipAndPossession(unsigned long long, const m256i&, const m256i&, const m256i&, long long, const m256i&);
+static long long __transferShareOwnershipAndPossession(unsigned long long, const m256i&, const m256i&, const m256i&, long long, const m256i&);
 static unsigned char __year();
 
 #include "qpi.h"
