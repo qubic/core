@@ -14,7 +14,7 @@ public:
     static constexpr unsigned int max_size = 0xFFFFFF;
 
     // Return the size of the message
-    inline unsigned int size()
+    inline unsigned int size() const
     {
         return (*((unsigned int*)_size)) & 0xFFFFFF;
     }
@@ -41,12 +41,12 @@ public:
         return true;
     }
 
-    inline bool isDejavuZero()
+    inline bool isDejavuZero() const
     {
         return !_dejavu;
     }
 
-    inline unsigned int dejavu()
+    inline unsigned int dejavu() const
     {
         return _dejavu;
     }
@@ -65,7 +65,7 @@ public:
         }
     }
 
-    inline unsigned char type()
+    inline unsigned char type() const
     {
         return _type;
     }
@@ -73,6 +73,31 @@ public:
     inline void setType(const unsigned char type)
     {
         _type = type;
+    }
+
+    // Return pointer to payload, which is stored behind the header.
+    template <typename PayloadType>
+    inline PayloadType* getPayload()
+    {
+        return reinterpret_cast<PayloadType*>(this + 1);
+    }
+
+    // Check if the payload size is as expected.
+    inline bool checkPayloadSize(unsigned int expected_payload_size) const
+    {
+        return size() == expected_payload_size + sizeof(RequestResponseHeader);
+    }
+
+    // Check if the payload size is in the expected range.
+    inline bool checkPayloadSizeMinMax(unsigned int min_payload_size, unsigned int max_payload_size) const
+    {
+        return min_payload_size + sizeof(RequestResponseHeader) <= size() && size() <= max_payload_size + sizeof(RequestResponseHeader);
+    }
+
+    // Get size of the payload (without checking validity of overall size).
+    inline unsigned int getPayloadSize() const
+    {
+        return this->size() - sizeof(RequestResponseHeader);
     }
 };
 

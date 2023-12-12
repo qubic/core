@@ -28,3 +28,21 @@ TEST(TestCoreRequestResponseHeader, TestSize) {
     EXPECT_FALSE(hdr.checkAndSetSize(RequestResponseHeader::max_size + 1));
     EXPECT_FALSE(hdr.checkAndSetSize(RequestResponseHeader::max_size * 2));
 }
+
+TEST(TestCoreRequestResponseHeader, TestPayload) {
+    RequestResponseHeader hdr;
+    memset(&hdr, 0, sizeof(hdr));
+    EXPECT_EQ(hdr.getPayload<char>(), ((char*)&hdr) + sizeof(RequestResponseHeader));
+
+    EXPECT_TRUE(hdr.checkAndSetSize(1234 + sizeof(RequestResponseHeader)));
+    EXPECT_TRUE(hdr.checkPayloadSize(1234));
+    EXPECT_FALSE(hdr.checkPayloadSize(1235));
+    EXPECT_TRUE(hdr.checkPayloadSizeMinMax(1234, 1234));
+    EXPECT_TRUE(hdr.checkPayloadSizeMinMax(123, 1234));
+    EXPECT_TRUE(hdr.checkPayloadSizeMinMax(1234, 12346));
+    EXPECT_TRUE(hdr.checkPayloadSizeMinMax(123, 12346));
+    EXPECT_FALSE(hdr.checkPayloadSizeMinMax(1235, 1235));
+    EXPECT_FALSE(hdr.checkPayloadSizeMinMax(12, 13));
+    EXPECT_FALSE(hdr.checkPayloadSizeMinMax(13, 12));
+    EXPECT_EQ(hdr.getPayloadSize(), 1234);
+}
