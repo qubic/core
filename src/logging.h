@@ -52,6 +52,7 @@ static bool logBufferOverflownFlags[sizeof(logReaderPasscodes) / sizeof(logReade
 static bool initLogging()
 {
 #if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+    EFI_STATUS status;
     for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
     {
         if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers[logReaderIndex]))
