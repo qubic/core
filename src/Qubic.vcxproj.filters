@@ -33,7 +33,7 @@
     <ClInclude Include="platform\time.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="platform\logging.h">
+    <ClInclude Include="platform\console_logging.h">
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="platform\common_types.h">
@@ -51,6 +51,12 @@
     <ClInclude Include="platform\random.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="smart_contracts\Random.h">
+      <Filter>smart_contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="system.h" />
+    <ClInclude Include="assets.h" />
+    <ClInclude Include="logging.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">

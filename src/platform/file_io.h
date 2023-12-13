@@ -3,7 +3,7 @@
 #include <intrin.h>
 
 #include "uefi.h"
-#include "logging.h"
+#include "console_logging.h"
 
 // If you get an error reading and writing files, set the chunk sizes below to
 // the cluster size set for formatting you disk. If you have no idea about the
@@ -18,14 +18,14 @@ static EFI_FILE_PROTOCOL* root = NULL;
 static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
 {
 #ifdef NO_UEFI
-    log(L"NO_UEFI implementation of load() is missing! No file loaded!");
+    logToConsole(L"NO_UEFI implementation of load() is missing! No file loaded!");
     return 0;
 #else
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
     if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
     {
-        logStatus(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
 
         return -1;
     }
@@ -40,7 +40,7 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
                 || size != (READING_CHUNK_SIZE <= (totalSize - readSize) ? READING_CHUNK_SIZE : (totalSize - readSize)))
             {
                 // If this error occurs, see the definition of READING_CHUNK_SIZE above.
-                logStatus(L"EFI_FILE_PROTOCOL.Read() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() fails", status, __LINE__);
 
                 file->Close(file);
 
@@ -58,14 +58,14 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
 static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
 {
 #ifdef NO_UEFI
-    log(L"NO_UEFI implementation of save() is missing! No file saved!");
+    logToConsole(L"NO_UEFI implementation of save() is missing! No file saved!");
     return 0;
 #else
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
     if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
     {
-        logStatus(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
 
         return -1;
     }
@@ -80,7 +80,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
                 || size != (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize)))
             {
                 // If this error occurs, see the definition of WRITING_CHUNK_SIZE above.
-                logStatus(L"EFI_FILE_PROTOCOL.Write() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_FILE_PROTOCOL.Write() fails", status, __LINE__);
 
                 file->Close(file);
 
@@ -106,7 +106,7 @@ static bool initFilesystem()
     EFI_HANDLE* handles;
     if (status = bs->LocateHandleBuffer(ByProtocol, &simpleFileSystemProtocolGuid, NULL, &numberOfHandles, &handles))
     {
-        logStatus(L"EFI_BOOT_SERVICES.LocateHandleBuffer() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_BOOT_SERVICES.LocateHandleBuffer() fails", status, __LINE__);
 
         return false;
     }
@@ -116,7 +116,7 @@ static bool initFilesystem()
         {
             if (status = bs->OpenProtocol(handles[i], &simpleFileSystemProtocolGuid, (void**)&simpleFileSystemProtocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL))
             {
-                logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
 
                 bs->FreePool(handles);
 
@@ -126,7 +126,7 @@ static bool initFilesystem()
             {
                 if (status = simpleFileSystemProtocol->OpenVolume(simpleFileSystemProtocol, (void**)&root))
                 {
-                    logStatus(L"EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.OpenVolume() fails", status, __LINE__);
+                    logStatusToConsole(L"EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.OpenVolume() fails", status, __LINE__);
 
                     bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
                     bs->FreePool(handles);
@@ -140,7 +140,7 @@ static bool initFilesystem()
                     unsigned long long size = sizeof(info);
                     if (status = root->GetInfo(root, &fileSystemInfoId, &size, &info))
                     {
-                        logStatus(L"EFI_FILE_PROTOCOL.GetInfo() fails", status, __LINE__);
+                        logStatusToConsole(L"EFI_FILE_PROTOCOL.GetInfo() fails", status, __LINE__);
 
                         bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
                         bs->FreePool(handles);
@@ -159,7 +159,7 @@ static bool initFilesystem()
                         appendNumber(message, info.VolumeSize, TRUE);
                         appendText(message, L" free bytes | Read-");
                         appendText(message, info.ReadOnly ? L"only." : L"Write.");
-                        log(message);
+                        logToConsole(message);
 
                         bool matches = true;
                         for (unsigned int j = 0; j < sizeof(info.VolumeLabel) / sizeof(info.VolumeLabel[0]); j++)
@@ -198,7 +198,7 @@ static bool initFilesystem()
     }
     if (status = simpleFileSystemProtocol->OpenVolume(simpleFileSystemProtocol, (void**)&root))
     {
-        logStatus(L"EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.OpenVolume() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.OpenVolume() fails", status, __LINE__);
 
         return false;
     }

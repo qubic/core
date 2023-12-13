@@ -29,10 +29,14 @@
 #include "tcp4.h"
 #include "peers.h"
 
+#include "system.h"
+#include "assets.h"
+#include "logging.h"
+
+
+
 ////////// Qubic \\\\\\\\\\
 
-#define ASSETS_CAPACITY 0x1000000ULL // Must be 2^N
-#define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TARGET_TICK_DURATION 3000
 #define TICK_REQUESTING_PERIOD 500ULL
@@ -42,10 +46,8 @@
 #define MAX_INPUT_SIZE 1024ULL
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
-#define MAX_NUMBER_OF_SOLUTIONS 65536 // Must be 2^N
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
-#define NUMBER_OF_COMPUTORS 676
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #define MAX_CONTRACT_STATE_SIZE 1073741824
 #define MAX_UNIVERSE_SIZE 1073741824
@@ -63,61 +65,6 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 60000
 #define TRANSACTION_SPARSENESS 7
-
-#define EMPTY 0
-#define ISSUANCE 1
-#define OWNERSHIP 2
-#define POSSESSION 3
-
-#define AMPERE 0
-#define CANDELA 1
-#define KELVIN 2
-#define KILOGRAM 3
-#define METER 4
-#define MOLE 5
-#define SECOND 6
-
-struct Asset
-{
-    union
-    {
-        struct
-        {
-            m256i publicKey;
-            unsigned char type;
-            char name[7]; // Capital letters + digits
-            char numberOfDecimalPlaces;
-            char unitOfMeasurement[7]; // Powers of the corresponding SI base units going in alphabetical order
-        } issuance;
-
-        static_assert(sizeof(issuance) == 32 + 1 + 7 + 1 + 7, "Something is wrong with the struct size.");
-
-        struct
-        {
-            m256i publicKey;
-            unsigned char type;
-            char padding[1];
-            unsigned short managingContractIndex;
-            unsigned int issuanceIndex;
-            long long numberOfUnits;
-        } ownership;
-
-        static_assert(sizeof(ownership) == 32 + 1 + 1 + 2 + 4 + 8, "Something is wrong with the struct size.");
-
-        struct
-        {
-            m256i publicKey;
-            unsigned char type;
-            char padding[1];
-            unsigned short managingContractIndex;
-            unsigned int ownershipIndex;
-            long long numberOfUnits;
-        } possession;
-
-        static_assert(sizeof(possession) == 32 + 1 + 1 + 2 + 4 + 8, "Something is wrong with the struct size.");
-
-    } varStruct;
-};
 
 
 
@@ -378,67 +325,8 @@ typedef struct
 static_assert(sizeof(RespondContractIPO) == 4 + 4 + 32 * NUMBER_OF_COMPUTORS + 8 * NUMBER_OF_COMPUTORS, "Something is wrong with the struct size.");
 
 
-#define END_RESPONSE 35
-
-#define REQUEST_ISSUED_ASSETS 36
-
-typedef struct
-{
-    m256i publicKey;
-} RequestIssuedAssets;
-
-static_assert(sizeof(RequestIssuedAssets) == 32, "Something is wrong with the struct size.");
 
 
-#define RESPOND_ISSUED_ASSETS 37
-
-typedef struct
-{
-    Asset asset;
-    unsigned int tick;
-    // TODO: Add siblings
-} RespondIssuedAssets;
-
-#define REQUEST_OWNED_ASSETS 38
-
-typedef struct
-{
-    m256i publicKey;
-} RequestOwnedAssets;
-
-static_assert(sizeof(RequestOwnedAssets) == 32, "Something is wrong with the struct size.");
-
-
-#define RESPOND_OWNED_ASSETS 39
-
-typedef struct
-{
-    Asset asset;
-    Asset issuanceAsset;
-    unsigned int tick;
-    // TODO: Add siblings
-} RespondOwnedAssets;
-
-#define REQUEST_POSSESSED_ASSETS 40
-
-typedef struct
-{
-    m256i publicKey;
-} RequestPossessedAssets;
-
-static_assert(sizeof(RequestPossessedAssets) == 32, "Something is wrong with the struct size.");
-
-
-#define RESPOND_POSSESSED_ASSETS 41
-
-typedef struct
-{
-    Asset asset;
-    Asset ownershipAsset;
-    Asset issuanceAsset;
-    unsigned int tick;
-    // TODO: Add siblings
-} RespondPossessedAssets;
 
 
 struct RequestContractFunction // Invokes contract function
@@ -466,39 +354,7 @@ struct RespondContractFunction // Returns result of contract function invocation
 };
 
 
-struct RequestLog // Fetches log
-{
-    unsigned long long passcode[4];
 
-    static constexpr unsigned char type()
-    {
-        return 44;
-    }
-};
-
-
-struct RespondLog // Returns buffered log; clears the buffer; make sure you fetch log quickly enough, if the buffer is overflown log stops being written into it till the node restart
-{
-    // Variable-size log;
-
-    static constexpr unsigned char type()
-    {
-        return 45;
-    }
-};
-
-
-struct ComputorProposal
-{
-    unsigned char uriSize;
-    unsigned char uri[255];
-};
-struct ComputorBallot
-{
-    unsigned char zero;
-    unsigned char votes[(NUMBER_OF_COMPUTORS * 3 + 7) / 8];
-    unsigned char quasiRandomNumber;
-};
 
 #define PROCESS_SPECIAL_COMMAND 255
 
@@ -567,37 +423,7 @@ static struct
     BroadcastComputors broadcastComputors;
 } broadcastedComputors;
 
-static struct System
-{
-    short version;
-    unsigned short epoch;
-    unsigned int tick;
-    unsigned int initialTick;
-    unsigned int latestCreatedTick, latestLedTick;
-
-    unsigned short initialMillisecond;
-    unsigned char initialSecond;
-    unsigned char initialMinute;
-    unsigned char initialHour;
-    unsigned char initialDay;
-    unsigned char initialMonth;
-    unsigned char initialYear;
-
-    unsigned long long latestOperatorNonce;
-
-    ComputorProposal proposals[NUMBER_OF_COMPUTORS];
-    ComputorBallot ballots[NUMBER_OF_COMPUTORS];
-
-    unsigned int numberOfSolutions;
-    struct Solution
-    {
-        m256i computorPublicKey;
-        m256i nonce;
-    } solutions[MAX_NUMBER_OF_SOLUTIONS];
-
-    m256i futureComputors[NUMBER_OF_COMPUTORS];
-} system;
-static_assert(sizeof(System) == 4562096, "Unexpected size");
+// data closely related to system
 static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
 static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
 static unsigned int tickPhase = 0, tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, futureTickTotalNumberOfComputors = 0;
@@ -634,12 +460,6 @@ static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY];
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
 static m256i* spectrumDigests = NULL;
 
-static volatile char universeLock = 0;
-static Asset* assets = NULL;
-static m256i* assetDigests = NULL;
-static unsigned long long* assetChangeFlags = NULL;
-static char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
-
 static volatile char computerLock = 0;
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
@@ -668,20 +488,6 @@ static unsigned long long tickTicks[11];
 static m256i releasedPublicKeys[NUMBER_OF_COMPUTORS];
 static long long releasedAmounts[NUMBER_OF_COMPUTORS];
 static unsigned int numberOfReleasedEntities;
-
-#define QU_TRANSFER 0
-#define ASSET_ISSUANCE 1
-#define ASSET_OWNERSHIP_CHANGE 2
-#define ASSET_POSSESSION_CHANGE 3
-#define CONTRACT_ERROR_MESSAGE 4
-#define CONTRACT_WARNING_MESSAGE 5
-#define CONTRACT_INFORMATION_MESSAGE 6
-#define CONTRACT_DEBUG_MESSAGE 7
-#define CUSTOM_MESSAGE 255
-static volatile char logBufferLocks[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
-static char* logBuffers[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { NULL };
-static unsigned int logBufferTails[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
-static bool logBufferOverflownFlags[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { false };
 
 static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
@@ -729,222 +535,12 @@ static struct
 } requestedTickTransactions;
 
 
-static void logMessage(unsigned int messageSize, unsigned char messageType, void* message)
+
+
+
+static void logToConsole(const CHAR16* message)
 {
-    for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
-    {
-        ACQUIRE(logBufferLocks[logReaderIndex]);
-
-        if (!logBufferOverflownFlags[logReaderIndex] && logBufferTails[logReaderIndex] + 16 + messageSize <= LOG_BUFFER_SIZE)
-        {
-            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 0))) = (unsigned char)(time.Year - 2000);
-            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 1))) = time.Month;
-            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 2))) = time.Day;
-            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 3))) = time.Hour;
-            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 4))) = time.Minute;
-            *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 5))) = time.Second;
-
-            *((unsigned short*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 6))) = system.epoch;
-            *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 8))) = system.tick;
-
-            *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 12))) = messageSize | (messageType << 24);
-            bs->CopyMem(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 16), message, messageSize);
-            logBufferTails[logReaderIndex] += 16 + messageSize;
-        }
-        else
-        {
-            logBufferOverflownFlags[logReaderIndex] = true;
-        }
-
-        RELEASE(logBufferLocks[logReaderIndex]);
-    }
-}
-
-struct QuTransfer
-{
-    m256i sourcePublicKey;
-    m256i destinationPublicKey;
-    long long amount;
-
-    char _terminator; // Only data before "_terminator" are logged
-};
-
-template <typename T>
-static void logQuTransfer(T message)
-{
-#if LOG_QU_TRANSFERS
-    logMessage(offsetof(T, _terminator), QU_TRANSFER, &message);
-#endif
-}
-
-struct AssetIssuance
-{
-    m256i issuerPublicKey;
-    long long numberOfUnits;
-    char name[7];
-    char numberOfDecimalPlaces;
-    char unitOfMeasurement[7];
-
-    char _terminator; // Only data before "_terminator" are logged
-};
-
-template <typename T>
-static void logAssetIssuance(T message)
-{
-#if LOG_ASSET_ISSUANCES
-    logMessage(offsetof(T, _terminator), ASSET_ISSUANCE, &message);
-#endif
-}
-
-struct AssetOwnershipChange
-{
-    m256i sourcePublicKey;
-    m256i destinationPublicKey;
-    m256i issuerPublicKey;
-    long long numberOfUnits;
-    char name[7];
-    char numberOfDecimalPlaces;
-    char unitOfMeasurement[7];
-
-    char _terminator; // Only data before "_terminator" are logged
-};
-
-template <typename T>
-static void logAssetOwnershipChange(T message)
-{
-#if LOG_ASSET_OWNERSHIP_CHANGES
-    logMessage(offsetof(T, _terminator), ASSET_OWNERSHIP_CHANGE, &message);
-#endif
-}
-
-struct AssetPossessionChange
-{
-    m256i sourcePublicKey;
-    m256i destinationPublicKey;
-    m256i issuerPublicKey;
-    long long numberOfUnits;
-    char name[7];
-    char numberOfDecimalPlaces;
-    char unitOfMeasurement[7];
-
-    char _terminator; // Only data before "_terminator" are logged
-};
-
-template <typename T>
-static void logAssetPossessionChange(T message)
-{
-#if LOG_ASSET_POSSESSION_CHANGES
-    logMessage(offsetof(T, _terminator), ASSET_POSSESSION_CHANGE, &message);
-#endif
-}
-
-struct DummyContractErrorMessage
-{
-    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
-    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
-
-    // Other data go here
-
-    char _terminator; // Only data before "_terminator" are logged
-};
-
-template <typename T>
-static void __logContractErrorMessage(T message)
-{
-    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract error message structure");
-
-#if LOG_CONTRACT_ERROR_MESSAGES
-    *((unsigned int*)&message) = executedContractIndex;
-    logMessage(offsetof(T, _terminator), CONTRACT_ERROR_MESSAGE, &message);
-#endif
-}
-
-struct DummyContractWarningMessage
-{
-    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
-    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
-
-    // Other data go here
-
-    char _terminator; // Only data before "_terminator" are logged
-};
-
-template <typename T>
-static void __logContractWarningMessage(T message)
-{
-    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract warning message structure");
-
-#if LOG_CONTRACT_WARNING_MESSAGES
-    *((unsigned int*)&message) = executedContractIndex;
-    logMessage(offsetof(T, _terminator), CONTRACT_WARNING_MESSAGE, &message);
-#endif
-}
-
-struct DummyContractInfoMessage
-{
-    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
-    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
-
-    // Other data go here
-
-    char _terminator; // Only data before "_terminator" are logged
-};
-
-template <typename T>
-static void __logContractInfoMessage(T message)
-{
-    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract info message structure");
-
-#if LOG_CONTRACT_INFO_MESSAGES
-    *((unsigned int*)&message) = executedContractIndex;
-    logMessage(offsetof(T, _terminator), CONTRACT_INFORMATION_MESSAGE, &message);
-#endif
-}
-
-struct DummyContractDebugMessage
-{
-    unsigned int _contractIndex; // Auto-assigned, any previous value will be overwritten
-    unsigned int _type; // Assign a random unique (per contract) number to distinguish messages of different types
-
-    // Other data go here
-
-    char _terminator; // Only data before "_terminator" are logged
-};
-
-template <typename T>
-static void __logContractDebugMessage(T message)
-{
-    static_assert(offsetof(T, _terminator) >= 8, "Invalid contract debug message structure");
-
-#if LOG_CONTRACT_DEBUG_MESSAGES
-    *((unsigned int*)&message) = executedContractIndex;
-    logMessage(offsetof(T, _terminator), CONTRACT_DEBUG_MESSAGE, &message);
-#endif
-}
-
-struct DummyCustomMessage
-{
-    unsigned long long _type; // Assign a random unique number to distinguish messages of different types
-
-    // Other data go here
-
-    char _terminator; // Only data before "_terminator" are logged
-};
-
-template <typename T>
-static void logCustomMessage(T message)
-{
-    static_assert(offsetof(T, _terminator) >= 8, "Invalid custom message structure");
-
-#if LOG_CUSTOM_MESSAGES
-    logMessage(offsetof(T, _terminator), CUSTOM_MESSAGE, &message);
-#endif
-}
-
-
-static void log(const CHAR16* message)
-{
-    if (disableLogging)
+    if (disableConsoleLogging)
     {
         return;
     }
@@ -1103,229 +699,14 @@ static bool decreaseEnergy(const int index, long long amount)
     return false;
 }
 
-static void issueAsset(const m256i& issuerPublicKey, char name[7], char numberOfDecimalPlaces, char unitOfMeasurement[7], long long numberOfUnits, unsigned short managingContractIndex,
-    int* issuanceIndex, int* ownershipIndex, int* possessionIndex)
-{
-    *issuanceIndex = issuerPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-
-    ACQUIRE(universeLock);
-
-iteration:
-    if (assets[*issuanceIndex].varStruct.issuance.type == EMPTY)
-    {
-        assets[*issuanceIndex].varStruct.issuance.publicKey = issuerPublicKey;
-        assets[*issuanceIndex].varStruct.issuance.type = ISSUANCE;
-        bs->CopyMem(assets[*issuanceIndex].varStruct.issuance.name, name, sizeof(assets[*issuanceIndex].varStruct.issuance.name));
-        assets[*issuanceIndex].varStruct.issuance.numberOfDecimalPlaces = numberOfDecimalPlaces;
-        bs->CopyMem(assets[*issuanceIndex].varStruct.issuance.unitOfMeasurement, unitOfMeasurement, sizeof(assets[*issuanceIndex].varStruct.issuance.unitOfMeasurement));
-
-        *ownershipIndex = (*issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
-    iteration2:
-        if (assets[*ownershipIndex].varStruct.ownership.type == EMPTY)
-        {
-            assets[*ownershipIndex].varStruct.ownership.publicKey = issuerPublicKey;
-            assets[*ownershipIndex].varStruct.ownership.type = OWNERSHIP;
-            assets[*ownershipIndex].varStruct.ownership.managingContractIndex = managingContractIndex;
-            assets[*ownershipIndex].varStruct.ownership.issuanceIndex = *issuanceIndex;
-            assets[*ownershipIndex].varStruct.ownership.numberOfUnits = numberOfUnits;
-
-            *possessionIndex = (*ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
-        iteration3:
-            if (assets[*possessionIndex].varStruct.possession.type == EMPTY)
-            {
-                assets[*possessionIndex].varStruct.possession.publicKey = issuerPublicKey;
-                assets[*possessionIndex].varStruct.possession.type = POSSESSION;
-                assets[*possessionIndex].varStruct.possession.managingContractIndex = managingContractIndex;
-                assets[*possessionIndex].varStruct.possession.ownershipIndex = *ownershipIndex;
-                assets[*possessionIndex].varStruct.possession.numberOfUnits = numberOfUnits;
-
-                assetChangeFlags[*issuanceIndex >> 6] |= (1ULL << (*issuanceIndex & 63));
-                assetChangeFlags[*ownershipIndex >> 6] |= (1ULL << (*ownershipIndex & 63));
-                assetChangeFlags[*possessionIndex >> 6] |= (1ULL << (*possessionIndex & 63));
-
-                RELEASE(universeLock);
-
-                AssetIssuance assetIssuance;
-                assetIssuance.issuerPublicKey = issuerPublicKey;
-                assetIssuance.numberOfUnits = numberOfUnits;
-                *((unsigned long long*)&assetIssuance.name) = *((unsigned long long*)&name); // Order must be preserved!
-                assetIssuance.numberOfDecimalPlaces = numberOfDecimalPlaces; // Order must be preserved!
-                *((unsigned long long*)&assetIssuance.unitOfMeasurement) = *((unsigned long long*)&unitOfMeasurement); // Order must be preserved!
-                logAssetIssuance(assetIssuance);
-            }
-            else
-            {
-                *possessionIndex = (*possessionIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                goto iteration3;
-            }
-        }
-        else
-        {
-            *ownershipIndex = (*ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
-
-            goto iteration2;
-        }
-    }
-    else
-    {
-        *issuanceIndex = (*issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
-
-        goto iteration;
-    }
-}
-
-static bool transferAssetOwnershipAndPossession(int sourceOwnershipIndex, int sourcePossessionIndex, const m256i& destinationPublicKey, long long numberOfUnits,
-    int* destinationOwnershipIndex, int* destinationPossessionIndex,
-    bool lock)
-{
-    if (numberOfUnits <= 0)
-    {
-        return false;
-    }
-
-    if (lock)
-    {
-        ACQUIRE(universeLock);
-    }
-
-    if (assets[sourceOwnershipIndex].varStruct.ownership.type != OWNERSHIP || assets[sourceOwnershipIndex].varStruct.ownership.numberOfUnits < numberOfUnits
-        || assets[sourcePossessionIndex].varStruct.possession.type != POSSESSION || assets[sourcePossessionIndex].varStruct.possession.numberOfUnits < numberOfUnits
-        || assets[sourcePossessionIndex].varStruct.possession.ownershipIndex != sourceOwnershipIndex)
-    {
-        if (lock)
-        {
-            RELEASE(universeLock);
-        }
-
-        return false;
-    }
-
-    *destinationOwnershipIndex = destinationPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-iteration:
-    if (assets[*destinationOwnershipIndex].varStruct.ownership.type == EMPTY
-        || (assets[*destinationOwnershipIndex].varStruct.ownership.type == OWNERSHIP
-            && assets[*destinationOwnershipIndex].varStruct.ownership.managingContractIndex == assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex
-            && assets[*destinationOwnershipIndex].varStruct.ownership.issuanceIndex == assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex
-            && assets[*destinationOwnershipIndex].varStruct.ownership.publicKey == destinationPublicKey))
-    {
-        assets[sourceOwnershipIndex].varStruct.ownership.numberOfUnits -= numberOfUnits;
-
-        if (assets[*destinationOwnershipIndex].varStruct.ownership.type == EMPTY)
-        {
-            assets[*destinationOwnershipIndex].varStruct.ownership.publicKey = destinationPublicKey;
-            assets[*destinationOwnershipIndex].varStruct.ownership.type = OWNERSHIP;
-            assets[*destinationOwnershipIndex].varStruct.ownership.managingContractIndex = assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex;
-            assets[*destinationOwnershipIndex].varStruct.ownership.issuanceIndex = assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex;
-        }
-        assets[*destinationOwnershipIndex].varStruct.ownership.numberOfUnits += numberOfUnits;
-
-        *destinationPossessionIndex = destinationPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-    iteration2:
-        if (assets[*destinationPossessionIndex].varStruct.possession.type == EMPTY
-            || (assets[*destinationPossessionIndex].varStruct.possession.type == POSSESSION
-                && assets[*destinationPossessionIndex].varStruct.possession.managingContractIndex == assets[sourcePossessionIndex].varStruct.possession.managingContractIndex
-                && assets[*destinationPossessionIndex].varStruct.possession.ownershipIndex == *destinationOwnershipIndex
-                && assets[*destinationPossessionIndex].varStruct.possession.publicKey == destinationPublicKey))
-        {
-            assets[sourcePossessionIndex].varStruct.possession.numberOfUnits -= numberOfUnits;
-
-            if (assets[*destinationPossessionIndex].varStruct.possession.type == EMPTY)
-            {
-                assets[*destinationPossessionIndex].varStruct.possession.publicKey = destinationPublicKey;
-                assets[*destinationPossessionIndex].varStruct.possession.type = POSSESSION;
-                assets[*destinationPossessionIndex].varStruct.possession.managingContractIndex = assets[sourcePossessionIndex].varStruct.possession.managingContractIndex;
-                assets[*destinationPossessionIndex].varStruct.possession.ownershipIndex = *destinationOwnershipIndex;
-            }
-            assets[*destinationPossessionIndex].varStruct.possession.numberOfUnits += numberOfUnits;
-
-            assetChangeFlags[sourceOwnershipIndex >> 6] |= (1ULL << (sourceOwnershipIndex & 63));
-            assetChangeFlags[sourcePossessionIndex >> 6] |= (1ULL << (sourcePossessionIndex & 63));
-            assetChangeFlags[*destinationOwnershipIndex >> 6] |= (1ULL << (*destinationOwnershipIndex & 63));
-            assetChangeFlags[*destinationPossessionIndex >> 6] |= (1ULL << (*destinationPossessionIndex & 63));
-
-            if (lock)
-            {
-                RELEASE(universeLock);
-            }
-
-            AssetOwnershipChange assetOwnershipChange;
-            assetOwnershipChange.sourcePublicKey = assets[sourceOwnershipIndex].varStruct.ownership.publicKey;
-            assetOwnershipChange.destinationPublicKey = destinationPublicKey;
-            assetOwnershipChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
-            assetOwnershipChange.numberOfUnits = numberOfUnits;
-            *((unsigned long long*)&assetOwnershipChange.name) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
-            assetOwnershipChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
-            *((unsigned long long*)&assetOwnershipChange.unitOfMeasurement) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
-            logAssetOwnershipChange(assetOwnershipChange);
-
-            AssetPossessionChange assetPossessionChange;
-            assetPossessionChange.sourcePublicKey = assets[sourcePossessionIndex].varStruct.possession.publicKey;
-            assetPossessionChange.destinationPublicKey = destinationPublicKey;
-            assetPossessionChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
-            assetPossessionChange.numberOfUnits = numberOfUnits;
-            *((unsigned long long*)&assetPossessionChange.name) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
-            assetPossessionChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
-            *((unsigned long long*)&assetPossessionChange.unitOfMeasurement) = *((unsigned long long*)&assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
-            logAssetPossessionChange(assetPossessionChange);
-
-            return true;
-        }
-        else
-        {
-            *destinationPossessionIndex = (*destinationPossessionIndex + 1) & (ASSETS_CAPACITY - 1);
-
-            goto iteration2;
-        }
-    }
-    else
-    {
-        *destinationOwnershipIndex = (*destinationOwnershipIndex + 1) & (ASSETS_CAPACITY - 1);
-
-        goto iteration;
-    }
-}
-
 static void enableAVX()
 {
     __writecr4(__readcr4() | 0x40000);
     _xsetbv(_XCR_XFEATURE_ENABLED_MASK, _xgetbv(_XCR_XFEATURE_ENABLED_MASK) | (7
-#if AVX512
+#ifdef __AVX512F__
         | 224
 #endif
         ));
-}
-
-static void getUniverseDigest(m256i& digest)
-{
-    unsigned int digestIndex;
-    for (digestIndex = 0; digestIndex < ASSETS_CAPACITY; digestIndex++)
-    {
-        if (assetChangeFlags[digestIndex >> 6] & (1ULL << (digestIndex & 63)))
-        {
-            KangarooTwelve(&assets[digestIndex], sizeof(Asset), &assetDigests[digestIndex], 32);
-        }
-    }
-    unsigned int previousLevelBeginning = 0;
-    unsigned int numberOfLeafs = ASSETS_CAPACITY;
-    while (numberOfLeafs > 1)
-    {
-        for (unsigned int i = 0; i < numberOfLeafs; i += 2)
-        {
-            if (assetChangeFlags[i >> 6] & (3ULL << (i & 63)))
-            {
-                KangarooTwelve64To32(&assetDigests[previousLevelBeginning + i], &assetDigests[digestIndex]);
-                assetChangeFlags[i >> 6] &= ~(3ULL << (i & 63));
-                assetChangeFlags[i >> 7] |= (1ULL << ((i >> 1) & 63));
-            }
-            digestIndex++;
-        }
-        previousLevelBeginning += numberOfLeafs;
-        numberOfLeafs >>= 1;
-    }
-    assetChangeFlags[0] = 0;
-
-    digest = assetDigests[(ASSETS_CAPACITY * 2 - 1) - 1];
 }
 
 static void getComputerDigest(m256i& digest)
@@ -1369,7 +750,7 @@ static void getComputerDigest(m256i& digest)
 }
 
 
-static void exchangePublicPeers(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header)
 {
     if (!peer->exchangedPublicPeers)
     {
@@ -1389,7 +770,7 @@ static void exchangePublicPeers(Peer* peer, Processor* processor, RequestRespons
         }
     }
 
-    ExchangePublicPeers* request = (ExchangePublicPeers*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    ExchangePublicPeers* request = header->getPayload<ExchangePublicPeers>();
     for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; j++)
     {
         if (!listOfPeersIsStatic)
@@ -1399,9 +780,9 @@ static void exchangePublicPeers(Peer* peer, Processor* processor, RequestRespons
     }
 }
 
-static void broadcastMessage(const unsigned long long processorNumber, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastMessage(const unsigned long long processorNumber, RequestResponseHeader* header)
 {
-    Message* request = (Message*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    Message* request = header->getPayload<Message>();
     if (header->size() <= sizeof(RequestResponseHeader) + sizeof(Message) + MAX_MESSAGE_PAYLOAD_SIZE + SIGNATURE_SIZE
         && header->size() >= sizeof(RequestResponseHeader) + sizeof(Message) + SIGNATURE_SIZE)
     {
@@ -1517,9 +898,9 @@ static void broadcastMessage(const unsigned long long processorNumber, Processor
     }
 }
 
-static void broadcastComputors(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 {
-    BroadcastComputors* request = (BroadcastComputors*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    BroadcastComputors* request = header->getPayload<BroadcastComputors>();
     if (request->computors.epoch > broadcastedComputors.broadcastComputors.computors.epoch)
     {
         unsigned char digest[32];
@@ -1556,9 +937,9 @@ static void broadcastComputors(Peer* peer, Processor* processor, RequestResponse
     }
 }
 
-static void broadcastTick(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
 {
-    BroadcastTick* request = (BroadcastTick*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    BroadcastTick* request = header->getPayload<BroadcastTick>();
     if (request->tick.computorIndex < NUMBER_OF_COMPUTORS
         && request->tick.epoch == system.epoch
         && request->tick.tick >= system.tick && request->tick.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
@@ -1608,9 +989,9 @@ static void broadcastTick(Peer* peer, Processor* processor, RequestResponseHeade
     }
 }
 
-static void broadcastFutureTickData(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* header)
 {
-    BroadcastFutureTickData* request = (BroadcastFutureTickData*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    BroadcastFutureTickData* request = header->getPayload<BroadcastFutureTickData>();
     if (request->tickData.epoch == system.epoch
         && request->tickData.tick > system.tick && request->tickData.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
         && request->tickData.tick % NUMBER_OF_COMPUTORS == request->tickData.computorIndex
@@ -1696,9 +1077,9 @@ static void broadcastFutureTickData(Peer* peer, Processor* processor, RequestRes
     }
 }
 
-static void broadcastTransaction(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* header)
 {
-    Transaction* request = (Transaction*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    Transaction* request = header->getPayload<Transaction>();
     if (request->amount >= 0 && request->amount <= MAX_AMOUNT
         && request->inputSize <= MAX_INPUT_SIZE && request->inputSize == header->size() - sizeof(RequestResponseHeader) - sizeof(Transaction) - SIGNATURE_SIZE)
     {
@@ -1761,7 +1142,7 @@ static void broadcastTransaction(Peer* peer, Processor* processor, RequestRespon
     }
 }
 
-static void requestComputors(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
     if (broadcastedComputors.broadcastComputors.computors.epoch)
     {
@@ -1773,9 +1154,9 @@ static void requestComputors(Peer* peer, Processor* processor, RequestResponseHe
     }
 }
 
-static void requestQuorumTick(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 {
-    RequestQuorumTick* request = (RequestQuorumTick*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestQuorumTick* request = header->getPayload<RequestQuorumTick>();
     if (request->quorumTick.tick >= system.initialTick && request->quorumTick.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
     {
         unsigned short computorIndices[NUMBER_OF_COMPUTORS];
@@ -1803,9 +1184,9 @@ static void requestQuorumTick(Peer* peer, Processor* processor, RequestResponseH
     enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
 }
 
-static void requestTickData(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 {
-    RequestTickData* request = (RequestTickData*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestTickData* request = header->getPayload<RequestTickData>();
     if (request->requestedTickData.tick > system.initialTick && request->requestedTickData.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
         && tickData[request->requestedTickData.tick - system.initialTick].epoch == system.epoch)
     {
@@ -1817,9 +1198,9 @@ static void requestTickData(Peer* peer, Processor* processor, RequestResponseHea
     }
 }
 
-static void requestTickTransactions(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* header)
 {
-    RequestedTickTransactions* request = (RequestedTickTransactions*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestedTickTransactions* request = header->getPayload<RequestedTickTransactions>();
     if (request->tick >= system.initialTick && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
     {
         unsigned short tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
@@ -1845,7 +1226,7 @@ static void requestTickTransactions(Peer* peer, Processor* processor, RequestRes
     enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
 }
 
-static void requestCurrentTickInfo(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
 {
     CurrentTickInfo currentTickInfo;
 
@@ -1871,11 +1252,11 @@ static void requestCurrentTickInfo(Peer* peer, Processor* processor, RequestResp
     enqueueResponse(peer, sizeof(currentTickInfo), RESPOND_CURRENT_TICK_INFO, header->dejavu(), &currentTickInfo);
 }
 
-static void requestEntity(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
 {
     RespondedEntity respondedEntity;
 
-    RequestedEntity* request = (RequestedEntity*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestedEntity* request = header->getPayload<RequestedEntity>();
     respondedEntity.entity.publicKey = request->publicKey;
     respondedEntity.spectrumIndex = spectrumIndex(respondedEntity.entity.publicKey);
     respondedEntity.tick = system.tick;
@@ -1907,11 +1288,11 @@ static void requestEntity(Peer* peer, Processor* processor, RequestResponseHeade
     enqueueResponse(peer, sizeof(respondedEntity), RESPOND_ENTITY, header->dejavu(), &respondedEntity);
 }
 
-static void requestContractIPO(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
 {
     RespondContractIPO respondContractIPO;
 
-    RequestContractIPO* request = (RequestContractIPO*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestContractIPO* request = header->getPayload<RequestContractIPO>();
     respondContractIPO.contractIndex = request->contractIndex;
     respondContractIPO.tick = system.tick;
     if (request->contractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
@@ -1930,122 +1311,14 @@ static void requestContractIPO(Peer* peer, Processor* processor, RequestResponse
     enqueueResponse(peer, sizeof(respondContractIPO), RESPOND_CONTRACT_IPO, header->dejavu(), &respondContractIPO);
 }
 
-static void requestIssuedAssets(Peer* peer, Processor* processor, RequestResponseHeader* header)
-{
-    RespondIssuedAssets response;
-
-    RequestIssuedAssets* request = (RequestIssuedAssets*)((char*)processor->buffer + sizeof(RequestResponseHeader));
-
-    unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-
-    ACQUIRE(universeLock);
-
-iteration:
-    if (universeIndex >= ASSETS_CAPACITY
-        || assets[universeIndex].varStruct.issuance.type == EMPTY)
-    {
-        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
-    }
-    else
-    {
-        if (assets[universeIndex].varStruct.issuance.type == ISSUANCE
-            && assets[universeIndex].varStruct.issuance.publicKey == request->publicKey)
-        {
-            bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(Asset));
-            response.tick = system.tick;
-
-            enqueueResponse(peer, sizeof(response), RESPOND_ISSUED_ASSETS, header->dejavu(), &response);
-        }
-
-        universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
-
-        goto iteration;
-    }
-
-    RELEASE(universeLock);
-}
-
-static void requestOwnedAssets(Peer* peer, Processor* processor, RequestResponseHeader* header)
-{
-    RespondOwnedAssets response;
-
-    RequestOwnedAssets* request = (RequestOwnedAssets*)((char*)processor->buffer + sizeof(RequestResponseHeader));
-
-    unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-
-    ACQUIRE(universeLock);
-
-iteration:
-    if (universeIndex >= ASSETS_CAPACITY
-        || assets[universeIndex].varStruct.issuance.type == EMPTY)
-    {
-        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
-    }
-    else
-    {
-        if (assets[universeIndex].varStruct.issuance.type == OWNERSHIP
-            && assets[universeIndex].varStruct.issuance.publicKey == request->publicKey)
-        {
-            bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(Asset));
-            bs->CopyMem(&response.issuanceAsset, &assets[assets[universeIndex].varStruct.ownership.issuanceIndex], sizeof(Asset));
-            response.tick = system.tick;
-
-            enqueueResponse(peer, sizeof(response), RESPOND_OWNED_ASSETS, header->dejavu(), &response);
-        }
-
-        universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
-
-        goto iteration;
-    }
-
-    RELEASE(universeLock);
-}
-
-static void requestPossessedAssets(Peer* peer, Processor* processor, RequestResponseHeader* header)
-{
-    RespondPossessedAssets response;
-
-    RequestPossessedAssets* request = (RequestPossessedAssets*)((char*)processor->buffer + sizeof(RequestResponseHeader));
-
-    unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-
-    ACQUIRE(universeLock);
-
-iteration:
-    if (universeIndex >= ASSETS_CAPACITY
-        || assets[universeIndex].varStruct.issuance.type == EMPTY)
-    {
-        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
-    }
-    else
-    {
-        if (assets[universeIndex].varStruct.issuance.type == POSSESSION
-            && assets[universeIndex].varStruct.issuance.publicKey == request->publicKey)
-        {
-            bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(Asset));
-            bs->CopyMem(&response.ownershipAsset, &assets[assets[universeIndex].varStruct.possession.ownershipIndex], sizeof(Asset));
-            bs->CopyMem(&response.issuanceAsset, &assets[assets[assets[universeIndex].varStruct.possession.ownershipIndex].varStruct.ownership.issuanceIndex], sizeof(Asset));
-            response.tick = system.tick;
-
-            enqueueResponse(peer, sizeof(response), RESPOND_POSSESSED_ASSETS, header->dejavu(), &response);
-        }
-
-        universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
-
-        goto iteration;
-    }
-
-    RELEASE(universeLock);
-}
-
-static void requestContractFunction(Peer* peer, const unsigned long long processorNumber, Processor* processor, RequestResponseHeader* header)
+static void processRequestContractFunction(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
 {
     // TODO: Invoked function may enter endless loop, so a timeout (and restart) is required for request processing threads
     // TODO: Enable parallel execution of contract functions
 
     RespondContractFunction* response = (RespondContractFunction*)contractFunctionOutputs[processorNumber];
 
-    RequestContractFunction* request = (RequestContractFunction*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    RequestContractFunction* request = header->getPayload<RequestContractFunction>();
     executedContractIndex = request->contractIndex;
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
         || !executedContractIndex || executedContractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
@@ -2072,48 +1345,15 @@ static void requestContractFunction(Peer* peer, const unsigned long long process
     }
 }
 
-static void requestLog(Peer* peer, Processor* processor, RequestResponseHeader* header)
+static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 {
-    RequestLog* request = (RequestLog*)((char*)processor->buffer + sizeof(RequestResponseHeader));
-    for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
-    {
-        if (request->passcode[0] == logReaderPasscodes[logReaderIndex][0]
-            && request->passcode[1] == logReaderPasscodes[logReaderIndex][1]
-            && request->passcode[2] == logReaderPasscodes[logReaderIndex][2]
-            && request->passcode[3] == logReaderPasscodes[logReaderIndex][3])
-        {
-            ACQUIRE(logBufferLocks[logReaderIndex]);
-
-            if (logBufferOverflownFlags[logReaderIndex])
-            {
-                RELEASE(logBufferLocks[logReaderIndex]);
-
-                break;
-            }
-            else
-            {
-                enqueueResponse(peer, logBufferTails[logReaderIndex], RespondLog::type(), header->dejavu(), logBuffers[logReaderIndex]);
-                logBufferTails[logReaderIndex] = 0;
-            }
-
-            RELEASE(logBufferLocks[logReaderIndex]);
-
-            return;
-        }
-    }
-
-    enqueueResponse(peer, 0, RespondLog::type(), header->dejavu(), NULL);
-}
-
-static void processSpecialCommand(Peer* peer, Processor* processor, RequestResponseHeader* header)
-{
-    SpecialCommand* request = (SpecialCommand*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+    SpecialCommand* request = header->getPayload<SpecialCommand>();
     if (header->size() >= sizeof(RequestResponseHeader) + sizeof(SpecialCommand) + SIGNATURE_SIZE
         && (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) > system.latestOperatorNonce)
     {
         unsigned char digest[32];
         KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
-        if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)processor->buffer + (header->size() - SIGNATURE_SIZE))))
+        if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
         {
             system.latestOperatorNonce = request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF;
 
@@ -2127,7 +1367,7 @@ static void processSpecialCommand(Peer* peer, Processor* processor, RequestRespo
 
             case SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST:
             {
-                SpecialCommandGetProposalAndBallotRequest* request = (SpecialCommandGetProposalAndBallotRequest*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+                SpecialCommandGetProposalAndBallotRequest* request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
                 if (request->computorIndex < NUMBER_OF_COMPUTORS)
                 {
                     SpecialCommandGetProposalAndBallotResponse response;
@@ -2145,7 +1385,7 @@ static void processSpecialCommand(Peer* peer, Processor* processor, RequestRespo
 
             case SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_REQUEST:
             {
-                SpecialCommandSetProposalAndBallotRequest* request = (SpecialCommandSetProposalAndBallotRequest*)((char*)processor->buffer + sizeof(RequestResponseHeader));
+                SpecialCommandSetProposalAndBallotRequest* request = header->getPayload<SpecialCommandSetProposalAndBallotRequest>();
                 if (request->computorIndex < NUMBER_OF_COMPUTORS)
                 {
                     bs->CopyMem(&system.proposals[request->computorIndex], &request->proposal, sizeof(ComputorProposal));
@@ -2213,115 +1453,115 @@ static void requestProcessor(void* ProcedureArgument)
                 {
                 case EXCHANGE_PUBLIC_PEERS:
                 {
-                    exchangePublicPeers(peer, processor, header);
+                    processExchangePublicPeers(peer, header);
                 }
                 break;
 
                 case BROADCAST_MESSAGE:
                 {
-                    broadcastMessage(processorNumber, processor, header);
+                    processBroadcastMessage(processorNumber, header);
                 }
                 break;
 
                 case BROADCAST_COMPUTORS:
                 {
-                    broadcastComputors(peer, processor, header);
+                    processBroadcastComputors(peer, header);
                 }
                 break;
 
                 case BROADCAST_TICK:
                 {
-                    broadcastTick(peer, processor, header);
+                    processBroadcastTick(peer, header);
                 }
                 break;
 
                 case BROADCAST_FUTURE_TICK_DATA:
                 {
-                    broadcastFutureTickData(peer, processor, header);
+                    processBroadcastFutureTickData(peer, header);
                 }
                 break;
 
                 case BROADCAST_TRANSACTION:
                 {
-                    broadcastTransaction(peer, processor, header);
+                    processBroadcastTransaction(peer, header);
                 }
                 break;
 
                 case REQUEST_COMPUTORS:
                 {
-                    requestComputors(peer, processor, header);
+                    processRequestComputors(peer, header);
                 }
                 break;
 
                 case REQUEST_QUORUM_TICK:
                 {
-                    requestQuorumTick(peer, processor, header);
+                    processRequestQuorumTick(peer, header);
                 }
                 break;
 
                 case REQUEST_TICK_DATA:
                 {
-                    requestTickData(peer, processor, header);
+                    processRequestTickData(peer, header);
                 }
                 break;
 
                 case REQUEST_TICK_TRANSACTIONS:
                 {
-                    requestTickTransactions(peer, processor, header);
+                    processRequestTickTransactions(peer, header);
                 }
                 break;
 
                 case REQUEST_CURRENT_TICK_INFO:
                 {
-                    requestCurrentTickInfo(peer, processor, header);
+                    processRequestCurrentTickInfo(peer, header);
                 }
                 break;
 
                 case REQUEST_ENTITY:
                 {
-                    requestEntity(peer, processor, header);
+                    processRequestEntity(peer, header);
                 }
                 break;
 
                 case REQUEST_CONTRACT_IPO:
                 {
-                    requestContractIPO(peer, processor, header);
+                    processRequestContractIPO(peer, header);
                 }
                 break;
 
                 case REQUEST_ISSUED_ASSETS:
                 {
-                    requestIssuedAssets(peer, processor, header);
+                    processRequestIssuedAssets(peer, header);
                 }
                 break;
 
                 case REQUEST_OWNED_ASSETS:
                 {
-                    requestOwnedAssets(peer, processor, header);
+                    processRequestOwnedAssets(peer, header);
                 }
                 break;
 
                 case REQUEST_POSSESSED_ASSETS:
                 {
-                    requestPossessedAssets(peer, processor, header);
+                    processRequestPossessedAssets(peer, header);
                 }
                 break;
 
                 case RequestContractFunction::type():
                 {
-                    requestContractFunction(peer, processorNumber, processor, header);
+                    processRequestContractFunction(peer, processorNumber, header);
                 }
                 break;
 
                 case RequestLog::type():
                 {
-                    requestLog(peer, processor, header);
+                    processRequestLog(peer, header);
                 }
                 break;
 
                 case PROCESS_SPECIAL_COMMAND:
                 {
-                    processSpecialCommand(peer, processor, header);
+                    processSpecialCommand(peer, header);
                 }
                 break;
                 }
@@ -2349,7 +1589,7 @@ static void __registerUserFunction(USER_FUNCTION userFunction, unsigned short in
 {
     contractUserFunctions[executedContractIndex][inputType] = userFunction;
     contractUserFunctionInputSizes[executedContractIndex][inputType] = inputSize;
-    contractUserFunctionInputSizes[executedContractIndex][inputType] = outputSize;
+    contractUserFunctionOutputSizes[executedContractIndex][inputType] = outputSize;
 }
 
 static void __registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize, unsigned short outputSize)
@@ -2428,7 +1668,7 @@ static const m256i& __invocator()
     return ::invocator;
 }
 
-static long long __issueAsset(unsigned long long name, const m256i& issuer, char numberOfDecimalPlaces, long long numberOfUnits, unsigned long long unitOfMeasurement)
+static long long __issueAsset(unsigned long long name, const m256i& issuer, char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement)
 {
     if (((unsigned char)name) < 'A' || ((unsigned char)name) > 'Z'
         || name > 0xFFFFFFFFFFFFFF)
@@ -2469,7 +1709,7 @@ static long long __issueAsset(unsigned long long name, const m256i& issuer, char
         return 0;
     }
 
-    if (numberOfUnits <= 0 || numberOfUnits > MAX_AMOUNT)
+    if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
     {
         return 0;
     }
@@ -2482,9 +1722,9 @@ static long long __issueAsset(unsigned long long name, const m256i& issuer, char
     char nameBuffer[7] = { char(name), char(name >> 8), char(name >> 16), char(name >> 24), char(name >> 32), char(name >> 40), char(name >> 48) };
     char unitOfMeasurementBuffer[7] = { char(unitOfMeasurement), char(unitOfMeasurement >> 8), char(unitOfMeasurement >> 16), char(unitOfMeasurement >> 24), char(unitOfMeasurement >> 32), char(unitOfMeasurement >> 40), char(unitOfMeasurement >> 48) };
     int issuanceIndex, ownershipIndex, possessionIndex;
-    issueAsset(issuer, nameBuffer, numberOfDecimalPlaces, unitOfMeasurementBuffer, numberOfUnits, executedContractIndex, &issuanceIndex, &ownershipIndex, &possessionIndex);
+    issueAsset(issuer, nameBuffer, numberOfDecimalPlaces, unitOfMeasurementBuffer, numberOfShares, executedContractIndex, &issuanceIndex, &ownershipIndex, &possessionIndex);
 
-    return numberOfUnits;
+    return numberOfShares;
 }
 
 static unsigned short __millisecond()
@@ -2566,9 +1806,9 @@ static long long __transfer(const m256i& destination, long long amount)
     return remainingAmount;
 }
 
-static long long __transferAssetOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfUnits, const m256i& newOwner)
+static long long __transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwner)
 {
-    if (numberOfUnits <= 0 || numberOfUnits > MAX_AMOUNT)
+    if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
     {
         return -((long long)(MAX_AMOUNT + 1));
     }
@@ -2581,7 +1821,7 @@ iteration:
     {
         RELEASE(universeLock);
 
-        return -numberOfUnits;
+        return -numberOfShares;
     }
     else
     {
@@ -2595,7 +1835,7 @@ iteration:
             {
                 RELEASE(universeLock);
 
-                return -numberOfUnits;
+                return -numberOfShares;
             }
             else
             {
@@ -2610,7 +1850,7 @@ iteration:
                     {
                         RELEASE(universeLock);
 
-                        return -numberOfUnits;
+                        return -numberOfShares;
                     }
                     else
                     {
@@ -2620,27 +1860,27 @@ iteration:
                         {
                             if (assets[possessionIndex].varStruct.possession.managingContractIndex == executedContractIndex) // TODO: This condition needs extra attention during refactoring!
                             {
-                                if (assets[possessionIndex].varStruct.possession.numberOfUnits >= numberOfUnits)
+                                if (assets[possessionIndex].varStruct.possession.numberOfShares >= numberOfShares)
                                 {
                                     int destinationOwnershipIndex, destinationPossessionIndex;
-                                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, newOwner, numberOfUnits, &destinationOwnershipIndex, &destinationPossessionIndex, false);
+                                    transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwner, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
 
                                     RELEASE(universeLock);
 
-                                    return assets[possessionIndex].varStruct.possession.numberOfUnits;
+                                    return assets[possessionIndex].varStruct.possession.numberOfShares;
                                 }
                                 else
                                 {
                                     RELEASE(universeLock);
 
-                                    return assets[possessionIndex].varStruct.possession.numberOfUnits - numberOfUnits;
+                                    return assets[possessionIndex].varStruct.possession.numberOfShares - numberOfShares;
                                 }
                             }
                             else
                             {
                                 RELEASE(universeLock);
 
-                                return -numberOfUnits;
+                                return -numberOfShares;
                             }
                         }
                         else
@@ -3412,7 +2652,7 @@ static void endEpoch()
                 if (finalPrice)
                 {
                     int destinationOwnershipIndex, destinationPossessionIndex;
-                    transferAssetOwnershipAndPossession(ownershipIndex, possessionIndex, ipo->publicKeys[i], 1, &destinationOwnershipIndex, &destinationPossessionIndex, true);
+                    transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, ipo->publicKeys[i], 1, &destinationOwnershipIndex, &destinationPossessionIndex, true);
                 }
             }
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
@@ -3545,95 +2785,7 @@ static void endEpoch()
         RELEASE(spectrumLock);
     }
 
-    {
-        ACQUIRE(universeLock);
-
-        Asset* reorgAssets = (Asset*)reorgBuffer;
-        bs->SetMem(reorgAssets, ASSETS_CAPACITY * sizeof(Asset), 0);
-        for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
-        {
-            if (assets[i].varStruct.possession.type == POSSESSION
-                && assets[i].varStruct.possession.numberOfUnits > 0)
-            {
-                const unsigned int oldOwnershipIndex = assets[i].varStruct.possession.ownershipIndex;
-                const unsigned int oldIssuanceIndex = assets[oldOwnershipIndex].varStruct.ownership.issuanceIndex;
-                const m256i & issuerPublicKey = assets[oldIssuanceIndex].varStruct.issuance.publicKey;
-                char* name = assets[oldIssuanceIndex].varStruct.issuance.name;
-                int issuanceIndex = issuerPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-            iteration2:
-                if (reorgAssets[issuanceIndex].varStruct.issuance.type == EMPTY
-                    || (reorgAssets[issuanceIndex].varStruct.issuance.type == ISSUANCE
-                        && ((*((unsigned long long*)reorgAssets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == ((*((unsigned long long*)name)) & 0xFFFFFFFFFFFFFF)
-                        && reorgAssets[issuanceIndex].varStruct.issuance.publicKey == issuerPublicKey))
-                {
-                    if (reorgAssets[issuanceIndex].varStruct.issuance.type == EMPTY)
-                    {
-                        bs->CopyMem(&reorgAssets[issuanceIndex], &assets[oldIssuanceIndex], sizeof(Asset));
-                    }
-
-                    const m256i& ownerPublicKey = assets[oldOwnershipIndex].varStruct.ownership.publicKey;
-                    int ownershipIndex = ownerPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-                iteration3:
-                    if (reorgAssets[ownershipIndex].varStruct.ownership.type == EMPTY
-                        || (reorgAssets[ownershipIndex].varStruct.ownership.type == OWNERSHIP
-                            && reorgAssets[ownershipIndex].varStruct.ownership.managingContractIndex == assets[oldOwnershipIndex].varStruct.ownership.managingContractIndex
-                            && reorgAssets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
-                            && reorgAssets[ownershipIndex].varStruct.ownership.publicKey == ownerPublicKey))
-                    {
-                        if (reorgAssets[ownershipIndex].varStruct.ownership.type == EMPTY)
-                        {
-                            reorgAssets[ownershipIndex].varStruct.ownership.publicKey = ownerPublicKey;
-                            reorgAssets[ownershipIndex].varStruct.ownership.type = OWNERSHIP;
-                            reorgAssets[ownershipIndex].varStruct.ownership.managingContractIndex = assets[oldOwnershipIndex].varStruct.ownership.managingContractIndex;
-                            reorgAssets[ownershipIndex].varStruct.ownership.issuanceIndex = issuanceIndex;
-                        }
-                        reorgAssets[ownershipIndex].varStruct.ownership.numberOfUnits += assets[i].varStruct.possession.numberOfUnits;
-
-                        int possessionIndex = assets[i].varStruct.possession.publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-                    iteration4:
-                        if (reorgAssets[possessionIndex].varStruct.possession.type == EMPTY
-                            || (reorgAssets[possessionIndex].varStruct.possession.type == POSSESSION
-                                && reorgAssets[possessionIndex].varStruct.possession.managingContractIndex == assets[i].varStruct.possession.managingContractIndex
-                                && reorgAssets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
-                                && reorgAssets[possessionIndex].varStruct.possession.publicKey == assets[i].varStruct.possession.publicKey))
-                        {
-                            if (reorgAssets[possessionIndex].varStruct.possession.type == EMPTY)
-                            {
-                                reorgAssets[possessionIndex].varStruct.possession.publicKey = assets[i].varStruct.possession.publicKey;
-                                reorgAssets[possessionIndex].varStruct.possession.type = POSSESSION;
-                                reorgAssets[possessionIndex].varStruct.possession.managingContractIndex = assets[i].varStruct.possession.managingContractIndex;
-                                reorgAssets[possessionIndex].varStruct.possession.ownershipIndex = ownershipIndex;
-                            }
-                            reorgAssets[possessionIndex].varStruct.possession.numberOfUnits += assets[i].varStruct.possession.numberOfUnits;
-                        }
-                        else
-                        {
-                            possessionIndex = (possessionIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                            goto iteration4;
-                        }
-                    }
-                    else
-                    {
-                        ownershipIndex = (ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                        goto iteration3;
-                    }
-                }
-                else
-                {
-                    issuanceIndex = (issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                    goto iteration2;
-                }
-            }
-        }
-        bs->CopyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(Asset));
-
-        bs->SetMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
-
-        RELEASE(universeLock);
-    }
+    assetsEndEpoch(reorgBuffer);
 
     system.epoch++;
     system.initialTick = system.tick;
@@ -4344,25 +3496,7 @@ static void saveSpectrum()
         appendText(message, L" bytes of the spectrum data are saved (");
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
-        log(message);
-    }
-}
-
-static void saveUniverse()
-{
-    const unsigned long long beginningTick = __rdtsc();
-
-    ACQUIRE(universeLock);
-    long long savedSize = save(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets);
-    RELEASE(universeLock);
-
-    if (savedSize == ASSETS_CAPACITY * sizeof(Asset))
-    {
-        setNumber(message, savedSize, TRUE);
-        appendText(message, L" bytes of the universe data are saved (");
-        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-        appendText(message, L" microseconds).");
-        log(message);
+        logToConsole(message);
     }
 }
 
@@ -4399,7 +3533,7 @@ static void saveComputer()
         appendText(message, L" bytes of the computer data are saved (");
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
-        log(message);
+        logToConsole(message);
     }
 }
 
@@ -4413,7 +3547,7 @@ static void saveSystem()
         appendText(message, L" bytes of the system data are saved (");
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
-        log(message);
+        logToConsole(message);
     }
 }
 
@@ -4421,7 +3555,7 @@ static bool initialize()
 {
     enableAVX();
 
-#if AVX512
+#ifdef __AVX512F__
     initAVX512KangarooTwelveConstants();
     initAVX512FourQConstants();
 #endif
@@ -4491,7 +3625,7 @@ static bool initialize()
     {
         if (status = bs->AllocatePool(EfiRuntimeServicesData, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS * sizeof(Tick), (void**)&ticks))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -4501,7 +3635,7 @@ static bool initialize()
             || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * 32ULL, (void**)&entityPendingTransactionDigests)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -4515,7 +3649,7 @@ static bool initialize()
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset), (void**)&reorgBuffer))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -4523,28 +3657,21 @@ static bool initialize()
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity), (void**)&spectrum))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL, (void**)&spectrumDigests)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
         bs->SetMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
 
-        if ((status = bs->AllocatePool(EfiRuntimeServicesData, ASSETS_CAPACITY * sizeof(Asset), (void**)&assets))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, (ASSETS_CAPACITY * 2 - 1) * 32ULL, (void**)&assetDigests))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, ASSETS_CAPACITY / 8, (void**)&assetChangeFlags)))
-        {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
-
+        if (!initAssets())
             return false;
-        }
-        bs->SetMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
 
         for (unsigned int contractIndex = 0; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
             if (status = bs->AllocatePool(EfiRuntimeServicesData, size, (void**)&contractStates[contractIndex]))
             {
-                logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
                 return false;
             }
@@ -4552,7 +3679,7 @@ static bool initialize()
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, MAX_CONTRACT_STATE_SIZE, (void**)&contractStateCopy)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -4561,23 +3688,14 @@ static bool initialize()
         {
             if (status = bs->AllocatePool(EfiRuntimeServicesData, RequestResponseHeader::max_size - sizeof(RequestResponseHeader), (void**)&contractFunctionOutputs[processorIndex]))
             {
-                logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
                 return false;
             }
         }
 
-#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
-        for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
-        {
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers[logReaderIndex]))
-            {
-                logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
-
-                return false;
-            }
-        }
-#endif
+        if (!initLogging())
+            return false;
 
         bs->SetMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
@@ -4613,7 +3731,7 @@ static bool initialize()
         long long loadedSize = load(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum);
         if (loadedSize != SPECTRUM_CAPACITY * sizeof(::Entity))
         {
-            logStatus(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+            logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
 
             return false;
         }
@@ -4642,7 +3760,7 @@ static bool initialize()
             appendText(message, L" bytes of the spectrum data are hashed (");
             appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
             appendText(message, L" microseconds).");
-            log(message);
+            logToConsole(message);
 
             CHAR16 digestChars[60 + 1];
             unsigned long long totalAmount = 0;
@@ -4664,29 +3782,11 @@ static bool initialize()
             appendText(message, L" entities (digest = ");
             appendText(message, digestChars);
             appendText(message, L").");
-            log(message);
+            logToConsole(message);
         }
 
-        UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-        UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-        UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-        loadedSize = load(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets);
-        if (loadedSize != ASSETS_CAPACITY * sizeof(Asset))
-        {
-            logStatus(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
-
+        if (!loadUniverse())
             return false;
-        }
-        {
-            setText(message, L"Universe digest = ");
-            m256i digest;
-            getUniverseDigest(digest);
-            CHAR16 digestChars[60 + 1];
-            getIdentity((unsigned char*)&digest, digestChars, true);
-            appendText(message, digestChars);
-            appendText(message, L".");
-            log(message);
-        }
 
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
@@ -4706,7 +3806,7 @@ static bool initialize()
                 loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex]);
                 if (loadedSize != contractDescriptions[contractIndex].stateSize)
                 {
-                    logStatus(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+                    logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
 
                     return false;
                 }
@@ -4722,7 +3822,7 @@ static bool initialize()
             getIdentity((unsigned char*)&digest, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
         }
 
         score.loadScoreCache(system.epoch);
@@ -4730,7 +3830,7 @@ static bool initialize()
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -4742,7 +3842,7 @@ static bool initialize()
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu0))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu1)))
     {
-        logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
         return false;
     }
@@ -4752,7 +3852,7 @@ static bool initialize()
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer)))
     {
-        logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
         return false;
     }
@@ -4765,7 +3865,7 @@ static bool initialize()
             || (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, (void**)&peers[i].dataToTransmit)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
@@ -4773,7 +3873,7 @@ static bool initialize()
             || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
             || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
         {
-            logStatus(L"EFI_BOOT_SERVICES.CreateEvent() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.CreateEvent() fails", status, __LINE__);
 
             return false;
         }
@@ -4818,33 +3918,14 @@ static void deinitialize()
         bs->FreePool(spectrum);
     }
 
-    if (assetChangeFlags)
-    {
-        bs->FreePool(assetChangeFlags);
-    }
-    if (assetDigests)
-    {
-        bs->FreePool(assetDigests);
-    }
-    if (assets)
-    {
-        bs->FreePool(assets);
-    }
+    deinitAssets();
 
     if (reorgBuffer)
     {
         bs->FreePool(reorgBuffer);
     }
 
-#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
-    for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
-    {
-        if (logBuffers[logReaderIndex])
-        {
-            bs->FreePool(logBuffers[logReaderIndex]);
-        }
-    }
-#endif
+    deinitLogging();
 
     for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
     {
@@ -5012,7 +4093,7 @@ static void logInfo()
     appendText(message, L" | Unknown ");
     appendNumber(message, score.scoreCacheUnknown, TRUE);
 #endif
-    log(message);
+    logToConsole(message);
     prevNumberOfProcessedRequests = numberOfProcessedRequests;
     prevNumberOfDiscardedRequests = numberOfDiscardedRequests;
     prevNumberOfDuplicateRequests = numberOfDuplicateRequests;
@@ -5049,7 +4130,7 @@ static void logInfo()
             }
         }
     }
-    log(message);
+    logToConsole(message);
 
     unsigned int numberOfPendingTransactions = 0;
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
@@ -5101,7 +4182,7 @@ static void logInfo()
     }
     appendNumber(message, numberOfPendingTransactions, TRUE);
     appendText(message, L" pending transactions.");
-    log(message);
+    logToConsole(message);
 
     unsigned int filledRequestQueueBufferSize = (requestQueueBufferHead >= requestQueueBufferTail) ? (requestQueueBufferHead - requestQueueBufferTail) : (REQUEST_QUEUE_BUFFER_SIZE - (requestQueueBufferTail - requestQueueBufferHead));
     unsigned int filledResponseQueueBufferSize = (responseQueueBufferHead >= responseQueueBufferTail) ? (responseQueueBufferHead - responseQueueBufferTail) : (RESPONSE_QUEUE_BUFFER_SIZE - (responseQueueBufferTail - responseQueueBufferHead));
@@ -5126,7 +4207,7 @@ static void logInfo()
     appendText(message, L" mcs | Total Qx execution time = ");
     appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] / frequency, TRUE);
     appendText(message, L" s.");
-    log(message);
+    logToConsole(message);
 }
 
 static void processKeyPresses()
@@ -5149,7 +4230,7 @@ static void processKeyPresses()
             setText(message, L"Qubic ");
             appendQubicVersion(message);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
 
             unsigned int numberOfFaultyComputors = 0;
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -5166,14 +4247,14 @@ static void processKeyPresses()
                     }
                     appendNumber(message, amount, TRUE);
                     appendText(message, L" qus");
-                    log(message);
+                    logToConsole(message);
 
                     numberOfFaultyComputors++;
                 }
             }
             setNumber(message, numberOfFaultyComputors, TRUE);
             appendText(message, L" faulty computors.");
-            log(message);
+            logToConsole(message);
 
             setText(message, L"Tick time was set to ");
             appendNumber(message, etalonTick.year / 10, FALSE);
@@ -5198,7 +4279,7 @@ static void processKeyPresses()
             appendNumber(message, etalonTick.millisecond % 100 / 10, FALSE);
             appendNumber(message, etalonTick.millisecond % 10, FALSE);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
 
             CHAR16 digestChars[60 + 1];
 
@@ -5221,7 +4302,7 @@ static void processKeyPresses()
             appendText(message, L"); ");
             appendNumber(message, numberOfTransactions, TRUE);
             appendText(message, L" transactions.");
-            log(message);
+            logToConsole(message);
 
             m256i digest;
 
@@ -5230,14 +4311,14 @@ static void processKeyPresses()
             getIdentity((unsigned char*)&digest, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
 
             setText(message, L"Computer digest = ");
             getComputerDigest(digest);
             getIdentity((unsigned char*)&digest, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
-            log(message);
+            logToConsole(message);
 
             unsigned int numberOfPublishedSolutions = 0, numberOfRecordedSolutions = 0;
             for (unsigned int i = 0; i < system.numberOfSolutions; i++)
@@ -5258,9 +4339,9 @@ static void processKeyPresses()
             appendText(message, L"/");
             appendNumber(message, system.numberOfSolutions, TRUE);
             appendText(message, L" solutions.");
-            log(message);
+            logToConsole(message);
 
-            log(isMain ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
+            logToConsole(isMain ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
         }
         break;
 
@@ -5285,7 +4366,7 @@ static void processKeyPresses()
             appendText(message, L", min candidate score = ");
             appendNumber(message, minimumCandidateScore, TRUE);
             appendText(message, L").");
-            log(message);
+            logToConsole(message);
         }
         break;*/
 
@@ -5382,7 +4463,7 @@ static void processKeyPresses()
         case 0x16:
         {
             isMain = !isMain;
-            log(isMain ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
+            logToConsole(isMain ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
         }
         break;
 
@@ -5402,7 +4483,7 @@ static void processKeyPresses()
         */
         case 0x48:
         {
-            disableLogging = !disableLogging;
+            disableConsoleLogging = !disableConsoleLogging;
         }
         break;
         }
@@ -5424,7 +4505,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     setText(message, L"Qubic ");
     appendQubicVersion(message);
     appendText(message, L" is launched.");
-    log(message);
+    logToConsole(message);
 
     if (initialize())
     {
@@ -5443,7 +4524,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             {
                 if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &processors[numberOfProcessors].buffer))
                 {
-                    logStatus(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                    logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
                     numberOfProcessors = 0;
 
@@ -5464,7 +4545,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         }
         if (numberOfProcessors < 3)
         {
-            log(L"At least 4 healthy enabled processors are required!");
+            logToConsole(L"At least 4 healthy enabled processors are required!");
         }
         else
         {
@@ -5472,7 +4553,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             appendText(message, L"/");
             appendNumber(message, numberOfAllProcessors, TRUE);
             appendText(message, L" processors are being used.");
-            log(message);
+            logToConsole(message);
 
             // -----------------------------------------------------
             // Main loop
@@ -5485,7 +4566,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             {
                 if (criticalSituation == 1)
                 {
-                    log(L"CRITICAL SITUATION #1!!!");
+                    logToConsole(L"CRITICAL SITUATION #1!!!");
                 }
 
                 const unsigned long long curTimeTick = __rdtsc();
@@ -5511,7 +4592,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     if (status = mpServicesProtocol->StartupThisAP(mpServicesProtocol, computationProcessor, computingProcessorNumber, computationProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL))
                     {
                         numberOfNonLaunchedSCs++;
-                        logStatus(L"EFI_MP_SERVICES_PROTOCOL.StartupThisAP() fails", status, __LINE__);
+                        logStatusToConsole(L"EFI_MP_SERVICES_PROTOCOL.StartupThisAP() fails", status, __LINE__);
                     }
                 }*/
 
@@ -5711,7 +4792,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         setText(message, L"Main loop duration = ");
                         appendNumber(message, (mainLoopNumerator / mainLoopDenominator) * 1000000 / frequency, TRUE);
                         appendText(message, L" mcs.");
-                        log(message);
+                        logToConsole(message);
                     }
                     mainLoopNumerator = 0;
                     mainLoopDenominator = 0;
@@ -5723,7 +4804,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         appendText(message, L" microseconds. Latest created tick = ");
                         appendNumber(message, system.latestCreatedTick, TRUE);
                         appendText(message, L".");
-                        log(message);
+                        logToConsole(message);
                     }
                     tickerLoopNumerator = 0;
                     tickerLoopDenominator = 0;
@@ -5741,12 +4822,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             setText(message, L"Qubic ");
             appendQubicVersion(message);
             appendText(message, L" is shut down.");
-            log(message);
+            logToConsole(message);
         }
     }
     else
     {
-        log(L"Initialization fails!");
+        logToConsole(L"Initialization fails!");
     }
 
     deinitialize();

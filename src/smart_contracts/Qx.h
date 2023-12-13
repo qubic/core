@@ -20,26 +20,26 @@ public:
 	struct IssueAsset_input
 	{
 		uint64 name;
-		sint64 numberOfUnits;
+		sint64 numberOfShares;
 		uint64 unitOfMeasurement;
 		sint8 numberOfDecimalPlaces;
 	};
 	struct IssueAsset_output
 	{
-		long long issuedNumberOfUnits;
+		long long issuedNumberOfShares;
 	};
 
-	struct TransferAssetOwnershipAndPossession_input
+	struct TransferShareOwnershipAndPossession_input
 	{
 		id issuer;
 		id possessor;
 		id newOwner;
 		unsigned long long assetName;
-		long long numberOfUnits;
+		long long numberOfShares;
 	};
-	struct TransferAssetOwnershipAndPossession_output
+	struct TransferShareOwnershipAndPossession_output
 	{
-		long long transferredNumberOfUnits;
+		long long transferredNumberOfShares;
 	};
 
 private:
@@ -67,7 +67,7 @@ private:
 				transfer(invocator(), invocationReward());
 			}
 
-			output.issuedNumberOfUnits = 0;
+			output.issuedNumberOfShares = 0;
 		}
 		else
 		{
@@ -77,11 +77,11 @@ private:
 			}
 			state._earnedAmount += state._assetIssuanceFee;
 
-			output.issuedNumberOfUnits = issueAsset(input.name, invocator(), input.numberOfDecimalPlaces, input.numberOfUnits, input.unitOfMeasurement);
+			output.issuedNumberOfShares = issueAsset(input.name, invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
 		}
 	_
 
-	PUBLIC(TransferAssetOwnershipAndPossession)
+	PUBLIC(TransferShareOwnershipAndPossession)
 
 		if (invocationReward() < state._transferFee)
 		{
@@ -90,7 +90,7 @@ private:
 				transfer(invocator(), invocationReward());
 			}
 
-			output.transferredNumberOfUnits = 0;
+			output.transferredNumberOfShares = 0;
 		}
 		else
 		{
@@ -100,7 +100,7 @@ private:
 			}
 			state._earnedAmount += state._transferFee;
 
-			output.transferredNumberOfUnits = transferAssetOwnershipAndPossession(input.assetName, input.issuer, invocator(), input.possessor, input.numberOfUnits, input.newOwner) < 0 ? 0 : input.numberOfUnits;
+			output.transferredNumberOfShares = transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), input.possessor, input.numberOfShares, input.newOwner) < 0 ? 0 : input.numberOfShares;
 		}
 	_
 
@@ -112,7 +112,7 @@ private:
 	REGISTER_USER_PROCEDURES
 
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
-		REGISTER_USER_PROCEDURE(TransferAssetOwnershipAndPossession, 2);
+		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);
 	_
 
 	INITIALIZE
