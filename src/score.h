@@ -4,7 +4,7 @@
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/file_io.h"
-#include "platform/logging.h"
+#include "platform/console_logging.h"
 #include "platform/time_stamp_counter.h"
 #include "kangaroo_twelve.h"
 
@@ -140,7 +140,7 @@ struct ScoreFunction
             appendText(message, L" bytes of the score cache data are saved (");
             appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
             appendText(message, L" microseconds).");
-            log(message);
+            logToConsole(message);
         }
 #endif
     }
@@ -151,7 +151,7 @@ struct ScoreFunction
         bool success = true;
 #if USE_SCORE_CACHE
         setText(message, L"Loading score cache...");
-        log(message);
+        logToConsole(message);
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
@@ -180,7 +180,7 @@ struct ScoreFunction
         {
             setText(message, L"Loaded score cache data!");
         }
-        log(message);
+        logToConsole(message);
 #endif
         return success;
     }
@@ -299,16 +299,16 @@ struct ScoreFunction
                     unsigned long long A0 = sy_pos[i];
                     unsigned long long A1 = sy_neg[i];
                     unsigned long long B = ((unsigned long long*)nrVal1Bit)[i];
-                    int s = __popcnt64(A0 ^ B);
-                    s -= __popcnt64(A1 ^ B);
+                    int s = (int)__popcnt64(A0 ^ B);
+                    s -= (int)__popcnt64(A1 ^ B);
                     lv += s;
                 }
                 {
                     unsigned long long A0 = (*(unsigned long long*)(sy_pos + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
                     unsigned long long A1 = (*(unsigned long long*)(sy_neg + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
                     unsigned long long B = (*(unsigned long long*)(nrVal1Bit + (NEURON_SCANNED_ROUND - 1) * 8)) & LAST_ELEMENT_MASK;
-                    int s = __popcnt64(A0 ^ B);
-                    s -= __popcnt64(A1 ^ B);
+                    int s = (int)__popcnt64(A0 ^ B);
+                    s -= (int)__popcnt64(A1 ^ B);
                     lv += s;
                     neurons[solutionBufIdx].input[dataLength + inputNeuronIndex] += lv;
                     if (neurons[solutionBufIdx].input[dataLength + inputNeuronIndex] < 0) {
@@ -350,16 +350,16 @@ struct ScoreFunction
                     unsigned long long A0 = sy_pos[i];
                     unsigned long long A1 = sy_neg[i];
                     unsigned long long B = ((unsigned long long*)nrVal1Bit)[i];
-                    int s = __popcnt64(A0 ^ B);
-                    s -= __popcnt64(A1 ^ B);
+                    int s = (int)__popcnt64(A0 ^ B);
+                    s -= (int)__popcnt64(A1 ^ B);
                     lv += s;
                 }
                 {
                     unsigned long long A0 = (*(unsigned long long*)(sy_pos + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
                     unsigned long long A1 = (*(unsigned long long*)(sy_neg + (NEURON_SCANNED_ROUND - 1))) & LAST_ELEMENT_MASK;
                     unsigned long long B = (*(unsigned long long*)(nrVal1Bit + (NEURON_SCANNED_ROUND - 1) * 8)) & LAST_ELEMENT_MASK;
-                    int s = __popcnt64(A0 ^ B);
-                    s -= __popcnt64(A1 ^ B);
+                    int s = (int)__popcnt64(A0 ^ B);
+                    s -= (int)__popcnt64(A1 ^ B);
                     lv += s;
                     neurons[solutionBufIdx].output[infoLength + outputNeuronIndex] += lv;
                     if (neurons[solutionBufIdx].output[infoLength + outputNeuronIndex] < 0) {

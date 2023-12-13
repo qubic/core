@@ -1,7 +1,7 @@
 #pragma once
 
 #include "public_settings.h"
-#include "platform/logging.h"
+#include "platform/console_logging.h"
 
 static void appendQubicVersion(CHAR16* dst)
 {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "platform/uefi.h"
-#include "platform/logging.h"
+#include "platform/console_logging.h"
 
 #include "network_messages.h"
 
@@ -24,7 +24,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
     EFI_HANDLE childHandle = NULL;
     if (status = tcp4ServiceBindingProtocol->CreateChild(tcp4ServiceBindingProtocol, &childHandle))
     {
-        logStatus(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL.CreateChild() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL.CreateChild() fails", status, __LINE__);
 
         return NULL;
     }
@@ -32,7 +32,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
     {
         if (status = bs->OpenProtocol(childHandle, &tcp4ProtocolGuid, (void**)tcp4Protocol, ih, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL))
         {
-            logStatus(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
 
             return NULL;
         }
@@ -63,7 +63,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
             if ((status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
                 && status != EFI_NO_MAPPING)
             {
-                logStatus(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
 
                 return NULL;
             }
@@ -82,7 +82,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
                     {
                         if (status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
                         {
-                            logStatus(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
+                            logStatusToConsole(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
 
                             return NULL;
                         }
@@ -91,7 +91,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
 
                 if (status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, &configData, &modeData, NULL, NULL))
                 {
-                    logStatus(L"EFI_TCP4_PROTOCOL.GetModeData() fails", status, __LINE__);
+                    logStatusToConsole(L"EFI_TCP4_PROTOCOL.GetModeData() fails", status, __LINE__);
 
                     return NULL;
                 }
@@ -99,7 +99,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
                 {
                     if (!modeData.IsStarted || !modeData.IsConfigured)
                     {
-                        log(L"EFI_TCP4_PROTOCOL is not configured!");
+                        logToConsole(L"EFI_TCP4_PROTOCOL is not configured!");
 
                         return NULL;
                     }
@@ -112,9 +112,9 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
                             appendText(message, L":");
                             appendNumber(message, configData.AccessPoint.StationPort, FALSE);
                             appendText(message, L".");
-                            log(message);
+                            logToConsole(message);
 
-                            log(L"Routes:");
+                            logToConsole(L"Routes:");
                             for (unsigned int i = 0; i < modeData.RouteCount; i++)
                             {
                                 setText(message, L"Address = ");
@@ -124,7 +124,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
                                 appendText(message, L" | gateway = ");
                                 appendIPv4Address(message, modeData.RouteTable[i].GatewayAddress);
                                 appendText(message, L".");
-                                log(message);
+                                logToConsole(message);
                             }
                         }
 
@@ -141,7 +141,7 @@ static bool initTcp4(unsigned short local_port)
     EFI_STATUS status;
     if (status = bs->LocateProtocol(&tcp4ServiceBindingProtocolGuid, NULL, (void**)&tcp4ServiceBindingProtocol))
     {
-        logStatus(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL is not located", status, __LINE__);
+        logStatusToConsole(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL is not located", status, __LINE__);
         return false;
     }
 

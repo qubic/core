@@ -4958,15 +4958,11 @@ namespace QPI
 		}
 	};
 
-	template <unsigned int N>
+	template <unsigned long long N>
 	struct index_
 	{
 	private:
-		static_assert(
-			N == 2 || N == 4 || N == 8 || N == 16 || N == 32 || N == 64 || N == 128 || N == 256 ||
-			N == 512 || N == 1024 || N == 2048 || N == 4096 || N == 8192 || N == 16384 || N == 32768 || N == 65536 ||
-			N == 131072 || N == 262144 || N == 524288 || N == 1048576 || N == 2097152 || N == 4194304 || N == 8388608 ||
-			N == 16777216 || N == 33554432,
+		static_assert(N >= 2 && !(N & (N - 1)) && N <= 33554432,
 			"Size of index must be 2 to the power of n. At least 2, at most 33554432."
 		);
 
@@ -4976,8 +4972,8 @@ namespace QPI
 	public:
 		uint64 add(id value)
 		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
+			uint64 index = value.m256i_u64[0] & (N - 1);
+			for (uint64 i = 0; i < N; i++)
 			{
 				if (_values[index] == value)
 				{
@@ -4991,21 +4987,21 @@ namespace QPI
 					return index;
 				}
 
-				index = (index + 1) & (capacity() - 1);
+				index = (index + 1) & (N - 1);
 			}
 
 			return NULL_INDEX;
 		}
 
-		inline uint64 capacity()
+		static constexpr uint64 capacity()
 		{
-			return sizeof(_values) / sizeof(_values[0]);
+			return N;
 		}
 
 		uint64 index(id value)
 		{
-			uint64 index = (*((uint64*)&value)) & (capacity() - 1);
-			for (uint64 i = 0; i < capacity(); i++)
+			uint64 index = value.m256i_u64[0] & (N - 1);
+			for (uint64 i = 0; i < N; i++)
 			{
 				if (_values[index] == value)
 				{
@@ -5016,7 +5012,7 @@ namespace QPI
 					return NULL_INDEX;
 				}
 
-				index = (index + 1) & (capacity() - 1);
+				index = (index + 1) & (N - 1);
 			}
 
 			return NULL_INDEX;
@@ -5029,7 +5025,7 @@ namespace QPI
 
 		void reset()
 		{
-			for (uint64 i = 0; i < capacity(); i++)
+			for (uint64 i = 0; i < N; i++)
 			{
 				_values[i] = NULL_ID;
 			}
@@ -5038,7 +5034,7 @@ namespace QPI
 
 		inline id value(uint64 index)
 		{
-			return _values[index & (capacity() - 1)];
+			return _values[index & (N - 1)];
 		}
 	};
 
@@ -5124,10 +5120,10 @@ namespace QPI
 		uint64 name,
 		id issuer,
 		sint8 numberOfDecimalPlaces,
-		sint64 numberOfUnits,
+		sint64 numberOfShares,
 		uint64 unitOfMeasurement
 	) {
-		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfUnits, unitOfMeasurement);
+		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfShares, unitOfMeasurement);
 	}
 
 	template <typename T>
@@ -5180,15 +5176,15 @@ namespace QPI
 		return ::__transfer(destination, amount);
 	}
 
-	static sint64 transferAssetOwnershipAndPossession(
+	static sint64 transferShareOwnershipAndPossession(
 		uint64 assetName,
 		id issuer,
 		id owner,
 		id possessor,
-		sint64 numberOfUnits,
+		sint64 numberOfShares,
 		id newOwner
-	) { // Returns remaining number of possessed units satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
-		return ::__transferAssetOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfUnits, newOwner);
+	) { // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
+		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwner);
 	}
 
 	static uint8 year(

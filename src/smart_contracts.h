@@ -47,7 +47,7 @@ static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned sho
 static unsigned char __second();
 static unsigned int __tick();
 static long long __transfer(const m256i&, long long);
-static long long __transferAssetOwnershipAndPossession(unsigned long long, const m256i&, const m256i&, const m256i&, long long, const m256i&);
+static long long __transferShareOwnershipAndPossession(unsigned long long, const m256i&, const m256i&, const m256i&, long long, const m256i&);
 static unsigned char __year();
 
 #include "qpi.h"
@@ -69,6 +69,17 @@ static CONTRACT_STATE_TYPE* _QX;
 #define CONTRACT_STATE2_TYPE QUOTTERY2
 #include "smart_contracts/Quottery.h"
 static CONTRACT_STATE_TYPE* _QUOTTERY;
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define RANDOM_CONTRACT_INDEX 3
+#define CONTRACT_INDEX RANDOM_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE RANDOM
+#define CONTRACT_STATE2_TYPE RANDOM2
+#include "smart_contracts/Random.h"
+static CONTRACT_STATE_TYPE* _RANDOM;
 
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0
 #define MAX_NUMBER_OF_CONTRACTS 1024 // Must be 1024
@@ -94,8 +105,9 @@ constexpr struct ContractDescription
     unsigned long long stateSize;
 } contractDescriptions[] = {
     {"", 0, 0, sizeof(Contract0State)},
-    {"QX", 71, 10000, sizeof(QX)},
-    {"QTRY", 72, 10000, sizeof(IPO)}
+    {"QX", 66, 10000, sizeof(QX)},
+    {"QTRY", 72, 10000, sizeof(IPO)},
+    {"RANDOM", 88, 10000, sizeof(IPO)}
 };
 
 static SYSTEM_PROCEDURE contractSystemProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][5];
