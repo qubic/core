@@ -8,6 +8,9 @@
 #include "platform/time_stamp_counter.h"
 #include "kangaroo_twelve.h"
 
+#include "public_settings.h"
+
+
 ////////// Scoring algorithm \\\\\\\\\\
 
 template<

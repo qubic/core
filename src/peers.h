@@ -5,9 +5,11 @@
 
 #include "platform/uefi.h"
 #include "platform/random.h"
+#include "platform/concurrency.h"
 
 #include "network_messages.h"
 #include "tcp4.h"
+#include "kangaroo_twelve.h"
 
 #define DEJAVU_SWAP_LIMIT 1000000
 #define DISSEMINATION_MULTIPLIER 4
