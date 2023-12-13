@@ -102,21 +102,28 @@ public:
     }
 };
 
-#define EXCHANGE_PUBLIC_PEERS 0
 #define NUMBER_OF_EXCHANGED_PEERS 4
 
-typedef struct
+struct ExchangePublicPeers
 {
     unsigned char peers[NUMBER_OF_EXCHANGED_PEERS][4];
-} ExchangePublicPeers;
 
-#define END_RESPONSE 35
+    enum {
+        type = 0,
+    };
+};
 
+
+struct EndResponse
+{
+    enum {
+        type = 35,
+    };
+};
 
 struct TryAgain // Must be returned if _dejavu is not 0, and the incoming packet cannot be processed (usually when incoming packets queue is full)
 {
-    static constexpr unsigned char type()
-    {
-        return 46;
-    }
+    enum {
+        type = 46,
+    };
 };

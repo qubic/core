@@ -14,10 +14,9 @@ struct RequestLog
 {
     unsigned long long passcode[4];
 
-    static constexpr unsigned char type()
-    {
-        return 44;
-    }
+    enum {
+        type = 44,
+    };
 };
 
 
@@ -26,10 +25,9 @@ struct RespondLog
 {
     // Variable-size log;
 
-    static constexpr unsigned char type()
-    {
-        return 45;
-    }
+    enum {
+        type = 45,
+    };
 };
 
 
@@ -311,7 +309,7 @@ static void processRequestLog(Peer* peer, RequestResponseHeader* header)
             }
             else
             {
-                enqueueResponse(peer, logBufferTails[logReaderIndex], RespondLog::type(), header->dejavu(), logBuffers[logReaderIndex]);
+                enqueueResponse(peer, logBufferTails[logReaderIndex], RespondLog::type, header->dejavu(), logBuffers[logReaderIndex]);
                 logBufferTails[logReaderIndex] = 0;
             }
 
@@ -321,5 +319,5 @@ static void processRequestLog(Peer* peer, RequestResponseHeader* header)
         }
     }
 
-    enqueueResponse(peer, 0, RespondLog::type(), header->dejavu(), NULL);
+    enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
 }
