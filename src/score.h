@@ -35,7 +35,7 @@ struct ScoreFunction
     {
         char input[(numberOfInputNeutrons + infoLength) * (dataLength + numberOfInputNeutrons + infoLength)];
         char output[(numberOfInputNeutrons + dataLength) * (infoLength + numberOfInputNeutrons + dataLength)];
-        unsigned short lengths[maxInputDuration * (numberOfInputNeutrons + infoLength) + MAX_OUTPUT_DURATION * (numberOfInputNeutrons + dataLength)];
+        unsigned short lengths[maxInputDuration * (numberOfInputNeutrons + infoLength) + maxOutputDuration * (numberOfInputNeutrons + dataLength)];
     } synapses[solutionBufferCount];
 
     struct
@@ -333,7 +333,7 @@ struct ScoreFunction
                 clearBitNeuron(nrVal1Bit, i);
             }
         }
-        for (unsigned int tick = 0; tick < MAX_OUTPUT_DURATION; tick++)
+        for (unsigned int tick = 0; tick < maxOutputDuration; tick++)
         {
             unsigned short neuronIndices[numberOfInputNeutrons + dataLength];
             unsigned short numberOfRemainingNeurons = 0;
