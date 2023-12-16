@@ -12,8 +12,8 @@
 template<
     unsigned int dataLength,
     unsigned int infoLength,
-    unsigned int numberOfInputNeutrons,
-    unsigned int numberOfOutputNeutrons,
+    unsigned int numberOfInputNeurons,
+    unsigned int numberOfOutputNeurons,
     unsigned int maxInputDuration,
     unsigned int maxOutputDuration,
     unsigned int maxNumberOfProcessors,
@@ -23,13 +23,13 @@ struct ScoreTester
 {
     typedef ScoreFunction<
         dataLength, infoLength,
-        numberOfInputNeutrons, numberOfOutputNeutrons,
+        numberOfInputNeurons, numberOfOutputNeurons,
         maxInputDuration, maxOutputDuration,
         maxNumberOfProcessors, solutionBufferCount
     > ScoreFuncOpt;
     typedef ScoreReferenceImplementation<
         dataLength, infoLength,
-        numberOfInputNeutrons, numberOfOutputNeutrons,
+        numberOfInputNeurons, numberOfOutputNeurons,
         maxInputDuration, maxOutputDuration,
         maxNumberOfProcessors
     > ScoreFuncRef;
@@ -120,7 +120,7 @@ TEST(TestQubicScoreFunction, LengthNeurons1000Duration200) {
         1000, // NUMBER_OF_OUTPUT_NEURONS
         200,  // MAX_INPUT_DURATION
         200,  // MAX_OUTPUT_DURATION
-        MAX_NUMBER_OF_PROCESSORS
+        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
     > test_score;
     runCommonTests(test_score);
 }
@@ -133,7 +133,7 @@ TEST(TestQubicScoreFunction, LengthNeurons1100Duration200) {
         1100, // NUMBER_OF_OUTPUT_NEURONS
         200,  // MAX_INPUT_DURATION
         200,  // MAX_OUTPUT_DURATION
-        MAX_NUMBER_OF_PROCESSORS
+        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
     > test_score;
     runCommonTests(test_score);
 }
@@ -146,7 +146,7 @@ TEST(TestQubicScoreFunction, DataLength1200InfoLength1000Neurons1000Duration200)
         1000, // NUMBER_OF_OUTPUT_NEURONS
         200,  // MAX_INPUT_DURATION
         200,  // MAX_OUTPUT_DURATION
-        MAX_NUMBER_OF_PROCESSORS
+        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
     > test_score;
     runCommonTests(test_score);
 }
@@ -159,7 +159,7 @@ TEST(TestQubicScoreFunction, Length1200InputNeurons1000OutputNeurons1200Duration
         1200, // NUMBER_OF_OUTPUT_NEURONS
         200,  // MAX_INPUT_DURATION
         200,  // MAX_OUTPUT_DURATION
-        MAX_NUMBER_OF_PROCESSORS
+        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
     > test_score;
     runCommonTests(test_score);
 }
