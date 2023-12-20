@@ -4,8 +4,6 @@
 
 #include "platform/memory.h"
 
-#include "public_settings.h"
-
 
 ////////// KangarooTwelve \\\\\\\\\\
 

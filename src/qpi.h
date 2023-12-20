@@ -4963,7 +4963,7 @@ namespace QPI
 	{
 	private:
 		static_assert(N >= 2 && !(N & (N - 1)) && N <= 33554432,
-			"Size of index must be 2 to the power of n. At least 2, at most 33554432."
+			"Capacity of index (template param N) must be 2 to the power of a natural number. N must be at least 2, at most 33554432."
 		);
 
 		id _values[N];

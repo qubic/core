@@ -77,19 +77,20 @@ typedef struct
 
 
 
-#define BROADCAST_MESSAGE 1
 
 typedef struct
 {
     m256i sourcePublicKey;
     m256i destinationPublicKey;
     m256i gammingNonce;
-} Message;
 
-static_assert(sizeof(Message) == 32 + 32 + 32, "Something is wrong with the struct size.");
+    enum {
+        type = 1,
+    };
+} BroadcastMessage;
 
+static_assert(sizeof(BroadcastMessage) == 32 + 32 + 32, "Something is wrong with the struct size.");
 
-#define BROADCAST_COMPUTORS 2
 
 // Use "#pragma pack" keep the binary struct compatibility after changing from unsigned char [32] to m256i
 #pragma pack(push,1)
@@ -107,9 +108,12 @@ static_assert(sizeof(Computors) == 2 + 32 * NUMBER_OF_COMPUTORS + SIGNATURE_SIZE
 typedef struct
 {
     Computors computors;
+
+    enum {
+        type = 2,
+    };
 } BroadcastComputors;
 
-#define BROADCAST_TICK 3
 
 typedef struct
 {
@@ -165,9 +169,13 @@ static_assert(sizeof(TickEssence) == 2 + 6 + 4*32, "Something is wrong with the 
 typedef struct
 {
     Tick tick;
+
+    enum {
+        type = 3,
+    };
 } BroadcastTick;
 
-#define BROADCAST_FUTURE_TICK_DATA 8
+
 
 typedef struct
 {
@@ -211,11 +219,20 @@ static_assert(sizeof(TickData) == 8 + 8 + sizeof(TickData::varStruct) + 32 + NUM
 typedef struct
 {
     TickData tickData;
+
+    enum {
+        type = 8,
+    };
 } BroadcastFutureTickData;
 
-#define REQUEST_COMPUTORS 11
 
-#define REQUEST_QUORUM_TICK 14
+struct RequestComputors
+{
+    enum {
+        type = 11,
+    };
+};
+
 
 typedef struct
 {
@@ -226,9 +243,12 @@ typedef struct
 typedef struct
 {
     RequestedQuorumTick quorumTick;
+
+    enum {
+        type = 14,
+    };
 } RequestQuorumTick;
 
-#define REQUEST_TICK_DATA 16
 
 typedef struct
 {
@@ -238,6 +258,10 @@ typedef struct
 typedef struct
 {
     RequestedTickData requestedTickData;
+
+    enum {
+        type = 16,
+    };
 } RequestTickData;
 
 #define BROADCAST_TRANSACTION 24
@@ -305,14 +329,16 @@ typedef struct
 static_assert(sizeof(RespondedEntity) == sizeof(::Entity) + 4 + 4 + 32*SPECTRUM_DEPTH, "Something is wrong with the struct size.");
 
 
-#define REQUEST_CONTRACT_IPO 33
 
 typedef struct
 {
     unsigned int contractIndex;
+
+    enum {
+        type = 33,
+    };
 } RequestContractIPO;
 
-#define RESPOND_CONTRACT_IPO 34
 
 typedef struct
 {
@@ -320,6 +346,10 @@ typedef struct
     unsigned int tick;
     m256i publicKeys[NUMBER_OF_COMPUTORS];
     long long prices[NUMBER_OF_COMPUTORS];
+
+    enum {
+        type = 34,
+    };
 } RespondContractIPO;
 
 static_assert(sizeof(RespondContractIPO) == 4 + 4 + 32 * NUMBER_OF_COMPUTORS + 8 * NUMBER_OF_COMPUTORS, "Something is wrong with the struct size.");
@@ -336,10 +366,9 @@ struct RequestContractFunction // Invokes contract function
     unsigned short inputSize;
     // Variable-size input
 
-    static constexpr unsigned char type()
-    {
-        return 42;
-    }
+    enum {
+        type = 42,
+    };
 };
 
 
@@ -347,20 +376,22 @@ struct RespondContractFunction // Returns result of contract function invocation
 {
     // Variable-size output; the size must be 0 if the invocation has failed for whatever reason (e.g. no a function registered for [inputType], or the function has timed out)
 
-    static constexpr unsigned char type()
-    {
-        return 43;
-    }
+    enum {
+        type = 43,
+    };
 };
 
 
 
 
-#define PROCESS_SPECIAL_COMMAND 255
 
 struct SpecialCommand
 {
     unsigned long long everIncreasingNonceAndCommandType;
+
+    enum {
+        type = 255,
+    };
 };
 
 #define SPECIAL_COMMAND_SHUT_DOWN 0ULL
@@ -782,9 +813,9 @@ static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header
 
 static void processBroadcastMessage(const unsigned long long processorNumber, RequestResponseHeader* header)
 {
-    Message* request = header->getPayload<Message>();
-    if (header->size() <= sizeof(RequestResponseHeader) + sizeof(Message) + MAX_MESSAGE_PAYLOAD_SIZE + SIGNATURE_SIZE
-        && header->size() >= sizeof(RequestResponseHeader) + sizeof(Message) + SIGNATURE_SIZE)
+    BroadcastMessage* request = header->getPayload<BroadcastMessage>();
+    if (header->size() <= sizeof(RequestResponseHeader) + sizeof(BroadcastMessage) + MAX_MESSAGE_PAYLOAD_SIZE + SIGNATURE_SIZE
+        && header->size() >= sizeof(RequestResponseHeader) + sizeof(BroadcastMessage) + SIGNATURE_SIZE)
     {
         const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
 
@@ -814,7 +845,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
             {
                 if (request->destinationPublicKey == computorPublicKeys[i])
                 {
-                    const unsigned int messagePayloadSize = messageSize - sizeof(Message) - SIGNATURE_SIZE;
+                    const unsigned int messagePayloadSize = messageSize - sizeof(BroadcastMessage) - SIGNATURE_SIZE;
                     if (messagePayloadSize)
                     {
                         unsigned char sharedKeyAndGammingNonce[64];
@@ -841,7 +872,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             KangarooTwelve(gammingKey, sizeof(gammingKey), gamma, messagePayloadSize);
                             for (unsigned int j = 0; j < messagePayloadSize; j++)
                             {
-                                ((unsigned char*)request)[sizeof(Message) + j] ^= gamma[j];
+                                ((unsigned char*)request)[sizeof(BroadcastMessage) + j] ^= gamma[j];
                             }
 
                             switch (gammingKey[0])
@@ -850,7 +881,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             {
                                 if (messagePayloadSize >= 32)
                                 {
-                                    const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(Message));
+                                    const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
                                     unsigned int k;
                                     for (k = 0; k < system.numberOfSolutions; k++)
                                     {
@@ -951,9 +982,9 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
         && request->tick.millisecond <= 999)
     {
         unsigned char digest[32];
-        request->tick.computorIndex ^= BROADCAST_TICK;
+        request->tick.computorIndex ^= BroadcastTick::type;
         KangarooTwelve(&request->tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
-        request->tick.computorIndex ^= BROADCAST_TICK;
+        request->tick.computorIndex ^= BroadcastTick::type;
         if (verify(broadcastedComputors.broadcastComputors.computors.publicKeys[request->tick.computorIndex].m256i_u8, digest, request->tick.signature))
         {
             if (header->isDejavuZero())
@@ -1022,9 +1053,9 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
         if (ok)
         {
             unsigned char digest[32];
-            request->tickData.computorIndex ^= BROADCAST_FUTURE_TICK_DATA;
+            request->tickData.computorIndex ^= BroadcastFutureTickData::type;
             KangarooTwelve(&request->tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
-            request->tickData.computorIndex ^= BROADCAST_FUTURE_TICK_DATA;
+            request->tickData.computorIndex ^= BroadcastFutureTickData::type;
             if (verify(broadcastedComputors.broadcastComputors.computors.publicKeys[request->tickData.computorIndex].m256i_u8, digest, request->tickData.signature))
             {
                 if (header->isDejavuZero())
@@ -1146,11 +1177,11 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
     if (broadcastedComputors.broadcastComputors.computors.epoch)
     {
-        enqueueResponse(peer, sizeof(broadcastedComputors.broadcastComputors), BROADCAST_COMPUTORS, header->dejavu(), &broadcastedComputors.broadcastComputors);
+        enqueueResponse(peer, sizeof(broadcastedComputors.broadcastComputors), BroadcastComputors::type, header->dejavu(), &broadcastedComputors.broadcastComputors);
     }
     else
     {
-        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
     }
 }
 
@@ -1174,14 +1205,14 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
                 const unsigned int offset = ((request->quorumTick.tick - system.initialTick) * NUMBER_OF_COMPUTORS) + computorIndices[index];
                 if (ticks[offset].epoch == system.epoch)
                 {
-                    enqueueResponse(peer, sizeof(Tick), BROADCAST_TICK, header->dejavu(), &ticks[offset]);
+                    enqueueResponse(peer, sizeof(Tick), BroadcastTick::type, header->dejavu(), &ticks[offset]);
                 }
             }
 
             computorIndices[index] = computorIndices[--numberOfComputorIndices];
         }
     }
-    enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
 }
 
 static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
@@ -1190,11 +1221,11 @@ static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
     if (request->requestedTickData.tick > system.initialTick && request->requestedTickData.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
         && tickData[request->requestedTickData.tick - system.initialTick].epoch == system.epoch)
     {
-        enqueueResponse(peer, sizeof(TickData), BROADCAST_FUTURE_TICK_DATA, header->dejavu(), &tickData[request->requestedTickData.tick - system.initialTick]);
+        enqueueResponse(peer, sizeof(TickData), BroadcastFutureTickData::type, header->dejavu(), &tickData[request->requestedTickData.tick - system.initialTick]);
     }
     else
     {
-        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
     }
 }
 
@@ -1223,7 +1254,7 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
             tickTransactionIndices[index] = tickTransactionIndices[--numberOfTickTransactions];
         }
     }
-    enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
 }
 
 static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
@@ -1308,7 +1339,7 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
         bs->CopyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
     }
 
-    enqueueResponse(peer, sizeof(respondContractIPO), RESPOND_CONTRACT_IPO, header->dejavu(), &respondContractIPO);
+    enqueueResponse(peer, sizeof(respondContractIPO), RespondContractIPO::type, header->dejavu(), &respondContractIPO);
 }
 
 static void processRequestContractFunction(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
@@ -1325,7 +1356,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
         || system.epoch < contractDescriptions[executedContractIndex].constructionEpoch
         || !contractUserFunctions[executedContractIndex][request->inputType])
     {
-        enqueueResponse(peer, 0, response->type(), header->dejavu(), NULL);
+        enqueueResponse(peer, 0, response->type, header->dejavu(), NULL);
     }
     else
     {
@@ -1341,7 +1372,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
         contractUserFunctions[executedContractIndex][request->inputType](contractStateCopy, &contractFunctionInputs[processorNumber], response);
         RELEASE(contractStateCopyLock);
 
-        enqueueResponse(peer, contractUserFunctionOutputSizes[executedContractIndex][request->inputType], response->type(), header->dejavu(), response);
+        enqueueResponse(peer, contractUserFunctionOutputSizes[executedContractIndex][request->inputType], response->type, header->dejavu(), response);
     }
 }
 
@@ -1451,31 +1482,31 @@ static void requestProcessor(void* ProcedureArgument)
 
                 switch (header->type())
                 {
-                case EXCHANGE_PUBLIC_PEERS:
+                case ExchangePublicPeers::type:
                 {
                     processExchangePublicPeers(peer, header);
                 }
                 break;
 
-                case BROADCAST_MESSAGE:
+                case BroadcastMessage::type:
                 {
                     processBroadcastMessage(processorNumber, header);
                 }
                 break;
 
-                case BROADCAST_COMPUTORS:
+                case BroadcastComputors::type:
                 {
                     processBroadcastComputors(peer, header);
                 }
                 break;
 
-                case BROADCAST_TICK:
+                case BroadcastTick::type:
                 {
                     processBroadcastTick(peer, header);
                 }
                 break;
 
-                case BROADCAST_FUTURE_TICK_DATA:
+                case BroadcastFutureTickData::type:
                 {
                     processBroadcastFutureTickData(peer, header);
                 }
@@ -1487,19 +1518,19 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                case REQUEST_COMPUTORS:
+                case RequestComputors::type:
                 {
                     processRequestComputors(peer, header);
                 }
                 break;
 
-                case REQUEST_QUORUM_TICK:
+                case RequestQuorumTick::type:
                 {
                     processRequestQuorumTick(peer, header);
                 }
                 break;
 
-                case REQUEST_TICK_DATA:
+                case RequestTickData::type:
                 {
                     processRequestTickData(peer, header);
                 }
@@ -1523,43 +1554,43 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                case REQUEST_CONTRACT_IPO:
+                case RequestContractIPO::type:
                 {
                     processRequestContractIPO(peer, header);
                 }
                 break;
 
-                case REQUEST_ISSUED_ASSETS:
+                case RequestIssuedAssets::type:
                 {
                     processRequestIssuedAssets(peer, header);
                 }
                 break;
 
-                case REQUEST_OWNED_ASSETS:
+                case RequestOwnedAssets::type:
                 {
                     processRequestOwnedAssets(peer, header);
                 }
                 break;
 
-                case REQUEST_POSSESSED_ASSETS:
+                case RequestPossessedAssets::type:
                 {
                     processRequestPossessedAssets(peer, header);
                 }
                 break;
 
-                case RequestContractFunction::type():
+                case RequestContractFunction::type:
                 {
                     processRequestContractFunction(peer, processorNumber, header);
                 }
                 break;
 
-                case RequestLog::type():
+                case RequestLog::type:
                 {
                     processRequestLog(peer, header);
                 }
                 break;
 
-                case PROCESS_SPECIAL_COMMAND:
+                case SpecialCommand::type:
                 {
                     processSpecialCommand(peer, header);
                 }
@@ -2460,7 +2491,7 @@ static void processTick(unsigned long long processorNumber)
             {
                 if (isMain)
                 {
-                    broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BROADCAST_FUTURE_TICK_DATA;
+                    broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type; // TODO: comment required, why XOR?
                     broadcastedFutureTickData.tickData.epoch = system.epoch;
                     broadcastedFutureTickData.tickData.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
 
@@ -2528,10 +2559,10 @@ static void processTick(unsigned long long processorNumber)
 
                     unsigned char digest[32];
                     KangarooTwelve(&broadcastedFutureTickData.tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
-                    broadcastedFutureTickData.tickData.computorIndex ^= BROADCAST_FUTURE_TICK_DATA;
+                    broadcastedFutureTickData.tickData.computorIndex ^= BroadcastFutureTickData::type;
                     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastedFutureTickData.tickData.signature);
 
-                    enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BROADCAST_FUTURE_TICK_DATA, 0, &broadcastedFutureTickData);
+                    enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BroadcastFutureTickData::type, 0, &broadcastedFutureTickData);
                 }
 
                 system.latestLedTick = system.tick;
@@ -3205,7 +3236,7 @@ static void tickProcessor(void*)
                                 bs->CopyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
                                 for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
                                 {
-                                    broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BROADCAST_TICK;
+                                    broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
                                     m256i saltedData[2];
                                     saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
                                     saltedData[1].m256i_u64[0] = resourceTestingDigest;
@@ -3219,10 +3250,10 @@ static void tickProcessor(void*)
 
                                     unsigned char digest[32];
                                     KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
-                                    broadcastTick.tick.computorIndex ^= BROADCAST_TICK;
+                                    broadcastTick.tick.computorIndex ^= BroadcastTick::type;
                                     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
 
-                                    enqueueResponse(NULL, sizeof(broadcastTick), BROADCAST_TICK, 0, &broadcastTick);
+                                    enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);
                                 }
                             }
 #endif
@@ -3600,7 +3631,7 @@ static bool initialize()
     bs->SetMem(publicPeers, sizeof(publicPeers), 0);
 
     broadcastedComputors.header.setSize<sizeof(broadcastedComputors.header) + sizeof(broadcastedComputors.broadcastComputors)>();
-    broadcastedComputors.header.setType(BROADCAST_COMPUTORS);
+    broadcastedComputors.header.setType(BroadcastComputors::type);
     broadcastedComputors.broadcastComputors.computors.epoch = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
@@ -3609,11 +3640,11 @@ static bool initialize()
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
     requestedComputors.header.setSize<sizeof(requestedComputors)>();
-    requestedComputors.header.setType(REQUEST_COMPUTORS);
+    requestedComputors.header.setType(RequestComputors::type);
     requestedQuorumTick.header.setSize<sizeof(requestedQuorumTick)>();
-    requestedQuorumTick.header.setType(REQUEST_QUORUM_TICK);
+    requestedQuorumTick.header.setType(RequestQuorumTick::type);
     requestedTickData.header.setSize<sizeof(requestedTickData)>();
-    requestedTickData.header.setType(REQUEST_TICK_DATA);
+    requestedTickData.header.setType(RequestTickData::type);
     requestedTickTransactions.header.setSize<sizeof(requestedTickTransactions)>();
     requestedTickTransactions.header.setType(REQUEST_TICK_TRANSACTIONS);
     requestedTickTransactions.requestedTickTransactions.tick = 0;
@@ -4632,7 +4663,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
                         requestHeader->setSize<sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers)>();
                         requestHeader->randomizeDejavu();
-                        requestHeader->setType(EXCHANGE_PUBLIC_PEERS);
+                        requestHeader->setType(ExchangePublicPeers::type);
                         peers[i].dataToTransmitSize = requestHeader->size();
                         _InterlockedIncrement64(&numberOfDisseminatedRequests);
 

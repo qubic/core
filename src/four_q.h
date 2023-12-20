@@ -6,7 +6,6 @@
 #include "platform/memory.h"
 #include "platform/m256.h"
 
-#include "public_settings.h"
 #include "kangaroo_twelve.h"
 
 
