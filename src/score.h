@@ -6,6 +6,7 @@
 #include "platform/file_io.h"
 #include "platform/console_logging.h"
 #include "platform/time_stamp_counter.h"
+#include "platform/algorithm.h"
 #include "kangaroo_twelve.h"
 #include "public_settings.h"
 ////////// Scoring algorithm \\\\\\\\\\
@@ -24,20 +25,20 @@ struct ScoreFunction
 {
     int miningData[dataLength];
     //need 2 set of variables for input and output
-    static const unsigned int SYNAPSE_CHUNK_SIZE_INPUT = (dataLength + numberOfInputNeurons + infoLength);
-    static const unsigned int SYNAPSE_CHUNK_SIZE_INPUT_BIT = (SYNAPSE_CHUNK_SIZE_INPUT + 7) >> 3;
-    static const unsigned int PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT = (((SYNAPSE_CHUNK_SIZE_INPUT_BIT + 7) >> 3) << 3);
-    static const unsigned int NEURON_SCANNED_ROUND_INPUT = PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT >> 3;
-    static const unsigned int LAST_ELEMENT_BIT_INPUT = (dataLength + numberOfInputNeurons + infoLength) & 63;
-    static const unsigned long long LAST_ELEMENT_MASK_INPUT = LAST_ELEMENT_BIT_INPUT == 0 ?
+    static constexpr unsigned int SYNAPSE_CHUNK_SIZE_INPUT = (dataLength + numberOfInputNeurons + infoLength);
+    static constexpr unsigned int SYNAPSE_CHUNK_SIZE_INPUT_BIT = (SYNAPSE_CHUNK_SIZE_INPUT + 7) >> 3;
+    static constexpr unsigned int PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT = (((SYNAPSE_CHUNK_SIZE_INPUT_BIT + 7) >> 3) << 3);
+    static constexpr unsigned int NEURON_SCANNED_ROUND_INPUT = PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT >> 3;
+    static constexpr unsigned int LAST_ELEMENT_BIT_INPUT = (dataLength + numberOfInputNeurons + infoLength) & 63;
+    static constexpr unsigned long long LAST_ELEMENT_MASK_INPUT = LAST_ELEMENT_BIT_INPUT == 0 ?
         0xFFFFFFFFFFFFFFFFULL : (0xFFFFFFFFFFFFFFFFULL >> (64 - LAST_ELEMENT_BIT_INPUT));
 
-    static const unsigned int SYNAPSE_CHUNK_SIZE_OUTPUT = (dataLength + numberOfOutputNeurons + infoLength);
-    static const unsigned int SYNAPSE_CHUNK_SIZE_OUTPUT_BIT = (SYNAPSE_CHUNK_SIZE_OUTPUT + 7) >> 3;
-    static const unsigned int PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT = (((SYNAPSE_CHUNK_SIZE_OUTPUT_BIT + 7) >> 3) << 3);
-    static const unsigned int NEURON_SCANNED_ROUND_OUTPUT = PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT >> 3;
-    static const unsigned int LAST_ELEMENT_BIT_OUTPUT = (dataLength + numberOfOutputNeurons + infoLength) & 63;
-    static const unsigned long long LAST_ELEMENT_MASK_OUTPUT = LAST_ELEMENT_BIT_OUTPUT == 0 ?
+    static constexpr unsigned int SYNAPSE_CHUNK_SIZE_OUTPUT = (dataLength + numberOfOutputNeurons + infoLength);
+    static constexpr unsigned int SYNAPSE_CHUNK_SIZE_OUTPUT_BIT = (SYNAPSE_CHUNK_SIZE_OUTPUT + 7) >> 3;
+    static constexpr unsigned int PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT = (((SYNAPSE_CHUNK_SIZE_OUTPUT_BIT + 7) >> 3) << 3);
+    static constexpr unsigned int NEURON_SCANNED_ROUND_OUTPUT = PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT >> 3;
+    static constexpr unsigned int LAST_ELEMENT_BIT_OUTPUT = (dataLength + numberOfOutputNeurons + infoLength) & 63;
+    static constexpr unsigned long long LAST_ELEMENT_MASK_OUTPUT = LAST_ELEMENT_BIT_OUTPUT == 0 ?
         0xFFFFFFFFFFFFFFFFULL : (0xFFFFFFFFFFFFFFFFULL >> (64 - LAST_ELEMENT_BIT_OUTPUT));
 
     struct
@@ -240,8 +241,7 @@ struct ScoreFunction
         const unsigned long long solutionBufIdx = processor_Number % solutionBufferCount;
         ACQUIRE(solutionEngineLock[solutionBufIdx]);
 
-        //unsigned char nrVal1Bit[std::max(PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT, PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT)];
-        unsigned char nrVal1Bit[PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT+PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT]; // TODO: need to find max instead of sum
+        unsigned char nrVal1Bit[std::max(PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT, PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT)];
         random(publicKey.m256i_u8, nonce.m256i_u8, (unsigned char*)&synapses[solutionBufIdx], sizeof(synapses[0]));
         for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeurons + infoLength; inputNeuronIndex++)
         {
