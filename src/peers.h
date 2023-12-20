@@ -5,9 +5,11 @@
 
 #include "platform/uefi.h"
 #include "platform/random.h"
+#include "platform/concurrency.h"
 
 #include "network_messages.h"
 #include "tcp4.h"
+#include "kangaroo_twelve.h"
 
 #define DEJAVU_SWAP_LIMIT 1000000
 #define DISSEMINATION_MULTIPLIER 4
@@ -460,7 +462,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                                     {
                                         _InterlockedIncrement64(&numberOfDiscardedRequests);
 
-                                        enqueueResponse(&peers[i], 0, TryAgain::type(), requestResponseHeader->dejavu(), NULL);
+                                        enqueueResponse(&peers[i], 0, TryAgain::type, requestResponseHeader->dejavu(), NULL);
                                     }
                                 }
                                 else

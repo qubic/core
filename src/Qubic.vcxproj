@@ -18,6 +18,7 @@
     <ClInclude Include="logging.h" />
     <ClInclude Include="network_messages.h" />
     <ClInclude Include="peers.h" />
+    <ClInclude Include="platform\algorithm.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />

@@ -71,37 +71,41 @@ struct Asset
 };
 
 
-#define REQUEST_ISSUED_ASSETS 36
-
-typedef struct
+struct RequestIssuedAssets
 {
     m256i publicKey;
-} RequestIssuedAssets;
+
+    enum {
+        type = 36,
+    };
+};
 
 static_assert(sizeof(RequestIssuedAssets) == 32, "Something is wrong with the struct size.");
 
 
-#define RESPOND_ISSUED_ASSETS 37
-
-typedef struct
+struct RespondIssuedAssets
 {
     Asset asset;
     unsigned int tick;
     // TODO: Add siblings
-} RespondIssuedAssets;
+
+    enum {
+        type = 37,
+    };
+};
 
 
-#define REQUEST_OWNED_ASSETS 38
-
-typedef struct
+struct RequestOwnedAssets
 {
     m256i publicKey;
-} RequestOwnedAssets;
+
+    enum {
+        type = 38,
+    };
+};
 
 static_assert(sizeof(RequestOwnedAssets) == 32, "Something is wrong with the struct size.");
 
-
-#define RESPOND_OWNED_ASSETS 39
 
 typedef struct
 {
@@ -109,19 +113,24 @@ typedef struct
     Asset issuanceAsset;
     unsigned int tick;
     // TODO: Add siblings
+
+    enum {
+        type = 39,
+    };
 } RespondOwnedAssets;
 
-#define REQUEST_POSSESSED_ASSETS 40
 
 typedef struct
 {
     m256i publicKey;
+
+    enum {
+        type = 40,
+    };
 } RequestPossessedAssets;
 
 static_assert(sizeof(RequestPossessedAssets) == 32, "Something is wrong with the struct size.");
 
-
-#define RESPOND_POSSESSED_ASSETS 41
 
 typedef struct
 {
@@ -130,6 +139,10 @@ typedef struct
     Asset issuanceAsset;
     unsigned int tick;
     // TODO: Add siblings
+
+    enum {
+        type = 41,
+    };
 } RespondPossessedAssets;
 
 
@@ -400,7 +413,7 @@ iteration:
     if (universeIndex >= ASSETS_CAPACITY
         || assets[universeIndex].varStruct.issuance.type == EMPTY)
     {
-        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
     }
     else
     {
@@ -410,7 +423,7 @@ iteration:
             bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(Asset));
             response.tick = system.tick;
 
-            enqueueResponse(peer, sizeof(response), RESPOND_ISSUED_ASSETS, header->dejavu(), &response);
+            enqueueResponse(peer, sizeof(response), RespondIssuedAssets::type, header->dejavu(), &response);
         }
 
         universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
@@ -435,7 +448,7 @@ iteration:
     if (universeIndex >= ASSETS_CAPACITY
         || assets[universeIndex].varStruct.issuance.type == EMPTY)
     {
-        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
     }
     else
     {
@@ -446,7 +459,7 @@ iteration:
             bs->CopyMem(&response.issuanceAsset, &assets[assets[universeIndex].varStruct.ownership.issuanceIndex], sizeof(Asset));
             response.tick = system.tick;
 
-            enqueueResponse(peer, sizeof(response), RESPOND_OWNED_ASSETS, header->dejavu(), &response);
+            enqueueResponse(peer, sizeof(response), RespondOwnedAssets::type, header->dejavu(), &response);
         }
 
         universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
@@ -471,7 +484,7 @@ iteration:
     if (universeIndex >= ASSETS_CAPACITY
         || assets[universeIndex].varStruct.issuance.type == EMPTY)
     {
-        enqueueResponse(peer, 0, END_RESPONSE, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
     }
     else
     {
@@ -483,7 +496,7 @@ iteration:
             bs->CopyMem(&response.issuanceAsset, &assets[assets[assets[universeIndex].varStruct.possession.ownershipIndex].varStruct.ownership.issuanceIndex], sizeof(Asset));
             response.tick = system.tick;
 
-            enqueueResponse(peer, sizeof(response), RESPOND_POSSESSED_ASSETS, header->dejavu(), &response);
+            enqueueResponse(peer, sizeof(response), RespondPossessedAssets::type, header->dejavu(), &response);
         }
 
         universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);

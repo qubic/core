@@ -57,6 +57,9 @@
     <ClInclude Include="system.h" />
     <ClInclude Include="assets.h" />
     <ClInclude Include="logging.h" />
+    <ClInclude Include="platform\algorithm.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">

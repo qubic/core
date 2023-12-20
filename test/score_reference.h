@@ -8,8 +8,8 @@
 template<
     unsigned int dataLength,
     unsigned int infoLength,
-    unsigned int numberOfInputNeutrons,
-    unsigned int numberOfOutputNeutrons,
+    unsigned int numberOfInputNeurons,
+    unsigned int numberOfOutputNeurons,
     unsigned int maxInputDuration,
     unsigned int maxOutputDuration,
     unsigned int maxNumberOfProcessors
@@ -19,14 +19,14 @@ struct ScoreReferenceImplementation
     int miningData[dataLength];
     struct
     {
-        int input[dataLength + numberOfInputNeutrons + infoLength];
-        int output[infoLength + numberOfOutputNeutrons + dataLength];
+        int input[dataLength + numberOfInputNeurons + infoLength];
+        int output[infoLength + numberOfOutputNeurons + dataLength];
     } neurons[maxNumberOfProcessors];
     struct
     {
-        char input[(numberOfInputNeutrons + infoLength) * (dataLength + numberOfInputNeutrons + infoLength)];
-        char output[(numberOfOutputNeutrons + dataLength) * (infoLength + numberOfOutputNeutrons + dataLength)];
-        unsigned short lengths[maxInputDuration * (numberOfInputNeutrons + infoLength) + maxOutputDuration * (numberOfOutputNeutrons + dataLength)];
+        char input[(numberOfInputNeurons + infoLength) * (dataLength + numberOfInputNeurons + infoLength)];
+        char output[(numberOfOutputNeurons + dataLength) * (infoLength + numberOfOutputNeurons + dataLength)];
+        unsigned short lengths[maxInputDuration * (numberOfInputNeurons + infoLength) + maxOutputDuration * (numberOfOutputNeurons + dataLength)];
     } synapses[maxNumberOfProcessors];
 
     void initMiningData()
@@ -48,29 +48,29 @@ struct ScoreReferenceImplementation
     {
         processorNumber %= maxNumberOfProcessors;
         random(publicKey, nonce, (unsigned char*)&synapses[processorNumber], sizeof(synapses[0]));
-        for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeutrons + infoLength; inputNeuronIndex++)
+        for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeurons + infoLength; inputNeuronIndex++)
         {
-            for (unsigned int anotherInputNeuronIndex = 0; anotherInputNeuronIndex < dataLength + numberOfInputNeutrons + infoLength; anotherInputNeuronIndex++)
+            for (unsigned int anotherInputNeuronIndex = 0; anotherInputNeuronIndex < dataLength + numberOfInputNeurons + infoLength; anotherInputNeuronIndex++)
             {
-                const unsigned int offset = inputNeuronIndex * (dataLength + numberOfInputNeutrons + infoLength) + anotherInputNeuronIndex;
+                const unsigned int offset = inputNeuronIndex * (dataLength + numberOfInputNeurons + infoLength) + anotherInputNeuronIndex;
                 synapses[processorNumber].input[offset] = (((unsigned char)synapses[processorNumber].input[offset]) % 3) - 1;
             }
         }
-        for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < numberOfOutputNeutrons + dataLength; outputNeuronIndex++)
+        for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < numberOfOutputNeurons + dataLength; outputNeuronIndex++)
         {
-            for (unsigned int anotherOutputNeuronIndex = 0; anotherOutputNeuronIndex < infoLength + numberOfOutputNeutrons + dataLength; anotherOutputNeuronIndex++)
+            for (unsigned int anotherOutputNeuronIndex = 0; anotherOutputNeuronIndex < infoLength + numberOfOutputNeurons + dataLength; anotherOutputNeuronIndex++)
             {
-                const unsigned int offset = outputNeuronIndex * (infoLength + numberOfOutputNeutrons + dataLength) + anotherOutputNeuronIndex;
+                const unsigned int offset = outputNeuronIndex * (infoLength + numberOfOutputNeurons + dataLength) + anotherOutputNeuronIndex;
                 synapses[processorNumber].output[offset] = (((unsigned char)synapses[processorNumber].output[offset]) % 3) - 1;
             }
         }
-        for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeutrons + infoLength; inputNeuronIndex++)
+        for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeurons + infoLength; inputNeuronIndex++)
         {
-            synapses[processorNumber].input[inputNeuronIndex * (dataLength + numberOfInputNeutrons + infoLength) + (dataLength + inputNeuronIndex)] = 0;
+            synapses[processorNumber].input[inputNeuronIndex * (dataLength + numberOfInputNeurons + infoLength) + (dataLength + inputNeuronIndex)] = 0;
         }
-        for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < numberOfOutputNeutrons + dataLength; outputNeuronIndex++)
+        for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < numberOfOutputNeurons + dataLength; outputNeuronIndex++)
         {
-            synapses[processorNumber].output[outputNeuronIndex * (infoLength + numberOfOutputNeutrons + dataLength) + (infoLength + outputNeuronIndex)] = 0;
+            synapses[processorNumber].output[outputNeuronIndex * (infoLength + numberOfOutputNeurons + dataLength) + (infoLength + outputNeuronIndex)] = 0;
         }
 
         unsigned int lengthIndex = 0;
@@ -80,9 +80,9 @@ struct ScoreReferenceImplementation
 
         for (unsigned int tick = 0; tick < maxInputDuration; tick++)
         {
-            unsigned short neuronIndices[numberOfInputNeutrons + infoLength];
+            unsigned short neuronIndices[numberOfInputNeurons + infoLength];
             unsigned short numberOfRemainingNeurons = 0;
-            for (numberOfRemainingNeurons = 0; numberOfRemainingNeurons < numberOfInputNeutrons + infoLength; numberOfRemainingNeurons++)
+            for (numberOfRemainingNeurons = 0; numberOfRemainingNeurons < numberOfInputNeurons + infoLength; numberOfRemainingNeurons++)
             {
                 neuronIndices[numberOfRemainingNeurons] = numberOfRemainingNeurons;
             }
@@ -91,22 +91,22 @@ struct ScoreReferenceImplementation
                 const unsigned short neuronIndexIndex = synapses[processorNumber].lengths[lengthIndex++] % numberOfRemainingNeurons;
                 const unsigned short inputNeuronIndex = neuronIndices[neuronIndexIndex];
                 neuronIndices[neuronIndexIndex] = neuronIndices[--numberOfRemainingNeurons];
-                for (unsigned short anotherInputNeuronIndex = 0; anotherInputNeuronIndex < dataLength + numberOfInputNeutrons + infoLength; anotherInputNeuronIndex++)
+                for (unsigned short anotherInputNeuronIndex = 0; anotherInputNeuronIndex < dataLength + numberOfInputNeurons + infoLength; anotherInputNeuronIndex++)
                 {
                     int value = neurons[processorNumber].input[anotherInputNeuronIndex] >= 0 ? 1 : -1;
-                    value *= synapses[processorNumber].input[inputNeuronIndex * (dataLength + numberOfInputNeutrons + infoLength) + anotherInputNeuronIndex];
+                    value *= synapses[processorNumber].input[inputNeuronIndex * (dataLength + numberOfInputNeurons + infoLength) + anotherInputNeuronIndex];
                     neurons[processorNumber].input[dataLength + inputNeuronIndex] += value;
                 }
             }
         }
 
-        copyMem(&neurons[processorNumber].output[0], &neurons[processorNumber].input[dataLength + numberOfInputNeutrons], infoLength * sizeof(neurons[0].input[0]));
+        copyMem(&neurons[processorNumber].output[0], &neurons[processorNumber].input[dataLength + numberOfInputNeurons], infoLength * sizeof(neurons[0].input[0]));
 
         for (unsigned int tick = 0; tick < maxOutputDuration; tick++)
         {
-            unsigned short neuronIndices[numberOfOutputNeutrons + dataLength];
+            unsigned short neuronIndices[numberOfOutputNeurons + dataLength];
             unsigned short numberOfRemainingNeurons = 0;
-            for (numberOfRemainingNeurons = 0; numberOfRemainingNeurons < numberOfOutputNeutrons + dataLength; numberOfRemainingNeurons++)
+            for (numberOfRemainingNeurons = 0; numberOfRemainingNeurons < numberOfOutputNeurons + dataLength; numberOfRemainingNeurons++)
             {
                 neuronIndices[numberOfRemainingNeurons] = numberOfRemainingNeurons;
             }
@@ -115,10 +115,10 @@ struct ScoreReferenceImplementation
                 const unsigned short neuronIndexIndex = synapses[processorNumber].lengths[lengthIndex++] % numberOfRemainingNeurons;
                 const unsigned short outputNeuronIndex = neuronIndices[neuronIndexIndex];
                 neuronIndices[neuronIndexIndex] = neuronIndices[--numberOfRemainingNeurons];
-                for (unsigned int anotherOutputNeuronIndex = 0; anotherOutputNeuronIndex < infoLength + numberOfOutputNeutrons + dataLength; anotherOutputNeuronIndex++)
+                for (unsigned int anotherOutputNeuronIndex = 0; anotherOutputNeuronIndex < infoLength + numberOfOutputNeurons + dataLength; anotherOutputNeuronIndex++)
                 {
                     int value = neurons[processorNumber].output[anotherOutputNeuronIndex] >= 0 ? 1 : -1;
-                    value *= synapses[processorNumber].output[outputNeuronIndex * (infoLength + numberOfOutputNeutrons + dataLength) + anotherOutputNeuronIndex];
+                    value *= synapses[processorNumber].output[outputNeuronIndex * (infoLength + numberOfOutputNeurons + dataLength) + anotherOutputNeuronIndex];
                     neurons[processorNumber].output[infoLength + outputNeuronIndex] += value;
                 }
             }
@@ -128,7 +128,7 @@ struct ScoreReferenceImplementation
 
         for (unsigned int i = 0; i < dataLength; i++)
         {
-            if ((miningData[i] >= 0) == (neurons[processorNumber].output[infoLength + numberOfOutputNeutrons + i] >= 0))
+            if ((miningData[i] >= 0) == (neurons[processorNumber].output[infoLength + numberOfOutputNeurons + i] >= 0))
             {
                 score++;
             }

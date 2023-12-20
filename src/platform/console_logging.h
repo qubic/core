@@ -18,7 +18,7 @@ static CHAR16 message[16384], timestampedMessage[16384];
 // Output to console on no-UEFI platform
 static inline void outputStringToConsole(CHAR16* str)
 {
-    std::wprintf(L"%ls", str);
+    wprintf(L"%ls", str);
 }
 
 // Log message to console (with line break) on non-UEFI platform
@@ -26,7 +26,7 @@ static void logToConsole(const CHAR16* message)
 {
     if (disableConsoleLogging)
         return;
-    std::wprintf(L"%ls\n", message);
+    wprintf(L"%ls\n", message);
 }
 
 #else

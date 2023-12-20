@@ -14,10 +14,9 @@ struct RequestLog
 {
     unsigned long long passcode[4];
 
-    static constexpr unsigned char type()
-    {
-        return 44;
-    }
+    enum {
+        type = 44,
+    };
 };
 
 
@@ -26,10 +25,9 @@ struct RespondLog
 {
     // Variable-size log;
 
-    static constexpr unsigned char type()
-    {
-        return 45;
-    }
+    enum {
+        type = 45,
+    };
 };
 
 
@@ -52,6 +50,7 @@ static bool logBufferOverflownFlags[sizeof(logReaderPasscodes) / sizeof(logReade
 static bool initLogging()
 {
 #if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+    EFI_STATUS status;
     for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
     {
         if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers[logReaderIndex]))
@@ -310,7 +309,7 @@ static void processRequestLog(Peer* peer, RequestResponseHeader* header)
             }
             else
             {
-                enqueueResponse(peer, logBufferTails[logReaderIndex], RespondLog::type(), header->dejavu(), logBuffers[logReaderIndex]);
+                enqueueResponse(peer, logBufferTails[logReaderIndex], RespondLog::type, header->dejavu(), logBuffers[logReaderIndex]);
                 logBufferTails[logReaderIndex] = 0;
             }
 
@@ -320,5 +319,5 @@ static void processRequestLog(Peer* peer, RequestResponseHeader* header)
         }
     }
 
-    enqueueResponse(peer, 0, RespondLog::type(), header->dejavu(), NULL);
+    enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
 }
