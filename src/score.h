@@ -240,7 +240,8 @@ struct ScoreFunction
         const unsigned long long solutionBufIdx = processor_Number % solutionBufferCount;
         ACQUIRE(solutionEngineLock[solutionBufIdx]);
 
-        unsigned char nrVal1Bit[std::max(PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT, PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT)];
+        //unsigned char nrVal1Bit[std::max(PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT, PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT)];
+        unsigned char nrVal1Bit[PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT+PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT]; // TODO: need to find max instead of sum
         random(publicKey.m256i_u8, nonce.m256i_u8, (unsigned char*)&synapses[solutionBufIdx], sizeof(synapses[0]));
         for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeurons + infoLength; inputNeuronIndex++)
         {
