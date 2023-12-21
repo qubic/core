@@ -228,9 +228,9 @@ iteration:
                 AssetIssuance assetIssuance;
                 assetIssuance.issuerPublicKey = issuerPublicKey;
                 assetIssuance.numberOfShares = numberOfShares;
-                *((unsigned long long*) & assetIssuance.name) = *((unsigned long long*) & name); // Order must be preserved!
+                *((unsigned long long*) assetIssuance.name) = *((unsigned long long*) name); // Order must be preserved!
                 assetIssuance.numberOfDecimalPlaces = numberOfDecimalPlaces; // Order must be preserved!
-                *((unsigned long long*) & assetIssuance.unitOfMeasurement) = *((unsigned long long*) & unitOfMeasurement); // Order must be preserved!
+                *((unsigned long long*) assetIssuance.unitOfMeasurement) = *((unsigned long long*) unitOfMeasurement); // Order must be preserved!
                 logAssetIssuance(assetIssuance);
             }
             else
