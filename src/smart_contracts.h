@@ -157,5 +157,11 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
         REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUOTTERY);
     }
     break;
+
+    case RANDOM_CONTRACT_INDEX:
+    {
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RANDOM);
+    }
+    break;
     }
 }
