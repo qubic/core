@@ -45,7 +45,6 @@
     <ClInclude Include="platform\time_stamp_counter.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="network_messages.h" />
     <ClInclude Include="tcp4.h" />
     <ClInclude Include="peers.h" />
     <ClInclude Include="platform\random.h">
@@ -60,6 +59,45 @@
     <ClInclude Include="platform\algorithm.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="network_messages\assets.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\tick.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\common_def.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\all.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\header.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\special_command.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\contract.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\public_peers.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\transactions.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\broadcast_message.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\entity.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\common_response.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\computors.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
@@ -67,6 +105,9 @@
     </Filter>
     <Filter Include="platform">
       <UniqueIdentifier>{160e9f94-b706-42f6-8517-2be8ade5c99d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="network_messages">
+      <UniqueIdentifier>{b795f353-79db-454c-bfb3-2a42c2530e91}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

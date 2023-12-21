@@ -2,6 +2,8 @@
 
 #include "platform/m256.h"
 
+#include "network_messages/common_def.h"
+
 ////////// Smart contracts \\\\\\\\\\
 
 typedef void (*SYSTEM_PROCEDURE)(void*);
@@ -9,15 +11,6 @@ typedef void (*EXPAND_PROCEDURE)(void*, void*);
 typedef void (*USER_FUNCTION)(void*, void*, void*);
 typedef void (*USER_PROCEDURE)(void*, void*, void*);
 
-struct Entity
-{
-    m256i publicKey;
-    long long incomingAmount, outgoingAmount;
-    unsigned int numberOfIncomingTransfers, numberOfOutgoingTransfers;
-    unsigned int latestIncomingTransferTick, latestOutgoingTransferTick;
-};
-
-static_assert(sizeof(::Entity) == 32 + 2*8 + 2*4 + 2*4, "Something is wrong with the struct size.");
 
 
 static const m256i& __arbitrator();
@@ -82,7 +75,6 @@ static CONTRACT_STATE_TYPE* _QUOTTERY;
 static CONTRACT_STATE_TYPE* _RANDOM;
 
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0
-#define MAX_NUMBER_OF_CONTRACTS 1024 // Must be 1024
 
 struct Contract0State
 {

@@ -16,7 +16,19 @@
   <ItemGroup>
     <ClInclude Include="assets.h" />
     <ClInclude Include="logging.h" />
-    <ClInclude Include="network_messages.h" />
+    <ClInclude Include="network_messages\all.h" />
+    <ClInclude Include="network_messages\assets.h" />
+    <ClInclude Include="network_messages\broadcast_message.h" />
+    <ClInclude Include="network_messages\common_def.h" />
+    <ClInclude Include="network_messages\common_response.h" />
+    <ClInclude Include="network_messages\computors.h" />
+    <ClInclude Include="network_messages\contract.h" />
+    <ClInclude Include="network_messages\entity.h" />
+    <ClInclude Include="network_messages\header.h" />
+    <ClInclude Include="network_messages\public_peers.h" />
+    <ClInclude Include="network_messages\special_command.h" />
+    <ClInclude Include="network_messages\tick.h" />
+    <ClInclude Include="network_messages\transactions.h" />
     <ClInclude Include="peers.h" />
     <ClInclude Include="platform\algorithm.h" />
     <ClInclude Include="platform\concurrency.h" />
