@@ -2,21 +2,11 @@
 
 #include "platform/m256.h"
 
-#define NUMBER_OF_COMPUTORS 676
+#include "network_messages/common_def.h"
+
 #define MAX_NUMBER_OF_SOLUTIONS 65536 // Must be 2^N
 
 
-struct ComputorProposal
-{
-    unsigned char uriSize;
-    unsigned char uri[255];
-};
-struct ComputorBallot
-{
-    unsigned char zero;
-    unsigned char votes[(NUMBER_OF_COMPUTORS * 3 + 7) / 8];
-    unsigned char quasiRandomNumber;
-};
 
 static struct System
 {

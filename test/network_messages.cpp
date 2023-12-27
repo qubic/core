@@ -1,6 +1,8 @@
 #include "gtest/gtest.h"
 
-#include "../src/network_messages.h"
+#define NETWORK_MESSAGES_WITHOUT_CORE_DEPENDENCIES
+#include "../src/network_messages/all.h"
+
 
 TEST(TestCoreRequestResponseHeader, TestSize) {
     RequestResponseHeader hdr;
