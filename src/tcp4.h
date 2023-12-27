@@ -3,7 +3,8 @@
 #include "platform/uefi.h"
 #include "platform/console_logging.h"
 
-#include "network_messages.h"
+#include "network_messages/header.h"
+
 
 // Must be 2 * RequestResponseHeader::max_size (maximum message size) because
 // double buffering is used to avoid waiting

@@ -7,7 +7,10 @@
 #include "platform/random.h"
 #include "platform/concurrency.h"
 
-#include "network_messages.h"
+#include "network_messages/common_def.h"
+#include "network_messages/header.h"
+#include "network_messages/common_response.h"
+
 #include "tcp4.h"
 #include "kangaroo_twelve.h"
 

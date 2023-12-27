@@ -101,29 +101,3 @@ public:
         return this->size() - sizeof(RequestResponseHeader);
     }
 };
-
-#define NUMBER_OF_EXCHANGED_PEERS 4
-
-struct ExchangePublicPeers
-{
-    unsigned char peers[NUMBER_OF_EXCHANGED_PEERS][4];
-
-    enum {
-        type = 0,
-    };
-};
-
-
-struct EndResponse
-{
-    enum {
-        type = 35,
-    };
-};
-
-struct TryAgain // Must be returned if _dejavu is not 0, and the incoming packet cannot be processed (usually when incoming packets queue is full)
-{
-    enum {
-        type = 46,
-    };
-};
