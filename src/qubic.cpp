@@ -192,8 +192,8 @@ static ScoreFunction<
 > score;
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
-static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS];
-static volatile unsigned int minerScores[MAX_NUMBER_OF_MINERS];
+static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS + 1];
+static volatile unsigned int minerScores[MAX_NUMBER_OF_MINERS + 1];
 static volatile unsigned int numberOfMiners = NUMBER_OF_COMPUTORS;
 static m256i competitorPublicKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
