@@ -189,7 +189,7 @@ static ScoreFunction<
     NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
     MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
     MAX_NUMBER_OF_PROCESSORS
-> score;
+> * score = nullptr;
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
 static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS];
@@ -554,7 +554,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     if (k == system.numberOfSolutions)
                                     {
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && score(processorNumber, request->destinationPublicKey, solution_nonce) >= SOLUTION_THRESHOLD)
+                                            && (*score)(processorNumber, request->destinationPublicKey, solution_nonce) >= SOLUTION_THRESHOLD)
                                         {
                                             ACQUIRE(solutionsLock);
 
@@ -1927,7 +1927,7 @@ static void processTick(unsigned long long processorNumber)
                                             {
                                                 minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
 
-                                                unsigned long long score = ::score(processorNumber, transaction->sourcePublicKey, solution_nonce);
+                                                unsigned long long score = (*::score)(processorNumber, transaction->sourcePublicKey, solution_nonce);
 
                                                 resourceTestingDigest ^= score;
                                                 KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
@@ -3516,8 +3516,14 @@ static bool initialize()
             logToConsole(message);
         }
 
-        score.loadScoreCache(system.epoch);
-        score.initMiningData();
+        if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(*score), (void**)&score))
+        {
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            return false;
+        }
+        bs->SetMem(score, sizeof(*score), 0);
+        score->loadScoreCache(system.epoch);
+        score->initMiningData();
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
@@ -3662,6 +3668,10 @@ static void deinitialize()
         bs->FreePool(ticks);
     }
 
+    if (score)
+    {
+        bs->FreePool(score);
+    }
     if (minerSolutionFlags)
     {
         bs->FreePool(minerSolutionFlags);
@@ -3778,11 +3788,11 @@ static void logInfo()
     appendText(message, L").");
 #if USE_SCORE_CACHE
     appendText(message, L" Score cache: Hit ");
-    appendNumber(message, score.scoreCacheHit, TRUE);
+    appendNumber(message, score->scoreCacheHit, TRUE);
     appendText(message, L" | Miss ");
-    appendNumber(message, score.scoreCacheMiss, TRUE);
+    appendNumber(message, score->scoreCacheMiss, TRUE);
     appendText(message, L" | Unknown ");
-    appendNumber(message, score.scoreCacheUnknown, TRUE);
+    appendNumber(message, score->scoreCacheUnknown, TRUE);
 #endif
     logToConsole(message);
     prevNumberOfProcessedRequests = numberOfProcessedRequests;
@@ -4350,7 +4360,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     systemDataSavingTick = curTimeTick;
 
                     saveSystem();
-                    score.saveScoreCache();
+                    score->saveScoreCache();
                 }
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
@@ -4508,7 +4518,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             }
 
             saveSystem();
-            score.saveScoreCache();
+            score->saveScoreCache();
 
             setText(message, L"Qubic ");
             appendQubicVersion(message);
