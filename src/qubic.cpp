@@ -3521,6 +3521,7 @@ static bool initialize()
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
             return false;
         }
+        bs->SetMem(score, sizeof(*score), 0);
         score->loadScoreCache(system.epoch);
         score->initMiningData();
 
