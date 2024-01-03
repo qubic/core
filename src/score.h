@@ -24,6 +24,9 @@ template<
 struct ScoreFunction
 {
     int miningData[dataLength];
+
+#pragma warning(push)
+#pragma warning(disable:4293)
     //need 2 set of variables for input and output
     static constexpr unsigned int SYNAPSE_CHUNK_SIZE_INPUT = (dataLength + numberOfInputNeurons + infoLength);
     static constexpr unsigned int SYNAPSE_CHUNK_SIZE_INPUT_BIT = (SYNAPSE_CHUNK_SIZE_INPUT + 7) >> 3;
@@ -40,6 +43,7 @@ struct ScoreFunction
     static constexpr unsigned int LAST_ELEMENT_BIT_OUTPUT = (dataLength + numberOfOutputNeurons + infoLength) & 63;
     static constexpr unsigned long long LAST_ELEMENT_MASK_OUTPUT = LAST_ELEMENT_BIT_OUTPUT == 0 ?
         0xFFFFFFFFFFFFFFFFULL : (0xFFFFFFFFFFFFFFFFULL >> (64 - LAST_ELEMENT_BIT_OUTPUT));
+#pragma warning(pop)
 
     struct
     {
