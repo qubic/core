@@ -4,17 +4,17 @@
 
 
 
-typedef struct
+struct RequestContractIPO
 {
     unsigned int contractIndex;
 
     enum {
         type = 33,
     };
-} RequestContractIPO;
+};
 
 
-typedef struct
+struct RespondContractIPO
 {
     unsigned int contractIndex;
     unsigned int tick;
@@ -24,7 +24,7 @@ typedef struct
     enum {
         type = 34,
     };
-} RespondContractIPO;
+};
 
 static_assert(sizeof(RespondContractIPO) == 4 + 4 + 32 * NUMBER_OF_COMPUTORS + 8 * NUMBER_OF_COMPUTORS, "Something is wrong with the struct size.");
 
