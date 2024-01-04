@@ -3789,10 +3789,10 @@ static void logInfo()
 #if USE_SCORE_CACHE
     appendText(message, L" Score cache: Hit ");
     appendNumber(message, score->scoreCacheHit, TRUE);
+    appendText(message, L" | Collision ");
+    appendNumber(message, score->scoreCacheCollision, TRUE);
     appendText(message, L" | Miss ");
     appendNumber(message, score->scoreCacheMiss, TRUE);
-    appendText(message, L" | Unknown ");
-    appendNumber(message, score->scoreCacheUnknown, TRUE);
 #endif
     logToConsole(message);
     prevNumberOfProcessedRequests = numberOfProcessedRequests;

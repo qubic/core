@@ -79,7 +79,7 @@ struct ScoreFunction
 
     unsigned int scoreCacheHit = 0;
     unsigned int scoreCacheMiss = 0;
-    unsigned int scoreCacheUnknown = 0;
+    unsigned int scoreCacheCollision = 0;
 
     unsigned int getScoreCacheIndex(const m256i& publicKey, const m256i& nonce)
     {
@@ -99,17 +99,20 @@ struct ScoreFunction
         int retVal;
         if (isZero(cachedPublicKey))
         {
-            scoreCacheUnknown++;
+            // miss: data not available in cache yet
+            scoreCacheMiss++;
             retVal = -1;
         }
         else if (cachedPublicKey == publicKey && cachedNonce == nonce)
         {
+            // hit: data available in cache
             scoreCacheHit++;
             retVal = scoreCache[scoreCacheIndex].score;
         }
         else
         {
-            scoreCacheMiss++;
+            // collision: other data is mapped to same index
+            scoreCacheCollision++;
             retVal = -1;
         }
         RELEASE(scoreCacheLock);

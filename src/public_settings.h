@@ -40,4 +40,4 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_OUTPUT_DURATION 200
 #define SOLUTION_THRESHOLD 692
 #define USE_SCORE_CACHE 1
-#define SCORE_CACHE_SIZE 200000 // the larger the better
+#define SCORE_CACHE_SIZE 1000000 // the larger the better
