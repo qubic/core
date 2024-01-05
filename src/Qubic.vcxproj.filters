@@ -98,6 +98,7 @@
     <ClInclude Include="network_messages\computors.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="score_cache.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">

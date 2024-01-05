@@ -62,6 +62,7 @@
     <ClCompile Include="network_messages.cpp" />
     <ClCompile Include="qpi.cpp" />
     <ClCompile Include="score.cpp" />
+    <ClCompile Include="score_cache.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

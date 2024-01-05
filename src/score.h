@@ -3,12 +3,11 @@
 #include "platform/memory.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
-#include "platform/file_io.h"
-#include "platform/console_logging.h"
-#include "platform/time_stamp_counter.h"
 #include "platform/algorithm.h"
-#include "kangaroo_twelve.h"
 #include "public_settings.h"
+
+#include "score_cache.h"
+
 ////////// Scoring algorithm \\\\\\\\\\
 
 template<
@@ -68,72 +67,7 @@ struct ScoreFunction
     volatile char solutionEngineLock[solutionBufferCount];
 
 #if USE_SCORE_CACHE
-    struct
-    {
-        m256i publicKey;
-        m256i nonce;
-        int score;
-    } scoreCache[SCORE_CACHE_SIZE]; // set zero or load from a file on init
-
-    volatile char scoreCacheLock;
-
-    unsigned int scoreCacheHit = 0;
-    unsigned int scoreCacheMiss = 0;
-    unsigned int scoreCacheCollision = 0;
-
-    unsigned int getScoreCacheIndex(const m256i& publicKey, const m256i& nonce)
-    {
-        m256i buffer[2] = { publicKey, nonce };
-        unsigned char digest[32];
-        KangarooTwelve64To32(buffer, digest);
-        unsigned int result = *((unsigned long long*)digest) % SCORE_CACHE_SIZE;
-
-        return result;
-    }
-
-    int tryFetchingScoreCache(const m256i& publicKey, const m256i& nonce, unsigned int scoreCacheIndex)
-    {
-        ACQUIRE(scoreCacheLock);
-        const m256i& cachedPublicKey = scoreCache[scoreCacheIndex].publicKey;
-        const m256i& cachedNonce = scoreCache[scoreCacheIndex].nonce;
-        int retVal;
-        if (isZero(cachedPublicKey))
-        {
-            // miss: data not available in cache yet
-            scoreCacheMiss++;
-            retVal = -1;
-        }
-        else if (cachedPublicKey == publicKey && cachedNonce == nonce)
-        {
-            // hit: data available in cache
-            scoreCacheHit++;
-            retVal = scoreCache[scoreCacheIndex].score;
-        }
-        else
-        {
-            // collision: other data is mapped to same index
-            scoreCacheCollision++;
-            retVal = -1;
-        }
-        RELEASE(scoreCacheLock);
-        return retVal;
-    }
-
-    void addScoreCache(const m256i& publicKey, const m256i& nonce, unsigned int scoreCacheIndex, int score)
-    {
-        ACQUIRE(scoreCacheLock);
-        scoreCache[scoreCacheIndex].publicKey = publicKey;
-        scoreCache[scoreCacheIndex].nonce = nonce;
-        scoreCache[scoreCacheIndex].score = score;
-        RELEASE(scoreCacheLock);
-    }
-
-    void initEmptyScoreCache()
-    {
-        ACQUIRE(scoreCacheLock);
-        setMem((unsigned char*)scoreCache, sizeof(scoreCache), 0);
-        RELEASE(scoreCacheLock);
-    }
+    ScoreCache<SCORE_CACHE_SIZE> scoreCache;
 #endif
 
     void initMiningData()
@@ -155,18 +89,7 @@ struct ScoreFunction
     void saveScoreCache()
     {
 #if USE_SCORE_CACHE
-        const unsigned long long beginningTick = __rdtsc();
-        ACQUIRE(scoreCacheLock);
-        long long savedSize = save(SCORE_CACHE_FILE_NAME, sizeof(scoreCache), (unsigned char*)&scoreCache);
-        RELEASE(scoreCacheLock);
-        if (savedSize == sizeof(scoreCache))
-        {
-            setNumber(message, savedSize, TRUE);
-            appendText(message, L" bytes of the score cache data are saved (");
-            appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-            appendText(message, L" microseconds).");
-            logToConsole(message);
-        }
+        scoreCache.save(SCORE_CACHE_FILE_NAME);
 #endif
     }
 
@@ -175,37 +98,10 @@ struct ScoreFunction
     {
         bool success = true;
 #if USE_SCORE_CACHE
-        setText(message, L"Loading score cache...");
-        logToConsole(message);
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
-        // init, set zero all scorecache
-        initEmptyScoreCache();
-        ACQUIRE(scoreCacheLock);
-        long long loadedSize = load(SCORE_CACHE_FILE_NAME, sizeof(scoreCache), (unsigned char*)scoreCache);
-        RELEASE(scoreCacheLock);
-        if (loadedSize != sizeof(scoreCache))
-        {
-            if (loadedSize == -1)
-            {
-                setText(message, L"Error while loading score cache: File does not exists (ignore this error if this is the epoch start)");
-            }
-            else if (loadedSize < sizeof(scoreCache))
-            {
-                setText(message, L"Error while loading score cache: Score cache file is smaller than defined. System may not work properly");
-            }
-            else
-            {
-                setText(message, L"Error while loading score cache: Score cache file is larger than defined. System may not work properly");
-            }
-            success = false;
-        }
-        else
-        {
-            setText(message, L"Loaded score cache data!");
-        }
-        logToConsole(message);
+        success = scoreCache.load(SCORE_CACHE_FILE_NAME);
 #endif
         return success;
     }
@@ -236,9 +132,9 @@ struct ScoreFunction
     {
         int score = 0;
 #if USE_SCORE_CACHE
-        unsigned int scoreCacheIndex = getScoreCacheIndex(publicKey, nonce);
-        score = tryFetchingScoreCache(publicKey, nonce, scoreCacheIndex);
-        if (score != -1)
+        unsigned int scoreCacheIndex = scoreCache.getCacheIndex(publicKey, nonce);
+        score = scoreCache.tryFetching(publicKey, nonce, scoreCacheIndex);
+        if (score >= scoreCache.MIN_VALID_SCORE)
         {
             return score;
         }
@@ -414,7 +310,7 @@ struct ScoreFunction
         }
         RELEASE(solutionEngineLock[solutionBufIdx]);
 #if USE_SCORE_CACHE
-        addScoreCache(publicKey, nonce, scoreCacheIndex, score);
+        scoreCache.addEntry(publicKey, nonce, scoreCacheIndex, score);
 #endif
         return score;
     }

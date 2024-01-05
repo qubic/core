@@ -3788,11 +3788,11 @@ static void logInfo()
     appendText(message, L").");
 #if USE_SCORE_CACHE
     appendText(message, L" Score cache: Hit ");
-    appendNumber(message, score->scoreCacheHit, TRUE);
+    appendNumber(message, score->scoreCache.hitCount(), TRUE);
     appendText(message, L" | Collision ");
-    appendNumber(message, score->scoreCacheCollision, TRUE);
+    appendNumber(message, score->scoreCache.collisionCount(), TRUE);
     appendText(message, L" | Miss ");
-    appendNumber(message, score->scoreCacheMiss, TRUE);
+    appendNumber(message, score->scoreCache.missCount(), TRUE);
 #endif
     logToConsole(message);
     prevNumberOfProcessedRequests = numberOfProcessedRequests;

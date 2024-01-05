@@ -42,6 +42,7 @@
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />
+    <ClInclude Include="score_cache.h" />
     <ClInclude Include="smart_contracts\Quottery.h" />
     <ClInclude Include="smart_contracts\Qx.h" />
     <ClInclude Include="smart_contracts\Random.h" />
