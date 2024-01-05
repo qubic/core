@@ -13,7 +13,7 @@
 static unsigned long long frequency;
 
 
-void initTimeStampCounter()
+static void initTimeStampCounter()
 {
     int cpuInfo[4];
     __cpuid(cpuInfo, 0x15);
