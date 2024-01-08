@@ -41,3 +41,4 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define SOLUTION_THRESHOLD 692
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 1000000 // the larger the better
+#define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision

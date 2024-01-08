@@ -26,6 +26,7 @@ void expectEmptyCache(ScoreCache<cacheCapacity>& cache)
 
         unsigned int ioIdx = i;
         EXPECT_EQ(cache.tryFetching(publicKey, nonce, ioIdx), cache.SCORE_CACHE_MISS);
+        EXPECT_TRUE(ioIdx == i || (i >= cache.capacity() && ioIdx == i % cache.capacity()));
     }
 }
 

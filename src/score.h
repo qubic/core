@@ -67,7 +67,7 @@ struct ScoreFunction
     volatile char solutionEngineLock[solutionBufferCount];
 
 #if USE_SCORE_CACHE
-    ScoreCache<SCORE_CACHE_SIZE> scoreCache;
+    ScoreCache<SCORE_CACHE_SIZE, SCORE_CACHE_COLLISION_RETRIES> scoreCache;
 #endif
 
     void initMiningData()

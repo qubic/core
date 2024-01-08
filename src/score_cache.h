@@ -10,10 +10,12 @@
 #include "kangaroo_twelve.h"
 
 /// Cache storing scores for pairs of publicKey and nonce (hash map)
-template <unsigned int size>
+template <unsigned int size, unsigned int collisionRetries = 20>
 class ScoreCache
 {
+    static_assert(collisionRetries < size, "Number of fetch retries in case of collision is too big!");
 public:
+
     /// Init cache
     ScoreCache()
     {
@@ -37,6 +39,7 @@ public:
         return size;
     }
 
+    /// Get cache index based on hash function
     unsigned int getCacheIndex(const m256i& publicKey, const m256i& nonce)
     {
         m256i buffer[2] = { publicKey, nonce };
@@ -51,32 +54,47 @@ public:
     static constexpr int SCORE_CACHE_MISS = -1;
     static constexpr int SCORE_CACHE_COLLISION = -2;
 
-    int tryFetching(const m256i& publicKey, const m256i& nonce, unsigned int cacheIndex)
+    // Try to fetch data from cacheIndex, also checking a few following entries in case of collisions (may update cacheIndex),
+    // increments counter of hits, misses, or collisions
+    int tryFetching(const m256i& publicKey, const m256i& nonce, unsigned int & cacheIndex)
     {
-        cacheIndex %= capacity();
-        ACQUIRE(lock);
-        const m256i& cachedPublicKey = cache[cacheIndex].publicKey;
-        const m256i& cachedNonce = cache[cacheIndex].nonce;
         int retVal;
-        if (isZero(cachedPublicKey))
+        unsigned int tryFetchIdx = cacheIndex % capacity();
+        ACQUIRE(lock);
+        for (unsigned int i = 0; i < collisionRetries; ++i)
         {
-            // miss: data not available in cache yet
-            misses++;
-            retVal = SCORE_CACHE_MISS;
+            const m256i& cachedPublicKey = cache[tryFetchIdx].publicKey;
+            if (isZero(cachedPublicKey))
+            {
+                // miss: data not available in cache yet (entry is empty)
+                misses++;
+                retVal = SCORE_CACHE_MISS;
+                break;
+            }
+
+            const m256i& cachedNonce = cache[tryFetchIdx].nonce;
+            if (cachedPublicKey == publicKey && cachedNonce == nonce)
+            {
+                // hit: data available in cache -> return score
+                hits++;
+                retVal = cache[tryFetchIdx].score;
+                break;
+            }
+
+            // collision: other data is mapped to same index -> retry at follwing index
+            retVal = SCORE_CACHE_COLLISION;
+            tryFetchIdx = (tryFetchIdx + 1) % capacity();
         }
-        else if (cachedPublicKey == publicKey && cachedNonce == nonce)
+        RELEASE(lock);
+
+        if (retVal == SCORE_CACHE_COLLISION)
         {
-            // hit: data available in cache
-            hits++;
-            retVal = cache[cacheIndex].score;
+            collisions++;
         }
         else
         {
-            // collision: other data is mapped to same index
-            collisions++;
-            retVal = SCORE_CACHE_COLLISION;
+            cacheIndex = tryFetchIdx;
         }
-        RELEASE(lock);
         return retVal;
     }
 
@@ -94,7 +112,6 @@ public:
     /// Save score cache to file
     void save(CHAR16* filename)
     {
-#if USE_SCORE_CACHE
         const unsigned long long beginningTick = __rdtsc();
         ACQUIRE(lock);
         long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)&cache);
@@ -107,7 +124,6 @@ public:
             appendText(message, L" microseconds).");
             logToConsole(message);
         }
-#endif
     }
 
     /// Try to load score cache file
