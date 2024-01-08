@@ -17,7 +17,15 @@ void expectEmptyCache(ScoreCache<cacheCapacity>& cache)
     // test that all is empty and access out of bounds is no error
     for (unsigned int i = 0; i < cache.capacity() + 100; ++i)
     {
-        EXPECT_EQ(cache.tryFetching(m256i::randomValue(), m256i::randomValue(), i), cache.SCORE_CACHE_MISS);
+        // test with arbitrary publicKey and nonce (real and pseudo-random is slow, so use a fast quite random pattern)
+        unsigned long long a = i * 123456789ull;
+        unsigned long long b = 0xbca326450256c63eull - i * 759037ull;
+        unsigned long long c = 2345932453043560ull << (i & 63);
+        m256i publicKey(a ^ b, a ^ c, b ^ c, a ^ b ^ c);
+        m256i nonce((a << 2) ^ b, (a << 2) ^ c, (b << 1) ^ c, (b >> 1) ^ c);
+
+        unsigned int ioIdx = i;
+        EXPECT_EQ(cache.tryFetching(publicKey, nonce, ioIdx), cache.SCORE_CACHE_MISS);
     }
 }
 
