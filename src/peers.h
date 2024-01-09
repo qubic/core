@@ -242,7 +242,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 }
 
 
-// Forget public peer (no matter if verfied or not) if we have more than the minium number of peers
+// Forget public peer (no matter if verified or not) if we have more than the minium number of peers
 static void forgetPublicPeer(int address)
 {
     if (listOfPeersIsStatic)
@@ -329,7 +329,7 @@ static void addPublicPeer(unsigned char address[4])
     RELEASE(publicPeersLock);
 }
 
-static bool peerConnectionNewlyEstabilished(unsigned int i)
+static bool peerConnectionNewlyEstablished(unsigned int i)
 {
     // handle new connections (called in main loop)
     if (((unsigned long long)peers[i].tcp4Protocol)

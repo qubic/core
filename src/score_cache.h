@@ -81,7 +81,7 @@ public:
                 break;
             }
 
-            // collision: other data is mapped to same index -> retry at follwing index
+            // collision: other data is mapped to same index -> retry at following index
             retVal = SCORE_CACHE_COLLISION;
             tryFetchIdx = (tryFetchIdx + 1) % capacity();
         }

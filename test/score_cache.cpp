@@ -58,7 +58,7 @@ unsigned int pseudoRandomCacheTest(ScoreCache<cacheCapacity> & cache, unsigned l
     EXPECT_EQ(entryCount, cache.missCount() + cache.collisionCount());
     EXPECT_EQ(cache.hitCount(), 0);
 
-    //std::cout << "randomCacheTest: capacity " << cacheCapacity << ", filled " << 100.0 * entryCount / cacheCapacity << "%, overwite=" << overwrite
+    //std::cout << "randomCacheTest: capacity " << cacheCapacity << ", filled " << 100.0 * entryCount / cacheCapacity << "%, overwrite=" << overwrite
     //    << ", collisions " << cache.collisionCount() << ", misses " << cache.missCount() << ", hits " << cache.hitCount() << " (SEED " << seed << ")" << std::endl;
 
     int collisionCount = cache.collisionCount();
