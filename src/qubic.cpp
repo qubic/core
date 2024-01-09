@@ -3581,9 +3581,12 @@ static bool initialize()
         peers[i].transmitToken.Packet.TxData = &peers[i].transmitData;
     }
 
+    // add knownPublicPeers to list of peers (all with verified status)
     for (unsigned int i = 0; i < sizeof(knownPublicPeers) / sizeof(knownPublicPeers[0]) && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; i++)
     {
         addPublicPeer((unsigned char*)knownPublicPeers[i]);
+        if (numberOfPublicPeers > 0)
+            publicPeers[numberOfPublicPeers - 1].isVerified = true;
     }
 
     if (!initTcp4(PORT))
@@ -4319,14 +4322,23 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                         for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS; j++)
                         {
-                            const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                            if (publicPeers[publicPeerIndex].isVerified || noVerifiedPublicPeers)
+                            if (noVerifiedPublicPeers)
                             {
-                                *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
+                                // no verified public peers -> send 0.0.0.0
+                                *((int*)request->peers[j]) = 0;
                             }
                             else
                             {
-                                j--;
+                                // randomly select verified public peers
+                                const unsigned int publicPeerIndex = random(numberOfPublicPeers);
+                                if (publicPeers[publicPeerIndex].isVerified)
+                                {
+                                    *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
+                                }
+                                else
+                                {
+                                    j--;
+                                }
                             }
                         }
 
