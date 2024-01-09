@@ -4337,7 +4337,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         peers[i].dataToTransmitSize = requestHeader->size();
                         _InterlockedIncrement64(&numberOfDisseminatedRequests);
 
-                        // send REQUEST_COMPUTORS message at beginning of epoch
+                        // send RequestComputors message at beginning of epoch
                         if (!broadcastedComputors.broadcastComputors.computors.epoch
                             || broadcastedComputors.broadcastComputors.computors.epoch != system.epoch)
                         {
