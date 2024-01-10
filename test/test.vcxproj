@@ -59,9 +59,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="m256.cpp" />
+    <ClCompile Include="math_lib.cpp" />
     <ClCompile Include="network_messages.cpp" />
     <ClCompile Include="qpi.cpp" />
     <ClCompile Include="score.cpp" />
+    <ClCompile Include="score_cache.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

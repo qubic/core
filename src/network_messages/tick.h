@@ -47,7 +47,7 @@ struct BroadcastTick
 
 
 
-typedef struct
+struct TickData
 {
     unsigned short computorIndex;
     unsigned short epoch;
@@ -81,64 +81,64 @@ typedef struct
     long long contractFees[MAX_NUMBER_OF_CONTRACTS];
 
     unsigned char signature[SIGNATURE_SIZE];
-} TickData;
+};
 
 static_assert(sizeof(TickData) == 8 + 8 + sizeof(TickData::varStruct) + 32 + NUMBER_OF_TRANSACTIONS_PER_TICK * 32 + 8 * MAX_NUMBER_OF_CONTRACTS + SIGNATURE_SIZE, "Something is wrong with the struct size.");
 
 
-typedef struct
+struct BroadcastFutureTickData
 {
     TickData tickData;
 
     enum {
         type = 8,
     };
-} BroadcastFutureTickData;
+};
 
 
-typedef struct
+struct RequestedQuorumTick
 {
     unsigned int tick;
     unsigned char voteFlags[(NUMBER_OF_COMPUTORS + 7) / 8];
-} RequestedQuorumTick;
+};
 
 
-typedef struct
+struct RequestQuorumTick
 {
     RequestedQuorumTick quorumTick;
 
     enum {
         type = 14,
     };
-} RequestQuorumTick;
+};
 
 
-typedef struct
+struct RequestedTickData
 {
     unsigned int tick;
-} RequestedTickData;
+};
 
 
-typedef struct
+struct RequestTickData
 {
     RequestedTickData requestedTickData;
 
     enum {
         type = 16,
     };
-} RequestTickData;
+};
 
 
 #define REQUEST_CURRENT_TICK_INFO 27
 
 #define RESPOND_CURRENT_TICK_INFO 28
 
-typedef struct
+struct CurrentTickInfo
 {
     unsigned short tickDuration;
     unsigned short epoch;
     unsigned int tick;
     unsigned short numberOfAlignedVotes;
     unsigned short numberOfMisalignedVotes;
-} CurrentTickInfo;
+};
 

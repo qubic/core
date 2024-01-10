@@ -119,6 +119,13 @@ union m256i
         _rdrand64_step(&m256i_u64[2]);
         _rdrand64_step(&m256i_u64[3]);
     }
+
+    static m256i randomValue()
+    {
+        m256i ret;
+        ret.setRandomValue();
+        return ret;
+    }
 };
 
 static_assert(sizeof(m256i) == 32, "m256 has unexpected size!");

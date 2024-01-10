@@ -4,7 +4,6 @@
     <ClCompile Include="qubic.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="qpi.h" />
     <ClInclude Include="smart_contracts.h" />
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />
@@ -56,9 +55,6 @@
     <ClInclude Include="system.h" />
     <ClInclude Include="assets.h" />
     <ClInclude Include="logging.h" />
-    <ClInclude Include="platform\algorithm.h">
-      <Filter>platform</Filter>
-    </ClInclude>
     <ClInclude Include="network_messages\assets.h">
       <Filter>network_messages</Filter>
     </ClInclude>
@@ -97,6 +93,13 @@
     </ClInclude>
     <ClInclude Include="network_messages\computors.h">
       <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="score_cache.h" />
+    <ClInclude Include="smart_contracts\qpi.h">
+      <Filter>smart_contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="smart_contracts\math_lib.h">
+      <Filter>smart_contracts</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
