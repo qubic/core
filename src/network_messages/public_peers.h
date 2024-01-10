@@ -4,10 +4,11 @@
 
 struct ExchangePublicPeers
 {
-    unsigned char peers[NUMBER_OF_EXCHANGED_PEERS][4];
+    IPv4Address peers[NUMBER_OF_EXCHANGED_PEERS];
 
     enum {
         type = 0,
     };
 };
 
+static_assert(sizeof(ExchangePublicPeers) == 4 * NUMBER_OF_EXCHANGED_PEERS, "Unexpected size!");

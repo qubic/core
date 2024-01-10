@@ -447,11 +447,12 @@ static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header
     {
         peer->exchangedPublicPeers = TRUE; // A race condition is possible
 
-        if (*((int*)peer->address))
+        // Set isVerified if sExchangePublicPeers was received on outgoing connection
+        if (peer->address.u32 == 0)
         {
             for (unsigned int j = 0; j < numberOfPublicPeers; j++)
             {
-                if (*((int*)peer->address) == *((int*)publicPeers[j].address))
+                if (peer->address == publicPeers[j].address)
                 {
                     publicPeers[j].isVerified = true;
 
@@ -3590,7 +3591,8 @@ static bool initialize()
     logToConsole(L"Populating publicPeers ...");
     for (unsigned int i = 0; i < sizeof(knownPublicPeers) / sizeof(knownPublicPeers[0]) && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; i++)
     {
-        addPublicPeer((unsigned char*)knownPublicPeers[i]);
+        const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(knownPublicPeers[i]);
+        addPublicPeer(peer_ip);
         if (numberOfPublicPeers > 0)
             publicPeers[numberOfPublicPeers - 1].isVerified = true;
     }
@@ -4335,7 +4337,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             if (noVerifiedPublicPeers)
                             {
                                 // no verified public peers -> send 0.0.0.0
-                                *((int*)request->peers[j]) = 0;
+                                request->peers[j].u32 = 0;
                             }
                             else
                             {
@@ -4343,7 +4345,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                                 const unsigned int publicPeerIndex = random(numberOfPublicPeers);
                                 if (publicPeers[publicPeerIndex].isVerified)
                                 {
-                                    *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
+                                    request->peers[j] = publicPeers[publicPeerIndex].address;
                                 }
                                 else
                                 {

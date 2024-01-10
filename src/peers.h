@@ -31,7 +31,7 @@ typedef struct
 {
     EFI_TCP4_PROTOCOL* tcp4Protocol;
     EFI_TCP4_LISTEN_TOKEN connectAcceptToken;
-    unsigned char address[4];
+    IPv4Address address;
     void* receiveBuffer;
     EFI_TCP4_RECEIVE_DATA receiveData;
     EFI_TCP4_IO_TOKEN receiveToken;
@@ -49,7 +49,7 @@ typedef struct
 typedef struct
 {
     bool isVerified;
-    unsigned char address[4];
+    IPv4Address address;
 } PublicPeer;
 
 static Peer peers[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
@@ -243,7 +243,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 
 
 // Forget public peer (no matter if verified or not) if we have more than the minium number of peers
-static void forgetPublicPeer(int address)
+static void forgetPublicPeer(const IPv4Address& address)
 {
     if (listOfPeersIsStatic)
     {
@@ -254,7 +254,7 @@ static void forgetPublicPeer(int address)
 
     for (unsigned int i = 0; numberOfPublicPeers > NUMBER_OF_EXCHANGED_PEERS && i < numberOfPublicPeers; i++)
     {
-        if (*((int*)publicPeers[i].address) == address)
+        if (publicPeers[i].address == address)
         {
             if (i != --numberOfPublicPeers)
             {
@@ -269,7 +269,7 @@ static void forgetPublicPeer(int address)
 }
 
 // Penalize rejected connection by setting verified peer to non-verified or forgetting a non-verified peer
-static void penalizePublicPeerRejectedConnection(int address)
+static void penalizePublicPeerRejectedConnection(const IPv4Address& address)
 {
     bool forgetPeer = false;
 
@@ -277,7 +277,7 @@ static void penalizePublicPeerRejectedConnection(int address)
 
     for (unsigned int i = 0; i < numberOfPublicPeers; i++)
     {
-        if (*((int*)publicPeers[i].address) == address)
+        if (publicPeers[i].address == address)
         {
             if (publicPeers[i].isVerified)
             {
@@ -299,20 +299,20 @@ static void penalizePublicPeerRejectedConnection(int address)
     }
 }
 
-static void addPublicPeer(unsigned char address[4])
+static void addPublicPeer(const IPv4Address& address)
 {
-    if ((!address[0])
-        || (address[0] == 127)
-        || (address[0] == 10)
-        || (address[0] == 172 && address[1] >= 16 && address[1] <= 31)
-        || (address[0] == 192 && address[1] == 168)
-        || (address[0] == 255))
+    if ((!address.u8[0])
+        || (address.u8[0] == 127)
+        || (address.u8[0] == 10)
+        || (address.u8[0] == 172 && address.u8[1] >= 16 && address.u8[1] <= 31)
+        || (address.u8[0] == 192 && address.u8[1] == 168)
+        || (address.u8[0] == 255))
     {
         return;
     }
     for (unsigned int i = 0; i < numberOfPublicPeers; i++)
     {
-        if (*((int*)address) == *((int*)publicPeers[i].address))
+        if (address == publicPeers[i].address)
         {
             return;
         }
@@ -323,7 +323,7 @@ static void addPublicPeer(unsigned char address[4])
     if (numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS)
     {
         publicPeers[numberOfPublicPeers].isVerified = false;
-        *((int*)publicPeers[numberOfPublicPeers++].address) = *((int*)address);
+        publicPeers[numberOfPublicPeers++].address = address;
     }
 
     RELEASE(publicPeersLock);
@@ -344,7 +344,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
             {
                 // connection rejected
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
-                penalizePublicPeerRejectedConnection(*((int*)peers[i].address));
+                penalizePublicPeerRejectedConnection(peers[i].address);
                 closePeer(&peers[i]);
             }
             else
@@ -446,15 +446,9 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                         {
                             // protocol violation -> forget peer
                             setText(message, L"Forgetting ");
-                            appendNumber(message, peers[i].address[0], FALSE);
-                            appendText(message, L".");
-                            appendNumber(message, peers[i].address[1], FALSE);
-                            appendText(message, L".");
-                            appendNumber(message, peers[i].address[2], FALSE);
-                            appendText(message, L".");
-                            appendNumber(message, peers[i].address[3], FALSE);
+                            appendIPv4Address(message, peers[i].address);
                             appendText(message, L"...");
-                            forgetPublicPeer(*((int*)peers[i].address));
+                            forgetPublicPeer(peers[i].address);
                             closePeer(&peers[i]);
                         }
                         else
@@ -618,19 +612,19 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             // randomly select public peer and try to connect if we do not
             // yet have an outgoing connection to it
 
-            *((int*)peers[i].address) = *((int*)publicPeers[random(numberOfPublicPeers)].address);
+            peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
 
             unsigned int j;
             for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
             {
-                if (peers[j].tcp4Protocol && *((int*)peers[j].address) == *((int*)peers[i].address))
+                if (peers[j].tcp4Protocol && peers[j].address == peers[i].address)
                 {
                     break;
                 }
             }
             if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
             {
-                if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address, port, &peers[i].tcp4Protocol))
+                if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
                 {
                     peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
                     peers[i].dataToTransmitSize = 0;
