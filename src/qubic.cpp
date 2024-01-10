@@ -3388,6 +3388,7 @@ static bool initialize()
         if (!initLogging())
             return false;
 
+        logToConsole(L"Loading system file ...");
         bs->SetMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
         system.version = VERSION_B;
@@ -3416,6 +3417,7 @@ static bool initialize()
 
         bs->SetMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
 
+        logToConsole(L"Loading spectrum file ...");
         SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
         SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
         SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
@@ -3476,9 +3478,11 @@ static bool initialize()
             logToConsole(message);
         }
 
+        logToConsole(L"Loading universe file ...");
         if (!loadUniverse())
             return false;
 
+        logToConsole(L"Loading contract files ...");
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
@@ -4216,6 +4220,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
     if (initialize())
     {
+        logToConsole(L"Setting up multiprocessing ...");
+
         EFI_STATUS status;
 
         unsigned int computingProcessorNumber;
@@ -4269,6 +4275,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
+            logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
                 if (criticalSituation == 1)
