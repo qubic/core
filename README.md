@@ -15,7 +15,7 @@ To run a qubic node, you need the following parts:
 - An USB Stick or SSD/HD attached to the Computer via USB
 - An UEFI Bios
 
-> you will need the current `spectrum, universe and contract` files to be able to start qubic. the latest files can be found in our #network discord channel: https://discord.gg/qubic (ask there for the files)
+> You will need the current `spectrum, universe, and contract` files to be able to start qubic. The latest files can be found in our #computor-operator channel on the Qubic Discord server: https://discord.gg/qubic (ask there for the files).
 
 ### Prepare your USB Stick/SSD/HD
 1. Your Qubic Boot device should be formatted as FAT32 and have the label QUBIC.
@@ -23,7 +23,7 @@ To run a qubic node, you need the following parts:
 # sample command in linux
 mkfs.fat -F 32 -n QUBIC /dev/sda
 ```
-if you have a disk and want to use partitions, this is possible too. use `gdisk`.
+If you have a disk and want to use partitions, this is possible too. use `gdisk`.
 ```bash
 gdisk /dev/sda
 # remove all existing partition with d command
@@ -54,7 +54,7 @@ gdisk /dev/sda
 - startup.nsh => UEFI start script
 - Qubic.efi => the compiled qubic node code (efi executable)
 
-the content of your `startup.nsh` could look like:
+The content of your `startup.nsh` could look like:
 ```batch
 timezone -s 00:00
 ifconfig -s eth0 dhcp
@@ -69,11 +69,11 @@ Qubic.efi
 - `fs0:` changes to drive 0
 - `Qubic.efi` starts qubic
 
-> if you have multiple hard drives, the `fs0:` must changed to meet your environment.
+> If you have multiple hard drives, the `fs0:` must changed to meet your environment.
 
-> to make it easier, you can copy & paste our prepared initial disk from https://github.com/qubic-li/qubic/blob/main/qubic-initial-disk.zip
+> To make it easier, you can copy & paste our prepared initial disk from https://github.com/qubic-li/qubic/blob/main/qubic-initial-disk.zip
 
-> if you have multiple network interfaces you may disconnect these befor starting qubic.
+> If you have multiple network interfaces, you may disconnect these before starting qubic.
 
 ### Prepare your Server
 To be able to start Qubic on your server you need.
@@ -83,13 +83,13 @@ To be able to start Qubic on your server you need.
 
 ## General Process of deploying a node
 1. Find knownPublicPeers public peers (e.g. from: https://app.qubic.li/network/live)
-2. Set the needed parameters inside qubic.cpp (https://github.com/qubic-li/qubic/blob/main/qubic.cpp)
+2. Set the needed parameters inside src/private_settings.h (https://github.com/qubic/core/blob/main/src/private_settings.h)
 3. Compile Source to EFI
 4. Start EFI Application on your Computer
 
 
 ## How to run a Listening Node
-To run a "listen-only" node, just add 3-4 known pulic peers to the code.
+To run a "listen-only" node, just add IP addresses of 3-4 known public peers to the code (including your own IP).
 ```c++
 static const unsigned char knownPublicPeers[][4] = {
 };
@@ -103,12 +103,13 @@ static unsigned char computorSeeds[][55 + 1] = {
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 };
 ```
-2. Add your Operator Identity
+2. Add your Operator Identity.
 The Operator Identity is used to identify the Operator. The Operator can send Commands to your Node.
 ```c++
 #define OPERATOR "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 ```
-3. Add 3-4 Known Public Peers (can be obtained from https://app.qubic.li/network/live)
+3. Add static IPs of known public peers (can be obtained from https://app.qubic.li/network/live).
+Ideally add at least 4 including your own IP.
 ```c++
 static const unsigned char knownPublicPeers[][4] = {
   {12,13,14,12}
@@ -122,4 +123,8 @@ The Anti-Military License. See [LICENSE.md](LICENSE.md).
 Please refer to https://docs.qubic.world
 
 ## Limited Support
-We cannot support you in any case. You are welcome to provide updates, bugfixes or other code changes by pull requests.
+We cannot support you in any case. You are welcome to provide updates, bugfixes, or other code changes by pull requests, see [here](doc/contributing.md).
+
+## More Documentation
+- [How to contribute](doc/contributing.md)
+- [Qubic protocol](doc/protocol.md)

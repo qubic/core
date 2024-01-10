@@ -43,7 +43,7 @@ static long long __transfer(const m256i&, long long);
 static long long __transferShareOwnershipAndPossession(unsigned long long, const m256i&, const m256i&, const m256i&, long long, const m256i&);
 static unsigned char __year();
 
-#include "qpi.h"
+#include "smart_contracts/qpi.h"
 
 #define QX_CONTRACT_INDEX 1
 #define CONTRACT_INDEX QX_CONTRACT_INDEX

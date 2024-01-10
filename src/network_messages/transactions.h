@@ -11,7 +11,7 @@ struct ContractIPOBid
 
 #define BROADCAST_TRANSACTION 24
 
-typedef struct
+struct Transaction
 {
     m256i sourcePublicKey;
     m256i destinationPublicKey;
@@ -19,15 +19,15 @@ typedef struct
     unsigned int tick;
     unsigned short inputType;
     unsigned short inputSize;
-} Transaction;
+};
 
 static_assert(sizeof(Transaction) == 32 + 32 + 8 + 4 + 2 + 2, "Something is wrong with the struct size.");
 
 #define REQUEST_TICK_TRANSACTIONS 29
 
-typedef struct
+struct RequestedTickTransactions
 {
     unsigned int tick;
     unsigned char transactionFlags[NUMBER_OF_TRANSACTIONS_PER_TICK / 8];
-} RequestedTickTransactions;
+};
 

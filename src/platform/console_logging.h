@@ -7,7 +7,7 @@ static bool disableConsoleLogging = false;
 // message buffers:
 // - message is for public use
 // - timestampedMessage is used internally by logToConsole()
-// CAUTION: not thread-safe, no beffer overflow protection!!!
+// CAUTION: not thread-safe, no buffer overflow protection!!!
 static CHAR16 message[16384], timestampedMessage[16384];
 
 

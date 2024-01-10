@@ -43,9 +43,6 @@ struct ScoreTester
         score_ref_impl = new ScoreFuncRef;
         score->initMiningData();
         score_ref_impl->initMiningData();
-#if USE_SCORE_CACHE
-        score->initEmptyScoreCache();
-#endif
     }
 
     ~ScoreTester()
@@ -102,7 +99,7 @@ void runCommonTests(ScoreTester& test_score)
 }
 
 
-TEST(TestQubicScoreFunction, CurrentLengthNeronsDurationSettings) {
+TEST(TestQubicScoreFunction, CurrentLengthNeuronsDurationSettings) {
     ScoreTester<
         DATA_LENGTH, INFO_LENGTH,
         NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,

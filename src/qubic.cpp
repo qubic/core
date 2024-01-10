@@ -3581,9 +3581,12 @@ static bool initialize()
         peers[i].transmitToken.Packet.TxData = &peers[i].transmitData;
     }
 
+    // add knownPublicPeers to list of peers (all with verified status)
     for (unsigned int i = 0; i < sizeof(knownPublicPeers) / sizeof(knownPublicPeers[0]) && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; i++)
     {
         addPublicPeer((unsigned char*)knownPublicPeers[i]);
+        if (numberOfPublicPeers > 0)
+            publicPeers[numberOfPublicPeers - 1].isVerified = true;
     }
 
     if (!initTcp4(PORT))
@@ -3788,11 +3791,11 @@ static void logInfo()
     appendText(message, L").");
 #if USE_SCORE_CACHE
     appendText(message, L" Score cache: Hit ");
-    appendNumber(message, score->scoreCacheHit, TRUE);
+    appendNumber(message, score->scoreCache.hitCount(), TRUE);
+    appendText(message, L" | Collision ");
+    appendNumber(message, score->scoreCache.collisionCount(), TRUE);
     appendText(message, L" | Miss ");
-    appendNumber(message, score->scoreCacheMiss, TRUE);
-    appendText(message, L" | Unknown ");
-    appendNumber(message, score->scoreCacheUnknown, TRUE);
+    appendNumber(message, score->scoreCache.missCount(), TRUE);
 #endif
     logToConsole(message);
     prevNumberOfProcessedRequests = numberOfProcessedRequests;
@@ -3924,7 +3927,7 @@ static void processKeyPresses()
         * By pressing the F2 Key the node will display the current status.
         * The status includes:
         * Version, faulty Computors, Last Tick Date,
-        * Digest of spectrum, univers and computer, number of transactions and solutions processed
+        * Digest of spectrum, universe, and computer, number of transactions and solutions processed
         */
         case 0x0C: // 
         {
@@ -4099,7 +4102,7 @@ static void processKeyPresses()
         /*
         * F6 Key
         * By Pressing the F6 Key the current state of Qubic is saved to the disk.
-        * The Fles generated will be appended by .000
+        * The files generated will be appended by .000
         */
         case 0x10:
         {
@@ -4133,8 +4136,8 @@ static void processKeyPresses()
 
         /*
         * F10 Key
-        * By Pressing the F10 Key the testFlags will be resetted.
-        * The Testflags are used to display debugging information to the log output.
+        * By Pressing the F10 Key the testFlags will be reset.
+        * The testFlags are used to display debugging information to the log output.
         */
         case 0x14:
         {
@@ -4144,8 +4147,8 @@ static void processKeyPresses()
 
         /*
         * F11 Key
-        * By Pressing the F11 Key the node can swtich between static and dynamic network mode
-        * static: incomming connections are blocked and peerlist will not be altered
+        * By Pressing the F11 Key the node can switch between static and dynamic network mode
+        * static: incoming connections are blocked and peer list will not be altered
         * dynamic: all connections are open, peers are added and removed dynamically
         */
         case 0x15:
@@ -4156,7 +4159,7 @@ static void processKeyPresses()
 
         /*
         * F12 Key
-        * By Pressing the F12 Key the node can wtich between MAIN and aux mode.
+        * By Pressing the F12 Key the node can witch between MAIN and aux mode.
         * MAIN: the node is issuing ticks and participate as "COMPUTOR" in the network
         * aux: the node is running without participating active as "COMPUTOR" in the network
         * !! IMPORTANT !! only one MAIN instance per COMPUTOR is allowed.
@@ -4302,7 +4305,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                 {
                     // handle new connections
-                    if (peerConnectionNewlyEstabilished(i))
+                    if (peerConnectionNewlyEstablished(i))
                     {
                         // new connection established:
                         // prepare and send ExchangePublicPeers message
@@ -4319,14 +4322,23 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                         for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS; j++)
                         {
-                            const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                            if (publicPeers[publicPeerIndex].isVerified || noVerifiedPublicPeers)
+                            if (noVerifiedPublicPeers)
                             {
-                                *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
+                                // no verified public peers -> send 0.0.0.0
+                                *((int*)request->peers[j]) = 0;
                             }
                             else
                             {
-                                j--;
+                                // randomly select verified public peers
+                                const unsigned int publicPeerIndex = random(numberOfPublicPeers);
+                                if (publicPeers[publicPeerIndex].isVerified)
+                                {
+                                    *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
+                                }
+                                else
+                                {
+                                    j--;
+                                }
                             }
                         }
 
@@ -4337,7 +4349,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         peers[i].dataToTransmitSize = requestHeader->size();
                         _InterlockedIncrement64(&numberOfDisseminatedRequests);
 
-                        // send REQUEST_COMPUTORS message at beginning of epoch
+                        // send RequestComputors message at beginning of epoch
                         if (!broadcastedComputors.broadcastComputors.computors.epoch
                             || broadcastedComputors.broadcastComputors.computors.epoch != system.epoch)
                         {

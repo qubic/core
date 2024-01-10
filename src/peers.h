@@ -242,6 +242,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 }
 
 
+// Forget public peer (no matter if verified or not) if we have more than the minium number of peers
 static void forgetPublicPeer(int address)
 {
     if (listOfPeersIsStatic)
@@ -255,7 +256,7 @@ static void forgetPublicPeer(int address)
     {
         if (*((int*)publicPeers[i].address) == address)
         {
-            if (!publicPeers[i].isVerified && i != --numberOfPublicPeers)
+            if (i != --numberOfPublicPeers)
             {
                 bs->CopyMem(&publicPeers[i], &publicPeers[numberOfPublicPeers], sizeof(PublicPeer));
             }
@@ -265,6 +266,37 @@ static void forgetPublicPeer(int address)
     }
 
     RELEASE(publicPeersLock);
+}
+
+// Penalize rejected connection by setting verified peer to non-verified or forgetting a non-verified peer
+static void penalizePublicPeerRejectedConnection(int address)
+{
+    bool forgetPeer = false;
+
+    ACQUIRE(publicPeersLock);
+
+    for (unsigned int i = 0; i < numberOfPublicPeers; i++)
+    {
+        if (*((int*)publicPeers[i].address) == address)
+        {
+            if (publicPeers[i].isVerified)
+            {
+                publicPeers[i].isVerified = false;
+            }
+            else
+            {
+                forgetPeer = true;
+            }
+            break;
+        }
+    }
+
+    RELEASE(publicPeersLock);
+
+    if (forgetPeer)
+    {
+        forgetPublicPeer(address);
+    }
 }
 
 static void addPublicPeer(unsigned char address[4])
@@ -297,7 +329,7 @@ static void addPublicPeer(unsigned char address[4])
     RELEASE(publicPeersLock);
 }
 
-static bool peerConnectionNewlyEstabilished(unsigned int i)
+static bool peerConnectionNewlyEstablished(unsigned int i)
 {
     // handle new connections (called in main loop)
     if (((unsigned long long)peers[i].tcp4Protocol)
@@ -307,11 +339,12 @@ static bool peerConnectionNewlyEstabilished(unsigned int i)
 
         if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
         {
+            // outgoing connection
             if (peers[i].connectAcceptToken.CompletionToken.Status)
             {
-                // connection error
+                // connection rejected
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
-                forgetPublicPeer(*((int*)peers[i].address));
+                penalizePublicPeerRejectedConnection(*((int*)peers[i].address));
                 closePeer(&peers[i]);
             }
             else
@@ -329,6 +362,7 @@ static bool peerConnectionNewlyEstabilished(unsigned int i)
         }
         else
         {
+            // incoming connection
             if (peers[i].connectAcceptToken.CompletionToken.Status)
             {
                 // connection error
@@ -410,6 +444,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                         RequestResponseHeader* requestResponseHeader = (RequestResponseHeader*)peers[i].receiveBuffer;
                         if (requestResponseHeader->size() < sizeof(RequestResponseHeader))
                         {
+                            // protocol violation -> forget peer
                             setText(message, L"Forgetting ");
                             appendNumber(message, peers[i].address[0], FALSE);
                             appendText(message, L".");

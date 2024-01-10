@@ -2194,7 +2194,7 @@ static void KangarooTwelve64To32(const void* input, void* output)
     KangarooTwelve64To32((const unsigned char*)input, (unsigned char*)output);
 }
 
-void random(const unsigned char* publicKey, const unsigned char* nonce, unsigned char* output, unsigned int outputSize)
+static void random(const unsigned char* publicKey, const unsigned char* nonce, unsigned char* output, unsigned int outputSize)
 {
     unsigned char state[200];
     *((__m256i*) & state[0]) = *((__m256i*)publicKey);
