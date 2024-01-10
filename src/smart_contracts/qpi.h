@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "platform/m256.h"
+#include "../platform/m256.h"
 
 namespace QPI
 {
@@ -5166,20 +5166,6 @@ namespace QPI
 			return povIndex < 0 ? NULL_INDEX : _povs[povIndex].tailIndex;
 		}
 	};
-
-	//////////
-
-	template <typename T>
-	inline static T div(T a, T b)
-	{
-		return b ? (a / b) : 0;
-	}
-
-	template <typename T>
-	inline static T mod(T a, T b)
-	{
-		return b ? (a % b) : 0;
-	}
 
 	//////////
 

@@ -3,7 +3,7 @@
 #include "platform/memory.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
-#include "platform/algorithm.h"
+#include "smart_contracts/math_lib.h"
 #include "public_settings.h"
 
 #include "score_cache.h"
@@ -144,7 +144,7 @@ struct ScoreFunction
         const unsigned long long solutionBufIdx = processor_Number % solutionBufferCount;
         ACQUIRE(solutionEngineLock[solutionBufIdx]);
 
-        unsigned char nrVal1Bit[std::max(PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT, PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT)];
+        unsigned char nrVal1Bit[math_lib::max(PADDED_SYNAPSE_CHUNK_SIZE_OUTPUT_BIT, PADDED_SYNAPSE_CHUNK_SIZE_INPUT_BIT)];
         random(publicKey.m256i_u8, nonce.m256i_u8, (unsigned char*)&synapses[solutionBufIdx], sizeof(synapses[0]));
         for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeurons + infoLength; inputNeuronIndex++)
         {

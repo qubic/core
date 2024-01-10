@@ -2,8 +2,7 @@
 
 #include "gtest/gtest.h"
 
-// workaround for dependency on smart_contract.h
-#include "../src/qpi.h"
+#include "../src/smart_contracts/qpi.h"
 
 
 TEST(TestCoreQPI, IndexStruct) {
