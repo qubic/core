@@ -48,3 +48,21 @@ TEST(TestCoreRequestResponseHeader, TestPayload) {
     EXPECT_FALSE(hdr.checkPayloadSizeMinMax(13, 12));
     EXPECT_EQ(hdr.getPayloadSize(), 1234);
 }
+
+TEST(TestCoreCommonDef, IPv4Address) {
+    const unsigned char ip_char_array[4] = { 1, 2, 3, 4 };
+    const IPv4Address& ip_ref = *reinterpret_cast<const IPv4Address*>(ip_char_array);
+    EXPECT_EQ(ip_ref.u8[0], 1);
+    EXPECT_EQ(ip_ref.u8[1], 2);
+    EXPECT_EQ(ip_ref.u8[2], 3);
+    EXPECT_EQ(ip_ref.u8[3], 4);
+    EXPECT_EQ(ip_ref.u32, 0x04030201);
+
+    IPv4Address ip2 {100, 200, 32, 4};
+    EXPECT_TRUE(ip_ref != ip2);
+    EXPECT_FALSE(ip_ref == ip2);
+
+    ip2 = ip_ref;
+    EXPECT_TRUE(ip_ref == ip2);
+    EXPECT_FALSE(ip_ref != ip2);
+}
