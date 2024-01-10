@@ -27,8 +27,8 @@
 #include "four_q.h"
 #include "score.h"
 
-#include "tcp4.h"
-#include "peers.h"
+#include "network_core/tcp4.h"
+#include "network_core/peers.h"
 
 #include "system.h"
 #include "assets.h"

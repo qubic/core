@@ -6,7 +6,7 @@
 
 #include "private_settings.h"
 #include "system.h"
-#include "peers.h"
+#include "network_core/peers.h"
 
 
 // Fetches log
