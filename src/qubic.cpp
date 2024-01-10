@@ -3536,6 +3536,7 @@ static bool initialize()
         bs->SetMem((void*)minerScores, sizeof(minerScores[0]) * NUMBER_OF_COMPUTORS, 0);
     }
 
+    logToConsole(L"Allocating buffers ...");
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu0))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu1)))
     {
@@ -3582,6 +3583,7 @@ static bool initialize()
     }
 
     // add knownPublicPeers to list of peers (all with verified status)
+    logToConsole(L"Populating publicPeers ...");
     for (unsigned int i = 0; i < sizeof(knownPublicPeers) / sizeof(knownPublicPeers[0]) && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; i++)
     {
         addPublicPeer((unsigned char*)knownPublicPeers[i]);
@@ -3589,6 +3591,7 @@ static bool initialize()
             publicPeers[numberOfPublicPeers - 1].isVerified = true;
     }
 
+    logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
 
