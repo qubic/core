@@ -5022,11 +5022,13 @@ namespace QPI
 		{
 			if (_population < capacity())
 			{
+				// search in pov hash map
 				sint64 povIndex = pov.m256i_u64[0] & (L - 1);
 				for (sint64 counter = 0; counter < L; counter++)
 				{
 					if (!(_povOccupationFlags[povIndex >> 6] & (1ULL << (povIndex & 63))))
 					{
+						// empty pov entry -> init new priority queue with 1 element
 						_povOccupationFlags[povIndex >> 6] |= (1ULL << (povIndex & 63));
 
 						_povs[povIndex].value = pov;
@@ -5044,6 +5046,7 @@ namespace QPI
 					{
 						if (_povs[povIndex].value == pov)
 						{
+							// found pov entry -> insert element in priority queue of pov
 							sint64 elementIndex = _povs[povIndex].headIndex;
 							while (_elements[elementIndex].priority <= priority)
 							{
@@ -5053,6 +5056,7 @@ namespace QPI
 								}
 								else
 								{
+									// insert at the end of the priority queue
 									_povs[povIndex].tailIndex = _population;
 									_povs[povIndex].population++;
 
@@ -5069,6 +5073,7 @@ namespace QPI
 							}
 							if (_elements[elementIndex].prevElementIndex < 0)
 							{
+								// insert at the beginning of the priority queue
 								_povs[povIndex].headIndex = _population;
 								_povs[povIndex].population++;
 
@@ -5084,16 +5089,21 @@ namespace QPI
 							}
 							else
 							{
+								// insert in the middle of the priority queue (before elementIndex)
+								const sint64 newElementIndex = _population;
+								const sint64 prevElementIndex = _elements[elementIndex].prevElementIndex;
+								const sint64 nextElementIndex = elementIndex;
+
 								_povs[povIndex].population++;
 
-								copyMem(&_elements[_population].value, &element, sizeof(T));
-								_elements[_population].prevElementIndex = elementIndex;
-								_elements[_population].nextElementIndex = _elements[elementIndex].nextElementIndex;
-								_elements[_population].priority = priority;
-								_elements[_population].povIndex = povIndex;
+								copyMem(&_elements[newElementIndex].value, &element, sizeof(T));
+								_elements[newElementIndex].prevElementIndex = prevElementIndex;
+								_elements[newElementIndex].nextElementIndex = nextElementIndex;
+								_elements[newElementIndex].priority = priority;
+								_elements[newElementIndex].povIndex = povIndex;
 
-								_elements[_elements[elementIndex].nextElementIndex].prevElementIndex = _population;
-								_elements[elementIndex].nextElementIndex = _population;
+								_elements[nextElementIndex].prevElementIndex = newElementIndex;
+								_elements[prevElementIndex].nextElementIndex = newElementIndex;
 
 								return _population++;
 							}
