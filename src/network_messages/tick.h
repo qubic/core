@@ -140,5 +140,6 @@ struct CurrentTickInfo
     unsigned int tick;
     unsigned short numberOfAlignedVotes;
     unsigned short numberOfMisalignedVotes;
+    unsigned short initialTick;
 };
 
