@@ -3,6 +3,7 @@
 #pragma once
 
 #include "../platform/m256.h"
+#include "../platform/memory.h"
 
 namespace QPI
 {
@@ -560,7 +561,7 @@ namespace QPI
 #define index_16777216x2 index_<33554432>
 
 #define NULL_ID _mm256_setzero_si256()
-	constexpr uint64 NULL_INDEX = (uint64)(-1);
+	constexpr sint64 NULL_INDEX = -1;
 
 #define _A 0
 #define _B 1
@@ -4962,6 +4963,8 @@ namespace QPI
 		}
 	};
 
+	// Collection of priority queues of elements with type T and total element capacity L.
+	// Each ID pov (point of view) has an own queue.
 	template <typename T, unsigned long long L>
 	struct collection
 	{
@@ -4970,6 +4973,7 @@ namespace QPI
 			"The capacity of the collection must be 2^N."
 			);
 
+		// Array of elements (filled sequentially), each belongs to one PoV / priority queue (or is empty)
 		struct Element
 		{
 			T value;
@@ -4979,6 +4983,7 @@ namespace QPI
 		} _elements[L];
 		uint64 _population;
 
+		// Hash map of point of views = element filters, each with one priority queue (or empty)
 		struct PoV
 		{
 			id value;
@@ -4987,7 +4992,8 @@ namespace QPI
 		} _povs[L];
 		uint64 _povOccupationFlags[(L + 63) / 64];
 
-		sint64 _povIndex(id pov)
+		// Return index of id pov in hash map _povs, or NULL_INDEX if not found
+		sint64 _povIndex(const id& pov) const
 		{
 			sint64 povIndex = pov.m256i_u64[0] & (L - 1);
 			for (sint64 counter = 0; counter < L; counter++)
@@ -5011,7 +5017,8 @@ namespace QPI
 		}
 
 	public:
-		sint64 add(id pov, T element, sint64 priority)
+		// Add element to priority queue of ID pov, return elementIndex of new element
+		sint64 add(const id& pov, T element, sint64 priority)
 		{
 			if (_population < capacity())
 			{
@@ -5100,55 +5107,65 @@ namespace QPI
 			return NULL_INDEX;
 		}
 
+		// Return maximum number of elements that may be stored.
 		static constexpr uint64 capacity()
 		{
 			return L;
 		}
 
-		inline T element(sint64 elementIndex)
+		// Return element value at elementIndex.
+		inline T element(sint64 elementIndex) const
 		{
 			return _elements[elementIndex & (L - 1)].value;
 		}
 
-		sint64 headIndex(id pov)
+		// Return elementIndex of first element in priority queue of pov (or NULL_INDEX if pov is unknown).
+		sint64 headIndex(const id& pov) const
 		{
 			const sint64 povIndex = _povIndex(pov);
 
 			return povIndex < 0 ? NULL_INDEX : _povs[povIndex].headIndex;
 		}
 
-		sint64 nextElementIndex(sint64 elementIndex)
+		// Return elementIndex of next element in priority queue (or NULL_INDEX if this is the last element).
+		sint64 nextElementIndex(sint64 elementIndex) const
 		{
 			return _elements[elementIndex & (L - 1)].nextElementIndex;
 		}
 
-		inline uint64 population()
+		// Return overall number of elements.
+		inline uint64 population() const
 		{
 			return _population;
 		}
 
-		uint64 population(id pov)
+		// Return number of elements of specific PoV.
+		uint64 population(const id& pov) const
 		{
 			const sint64 povIndex = _povIndex(pov);
 
 			return povIndex < 0 ? 0 : _povs[povIndex].population;
 		}
 
-		sint64 pov(sint64 elementIndex)
+		// Return point of view elementIndex belongs to (or 0 id if unused).
+		id pov(sint64 elementIndex) const
 		{
 			return _povs[_elements[elementIndex & (L - 1)].povIndex].value;
 		}
 
-		sint64 prevElementIndex(sint64 elementIndex)
+		// Return elementIndex of previous element in priority queue (or NULL_INDEX if this is the last element).
+		sint64 prevElementIndex(sint64 elementIndex) const
 		{
 			return _elements[elementIndex & (L - 1)].prevElementIndex;
 		}
 
-		sint64 priority(sint64 elementIndex)
+		// Return priority of elementIndex (or 0 id if unused).
+		sint64 priority(sint64 elementIndex) const
 		{
 			return _elements[elementIndex & (L - 1)].priority;
 		}
 
+		// Initialize or reinitialize as empty collection.
 		void reset()
 		{
 			setMem(this, sizeof(*this), 0);
@@ -5159,7 +5176,8 @@ namespace QPI
 			}
 		}
 
-		sint64 tailIndex(id pov)
+		// Return elementIndex of last element in priority queue of pov (or NULL_INDEX if pov is unknown).
+		sint64 tailIndex(const id& pov) const
 		{
 			const sint64 povIndex = _povIndex(pov);
 
