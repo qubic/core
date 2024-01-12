@@ -934,6 +934,7 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
         currentTickInfo.tick = system.tick;
         currentTickInfo.numberOfAlignedVotes = tickNumberOfComputors;
         currentTickInfo.numberOfMisalignedVotes = (tickTotalNumberOfComputors - tickNumberOfComputors);
+        currentTickInfo.initialTick = system.initialTick;
     }
     else
     {
