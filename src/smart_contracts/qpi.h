@@ -4969,7 +4969,7 @@ namespace QPI
 	struct collection
 	{
 	private:
-		static_assert(L && !(L& (L - 1)),
+		static_assert(L && !(L & (L - 1)),
 			"The capacity of the collection must be 2^N."
 			);
 
@@ -4990,7 +4990,7 @@ namespace QPI
 			sint64 headIndex, tailIndex;
 			uint64 population;
 		} _povs[L];
-		uint64 _povOccupationFlags[(L + 63) / 64];
+		uint64 _povOccupationFlags[(L * 2 + 63) / 64]; // 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
 
 		// Return index of id pov in hash map _povs, or NULL_INDEX if not found
 		sint64 _povIndex(const id& pov) const
@@ -4998,7 +4998,7 @@ namespace QPI
 			sint64 povIndex = pov.m256i_u64[0] & (L - 1);
 			for (sint64 counter = 0; counter < L; counter++)
 			{
-				if (!(_povOccupationFlags[povIndex >> 6] & (1ULL << (povIndex & 63))))
+				if (!(_povOccupationFlags[povIndex >> 5] & (1ULL << ((povIndex & 31) << 1))))
 				{
 					return NULL_INDEX;
 				}
@@ -5026,10 +5026,11 @@ namespace QPI
 				sint64 povIndex = pov.m256i_u64[0] & (L - 1);
 				for (sint64 counter = 0; counter < L; counter++)
 				{
-					if (!(_povOccupationFlags[povIndex >> 6] & (1ULL << (povIndex & 63))))
+					if (!(_povOccupationFlags[povIndex >> 5] & (1ULL << ((povIndex & 31) << 1))))
 					{
 						// empty pov entry -> init new priority queue with 1 element
-						_povOccupationFlags[povIndex >> 6] |= (1ULL << (povIndex & 63));
+						_povOccupationFlags[povIndex >> 5] |= (1ULL << ((povIndex & 31) << 1));
+						_povOccupationFlags[povIndex >> 5] &= ~(2ULL << ((povIndex & 31) << 1));
 
 						_povs[povIndex].value = pov;
 						_povs[povIndex].tailIndex = _povs[povIndex].headIndex = _population;
@@ -5048,7 +5049,7 @@ namespace QPI
 						{
 							// found pov entry -> insert element in priority queue of pov
 							sint64 elementIndex = _povs[povIndex].headIndex;
-							while (_elements[elementIndex].priority <= priority)
+							while (_elements[elementIndex].priority <= priority) // TODO: Use a more efficient approach instead of simple iteration
 							{
 								if (_elements[elementIndex].nextElementIndex >= 0)
 								{
