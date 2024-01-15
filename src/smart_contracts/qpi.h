@@ -4973,6 +4973,15 @@ namespace QPI
 			"The capacity of the collection must be 2^N."
 			);
 
+		// Hash map of point of views = element filters, each with one priority queue (or empty)
+		struct PoV
+		{
+			id value;
+			sint64 headIndex, tailIndex;
+			uint64 population;
+		} _povs[L];
+		uint64 _povOccupationFlags[(L * 2 + 63) / 64]; // 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
+
 		// Array of elements (filled sequentially), each belongs to one PoV / priority queue (or is empty)
 		struct Element
 		{
@@ -4983,15 +4992,6 @@ namespace QPI
 		} _elements[L];
 		uint64 _population;
 
-		// Hash map of point of views = element filters, each with one priority queue (or empty)
-		struct PoV
-		{
-			id value;
-			sint64 headIndex, tailIndex;
-			uint64 population;
-		} _povs[L];
-		uint64 _povOccupationFlags[(L * 2 + 63) / 64]; // 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
-
 		// Return index of id pov in hash map _povs, or NULL_INDEX if not found
 		sint64 _povIndex(const id& pov) const
 		{
@@ -5000,7 +5000,10 @@ namespace QPI
 			{
 				if (!(_povOccupationFlags[povIndex >> 5] & (1ULL << ((povIndex & 31) << 1))))
 				{
-					return NULL_INDEX;
+					if (!(_povOccupationFlags[povIndex >> 5] & (2ULL << ((povIndex & 31) << 1))))
+					{
+						return NULL_INDEX;
+					}
 				}
 				else
 				{
@@ -5028,20 +5031,22 @@ namespace QPI
 				{
 					if (!(_povOccupationFlags[povIndex >> 5] & (1ULL << ((povIndex & 31) << 1))))
 					{
-						// empty pov entry -> init new priority queue with 1 element
-						_povOccupationFlags[povIndex >> 5] |= (1ULL << ((povIndex & 31) << 1));
-						_povOccupationFlags[povIndex >> 5] &= ~(2ULL << ((povIndex & 31) << 1));
+						if (!(_povOccupationFlags[povIndex >> 5] & (2ULL << ((povIndex & 31) << 1))))
+						{
+							// empty pov entry -> init new priority queue with 1 element
+							_povOccupationFlags[povIndex >> 5] |= (1ULL << ((povIndex & 31) << 1));
 
-						_povs[povIndex].value = pov;
-						_povs[povIndex].tailIndex = _povs[povIndex].headIndex = _population;
-						_povs[povIndex].population = 1;
+							_povs[povIndex].value = pov;
+							_povs[povIndex].tailIndex = _povs[povIndex].headIndex = _population;
+							_povs[povIndex].population = 1;
 
-						copyMem(&_elements[_population].value, &element, sizeof(T));
-						_elements[_population].nextElementIndex = _elements[_population].prevElementIndex = NULL_INDEX;
-						_elements[_population].priority = priority;
-						_elements[_population].povIndex = povIndex;
+							copyMem(&_elements[_population].value, &element, sizeof(T));
+							_elements[_population].nextElementIndex = _elements[_population].prevElementIndex = NULL_INDEX;
+							_elements[_population].priority = priority;
+							_elements[_population].povIndex = povIndex;
 
-						return _population++;
+							return _population++;
+						}
 					}
 					else
 					{
@@ -5176,15 +5181,69 @@ namespace QPI
 			return _elements[elementIndex & (L - 1)].priority;
 		}
 
+		// Remove element and mark its pov for removal, if the last element.
+		void remove(sint64 elementIndex)
+		{
+			elementIndex &= (L - 1); // Don't use "elementIndex %= _population;" for an non-empty collection to get rid of the following "if (elementIndex < _population)"!
+			if (elementIndex < _population)
+			{
+				const sint64 povIndex = _elements[elementIndex].povIndex;
+
+				if (_povs[povIndex].population)
+				{
+					if (--_povs[povIndex].population)
+					{
+						if (_elements[elementIndex].prevElementIndex == NULL_INDEX)
+						{
+							_povs[povIndex].headIndex = _elements[elementIndex].nextElementIndex;
+						}
+						else
+						{
+							_elements[_elements[elementIndex].prevElementIndex].nextElementIndex = _elements[elementIndex].nextElementIndex;
+						}
+						if (_elements[elementIndex].nextElementIndex == NULL_INDEX)
+						{
+							_povs[povIndex].tailIndex = _elements[elementIndex].prevElementIndex;
+						}
+						else
+						{
+							_elements[_elements[elementIndex].nextElementIndex].prevElementIndex = _elements[elementIndex].prevElementIndex;
+						}
+					}
+					else
+					{
+						_povOccupationFlags[povIndex >> 5] ^= (3ULL << ((povIndex & 31) << 1));
+					}
+
+					if (--_population)
+					{
+						copyMem(&_elements[elementIndex], &_elements[_population], sizeof(_elements[0]));
+
+						if (_elements[elementIndex].prevElementIndex == NULL_INDEX)
+						{
+							_povs[_elements[elementIndex].povIndex].headIndex = elementIndex;
+						}
+						else
+						{
+							_elements[_elements[elementIndex].prevElementIndex].nextElementIndex = elementIndex;
+						}
+						if (_elements[elementIndex].nextElementIndex == NULL_INDEX)
+						{
+							_povs[_elements[elementIndex].povIndex].tailIndex = elementIndex;
+						}
+						else
+						{
+							_elements[_elements[elementIndex].nextElementIndex].prevElementIndex = elementIndex;
+						}
+					}
+				}
+			}
+		}
+
 		// Initialize or reinitialize as empty collection.
 		void reset()
 		{
 			setMem(this, sizeof(*this), 0);
-
-			for (sint64 elementIndex = 0; elementIndex < L; elementIndex++)
-			{
-				_elements[elementIndex].nextElementIndex = _elements[elementIndex].prevElementIndex = NULL_INDEX;
-			}
 		}
 
 		// Return elementIndex of last element in priority queue of pov (or NULL_INDEX if pov is unknown).
