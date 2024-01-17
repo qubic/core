@@ -72,10 +72,12 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.headIndex(id3), QPI::NULL_INDEX);
     EXPECT_EQ(coll.tailIndex(id3), QPI::NULL_INDEX);
     EXPECT_EQ(coll.population(id3), 0);
+    // all properties of non-occupied elements are initialized to 0 (by reset function), but in practice only occupied
+    // elements should be accessed
     EXPECT_EQ(coll.pov(0), QPI::id(0, 0, 0, 0));
     EXPECT_EQ(coll.element(0), 0);
-    EXPECT_EQ(coll.nextElementIndex(0), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(0), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(0), 0);
+    EXPECT_EQ(coll.prevElementIndex(0), 0);
     EXPECT_EQ(coll.priority(0), 0);
 
     // add an element with id1
@@ -451,10 +453,12 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.tailIndex(id2), QPI::NULL_INDEX);
     EXPECT_EQ(coll.headIndex(id3), QPI::NULL_INDEX);
     EXPECT_EQ(coll.tailIndex(id3), QPI::NULL_INDEX);
+    // all properties of non-occupied elements are initialized to 0 (by reset function), but in practice only occupied
+    // elements should be accessed
     EXPECT_EQ(coll.pov(0), QPI::id(0, 0, 0, 0));
     EXPECT_EQ(coll.element(0), 0);
-    EXPECT_EQ(coll.nextElementIndex(0), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(0), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(0), 0);
+    EXPECT_EQ(coll.prevElementIndex(0), 0);
     EXPECT_EQ(coll.priority(0), 0);
 }
 
