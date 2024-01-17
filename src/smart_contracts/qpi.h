@@ -5215,8 +5215,9 @@ namespace QPI
 						_povOccupationFlags[povIndex >> 5] ^= (3ULL << ((povIndex & 31) << 1));
 					}
 
-					if (--_population)
+					if (--_population && elementIndex != _population)
 					{
+						// Move last element to fill new gap in array
 						copyMem(&_elements[elementIndex], &_elements[_population], sizeof(_elements[0]));
 
 						if (_elements[elementIndex].prevElementIndex == NULL_INDEX)
