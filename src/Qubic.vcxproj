@@ -16,6 +16,8 @@
   <ItemGroup>
     <ClInclude Include="assets.h" />
     <ClInclude Include="logging.h" />
+    <ClInclude Include="network_core\peers.h" />
+    <ClInclude Include="network_core\tcp4.h" />
     <ClInclude Include="network_messages\all.h" />
     <ClInclude Include="network_messages\assets.h" />
     <ClInclude Include="network_messages\broadcast_message.h" />
@@ -29,7 +31,6 @@
     <ClInclude Include="network_messages\special_command.h" />
     <ClInclude Include="network_messages\tick.h" />
     <ClInclude Include="network_messages\transactions.h" />
-    <ClInclude Include="peers.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
@@ -48,7 +49,6 @@
     <ClInclude Include="smart_contracts\Qx.h" />
     <ClInclude Include="smart_contracts\Random.h" />
     <ClInclude Include="system.h" />
-    <ClInclude Include="tcp4.h" />
     <ClInclude Include="text_output.h" />
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />
