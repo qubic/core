@@ -44,54 +44,7 @@ TEST(TestCoreMathLib, Abs) {
     EXPECT_EQ(math_lib::abs(FP_NAN), FP_NAN);
 }
 
-TEST(TestCoreMathLib, Div) {
-    EXPECT_EQ(math_lib::div(0, 0), 0);
-    EXPECT_EQ(math_lib::div(10, 0), 0);
-    EXPECT_EQ(math_lib::div(0, 10), 0);
-    EXPECT_EQ(math_lib::div(20, 19), 1);
-    EXPECT_EQ(math_lib::div(20, 20), 1);
-    EXPECT_EQ(math_lib::div(20, 21), 0);
-    EXPECT_EQ(math_lib::div(20, 22), 0);
-    EXPECT_EQ(math_lib::div(50, 24), 2);
-    EXPECT_EQ(math_lib::div(50, 25), 2);
-    EXPECT_EQ(math_lib::div(50, 26), 1);
-    EXPECT_EQ(math_lib::div(50, 27), 1);
-    EXPECT_EQ(math_lib::div(-2, 0), 0);
-    EXPECT_EQ(math_lib::div(-2, 1), -2);
-    EXPECT_EQ(math_lib::div(-2, 2), -1);
-    EXPECT_EQ(math_lib::div(-2, 3), 0);
-    EXPECT_EQ(math_lib::div(2, -3), 0);
-    EXPECT_EQ(math_lib::div(2, -2), -1);
-    EXPECT_EQ(math_lib::div(2, -1), -2);
-
-    EXPECT_EQ(math_lib::div(0.0, 0.0), 0.0);
-    EXPECT_EQ(math_lib::div(50.0, 0.0), 0.0);
-    EXPECT_EQ(math_lib::div(0.0, 50.0), 0.0);
-    EXPECT_EQ(math_lib::div(-25.0, 50.0), -0.5);
-    EXPECT_EQ(math_lib::div(-25.0, -0.5), 50.0);
-}
-
-TEST(TestCoreMathLib, Mod) {
-    EXPECT_EQ(math_lib::mod(0, 0), 0);
-    EXPECT_EQ(math_lib::mod(10, 0), 0);
-    EXPECT_EQ(math_lib::mod(0, 10), 0);
-    EXPECT_EQ(math_lib::mod(20, 19), 1);
-    EXPECT_EQ(math_lib::mod(20, 20), 0);
-    EXPECT_EQ(math_lib::mod(20, 21), 20);
-    EXPECT_EQ(math_lib::mod(20, 22), 20);
-    EXPECT_EQ(math_lib::mod(50, 23), 4);
-    EXPECT_EQ(math_lib::mod(50, 24), 2);
-    EXPECT_EQ(math_lib::mod(50, 25), 0);
-    EXPECT_EQ(math_lib::mod(50, 26), 24);
-    EXPECT_EQ(math_lib::mod(50, 27), 23);
-    EXPECT_EQ(math_lib::mod(-2, 0), 0);
-    EXPECT_EQ(math_lib::mod(-2, 1), 0);
-    EXPECT_EQ(math_lib::mod(-2, 2), 0);
-    EXPECT_EQ(math_lib::mod(-2, 3), -2);
-    EXPECT_EQ(math_lib::mod(2, -3), 2);
-    EXPECT_EQ(math_lib::mod(2, -2), 0);
-    EXPECT_EQ(math_lib::mod(2, -1), 0);
-}
+// div() and mod() are defined in qpi.h
 
 template <typename T>
 void testDivUp()

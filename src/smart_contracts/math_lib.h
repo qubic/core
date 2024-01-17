@@ -23,19 +23,7 @@ inline constexpr T abs(const T& a)
     return (a < 0) ? -a : a;
 }
 
-// Divide a by b, but return 0 if b is 0 (rounding to lower magnitude in case of integers)
-template <typename T>
-inline static T div(T a, T b)
-{
-	return b ? (a / b) : 0;
-}
-
-// Return remainder of dividing a by b, but return 0 if b is 0 (requires modulo % operator)
-template <typename T>
-inline static T mod(T a, T b)
-{
-	return b ? (a % b) : 0;
-}
+// div() and mod() are defined in qpi.h
 
 // Divides a by b rounding up, but return 0 if b is 0 (only supports unsigned integers)
 inline static unsigned long long divUp(unsigned long long a, unsigned long long b)
