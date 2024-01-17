@@ -55,7 +55,7 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     
     constexpr unsigned long long capacity = 8;
 
-    // for valid init you either need to call reset or load the data from a file
+    // for valid init you either need to call reset or load the data from a file (in SC, state is zeroed before INITIALIZE is called)
     QPI::collection<int, capacity> coll;
     coll.reset();
 
@@ -465,7 +465,7 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
 TEST(TestCoreQPI, CollectionOnePovMultiElements) {
     constexpr unsigned long long capacity = 128;
 
-    // for valid init you either need to call reset or load the data from a file
+    // for valid init you either need to call reset or load the data from a file (in SC, state is zeroed before INITIALIZE is called)
     QPI::collection<int, capacity> coll;
     coll.reset();
 
@@ -644,7 +644,7 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
 TEST(TestCoreQPI, CollectionMultiPovOneElement) {
     constexpr unsigned long long capacity = 32;
 
-    // for valid init you either need to call reset or load the data from a file
+    // for valid init you either need to call reset or load the data from a file (in SC, state is zeroed before INITIALIZE is called)
     QPI::collection<int, capacity> coll;
     coll.reset();
 
@@ -704,6 +704,33 @@ TEST(TestCoreQPI, CollectionMultiPovOneElement) {
         EXPECT_EQ(coll.population(), capacity - j - 1);
     }
 }
+
+TEST(TestCoreQPI, CollectionOneRemoveLastHeadTail) {
+    // Minimal test cases for bug fixed in
+    // https://github.com/qubic/core/commit/b379a36666f747b25992d025dd68949b771b1cd0#diff-2435a5cdb31de2a231e71d143e1cba9e4f9207181a6223d736293d40da41d002
+
+    QPI::id pov(1, 2, 3, 4);
+    constexpr unsigned long long capacity = 4;
+
+    // for valid init you either need to call reset or load the data from a file (in SC, state is zeroed before INITIALIZE is called)
+    QPI::collection<int, capacity> coll;
+    coll.reset();
+
+    bool print = false;
+    coll.add(pov, 1234, 1000);
+    coll.add(pov, 1234, 10000);
+    checkPriorityQueue(coll, pov, print);
+    coll.remove(1);
+    checkPriorityQueue(coll, pov, print);
+
+    coll.reset();
+    coll.add(pov, 1234, 10000);
+    coll.add(pov, 1234, 1000);
+    checkPriorityQueue(coll, pov, print);
+    coll.remove(1);
+    checkPriorityQueue(coll, pov, print);
+}
+
 
 TEST(TestCoreQPI, Div) {
     EXPECT_EQ(QPI::div(0, 0), 0);
