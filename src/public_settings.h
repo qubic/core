@@ -7,20 +7,20 @@
 #define MAX_NUMBER_OF_PROCESSORS 32
 
 #define VERSION_A 1
-#define VERSION_B 188
+#define VERSION_B 189
 #define VERSION_C 0
 
-#define EPOCH 91
-#define TICK 11950000
+#define EPOCH 92
+#define TICK 12050000
 
-#define RANDOM_SEED0 62
-#define RANDOM_SEED1 69
-#define RANDOM_SEED2 244
-#define RANDOM_SEED3 233
-#define RANDOM_SEED4 77
-#define RANDOM_SEED5 13
-#define RANDOM_SEED6 169
-#define RANDOM_SEED7 148
+#define RANDOM_SEED0 69
+#define RANDOM_SEED1 177
+#define RANDOM_SEED2 23
+#define RANDOM_SEED3 197
+#define RANDOM_SEED4 178
+#define RANDOM_SEED5 119
+#define RANDOM_SEED6 252
+#define RANDOM_SEED7 66
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -38,7 +38,7 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define NUMBER_OF_OUTPUT_NEURONS 2400
 #define MAX_INPUT_DURATION 200
 #define MAX_OUTPUT_DURATION 200
-#define SOLUTION_THRESHOLD 692
+#define SOLUTION_THRESHOLD 693
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 1000000 // the larger the better
 #define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
