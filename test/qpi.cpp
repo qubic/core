@@ -542,3 +542,52 @@ TEST(TestCoreQPI, CollectionMultiPovOneElement) {
     EXPECT_TRUE(elementIndex == QPI::NULL_INDEX);
     EXPECT_EQ(coll.capacity(), coll.population());
 }
+
+TEST(TestCoreQPI, Div) {
+    EXPECT_EQ(QPI::div(0, 0), 0);
+    EXPECT_EQ(QPI::div(10, 0), 0);
+    EXPECT_EQ(QPI::div(0, 10), 0);
+    EXPECT_EQ(QPI::div(20, 19), 1);
+    EXPECT_EQ(QPI::div(20, 20), 1);
+    EXPECT_EQ(QPI::div(20, 21), 0);
+    EXPECT_EQ(QPI::div(20, 22), 0);
+    EXPECT_EQ(QPI::div(50, 24), 2);
+    EXPECT_EQ(QPI::div(50, 25), 2);
+    EXPECT_EQ(QPI::div(50, 26), 1);
+    EXPECT_EQ(QPI::div(50, 27), 1);
+    EXPECT_EQ(QPI::div(-2, 0), 0);
+    EXPECT_EQ(QPI::div(-2, 1), -2);
+    EXPECT_EQ(QPI::div(-2, 2), -1);
+    EXPECT_EQ(QPI::div(-2, 3), 0);
+    EXPECT_EQ(QPI::div(2, -3), 0);
+    EXPECT_EQ(QPI::div(2, -2), -1);
+    EXPECT_EQ(QPI::div(2, -1), -2);
+
+    EXPECT_EQ(QPI::div(0.0, 0.0), 0.0);
+    EXPECT_EQ(QPI::div(50.0, 0.0), 0.0);
+    EXPECT_EQ(QPI::div(0.0, 50.0), 0.0);
+    EXPECT_EQ(QPI::div(-25.0, 50.0), -0.5);
+    EXPECT_EQ(QPI::div(-25.0, -0.5), 50.0);
+}
+
+TEST(TestCoreQPI, Mod) {
+    EXPECT_EQ(QPI::mod(0, 0), 0);
+    EXPECT_EQ(QPI::mod(10, 0), 0);
+    EXPECT_EQ(QPI::mod(0, 10), 0);
+    EXPECT_EQ(QPI::mod(20, 19), 1);
+    EXPECT_EQ(QPI::mod(20, 20), 0);
+    EXPECT_EQ(QPI::mod(20, 21), 20);
+    EXPECT_EQ(QPI::mod(20, 22), 20);
+    EXPECT_EQ(QPI::mod(50, 23), 4);
+    EXPECT_EQ(QPI::mod(50, 24), 2);
+    EXPECT_EQ(QPI::mod(50, 25), 0);
+    EXPECT_EQ(QPI::mod(50, 26), 24);
+    EXPECT_EQ(QPI::mod(50, 27), 23);
+    EXPECT_EQ(QPI::mod(-2, 0), 0);
+    EXPECT_EQ(QPI::mod(-2, 1), 0);
+    EXPECT_EQ(QPI::mod(-2, 2), 0);
+    EXPECT_EQ(QPI::mod(-2, 3), -2);
+    EXPECT_EQ(QPI::mod(2, -3), 2);
+    EXPECT_EQ(QPI::mod(2, -2), 0);
+    EXPECT_EQ(QPI::mod(2, -1), 0);
+}
