@@ -976,6 +976,7 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
             spectrumDigestInputOffset += (SPECTRUM_CAPACITY >> j);
             sibling >>= 1;
         }
+        respondedEntity.pendingdigest = entityPendingTransactionDigests[respondedEntity.spectrumIndex << 5];
     }
 
     enqueueResponse(peer, sizeof(respondedEntity), RESPOND_ENTITY, header->dejavu(), &respondedEntity);
