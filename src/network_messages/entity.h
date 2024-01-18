@@ -31,7 +31,7 @@ struct RespondedEntity
     unsigned int tick;
     int spectrumIndex;
     m256i siblings[SPECTRUM_DEPTH];
-    m256i pendingtxid;
+    m256i pendingdigest;
 };
 
 static_assert(sizeof(RespondedEntity) == sizeof(::Entity) + 4 + 4 + 32 * SPECTRUM_DEPTH, "Something is wrong with the struct size.");
