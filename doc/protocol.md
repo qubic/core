@@ -20,9 +20,9 @@ The message is sent after a new connection has been established (the node connec
 The IPs for sharing are picked randomly among verified peer IPs (however, there may be duplicate IPs in the `ExchangePublicPeers` message).
 If there are no verified peers in the list of peers, then "0.0.0.0" must be sent as IPs with `ExchangePublicPeers`.
 
-If a connection to a verified peer is rejected, it loses the verified status.
-If a connection to a non-verified peer is rejected, it is removed from the list of peers.
-If an `ExchangePublicPeers` message is received from a non-verified peer, it gets the verified status.
+If an outgoing connection to a verified peer is rejected, the peer loses the verified status.
+If an outgoing connection to a non-verified peer is rejected, the peer is removed from the list of peers.
+If an outgoing connection to a non-verified peer is accepted and an `ExchangePublicPeers` message is received, the peer gets the verified status.
 If a protocol violation is detected at any moment during communication (allowing to assume the remote end runs something else, not Qubic node), then the IP is removed even if it is verified.
 An IP is only removed from the list of peers if the list still has at least 4 entries afterwards.
 

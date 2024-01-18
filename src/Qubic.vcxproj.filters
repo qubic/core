@@ -44,8 +44,6 @@
     <ClInclude Include="platform\time_stamp_counter.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="tcp4.h" />
-    <ClInclude Include="peers.h" />
     <ClInclude Include="platform\random.h">
       <Filter>platform</Filter>
     </ClInclude>
@@ -101,6 +99,12 @@
     <ClInclude Include="smart_contracts\math_lib.h">
       <Filter>smart_contracts</Filter>
     </ClInclude>
+    <ClInclude Include="network_core\peers.h">
+      <Filter>network_core</Filter>
+    </ClInclude>
+    <ClInclude Include="network_core\tcp4.h">
+      <Filter>network_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
@@ -111,6 +115,9 @@
     </Filter>
     <Filter Include="network_messages">
       <UniqueIdentifier>{b795f353-79db-454c-bfb3-2a42c2530e91}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="network_core">
+      <UniqueIdentifier>{33440ff4-d5a6-4881-ac01-cbd601935a3c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

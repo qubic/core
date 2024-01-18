@@ -27,8 +27,8 @@
 #include "four_q.h"
 #include "score.h"
 
-#include "tcp4.h"
-#include "peers.h"
+#include "network_core/tcp4.h"
+#include "network_core/peers.h"
 
 #include "system.h"
 #include "assets.h"
@@ -447,11 +447,12 @@ static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header
     {
         peer->exchangedPublicPeers = TRUE; // A race condition is possible
 
-        if (*((int*)peer->address))
+        // Set isVerified if sExchangePublicPeers was received on outgoing connection
+        if (peer->address.u32 == 0)
         {
             for (unsigned int j = 0; j < numberOfPublicPeers; j++)
             {
-                if (*((int*)peer->address) == *((int*)publicPeers[j].address))
+                if (peer->address == publicPeers[j].address)
                 {
                     publicPeers[j].isVerified = true;
 
@@ -3389,6 +3390,7 @@ static bool initialize()
         if (!initLogging())
             return false;
 
+        logToConsole(L"Loading system file ...");
         bs->SetMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
         system.version = VERSION_B;
@@ -3417,6 +3419,7 @@ static bool initialize()
 
         bs->SetMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
 
+        logToConsole(L"Loading spectrum file ...");
         SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
         SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
         SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
@@ -3477,9 +3480,11 @@ static bool initialize()
             logToConsole(message);
         }
 
+        logToConsole(L"Loading universe file ...");
         if (!loadUniverse())
             return false;
 
+        logToConsole(L"Loading contract files ...");
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
@@ -3587,7 +3592,8 @@ static bool initialize()
     logToConsole(L"Populating publicPeers ...");
     for (unsigned int i = 0; i < sizeof(knownPublicPeers) / sizeof(knownPublicPeers[0]) && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; i++)
     {
-        addPublicPeer((unsigned char*)knownPublicPeers[i]);
+        const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(knownPublicPeers[i]);
+        addPublicPeer(peer_ip);
         if (numberOfPublicPeers > 0)
             publicPeers[numberOfPublicPeers - 1].isVerified = true;
     }
@@ -4217,6 +4223,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
     if (initialize())
     {
+        logToConsole(L"Setting up multiprocessing ...");
+
         EFI_STATUS status;
 
         unsigned int computingProcessorNumber;
@@ -4270,6 +4278,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
+            logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
                 if (criticalSituation == 1)
@@ -4329,7 +4338,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             if (noVerifiedPublicPeers)
                             {
                                 // no verified public peers -> send 0.0.0.0
-                                *((int*)request->peers[j]) = 0;
+                                request->peers[j].u32 = 0;
                             }
                             else
                             {
@@ -4337,7 +4346,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                                 const unsigned int publicPeerIndex = random(numberOfPublicPeers);
                                 if (publicPeers[publicPeerIndex].isVerified)
                                 {
-                                    *((int*)request->peers[j]) = *((int*)publicPeers[publicPeerIndex].address);
+                                    request->peers[j] = publicPeers[publicPeerIndex].address;
                                 }
                                 else
                                 {

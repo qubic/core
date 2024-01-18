@@ -32,3 +32,21 @@ typedef union m256i
 #include "../platform/m256.h"
 
 #endif
+
+typedef union IPv4Address
+{
+    unsigned __int8     u8[4];
+    unsigned __int32    u32;
+} IPv4Address;
+
+static_assert(sizeof(IPv4Address) == 4, "Unexpected size!");
+
+static inline bool operator==(const IPv4Address& a, const IPv4Address& b)
+{
+    return a.u32 == b.u32;
+}
+
+static inline bool operator!=(const IPv4Address& a, const IPv4Address& b)
+{
+    return a.u32 != b.u32;
+}
