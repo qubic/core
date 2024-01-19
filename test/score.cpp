@@ -109,6 +109,19 @@ TEST(TestQubicScoreFunction, CurrentLengthNeuronsDurationSettings) {
     runCommonTests(test_score);
 }
 
+TEST(TestQubicScoreFunction, Length1024Neurons4096Duration2256) {
+    ScoreTester<
+        1024, // DATA_LENGTH
+        1024, // INFO_LENGTH
+        4096, // NUMBER_OF_INPUT_NEURONS
+        4096, // NUMBER_OF_OUTPUT_NEURONS
+        256,  // MAX_INPUT_DURATION
+        256,  // MAX_OUTPUT_DURATION
+        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
+    > test_score;
+    runCommonTests(test_score);
+}
+
 TEST(TestQubicScoreFunction, LengthNeurons1000Duration200) {
     ScoreTester<
         1000, // DATA_LENGTH
