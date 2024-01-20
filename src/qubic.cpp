@@ -136,7 +136,7 @@ static unsigned long long nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFF
 static m256i uniqueNextTickTransactionDigests[NUMBER_OF_COMPUTORS];
 static unsigned int uniqueNextTickTransactionDigestCounters[NUMBER_OF_COMPUTORS];
 
-static void* reorgBuffer = NULL;
+static void* reorgBuffer = NULL; // Must be large enough to fit any contract!
 
 static unsigned long long resourceTestingDigest = 0;
 
@@ -1458,6 +1458,11 @@ static m256i __originator()
 static unsigned char __second()
 {
     return etalonTick.second;
+}
+
+static void* __scratchpad()
+{
+    return reorgBuffer;
 }
 
 static unsigned int __tick()
