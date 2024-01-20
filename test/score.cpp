@@ -41,7 +41,7 @@ struct ScoreTester
     {
         score = new ScoreFuncOpt;
         score_ref_impl = new ScoreFuncRef;
-        score->initMiningData();
+        score->initMiningData(_mm256_setzero_si256());
         score_ref_impl->initMiningData();
     }
 

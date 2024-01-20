@@ -3249,7 +3249,7 @@ static void saveSystem()
     }
 }
 
-static void beginEpoch()
+static void beginEpoch1of2()
 {
     // This version doesn't support migration from contract IPO to contract operation!
 
@@ -3284,10 +3284,13 @@ static void beginEpoch()
 
     bs->SetMem(score, sizeof(*score), 0);
     score->loadScoreCache(system.epoch);
-    score->initMiningData();
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     bs->SetMem((void*)minerScores, sizeof(minerScores[0]) * NUMBER_OF_COMPUTORS, 0);
+}
 
+static void beginEpoch2of2()
+{
+    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
 static bool initialize()
@@ -3451,7 +3454,7 @@ static bool initialize()
         }
         system.tick = system.initialTick;
 
-        beginEpoch();
+        beginEpoch1of2();
 
         etalonTick.epoch = system.epoch;
         etalonTick.tick = system.initialTick;
@@ -3620,6 +3623,8 @@ static bool initialize()
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
+
+    beginEpoch2of2();
 
     return true;
 }
