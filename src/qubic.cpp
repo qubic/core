@@ -1820,6 +1820,7 @@ static void processTick(unsigned long long processorNumber)
                 score->tryProcessSolution(processorNumber);
                 _mm_pause();
             }
+            score->stopProcessTaskQueue();
         }
 
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)

@@ -344,13 +344,18 @@ struct ScoreFunction
         RELEASE(taskQueueLock);
     }
 
+    void stopProcessTaskQueue()
+    {
+        ACQUIRE(taskQueueLock);
+        _nIsTaskQueueReady = false;
+        RELEASE(taskQueueLock);
+    }
+
     // get a task, can call on any thread
     bool getTask(m256i* publicKey, m256i* nonce)
     {
         if (!_nIsTaskQueueReady)
         {
-            *publicKey = _mm256_setzero_si256();
-            *nonce = _mm256_setzero_si256();
             return false;
         }
         bool result = false;
@@ -364,8 +369,6 @@ struct ScoreFunction
         }
         else
         {
-            *publicKey = _mm256_setzero_si256();
-            *nonce = _mm256_setzero_si256();
             result = false;
         }
         RELEASE(taskQueueLock);
