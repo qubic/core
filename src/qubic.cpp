@@ -188,7 +188,7 @@ static ScoreFunction<
     DATA_LENGTH, INFO_LENGTH,
     NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
     MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
-    MAX_NUMBER_OF_PROCESSORS
+    NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
@@ -1110,6 +1110,7 @@ static void requestProcessor(void* ProcedureArgument)
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
     {
+        score->tryProcessSolution(processorNumber);
         if (requestQueueElementTail == requestQueueElementHead)
         {
             _mm_pause();
@@ -1775,6 +1776,52 @@ static void processTick(unsigned long long processorNumber)
     if (nextTickData.epoch == system.epoch)
     {
         bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
+        // reset solution task queue
+        score->resetTaskQueue();
+        // pre-scan any solution tx and add them to solution task queue
+        for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
+        {
+            if (!isZero(nextTickData.transactionDigests[transactionIndex]))
+            {
+                if (tickTransactionOffsets[system.tick - system.initialTick][transactionIndex])
+                {
+                    Transaction* transaction = (Transaction*)&tickTransactions[tickTransactionOffsets[system.tick - system.initialTick][transactionIndex]];
+                    const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
+                    if (spectrumIndex >= 0
+                        && !entityPendingTransactionIndices[spectrumIndex])
+                    {
+                        if (transaction->destinationPublicKey == arbitratorPublicKey)
+                        {
+                            if (!transaction->amount
+                                && transaction->inputSize == 32
+                                && !transaction->inputType)
+                            {
+                                const m256i& solution_nonce = *(m256i*)((unsigned char*)transaction + sizeof(Transaction));
+                                m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
+                                static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
+                                unsigned int flagIndex;
+                                KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
+                                if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
+                                {
+                                    score->addTask(transaction->sourcePublicKey, solution_nonce);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        {
+            // start processing solutions in this tick
+            score->startProcessTaskQueue();
+            while (!score->isTaskQueueProcessed())
+            {
+                score->tryProcessSolution(processorNumber);
+                _mm_pause();
+            }
+        }
+
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
             if (!isZero(nextTickData.transactionDigests[transactionIndex]))
@@ -3428,6 +3475,7 @@ static bool initialize()
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
             return false;
         }
+        score->resetTaskQueue();
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {

@@ -304,4 +304,94 @@ struct ScoreFunction
 #endif
         return score;
     }
+
+    // Multithreaded solutions verification
+    // add task to the queue
+    volatile char taskQueueLock = 0;
+    struct {
+        m256i publicKey[NUMBER_OF_TRANSACTIONS_PER_TICK];
+        m256i nonce[NUMBER_OF_TRANSACTIONS_PER_TICK];
+    } taskQueue;
+    unsigned int _nTask;
+    unsigned int _nProcessing;
+    unsigned int _nFinished;
+    bool _nIsTaskQueueReady;
+
+    void resetTaskQueue()
+    {
+        ACQUIRE(taskQueueLock);
+        _nTask = 0;
+        _nProcessing = 0;
+        _nFinished = 0;
+        _nIsTaskQueueReady = false;
+        RELEASE(taskQueueLock);
+    }
+
+    // only tick processor thread can call this
+    void addTask(m256i publicKey, m256i nonce)
+    {   
+        ACQUIRE(taskQueueLock);
+        unsigned int index = _nTask++;
+        taskQueue.publicKey[index] = publicKey;
+        taskQueue.nonce[index] = nonce;
+        RELEASE(taskQueueLock);
+    }
+
+    void startProcessTaskQueue()
+    {
+        ACQUIRE(taskQueueLock);
+        _nIsTaskQueueReady = true;
+        RELEASE(taskQueueLock);
+    }
+
+    // get a task, can call on any thread
+    bool getTask(m256i* publicKey, m256i* nonce)
+    {
+        if (!_nIsTaskQueueReady)
+        {
+            *publicKey = _mm256_setzero_si256();
+            *nonce = _mm256_setzero_si256();
+            return false;
+        }
+        bool result = false;
+        ACQUIRE(taskQueueLock);
+        if (_nProcessing < _nTask)
+        {
+            unsigned int index = _nProcessing++;
+            *publicKey = taskQueue.publicKey[index];
+            *nonce = taskQueue.nonce[index];
+            result = true;
+        }
+        else
+        {
+            *publicKey = _mm256_setzero_si256();
+            *nonce = _mm256_setzero_si256();
+            result = false;
+        }
+        RELEASE(taskQueueLock);
+        return result;
+    }
+    void finishTask()
+    {
+        ACQUIRE(taskQueueLock);
+        _nFinished++;
+        RELEASE(taskQueueLock);
+    }
+
+    bool isTaskQueueProcessed()
+    {
+        return _nFinished == _nTask;
+    }
+
+    void tryProcessSolution(unsigned long long processorNumber)
+    {
+        m256i publicKey;
+        m256i nonce;
+        bool res = this->getTask(&publicKey, &nonce);
+        if (res)
+        {
+            (*this)(processorNumber, publicKey, nonce);
+            this->finishTask();
+        }
+    }
 };
