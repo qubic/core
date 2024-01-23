@@ -17,8 +17,7 @@ template<
     unsigned int numberOfOutputNeurons,
     unsigned int maxInputDuration,
     unsigned int maxOutputDuration,
-    unsigned int maxNumberOfProcessors,
-    unsigned int solutionBufferCount = 8
+    unsigned int solutionBufferCount
 >
 struct ScoreFunction
 {

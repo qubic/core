@@ -16,8 +16,7 @@ template<
     unsigned int numberOfOutputNeurons,
     unsigned int maxInputDuration,
     unsigned int maxOutputDuration,
-    unsigned int maxNumberOfProcessors,
-    unsigned int solutionBufferCount = 8
+    unsigned int solutionBufferCount
 >
 struct ScoreTester
 {
@@ -25,13 +24,13 @@ struct ScoreTester
         dataLength, infoLength,
         numberOfInputNeurons, numberOfOutputNeurons,
         maxInputDuration, maxOutputDuration,
-        maxNumberOfProcessors, solutionBufferCount
+        solutionBufferCount
     > ScoreFuncOpt;
     typedef ScoreReferenceImplementation<
         dataLength, infoLength,
         numberOfInputNeurons, numberOfOutputNeurons,
         maxInputDuration, maxOutputDuration,
-        maxNumberOfProcessors
+        solutionBufferCount
     > ScoreFuncRef;
 
     ScoreFuncOpt* score;
