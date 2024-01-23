@@ -4081,9 +4081,9 @@ static void processKeyPresses()
             appendText(message, L" solutions.");
             logToConsole(message);
 
-            setText(message, (mainAuxStatus & 1) ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
+            setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
             appendText(message, L"&");
-            appendText(message, (mainAuxStatus & 2) ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
+            appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
             logToConsole(message);
         }
         break;
@@ -4198,7 +4198,7 @@ static void processKeyPresses()
 
         /*
         * F12 Key
-        * By Pressing the F12 Key the node can witch between aux&aux, aux&MAIN, MAIN&aux, and MAIN&MAIN mode.
+        * By Pressing the F12 Key the node can switch between aux&aux, aux&MAIN, MAIN&aux, and MAIN&MAIN mode.
         * MAIN: the node is issuing ticks and participate as "COMPUTOR" in the network
         * aux: the node is running without participating active as "COMPUTOR" in the network
         * Upon epoch change aux&aux, and MAIN&MAIN statuses are retained, aux&MAIN, and MAIN&aux are reverted.
@@ -4207,9 +4207,9 @@ static void processKeyPresses()
         case 0x16:
         {
             mainAuxStatus = (mainAuxStatus + 1) & 3;
-            setText(message, (mainAuxStatus & 1) ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
+            setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
             appendText(message, L"&");
-            appendText(message, (mainAuxStatus & 2) ? L"MAIN   *   MAIN   *   MAIN   *   MAIN   *   MAIN" : L"aux   *   aux   *   aux   *   aux   *   aux");
+            appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
             logToConsole(message);
         }
         break;
