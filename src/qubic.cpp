@@ -119,7 +119,7 @@ static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
 static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
 static unsigned int tickPhase = 0, tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, futureTickTotalNumberOfComputors = 0;
 static unsigned int nextTickTransactionsSemaphore = 0, numberOfNextTickTransactions = 0, numberOfKnownNextTickTransactions = 0;
-static unsigned short numberOfOwnComputorIndices = 0;
+static unsigned short numberOfOwnComputorIndices;
 static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 
@@ -2302,6 +2302,52 @@ static void processTick(unsigned long long processorNumber)
     }
 }
 
+static void beginEpoch1of2()
+{
+    // This version doesn't support migration from contract IPO to contract operation!
+
+    numberOfOwnComputorIndices = 0;
+
+    broadcastedComputors.header.setSize<sizeof(broadcastedComputors.header) + sizeof(broadcastedComputors.broadcastComputors)>();
+    broadcastedComputors.header.setType(BroadcastComputors::type);
+    broadcastedComputors.broadcastComputors.computors.epoch = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        broadcastedComputors.broadcastComputors.computors.publicKeys[i].setRandomValue();
+    }
+    bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
+
+    bs->SetMem(ticks, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS * sizeof(Tick), 0);
+    bs->SetMem(tickData, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * sizeof(TickData), 0);
+    bs->SetMem(tickTransactions, FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS), 0);
+    bs->SetMem(tickTransactionOffsets, sizeof(tickTransactionOffsets), 0);
+
+    bs->SetMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
+    bs->SetMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
+
+    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+
+    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+
+    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+
+    bs->SetMem(score, sizeof(*score), 0);
+    score->loadScoreCache(system.epoch);
+    bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
+    bs->SetMem((void*)minerScores, sizeof(minerScores[0]) * NUMBER_OF_COMPUTORS, 0);
+}
+
+static void beginEpoch2of2()
+{
+    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+}
+
 static void endEpoch()
 {
     contractProcessorPhase = END_EPOCH;
@@ -2491,29 +2537,12 @@ static void endEpoch()
 
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
 
-    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
     spectrumMustBeSaved = true;
-
-    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
     universeMustBeSaved = true;
-
-    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
     computerMustBeSaved = true;
 
-    broadcastedComputors.broadcastComputors.computors.epoch = 0;
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-    {
-        broadcastedComputors.broadcastComputors.computors.publicKeys[i].setRandomValue();
-    }
-    bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
-
-    numberOfOwnComputorIndices = 0;
+    beginEpoch1of2();
+    beginEpoch2of2();
 }
 
 static void tickProcessor(void*)
@@ -3249,50 +3278,6 @@ static void saveSystem()
         appendText(message, L" microseconds).");
         logToConsole(message);
     }
-}
-
-static void beginEpoch1of2()
-{
-    // This version doesn't support migration from contract IPO to contract operation!
-
-    broadcastedComputors.header.setSize<sizeof(broadcastedComputors.header) + sizeof(broadcastedComputors.broadcastComputors)>();
-    broadcastedComputors.header.setType(BroadcastComputors::type);
-    broadcastedComputors.broadcastComputors.computors.epoch = 0;
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-    {
-        broadcastedComputors.broadcastComputors.computors.publicKeys[i].setRandomValue();
-    }
-    bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
-
-    bs->SetMem(ticks, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS * sizeof(Tick), 0);
-    bs->SetMem(tickData, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * sizeof(TickData), 0);
-    bs->SetMem(tickTransactions, FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS), 0);
-    bs->SetMem(tickTransactionOffsets, sizeof(tickTransactionOffsets), 0);
-
-    bs->SetMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
-    bs->SetMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
-
-    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-
-    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-
-    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-
-    bs->SetMem(score, sizeof(*score), 0);
-    score->loadScoreCache(system.epoch);
-    bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
-    bs->SetMem((void*)minerScores, sizeof(minerScores[0]) * NUMBER_OF_COMPUTORS, 0);
-}
-
-static void beginEpoch2of2()
-{
-    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
 static bool initialize()
