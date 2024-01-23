@@ -2,6 +2,9 @@
 
 #include "gtest/gtest.h"
 
+// needed for scoring task queue
+#define NUMBER_OF_TRANSACTIONS_PER_TICK 1024
+
 // current optimized implementation
 #include "../src/score.h"
 
@@ -16,8 +19,7 @@ template<
     unsigned int numberOfOutputNeurons,
     unsigned int maxInputDuration,
     unsigned int maxOutputDuration,
-    unsigned int maxNumberOfProcessors,
-    unsigned int solutionBufferCount = 8
+    unsigned int solutionBufferCount
 >
 struct ScoreTester
 {
@@ -25,13 +27,13 @@ struct ScoreTester
         dataLength, infoLength,
         numberOfInputNeurons, numberOfOutputNeurons,
         maxInputDuration, maxOutputDuration,
-        maxNumberOfProcessors, solutionBufferCount
+        solutionBufferCount
     > ScoreFuncOpt;
     typedef ScoreReferenceImplementation<
         dataLength, infoLength,
         numberOfInputNeurons, numberOfOutputNeurons,
         maxInputDuration, maxOutputDuration,
-        maxNumberOfProcessors
+        solutionBufferCount
     > ScoreFuncRef;
 
     ScoreFuncOpt* score;

@@ -184,11 +184,25 @@ static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
 
+// Variables for tracking the detail of processors(CPU core) and function, this is useful for resource management and debugging
+static unsigned long long tickProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function tickProcessor
+static unsigned long long requestProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function requestProcessor
+static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function contractProcessor
+
+static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that will process solution
+static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS] = { false }; // flag array to indicate that whether a procId should help processing solutions or not
+static unsigned long long mainThreadProcessorID = -1;
+static int nTickProcessorIDs = 0;
+static int nRequestProcessorIDs = 0;
+static int nContractProcessorIDs = 0;
+static int nSolutionProcessorIDs = 0;
+static volatile char resourceInfoLock = 0;
+
 static ScoreFunction<
     DATA_LENGTH, INFO_LENGTH,
     NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
     MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
-    MAX_NUMBER_OF_PROCESSORS
+    NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
@@ -1106,10 +1120,22 @@ static void requestProcessor(void* ProcedureArgument)
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
+    // tracking cpu resource allocation
+    ACQUIRE(resourceInfoLock);
+    requestProcessorIDs[nRequestProcessorIDs] = processorNumber;
+    nRequestProcessorIDs++;
+    RELEASE(resourceInfoLock);
+
     Processor* processor = (Processor*)ProcedureArgument;
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
     {
+        // try to compute a solution if any is queued and this thread is assigned to compute solution
+        if (solutionProcessorFlags[processorNumber])
+        {
+            score->tryProcessSolution(processorNumber);
+        }
+        
         if (requestQueueElementTail == requestQueueElementHead)
         {
             _mm_pause();
@@ -1627,6 +1653,15 @@ static void contractProcessor(void*)
 {
     enableAVX();
 
+    unsigned long long processorNumber;
+    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+
+    // tracking cpu resource allocation
+    ACQUIRE(resourceInfoLock);
+    contractProcessorIDs[nContractProcessorIDs] = processorNumber;
+    nContractProcessorIDs++;
+    RELEASE(resourceInfoLock);
+
     switch (contractProcessorPhase)
     {
     case INITIALIZE:
@@ -1775,6 +1810,53 @@ static void processTick(unsigned long long processorNumber)
     if (nextTickData.epoch == system.epoch)
     {
         bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
+        // reset solution task queue
+        score->resetTaskQueue();
+        // pre-scan any solution tx and add them to solution task queue
+        for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
+        {
+            if (!isZero(nextTickData.transactionDigests[transactionIndex]))
+            {
+                if (tickTransactionOffsets[system.tick - system.initialTick][transactionIndex])
+                {
+                    Transaction* transaction = (Transaction*)&tickTransactions[tickTransactionOffsets[system.tick - system.initialTick][transactionIndex]];
+                    const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
+                    if (spectrumIndex >= 0
+                        && !entityPendingTransactionIndices[spectrumIndex])
+                    {
+                        if (transaction->destinationPublicKey == arbitratorPublicKey)
+                        {
+                            if (!transaction->amount
+                                && transaction->inputSize == 32
+                                && !transaction->inputType)
+                            {
+                                const m256i& solution_nonce = *(m256i*)((unsigned char*)transaction + sizeof(Transaction));
+                                m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
+                                static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
+                                unsigned int flagIndex;
+                                KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
+                                if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
+                                {
+                                    score->addTask(transaction->sourcePublicKey, solution_nonce);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        {
+            // Process solutions in this tick and store in cache. In parallel, score->tryProcessSolution() is called by
+            // request processors to speed up solution processing.
+            score->startProcessTaskQueue();
+            while (!score->isTaskQueueProcessed())
+            {
+                score->tryProcessSolution(processorNumber);
+            }
+            score->stopProcessTaskQueue();
+        }
+
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
             if (!isZero(nextTickData.transactionDigests[transactionIndex]))
@@ -2551,6 +2633,12 @@ static void tickProcessor(void*)
 
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+
+    // tracking cpu resource allocation
+    ACQUIRE(resourceInfoLock);
+    tickProcessorIDs[nTickProcessorIDs] = processorNumber;
+    nTickProcessorIDs++;
+    RELEASE(resourceInfoLock);
 
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
@@ -3415,6 +3503,7 @@ static bool initialize()
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
             return false;
         }
+        score->resetTaskQueue();
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
@@ -4250,6 +4339,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         bs->LocateProtocol(&mpServiceProtocolGuid, NULL, (void**)&mpServicesProtocol);
         unsigned long long numberOfAllProcessors, numberOfEnabledProcessors;
         mpServicesProtocol->GetNumberOfProcessors(mpServicesProtocol, &numberOfAllProcessors, &numberOfEnabledProcessors);
+        mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
+
         for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS; i++)
         {
             EFI_PROCESSOR_INFORMATION processorInformation;
@@ -4279,15 +4370,88 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         }
         if (numberOfProcessors < 3)
         {
-            logToConsole(L"At least 4 healthy enabled processors are required!");
+            logToConsole(L"At least 4 healthy enabled processors are required! Exiting...");
         }
         else
         {
+            // wait until all resource info are collected
+            logToConsole(L"Collecting resource information");
+            while (nTickProcessorIDs + nRequestProcessorIDs != numberOfProcessors - 1) // contractProcessor will be started later
+            {
+                _mm_pause();
+            }
+
             setNumber(message, 1 + numberOfProcessors, TRUE);
             appendText(message, L"/");
             appendNumber(message, numberOfAllProcessors, TRUE);
             appendText(message, L" processors are being used.");
             logToConsole(message);
+
+            setText(message, L"Main: Processor #");
+            appendNumber(message, mainThreadProcessorID, false);
+            logToConsole(message);
+
+            setText(message, L"Tick processors: ");
+            for (int i = 0; i < nTickProcessorIDs; i++)
+            {
+                appendText(message, L"Processor #");
+                appendNumber(message, tickProcessorIDs[i], false);
+                if (i != nTickProcessorIDs -1) appendText(message, L" | ");
+            }            
+            logToConsole(message);
+
+            setText(message, L"Request processors: ");
+            for (int i = 0; i < nRequestProcessorIDs; i++)
+            {
+                appendText(message, L"Processor #");
+                appendNumber(message, requestProcessorIDs[i], false);
+                if (i != nRequestProcessorIDs - 1) appendText(message, L" | ");
+            }
+            logToConsole(message);
+                        
+            // Allocating resource for parallel sol verification
+            for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+            {
+                solutionProcessorFlags[i] = false;
+            }
+
+            // ASSUMPTION: - each processor (CPU core) is binded to different functional thread.
+            //             - there are potentially 2+ tick processors in the future
+            // procId is guaranteed lower than MAX_NUMBER_OF_PROCESSORS (https://github.com/tianocore/edk2/blob/master/MdePkg/Include/Protocol/MpService.h#L615)
+            // First part: tick processors always process solutions            
+            for (int i = 0; i < nTickProcessorIDs; i++)
+            {
+                unsigned long long procId = tickProcessorIDs[i];
+                if (!solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS]
+                    && !solutionProcessorFlags[procId])
+                {
+                    solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS] = true;
+                    solutionProcessorFlags[procId] = true;
+                    solutionProcessorIDs[nSolutionProcessorIDs++] = procId;
+                }
+            }
+            // Second part: fill the solution processing threads with some of requestProcessors
+            for (int i = 0; i < nRequestProcessorIDs; i++)
+            {
+                unsigned long long procId = requestProcessorIDs[i];
+                if (!solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS]
+                    && !solutionProcessorFlags[procId])
+                {
+                    solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS] = true;
+                    solutionProcessorFlags[procId] = true;
+                    solutionProcessorIDs[nSolutionProcessorIDs++] = procId;
+                }
+            }
+
+            setText(message, L"Solution processors: ");
+            for (int i = 0; i < nSolutionProcessorIDs; i++)
+            {
+                appendText(message, L"Processor #");
+                appendNumber(message, solutionProcessorIDs[i], false);
+                if (i != nSolutionProcessorIDs - 1) appendText(message, L" | ");
+            }
+            logToConsole(message);
+
 
             // -----------------------------------------------------
             // Main loop

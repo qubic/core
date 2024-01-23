@@ -12,7 +12,7 @@ template<
     unsigned int numberOfOutputNeurons,
     unsigned int maxInputDuration,
     unsigned int maxOutputDuration,
-    unsigned int maxNumberOfProcessors
+    unsigned int solutionBufferCount
 >
 struct ScoreReferenceImplementation
 {
@@ -21,13 +21,13 @@ struct ScoreReferenceImplementation
     {
         int input[dataLength + numberOfInputNeurons + infoLength];
         int output[infoLength + numberOfOutputNeurons + dataLength];
-    } neurons[maxNumberOfProcessors];
+    } neurons[solutionBufferCount];
     struct
     {
         char input[(numberOfInputNeurons + infoLength) * (dataLength + numberOfInputNeurons + infoLength)];
         char output[(numberOfOutputNeurons + dataLength) * (infoLength + numberOfOutputNeurons + dataLength)];
         unsigned short lengths[maxInputDuration * (numberOfInputNeurons + infoLength) + maxOutputDuration * (numberOfOutputNeurons + dataLength)];
-    } synapses[maxNumberOfProcessors];
+    } synapses[solutionBufferCount];
 
     void initMiningData()
     {
@@ -46,7 +46,7 @@ struct ScoreReferenceImplementation
 
     unsigned int operator()(unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
     {
-        processorNumber %= maxNumberOfProcessors;
+        processorNumber %= solutionBufferCount;
         random(publicKey, nonce, (unsigned char*)&synapses[processorNumber], sizeof(synapses[0]));
         for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeurons + infoLength; inputNeuronIndex++)
         {
