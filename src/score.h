@@ -305,8 +305,10 @@ struct ScoreFunction
         return score;
     }
 
-    // Multithreaded solutions verification
-    // add task to the queue
+    // Multithreaded solutions verification:
+    // This module mainly serve tick processor in qubic core node, thus the queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
+    // for future use for somewhere else, you can only increase the size.
+    
     volatile char taskQueueLock = 0;
     struct {
         m256i publicKey[NUMBER_OF_TRANSACTIONS_PER_TICK];
@@ -327,13 +329,17 @@ struct ScoreFunction
         RELEASE(taskQueueLock);
     }
 
-    // only tick processor thread can call this
+    // add task to the queue
+    // queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
     void addTask(m256i publicKey, m256i nonce)
     {   
         ACQUIRE(taskQueueLock);
-        unsigned int index = _nTask++;
-        taskQueue.publicKey[index] = publicKey;
-        taskQueue.nonce[index] = nonce;
+        if (_nTask < NUMBER_OF_TRANSACTIONS_PER_TICK)
+        {
+            unsigned int index = _nTask++;
+            taskQueue.publicKey[index] = publicKey;
+            taskQueue.nonce[index] = nonce;
+        }
         RELEASE(taskQueueLock);
     }
 

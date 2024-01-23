@@ -184,6 +184,20 @@ static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
 
+// Variables for tracking the detail of processors(CPU core) and function, this is useful for resource management and debugging
+static unsigned long long tickProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function tickProcessor
+static unsigned long long requestProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function requestProcessor
+static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function contractProcessor
+
+static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that will process solution
+static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS] = { false }; // flag array to indicate that whether a procId should help processing solutions or not
+static unsigned long long mainThreadProcessorID = -1;
+static int nTickProcessorIDs = 0;
+static int nRequestProcessorIDs = 0;
+static int nContractProcessorIDs = 0;
+static int nSolutionProcessorIDs = 0;
+static volatile char resourceInfoLock = 0;
+
 static ScoreFunction<
     DATA_LENGTH, INFO_LENGTH,
     NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
@@ -1106,11 +1120,22 @@ static void requestProcessor(void* ProcedureArgument)
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
+    // tracking cpu resource allocation
+    ACQUIRE(resourceInfoLock);
+    requestProcessorIDs[nRequestProcessorIDs] = processorNumber;
+    nRequestProcessorIDs++;
+    RELEASE(resourceInfoLock);
+
     Processor* processor = (Processor*)ProcedureArgument;
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
     {
-        score->tryProcessSolution(processorNumber);
+        // try to compute a solution if any is queued and this thread is assigned to compute solution
+        if (solutionProcessorFlags[processorNumber])
+        {
+            score->tryProcessSolution(processorNumber);
+        }
+        
         if (requestQueueElementTail == requestQueueElementHead)
         {
             _mm_pause();
@@ -1627,6 +1652,15 @@ static m256i __K12(T data)
 static void contractProcessor(void*)
 {
     enableAVX();
+
+    unsigned long long processorNumber;
+    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+
+    // tracking cpu resource allocation
+    ACQUIRE(resourceInfoLock);
+    contractProcessorIDs[nContractProcessorIDs] = processorNumber;
+    nContractProcessorIDs++;
+    RELEASE(resourceInfoLock);
 
     switch (contractProcessorPhase)
     {
@@ -2568,6 +2602,12 @@ static void tickProcessor(void*)
 
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+
+    // tracking cpu resource allocation
+    ACQUIRE(resourceInfoLock);
+    tickProcessorIDs[nTickProcessorIDs] = processorNumber;
+    nTickProcessorIDs++;
+    RELEASE(resourceInfoLock);
 
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
@@ -4305,6 +4345,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         bs->LocateProtocol(&mpServiceProtocolGuid, NULL, (void**)&mpServicesProtocol);
         unsigned long long numberOfAllProcessors, numberOfEnabledProcessors;
         mpServicesProtocol->GetNumberOfProcessors(mpServicesProtocol, &numberOfAllProcessors, &numberOfEnabledProcessors);
+        mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
+
         for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS; i++)
         {
             EFI_PROCESSOR_INFORMATION processorInformation;
@@ -4334,15 +4376,88 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         }
         if (numberOfProcessors < 3)
         {
-            logToConsole(L"At least 4 healthy enabled processors are required!");
+            logToConsole(L"At least 4 healthy enabled processors are required! Exiting...");
         }
         else
         {
+            // wait until all resource info are collected
+            logToConsole(L"Collecting resource information");
+            while (nTickProcessorIDs + nRequestProcessorIDs != numberOfProcessors - 1) // contractProcessor will be started later
+            {
+                _mm_pause();
+            }
+
             setNumber(message, 1 + numberOfProcessors, TRUE);
             appendText(message, L"/");
             appendNumber(message, numberOfAllProcessors, TRUE);
             appendText(message, L" processors are being used.");
             logToConsole(message);
+
+            setText(message, L"Main: Processor #");
+            appendNumber(message, mainThreadProcessorID, false);
+            logToConsole(message);
+
+            setText(message, L"Tick processors: ");
+            for (int i = 0; i < nTickProcessorIDs; i++)
+            {
+                appendText(message, L"Processor #");
+                appendNumber(message, tickProcessorIDs[i], false);
+                if (i != nTickProcessorIDs -1) appendText(message, L" | ");
+            }            
+            logToConsole(message);
+
+            setText(message, L"Request processors: ");
+            for (int i = 0; i < nRequestProcessorIDs; i++)
+            {
+                appendText(message, L"Processor #");
+                appendNumber(message, requestProcessorIDs[i], false);
+                if (i != nRequestProcessorIDs - 1) appendText(message, L" | ");
+            }
+            logToConsole(message);
+                        
+            // Allocating resource for parallel sol verification
+            for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+            {
+                solutionProcessorFlags[i] = false;
+            }
+
+            // ASSUMPTION: - each processor (CPU core) is binded to different functional thread.
+            //             - there are potentially 2+ tick processors in the future
+            // procId is guaranteed lower than MAX_NUMBER_OF_PROCESSORS (https://github.com/tianocore/edk2/blob/master/MdePkg/Include/Protocol/MpService.h#L615)
+            // First part: tick processors always process solutions            
+            for (int i = 0; i < nTickProcessorIDs; i++)
+            {
+                unsigned long long procId = tickProcessorIDs[i];
+                if (!solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS]
+                    && !solutionProcessorFlags[procId])
+                {
+                    solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS] = true;
+                    solutionProcessorFlags[procId] = true;
+                    solutionProcessorIDs[nSolutionProcessorIDs++] = procId;
+                }
+            }
+            // Second part: fill the solution processing threads with some of requestProcessors
+            for (int i = 0; i < nRequestProcessorIDs; i++)
+            {
+                unsigned long long procId = requestProcessorIDs[i];
+                if (!solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS]
+                    && !solutionProcessorFlags[procId])
+                {
+                    solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS] = true;
+                    solutionProcessorFlags[procId] = true;
+                    solutionProcessorIDs[nSolutionProcessorIDs++] = procId;
+                }
+            }
+
+            setText(message, L"Solution processors: ");
+            for (int i = 0; i < nSolutionProcessorIDs; i++)
+            {
+                appendText(message, L"Processor #");
+                appendNumber(message, solutionProcessorIDs[i], false);
+                if (i != nSolutionProcessorIDs - 1) appendText(message, L" | ");
+            }
+            logToConsole(message);
+
 
             // -----------------------------------------------------
             // Main loop
