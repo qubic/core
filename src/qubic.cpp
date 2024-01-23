@@ -1847,12 +1847,12 @@ static void processTick(unsigned long long processorNumber)
         }
 
         {
-            // start processing solutions in this tick
+            // Process solutions in this tick and store in cache. In parallel, score->tryProcessSolution() is called by
+            // request processors to speed up solution processing.
             score->startProcessTaskQueue();
             while (!score->isTaskQueueProcessed())
             {
                 score->tryProcessSolution(processorNumber);
-                _mm_pause();
             }
             score->stopProcessTaskQueue();
         }
