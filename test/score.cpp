@@ -2,6 +2,9 @@
 
 #include "gtest/gtest.h"
 
+// needed for scoring task queue
+#define NUMBER_OF_TRANSACTIONS_PER_TICK 1024
+
 // current optimized implementation
 #include "../src/score.h"
 
