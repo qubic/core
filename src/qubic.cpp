@@ -117,7 +117,7 @@ static struct
 // data closely related to system
 static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
 static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
-static unsigned int tickPhase = 0, tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, futureTickTotalNumberOfComputors = 0;
+static unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, futureTickTotalNumberOfComputors = 0;
 static unsigned int nextTickTransactionsSemaphore = 0, numberOfNextTickTransactions = 0, numberOfKnownNextTickTransactions = 0;
 static unsigned short numberOfOwnComputorIndices;
 static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
@@ -172,7 +172,6 @@ static char executedContractOutput[RequestResponseHeader::max_size + 1];
 
 static volatile char tickLocks[NUMBER_OF_COMPUTORS];
 static bool targetNextTickDataDigestIsKnown = false;
-static unsigned int testFlags = 0;
 static m256i targetNextTickDataDigest;
 static unsigned long long tickTicks[11];
 
@@ -265,20 +264,6 @@ static void logToConsole(const CHAR16* message)
     timestampedMessage[12] = ' ';
     timestampedMessage[13] = 0;
 
-    switch (tickPhase)
-    {
-    case 0: appendText(timestampedMessage, L"A"); break;
-    case 1: appendText(timestampedMessage, L"B"); break;
-    case 2: appendText(timestampedMessage, L"C"); break;
-    case 3: appendText(timestampedMessage, L"D"); break;
-    case 4: appendText(timestampedMessage, L"E"); break;
-    default: appendText(timestampedMessage, L"?");
-    }
-    if (testFlags)
-    {
-        appendNumber(timestampedMessage, testFlags, TRUE);
-    }
-    appendText(timestampedMessage, targetNextTickDataDigestIsKnown ? L"+ " : L"- ");
     appendNumber(timestampedMessage, tickNumberOfComputors / 100, FALSE);
     appendNumber(timestampedMessage, (tickNumberOfComputors % 100) / 10, FALSE);
     appendNumber(timestampedMessage, tickNumberOfComputors % 10, FALSE);
@@ -1768,11 +1753,6 @@ static void contractProcessor(void*)
 
 static void processTick(unsigned long long processorNumber)
 {
-    if (tickPhase < 1)
-    {
-        tickPhase = 1;
-    }
-
 #if !IGNORE_RESOURCE_TESTING
     etalonTick.prevResourceTestingDigest = resourceTestingDigest;
 #endif
@@ -2708,7 +2688,6 @@ static void tickProcessor(void*)
                     {
                         targetNextTickDataDigest = uniqueNextTickTransactionDigests[mostPopularUniqueNextTickTransactionDigestIndex];
                         targetNextTickDataDigestIsKnown = true;
-                        testFlags |= 1024;
                     }
                     else
                     {
@@ -2717,7 +2696,6 @@ static void tickProcessor(void*)
                         {
                             targetNextTickDataDigest = _mm256_setzero_si256();
                             targetNextTickDataDigestIsKnown = true;
-                            testFlags |= 2048;
                         }
                     }
                 }
@@ -2770,7 +2748,6 @@ static void tickProcessor(void*)
                         {
                             targetNextTickDataDigest = uniqueNextTickTransactionDigests[mostPopularUniqueNextTickTransactionDigestIndex];
                             targetNextTickDataDigestIsKnown = true;
-                            testFlags |= 4096;
                         }
                         else
                         {
@@ -2779,7 +2756,6 @@ static void tickProcessor(void*)
                             {
                                 targetNextTickDataDigest = _mm256_setzero_si256();
                                 targetNextTickDataDigestIsKnown = true;
-                                testFlags |= 8192;
                             }
                         }
                     }
@@ -2837,13 +2813,8 @@ static void tickProcessor(void*)
                         }
                         else
                         {
-                            testFlags |= 1048576;
                             KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
                             tickDataSuits = (etalonTick.expectedNextTickTransactionDigest == targetNextTickDataDigest);
-                            if (!tickDataSuits)
-                            {
-                                testFlags |= 1;
-                            }
                         }
                     }
                 }
@@ -2864,15 +2835,9 @@ static void tickProcessor(void*)
                     }
                     ::tickNumberOfComputors = 0;
                     ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
-                    if (testFlags & 1) testFlags |= 512;
                 }
                 else
                 {
-                    if (tickPhase < 2)
-                    {
-                        tickPhase = 2;
-                    }
-
                     numberOfNextTickTransactions = 0;
                     numberOfKnownNextTickTransactions = 0;
 
@@ -2996,13 +2961,11 @@ static void tickProcessor(void*)
                         {
                             if (!targetNextTickDataDigestIsKnown)
                             {
-                                testFlags |= 1048576*2;
                                 KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
                             }
                         }
                         else
                         {
-                            testFlags |= 1048576*4;
                             etalonTick.expectedNextTickTransactionDigest = _mm256_setzero_si256();
                         }
 
@@ -3097,33 +3060,8 @@ static void tickProcessor(void*)
                                                 {
                                                     tickNumberOfComputors++;
                                                 }
-                                                else
-                                                {
-                                                    if (*((unsigned long long*) & tick->millisecond) != *((unsigned long long*) & etalonTick.millisecond))
-                                                        testFlags |= 16;
-                                                    if (tick->prevSpectrumDigest != etalonTick.prevSpectrumDigest)
-                                                        testFlags |= 32;
-                                                    if (tick->prevUniverseDigest != etalonTick.prevUniverseDigest)
-                                                        testFlags |= 64;
-                                                    if (tick->prevComputerDigest != etalonTick.prevComputerDigest)
-                                                        testFlags |= 128;
-                                                    if (tick->transactionDigest != etalonTick.transactionDigest)
-                                                        testFlags |= 256;
-                                                }
-                                            }
-                                            else
-                                            {
-                                                testFlags |= 8;
                                             }
                                         }
-                                        else
-                                        {
-                                            testFlags |= 4;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        testFlags |= 2;
                                     }
                                 }
                             }
@@ -3133,11 +3071,6 @@ static void tickProcessor(void*)
                         ::tickNumberOfComputors = tickNumberOfComputors;
                         ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
 
-                        if (tickPhase < 3)
-                        {
-                            tickPhase = 3;
-                        }
-
                         if (tickNumberOfComputors >= QUORUM)
                         {
                             if (!targetNextTickDataDigestIsKnown)
@@ -3146,18 +3079,12 @@ static void tickProcessor(void*)
                                 {
                                     targetNextTickDataDigest = _mm256_setzero_si256();
                                     targetNextTickDataDigestIsKnown = true;
-                                    testFlags |= 16384;
                                 }
                             }
                             forceNextTick = false;
 
                             if (targetNextTickDataDigestIsKnown)
                             {
-                                if (tickPhase < 4)
-                                {
-                                    tickPhase = 4;
-                                }
-
                                 tickDataSuits = false;
                                 if (isZero(targetNextTickDataDigest))
                                 {
@@ -3175,7 +3102,6 @@ static void tickProcessor(void*)
                                     }
                                     else
                                     {
-                                        testFlags |= 1048576*8;
                                         KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
                                         tickDataSuits = (etalonTick.expectedNextTickTransactionDigest == targetNextTickDataDigest);
                                     }
@@ -3255,10 +3181,6 @@ static void tickProcessor(void*)
                                     }
 
                                     system.tick++;
-
-                                    testFlags = 0;
-
-                                    tickPhase = 0;
 
                                     ::tickNumberOfComputors = 0;
                                     ::tickTotalNumberOfComputors = 0;
@@ -4245,17 +4167,6 @@ static void processKeyPresses()
         case 0x13:
         {
             system.latestCreatedTick--;
-        }
-        break;
-
-        /*
-        * F10 Key
-        * By Pressing the F10 Key the testFlags will be reset.
-        * The testFlags are used to display debugging information to the log output.
-        */
-        case 0x14:
-        {
-            testFlags = 0;
         }
         break;
 
