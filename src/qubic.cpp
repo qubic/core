@@ -2618,13 +2618,6 @@ static void endEpoch()
     systemMustBeSaved = true;
 
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
-
-    spectrumMustBeSaved = true;
-    universeMustBeSaved = true;
-    computerMustBeSaved = true;
-
-    beginEpoch1of2();
-    beginEpoch2of2();
 }
 
 static void tickProcessor(void*)
@@ -3194,6 +3187,13 @@ static void tickProcessor(void*)
                                         || dayIndex > 738570 + system.epoch * 7)
                                     {
                                         endEpoch();
+
+                                        beginEpoch1of2();
+                                        beginEpoch2of2();
+
+                                        spectrumMustBeSaved = true;
+                                        universeMustBeSaved = true;
+                                        computerMustBeSaved = true;
                                     }
                                     else
                                     {
