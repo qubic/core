@@ -22,9 +22,10 @@ namespace QPI
 	[
 	]
 	__
-	union
-	float
 	double
+	float
+	typedef
+	union
 
 	*/
 
@@ -5127,6 +5128,22 @@ namespace QPI
 		static constexpr uint64 capacity()
 		{
 			return L;
+		}
+
+		// Remove all povs marked for removal, this is a very expensive operation
+		void cleanup()
+		{
+			collection<T, L> *copy;
+			copy = ::__scratchpad();
+			copy->reset();
+
+			for (sint64 povIndex = 0; povIndex < L; povIndex++)
+			{
+				if (_povOccupationFlags[povIndex >> 5] & (1ULL << ((povIndex & 31) << 1)))
+				{
+					// TODO
+				}
+			}
 		}
 
 		// Return element value at elementIndex.

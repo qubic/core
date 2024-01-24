@@ -37,6 +37,7 @@ static m256i __nextId(const m256i&);
 static m256i __originator();
 static void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short);
 static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short);
+static void* __scratchpad();
 static unsigned char __second();
 static unsigned int __tick();
 static long long __transfer(const m256i&, long long);
