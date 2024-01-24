@@ -7,20 +7,13 @@
 #define MAX_NUMBER_OF_PROCESSORS 32
 
 #define VERSION_A 1
-#define VERSION_B 189
+#define VERSION_B 190
 #define VERSION_C 0
 
-#define EPOCH 92
-#define TICK 12050000
+#define EPOCH 93
+#define TICK 12160000
 
-//#define RANDOM_SEED0 69
-//#define RANDOM_SEED1 177
-//#define RANDOM_SEED2 23
-//#define RANDOM_SEED3 197
-//#define RANDOM_SEED4 178
-//#define RANDOM_SEED5 119
-//#define RANDOM_SEED6 252
-//#define RANDOM_SEED7 66
+// random seed is now obtained from spectrumDigests
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
