@@ -2614,8 +2614,8 @@ static void endEpoch()
     assetsEndEpoch(reorgBuffer);
 
     system.epoch++;
+    etalonTick.epoch++;
     system.initialTick = system.tick;
-    systemMustBeSaved = true;
 
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
 }
@@ -3191,6 +3191,7 @@ static void tickProcessor(void*)
                                         beginEpoch1of2();
                                         beginEpoch2of2();
 
+                                        systemMustBeSaved = true;
                                         spectrumMustBeSaved = true;
                                         universeMustBeSaved = true;
                                         computerMustBeSaved = true;
