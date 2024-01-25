@@ -113,14 +113,26 @@ struct QuTransfer
     m256i sourcePublicKey;
     m256i destinationPublicKey;
     long long amount;
-
+#if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
+    long long transferId;
+#endif
     char _terminator; // Only data before "_terminator" are logged
 };
+
+#if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
+long long CurrentTransferId = 0;
+static volatile char CurrentTransferIdLock = 0;
+#endif
 
 template <typename T>
 static void logQuTransfer(T message)
 {
 #if LOG_QU_TRANSFERS
+#if LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
+    ACQUIRE(CurrentTransferIdLock);
+    message.transferId = CurrentTransferId++;
+    RELEASE(CurrentTransferIdLock);
+#endif
     logMessage(offsetof(T, _terminator), QU_TRANSFER, &message);
 #endif
 }
