@@ -2419,6 +2419,12 @@ static void endEpoch()
         _mm_pause();
     }
 
+    // treating endEpoch as a tick, start updating etalonTick
+    etalonTick.prevResourceTestingDigest = resourceTestingDigest;
+    etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+    getUniverseDigest(etalonTick.prevUniverseDigest);
+    getComputerDigest(etalonTick.prevComputerDigest);
+
     Contract0State* contract0State = (Contract0State*)contractStates[0];
     for (unsigned int contractIndex = 1; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
     {
@@ -2594,7 +2600,6 @@ static void endEpoch()
     assetsEndEpoch(reorgBuffer);
 
     system.epoch++;
-    etalonTick.epoch++;
     system.initialTick = system.tick;
 
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
@@ -3121,6 +3126,13 @@ static void tickProcessor(void*)
                                         spectrumMustBeSaved = true;
                                         universeMustBeSaved = true;
                                         computerMustBeSaved = true;
+
+                                        //update etalon tick:
+                                        etalonTick.epoch++;
+                                        etalonTick.tick++;
+                                        etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+                                        getUniverseDigest(etalonTick.saltedUniverseDigest);
+                                        getComputerDigest(etalonTick.saltedComputerDigest);
                                     }
                                     else
                                     {
