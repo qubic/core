@@ -60,7 +60,7 @@
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
-#define TIME_ACCURACY 60000
+#define TIME_ACCURACY 5000
 #define TRANSACTION_SPARSENESS 7
 
 
@@ -657,7 +657,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             const unsigned int offset = ((request->tick.tick - system.initialTick) * NUMBER_OF_COMPUTORS) + request->tick.computorIndex;
             if (ticks[offset].epoch == system.epoch)
             {
-                if (*((unsigned long long*) & request->tick.millisecond) != *((unsigned long long*) & ticks[offset].millisecond)
+                if (*((unsigned long long*)&request->tick.millisecond) != *((unsigned long long*)&ticks[offset].millisecond)
                     || request->tick.prevSpectrumDigest != ticks[offset].prevSpectrumDigest
                     || request->tick.prevUniverseDigest != ticks[offset].prevUniverseDigest
                     || request->tick.prevComputerDigest != ticks[offset].prevComputerDigest
@@ -691,7 +691,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
         && request->tickData.hour <= 23
         && request->tickData.minute <= 59
         && request->tickData.second <= 59
-        && !request->tickData.millisecond
+        && request->tickData.millisecond <= 999
         && ms(request->tickData.year, request->tickData.month, request->tickData.day, request->tickData.hour, request->tickData.minute, request->tickData.second, request->tickData.millisecond) <= ms(time.Year - 2000, time.Month, time.Day, time.Hour, time.Minute, time.Second, time.Nanosecond / 1000000) + TIME_ACCURACY)
     {
         bool ok = true;
@@ -740,7 +740,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                 {
                     if (tickData[request->tickData.tick - system.initialTick].epoch == system.epoch)
                     {
-                        if (*((unsigned long long*) & request->tickData.millisecond) != *((unsigned long long*) & tickData[request->tickData.tick - system.initialTick].millisecond))
+                        if (*((unsigned long long*)&request->tickData.millisecond) != *((unsigned long long*)&tickData[request->tickData.tick - system.initialTick].millisecond))
                         {
                             faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
                         }
@@ -2220,11 +2220,11 @@ static void processTick(unsigned long long processorNumber)
             {
                 if (mainAuxStatus & 1)
                 {
-                    broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type; // TODO: comment required, why XOR?
+                    broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type; // We XOR almost all packets with their type value to make sure an entity cannot be tricked into signing one thing while actually signing something else
                     broadcastedFutureTickData.tickData.epoch = system.epoch;
                     broadcastedFutureTickData.tickData.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
 
-                    broadcastedFutureTickData.tickData.millisecond = 0;
+                    broadcastedFutureTickData.tickData.millisecond = time.Nanosecond / 1000000;
                     broadcastedFutureTickData.tickData.second = time.Second;
                     broadcastedFutureTickData.tickData.minute = time.Minute;
                     broadcastedFutureTickData.tickData.hour = time.Hour;
@@ -3009,7 +3009,7 @@ static void tickProcessor(void*)
                         TickEssence tickEssence;
                         m256i etalonTickEssenceDigest;
 
-                        *((unsigned long long*) & tickEssence.millisecond) = *((unsigned long long*) & etalonTick.millisecond);
+                        *((unsigned long long*)&tickEssence.millisecond) = *((unsigned long long*)&etalonTick.millisecond);
                         tickEssence.prevSpectrumDigest = etalonTick.prevSpectrumDigest;
                         tickEssence.prevUniverseDigest = etalonTick.prevUniverseDigest;
                         tickEssence.prevComputerDigest = etalonTick.prevComputerDigest;
@@ -3049,7 +3049,7 @@ static void tickProcessor(void*)
                                             KangarooTwelve64To32(saltedData, &saltedDigest);
                                             if (tick->saltedComputerDigest == saltedDigest)
                                             {
-                                                *((unsigned long long*) & tickEssence.millisecond) = *((unsigned long long*) & tick->millisecond);
+                                                *((unsigned long long*)&tickEssence.millisecond) = *((unsigned long long*)&tick->millisecond);
                                                 tickEssence.prevSpectrumDigest = tick->prevSpectrumDigest;
                                                 tickEssence.prevUniverseDigest = tick->prevUniverseDigest;
                                                 tickEssence.prevComputerDigest = tick->prevComputerDigest;
