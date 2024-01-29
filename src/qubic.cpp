@@ -3236,6 +3236,8 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 
 static void saveSpectrum()
 {
+    logToConsole(L"Saving spectrum file...");
+
     const unsigned long long beginningTick = __rdtsc();
 
     ACQUIRE(spectrumLock);
@@ -3254,6 +3256,8 @@ static void saveSpectrum()
 
 static void saveComputer()
 {
+    logToConsole(L"Saving contract files...");
+
     const unsigned long long beginningTick = __rdtsc();
 
     bool ok = true;
@@ -3291,6 +3295,8 @@ static void saveComputer()
 
 static void saveSystem()
 {
+    logToConsole(L"Saving system file...");
+
     const unsigned long long beginningTick = __rdtsc();
     long long savedSize = save(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
     if (savedSize == sizeof(system))

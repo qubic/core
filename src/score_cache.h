@@ -112,6 +112,8 @@ public:
     /// Save score cache to file
     void save(CHAR16* filename)
     {
+        logToConsole(L"Saving score cache file...");
+
         const unsigned long long beginningTick = __rdtsc();
         ACQUIRE(lock);
         long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)&cache);
