@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <map>
+#include <random>
 
 template <typename T, unsigned long long capacity>
 void checkPriorityQueue(const QPI::collection<T, capacity>& coll, const QPI::id& pov, bool print = false)
@@ -107,6 +108,37 @@ bool haveSameContent(const QPI::collection<T, capacity>& coll1, const QPI::colle
     }
 
     return true;
+}
+
+template <typename T, unsigned long long capacity>
+void cleanupCollectionReferenceImplementation(const QPI::collection<T, capacity>& coll, QPI::collection<T, capacity> & newColl)
+{
+    newColl.reset();
+
+    // for each pov, add all elements of priority queue in order
+    auto povs = getPovElementCounts(coll);
+    for (const auto& id_count_pair : povs)
+    {
+        QPI::id pov = id_count_pair.first;
+        QPI::sint64 elementIndex = coll.headIndex(pov);
+        while (elementIndex != QPI::NULL_INDEX)
+        {
+            newColl.add(pov, coll.element(elementIndex), coll.priority(elementIndex));
+            elementIndex = coll.nextElementIndex(elementIndex);
+        }
+    }
+}
+
+template <typename T, unsigned long long capacity>
+void cleanupCollection(QPI::collection<T, capacity>& coll)
+{
+    // save original data for checking
+    QPI::collection<T, capacity> origColl;
+    copyMem(&origColl, &coll, sizeof(coll));
+
+    // cleanup and test that cleanup did not change any relevant content
+    cleanupCollectionReferenceImplementation(origColl, coll);
+    EXPECT_TRUE(haveSameContent(origColl, coll));
 }
 
 
@@ -799,6 +831,51 @@ TEST(TestCoreQPI, CollectionOneRemoveLastHeadTail) {
     checkPriorityQueue(coll, pov, print);
     coll.remove(1);
     checkPriorityQueue(coll, pov, print);
+}
+
+template <unsigned long long capacity>
+void testCollectionCleanupPseudoRandom(int povs, int seed)
+{
+    // add and remove entries with pseudo-random sequence
+    std::mt19937_64 gen64(seed);
+
+    QPI::collection<unsigned long long, capacity> coll;
+    coll.reset();
+
+    // test cleanup of empty collection
+    cleanupCollection(coll);
+
+    int cleanupCounter = 0;
+    while (cleanupCounter < 100)
+    {
+        int p = gen64() % 100;
+
+        if (p == 0)
+        {
+            // cleanup (after about 100 add/remove)
+            cleanupCollection(coll);
+            ++cleanupCounter;
+        }
+
+        if (p < 70)
+        {
+            // add to collection (more probable than remove)
+            QPI::id pov(gen64() % povs, 0, 0, 0);
+            coll.add(pov, gen64(), gen64());
+        }
+        else if (coll.population() > 0)
+        {
+            // remove from collection
+            coll.remove(gen64() % coll.population());
+        }
+
+    }
+}
+
+TEST(TestCoreQPI, CollectionCleanup) {
+    testCollectionCleanupPseudoRandom<512>(300, 12345);
+    testCollectionCleanupPseudoRandom<256>(256, 1234);
+    testCollectionCleanupPseudoRandom<256>(10, 123);
 }
 
 
