@@ -158,6 +158,8 @@ static inline bool EQUAL(const __m256i& a, const __m256i& b)
 }
 */
 
+#if 0
+// Enable this for more flexibility regarding comparisons of m256 variants, but these general == and != operators sometimes lead to very misleading error messages.
 template <typename TA, typename TB>
 static inline bool operator==(const TA& a, const TB& b)
 {
@@ -169,6 +171,49 @@ static inline bool operator!=(const TA& a, const TB& b)
 {
     return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
 }
+
+#else
+
+static inline bool operator==(const m256i& a, const m256i& b)
+{
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
+}
+
+static inline bool operator!=(const m256i& a, const m256i& b)
+{
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
+}
+
+static inline bool operator==(const m256i& a, volatile const m256i& b)
+{
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
+}
+
+static inline bool operator!=(const m256i& a, volatile const m256i& b)
+{
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
+}
+
+static inline bool operator==(volatile const m256i& a, const m256i& b)
+{
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
+}
+
+static inline bool operator!=(volatile const m256i& a, const m256i& b)
+{
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
+}
+
+static inline bool operator==(volatile const m256i& a, volatile const m256i& b)
+{
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
+}
+
+static inline bool operator!=(volatile const m256i& a, volatile const m256i& b)
+{
+    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
+}
+#endif
 
 static inline bool isZero(const __m256i& a)
 {
