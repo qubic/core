@@ -17,8 +17,6 @@
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
-#define IGNORE_RESOURCE_TESTING 0
-
 static unsigned short SYSTEM_FILE_NAME[] = L"system";
 static unsigned short SPECTRUM_FILE_NAME[] = L"spectrum.???";
 static unsigned short UNIVERSE_FILE_NAME[] = L"universe.???";
