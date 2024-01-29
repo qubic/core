@@ -215,6 +215,19 @@ static inline bool operator!=(volatile const m256i& a, volatile const m256i& b)
 }
 #endif
 
+static inline bool operator<(const m256i& a, const m256i& b)
+{
+    // probably this can be done more efficiently, but it is only used in the testing code for now
+    for (int i = 0; i < 4; ++i)
+    {
+        if (a.m256i_u64[i] < b.m256i_u64[i])
+            return true;
+        if (a.m256i_u64[i] > b.m256i_u64[i])
+            return false;
+    }
+    return false;
+}
+
 static inline bool isZero(const __m256i& a)
 {
     return _mm256_testz_si256(a, a) == 1;
