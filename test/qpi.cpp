@@ -5,6 +5,7 @@
 #include "../src/smart_contracts/qpi.h"
 
 #include <vector>
+#include <map>
 
 template <typename T, unsigned long long capacity>
 void checkPriorityQueue(const QPI::collection<T, capacity>& coll, const QPI::id& pov, bool print = false)
@@ -45,6 +46,67 @@ void checkPriorityQueue(const QPI::collection<T, capacity>& coll, const QPI::id&
     }
     EXPECT_EQ(elementCount, coll.population(pov));
     EXPECT_EQ(prevElementIdx, coll.tailIndex(pov));
+}
+
+// return sorted set of PoVs
+template <typename T, unsigned long long capacity>
+std::map<QPI::id, unsigned long long> getPovElementCounts(const QPI::collection<T, capacity>& coll)
+{
+    // use that in current implementation elements are always in range 0 to N-1
+    std::map<QPI::id, unsigned long long> povs;
+    for (unsigned long long i = 0; i < coll.population(); ++i)
+    {
+        QPI::id id = coll.pov(i);
+        ++povs[id];
+    }
+
+    for (const auto& id_count_pair : povs)
+    {
+        EXPECT_EQ(coll.population(id_count_pair.first), id_count_pair.second);
+    }
+
+    return povs;
+}
+
+template <typename T, unsigned long long capacity>
+bool isCompeletelySame(const QPI::collection<T, capacity>& coll1, const QPI::collection<T, capacity>& coll2)
+{
+    return memcmp(&coll1, &coll2, sizeof(coll1)) == 0;
+}
+
+template <typename T, unsigned long long capacity>
+bool haveSameContent(const QPI::collection<T, capacity>& coll1, const QPI::collection<T, capacity>& coll2)
+{
+    // check that both contain the same PoVs, each with the same number of elements
+    auto coll1PovCounts = getPovElementCounts(coll1);
+    auto coll2PovCounts = getPovElementCounts(coll2);
+    if (coll1PovCounts != coll2PovCounts)
+        return false;
+
+    // check that values and priorities of the elements are the same
+    for (const auto& id_count_pair : coll1PovCounts)
+    {
+        QPI::id pov = id_count_pair.first;
+        QPI::sint64 elementIndex1 = coll1.headIndex(pov);
+        QPI::sint64 elementIndex2 = coll2.headIndex(pov);
+        while (elementIndex1 != QPI::NULL_INDEX && elementIndex2 != QPI::NULL_INDEX)
+        {
+            if (coll1.priority(elementIndex1) != coll2.priority(elementIndex2))
+                return false;
+            if (coll1.element(elementIndex1) != coll2.element(elementIndex2))
+                return false;
+
+            EXPECT_EQ(coll1.pov(elementIndex1), pov);
+            EXPECT_EQ(coll2.pov(elementIndex2), pov);
+
+            elementIndex1 = coll1.nextElementIndex(elementIndex1);
+            elementIndex2 = coll2.nextElementIndex(elementIndex2);
+        }
+        EXPECT_EQ(elementIndex1, QPI::NULL_INDEX);
+        EXPECT_EQ(elementIndex2, QPI::NULL_INDEX);
+    }
+
+    return true;
 }
 
 
@@ -441,6 +503,14 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_TRUE(ninthElementIdx == QPI::NULL_INDEX);
     EXPECT_EQ(coll.capacity(), capacity);
     EXPECT_EQ(coll.population(), 8);
+
+    // test comparison function of full collection
+    QPI::collection<int, capacity> empty_coll;
+    empty_coll.reset();
+    EXPECT_TRUE(isCompeletelySame(coll, coll));
+    EXPECT_TRUE(haveSameContent(coll, coll));
+    EXPECT_FALSE(isCompeletelySame(coll, empty_coll));
+    EXPECT_FALSE(haveSameContent(coll, empty_coll));
 
     // test behavior of collection after resetting non-empty collection
     coll.reset();
