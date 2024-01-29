@@ -4981,7 +4981,11 @@ namespace QPI
 			sint64 headIndex, tailIndex;
 			uint64 population;
 		} _povs[L];
-		uint64 _povOccupationFlags[(L * 2 + 63) / 64]; // 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
+		
+		// 2 bits per element of _povs: 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
+		// The state "occupied but marked for removal" is needed for finding the index of a pov in the hash map. Setting an entry to
+		// "not occupied" in remove() would potentially undo a collision, create a gap, and mess up the entry search.
+		uint64 _povOccupationFlags[(L * 2 + 63) / 64];
 
 		// Array of elements (filled sequentially), each belongs to one PoV / priority queue (or is empty)
 		struct Element
@@ -5133,17 +5137,84 @@ namespace QPI
 		// Remove all povs marked for removal, this is a very expensive operation
 		void cleanup()
 		{
-			collection<T, L> *copy;
-			copy = ::__scratchpad();
+			// _povs gets occupied over time with entries of type 3 which means they are marked for cleanup.
+			// Once cleanup is called it's necessary to remove all these type 3 entries by reconstructing a fresh collection residing in scratchpad buffer.
+			// Corresponding elements are be sorted too for faster uniform access, tail and head, prev and next are changed accordingly.
+			// Cleanup() called for a collection having only type 3 entries in _povs must give the result equal to reset() memory content wise.
+
+			// Speedup case of empty collection
+			if (!population())
+			{
+				reset();
+				return;
+			}
+			
+			// Create empty collection in scratchpad
+			collection<T, L> * copy = reinterpret_cast<collection<T, L>*>(::__scratchpad());
 			copy->reset();
 
-			for (sint64 povIndex = 0; povIndex < L; povIndex++)
+			// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new collection and copy priority queue in order,
+			// sequentially filling entry array of new collection.
+			for (sint64 oldPovIndexGroup = 0; oldPovIndexGroup < (L >> 5); oldPovIndexGroup++)
 			{
-				if (_povOccupationFlags[povIndex >> 5] & (1ULL << ((povIndex & 31) << 1)))
+				// Fast skipping of empty entries
+				if (_povOccupationFlags[oldPovIndexGroup] == 0)
 				{
-					// TODO
+					continue;
+				}
+
+				for (sint64 oldPovIndexOffset = 0; oldPovIndexOffset < 64; oldPovIndexOffset += 2)
+				{
+					// Only add pov to new collection that are occupied and not marked for removal
+					uint64 occupationFlags = (_povOccupationFlags[oldPovIndexGroup] >> oldPovIndexOffset) & 3ULL;
+					if (occupationFlags == 1)
+					{
+						const sint64 oldPovIndex = (oldPovIndexGroup << 5) + (oldPovIndexOffset >> 1);
+						const PoV& oldPovEntry = _povs[oldPovIndex];
+						const id& pov = oldPovEntry.value;
+						const sint64 oldHeadIndex = oldPovEntry.headIndex;
+						const sint64 oldTailIndex = oldPovEntry.tailIndex;
+
+						// 1. Insert pov entry in new pov hash map (at empty entry)
+						sint64 newPovIndex = pov.m256i_u64[0] & (L - 1);
+						for (sint64 counter = 0; counter < L; counter++)
+						{
+							if ((copy->_povOccupationFlags[newPovIndex >> 5] & (3ULL << ((newPovIndex & 31) << 1))) == 0)
+							{
+								copy->_povOccupationFlags[newPovIndex >> 5] |= (1ULL << ((newPovIndex & 31) << 1));
+
+								copy->_povs[newPovIndex].value = pov;
+								copy->_povs[newPovIndex].headIndex = copy->_population;
+								copy->_povs[newPovIndex].tailIndex = copy->_population + oldPovEntry.population - 1;
+								copy->_povs[newPovIndex].population = oldPovEntry.population;
+
+								break;
+							}
+
+							newPovIndex = (newPovIndex + 1) & (L - 1);
+						}
+
+						// 2. Copy priority queue of pov
+						sint64 oldElementIndex = oldHeadIndex;
+						while (oldElementIndex != NULL_INDEX)
+						{
+							const sint64 newElementIndex = copy->_population;
+
+							copyMem(&copy->_elements[newElementIndex].value, &_elements[oldElementIndex].value, sizeof(T));
+							copy->_elements[newElementIndex].prevElementIndex = (oldElementIndex == oldHeadIndex) ? NULL_INDEX : newElementIndex - 1;
+							copy->_elements[newElementIndex].nextElementIndex = (oldElementIndex == oldTailIndex) ? NULL_INDEX : newElementIndex + 1;
+							copy->_elements[newElementIndex].priority = _elements[oldElementIndex].priority;
+							copy->_elements[newElementIndex].povIndex = newPovIndex;
+
+							++copy->_population;
+							oldElementIndex = _elements[oldElementIndex].nextElementIndex;
+						}
+					}
 				}
 			}
+
+			// Replace content of this object with cleaned copy
+			copyMem(this, copy, sizeof(*this));
 		}
 
 		// Return element value at elementIndex.
