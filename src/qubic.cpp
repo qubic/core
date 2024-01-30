@@ -43,6 +43,7 @@
 #define TICK_REQUESTING_PERIOD 500ULL
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define ISSUANCE_RATE 1000000000000LL
+#define MAX_NUMBER_EPOCH 1000ULL
 #define MAX_AMOUNT (ISSUANCE_RATE * 1000ULL)
 #define MAX_INPUT_SIZE 1024ULL
 #define MAX_NUMBER_OF_MINERS 8192
@@ -79,6 +80,7 @@ static const unsigned short revenuePoints[1 + 1024] = { 0, 710, 1125, 1420, 1648
 
 static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
+static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
@@ -193,6 +195,7 @@ static m256i competitorPublicKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
+static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -535,7 +538,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     if (k == system.numberOfSolutions)
                                     {
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && (*score)(processorNumber, request->destinationPublicKey, solution_nonce) >= SOLUTION_THRESHOLD)
+                                            && (*score)(processorNumber, request->destinationPublicKey, solution_nonce) >= solutionThreshold[system.epoch])
                                         {
                                             ACQUIRE(solutionsLock);
 
@@ -1072,6 +1075,47 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
                     enqueueResponse(peer, sizeof(response), SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE, header->dejavu(), &response);
                 }
+            }
+            break;
+            
+            case SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST:
+            {
+                SpecialCommandSetSolutionThresholdResquestAndResponse* _request = header->getPayload<SpecialCommandSetSolutionThresholdResquestAndResponse>();
+                // can only set future epoch
+                if (_request->epoch > system.epoch)
+                {
+                    solutionThreshold[_request->epoch] = _request->threshold;
+                }
+                SpecialCommandSetSolutionThresholdResquestAndResponse response;
+                response.everIncreasingNonceAndCommandType = _request->everIncreasingNonceAndCommandType;
+                response.epoch = _request->epoch;
+                response.threshold = solutionThreshold[_request->epoch];
+                enqueueResponse(peer, sizeof(SpecialCommandSetSolutionThresholdResquestAndResponse), SpecialCommand::type, header->dejavu(), &response);
+            }
+            break;
+            case SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST:
+            {
+                SpecialCommandToggleMainModeResquestAndResponse* _request = header->getPayload<SpecialCommandToggleMainModeResquestAndResponse>();
+                mainAuxStatus = _request->mainModeFlag;
+                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeResquestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+            }
+            break;
+            case SPECIAL_COMMAND_REFRESH_PEER_LIST:
+            {
+                forceRefreshPeerList = true;
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
+            case SPECIAL_COMMAND_FORCE_NEXT_TICK:
+            {
+                forceNextTick = true;
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
+            case SPECIAL_COMMAND_REISSUE_VOTE:
+            {
+                system.latestCreatedTick--;
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
             }
             break;
             }
@@ -1979,7 +2023,7 @@ static void processTick(unsigned long long processorNumber)
                                                 resourceTestingDigest ^= score;
                                                 KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
-                                                if (score >= SOLUTION_THRESHOLD)
+                                                if (score >= solutionThreshold[system.epoch])
                                                 {
                                                     for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
                                                     {
@@ -2380,6 +2424,10 @@ static void beginEpoch1of2()
     score->loadScoreCache(system.epoch);
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     bs->SetMem((void*)minerScores, sizeof(minerScores[0]) * NUMBER_OF_COMPUTORS, 0);
+
+    if (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > DATA_LENGTH) { // invalid threshold
+        solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
+    }
 }
 
 static void beginEpoch2of2()
@@ -3405,6 +3453,7 @@ static bool initialize()
             return false;
         }
         score->resetTaskQueue();
+        bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
@@ -4287,7 +4336,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 appendText(message, L"Processor #");
                 appendNumber(message, tickProcessorIDs[i], false);
                 if (i != nTickProcessorIDs -1) appendText(message, L" | ");
-            }            
+            }
             logToConsole(message);
 
             setText(message, L"Request processors: ");
@@ -4298,7 +4347,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (i != nRequestProcessorIDs - 1) appendText(message, L" | ");
             }
             logToConsole(message);
-                        
+
             // Allocating resource for parallel sol verification
             for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
             {
@@ -4363,7 +4412,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (curTimeTick - clockTick >= (frequency >> 1))
                 {
                     clockTick = curTimeTick;
-                                
+
                     updateTime();
                 }
 
@@ -4508,7 +4557,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAny(&requestedQuorumTick.header);
                     }
                     futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
- 
+
                     if (tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
                         || targetNextTickDataDigestIsKnown)
                     {
@@ -4575,6 +4624,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     computerMustBeSaved = false;
                     saveComputer();
+                }
+
+                if (forceRefreshPeerList)
+                {
+                    forceRefreshPeerList = false;
+                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+                    {
+                        closePeer(&peers[i]);
+                    }
                 }
 
                 processKeyPresses();
