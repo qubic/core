@@ -5,13 +5,14 @@
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
 
 #define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 8
+#define NUMBER_OF_SOLUTION_PROCESSORS 2 // do not increase this for this epoch, because there may be issues due too fast ticking
+
 #define VERSION_A 1
-#define VERSION_B 190
+#define VERSION_B 191
 #define VERSION_C 0
 
-#define EPOCH 93
-#define TICK 12160000
+#define EPOCH 94
+#define TICK 12270000
 
 // random seed is now obtained from spectrumDigests
 
