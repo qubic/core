@@ -62,3 +62,25 @@ struct SpecialCommandSetProposalAndBallotResponse
     unsigned short computorIndex;
     unsigned char padding[6];
 };
+
+#define SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST 5ULL
+#define SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_RESPONSE 6ULL
+struct SpecialCommandSetSolutionThresholdResquestAndResponse
+{
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned int epoch;
+    int threshold;
+};
+
+
+#define SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST 7ULL // F12
+#define SPECIAL_COMMAND_TOGGLE_MAIN_MODE_RESPONSE 8ULL // F12
+struct SpecialCommandToggleMainModeResquestAndResponse
+{
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned char mainModeFlag; // 0 Aux - 1 Main
+    unsigned char padding[7];
+};
+#define SPECIAL_COMMAND_REFRESH_PEER_LIST 9ULL // F4
+#define SPECIAL_COMMAND_FORCE_NEXT_TICK 10ULL // F5
+#define SPECIAL_COMMAND_REISSUE_VOTE 11ULL // F9
