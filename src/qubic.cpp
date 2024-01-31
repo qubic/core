@@ -4143,7 +4143,7 @@ static void processKeyPresses()
 
         /*
         * F4 Key
-        * By Pressing the F4 Key the node will dop all currently active connections.
+        * By Pressing the F4 Key the node will drop all currently active connections.
         * This forces the node to reconnect to known peers and can help to recover stuck situations.
         */
         case 0x0E:
