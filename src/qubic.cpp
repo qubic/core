@@ -1043,16 +1043,16 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
             case SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST:
             {
-                SpecialCommandGetProposalAndBallotRequest* request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
-                if (request->computorIndex < NUMBER_OF_COMPUTORS)
+                SpecialCommandGetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
+                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
                 {
                     SpecialCommandGetProposalAndBallotResponse response;
 
-                    response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = request->computorIndex;
+                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
+                    response.computorIndex = _request->computorIndex;
                     *((short*)response.padding) = 0;
-                    bs->CopyMem(&response.proposal, &system.proposals[request->computorIndex], sizeof(ComputorProposal));
-                    bs->CopyMem(&response.ballot, &system.ballots[request->computorIndex], sizeof(ComputorBallot));
+                    bs->CopyMem(&response.proposal, &system.proposals[_request->computorIndex], sizeof(ComputorProposal));
+                    bs->CopyMem(&response.ballot, &system.ballots[_request->computorIndex], sizeof(ComputorBallot));
 
                     enqueueResponse(peer, sizeof(response), SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE, header->dejavu(), &response);
                 }
@@ -1061,16 +1061,16 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
             case SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_REQUEST:
             {
-                SpecialCommandSetProposalAndBallotRequest* request = header->getPayload<SpecialCommandSetProposalAndBallotRequest>();
-                if (request->computorIndex < NUMBER_OF_COMPUTORS)
+                SpecialCommandSetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandSetProposalAndBallotRequest>();
+                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
                 {
-                    bs->CopyMem(&system.proposals[request->computorIndex], &request->proposal, sizeof(ComputorProposal));
-                    bs->CopyMem(&system.ballots[request->computorIndex], &request->ballot, sizeof(ComputorBallot));
+                    bs->CopyMem(&system.proposals[_request->computorIndex], &_request->proposal, sizeof(ComputorProposal));
+                    bs->CopyMem(&system.ballots[_request->computorIndex], &_request->ballot, sizeof(ComputorBallot));
 
                     SpecialCommandSetProposalAndBallotResponse response;
 
-                    response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = request->computorIndex;
+                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
+                    response.computorIndex = _request->computorIndex;
                     *((short*)response.padding) = 0;
 
                     enqueueResponse(peer, sizeof(response), SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE, header->dejavu(), &response);
