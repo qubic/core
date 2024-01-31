@@ -382,6 +382,8 @@ iteration:
 
 static void saveUniverse()
 {
+    logToConsole(L"Saving universe file...");
+
     const unsigned long long beginningTick = __rdtsc();
 
     ACQUIRE(universeLock);

@@ -23,6 +23,7 @@
 #define REQUEST_QUEUE_LENGTH 65536 // Must be 65536
 #define RESPONSE_QUEUE_BUFFER_SIZE 1073741824
 #define RESPONSE_QUEUE_LENGTH 65536 // Must be 65536
+#define NUMBER_OF_PUBLIC_PEERS_TO_KEEP 10
 
 static volatile bool listOfPeersIsStatic = false;
 
@@ -252,7 +253,7 @@ static void forgetPublicPeer(const IPv4Address& address)
 
     ACQUIRE(publicPeersLock);
 
-    for (unsigned int i = 0; numberOfPublicPeers > NUMBER_OF_EXCHANGED_PEERS && i < numberOfPublicPeers; i++)
+    for (unsigned int i = 0; numberOfPublicPeers > NUMBER_OF_PUBLIC_PEERS_TO_KEEP && i < numberOfPublicPeers; i++)
     {
         if (publicPeers[i].address == address)
         {

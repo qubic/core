@@ -2,9 +2,18 @@
 
 #include "gtest/gtest.h"
 
+void* __scratchpadBuffer = nullptr;
+static void* __scratchpad()
+{
+    return __scratchpadBuffer;
+}
+
 #include "../src/smart_contracts/qpi.h"
 
 #include <vector>
+#include <map>
+#include <random>
+
 
 template <typename T, unsigned long long capacity>
 void checkPriorityQueue(const QPI::collection<T, capacity>& coll, const QPI::id& pov, bool print = false)
@@ -45,6 +54,127 @@ void checkPriorityQueue(const QPI::collection<T, capacity>& coll, const QPI::id&
     }
     EXPECT_EQ(elementCount, coll.population(pov));
     EXPECT_EQ(prevElementIdx, coll.tailIndex(pov));
+}
+
+void printPovElementCounts(const std::map<QPI::id, unsigned long long>& povElementCounts)
+{
+    std::cout << "PoV element counts:\n";
+    for (const auto& id_count_pair : povElementCounts)
+    {
+        QPI::id id = id_count_pair.first;
+        unsigned long long count = id_count_pair.second;
+        std::cout << "\t(" << id.m256i_u64[0] << ", " << id.m256i_u64[1] << ", " << id.m256i_u64[2] << ", " << id.m256i_u64[3] << "): " << count << std::endl;
+    }
+}
+
+// return sorted set of PoVs
+template <typename T, unsigned long long capacity>
+std::map<QPI::id, unsigned long long> getPovElementCounts(const QPI::collection<T, capacity>& coll)
+{
+    // use that in current implementation elements are always in range 0 to N-1
+    std::map<QPI::id, unsigned long long> povs;
+    for (unsigned long long i = 0; i < coll.population(); ++i)
+    {
+        QPI::id id = coll.pov(i);
+        EXPECT_NE(coll.headIndex(id), QPI::NULL_INDEX);
+        EXPECT_NE(coll.tailIndex(id), QPI::NULL_INDEX);
+        ++povs[id];
+    }
+
+    for (const auto& id_count_pair : povs)
+    {
+        EXPECT_EQ(coll.population(id_count_pair.first), id_count_pair.second);
+    }
+
+    return povs;
+}
+
+template <typename T, unsigned long long capacity>
+bool isCompletelySame(const QPI::collection<T, capacity>& coll1, const QPI::collection<T, capacity>& coll2)
+{
+    return memcmp(&coll1, &coll2, sizeof(coll1)) == 0;
+}
+
+template <typename T, unsigned long long capacity>
+bool haveSameContent(const QPI::collection<T, capacity>& coll1, const QPI::collection<T, capacity>& coll2, bool verbose = true)
+{
+    // check that both contain the same PoVs, each with the same number of elements
+    auto coll1PovCounts = getPovElementCounts(coll1);
+    auto coll2PovCounts = getPovElementCounts(coll2);
+    if (coll1PovCounts != coll2PovCounts)
+    {
+        if (verbose)
+        {
+            std::cout << "Differences in PoV sets of collections!" << std::endl;
+            if (coll1PovCounts.size() != coll2PovCounts.size())
+                std::cout << "\tPoV count: " << coll1PovCounts.size() << " vs " << coll2PovCounts.size() << std::endl;
+            printPovElementCounts(coll1PovCounts);
+            printPovElementCounts(coll2PovCounts);
+        }
+        return false;
+    }
+
+    // check that values and priorities of the elements are the same
+    for (const auto& id_count_pair : coll1PovCounts)
+    {
+        QPI::id pov = id_count_pair.first;
+        QPI::sint64 elementIndex1 = coll1.headIndex(pov);
+        QPI::sint64 elementIndex2 = coll2.headIndex(pov);
+        while (elementIndex1 != QPI::NULL_INDEX && elementIndex2 != QPI::NULL_INDEX)
+        {
+            if (coll1.priority(elementIndex1) != coll2.priority(elementIndex2))
+                return false;
+            if (coll1.element(elementIndex1) != coll2.element(elementIndex2))
+                return false;
+
+            EXPECT_EQ(coll1.pov(elementIndex1), pov);
+            EXPECT_EQ(coll2.pov(elementIndex2), pov);
+
+            elementIndex1 = coll1.nextElementIndex(elementIndex1);
+            elementIndex2 = coll2.nextElementIndex(elementIndex2);
+        }
+        EXPECT_EQ(elementIndex1, QPI::NULL_INDEX);
+        EXPECT_EQ(elementIndex2, QPI::NULL_INDEX);
+        EXPECT_EQ(coll1.nextElementIndex(coll1.tailIndex(pov)), QPI::NULL_INDEX);
+        EXPECT_EQ(coll2.nextElementIndex(coll2.tailIndex(pov)), QPI::NULL_INDEX);
+    }
+
+    return true;
+}
+
+template <typename T, unsigned long long capacity>
+void cleanupCollectionReferenceImplementation(const QPI::collection<T, capacity>& coll, QPI::collection<T, capacity> & newColl)
+{
+    newColl.reset();
+
+    // for each pov, add all elements of priority queue in order
+    auto povs = getPovElementCounts(coll);
+    for (const auto& id_count_pair : povs)
+    {
+        QPI::id pov = id_count_pair.first;
+        QPI::sint64 elementIndex = coll.headIndex(pov);
+        while (elementIndex != QPI::NULL_INDEX)
+        {
+            newColl.add(pov, coll.element(elementIndex), coll.priority(elementIndex));
+            elementIndex = coll.nextElementIndex(elementIndex);
+        }
+    }
+}
+
+template <typename T, unsigned long long capacity>
+void cleanupCollection(QPI::collection<T, capacity>& coll)
+{
+    // save original data for checking
+    QPI::collection<T, capacity> origColl;
+    copyMem(&origColl, &coll, sizeof(coll));
+
+    // run reference cleanup and test that cleanup did not change any relevant content
+    cleanupCollectionReferenceImplementation(origColl, coll);
+    EXPECT_TRUE(haveSameContent(origColl, coll));
+
+    // run faster cleanup and check result
+    origColl.cleanup();
+    EXPECT_TRUE(haveSameContent(origColl, coll));
 }
 
 
@@ -442,6 +572,14 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.capacity(), capacity);
     EXPECT_EQ(coll.population(), 8);
 
+    // test comparison function of full collection
+    QPI::collection<int, capacity> empty_coll;
+    empty_coll.reset();
+    EXPECT_TRUE(isCompletelySame(coll, coll));
+    EXPECT_TRUE(haveSameContent(coll, coll));
+    EXPECT_FALSE(isCompletelySame(coll, empty_coll));
+    EXPECT_FALSE(haveSameContent(coll, empty_coll, false));
+
     // test behavior of collection after resetting non-empty collection
     coll.reset();
     EXPECT_EQ(coll.capacity(), capacity);
@@ -639,6 +777,13 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
         EXPECT_EQ(coll.population(), 0);
         EXPECT_EQ(coll.population(pov), 0);
     }
+
+    // check that cleanup after removing all elements leads to same as reset() in terms of memory
+    QPI::collection<int, capacity> resetColl;
+    resetColl.reset();
+    EXPECT_FALSE(isCompletelySame(resetColl, coll));
+    coll.cleanup();
+    EXPECT_TRUE(isCompletelySame(resetColl, coll));
 }
 
 TEST(TestCoreQPI, CollectionMultiPovOneElement) {
@@ -703,6 +848,13 @@ TEST(TestCoreQPI, CollectionMultiPovOneElement) {
         EXPECT_EQ(coll.population(removePov), 0);
         EXPECT_EQ(coll.population(), capacity - j - 1);
     }
+
+    // check that cleanup after removing all elements leads to same as reset() in terms of memory
+    QPI::collection<int, capacity> resetColl;
+    resetColl.reset();
+    EXPECT_FALSE(isCompletelySame(resetColl, coll));
+    coll.cleanup();
+    EXPECT_TRUE(isCompletelySame(resetColl, coll));
 }
 
 TEST(TestCoreQPI, CollectionOneRemoveLastHeadTail) {
@@ -729,6 +881,56 @@ TEST(TestCoreQPI, CollectionOneRemoveLastHeadTail) {
     checkPriorityQueue(coll, pov, print);
     coll.remove(1);
     checkPriorityQueue(coll, pov, print);
+}
+
+template <unsigned long long capacity>
+void testCollectionCleanupPseudoRandom(int povs, int seed)
+{
+    // add and remove entries with pseudo-random sequence
+    std::mt19937_64 gen64(seed);
+
+    QPI::collection<unsigned long long, capacity> coll;
+    coll.reset();
+
+    // test cleanup of empty collection
+    cleanupCollection(coll);
+
+    int cleanupCounter = 0;
+    while (cleanupCounter < 100)
+    {
+        int p = gen64() % 100;
+
+        if (p == 0)
+        {
+            // cleanup (after about 100 add/remove)
+            cleanupCollection(coll);
+            ++cleanupCounter;
+        }
+
+        if (p < 70)
+        {
+            // add to collection (more probable than remove)
+            QPI::id pov(gen64() % povs, 0, 0, 0);
+            coll.add(pov, gen64(), gen64());
+        }
+        else if (coll.population() > 0)
+        {
+            // remove from collection
+            coll.remove(gen64() % coll.population());
+        }
+
+    }
+}
+
+TEST(TestCoreQPI, CollectionCleanup) {
+    __scratchpadBuffer = new char[10 * 1024 * 1024];
+    for (int i = 0; i < 3; ++i)
+    {
+        testCollectionCleanupPseudoRandom<512>(300, 12345 + i);
+        testCollectionCleanupPseudoRandom<256>(256, 1234 + i);
+        testCollectionCleanupPseudoRandom<256>(10, 123 + i);
+    }
+    delete[] __scratchpadBuffer;
 }
 
 

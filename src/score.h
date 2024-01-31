@@ -17,8 +17,7 @@ template<
     unsigned int numberOfOutputNeurons,
     unsigned int maxInputDuration,
     unsigned int maxOutputDuration,
-    unsigned int maxNumberOfProcessors,
-    unsigned int solutionBufferCount = 8
+    unsigned int solutionBufferCount
 >
 struct ScoreFunction
 {
@@ -303,5 +302,104 @@ struct ScoreFunction
         scoreCache.addEntry(publicKey, nonce, scoreCacheIndex, score);
 #endif
         return score;
+    }
+
+    // Multithreaded solutions verification:
+    // This module mainly serve tick processor in qubic core node, thus the queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
+    // for future use for somewhere else, you can only increase the size.
+    
+    volatile char taskQueueLock = 0;
+    struct {
+        m256i publicKey[NUMBER_OF_TRANSACTIONS_PER_TICK];
+        m256i nonce[NUMBER_OF_TRANSACTIONS_PER_TICK];
+    } taskQueue;
+    unsigned int _nTask;
+    unsigned int _nProcessing;
+    unsigned int _nFinished;
+    bool _nIsTaskQueueReady;
+
+    void resetTaskQueue()
+    {
+        ACQUIRE(taskQueueLock);
+        _nTask = 0;
+        _nProcessing = 0;
+        _nFinished = 0;
+        _nIsTaskQueueReady = false;
+        RELEASE(taskQueueLock);
+    }
+
+    // add task to the queue
+    // queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
+    void addTask(m256i publicKey, m256i nonce)
+    {   
+        ACQUIRE(taskQueueLock);
+        if (_nTask < NUMBER_OF_TRANSACTIONS_PER_TICK)
+        {
+            unsigned int index = _nTask++;
+            taskQueue.publicKey[index] = publicKey;
+            taskQueue.nonce[index] = nonce;
+        }
+        RELEASE(taskQueueLock);
+    }
+
+    void startProcessTaskQueue()
+    {
+        ACQUIRE(taskQueueLock);
+        _nIsTaskQueueReady = true;
+        RELEASE(taskQueueLock);
+    }
+
+    void stopProcessTaskQueue()
+    {
+        ACQUIRE(taskQueueLock);
+        _nIsTaskQueueReady = false;
+        RELEASE(taskQueueLock);
+    }
+
+    // get a task, can call on any thread
+    bool getTask(m256i* publicKey, m256i* nonce)
+    {
+        if (!_nIsTaskQueueReady)
+        {
+            return false;
+        }
+        bool result = false;
+        ACQUIRE(taskQueueLock);
+        if (_nProcessing < _nTask)
+        {
+            unsigned int index = _nProcessing++;
+            *publicKey = taskQueue.publicKey[index];
+            *nonce = taskQueue.nonce[index];
+            result = true;
+        }
+        else
+        {
+            result = false;
+        }
+        RELEASE(taskQueueLock);
+        return result;
+    }
+    void finishTask()
+    {
+        ACQUIRE(taskQueueLock);
+        _nFinished++;
+        RELEASE(taskQueueLock);
+    }
+
+    bool isTaskQueueProcessed()
+    {
+        return _nFinished == _nTask;
+    }
+
+    void tryProcessSolution(unsigned long long processorNumber)
+    {
+        m256i publicKey;
+        m256i nonce;
+        bool res = this->getTask(&publicKey, &nonce);
+        if (res)
+        {
+            (*this)(processorNumber, publicKey, nonce);
+            this->finishTask();
+        }
     }
 };

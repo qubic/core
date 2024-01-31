@@ -166,3 +166,25 @@ TEST(TestCore256BitFunctions, operatorNotEqual) {
     EXPECT_TRUE(m256i(42, 42, 0, 42).m256i_intr() != m256i(42, 42, 42, 42).m256i_intr());
     EXPECT_TRUE(m256i(42, 42, 42, 0).m256i_intr() != m256i(42, 42, 42, 42).m256i_intr());
 }
+
+TEST(TestCore256BitFunctions, operatorLessThan) {
+    EXPECT_FALSE(m256i(0, 0, 0, 0) < m256i(0, 0, 0, 0));
+    EXPECT_TRUE(m256i(0, 0, 0, 0) < m256i(0, 0, 0, 1));
+    EXPECT_TRUE(m256i(0, 0, 0, 0) < m256i(0, 0, 1, 0));
+    EXPECT_TRUE(m256i(0, 0, 0, 0) < m256i(0, 1, 0, 0));
+    EXPECT_TRUE(m256i(0, 0, 0, 0) < m256i(1, 0, 0, 0));
+    EXPECT_FALSE(m256i(0, 0, 0, 1) < m256i(0, 0, 0, 0));
+    EXPECT_FALSE(m256i(0, 0, 1, 0) < m256i(0, 0, 0, 0));
+    EXPECT_FALSE(m256i(0, 1, 0, 0) < m256i(0, 0, 0, 0));
+    EXPECT_FALSE(m256i(1, 0, 0, 0) < m256i(0, 0, 0, 0));
+
+    EXPECT_FALSE(m256i(100, 100, 100, 100) < m256i(100, 100, 100, 100));
+    EXPECT_FALSE(m256i(100, 100, 100, 100) < m256i(100, 100, 100, 1));
+    EXPECT_FALSE(m256i(100, 100, 100, 100) < m256i(100, 100, 1, 100));
+    EXPECT_FALSE(m256i(100, 100, 100, 100) < m256i(100, 1, 100, 100));
+    EXPECT_FALSE(m256i(100, 100, 100, 100) < m256i(1, 100, 100, 100));
+    EXPECT_TRUE(m256i(100, 100, 100, 1) < m256i(100, 100, 100, 100));
+    EXPECT_TRUE(m256i(100, 100, 1, 100) < m256i(100, 100, 100, 100));
+    EXPECT_TRUE(m256i(100, 1, 100, 100) < m256i(100, 100, 100, 100));
+    EXPECT_TRUE(m256i(1, 100, 100, 100) < m256i(100, 100, 100, 100));
+}
