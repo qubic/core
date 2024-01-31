@@ -2428,6 +2428,10 @@ static void beginEpoch1of2()
     if (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > DATA_LENGTH) { // invalid threshold
         solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
     }
+
+#if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
+    CurrentTransferId = 0;
+#endif
 }
 
 static void beginEpoch2of2()

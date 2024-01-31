@@ -18,6 +18,7 @@ static const unsigned char knownPublicPeers[][4] = {
 
 #define LOG_BUFFER_SIZE 16777200 // Must be less or equal to 16777200
 #define LOG_QU_TRANSFERS 0 // "0" disables logging, "1" enables it
+#define LOG_QU_TRANSFERS_TRACK_TRANSFER_ID 0
 #define LOG_ASSET_ISSUANCES 0
 #define LOG_ASSET_OWNERSHIP_CHANGES 0
 #define LOG_ASSET_POSSESSION_CHANGES 0
