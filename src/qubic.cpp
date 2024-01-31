@@ -167,12 +167,12 @@ static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
 
 // Variables for tracking the detail of processors(CPU core) and function, this is useful for resource management and debugging
-static unsigned long long tickProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function tickProcessor
-static unsigned long long requestProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function requestProcessor
-static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function contractProcessor
+static unsigned long long tickProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that run function tickProcessor
+static unsigned long long requestProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that run function requestProcessor
+static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that run function contractProcessor
 
-static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that will process solution
-static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS] = { false }; // flag array to indicate that whether a procId should help processing solutions or not
+static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that will process solution
+static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS]; // flag array to indicate that whether a procId should help processing solutions or not
 static unsigned long long mainThreadProcessorID = -1;
 static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
@@ -3456,7 +3456,7 @@ static bool initialize()
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
             return false;
         }
-        
+
         bs->SetMem(score, sizeof(*score), 0);
         bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
         score->resetTaskQueue();
