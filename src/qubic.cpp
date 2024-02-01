@@ -43,6 +43,7 @@
 #define TICK_REQUESTING_PERIOD 500ULL
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define ISSUANCE_RATE 1000000000000LL
+#define MAX_NUMBER_EPOCH 1000ULL
 #define MAX_AMOUNT (ISSUANCE_RATE * 1000ULL)
 #define MAX_INPUT_SIZE 1024ULL
 #define MAX_NUMBER_OF_MINERS 8192
@@ -79,6 +80,7 @@ static const unsigned short revenuePoints[1 + 1024] = { 0, 710, 1125, 1420, 1648
 
 static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
+static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
@@ -165,18 +167,17 @@ static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
 
 // Variables for tracking the detail of processors(CPU core) and function, this is useful for resource management and debugging
-static unsigned long long tickProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function tickProcessor
-static unsigned long long requestProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function requestProcessor
-static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that run function contractProcessor
+static unsigned long long tickProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that run function tickProcessor
+static unsigned long long requestProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that run function requestProcessor
+static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that run function contractProcessor
 
-static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS] = { -1 }; // a list of proc id that will process solution
-static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS] = { false }; // flag array to indicate that whether a procId should help processing solutions or not
+static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that will process solution
+static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS]; // flag array to indicate that whether a procId should help processing solutions or not
 static unsigned long long mainThreadProcessorID = -1;
 static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
 static int nSolutionProcessorIDs = 0;
-static volatile char resourceInfoLock = 0;
 
 static ScoreFunction<
     DATA_LENGTH, INFO_LENGTH,
@@ -193,6 +194,7 @@ static m256i competitorPublicKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
+static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -535,7 +537,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     if (k == system.numberOfSolutions)
                                     {
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && (*score)(processorNumber, request->destinationPublicKey, solution_nonce) >= SOLUTION_THRESHOLD)
+                                            && (*score)(processorNumber, request->destinationPublicKey, solution_nonce) >= solutionThreshold[system.epoch])
                                         {
                                             ACQUIRE(solutionsLock);
 
@@ -1040,16 +1042,16 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
             case SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST:
             {
-                SpecialCommandGetProposalAndBallotRequest* request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
-                if (request->computorIndex < NUMBER_OF_COMPUTORS)
+                SpecialCommandGetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
+                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
                 {
                     SpecialCommandGetProposalAndBallotResponse response;
 
-                    response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = request->computorIndex;
+                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
+                    response.computorIndex = _request->computorIndex;
                     *((short*)response.padding) = 0;
-                    bs->CopyMem(&response.proposal, &system.proposals[request->computorIndex], sizeof(ComputorProposal));
-                    bs->CopyMem(&response.ballot, &system.ballots[request->computorIndex], sizeof(ComputorBallot));
+                    bs->CopyMem(&response.proposal, &system.proposals[_request->computorIndex], sizeof(ComputorProposal));
+                    bs->CopyMem(&response.ballot, &system.ballots[_request->computorIndex], sizeof(ComputorBallot));
 
                     enqueueResponse(peer, sizeof(response), SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE, header->dejavu(), &response);
                 }
@@ -1058,20 +1060,61 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
             case SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_REQUEST:
             {
-                SpecialCommandSetProposalAndBallotRequest* request = header->getPayload<SpecialCommandSetProposalAndBallotRequest>();
-                if (request->computorIndex < NUMBER_OF_COMPUTORS)
+                SpecialCommandSetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandSetProposalAndBallotRequest>();
+                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
                 {
-                    bs->CopyMem(&system.proposals[request->computorIndex], &request->proposal, sizeof(ComputorProposal));
-                    bs->CopyMem(&system.ballots[request->computorIndex], &request->ballot, sizeof(ComputorBallot));
+                    bs->CopyMem(&system.proposals[_request->computorIndex], &_request->proposal, sizeof(ComputorProposal));
+                    bs->CopyMem(&system.ballots[_request->computorIndex], &_request->ballot, sizeof(ComputorBallot));
 
                     SpecialCommandSetProposalAndBallotResponse response;
 
-                    response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = request->computorIndex;
+                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
+                    response.computorIndex = _request->computorIndex;
                     *((short*)response.padding) = 0;
 
                     enqueueResponse(peer, sizeof(response), SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE, header->dejavu(), &response);
                 }
+            }
+            break;
+            
+            case SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST:
+            {
+                SpecialCommandSetSolutionThresholdResquestAndResponse* _request = header->getPayload<SpecialCommandSetSolutionThresholdResquestAndResponse>();
+                // can only set future epoch
+                if (_request->epoch > system.epoch)
+                {
+                    solutionThreshold[_request->epoch] = _request->threshold;
+                }
+                SpecialCommandSetSolutionThresholdResquestAndResponse response;
+                response.everIncreasingNonceAndCommandType = _request->everIncreasingNonceAndCommandType;
+                response.epoch = _request->epoch;
+                response.threshold = solutionThreshold[_request->epoch];
+                enqueueResponse(peer, sizeof(SpecialCommandSetSolutionThresholdResquestAndResponse), SpecialCommand::type, header->dejavu(), &response);
+            }
+            break;
+            case SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST:
+            {
+                SpecialCommandToggleMainModeResquestAndResponse* _request = header->getPayload<SpecialCommandToggleMainModeResquestAndResponse>();
+                mainAuxStatus = _request->mainModeFlag;
+                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeResquestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+            }
+            break;
+            case SPECIAL_COMMAND_REFRESH_PEER_LIST:
+            {
+                forceRefreshPeerList = true;
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
+            case SPECIAL_COMMAND_FORCE_NEXT_TICK:
+            {
+                forceNextTick = true;
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
+            case SPECIAL_COMMAND_REISSUE_VOTE:
+            {
+                system.latestCreatedTick--;
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
             }
             break;
             }
@@ -1085,12 +1128,6 @@ static void requestProcessor(void* ProcedureArgument)
 
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
-
-    // tracking cpu resource allocation
-    ACQUIRE(resourceInfoLock);
-    requestProcessorIDs[nRequestProcessorIDs] = processorNumber;
-    nRequestProcessorIDs++;
-    RELEASE(resourceInfoLock);
 
     Processor* processor = (Processor*)ProcedureArgument;
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
@@ -1622,12 +1659,6 @@ static void contractProcessor(void*)
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
-    // tracking cpu resource allocation
-    ACQUIRE(resourceInfoLock);
-    contractProcessorIDs[nContractProcessorIDs] = processorNumber;
-    nContractProcessorIDs++;
-    RELEASE(resourceInfoLock);
-
     switch (contractProcessorPhase)
     {
     case INITIALIZE:
@@ -1979,7 +2010,7 @@ static void processTick(unsigned long long processorNumber)
                                                 resourceTestingDigest ^= score;
                                                 KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
-                                                if (score >= SOLUTION_THRESHOLD)
+                                                if (score >= solutionThreshold[system.epoch])
                                                 {
                                                     for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
                                                     {
@@ -2377,9 +2408,18 @@ static void beginEpoch1of2()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
 
     bs->SetMem(score, sizeof(*score), 0);
+    score->resetTaskQueue();
     score->loadScoreCache(system.epoch);
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     bs->SetMem((void*)minerScores, sizeof(minerScores[0]) * NUMBER_OF_COMPUTORS, 0);
+
+    if (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > DATA_LENGTH) { // invalid threshold
+        solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
+    }
+
+#if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
+    CurrentTransferId = 0;
+#endif
 }
 
 static void beginEpoch2of2()
@@ -2585,15 +2625,8 @@ static void endEpoch()
 static void tickProcessor(void*)
 {
     enableAVX();
-
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
-
-    // tracking cpu resource allocation
-    ACQUIRE(resourceInfoLock);
-    tickProcessorIDs[nTickProcessorIDs] = processorNumber;
-    nTickProcessorIDs++;
-    RELEASE(resourceInfoLock);
 
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
@@ -3404,7 +3437,8 @@ static bool initialize()
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
             return false;
         }
-        score->resetTaskQueue();
+
+        bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
@@ -4090,7 +4124,7 @@ static void processKeyPresses()
 
         /*
         * F4 Key
-        * By Pressing the F4 Key the node will dop all currently active connections.
+        * By Pressing the F4 Key the node will drop all currently active connections.
         * This forces the node to reconnect to known peers and can help to recover stuck situations.
         */
         case 0x0E:
@@ -4230,6 +4264,21 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         unsigned long long numberOfAllProcessors, numberOfEnabledProcessors;
         mpServicesProtocol->GetNumberOfProcessors(mpServicesProtocol, &numberOfAllProcessors, &numberOfEnabledProcessors);
         mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
+        
+        // Initialize resource management
+        // ASSUMPTION: - each processor (CPU core) is binded to different functional thread.
+        //             - there are potentially 2+ tick processors in the future
+        // procId is guaranteed lower than MAX_NUMBER_OF_PROCESSORS (https://github.com/tianocore/edk2/blob/master/MdePkg/Include/Protocol/MpService.h#L615)
+        // First part: tick processors always process solutions         
+        nTickProcessorIDs = 0;
+        nRequestProcessorIDs = 0;
+        nContractProcessorIDs = 0;
+        nSolutionProcessorIDs = 0;
+        
+        for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+        {
+            solutionProcessorFlags[i] = false;
+        }
 
         for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS; i++)
         {
@@ -4249,11 +4298,29 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (numberOfProcessors == 2)
                 {
                     computingProcessorNumber = i;
+                    contractProcessorIDs[nContractProcessorIDs++] = i;
                 }
                 else
                 {
                     bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, numberOfProcessors == 1 ? tickProcessor : requestProcessor, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
+
+                    if (numberOfProcessors == 1)
+                    {
+                        tickProcessorIDs[nTickProcessorIDs++] = i;
+                    }
+                    else
+                    {
+                        requestProcessorIDs[nRequestProcessorIDs++] = i;
+                    }
+
+                    if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
+                        && !solutionProcessorFlags[i])
+                    {
+                        solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS] = true;
+                        solutionProcessorFlags[i] = true;
+                        solutionProcessorIDs[nSolutionProcessorIDs++] = i;
+                    }
                 }
                 numberOfProcessors++;
             }
@@ -4264,13 +4331,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         }
         else
         {
-            // wait until all resource info are collected
-            logToConsole(L"Collecting resource information");
-            while (nTickProcessorIDs + nRequestProcessorIDs != numberOfProcessors - 1) // contractProcessor will be started later
-            {
-                _mm_pause();
-            }
-
             setNumber(message, 1 + numberOfProcessors, TRUE);
             appendText(message, L"/");
             appendNumber(message, numberOfAllProcessors, TRUE);
@@ -4287,7 +4347,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 appendText(message, L"Processor #");
                 appendNumber(message, tickProcessorIDs[i], false);
                 if (i != nTickProcessorIDs -1) appendText(message, L" | ");
-            }            
+            }
             logToConsole(message);
 
             setText(message, L"Request processors: ");
@@ -4298,40 +4358,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (i != nRequestProcessorIDs - 1) appendText(message, L" | ");
             }
             logToConsole(message);
-                        
-            // Allocating resource for parallel sol verification
-            for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
-            {
-                solutionProcessorFlags[i] = false;
-            }
-
-            // ASSUMPTION: - each processor (CPU core) is binded to different functional thread.
-            //             - there are potentially 2+ tick processors in the future
-            // procId is guaranteed lower than MAX_NUMBER_OF_PROCESSORS (https://github.com/tianocore/edk2/blob/master/MdePkg/Include/Protocol/MpService.h#L615)
-            // First part: tick processors always process solutions            
-            for (int i = 0; i < nTickProcessorIDs; i++)
-            {
-                unsigned long long procId = tickProcessorIDs[i];
-                if (!solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS]
-                    && !solutionProcessorFlags[procId])
-                {
-                    solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS] = true;
-                    solutionProcessorFlags[procId] = true;
-                    solutionProcessorIDs[nSolutionProcessorIDs++] = procId;
-                }
-            }
-            // Second part: fill the solution processing threads with some of requestProcessors
-            for (int i = 0; i < nRequestProcessorIDs; i++)
-            {
-                unsigned long long procId = requestProcessorIDs[i];
-                if (!solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS]
-                    && !solutionProcessorFlags[procId])
-                {
-                    solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS] = true;
-                    solutionProcessorFlags[procId] = true;
-                    solutionProcessorIDs[nSolutionProcessorIDs++] = procId;
-                }
-            }
 
             setText(message, L"Solution processors: ");
             for (int i = 0; i < nSolutionProcessorIDs; i++)
@@ -4363,7 +4389,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (curTimeTick - clockTick >= (frequency >> 1))
                 {
                     clockTick = curTimeTick;
-                                
+
                     updateTime();
                 }
 
@@ -4508,7 +4534,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAny(&requestedQuorumTick.header);
                     }
                     futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
- 
+
                     if (tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
                         || targetNextTickDataDigestIsKnown)
                     {
@@ -4575,6 +4601,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     computerMustBeSaved = false;
                     saveComputer();
+                }
+
+                if (forceRefreshPeerList)
+                {
+                    forceRefreshPeerList = false;
+                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+                    {
+                        closePeer(&peers[i]);
+                    }
                 }
 
                 processKeyPresses();

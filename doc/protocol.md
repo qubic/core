@@ -24,7 +24,7 @@ If an outgoing connection to a verified peer is rejected, the peer loses the ver
 If an outgoing connection to a non-verified peer is rejected, the peer is removed from the list of peers.
 If an outgoing connection to a non-verified peer is accepted and an `ExchangePublicPeers` message is received, the peer gets the verified status.
 If a protocol violation is detected at any moment during communication (allowing to assume the remote end runs something else, not Qubic node), then the IP is removed even if it is verified.
-An IP is only removed from the list of peers if the list still has at least 4 entries afterwards.
+An IP is only removed from the list of peers if the list still has at least 10 entries afterwards.
 
 
 ## ...
