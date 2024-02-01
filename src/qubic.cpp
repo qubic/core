@@ -178,7 +178,6 @@ static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
 static int nSolutionProcessorIDs = 0;
-static volatile char resourceInfoLock = 0;
 
 static ScoreFunction<
     DATA_LENGTH, INFO_LENGTH,
@@ -1130,12 +1129,6 @@ static void requestProcessor(void* ProcedureArgument)
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
-    // tracking cpu resource allocation
-    ACQUIRE(resourceInfoLock);
-    requestProcessorIDs[nRequestProcessorIDs] = processorNumber;
-    nRequestProcessorIDs++;
-    RELEASE(resourceInfoLock);
-
     Processor* processor = (Processor*)ProcedureArgument;
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
@@ -1665,12 +1658,6 @@ static void contractProcessor(void*)
 
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
-
-    // tracking cpu resource allocation
-    ACQUIRE(resourceInfoLock);
-    contractProcessorIDs[nContractProcessorIDs] = processorNumber;
-    nContractProcessorIDs++;
-    RELEASE(resourceInfoLock);
 
     switch (contractProcessorPhase)
     {
@@ -2421,6 +2408,7 @@ static void beginEpoch1of2()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
 
     bs->SetMem(score, sizeof(*score), 0);
+    score->resetTaskQueue();
     score->loadScoreCache(system.epoch);
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     bs->SetMem((void*)minerScores, sizeof(minerScores[0]) * NUMBER_OF_COMPUTORS, 0);
@@ -2637,15 +2625,8 @@ static void endEpoch()
 static void tickProcessor(void*)
 {
     enableAVX();
-
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
-
-    // tracking cpu resource allocation
-    ACQUIRE(resourceInfoLock);
-    tickProcessorIDs[nTickProcessorIDs] = processorNumber;
-    nTickProcessorIDs++;
-    RELEASE(resourceInfoLock);
 
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
@@ -3457,9 +3438,7 @@ static bool initialize()
             return false;
         }
 
-        bs->SetMem(score, sizeof(*score), 0);
         bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
-        score->resetTaskQueue();
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
@@ -4285,6 +4264,21 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         unsigned long long numberOfAllProcessors, numberOfEnabledProcessors;
         mpServicesProtocol->GetNumberOfProcessors(mpServicesProtocol, &numberOfAllProcessors, &numberOfEnabledProcessors);
         mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
+        
+        // Initialize resource management
+        // ASSUMPTION: - each processor (CPU core) is binded to different functional thread.
+        //             - there are potentially 2+ tick processors in the future
+        // procId is guaranteed lower than MAX_NUMBER_OF_PROCESSORS (https://github.com/tianocore/edk2/blob/master/MdePkg/Include/Protocol/MpService.h#L615)
+        // First part: tick processors always process solutions         
+        nTickProcessorIDs = 0;
+        nRequestProcessorIDs = 0;
+        nContractProcessorIDs = 0;
+        nSolutionProcessorIDs = 0;
+        
+        for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+        {
+            solutionProcessorFlags[i] = false;
+        }
 
         for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS; i++)
         {
@@ -4304,11 +4298,29 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (numberOfProcessors == 2)
                 {
                     computingProcessorNumber = i;
+                    contractProcessorIDs[nContractProcessorIDs++] = i;
                 }
                 else
                 {
                     bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, numberOfProcessors == 1 ? tickProcessor : requestProcessor, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
+
+                    if (numberOfProcessors == 1)
+                    {
+                        tickProcessorIDs[nTickProcessorIDs++] = i;
+                    }
+                    else
+                    {
+                        requestProcessorIDs[nRequestProcessorIDs++] = i;
+                    }
+
+                    if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
+                        && !solutionProcessorFlags[i])
+                    {
+                        solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS] = true;
+                        solutionProcessorFlags[i] = true;
+                        solutionProcessorIDs[nSolutionProcessorIDs++] = i;
+                    }
                 }
                 numberOfProcessors++;
             }
@@ -4319,13 +4331,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         }
         else
         {
-            // wait until all resource info are collected
-            logToConsole(L"Collecting resource information");
-            while (nTickProcessorIDs + nRequestProcessorIDs != numberOfProcessors - 1) // contractProcessor will be started later
-            {
-                _mm_pause();
-            }
-
             setNumber(message, 1 + numberOfProcessors, TRUE);
             appendText(message, L"/");
             appendNumber(message, numberOfAllProcessors, TRUE);
@@ -4353,40 +4358,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (i != nRequestProcessorIDs - 1) appendText(message, L" | ");
             }
             logToConsole(message);
-
-            // Allocating resource for parallel sol verification
-            for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
-            {
-                solutionProcessorFlags[i] = false;
-            }
-
-            // ASSUMPTION: - each processor (CPU core) is binded to different functional thread.
-            //             - there are potentially 2+ tick processors in the future
-            // procId is guaranteed lower than MAX_NUMBER_OF_PROCESSORS (https://github.com/tianocore/edk2/blob/master/MdePkg/Include/Protocol/MpService.h#L615)
-            // First part: tick processors always process solutions            
-            for (int i = 0; i < nTickProcessorIDs; i++)
-            {
-                unsigned long long procId = tickProcessorIDs[i];
-                if (!solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS]
-                    && !solutionProcessorFlags[procId])
-                {
-                    solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS] = true;
-                    solutionProcessorFlags[procId] = true;
-                    solutionProcessorIDs[nSolutionProcessorIDs++] = procId;
-                }
-            }
-            // Second part: fill the solution processing threads with some of requestProcessors
-            for (int i = 0; i < nRequestProcessorIDs; i++)
-            {
-                unsigned long long procId = requestProcessorIDs[i];
-                if (!solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS]
-                    && !solutionProcessorFlags[procId])
-                {
-                    solutionProcessorFlags[procId % NUMBER_OF_SOLUTION_PROCESSORS] = true;
-                    solutionProcessorFlags[procId] = true;
-                    solutionProcessorIDs[nSolutionProcessorIDs++] = procId;
-                }
-            }
 
             setText(message, L"Solution processors: ");
             for (int i = 0; i < nSolutionProcessorIDs; i++)
