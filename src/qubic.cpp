@@ -3927,6 +3927,10 @@ static void logInfo()
         appendText(message, L":");
         appendNumber(message, tickData[system.tick + 1 - system.initialTick].second / 10, FALSE);
         appendNumber(message, tickData[system.tick + 1 - system.initialTick].second % 10, FALSE);
+        appendText(message, L".");
+        appendNumber(message, tickData[system.tick + 1 - system.initialTick].millisecond / 100, FALSE);
+        appendNumber(message, (tickData[system.tick + 1 - system.initialTick].millisecond % 100) / 10, FALSE);
+        appendNumber(message, tickData[system.tick + 1 - system.initialTick].millisecond % 10, FALSE);
         appendText(message, L".) ");
     }
     appendNumber(message, numberOfPendingTransactions, TRUE);
