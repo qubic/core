@@ -9,7 +9,7 @@
 // random seed is now obtained from spectrumDigests
 
 #define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 12 // do not increase this, because there may be issues due to too fast ticking
+#define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this, because there may be issues due to too fast ticking
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
@@ -23,8 +23,8 @@
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
-#define TARGET_TICK_DURATION 1500
-#define TRANSACTION_SPARSENESS 1
+#define TARGET_TICK_DURATION 7000
+#define TRANSACTION_SPARSENESS 4
 
 // Below are 2 variables that are used for auto-F5 feature:
 #define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
@@ -63,7 +63,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 #define EPOCH 157
 #define TICK 23730000
 
-#define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
+#define ARBITRATOR "MEFKYFCDXDUILCAJKOIKWQAPENJDUHSSYPBRWFOTLALILAYWQFDSITJELLHG"
 #define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"
 
 static unsigned short SYSTEM_FILE_NAME[] = L"system";
@@ -80,14 +80,14 @@ static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_
 #define MAX_DURATION 9000000
 #define NUMBER_OF_OPTIMIZATION_STEPS 60
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 137
+#define SOLUTION_THRESHOLD_DEFAULT 87
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
-#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 1) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
@@ -96,3 +96,5 @@ static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
+
+#define TESTNET_EPOCH_DURATION 3000
