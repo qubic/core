@@ -56,7 +56,7 @@
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define PEER_REFRESHING_PERIOD 120000ULL
-#define PORT 21841
+#define PORT 31841
 #define SPECTRUM_CAPACITY (1ULL << SPECTRUM_DEPTH) // Must be 2^N
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
@@ -647,6 +647,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
     // lagging behind the others that already switched epoch).
     if (request->computors.epoch == system.epoch && request->computors.epoch > broadcastedComputors.computors.epoch)
     {
+        logToConsole(L"Received broadcast computors");
         // Verify that all addresses are non-zeroes. Otherwise, discard it even if ARB broadcasted it.
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
@@ -661,6 +662,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         KangarooTwelve(request, sizeof(BroadcastComputors) - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify((unsigned char*)&arbitratorPublicKey, digest, request->computors.signature))
         {
+            logToConsole(L"Received broadcast computors are verified");
             if (header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
@@ -4292,8 +4294,9 @@ static void tickProcessor(void*)
                                 if (tickDataSuits)
                                 {
                                     const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
-                                    if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
-                                        || dayIndex > 738570 + system.epoch * 7)
+                                    // if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
+                                    //     || dayIndex > 738570 + system.epoch * 7)
+                                    if (system.tick - system.initialTick >= TESTNET_EPOCH_DURATION)
                                     {
                                         // start seamless epoch transition
                                         epochTransitionState = 1;
@@ -5194,20 +5197,23 @@ static void logInfo()
     }
     else
     {
-        const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
-        for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
-        {
-            appendText(message, alphabet[ownComputorIndices[i] / 26]);
-            appendText(message, alphabet[ownComputorIndices[i] % 26]);
-            if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
-            {
-                appendText(message, L"+");
-            }
-            else
-            {
-                appendText(message, L".");
-            }
-        }
+        appendText(message, L"[Owning ");
+        appendNumber(message, numberOfOwnComputorIndices, false);
+        appendText(message, L" indices]");
+        // const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
+        // for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+        // {
+        //     appendText(message, alphabet[ownComputorIndices[i] / 26]);
+        //     appendText(message, alphabet[ownComputorIndices[i] % 26]);
+        //     if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
+        //     {
+        //         appendText(message, L"+");
+        //     }
+        //     else
+        //     {
+        //         appendText(message, L".");
+        //     }
+        // }
     }
     logToConsole(message);
 

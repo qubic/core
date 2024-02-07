@@ -285,7 +285,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 */
 static bool isBogonAddress(const IPv4Address& address)
 {
-    return (!address.u8[0])
+   return (!address.u8[0])
         || (address.u8[0] == 127)
         || (address.u8[0] == 10)
         || (address.u8[0] == 172 && address.u8[1] >= 16 && address.u8[1] <= 31)
