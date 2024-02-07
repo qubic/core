@@ -39,7 +39,7 @@
 ////////// Qubic \\\\\\\\\\
 
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
-#define TARGET_TICK_DURATION 3000
+#define TARGET_TICK_DURATION 7000
 #define TICK_REQUESTING_PERIOD 500ULL
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define ISSUANCE_RATE 1000000000000LL
@@ -55,7 +55,7 @@
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define PEER_REFRESHING_PERIOD 120000ULL
-#define PORT 21841
+#define PORT 31841
 #define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
 #define SPECTRUM_CAPACITY (1ULL << SPECTRUM_DEPTH) // Must be 2^N
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
@@ -3992,20 +3992,23 @@ static void logInfo()
     }
     else
     {
-        const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
-        for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
-        {
-            appendText(message, alphabet[ownComputorIndices[i] / 26]);
-            appendText(message, alphabet[ownComputorIndices[i] % 26]);
-            if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
-            {
-                appendText(message, L"+");
-            }
-            else
-            {
-                appendText(message, L".");
-            }
-        }
+        appendText(message, L"[Owning ");
+        appendNumber(message, numberOfOwnComputorIndices, false);
+        appendText(message, L" indices]");
+        // const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
+        // for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+        // {
+        //     appendText(message, alphabet[ownComputorIndices[i] / 26]);
+        //     appendText(message, alphabet[ownComputorIndices[i] % 26]);
+        //     if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
+        //     {
+        //         appendText(message, L"+");
+        //     }
+        //     else
+        //     {
+        //         appendText(message, L".");
+        //     }
+        // }
     }
     logToConsole(message);
 

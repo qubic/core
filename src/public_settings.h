@@ -16,7 +16,7 @@
 
 // random seed is now obtained from spectrumDigests
 
-#define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
+#define ARBITRATOR "MEFKYFCDXDUILCAJKOIKWQAPENJDUHSSYPBRWFOTLALILAYWQFDSITJELLHG"
 
 static unsigned short SYSTEM_FILE_NAME[] = L"system";
 static unsigned short SPECTRUM_FILE_NAME[] = L"spectrum.???";
