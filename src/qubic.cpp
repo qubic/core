@@ -1020,6 +1020,32 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
     }
 }
 
+static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
+{
+    RespondSystemInfo respondedSystemInfo;
+
+    respondedSystemInfo.version = system.version;
+    respondedSystemInfo.epoch = system.epoch;
+    respondedSystemInfo.tick = system.tick;
+    respondedSystemInfo.initialTick = system.initialTick;
+    respondedSystemInfo.latestCreatedTick = system.latestLedTick;
+
+    respondedSystemInfo.initialMillisecond = system.initialMillisecond;
+    respondedSystemInfo.initialSecond = system.initialSecond;
+    respondedSystemInfo.initialMinute = system.initialMinute;
+    respondedSystemInfo.initialHour = system.initialHour;
+    respondedSystemInfo.initialDay = system.initialDay;
+    respondedSystemInfo.initialMonth = system.initialMonth;
+    respondedSystemInfo.initialYear = system.initialYear;
+
+    respondedSystemInfo.numberOfEntities = numberOfEntities;
+    respondedSystemInfo.numberOfTransactions = numberOfTransactions;
+
+    respondedSystemInfo.randomMiningSeed = score->initialRandomSeed;
+
+    enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
+}
+
 static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 {
     SpecialCommand* request = header->getPayload<SpecialCommand>();
@@ -1278,6 +1304,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case RequestLog::type:
                 {
                     processRequestLog(peer, header);
+                }
+                break;
+
+                case REQUEST_SYSTEM_INFO:
+                {
+                    processRequestSystemInfo(peer, header);
                 }
                 break;
 

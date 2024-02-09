@@ -105,6 +105,7 @@
     <ClInclude Include="network_core\tcp4.h">
       <Filter>network_core</Filter>
     </ClInclude>
+    <ClInclude Include="network_messages\system_info.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
