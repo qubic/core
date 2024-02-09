@@ -80,151 +80,151 @@ public:
             return;
         }
 
-        if (input.amt0 > 0)
+        if (input.dst0 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst0, input.amt0, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst0, input.amt0);
         }
-        if (input.amt1 > 0)
+        if (input.dst1 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst1, input.amt1, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst1, input.amt1);
         }
-        if (input.amt2 > 0)
+        if (input.dst2 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst2, input.amt2, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst2, input.amt2);
         }
-        if (input.amt3 > 0)
+        if (input.dst3 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst3, input.amt3, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst3, input.amt3);
         }
-        if (input.amt4 > 0)
+        if (input.dst4 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst4, input.amt4, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst4, input.amt4);
         }
-        if (input.amt5 > 0)
+        if (input.dst5 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst5, input.amt5, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst5, input.amt5);
         }
-        if (input.amt6 > 0)
+        if (input.dst6 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst6, input.amt6, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst6, input.amt6);
         }
-        if (input.amt7 > 0)
+        if (input.dst7 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst7, input.amt7, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst7, input.amt7);
         }
-        if (input.amt8 > 0)
+        if (input.dst8 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst8, input.amt8, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst8, input.amt8);
         }
-        if (input.amt9 > 0)
+        if (input.dst9 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst9, input.amt9, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst9, input.amt9);
         }
-        if (input.amt10 > 0)
+        if (input.dst10 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst10, input.amt10, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst10, input.amt10);
         }
-        if (input.amt11 > 0)
+        if (input.dst11 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst11, input.amt11, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst11, input.amt11);
         }
-        if (input.amt12 > 0)
+        if (input.dst12 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst12, input.amt12, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst12, input.amt12);
         }
-        if (input.amt13 > 0)
+        if (input.dst13 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst13, input.amt13, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst13, input.amt13);
         }
-        if (input.amt14 > 0)
+        if (input.dst14 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst14, input.amt14, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst14, input.amt14);
         }
-        if (input.amt15 > 0)
+        if (input.dst15 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst15, input.amt15, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst15, input.amt15);
         }
-        if (input.amt16 > 0)
+        if (input.dst16 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst16, input.amt16, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst16, input.amt16);
         }
-        if (input.amt17 > 0)
+        if (input.dst17 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst17, input.amt17, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst17, input.amt17);
         }
-        if (input.amt18 > 0)
+        if (input.dst18 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst18, input.amt18, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst18, input.amt18);
         }
-        if (input.amt19 > 0)
+        if (input.dst19 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst19, input.amt19, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst19, input.amt19);
         }
-        if (input.amt20 > 0)
+        if (input.dst20 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst20, input.amt20, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst20, input.amt20);
         }
-        if (input.amt21 > 0)
+        if (input.dst21 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst21, input.amt21, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst21, input.amt21);
         }
-        if (input.amt22 > 0)
+        if (input.dst22 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst22, input.amt22, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst22, input.amt22);
         }
-        if (input.amt23 > 0)
+        if (input.dst23 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst23, input.amt23, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             transfer(input.dst23, input.amt23);
         }
-        if (input.amt24 > 0)
+        if (input.dst24 != NULL_ID)
         {
             state.logger = QUtilLogger{ 0,  0, invocator(), input.dst24, input.amt24, STM1_SEND_FUND };
             LOG_INFO(state.logger);
