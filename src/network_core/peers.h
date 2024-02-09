@@ -242,10 +242,54 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
     RELEASE(responseQueueHeadLock);
 }
 
+/**
+* checks if a given address is a bogon address
+* a bogon address is an ip address which should not be used pubicly (e.g. private networks)
+*
+* @param address the ip address to be checked
+* @return true if address is bogon or false if not
+*/
+static bool isBogonAddress(const IPv4Address& address)
+{
+    return (!address.u8[0])
+        || (address.u8[0] == 127)
+        || (address.u8[0] == 10)
+        || (address.u8[0] == 172 && address.u8[1] >= 16 && address.u8[1] <= 31)
+        || (address.u8[0] == 192 && address.u8[1] == 168)
+        || (address.u8[0] == 255);
+}
+
+/**
+* checks if a given address was manually set in the initial list of known public peers
+*
+* @param address the ip address to be checked
+* @return true if the ip address is in the Known Public Peers or false if not
+*/
+static bool isAddressInKnownPublicPeers(const IPv4Address& address)
+{
+    // keep this exception to avoid bogon addresses kept for outgoing connections
+    if (isBogonAddress(address))
+        return false;
+
+    for (unsigned int i = 0; i < sizeof(knownPublicPeers) / sizeof(knownPublicPeers[0]); i++)
+    {
+        const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(knownPublicPeers[i]);
+        if (peer_ip == address)
+            return true;
+    }
+    return false;
+}
+
 
 // Forget public peer (no matter if verified or not) if we have more than the minium number of peers
 static void forgetPublicPeer(const IPv4Address& address)
 {
+    // if address is one of our initial peers we don't forget it
+    if (isAddressInKnownPublicPeers(address))
+    {
+        return;
+    }
+
     if (listOfPeersIsStatic)
     {
         return;
@@ -300,14 +344,10 @@ static void penalizePublicPeerRejectedConnection(const IPv4Address& address)
     }
 }
 
+
 static void addPublicPeer(const IPv4Address& address)
 {
-    if ((!address.u8[0])
-        || (address.u8[0] == 127)
-        || (address.u8[0] == 10)
-        || (address.u8[0] == 172 && address.u8[1] >= 16 && address.u8[1] <= 31)
-        || (address.u8[0] == 192 && address.u8[1] == 168)
-        || (address.u8[0] == 255))
+    if (isBogonAddress(address))
     {
         return;
     }
