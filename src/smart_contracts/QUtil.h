@@ -15,6 +15,7 @@ using namespace QPI;
 #define STM1_INSUFFICIENT_FUND 2
 #define STM1_TRIGGERED 3
 #define STM1_SEND_FUND 4
+#define STM1_INVOCATION_FEE 100LL // fee to be burned and make the SC running
 struct QUtilLogger
 {
     uint32 contractId; // to distinguish bw SCs
@@ -55,7 +56,7 @@ public:
     PUBLIC(SendToManyV1)
         state.logger = QUtilLogger{ 0,  0, invocator(), SELF, invocationReward(), STM1_TRIGGERED };
         LOG_INFO(state.logger);
-        state.total = input.amt0 + input.amt1 + input.amt2 + input.amt3 + input.amt4 + input.amt5 + input.amt6 + input.amt7 + input.amt8 + input.amt9 + input.amt10 + input.amt11 + input.amt12 + input.amt13 + input.amt14 + input.amt15 + input.amt16 + input.amt17 + input.amt18 + input.amt19 + input.amt20 + input.amt21 + input.amt22 + input.amt23 + input.amt24;
+        state.total = input.amt0 + input.amt1 + input.amt2 + input.amt3 + input.amt4 + input.amt5 + input.amt6 + input.amt7 + input.amt8 + input.amt9 + input.amt10 + input.amt11 + input.amt12 + input.amt13 + input.amt14 + input.amt15 + input.amt16 + input.amt17 + input.amt18 + input.amt19 + input.amt20 + input.amt21 + input.amt22 + input.amt23 + input.amt24 + STM1_INVOCATION_FEE;
         // invalid amount (<0), return fund and exit
         if ((input.amt0 < 0) || (input.amt1 < 0) || (input.amt2 < 0) || (input.amt3 < 0) || (input.amt4 < 0) || (input.amt5 < 0) || (input.amt6 < 0) || (input.amt7 < 0) || (input.amt8 < 0) || (input.amt9 < 0) || (input.amt10 < 0) || (input.amt11 < 0) || (input.amt12 < 0) || (input.amt13 < 0) || (input.amt14 < 0) || (input.amt15 < 0) || (input.amt16 < 0) || (input.amt17 < 0) || (input.amt18 < 0) || (input.amt19 < 0) || (input.amt20 < 0) || (input.amt21 < 0) || (input.amt22 < 0) || (input.amt23 < 0) || (input.amt24 < 0))
         {
