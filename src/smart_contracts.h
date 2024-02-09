@@ -108,7 +108,7 @@ constexpr struct ContractDescription
     {"QX", 66, 10000, sizeof(QX)},
     {"QTRY", 72, 10000, sizeof(IPO)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
-    {"QUTIL", 95, 10000, sizeof(IPO)}, // TODO: replace constructionEpoch here
+    {"QUTIL", 95, 10000, sizeof(IPO)}, // TODO: replace constructionEpoch here, please squash all SC-qutils commits when merging.
 };
 
 static SYSTEM_PROCEDURE contractSystemProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][5];
@@ -165,4 +165,5 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
     }
     break;
     }
+    // TODO: add initializer for UTIL_CONTRACT_INDEX here
 }

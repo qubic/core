@@ -41,6 +41,9 @@ private:
     sint64 total;
     QUtilLogger logger;
 public:
+    /**************************************/
+    /********INPUT AND OUTPUT STRUCTS******/
+    /**************************************/
     struct SendToManyV1_input
     {
         id dst0, dst1, dst2, dst3, dst4, dst5, dst6, dst7, dst8, dst9, dst10, dst11, dst12,
@@ -53,6 +56,15 @@ public:
         sint32 returnCode;
     };
 
+    /**************************************/
+    /************CORE FUNCTIONS************/
+    /**************************************/
+    /**
+    * Send qu from a single address to multiple addresses
+    * @param list of 25 destination addresses (800 bytes): 32 bytes for each address, leave empty(zeroes) for unused memory space
+    * @param list of 25 amounts (200 bytes): 8 bytes(long long) for each amount, leave empty(zeroes) for unused memory space
+    * @return returnCode (0 means success)
+    */
     PUBLIC(SendToManyV1)
         state.logger = QUtilLogger{ 0,  0, invocator(), SELF, invocationReward(), STM1_TRIGGERED };
         LOG_INFO(state.logger);
