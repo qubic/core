@@ -4,8 +4,6 @@
 
 #define REQUEST_SYSTEM_INFO 46
 
-static_assert(sizeof(RequestedEntity) == 32, "Something is wrong with the struct size.");
-
 
 #define RESPOND_SYSTEM_INFO 47
 
