@@ -29,6 +29,7 @@
     <ClInclude Include="network_messages\header.h" />
     <ClInclude Include="network_messages\public_peers.h" />
     <ClInclude Include="network_messages\special_command.h" />
+    <ClInclude Include="network_messages\system_info.h" />
     <ClInclude Include="network_messages\tick.h" />
     <ClInclude Include="network_messages\transactions.h" />
     <ClInclude Include="platform\concurrency.h" />
