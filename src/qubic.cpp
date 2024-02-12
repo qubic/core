@@ -1117,6 +1117,31 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
             }
             break;
+            case SPECIAL_COMMAND_SEND_TIME:
+            {
+                // set time
+                SpecialCommandSendTime* _request = header->getPayload<SpecialCommandSendTime>();
+                EFI_TIME newTime;
+                copyMem(&newTime, &_request->utcTime, sizeof(_request->utcTime)); // caution: response.utcTime is subset of time (smaller size)
+                newTime.TimeZone = 0;
+                newTime.Daylight = 0;
+                EFI_STATUS status = rs->SetTime(&newTime);
+                if (status != EFI_SUCCESS)
+                {
+                    logStatusToConsole(L"SetTime() failed!", status, __LINE__);
+                }
+            }
+            // this has no break by intention, because SPECIAL_COMMAND_SEND_TIME responds the same way as SPECIAL_COMMAND_QUERY_TIME
+            case SPECIAL_COMMAND_QUERY_TIME:
+            {
+                // send back current time
+                SpecialCommandSendTime response;
+                response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SEND_TIME << 56);
+                updateTime();
+                copyMem(&response.utcTime, &time, sizeof(response.utcTime)); // caution: response.utcTime is subset of time (smaller size)
+                enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type, header->dejavu(), &response);
+            }
+            break;
             }
         }
     }
