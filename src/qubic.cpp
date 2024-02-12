@@ -1326,6 +1326,39 @@ static const m256i& __arbitrator()
     return arbitratorPublicKey;
 }
 
+static long long __burn(long long amount)
+{
+    if (amount < 0 || amount > MAX_AMOUNT)
+    {
+        return -((long long)(MAX_AMOUNT + 1));
+    }
+
+    const int index = spectrumIndex(currentContract);
+
+    if (index < 0)
+    {
+        return -amount;
+    }
+
+    const long long remainingAmount = energy(index) - amount;
+
+    if (remainingAmount < 0)
+    {
+        return remainingAmount;
+    }
+
+    if (decreaseEnergy(index, amount))
+    {
+        Contract0State* contract0State = (Contract0State*)contractStates[0];
+        contract0State->contractFeeReserves[executedContractIndex] += amount;
+
+        const Burning burning = { currentContract , amount };
+        logBurning(burning);
+    }
+
+    return remainingAmount;
+}
+
 static const m256i& __computor(unsigned short computorIndex)
 {
     return broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
@@ -1523,11 +1556,9 @@ static long long __transfer(const m256i& destination, long long amount)
     if (decreaseEnergy(index, amount))
     {
         increaseEnergy(destination, amount);
-        if (amount)
-        {
-            const QuTransfer quTransfer = { currentContract , destination , amount };
-            logQuTransfer(quTransfer);
-        }
+
+        const QuTransfer quTransfer = { currentContract , destination , amount };
+        logQuTransfer(quTransfer);
     }
 
     return remainingAmount;

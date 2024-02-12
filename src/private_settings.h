@@ -26,6 +26,7 @@ static const unsigned char knownPublicPeers[][4] = {
 #define LOG_CONTRACT_WARNING_MESSAGES 0
 #define LOG_CONTRACT_INFO_MESSAGES 0
 #define LOG_CONTRACT_DEBUG_MESSAGES 0
+#define LOG_BURNINGS 0
 #define LOG_CUSTOM_MESSAGES 0
 static unsigned long long logReaderPasscodes[][4] = {
     {0, 0, 0, 0}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN RANDOM NUMBERS IN [0..18446744073709551615] RANGE IF LOGGING IS ENABLED
