@@ -1053,7 +1053,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                     bs->CopyMem(&response.proposal, &system.proposals[_request->computorIndex], sizeof(ComputorProposal));
                     bs->CopyMem(&response.ballot, &system.ballots[_request->computorIndex], sizeof(ComputorBallot));
 
-                    enqueueResponse(peer, sizeof(response), SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE, header->dejavu(), &response);
+                    enqueueResponse(peer, sizeof(response), SpecialCommand::type, header->dejavu(), &response);
                 }
             }
             break;
@@ -1072,7 +1072,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                     response.computorIndex = _request->computorIndex;
                     *((short*)response.padding) = 0;
 
-                    enqueueResponse(peer, sizeof(response), SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE, header->dejavu(), &response);
+                    enqueueResponse(peer, sizeof(response), SpecialCommand::type, header->dejavu(), &response);
                 }
             }
             break;
