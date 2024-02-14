@@ -430,7 +430,7 @@ static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header
         peer->exchangedPublicPeers = TRUE; // A race condition is possible
 
         // Set isVerified if sExchangePublicPeers was received on outgoing connection
-        if (peer->address.u32 == 0)
+        if (peer->address.u32)
         {
             for (unsigned int j = 0; j < numberOfPublicPeers; j++)
             {
