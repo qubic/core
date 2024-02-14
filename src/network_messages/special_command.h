@@ -84,3 +84,24 @@ struct SpecialCommandToggleMainModeResquestAndResponse
 #define SPECIAL_COMMAND_REFRESH_PEER_LIST 9ULL // F4
 #define SPECIAL_COMMAND_FORCE_NEXT_TICK 10ULL // F5
 #define SPECIAL_COMMAND_REISSUE_VOTE 11ULL // F9
+
+
+struct UtcTime
+{
+    unsigned short    year;              // 1900 - 9999
+    unsigned char     month;             // 1 - 12
+    unsigned char     day;               // 1 - 31
+    unsigned char     hour;              // 0 - 23
+    unsigned char     minute;            // 0 - 59
+    unsigned char     second;            // 0 - 59
+    unsigned char     pad1;
+    unsigned int      nanosecond;        // 0 - 999,999,999
+};
+
+#define SPECIAL_COMMAND_QUERY_TIME 12ULL    // send this to node to query time, responds with time read from clock
+#define SPECIAL_COMMAND_SEND_TIME 13ULL     // send this to node to set time, responds with time read from clock after setting
+struct SpecialCommandSendTime
+{
+    unsigned long long everIncreasingNonceAndCommandType;
+    UtcTime utcTime;
+};

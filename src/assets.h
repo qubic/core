@@ -56,7 +56,7 @@ static void deinitAssets()
     }
 }
 
-static void issueAsset(const m256i& issuerPublicKey, char name[7], char numberOfDecimalPlaces, char unitOfMeasurement[7], long long numberOfShares, unsigned short managingContractIndex,
+static long long issueAsset(const m256i& issuerPublicKey, char name[7], char numberOfDecimalPlaces, char unitOfMeasurement[7], long long numberOfShares, unsigned short managingContractIndex,
     int* issuanceIndex, int* ownershipIndex, int* possessionIndex)
 {
     *issuanceIndex = issuerPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
@@ -105,6 +105,8 @@ iteration:
                 assetIssuance.numberOfDecimalPlaces = numberOfDecimalPlaces; // Order must be preserved!
                 *((unsigned long long*) assetIssuance.unitOfMeasurement) = *((unsigned long long*) unitOfMeasurement); // Order must be preserved!
                 logAssetIssuance(assetIssuance);
+
+                return numberOfShares;
             }
             else
             {
@@ -122,6 +124,13 @@ iteration:
     }
     else
     {
+        if (assets[*issuanceIndex].varStruct.issuance.type == ISSUANCE
+            && ((*((unsigned long long*)assets[*issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == ((*((unsigned long long*)name)) & 0xFFFFFFFFFFFFFF)
+            && assets[*issuanceIndex].varStruct.issuance.publicKey == issuerPublicKey)
+        {
+            return 0;
+        }
+
         *issuanceIndex = (*issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
 
         goto iteration;

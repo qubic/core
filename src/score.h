@@ -22,6 +22,7 @@ template<
 struct ScoreFunction
 {
     int miningData[dataLength];
+    m256i initialRandomSeed;
 
 #pragma warning(push)
 #pragma warning(disable:4293)
@@ -71,6 +72,7 @@ struct ScoreFunction
 
     void initMiningData(m256i randomSeed)
     {
+        initialRandomSeed = randomSeed; // persist the initial random seed to be able to sned it back on system info response
         random((unsigned char*)&randomSeed, (unsigned char*)&randomSeed, (unsigned char*)miningData, sizeof(miningData));
     }
 

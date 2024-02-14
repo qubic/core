@@ -13,3 +13,4 @@
 #include "special_command.h"
 #include "tick.h"
 #include "transactions.h"
+#include "system_info.h"

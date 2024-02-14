@@ -14,6 +14,7 @@ typedef void (*USER_PROCEDURE)(void*, void*, void*);
 
 
 static const m256i& __arbitrator();
+static long long __burn(long long);
 static void __beginFunctionOrProcedure(const unsigned int);
 static const m256i& __computor(unsigned short);
 static unsigned char __day();
