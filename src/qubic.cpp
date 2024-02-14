@@ -2442,11 +2442,21 @@ static void beginEpoch1of2()
     score->resetTaskQueue();
     score->loadScoreCache(system.epoch);
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
-    bs->SetMem((void*)minerScores, sizeof(minerScores[0]) * NUMBER_OF_COMPUTORS, 0);
+    bs->SetMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
+    bs->SetMem((void*)minerScores, sizeof(minerScores), 0);
+    numberOfMiners = NUMBER_OF_COMPUTORS;
+    bs->SetMem(competitorPublicKeys, sizeof(competitorPublicKeys), 0);
+    bs->SetMem(competitorScores, sizeof(competitorScores), 0);
+    bs->SetMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
+    minimumComputorScore = 0;
+    minimumCandidateScore = 0;
 
     if (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > DATA_LENGTH) { // invalid threshold
         solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
     }
+
+    system.numberOfSolutions = 0;
+    bs->SetMem(system.solutions, sizeof(system.solutions), 0);
 
 #if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
     CurrentTransferId = 0;
