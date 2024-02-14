@@ -2480,6 +2480,11 @@ static void beginEpoch1of2()
     bs->SetMem(tickTransactions, FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS), 0);
     bs->SetMem(tickTransactionOffsets, sizeof(tickTransactionOffsets), 0);
 
+    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+    {
+        ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
+    }
+
     bs->SetMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
     bs->SetMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
 
@@ -3489,10 +3494,6 @@ static bool initialize()
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
-        }
-        for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-        {
-            ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
         }
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset), (void**)&reorgBuffer))
