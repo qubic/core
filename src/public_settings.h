@@ -12,7 +12,7 @@
 #define VERSION_C 0
 
 #define EPOCH 96
-#define TICK 12499941
+#define TICK 12499942
 
 // random seed is now obtained from spectrumDigests
 
