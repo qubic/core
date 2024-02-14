@@ -2512,8 +2512,12 @@ static void beginEpoch1of2()
         solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
     }
 
+    system.latestOperatorNonce = 0;
+    bs->SetMem(system.proposals, sizeof(system.proposals), 0);
+    bs->SetMem(system.ballots, sizeof(system.ballots), 0);
     system.numberOfSolutions = 0;
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
+    bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
 #if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
     CurrentTransferId = 0;
