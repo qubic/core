@@ -3155,10 +3155,16 @@ static void tickProcessor(void*)
                                     {
                                         endEpoch();
 
+                                        // instruct main loop to save system and wait until it is done
+                                        systemMustBeSaved = true;
+                                        while (systemMustBeSaved)
+                                        {
+                                            _mm_pause();
+                                        }
+
                                         beginEpoch1of2();
                                         beginEpoch2of2();
 
-                                        systemMustBeSaved = true;
                                         spectrumMustBeSaved = true;
                                         universeMustBeSaved = true;
                                         computerMustBeSaved = true;
@@ -4631,8 +4637,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 if (systemMustBeSaved)
                 {
-                    systemMustBeSaved = false;
                     saveSystem();
+                    systemMustBeSaved = false;
                 }
                 if (spectrumMustBeSaved)
                 {
