@@ -2660,7 +2660,7 @@ static void endEpoch()
     assetsEndEpoch(reorgBuffer);
 
     system.epoch++;
-    system.initialTick = system.tick;
+    system.initialTick = system.tick + 1;
 
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
 }
