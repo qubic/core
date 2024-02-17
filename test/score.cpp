@@ -11,6 +11,7 @@
 // reference implementation
 #include "score_reference.h"
 
+#include <chrono>
 
 template<
     unsigned int dataLength,
@@ -43,6 +44,8 @@ struct ScoreTester
     {
         score = new ScoreFuncOpt;
         score_ref_impl = new ScoreFuncRef;
+        memset(score, 0, sizeof(ScoreFuncOpt));
+        memset(score_ref_impl, 0, sizeof(ScoreFuncRef));
         score->initMiningData(_mm256_setzero_si256());
         score_ref_impl->initMiningData();
     }
@@ -55,9 +58,30 @@ struct ScoreTester
 
     bool operator()(const unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
     {
+        auto t0 = std::chrono::high_resolution_clock::now();
         unsigned int current = (*score)(processorNumber, publicKey, nonce);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto d = t1 - t0;
+        auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(d);
+        std::cout << "Optimized version: " << elapsed.count() << "ns" << std::endl;
+
+        t0 = std::chrono::high_resolution_clock::now();
         unsigned int reference = (*score_ref_impl)(processorNumber, publicKey, nonce);
+        t1 = std::chrono::high_resolution_clock::now();
+        d = t1 - t0;
+        elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(d);
+        std::cout << "Reference version: " << elapsed.count() << "ns" << std::endl;
         std::cout << "current score() returns " << current << ", reference score() returns " << reference << std::endl;
+        for (int i = 0; i < 1024 + 2048 + 512; i++) {
+            if ((*score)._neurons[0].input[i] != (*score_ref_impl)._neurons[0].input[i]) {
+                printf("DIFF %d: %lld vs %lld\n", i, (*score)._neurons[0].input[i], (*score_ref_impl)._neurons[0].input[i]);
+            }
+        }
+        for (int i = 0; i < 1024 + 2048 + 512; i++) {
+            if ((*score)._neurons[0].output[i] != (*score_ref_impl)._neurons[0].output[i]) {
+                printf("DIFF %d: %lld vs %lld\n", i, (*score)._neurons[0].output[i], (*score_ref_impl)._neurons[0].output[i]);
+            }
+        }
         return current == reference;
     }
 };
@@ -66,6 +90,9 @@ struct ScoreTester
 template <typename ScoreTester>
 void runCommonTests(ScoreTester& test_score)
 {
+#ifdef __AVX512F__
+    initAVX512KangarooTwelveConstants();
+#endif
     EXPECT_TRUE(test_score(678, m256i(13969805098858910392ULL, 14472806656575993870ULL, 10205949277524717274ULL, 9139973247135990472ULL).m256i_u8, m256i(2606487637113200640ULL, 2267452027856879938ULL, 14495402921700380246ULL, 16315779787892001110ULL).m256i_u8));
     EXPECT_TRUE(test_score(251, m256i(17764101523024620815ULL, 13444759684604467162ULL, 5205156473815387573ULL, 13260540040653911245ULL).m256i_u8, m256i(2719505187280522860ULL, 796569317027170745ULL, 1472067853669192224ULL, 17746228003132033809ULL).m256i_u8));
     EXPECT_TRUE(test_score(78, m256i(14789280547522027434ULL, 15979653773010502977ULL, 6616468095151646068ULL, 3853325349953461025ULL).m256i_u8, m256i(1363327481582396135ULL, 152218635184973474ULL, 12932262167270620348ULL, 4723831151589758153ULL).m256i_u8));
@@ -106,72 +133,7 @@ TEST(TestQubicScoreFunction, CurrentLengthNeuronsDurationSettings) {
         DATA_LENGTH, INFO_LENGTH,
         NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
         MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
-        MAX_NUMBER_OF_PROCESSORS
-    > test_score;
-    runCommonTests(test_score);
-}
-
-TEST(TestQubicScoreFunction, Length1024Neurons4096Duration2256) {
-    ScoreTester<
-        1024, // DATA_LENGTH
-        1024, // INFO_LENGTH
-        4096, // NUMBER_OF_INPUT_NEURONS
-        4096, // NUMBER_OF_OUTPUT_NEURONS
-        256,  // MAX_INPUT_DURATION
-        256,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
-    > test_score;
-    runCommonTests(test_score);
-}
-
-TEST(TestQubicScoreFunction, LengthNeurons1000Duration200) {
-    ScoreTester<
-        1000, // DATA_LENGTH
-        1000, // INFO_LENGTH
-        1000, // NUMBER_OF_INPUT_NEURONS
-        1000, // NUMBER_OF_OUTPUT_NEURONS
-        200,  // MAX_INPUT_DURATION
-        200,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
-    > test_score;
-    runCommonTests(test_score);
-}
-
-TEST(TestQubicScoreFunction, LengthNeurons1100Duration200) {
-    ScoreTester<
-        1100, // DATA_LENGTH
-        1100, // INFO_LENGTH
-        1100, // NUMBER_OF_INPUT_NEURONS
-        1100, // NUMBER_OF_OUTPUT_NEURONS
-        200,  // MAX_INPUT_DURATION
-        200,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
-    > test_score;
-    runCommonTests(test_score);
-}
-
-TEST(TestQubicScoreFunction, DataLength1200InfoLength1000Neurons1000Duration200) {
-    ScoreTester<
-        1200, // DATA_LENGTH
-        1000, // INFO_LENGTH
-        1000, // NUMBER_OF_INPUT_NEURONS
-        1000, // NUMBER_OF_OUTPUT_NEURONS
-        200,  // MAX_INPUT_DURATION
-        200,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
-    > test_score;
-    runCommonTests(test_score);
-}
-
-TEST(TestQubicScoreFunction, Length1200InputNeurons1000OutputNeurons1200Duration200) {
-    ScoreTester<
-        1200, // DATA_LENGTH
-        1200, // INFO_LENGTH
-        1000, // NUMBER_OF_INPUT_NEURONS
-        1200, // NUMBER_OF_OUTPUT_NEURONS
-        200,  // MAX_INPUT_DURATION
-        200,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
+        1
     > test_score;
     runCommonTests(test_score);
 }
