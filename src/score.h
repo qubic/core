@@ -8,82 +8,6 @@
 
 #include "score_cache.h"
 
-template <typename T, T errorValue, int Capacity>
-struct minHeapTree
-{
-    static_assert(Capacity < 1048576, "Heap tree: Max depth is 20");
-public:
-    T pop()
-    {
-        T deleteItem;
-        if (size == 0) {
-            return errorValue;
-        }
-
-        deleteItem = buffer[0];
-        buffer[0] = buffer[size - 1];
-        size--;
-        _heapify(0);
-        return deleteItem;
-    }
-    void insert(T data)
-    {
-        if (size < Capacity) {
-            buffer[size] = data;
-            _insertHeap(size);
-            size++;
-        }
-    }
-    void reset()
-    {
-        size = 0;
-    }
-    int getSize()
-    {
-        return size;
-    }
-private:
-    T buffer[Capacity];
-    int size;
-
-    void _heapify(int index)
-    {
-        if (index < 0) return;
-        int left = index * 2 + 1;
-        int right = index * 2 + 2;
-        int min = index;
-        if (left >= size || left < 0)
-            left = -1;
-        if (right >= size || right < 0)
-            right = -1;
-
-        if (left != -1 && buffer[left] < buffer[index])
-            min = left;
-        if (right != -1 && buffer[right] < buffer[min])
-            min = right;
-
-        // Swapping the nodes
-        if (min != index) {
-            int temp = buffer[min];
-            buffer[min] = buffer[index];
-            buffer[index] = temp;
-            _heapify(min);
-        }
-    }
-    void _insertHeap(int index)
-    {
-        if (index == 0) return;
-        int parent = (index - 1) / 2;
-        while (buffer[parent] > buffer[index]) {
-            int temp = buffer[parent];
-            buffer[parent] = buffer[index];
-            buffer[index] = temp;
-            index = parent;
-            if (index == 0) break;
-            parent = (index - 1) / 2;
-        }
-    }
-};
 
 ////////// Scoring algorithm \\\\\\\\\\
 
@@ -113,19 +37,19 @@ struct ScoreFunction
     // _totalModNum[i]: total of divisible numbers of i
     int _totalModNum[256];
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
-    int _modNum[257][256];
+    int _modNum[257][128];
     // indice pos
     #define indiceSizeInByte (sizeof(unsigned short) * (long long)(DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) * (long long)(NUMBER_OF_INPUT_NEURONS + INFO_LENGTH))
     unsigned short _indicePosInput[solutionBufferCount][NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
     unsigned short _indicePosOutput[solutionBufferCount][NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH];
 
-    #define bucketSizeInByte (sizeof(int) * (long long)(DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) * (long long)(257))
+    #define bucketSizeInByte (sizeof(int) * (long long)(DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) * (long long)(129))
 
-    int _bucketPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][257];
-    int _bufferPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][257];    
+    int _bucketPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
+    int _bufferPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];    
 
-    int _bucketPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][257];
-    int _bufferPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][257];
+    int _bucketPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
+    int _bufferPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
 
     m256i initialRandomSeed;
 
@@ -148,7 +72,7 @@ struct ScoreFunction
 
         // init the divisible table
         for (int i = 1; i <= 256; i++) {
-            for (int j = -127; j <= 127; j++) {
+            for (int j = 1; j <= 127; j++) { // exclude 128
                 if (j && i % j == 0) {
                     _modNum[i][_totalModNum[i]++] = j;
                 }
@@ -176,6 +100,12 @@ struct ScoreFunction
 #endif
         return success;
     }
+
+    static inline void neuronReduceSum(long long initValue, long long* elems, int N, bool forceSequentialSum) {
+        // TODO: implement avx512
+
+    }
+
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& nonce)
     {
@@ -245,14 +175,14 @@ struct ScoreFunction
         for (int i = 0; i < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_INPUT_NEURONS + DATA_LENGTH);
             for (int j = 0; j < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; j++) {
-                int v = synapses.inputLength[base + j];
+                int v = abs(synapses.inputLength[base + j]);
                 if (v == 0) continue;
-                bucketPosInput[i][v + 128]++;
+                bucketPosInput[i][v]++;
             }
         }
         // do exclusive sum per row
         for (int i = 0; i < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
-            for (int j = 1; j < 257; j++) {
+            for (int j = 1; j <= 128; j++) {
                 bufferPosInput[i][j] = bufferPosInput[i][j - 1] + bucketPosInput[i][j - 1];
             }
         }
@@ -261,40 +191,66 @@ struct ScoreFunction
         for (int i = 0; i < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_INPUT_NEURONS + DATA_LENGTH);
             for (int j = 0; j < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; j++) {
-                int v = synapses.inputLength[base + j];
+                int v = abs(synapses.inputLength[base + j]);
                 if (v == 0) continue;
-                v += 128;
                 indicePosInput[i][bufferPosInput[i][v]++] = j;
             }
         }
 
         copyMem(&neurons.input[0], &miningData, sizeof(miningData));
-        minHeapTree<int, DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH + 1, DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH> mht;
+        long long sumBuffer[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
+        unsigned short indices[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
+        int totalIndice;
         for (int tick = 1; tick <= MAX_INPUT_DURATION; tick++) {
             for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++) {
                 {
-                    mht.reset();
+                    totalIndice = 0;
                     for (int i = 0; i < _totalModNum[tick]; i++) {
-                        int mod = _modNum[tick][i] + 128;
+                        int mod = _modNum[tick][i];
                         int start = bucketPosInput[inputNeuronIndex][mod];
                         int end = bucketPosInput[inputNeuronIndex][mod + 1];
-                        for (int j = start; j < end; j++) {
-                            // TODO: optimize later, for now just use heap tree. Can tree-1 and tree-2 can often be reused 
-                            mht.insert(indicePosInput[inputNeuronIndex][j]);
+                        if (end - start > 0) {
+                            copyMem(indices + totalIndice, indicePosInput[inputNeuronIndex] + start, (end - start) * sizeof(unsigned short));
+                            totalIndice += end - start;
                         }
                     }
-                    // compute in correct order
-                    while (mht.getSize())
-                    {
-                        unsigned int anotherInputNeuronIndex = mht.pop();
-                        const unsigned int offset = inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + anotherInputNeuronIndex;
-                        if (synapses.inputLength[offset] > 0)
-                        {
-                            neurons.input[DATA_LENGTH + inputNeuronIndex] += neurons.input[anotherInputNeuronIndex];
+
+                    for (int i = 1; i < totalIndice; i++) {
+                        unsigned short key = indices[i];
+                        int j = i - 1;
+                        while (j >= 0 && indices[j] > key) {
+                            indices[j + 1] = indices[j];
+                            j = j - 1;
                         }
-                        else
-                        {
-                            neurons.input[DATA_LENGTH + inputNeuronIndex] -= neurons.input[anotherInputNeuronIndex];
+                        indices[j + 1] = key;
+                    }
+
+                    for (int i = 0; i < totalIndice; i++) {
+                        unsigned int anotherInputNeuronIndex = indices[i];
+                        const unsigned int offset = inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + anotherInputNeuronIndex;
+                        if (synapses.inputLength[offset] > 0) {
+                            sumBuffer[i] = neurons.input[anotherInputNeuronIndex];
+                        }
+                        else {
+                            sumBuffer[i] = -neurons.input[anotherInputNeuronIndex];
+                        }
+                    }
+                    for (int i = 0; i < totalIndice; i++)
+                    {
+                        unsigned int anotherInputNeuronIndex = indices[i];
+                        if (inputNeuronIndex + DATA_LENGTH == anotherInputNeuronIndex) {
+                            const unsigned int offset = inputNeuronIndex * (DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) + anotherInputNeuronIndex;
+                            if (synapses.inputLength[offset] > 0)
+                            {
+                                neurons.input[DATA_LENGTH + inputNeuronIndex] += neurons.input[anotherInputNeuronIndex];
+                            }
+                            else
+                            {
+                                neurons.input[DATA_LENGTH + inputNeuronIndex] -= neurons.input[anotherInputNeuronIndex];
+                            }
+                        }
+                        else {
+                            neurons.input[DATA_LENGTH + inputNeuronIndex] += sumBuffer[i];
                         }
 
                         if (neurons.input[DATA_LENGTH + inputNeuronIndex] > NEURON_VALUE_LIMIT)
@@ -309,7 +265,6 @@ struct ScoreFunction
                 }
             }
         }
-
         for (unsigned int i = 0; i < INFO_LENGTH; i++)
         {
             neurons.output[i] = (neurons.input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + i] >= 0 ? 1 : -1);
@@ -323,14 +278,14 @@ struct ScoreFunction
         for (int i = 0; i < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH);
             for (int j = 0; j < DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH; j++) {
-                int v = synapses.outputLength[base + j];
+                int v = abs(synapses.outputLength[base + j]);
                 if (v == 0) continue;
-                bucketPosOutput[i][v + 128]++;
+                bucketPosOutput[i][v]++;
             }
         }
         // do exclusive sum per row
         for (int i = 0; i < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; i++) {
-            for (int j = 1; j < 257; j++) {
+            for (int j = 1; j <= 128; j++) {
                 bufferPosOutput[i][j] = bufferPosOutput[i][j - 1] + bucketPosOutput[i][j - 1];
             }
         }
@@ -339,9 +294,8 @@ struct ScoreFunction
         for (int i = 0; i < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH);
             for (int j = 0; j < DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH; j++) {
-                int v = synapses.outputLength[base + j];
+                int v = abs(synapses.outputLength[base + j]);
                 if (v == 0) continue;
-                v += 128;
                 indicePosOutput[i][bufferPosOutput[i][v]++] = j;
             }
         }
@@ -349,28 +303,54 @@ struct ScoreFunction
         for (int tick = 1; tick <= MAX_OUTPUT_DURATION; tick++) {
             for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; outputNeuronIndex++) {
                 {
-                    mht.reset();
+                    totalIndice = 0;
                     for (int i = 0; i < _totalModNum[tick]; i++) {
-                        int mod = _modNum[tick][i] + 128;
+                        int mod = _modNum[tick][i];
                         int start = bucketPosOutput[outputNeuronIndex][mod];
                         int end = bucketPosOutput[outputNeuronIndex][mod + 1];
-                        for (int j = start; j < end; j++) {
-                            // TODO: optimize later, for now just use heap tree. Can tree-1 and tree-2 can often be reused 
-                            mht.insert(indicePosOutput[outputNeuronIndex][j]);
+                        if (end - start > 0) {
+                            copyMem(indices + totalIndice, indicePosOutput[outputNeuronIndex] + start, (end - start) * sizeof(unsigned short));
+                            totalIndice += end - start;
                         }
                     }
-                    // compute in correct order
-                    while (mht.getSize())
-                    {
-                        unsigned int anotherOutputNeuronIndex = mht.pop();
-                        const unsigned int offset = outputNeuronIndex * (DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH) + anotherOutputNeuronIndex;
-                        if (synapses.outputLength[offset] > 0)
-                        {
-                            neurons.output[INFO_LENGTH + outputNeuronIndex] += neurons.output[anotherOutputNeuronIndex];
+
+                    for (int i = 1; i < totalIndice; i++) {
+                        unsigned short key = indices[i];
+                        int j = i - 1;
+                        while (j >= 0 && indices[j] > key) {
+                            indices[j + 1] = indices[j];
+                            j = j - 1;
                         }
-                        else
-                        {
-                            neurons.output[INFO_LENGTH + outputNeuronIndex] -= neurons.output[anotherOutputNeuronIndex];
+                        indices[j + 1] = key;
+                    }
+
+                    for (int i = 0; i < totalIndice; i++) {
+                        unsigned int anotherOutputNeuronIndex = indices[i];
+                        const unsigned int offset = outputNeuronIndex * (DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH) + anotherOutputNeuronIndex;
+                        if (synapses.outputLength[offset] > 0) {
+                            sumBuffer[i] = neurons.output[anotherOutputNeuronIndex];
+                        }
+                        else {
+                            sumBuffer[i] = -neurons.output[anotherOutputNeuronIndex];
+                        }
+                    }
+
+                    for (int i = 0; i < totalIndice; i++)
+                    {
+                        unsigned int anotherOutputNeuronIndex = indices[i];
+                        if (INFO_LENGTH + outputNeuronIndex == anotherOutputNeuronIndex) {
+                            const unsigned int offset = outputNeuronIndex * (DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH) + anotherOutputNeuronIndex;
+                            if (synapses.outputLength[offset] > 0)
+                            {
+                                neurons.output[INFO_LENGTH + outputNeuronIndex] += neurons.output[anotherOutputNeuronIndex];
+                            }
+                            else
+                            {
+                                neurons.output[INFO_LENGTH + outputNeuronIndex] -= neurons.output[anotherOutputNeuronIndex];
+                            }
+                        }
+                        else {
+                            neurons.output[INFO_LENGTH + outputNeuronIndex] += sumBuffer[i];
                         }
 
                         if (neurons.output[INFO_LENGTH + outputNeuronIndex] > NEURON_VALUE_LIMIT)

@@ -74,12 +74,12 @@ struct ScoreTester
         std::cout << "current score() returns " << current << ", reference score() returns " << reference << std::endl;
         for (int i = 0; i < 1024 + 2048 + 512; i++) {
             if ((*score)._neurons[0].input[i] != (*score_ref_impl)._neurons[0].input[i]) {
-                printf("%d: %lld vs %lld\n", i, (*score)._neurons[0].input[i], (*score_ref_impl)._neurons[0].input[i]);
+                printf("DIFF %d: %lld vs %lld\n", i, (*score)._neurons[0].input[i], (*score_ref_impl)._neurons[0].input[i]);
             }
         }
         for (int i = 0; i < 1024 + 2048 + 512; i++) {
             if ((*score)._neurons[0].output[i] != (*score_ref_impl)._neurons[0].output[i]) {
-                printf("%d: %lld vs %lld\n", i, (*score)._neurons[0].output[i], (*score_ref_impl)._neurons[0].output[i]);
+                printf("DIFF %d: %lld vs %lld\n", i, (*score)._neurons[0].output[i], (*score_ref_impl)._neurons[0].output[i]);
             }
         }
         return current == reference;
