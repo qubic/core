@@ -47,6 +47,7 @@
     <ClInclude Include="smart_contracts\math_lib.h" />
     <ClInclude Include="smart_contracts\qpi.h" />
     <ClInclude Include="smart_contracts\Quottery.h" />
+    <ClInclude Include="smart_contracts\QUtil.h" />
     <ClInclude Include="smart_contracts\Qx.h" />
     <ClInclude Include="smart_contracts\Random.h" />
     <ClInclude Include="system.h" />

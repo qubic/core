@@ -76,6 +76,17 @@ static CONTRACT_STATE_TYPE* _QUOTTERY;
 #include "smart_contracts/Random.h"
 static CONTRACT_STATE_TYPE* _RANDOM;
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QUTIL_CONTRACT_INDEX 4
+#define CONTRACT_INDEX QUTIL_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QUTIL
+#define CONTRACT_STATE2_TYPE QUTIL2
+#include "smart_contracts/QUtil.h"
+static CONTRACT_STATE_TYPE * _QUTIL;
+
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0
 
 struct Contract0State
@@ -101,7 +112,8 @@ constexpr struct ContractDescription
     {"", 0, 0, sizeof(Contract0State)},
     {"QX", 66, 10000, sizeof(QX)},
     {"QTRY", 72, 10000, sizeof(IPO)},
-    {"RANDOM", 88, 10000, sizeof(IPO)}
+    {"RANDOM", 88, 10000, sizeof(IPO)},
+    {"QUTIL", 97, 10000, sizeof(IPO)},
 };
 
 static SYSTEM_PROCEDURE contractSystemProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][5];
@@ -155,6 +167,12 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
     case RANDOM_CONTRACT_INDEX:
     {
         REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RANDOM);
+    }
+    break;
+
+    case QUTIL_CONTRACT_INDEX:
+    {
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUTIL);
     }
     break;
     }
