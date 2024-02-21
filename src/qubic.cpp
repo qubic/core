@@ -84,6 +84,7 @@ static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
+static volatile unsigned char epochTransitionState = 0;
 
 static m256i operatorPublicKey;
 static m256i computorSubseeds[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
@@ -2534,6 +2535,7 @@ static void beginEpoch2of2()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
+// called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
 {
     contractProcessorPhase = END_EPOCH;
@@ -2616,7 +2618,7 @@ static void endEpoch()
 
     unsigned long long transactionCounters[NUMBER_OF_COMPUTORS];
     bs->SetMem(transactionCounters, sizeof(transactionCounters), 0);
-    for (unsigned int tick = system.initialTick; tick <= system.tick; tick++)
+    for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
     {
         ACQUIRE(tickDataLock);
         if (tickData[tick - system.initialTick].epoch == system.epoch)
@@ -2726,7 +2728,7 @@ static void endEpoch()
     assetsEndEpoch(reorgBuffer);
 
     system.epoch++;
-    system.initialTick = system.tick + 1;
+    system.initialTick = system.tick;
 
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
 }
@@ -3219,28 +3221,7 @@ static void tickProcessor(void*)
                                     if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
                                         || dayIndex > 738570 + system.epoch * 7)
                                     {
-                                        endEpoch();
-
-                                        // instruct main loop to save system and wait until it is done
-                                        systemMustBeSaved = true;
-                                        while (systemMustBeSaved)
-                                        {
-                                            _mm_pause();
-                                        }
-
-                                        beginEpoch1of2();
-                                        beginEpoch2of2();
-
-                                        spectrumMustBeSaved = true;
-                                        universeMustBeSaved = true;
-                                        computerMustBeSaved = true;
-
-                                        //update etalon tick:
-                                        etalonTick.epoch++;
-                                        etalonTick.tick++;
-                                        etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
-                                        getUniverseDigest(etalonTick.saltedUniverseDigest);
-                                        getComputerDigest(etalonTick.saltedComputerDigest);
+                                        epochTransitionState = 1;
                                     }
                                     else
                                     {
@@ -3301,6 +3282,35 @@ static void tickProcessor(void*)
                                     }
 
                                     system.tick++;
+
+                                    if (epochTransitionState == 1)
+                                    {
+                                        // seamless epoch transistion
+                                        endEpoch();
+
+                                        // instruct main loop to save system and wait until it is done
+                                        systemMustBeSaved = true;
+                                        while (systemMustBeSaved)
+                                        {
+                                            _mm_pause();
+                                        }
+
+                                        beginEpoch1of2();
+                                        beginEpoch2of2();
+
+                                        spectrumMustBeSaved = true;
+                                        universeMustBeSaved = true;
+                                        computerMustBeSaved = true;
+
+                                        //update etalon tick:
+                                        etalonTick.epoch++;
+                                        etalonTick.tick++;
+                                        etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+                                        getUniverseDigest(etalonTick.saltedUniverseDigest);
+                                        getComputerDigest(etalonTick.saltedComputerDigest);
+
+                                        epochTransitionState = 0;
+                                    }
 
                                     ::tickNumberOfComputors = 0;
                                     ::tickTotalNumberOfComputors = 0;
