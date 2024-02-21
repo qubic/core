@@ -9,10 +9,10 @@
 
 #define VERSION_A 1
 #define VERSION_B 192
-#define VERSION_C 1
+#define VERSION_C 2
 
-#define EPOCH 96
-#define TICK 12505000
+#define EPOCH 97
+#define TICK 12600000
 
 // random seed is now obtained from spectrumDigests
 
