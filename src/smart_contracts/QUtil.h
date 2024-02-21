@@ -252,6 +252,7 @@ public:
         state.logger = QUtilLogger{ 0,  0, invocator(), SELF, state.total, STM1_SUCCESS };
         LOG_INFO(state.logger);
         output.returnCode = STM1_SUCCESS;
+        burn(STM1_INVOCATION_FEE);
     _
 
     REGISTER_USER_FUNCTIONS
