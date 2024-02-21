@@ -13,7 +13,7 @@ To run a qubic node, you need the following spec:
 - At least 128GB of RAM
 - 1Gb/s synchronous internet connection
 - A USB Stick or SSD/HD attached to the Computer via USB
-- An UEFI Bios 
+- UEFI Bios 
 
 > You will need the current `spectrum, universe, and contract` files to be able to start Qubic. The latest files can be found in our #computor-operator channel on the Qubic Discord server: https://discord.gg/qubic (inquire there for the files).
 
