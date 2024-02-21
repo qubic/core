@@ -40,6 +40,7 @@ struct RespondLog
 #define CONTRACT_WARNING_MESSAGE 5
 #define CONTRACT_INFORMATION_MESSAGE 6
 #define CONTRACT_DEBUG_MESSAGE 7
+#define BURNING 8
 #define CUSTOM_MESSAGE 255
 static volatile char logBufferLocks[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
 static char* logBuffers[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { NULL };
@@ -290,6 +291,22 @@ struct DummyCustomMessage
 
     char _terminator; // Only data before "_terminator" are logged
 };
+
+struct Burning
+{
+    m256i sourcePublicKey;
+    long long amount;
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+template <typename T>
+static void logBurning(T message)
+{
+#if LOG_BURNINGS
+    logMessage(offsetof(T, _terminator), BURNING, &message);
+#endif
+}
 
 template <typename T>
 static void logCustomMessage(T message)

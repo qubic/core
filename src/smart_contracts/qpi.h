@@ -5329,7 +5329,7 @@ namespace QPI
 			}
 		}
 
-		// Initialize or reinitialize as empty collection.
+		// Reinitialize as empty collection.
 		void reset()
 		{
 			setMem(this, sizeof(*this), 0);
@@ -5376,6 +5376,12 @@ namespace QPI
 	static id arbitrator(
 	) {
 		return ::__arbitrator();
+	}
+
+	static sint64 burn(
+		sint64 amount
+	) {
+		return ::__burn(amount);
 	}
 
 	static id computor(

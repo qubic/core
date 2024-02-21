@@ -14,6 +14,7 @@ typedef void (*USER_PROCEDURE)(void*, void*, void*);
 
 
 static const m256i& __arbitrator();
+static long long __burn(long long);
 static void __beginFunctionOrProcedure(const unsigned int);
 static const m256i& __computor(unsigned short);
 static unsigned char __day();
@@ -75,8 +76,12 @@ static CONTRACT_STATE_TYPE* _QUOTTERY;
 #include "smart_contracts/Random.h"
 static CONTRACT_STATE_TYPE* _RANDOM;
 
-#define UTIL_CONTRACT_INDEX 4
-#define CONTRACT_INDEX UTIL_CONTRACT_INDEX
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QUTIL_CONTRACT_INDEX 4
+#define CONTRACT_INDEX QUTIL_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QUTIL
 #define CONTRACT_STATE2_TYPE QUTIL2
 #include "smart_contracts/QUtil.h"
@@ -108,7 +113,7 @@ constexpr struct ContractDescription
     {"QX", 66, 10000, sizeof(QX)},
     {"QTRY", 72, 10000, sizeof(IPO)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
-    {"QUTIL", 95, 10000, sizeof(IPO)}, // TODO: replace constructionEpoch here, please squash all SC-qutils commits when merging.
+    {"QUTIL", 97, 10000, sizeof(IPO)},
 };
 
 static SYSTEM_PROCEDURE contractSystemProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][5];
@@ -164,6 +169,11 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
         REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RANDOM);
     }
     break;
+
+    case QUTIL_CONTRACT_INDEX:
+    {
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUTIL);
     }
-    // TODO: add initializer for UTIL_CONTRACT_INDEX here
+    break;
+    }
 }

@@ -27,6 +27,7 @@ struct QUtilLogger
     // Other data go here
     char _terminator; // Only data before "_terminator" are logged
 };
+
 struct QUTIL2
 {
 };
@@ -252,6 +253,7 @@ public:
         LOG_INFO(state.logger);
         output.returnCode = STM1_SUCCESS;
     _
+
     REGISTER_USER_FUNCTIONS
     _
 
