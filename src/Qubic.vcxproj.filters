@@ -105,6 +105,9 @@
     <ClInclude Include="network_core\tcp4.h">
       <Filter>network_core</Filter>
     </ClInclude>
+    <ClInclude Include="smart_contracts\QUtil.h">
+      <Filter>smart_contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
