@@ -2,10 +2,10 @@
 Qubic Node Source Code - this repository contains the source code of a full qubic node.
 
 > MAIN (current version running qubic) <br>
-> [![EFIBuild](https://github.com/qubic-network/core/actions/workflows/efi-build-develop.yml/badge.svg?branch=main)](https://github.com/qubic-network/core/actions/workflows/efi-build-develop.yml)
+> [![EFIBuild](https://github.com/qubic/core/actions/workflows/efi-build-develop.yml/badge.svg?branch=main)](https://github.com/qubic/core/actions/workflows/efi-build-develop.yml)
 > <br>
 > DEVELOP (current version we're working on) <br>
-> [![EFIBuild](https://github.com/qubic-network/core/actions/workflows/efi-build-develop.yml/badge.svg?branch=develop)](https://github.com/qubic-network/core/actions/workflows/efi-build-develop.yml)
+> [![EFIBuild](https://github.com/qubic/core/actions/workflows/efi-build-develop.yml/badge.svg?branch=develop)](https://github.com/qubic/core/actions/workflows/efi-build-develop.yml)
 
 ## Prerequisites
 To run a qubic node, you need the following spec:
