@@ -9,7 +9,7 @@
 
 #define VERSION_A 1
 #define VERSION_B 192
-#define VERSION_C 2
+#define VERSION_C 3
 
 #define EPOCH 97
 #define TICK 12600000
