@@ -2525,6 +2525,11 @@ static void beginEpoch1of2()
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
+    // Reset resource testing digest at begining of the epoch
+    // there are many global variables that were init at declaration, may need to re-check all of them again
+    resourceTestingDigest = 0;
+
+
 #if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
     CurrentTransferId = 0;
 #endif
@@ -2545,8 +2550,10 @@ static void endEpoch()
         _mm_pause();
     }
 
-    // treating endEpoch as a tick, start updating etalonTick
-    etalonTick.prevResourceTestingDigest = resourceTestingDigest;
+    // treating endEpoch as a tick, start updating etalonTick:
+    // this is the last tick of an epoch, should we set prevResourceTestingDigest to zero? nodes that start from scratch (for the new epoch)
+    // would be unable to compute this value(!?)
+    etalonTick.prevResourceTestingDigest = resourceTestingDigest; 
     etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
     getUniverseDigest(etalonTick.prevUniverseDigest);
     getComputerDigest(etalonTick.prevComputerDigest);
