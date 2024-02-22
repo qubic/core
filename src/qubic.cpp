@@ -84,6 +84,7 @@ static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
+static volatile unsigned char epochTransitionState = 0;
 
 static m256i operatorPublicKey;
 static m256i computorSubseeds[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
@@ -2467,6 +2468,11 @@ static void beginEpoch1of2()
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
+    // Reset resource testing digest at begining of the epoch
+    // there are many global variables that were init at declaration, may need to re-check all of them again
+    resourceTestingDigest = 0;
+
+
 #if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
     CurrentTransferId = 0;
 #endif
@@ -2477,6 +2483,7 @@ static void beginEpoch2of2()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
+// called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
 {
     contractProcessorPhase = END_EPOCH;
@@ -2486,8 +2493,10 @@ static void endEpoch()
         _mm_pause();
     }
 
-    // treating endEpoch as a tick, start updating etalonTick
-    etalonTick.prevResourceTestingDigest = resourceTestingDigest;
+    // treating endEpoch as a tick, start updating etalonTick:
+    // this is the last tick of an epoch, should we set prevResourceTestingDigest to zero? nodes that start from scratch (for the new epoch)
+    // would be unable to compute this value(!?)
+    etalonTick.prevResourceTestingDigest = resourceTestingDigest; 
     etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
     getUniverseDigest(etalonTick.prevUniverseDigest);
     getComputerDigest(etalonTick.prevComputerDigest);
@@ -2559,7 +2568,7 @@ static void endEpoch()
 
     unsigned long long transactionCounters[NUMBER_OF_COMPUTORS];
     bs->SetMem(transactionCounters, sizeof(transactionCounters), 0);
-    for (unsigned int tick = system.initialTick; tick <= system.tick; tick++)
+    for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
     {
         ACQUIRE(tickDataLock);
         if (tickData[tick - system.initialTick].epoch == system.epoch)
@@ -2669,7 +2678,7 @@ static void endEpoch()
     assetsEndEpoch(reorgBuffer);
 
     system.epoch++;
-    system.initialTick = system.tick + 1;
+    system.initialTick = system.tick;
 
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
 }
@@ -3162,28 +3171,7 @@ static void tickProcessor(void*)
                                     if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
                                         || dayIndex > 738570 + system.epoch * 7)
                                     {
-                                        endEpoch();
-
-                                        // instruct main loop to save system and wait until it is done
-                                        systemMustBeSaved = true;
-                                        while (systemMustBeSaved)
-                                        {
-                                            _mm_pause();
-                                        }
-
-                                        beginEpoch1of2();
-                                        beginEpoch2of2();
-
-                                        spectrumMustBeSaved = true;
-                                        universeMustBeSaved = true;
-                                        computerMustBeSaved = true;
-
-                                        //update etalon tick:
-                                        etalonTick.epoch++;
-                                        etalonTick.tick++;
-                                        etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
-                                        getUniverseDigest(etalonTick.saltedUniverseDigest);
-                                        getComputerDigest(etalonTick.saltedComputerDigest);
+                                        epochTransitionState = 1;
                                     }
                                     else
                                     {
@@ -3244,6 +3232,35 @@ static void tickProcessor(void*)
                                     }
 
                                     system.tick++;
+
+                                    if (epochTransitionState == 1)
+                                    {
+                                        // seamless epoch transistion
+                                        endEpoch();
+
+                                        // instruct main loop to save system and wait until it is done
+                                        systemMustBeSaved = true;
+                                        while (systemMustBeSaved)
+                                        {
+                                            _mm_pause();
+                                        }
+
+                                        beginEpoch1of2();
+                                        beginEpoch2of2();
+
+                                        spectrumMustBeSaved = true;
+                                        universeMustBeSaved = true;
+                                        computerMustBeSaved = true;
+
+                                        //update etalon tick:
+                                        etalonTick.epoch++;
+                                        etalonTick.tick++;
+                                        etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+                                        getUniverseDigest(etalonTick.saltedUniverseDigest);
+                                        getComputerDigest(etalonTick.saltedComputerDigest);
+
+                                        epochTransitionState = 0;
+                                    }
 
                                     ::tickNumberOfComputors = 0;
                                     ::tickTotalNumberOfComputors = 0;
