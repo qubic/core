@@ -8,7 +8,7 @@ For big changes, such as adding a smart contract, we recommend to discuss with o
 1. Create your own fork of this repository on GitHub. 
 2. Clone your fork on your local machine. Your remote repository on GitHub is called origin.
 3. Add the original GitHub repository as a remote called upstream.
-4. If you created your fork a while ago, pull upstream changes into your local repository.
+4. If you have created your fork a while ago, pull upstream changes into your local repository.
 5. Create a new branch from `develop`.
 6. Fix the bug, correct the typo, solve the problem, etc. Make sure to follow the coding guidelines below.
 7. Commit your changes to your new branch. Make sure to use a concise but meaningful commit message.
