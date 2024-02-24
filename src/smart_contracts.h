@@ -113,7 +113,7 @@ constexpr struct ContractDescription
     {"QX", 66, 10000, sizeof(QX)},
     {"QTRY", 72, 10000, sizeof(IPO)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
-    {"QUTIL", 97, 10000, sizeof(IPO)},
+    {"QUTIL", 95, 10000, sizeof(IPO)},
 };
 
 static SYSTEM_PROCEDURE contractSystemProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][5];
