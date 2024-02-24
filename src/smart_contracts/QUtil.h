@@ -15,7 +15,7 @@ using namespace QPI;
 #define STM1_INSUFFICIENT_FUND 2
 #define STM1_TRIGGERED 3
 #define STM1_SEND_FUND 4
-#define STM1_INVOCATION_FEE 100LL // fee to be burned and make the SC running
+#define STM1_INVOCATION_FEE 10LL // fee to be burned and make the SC running
 struct QUtilLogger
 {
     uint32 contractId; // to distinguish bw SCs
@@ -57,9 +57,24 @@ public:
         sint32 returnCode;
     };
 
+    struct GetSendToManyV1Fee_input
+    {
+    };
+    struct GetSendToManyV1Fee_output
+    {
+        sint64 fee;
+    };
+
     /**************************************/
     /************CORE FUNCTIONS************/
     /**************************************/
+    /*
+    * @return return SendToManyV1 fee per invocation
+    */
+    PUBLIC(GetSendToManyV1Fee)
+        output.fee = STM1_INVOCATION_FEE;
+    _
+
     /**
     * Send qu from a single address to multiple addresses
     * @param list of 25 destination addresses (800 bytes): 32 bytes for each address, leave empty(zeroes) for unused memory space
@@ -256,6 +271,7 @@ public:
     _
 
     REGISTER_USER_FUNCTIONS
+        REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
     _
 
     REGISTER_USER_PROCEDURES
