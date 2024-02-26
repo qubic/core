@@ -175,8 +175,9 @@ struct ScoreFunction
         for (int i = 0; i < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_INPUT_NEURONS + DATA_LENGTH);
             for (int j = 0; j < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; j++) {
-                int v = abs(synapses.inputLength[base + j]);
+                int v = synapses.inputLength[base + j];
                 if (v == 0) continue;
+                v = abs(v);
                 bucketPosInput[i][v]++;
             }
         }
@@ -191,8 +192,9 @@ struct ScoreFunction
         for (int i = 0; i < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_INPUT_NEURONS + DATA_LENGTH);
             for (int j = 0; j < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; j++) {
-                int v = abs(synapses.inputLength[base + j]);
+                int v = synapses.inputLength[base + j];
                 if (v == 0) continue;
+                v = abs(v);
                 indicePosInput[i][bufferPosInput[i][v]++] = j;
             }
         }
@@ -278,8 +280,9 @@ struct ScoreFunction
         for (int i = 0; i < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH);
             for (int j = 0; j < DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH; j++) {
-                int v = abs(synapses.outputLength[base + j]);
+                int v = synapses.outputLength[base + j];
                 if (v == 0) continue;
+                v = abs(v);
                 bucketPosOutput[i][v]++;
             }
         }
@@ -294,8 +297,9 @@ struct ScoreFunction
         for (int i = 0; i < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH);
             for (int j = 0; j < DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS + INFO_LENGTH; j++) {
-                int v = abs(synapses.outputLength[base + j]);
+                int v = synapses.outputLength[base + j];
                 if (v == 0) continue;
+                v = abs(v);
                 indicePosOutput[i][bufferPosOutput[i][v]++] = j;
             }
         }
