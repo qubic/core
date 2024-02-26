@@ -106,6 +106,7 @@ static_assert(sizeof(IPO) == 32 * NUMBER_OF_COMPUTORS + 8 * NUMBER_OF_COMPUTORS,
 constexpr struct ContractDescription
 {
     char assetName[8];
+    // constructionEpoch needs to be set to after IPO (IPO is before construction)
     unsigned short constructionEpoch, destructionEpoch;
     unsigned long long stateSize;
 } contractDescriptions[] = {
@@ -113,7 +114,7 @@ constexpr struct ContractDescription
     {"QX", 66, 10000, sizeof(QX)},
     {"QTRY", 72, 10000, sizeof(IPO)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
-    {"QUTIL", 97, 10000, sizeof(IPO)},
+    {"QUTIL", 99, 10000, sizeof(IPO)},
 };
 
 static SYSTEM_PROCEDURE contractSystemProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][5];
