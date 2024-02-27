@@ -35,7 +35,7 @@ struct ScoreFunction
     } _synapses[solutionBufferCount];
 
     // _totalModNum[i]: total of divisible numbers of i
-    int _totalModNum[256];
+    int _totalModNum[257];
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
     int _modNum[257][128];
     // indice pos
