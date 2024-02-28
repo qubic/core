@@ -3323,14 +3323,12 @@ static void tickProcessor(void*)
                                         universeMustBeSaved = true;
                                         computerMustBeSaved = true;
 
-                                        /*
                                         //update etalon tick:
                                         etalonTick.epoch++;
                                         etalonTick.tick++;
                                         etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
                                         getUniverseDigest(etalonTick.saltedUniverseDigest);
                                         getComputerDigest(etalonTick.saltedComputerDigest);
-                                        */
 
                                         epochTransitionState = 0;
                                     }
