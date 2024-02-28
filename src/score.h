@@ -1,11 +1,12 @@
 #pragma once
-
+#ifdef NO_UEFI
+int top_of_stack;
+#endif
 #include "platform/memory.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "smart_contracts/math_lib.h"
 #include "public_settings.h"
-
 #include "score_cache.h"
 
 
@@ -39,17 +40,17 @@ struct ScoreFunction
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
     int _modNum[257][128];
     // indice pos
-    #define indiceSizeInByte (sizeof(unsigned short) * (long long)(DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) * (long long)(NUMBER_OF_INPUT_NEURONS + INFO_LENGTH))
     unsigned short _indicePosInput[solutionBufferCount][NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
     unsigned short _indicePosOutput[solutionBufferCount][NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH];
-
-    #define bucketSizeInByte (sizeof(int) * (long long)(DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH) * (long long)(129))
 
     int _bucketPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
     int _bufferPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];    
 
     int _bucketPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
     int _bufferPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
+
+    long long _sumBuffer[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
+    unsigned short _indices[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
 
     m256i initialRandomSeed;
 
@@ -101,9 +102,10 @@ struct ScoreFunction
         return success;
     }
 
-    static inline void neuronReduceSum(long long initValue, long long* elems, int N, bool forceSequentialSum) {
-        // TODO: implement avx512
-
+    template <typename T>
+    inline constexpr T abs(const T& a)
+    {
+        return (a < 0) ? -a : a;
     }
 
     // main score function
@@ -132,6 +134,8 @@ struct ScoreFunction
         auto& bufferPosInput = _bufferPosInput[solutionBufIdx];
         auto& bucketPosOutput = _bucketPosOutput[solutionBufIdx];
         auto& bufferPosOutput = _bufferPosOutput[solutionBufIdx];
+        auto& sumBuffer = _sumBuffer[solutionBufIdx];
+        auto& indices = _indices[solutionBufIdx];
 
         setMem(&neurons, sizeof(neurons), 0);
         random(publicKey.m256i_u8, nonce.m256i_u8, (unsigned char*)&synapses, sizeof(synapses));
@@ -168,9 +172,9 @@ struct ScoreFunction
         }
 
         // compute bucket for input
-        setMem(bucketPosInput, bucketSizeInByte, 0);
-        setMem(bufferPosInput, bucketSizeInByte, 0);
-        setMem(indicePosInput, indiceSizeInByte, 0);
+        setMem(bucketPosInput, sizeof(bucketPosInput), 0);
+        setMem(bufferPosInput, sizeof(bufferPosInput), 0);
+        setMem(indicePosInput, sizeof(indicePosInput), 0);
         
         for (int i = 0; i < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_INPUT_NEURONS + DATA_LENGTH);
@@ -200,8 +204,7 @@ struct ScoreFunction
         }
 
         copyMem(&neurons.input[0], &miningData, sizeof(miningData));
-        long long sumBuffer[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
-        unsigned short indices[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
+        
         int totalIndice;
         for (int tick = 1; tick <= MAX_INPUT_DURATION; tick++) {
             for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++) {
@@ -273,9 +276,9 @@ struct ScoreFunction
         }
 
         // compute bucket for output
-        setMem(bucketPosOutput, bucketSizeInByte, 0);
-        setMem(bufferPosOutput, bucketSizeInByte, 0);
-        setMem(indicePosOutput, indiceSizeInByte, 0);
+        setMem(bucketPosOutput, sizeof(bucketPosOutput), 0);
+        setMem(bufferPosOutput, sizeof(bufferPosOutput), 0);
+        setMem(indicePosOutput, sizeof(indicePosOutput), 0);
 
         for (int i = 0; i < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH);
@@ -381,6 +384,11 @@ struct ScoreFunction
         RELEASE(solutionEngineLock[solutionBufIdx]);
 #if USE_SCORE_CACHE
         scoreCache.addEntry(publicKey, nonce, scoreCacheIndex, score);
+#endif
+#ifdef NO_UEFI
+        int y = 2 + score;
+        int ss = top_of_stack - ((int)(&y));
+        std::cout << "Stack size: " << ss << " bytes\n";
 #endif
         return score;
     }
