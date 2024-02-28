@@ -1,4 +1,7 @@
 using namespace QPI;
+/**************************************/
+/**************SC UTILS****************/
+/**************************************/
 
 struct QUTIL2
 {
@@ -6,7 +9,6 @@ struct QUTIL2
 
 struct QUTIL
 {
-public:
     REGISTER_USER_FUNCTIONS
     _
 
