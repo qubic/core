@@ -576,6 +576,18 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 {
     BroadcastComputors* request = header->getPayload<BroadcastComputors>();
+    // verify that all address are non-zeroes
+    // discard it even if ARB broadcast it
+    if (request->computors.epoch > broadcastedComputors.broadcastComputors.computors.epoch)
+    {
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            if (request->computors.publicKeys[i] == NULL_ID) // NULL_ID is _mm256_setzero_si256()
+            {
+                return;
+            }
+        }
+    }
     if (request->computors.epoch > broadcastedComputors.broadcastComputors.computors.epoch)
     {
         unsigned char digest[32];
@@ -3302,8 +3314,10 @@ static void tickProcessor(void*)
                                             _mm_pause();
                                         }
 
+                                        /*
                                         beginEpoch1of2();
                                         beginEpoch2of2();
+                                        */
 
                                         spectrumMustBeSaved = true;
                                         universeMustBeSaved = true;
@@ -3567,7 +3581,6 @@ static bool initialize()
         }
 
         bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
-
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
@@ -4716,6 +4729,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 if (systemMustBeSaved)
                 {
+                    systemDataSavingTick = curTimeTick; // set last save tick to avoid overwrite in main loop
                     saveSystem();
                     systemMustBeSaved = false;
                 }
