@@ -4731,9 +4731,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 if (systemMustBeSaved)
                 {
+                    systemDataSavingTick = curTimeTick; // set last save tick to avoid overwrite in main loop
                     saveSystem();
                     systemMustBeSaved = false;
-                    systemDataSavingTick = curTimeTick;
                 }
                 if (spectrumMustBeSaved)
                 {
