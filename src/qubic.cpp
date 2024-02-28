@@ -3314,19 +3314,23 @@ static void tickProcessor(void*)
                                             _mm_pause();
                                         }
 
+                                        /*
                                         beginEpoch1of2();
                                         beginEpoch2of2();
+                                        */
 
                                         spectrumMustBeSaved = true;
                                         universeMustBeSaved = true;
                                         computerMustBeSaved = true;
 
+                                        /*
                                         //update etalon tick:
                                         etalonTick.epoch++;
                                         etalonTick.tick++;
                                         etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
                                         getUniverseDigest(etalonTick.saltedUniverseDigest);
                                         getComputerDigest(etalonTick.saltedComputerDigest);
+                                        */
 
                                         epochTransitionState = 0;
                                     }
