@@ -2,10 +2,22 @@
 
 ////////// Public Settings \\\\\\\\\\
 
+//////////////////////////////////////////////////////////////////////////
+// Config options for operators
+
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
+// random seed is now obtained from spectrumDigests
 
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 2 // do not increase this for this epoch, because there may be issues due too fast ticking
+
+#define USE_SCORE_CACHE 1
+#define SCORE_CACHE_SIZE 1000000 // the larger the better
+#define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
+
+
+//////////////////////////////////////////////////////////////////////////
+// Config options that should NOT be changed by operators
 
 #define VERSION_A 1
 #define VERSION_B 194
@@ -13,8 +25,6 @@
 
 #define EPOCH 98
 #define TICK 12710000
-
-// random seed is now obtained from spectrumDigests
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -31,6 +41,3 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_INPUT_DURATION 200
 #define MAX_OUTPUT_DURATION 200
 #define SOLUTION_THRESHOLD_DEFAULT 694
-#define USE_SCORE_CACHE 1
-#define SCORE_CACHE_SIZE 1000000 // the larger the better
-#define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
