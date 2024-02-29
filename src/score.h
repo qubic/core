@@ -44,7 +44,7 @@ struct ScoreFunction
     unsigned short _indicePosOutput[solutionBufferCount][NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH];
 
     int _bucketPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
-    int _bufferPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];    
+    int _bufferPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
 
     int _bucketPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
     int _bufferPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
@@ -108,36 +108,9 @@ struct ScoreFunction
         return (a < 0) ? -a : a;
     }
 
-    // main score function
-    unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& nonce)
+    void generateSynapse(int solutionBufIdx, const m256i& publicKey, const m256i& nonce)
     {
-        int score = 0;
-#if USE_SCORE_CACHE
-        unsigned int scoreCacheIndex = scoreCache.getCacheIndex(publicKey, nonce);
-        score = scoreCache.tryFetching(publicKey, nonce, scoreCacheIndex);
-        if (score >= scoreCache.MIN_VALID_SCORE)
-        {
-            return score;
-        }
-        score = 0;
-#endif
-
-        const unsigned long long solutionBufIdx = processor_Number % solutionBufferCount;
-        ACQUIRE(solutionEngineLock[solutionBufIdx]);
-
-        auto& neurons = _neurons[solutionBufIdx];
         auto& synapses = _synapses[solutionBufIdx];
-
-        auto& indicePosInput = _indicePosInput[solutionBufIdx];
-        auto& indicePosOutput = _indicePosOutput[solutionBufIdx];
-        auto& bucketPosInput = _bucketPosInput[solutionBufIdx];
-        auto& bufferPosInput = _bufferPosInput[solutionBufIdx];
-        auto& bucketPosOutput = _bucketPosOutput[solutionBufIdx];
-        auto& bufferPosOutput = _bufferPosOutput[solutionBufIdx];
-        auto& sumBuffer = _sumBuffer[solutionBufIdx];
-        auto& indices = _indices[solutionBufIdx];
-
-        setMem(&neurons, sizeof(neurons), 0);
         random(publicKey.m256i_u8, nonce.m256i_u8, (unsigned char*)&synapses, sizeof(synapses));
 
         for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++)
@@ -170,12 +143,19 @@ struct ScoreFunction
         {
             synapses.outputLength[outputNeuronIndex * (INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH) + (INFO_LENGTH + outputNeuronIndex)] = 0;
         }
+    }
 
+    void computeInputBucket(int solutionBufIdx)
+    {
+        auto& synapses = _synapses[solutionBufIdx];
+        auto& indicePosInput = _indicePosInput[solutionBufIdx];
+        auto& bucketPosInput = _bucketPosInput[solutionBufIdx];
+        auto& bufferPosInput = _bufferPosInput[solutionBufIdx];
         // compute bucket for input
         setMem(bucketPosInput, sizeof(bucketPosInput), 0);
         setMem(bufferPosInput, sizeof(bufferPosInput), 0);
         setMem(indicePosInput, sizeof(indicePosInput), 0);
-        
+
         for (int i = 0; i < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; i++) {
             const unsigned int base = i * (INFO_LENGTH + NUMBER_OF_INPUT_NEURONS + DATA_LENGTH);
             for (int j = 0; j < DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; j++) {
@@ -202,9 +182,19 @@ struct ScoreFunction
                 indicePosInput[i][bufferPosInput[i][v]++] = j;
             }
         }
+    }
+
+    void computeInputNeuron(int solutionBufIdx)
+    {
+        auto& neurons = _neurons[solutionBufIdx];
+        auto& synapses = _synapses[solutionBufIdx];
+        auto& indicePosInput = _indicePosInput[solutionBufIdx];
+        auto& bucketPosInput = _bucketPosInput[solutionBufIdx];
+        auto& bufferPosInput = _bufferPosInput[solutionBufIdx];
+        auto& sumBuffer = _sumBuffer[solutionBufIdx];
+        auto& indices = _indices[solutionBufIdx];
 
         copyMem(&neurons.input[0], &miningData, sizeof(miningData));
-        
         int totalIndice;
         for (int tick = 1; tick <= MAX_INPUT_DURATION; tick++) {
             for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < NUMBER_OF_INPUT_NEURONS + INFO_LENGTH; inputNeuronIndex++) {
@@ -270,11 +260,14 @@ struct ScoreFunction
                 }
             }
         }
-        for (unsigned int i = 0; i < INFO_LENGTH; i++)
-        {
-            neurons.output[i] = (neurons.input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + i] >= 0 ? 1 : -1);
-        }
+    }
 
+    void computeOutputBucket(int solutionBufIdx)
+    {
+        auto& synapses = _synapses[solutionBufIdx];
+        auto& indicePosOutput = _indicePosOutput[solutionBufIdx];
+        auto& bucketPosOutput = _bucketPosOutput[solutionBufIdx];
+        auto& bufferPosOutput = _bufferPosOutput[solutionBufIdx];
         // compute bucket for output
         setMem(bucketPosOutput, sizeof(bucketPosOutput), 0);
         setMem(bufferPosOutput, sizeof(bufferPosOutput), 0);
@@ -306,7 +299,19 @@ struct ScoreFunction
                 indicePosOutput[i][bufferPosOutput[i][v]++] = j;
             }
         }
+    }
 
+    void computeOutputNeuron(int solutionBufIdx)
+    {
+        auto& neurons = _neurons[solutionBufIdx];
+        auto& synapses = _synapses[solutionBufIdx];
+
+        auto& indicePosOutput = _indicePosOutput[solutionBufIdx];
+        auto& bucketPosOutput = _bucketPosOutput[solutionBufIdx];
+        auto& bufferPosOutput = _bufferPosOutput[solutionBufIdx];
+        auto& sumBuffer = _sumBuffer[solutionBufIdx];
+        auto& indices = _indices[solutionBufIdx];
+        int totalIndice;
         for (int tick = 1; tick <= MAX_OUTPUT_DURATION; tick++) {
             for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH; outputNeuronIndex++) {
                 {
@@ -372,6 +377,43 @@ struct ScoreFunction
                 }
             }
         }
+    }
+    // main score function
+    unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& nonce)
+    {
+        int score = 0;
+#if USE_SCORE_CACHE
+        unsigned int scoreCacheIndex = scoreCache.getCacheIndex(publicKey, nonce);
+        score = scoreCache.tryFetching(publicKey, nonce, scoreCacheIndex);
+        if (score >= scoreCache.MIN_VALID_SCORE)
+        {
+            return score;
+        }
+        score = 0;
+#endif
+
+        const unsigned long long solutionBufIdx = processor_Number % solutionBufferCount;
+        ACQUIRE(solutionEngineLock[solutionBufIdx]);
+
+        auto& neurons = _neurons[solutionBufIdx];
+        auto& synapses = _synapses[solutionBufIdx];
+
+        setMem(&neurons, sizeof(neurons), 0);
+
+        generateSynapse(solutionBufIdx, publicKey, nonce);
+
+        computeInputBucket(solutionBufIdx);
+
+        computeInputNeuron(solutionBufIdx);
+
+        for (unsigned int i = 0; i < INFO_LENGTH; i++)
+        {
+            neurons.output[i] = (neurons.input[DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + i] >= 0 ? 1 : -1);
+        }
+
+        computeOutputBucket(solutionBufIdx);
+
+        computeOutputNeuron(solutionBufIdx);
 
         for (unsigned int i = 0; i < DATA_LENGTH; i++)
         {
@@ -396,7 +438,7 @@ struct ScoreFunction
     // Multithreaded solutions verification:
     // This module mainly serve tick processor in qubic core node, thus the queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
     // for future use for somewhere else, you can only increase the size.
-    
+
     volatile char taskQueueLock = 0;
     struct {
         m256i publicKey[NUMBER_OF_TRANSACTIONS_PER_TICK];
@@ -420,7 +462,7 @@ struct ScoreFunction
     // add task to the queue
     // queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
     void addTask(m256i publicKey, m256i nonce)
-    {   
+    {
         ACQUIRE(taskQueueLock);
         if (_nTask < NUMBER_OF_TRANSACTIONS_PER_TICK)
         {
