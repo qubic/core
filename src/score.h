@@ -41,13 +41,13 @@ struct ScoreFunction
     int _modNum[257][128];
     // indice pos
     unsigned short _indicePosInput[solutionBufferCount][NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
-    unsigned short _indicePosOutput[solutionBufferCount][NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH];
+    unsigned short _indicePosOutput[solutionBufferCount][NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH][INFO_LENGTH + NUMBER_OF_OUTPUT_NEURONS + DATA_LENGTH];
 
-    int _bucketPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
-    int _bufferPosInput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
+    int _bucketPosInput[solutionBufferCount][NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
+    int _bufferPosInput[solutionBufferCount][NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];    
 
-    int _bucketPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
-    int _bufferPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH][129];
+    int _bucketPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS][129];
+    int _bufferPosOutput[solutionBufferCount][DATA_LENGTH + NUMBER_OF_OUTPUT_NEURONS][129];
 
     long long _sumBuffer[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
     unsigned short _indices[solutionBufferCount][DATA_LENGTH + NUMBER_OF_INPUT_NEURONS + INFO_LENGTH];
@@ -205,7 +205,7 @@ struct ScoreFunction
                         int start = bucketPosInput[inputNeuronIndex][mod];
                         int end = bucketPosInput[inputNeuronIndex][mod + 1];
                         if (end - start > 0) {
-                            copyMem(indices + totalIndice, indicePosInput[inputNeuronIndex] + start, (end - start) * sizeof(unsigned short));
+                            copyMem(indices + totalIndice, indicePosInput[inputNeuronIndex] + start, sizeof(unsigned short)*(end - start));
                             totalIndice += end - start;
                         }
                     }
@@ -321,7 +321,7 @@ struct ScoreFunction
                         int start = bucketPosOutput[outputNeuronIndex][mod];
                         int end = bucketPosOutput[outputNeuronIndex][mod + 1];
                         if (end - start > 0) {
-                            copyMem(indices + totalIndice, indicePosOutput[outputNeuronIndex] + start, (end - start) * sizeof(unsigned short));
+                            copyMem(indices + totalIndice, indicePosOutput[outputNeuronIndex] + start, sizeof(unsigned short)*(end - start));
                             totalIndice += end - start;
                         }
                     }
@@ -398,8 +398,8 @@ struct ScoreFunction
         auto& neurons = _neurons[solutionBufIdx];
         auto& synapses = _synapses[solutionBufIdx];
 
-        setMem(&neurons, sizeof(neurons), 0);
-
+        setMem(&neurons.input[0], sizeof(neurons), 0);
+        
         generateSynapse(solutionBufIdx, publicKey, nonce);
 
         computeInputBucket(solutionBufIdx);
