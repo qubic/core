@@ -874,7 +874,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 {
     RequestTickData* request = header->getPayload<RequestTickData>();
-    if (request->requestedTickData.tick > system.initialTick && request->requestedTickData.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
+    if (request->requestedTickData.tick >= system.initialTick && request->requestedTickData.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
         && tickData[request->requestedTickData.tick - system.initialTick].epoch == system.epoch)
     {
         enqueueResponse(peer, sizeof(TickData), BroadcastFutureTickData::type, header->dejavu(), &tickData[request->requestedTickData.tick - system.initialTick]);
