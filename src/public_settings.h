@@ -15,6 +15,8 @@
 #define SCORE_CACHE_SIZE 1000000 // the larger the better
 #define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
 
+// Number of ticks to from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
+#define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
 //////////////////////////////////////////////////////////////////////////
 // Config options that should NOT be changed by operators
@@ -41,3 +43,9 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_INPUT_DURATION 200
 #define MAX_OUTPUT_DURATION 200
 #define SOLUTION_THRESHOLD_DEFAULT 694
+
+// include commonly needed definitions
+#include "network_messages/common_def.h"
+
+#define TARGET_TICK_DURATION 3000
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
