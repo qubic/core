@@ -107,7 +107,7 @@ static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computor
 static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 
 static Tick* ticks = NULL;
-static TickDataStorage tickData;
+static TickStorage ts;
 static Tick etalonTick;
 static TickData nextTickData;
 static volatile char tickTransactionsLock = 0;
@@ -679,7 +679,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
     BroadcastFutureTickData* request = header->getPayload<BroadcastFutureTickData>();
     if (request->tickData.epoch == system.epoch
         && request->tickData.tick > system.tick
-        && tickData.tickInCurrentEpochStorage(request->tickData.tick)
+        && ts.tickInCurrentEpochStorage(request->tickData.tick)
         && request->tickData.tick % NUMBER_OF_COMPUTORS == request->tickData.computorIndex
         && request->tickData.month >= 1 && request->tickData.month <= 12
         && request->tickData.day >= 1 && request->tickData.day <= ((request->tickData.month == 1 || request->tickData.month == 3 || request->tickData.month == 5 || request->tickData.month == 7 || request->tickData.month == 8 || request->tickData.month == 10 || request->tickData.month == 12) ? 31 : ((request->tickData.month == 4 || request->tickData.month == 6 || request->tickData.month == 9 || request->tickData.month == 11) ? 30 : ((request->tickData.year & 3) ? 28 : 29)))
@@ -718,8 +718,8 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                     enqueueResponse(NULL, header);
                 }
 
-                tickData.acquireLock();
-                TickData& td = tickData.getByTickInCurrentEpoch(request->tickData.tick);
+                ts.tickData.acquireLock();
+                TickData& td = ts.tickData.getByTickInCurrentEpoch(request->tickData.tick);
                 if (request->tickData.tick == system.tick + 1 && targetNextTickDataDigestIsKnown)
                 {
                     if (!isZero(targetNextTickDataDigest))
@@ -759,7 +759,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                         bs->CopyMem(&td, &request->tickData, sizeof(TickData));
                     }
                 }
-                tickData.releaseLock();
+                ts.tickData.releaseLock();
             }
         }
     }
@@ -800,15 +800,15 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 RELEASE(entityPendingTransactionsLock);
             }
 
-            unsigned int tickIndex = tickData.tickToIndexCurrentEpoch(request->tick);
-            tickData.acquireLock();
+            unsigned int tickIndex = ts.tickToIndexCurrentEpoch(request->tick);
+            ts.tickData.acquireLock();
             if (request->tick == system.tick + 1
-                && tickData[tickIndex].epoch == system.epoch)
+                && ts.tickData[tickIndex].epoch == system.epoch)
             {
                 KangarooTwelve(request, transactionSize, digest, sizeof(digest));
                 for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
                 {
-                    if (digest == tickData[tickIndex].transactionDigests[i])
+                    if (digest == ts.tickData[tickIndex].transactionDigests[i])
                     {
                         ACQUIRE(tickTransactionsLock);
                         if (!tickTransactionOffsets[tickIndex][i])
@@ -826,7 +826,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                     }
                 }
             }
-            tickData.releaseLock();
+            ts.tickData.releaseLock();
         }
     }
 }
@@ -846,7 +846,7 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 {
     RequestQuorumTick* request = header->getPayload<RequestQuorumTick>();
-    if (tickData.tickInCurrentEpochStorage(request->quorumTick.tick))
+    if (ts.tickInCurrentEpochStorage(request->quorumTick.tick))
     {
         unsigned short computorIndices[NUMBER_OF_COMPUTORS];
         unsigned short numberOfComputorIndices;
@@ -876,7 +876,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 {
     RequestTickData* request = header->getPayload<RequestTickData>();
-    TickData* td = tickData.getIfNotEmpty(request->requestedTickData.tick);
+    TickData* td = ts.tickData.getByTickIfNotEmpty(request->requestedTickData.tick);
     if (td)
     {
         enqueueResponse(peer, sizeof(TickData), BroadcastFutureTickData::type, header->dejavu(), td);
@@ -890,7 +890,7 @@ static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* header)
 {
     RequestedTickTransactions* request = header->getPayload<RequestedTickTransactions>();
-    if (tickData.tickInCurrentEpochStorage(request->tick))
+    if (ts.tickInCurrentEpochStorage(request->tick))
     {
         unsigned short tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
         unsigned short numberOfTickTransactions;
@@ -1900,10 +1900,10 @@ static void processTick(unsigned long long processorNumber)
         _mm_pause();
     }
 
-    unsigned int tickIndex = tickData.tickToIndexCurrentEpoch(system.tick);
-    tickData.acquireLock();
-    bs->CopyMem(&nextTickData, &tickData[tickIndex], sizeof(TickData));
-    tickData.releaseLock();
+    unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
+    ts.tickData.acquireLock();
+    bs->CopyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
+    ts.tickData.releaseLock();
     if (nextTickData.epoch == system.epoch)
     {
         bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
@@ -2497,7 +2497,7 @@ static void beginEpoch1of2()
     bs->SetMem(ticks, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS * sizeof(Tick), 0);
     bs->SetMem(tickTransactions, FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS), 0);
     bs->SetMem(tickTransactionOffsets, sizeof(tickTransactionOffsets), 0);
-    tickData.beginEpoch(system.initialTick);
+    ts.beginEpoch(system.initialTick);
 
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
@@ -2645,8 +2645,8 @@ static void endEpoch()
     bs->SetMem(transactionCounters, sizeof(transactionCounters), 0);
     for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
     {
-        tickData.acquireLock();
-        TickData& td = tickData.getByTickInCurrentEpoch(tick);
+        ts.tickData.acquireLock();
+        TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
         if (td.epoch == system.epoch)
         {
             unsigned int numberOfTransactions = 0;
@@ -2659,7 +2659,7 @@ static void endEpoch()
             }
             transactionCounters[tick % NUMBER_OF_COMPUTORS] += revenuePoints[numberOfTransactions];
         }
-        tickData.releaseLock();
+        ts.tickData.releaseLock();
     }
     unsigned long long sortedTransactionCounters[QUORUM + 1];
     bs->SetMem(sortedTransactionCounters, sizeof(sortedTransactionCounters), 0);
@@ -2772,10 +2772,10 @@ static void tickProcessor(void*)
         const unsigned int nextTick = system.tick + 1;
 
         if (broadcastedComputors.broadcastComputors.computors.epoch == system.epoch
-            && tickData.tickInCurrentEpochStorage(nextTick))
+            && ts.tickInCurrentEpochStorage(nextTick))
         {
-            const unsigned int currentTickIndex = tickData.tickToIndexCurrentEpoch(system.tick);
-            const unsigned int nextTickIndex = tickData.tickToIndexCurrentEpoch(nextTick);
+            const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
+            const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
 
             {
                 const unsigned int baseOffset = nextTickIndex * NUMBER_OF_COMPUTORS;
@@ -2917,9 +2917,9 @@ static void tickProcessor(void*)
                     }
                 }
 
-                tickData.acquireLock();
-                bs->CopyMem(&nextTickData, &tickData[nextTickIndex], sizeof(TickData));
-                tickData.releaseLock();
+                ts.tickData.acquireLock();
+                bs->CopyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
+                ts.tickData.releaseLock();
                 if (nextTickData.epoch == system.epoch)
                 {
                     m256i timelockPreimage[3];
@@ -2930,9 +2930,9 @@ static void tickProcessor(void*)
                     KangarooTwelve(timelockPreimage, sizeof(timelockPreimage), &timelock, sizeof(timelock));
                     if (nextTickData.timelock != timelock)
                     {
-                        tickData.acquireLock();
-                        tickData[nextTickIndex].epoch = 0;
-                        tickData.releaseLock();
+                        ts.tickData.acquireLock();
+                        ts.tickData[nextTickIndex].epoch = 0;
+                        ts.tickData.releaseLock();
                         nextTickData.epoch = 0;
                     }
                 }
@@ -2955,9 +2955,9 @@ static void tickProcessor(void*)
                 {
                     if (isZero(targetNextTickDataDigest))
                     {
-                        tickData.acquireLock();
-                        tickData[nextTickIndex].epoch = 0;
-                        tickData.releaseLock();
+                        ts.tickData.acquireLock();
+                        ts.tickData[nextTickIndex].epoch = 0;
+                        ts.tickData.releaseLock();
                         nextTickData.epoch = 0;
                         tickDataSuits = true;
                     }
@@ -3085,9 +3085,9 @@ static void tickProcessor(void*)
                         if (!targetNextTickDataDigestIsKnown
                             && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * 5 * frequency / 1000)
                         {
-                            tickData.acquireLock();
-                            tickData[nextTickIndex].epoch = 0;
-                            tickData.releaseLock();
+                            ts.tickData.acquireLock();
+                            ts.tickData[nextTickIndex].epoch = 0;
+                            ts.tickData.releaseLock();
                             nextTickData.epoch = 0;
 
                             numberOfNextTickTransactions = 0;
@@ -3103,9 +3103,9 @@ static void tickProcessor(void*)
                     {
                         requestedTickTransactions.requestedTickTransactions.tick = 0;
 
-                        if (tickData[currentTickIndex].epoch == system.epoch)
+                        if (ts.tickData[currentTickIndex].epoch == system.epoch)
                         {
-                            KangarooTwelve(&tickData[currentTickIndex], sizeof(TickData), &etalonTick.transactionDigest, 32);
+                            KangarooTwelve(&ts.tickData[currentTickIndex], sizeof(TickData), &etalonTick.transactionDigest, 32);
                         }
                         else
                         {
@@ -3226,9 +3226,9 @@ static void tickProcessor(void*)
                                 tickDataSuits = false;
                                 if (isZero(targetNextTickDataDigest))
                                 {
-                                    tickData.acquireLock();
-                                    tickData[nextTickIndex].epoch = 0;
-                                    tickData.releaseLock();
+                                    ts.tickData.acquireLock();
+                                    ts.tickData[nextTickIndex].epoch = 0;
+                                    ts.tickData.releaseLock();
                                     nextTickData.epoch = 0;
                                     tickDataSuits = true;
                                 }
@@ -3257,8 +3257,8 @@ static void tickProcessor(void*)
                                     {
                                         // update etalonTick
                                         etalonTick.tick++;
-                                        tickData.acquireLock();
-                                        const TickData& td = tickData[currentTickIndex];
+                                        ts.tickData.acquireLock();
+                                        const TickData& td = ts.tickData[currentTickIndex];
                                         if (td.epoch == system.epoch
                                             && (td.year > etalonTick.year
                                                 || (td.year == etalonTick.year && (td.month > etalonTick.month
@@ -3310,7 +3310,7 @@ static void tickProcessor(void*)
                                                 }
                                             }
                                         }
-                                        tickData.releaseLock();
+                                        ts.tickData.releaseLock();
                                     }
 
                                     system.tick++;
@@ -3530,7 +3530,7 @@ static bool initialize()
 
             return false;
         }
-        if (!tickData.init())
+        if (!ts.init())
             return false;
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS), (void**)&tickTransactions))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
@@ -3862,7 +3862,7 @@ static void deinitialize()
     {
         bs->FreePool(tickTransactions);
     }
-    tickData.deinit();
+    ts.deinit();
 
     if (ticks)
     {
@@ -4060,7 +4060,7 @@ static void logInfo()
         appendNumber(message, numberOfNextTickTransactions, TRUE);
     }
     appendText(message, L" next tick transactions are known. ");
-    const TickData& td = tickData.getByTickInCurrentEpoch(system.tick + 1);
+    const TickData& td = ts.tickData.getByTickInCurrentEpoch(system.tick + 1);
     if (td.epoch == system.epoch)
     {
         appendText(message, L"(");
@@ -4655,7 +4655,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
                 if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000
-                    && tickData.tickInCurrentEpochStorage(system.tick + 1))
+                    && ts.tickInCurrentEpochStorage(system.tick + 1))
                 {
                     // Request ticks
                     tickRequestingTick = curTimeTick;
@@ -4695,14 +4695,14 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                     futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
 
-                    if (tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
+                    if (ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
                         || targetNextTickDataDigestIsKnown)
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
                         pushToAny(&requestedTickData.header);
                     }
-                    if (tickData[system.tick + 2 - system.initialTick].epoch != system.epoch)
+                    if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch)
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 2;

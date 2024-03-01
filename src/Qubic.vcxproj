@@ -118,7 +118,7 @@
       <StringPooling>true</StringPooling>
       <UseFullPaths>false</UseFullPaths>
       <Optimization>MaxSpeed</Optimization>
-      <LanguageStandard>Default</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <AdditionalOptions>/Gs1638400 %(AdditionalOptions)</AdditionalOptions>
       <StackReserveSize>126976</StackReserveSize>
@@ -165,7 +165,7 @@
       <StringPooling>true</StringPooling>
       <UseFullPaths>false</UseFullPaths>
       <Optimization>MaxSpeed</Optimization>
-      <LanguageStandard>Default</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <AdditionalOptions>/Gs1638400 %(AdditionalOptions)</AdditionalOptions>
       <StackReserveSize>126976</StackReserveSize>
