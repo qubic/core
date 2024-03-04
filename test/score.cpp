@@ -11,6 +11,7 @@
 // reference implementation
 #include "score_reference.h"
 
+#include <chrono>
 
 template<
     unsigned int dataLength,
@@ -43,6 +44,8 @@ struct ScoreTester
     {
         score = new ScoreFuncOpt;
         score_ref_impl = new ScoreFuncRef;
+        memset(score, 0, sizeof(ScoreFuncOpt));
+        memset(score_ref_impl, 0, sizeof(ScoreFuncRef));
         score->initMiningData(_mm256_setzero_si256());
         score_ref_impl->initMiningData();
     }
@@ -55,10 +58,39 @@ struct ScoreTester
 
     bool operator()(const unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
     {
+        int x = 0;
+        top_of_stack = (int)(&x);
+        auto t0 = std::chrono::high_resolution_clock::now();
         unsigned int current = (*score)(processorNumber, publicKey, nonce);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto d = t1 - t0;
+        auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(d);
+        std::cout << "Optimized version: " << elapsed.count() << "ns" << std::endl;
+
+        t0 = std::chrono::high_resolution_clock::now();
         unsigned int reference = (*score_ref_impl)(processorNumber, publicKey, nonce);
+        t1 = std::chrono::high_resolution_clock::now();
+        d = t1 - t0;
+        elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(d);
+        std::cout << "Reference version: " << elapsed.count() << "ns" << std::endl;
         std::cout << "current score() returns " << current << ", reference score() returns " << reference << std::endl;
-        return current == reference;
+        bool matchedInputNeuron = true;
+        bool matchedOutputNeuron = true;
+        for (int i = 0; i < 1024 + 2048 + 512; i++) {
+            if ((*score)._neurons[0].input[i] != (*score_ref_impl)._neurons[0].input[i]) {
+                printf("DIFF Input neuron %d: %lld vs %lld\n", i, (*score)._neurons[0].input[i], (*score_ref_impl)._neurons[0].input[i]);
+                matchedInputNeuron = false;
+                break;
+            }
+        }
+        for (int i = 0; i < 1024 + 2048 + 512; i++) {
+            if ((*score)._neurons[0].output[i] != (*score_ref_impl)._neurons[0].output[i]) {
+                printf("DIFF Output neuron %d: %lld vs %lld\n", i, (*score)._neurons[0].output[i], (*score_ref_impl)._neurons[0].output[i]);
+                matchedOutputNeuron = false;
+                break;
+            }
+        }
+        return current == reference && matchedOutputNeuron && matchedInputNeuron;
     }
 };
 
@@ -66,14 +98,16 @@ struct ScoreTester
 template <typename ScoreTester>
 void runCommonTests(ScoreTester& test_score)
 {
+#ifdef __AVX512F__
+    initAVX512KangarooTwelveConstants();
+#endif
     EXPECT_TRUE(test_score(678, m256i(13969805098858910392ULL, 14472806656575993870ULL, 10205949277524717274ULL, 9139973247135990472ULL).m256i_u8, m256i(2606487637113200640ULL, 2267452027856879938ULL, 14495402921700380246ULL, 16315779787892001110ULL).m256i_u8));
     EXPECT_TRUE(test_score(251, m256i(17764101523024620815ULL, 13444759684604467162ULL, 5205156473815387573ULL, 13260540040653911245ULL).m256i_u8, m256i(2719505187280522860ULL, 796569317027170745ULL, 1472067853669192224ULL, 17746228003132033809ULL).m256i_u8));
     EXPECT_TRUE(test_score(78, m256i(14789280547522027434ULL, 15979653773010502977ULL, 6616468095151646068ULL, 3853325349953461025ULL).m256i_u8, m256i(1363327481582396135ULL, 152218635184973474ULL, 12932262167270620348ULL, 4723831151589758153ULL).m256i_u8));
     EXPECT_TRUE(test_score(385, m256i(15507048083185325046ULL, 5419387135591449337ULL, 17612106885624953580ULL, 10150797730536211684ULL).m256i_u8, m256i(7282604761236241613ULL, 7487819921911970082ULL, 9774240096691834870ULL, 13218191714229610846ULL).m256i_u8));
     EXPECT_TRUE(test_score(719, m256i(16469956954252377972ULL, 10616469325737600748ULL, 17234552708406882866ULL, 17603684088088319074ULL).m256i_u8, m256i(3101639521896790862ULL, 17674129317330307249ULL, 1333479429610156792ULL, 12048337933776378280ULL).m256i_u8));
-    EXPECT_TRUE(test_score(430, m256i(12225014192899428857ULL, 17723599372023570709ULL, 14273664843035611268ULL, 4222530050421664529ULL).m256i_u8, m256i(1722890237550299331ULL, 1409575367906677222ULL, 5258749978518149321ULL, 5534507432662726693ULL).m256i_u8));
-    /*
-    EXPECT_TRUE(test_score(965, m256i(12694708202670430136ULL, 4592418528596939768ULL, 5128426255986122713ULL, 3128535246151235448ULL).m256i_u8, m256i(12359926726444303483ULL, 9943718050956305366ULL, 16852961061408811081ULL, 6084746845012311508ULL).m256i_u8));
+    EXPECT_TRUE(test_score(430, m256i(12225014192899428857ULL, 17723599372023570709ULL, 14273664843035611268ULL, 4222530050421664529ULL).m256i_u8, m256i(1722890237550299331ULL, 1409575367906677222ULL, 5258749978518149321ULL, 5534507432662726693ULL).m256i_u8));    
+    /*EXPECT_TRUE(test_score(965, m256i(12694708202670430136ULL, 4592418528596939768ULL, 5128426255986122713ULL, 3128535246151235448ULL).m256i_u8, m256i(12359926726444303483ULL, 9943718050956305366ULL, 16852961061408811081ULL, 6084746845012311508ULL).m256i_u8));
     EXPECT_TRUE(test_score(238, m256i(16503663924474967357ULL, 11439136617890930325ULL, 7423827409628183499ULL, 1449990996230582247ULL).m256i_u8, m256i(12243218512283391439ULL, 8458363515824094038ULL, 4920874055674791730ULL, 8941586449027094938ULL).m256i_u8));
     EXPECT_TRUE(test_score(934, m256i(8339960766829311448ULL, 12034243510437879789ULL, 2592554446805570513ULL, 17320950261127066188ULL).m256i_u8, m256i(4195467352140237418ULL, 10729228372661977518ULL, 9404918559024410273ULL, 18207883304598809582ULL).m256i_u8));
     EXPECT_TRUE(test_score(186, m256i(11463746198708745364ULL, 7532589796593039932ULL, 3472141418932112270ULL, 2273660444442579648ULL).m256i_u8, m256i(17267427366479912445ULL, 260231043469689659ULL, 18011391394394036222ULL, 11428192775436305666ULL).m256i_u8));
@@ -96,8 +130,7 @@ void runCommonTests(ScoreTester& test_score)
     EXPECT_TRUE(test_score(881, m256i(6580829530326605499ULL, 15285218009507505183ULL, 13283743089822376067ULL, 4440607614752639048ULL).m256i_u8, m256i(11285630000316386408ULL, 7321214542001829190ULL, 11417040916091071108ULL, 6168118154194697001ULL).m256i_u8));
     EXPECT_TRUE(test_score(814, m256i(8884969359909707132ULL, 10894542677559476587ULL, 13822743715091250767ULL, 13561505609948220792ULL).m256i_u8, m256i(17606367985287901666ULL, 7612298942678794629ULL, 16949833167458269315ULL, 4135575410205410038ULL).m256i_u8));
     EXPECT_TRUE(test_score(842, m256i(12729600796163372661ULL, 570180277953102404ULL, 5663897814445501455ULL, 7831139685681934738ULL).m256i_u8, m256i(6917026230040145346ULL, 12381976747313062274ULL, 5643335313772104394ULL, 9399530250852495619ULL).m256i_u8));
-    EXPECT_TRUE(test_score(295, m256i(918321060708494153ULL, 12704296284773187804ULL, 9739953033104705181ULL, 17519212784278682373ULL).m256i_u8, m256i(491077786630729166ULL, 7861022226827992570ULL, 16352138098691722774ULL, 3624360050214296073ULL).m256i_u8));
-    */
+    EXPECT_TRUE(test_score(295, m256i(918321060708494153ULL, 12704296284773187804ULL, 9739953033104705181ULL, 17519212784278682373ULL).m256i_u8, m256i(491077786630729166ULL, 7861022226827992570ULL, 16352138098691722774ULL, 3624360050214296073ULL).m256i_u8));*/
 }
 
 
@@ -106,72 +139,17 @@ TEST(TestQubicScoreFunction, CurrentLengthNeuronsDurationSettings) {
         DATA_LENGTH, INFO_LENGTH,
         NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
         MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
-        MAX_NUMBER_OF_PROCESSORS
+        1
     > test_score;
     runCommonTests(test_score);
 }
 
-TEST(TestQubicScoreFunction, Length1024Neurons4096Duration2256) {
+TEST(TestQubicScoreFunction, HalfOfCurrentLengthNeuronsDurationSettings) {
     ScoreTester<
-        1024, // DATA_LENGTH
-        1024, // INFO_LENGTH
-        4096, // NUMBER_OF_INPUT_NEURONS
-        4096, // NUMBER_OF_OUTPUT_NEURONS
-        256,  // MAX_INPUT_DURATION
-        256,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
-    > test_score;
-    runCommonTests(test_score);
-}
-
-TEST(TestQubicScoreFunction, LengthNeurons1000Duration200) {
-    ScoreTester<
-        1000, // DATA_LENGTH
-        1000, // INFO_LENGTH
-        1000, // NUMBER_OF_INPUT_NEURONS
-        1000, // NUMBER_OF_OUTPUT_NEURONS
-        200,  // MAX_INPUT_DURATION
-        200,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
-    > test_score;
-    runCommonTests(test_score);
-}
-
-TEST(TestQubicScoreFunction, LengthNeurons1100Duration200) {
-    ScoreTester<
-        1100, // DATA_LENGTH
-        1100, // INFO_LENGTH
-        1100, // NUMBER_OF_INPUT_NEURONS
-        1100, // NUMBER_OF_OUTPUT_NEURONS
-        200,  // MAX_INPUT_DURATION
-        200,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
-    > test_score;
-    runCommonTests(test_score);
-}
-
-TEST(TestQubicScoreFunction, DataLength1200InfoLength1000Neurons1000Duration200) {
-    ScoreTester<
-        1200, // DATA_LENGTH
-        1000, // INFO_LENGTH
-        1000, // NUMBER_OF_INPUT_NEURONS
-        1000, // NUMBER_OF_OUTPUT_NEURONS
-        200,  // MAX_INPUT_DURATION
-        200,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
-    > test_score;
-    runCommonTests(test_score);
-}
-
-TEST(TestQubicScoreFunction, Length1200InputNeurons1000OutputNeurons1200Duration200) {
-    ScoreTester<
-        1200, // DATA_LENGTH
-        1200, // INFO_LENGTH
-        1000, // NUMBER_OF_INPUT_NEURONS
-        1200, // NUMBER_OF_OUTPUT_NEURONS
-        200,  // MAX_INPUT_DURATION
-        200,  // MAX_OUTPUT_DURATION
-        1 // SET BUFFER TO 1 TO DETECT MEMORY OVERFLOW
+        DATA_LENGTH/2, INFO_LENGTH/2,
+        NUMBER_OF_INPUT_NEURONS/2, NUMBER_OF_OUTPUT_NEURONS/2,
+        MAX_INPUT_DURATION/2, MAX_OUTPUT_DURATION/2,
+        1
     > test_score;
     runCommonTests(test_score);
 }

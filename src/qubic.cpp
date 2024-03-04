@@ -4227,6 +4227,11 @@ static void processKeyPresses()
             appendText(message, L".");
             logToConsole(message);
 
+            setText(message, L"resourceTestingDigest = ");
+            appendNumber(message, resourceTestingDigest, false);
+            appendText(message, L".");
+            logToConsole(message);
+
             unsigned int numberOfPublishedSolutions = 0, numberOfRecordedSolutions = 0;
             for (unsigned int i = 0; i < system.numberOfSolutions; i++)
             {
