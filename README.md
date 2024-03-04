@@ -75,7 +75,7 @@ Qubic.efi
 
 > If you have multiple hard drives, the `fs0:` must changed to meet your environment.
 
-> To make it easier, you can copy & paste our prepared initial disk from https://github.com/qubic-li/qubic/blob/main/qubic-initial-disk.zip
+> To make it easier, you can copy & paste our prepared initial disk from https://github.com/qubic/core/blob/main/doc/qubic-initial-disk.zip
 
 > If you have multiple network interfaces, you may disconnect these before starting qubic.
 
