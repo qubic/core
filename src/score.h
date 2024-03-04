@@ -363,7 +363,7 @@ struct ScoreFunction
         score = 0;
 #endif
 
-        const unsigned long long solutionBufIdx = processor_Number % solutionBufferCount;
+        const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
         ACQUIRE(solutionEngineLock[solutionBufIdx]);
 
         auto& neurons = _neurons[solutionBufIdx];

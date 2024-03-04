@@ -538,7 +538,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     if (k == system.numberOfSolutions)
                                     {
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && (*score)(processorNumber, request->destinationPublicKey, solution_nonce) >= solutionThreshold[system.epoch])
+                                            && (*score)(processorNumber, request->destinationPublicKey, solution_nonce) >= (unsigned int)solutionThreshold[system.epoch])
                                         {
                                             ACQUIRE(solutionsLock);
 
