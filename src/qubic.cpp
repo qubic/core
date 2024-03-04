@@ -106,7 +106,6 @@ static unsigned short numberOfOwnComputorIndices;
 static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 
-static Tick* ticks = NULL;
 static TickStorage ts;
 static Tick etalonTick;
 static TickData nextTickData;
@@ -152,7 +151,6 @@ static char* contractFunctionOutputs[MAX_NUMBER_OF_PROCESSORS];
 static char executedContractInput[65536];
 static char executedContractOutput[RequestResponseHeader::max_size + 1];
 
-static volatile char tickLocks[NUMBER_OF_COMPUTORS];
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
 static unsigned long long tickTicks[11];
@@ -627,7 +625,8 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
     BroadcastTick* request = header->getPayload<BroadcastTick>();
     if (request->tick.computorIndex < NUMBER_OF_COMPUTORS
         && request->tick.epoch == system.epoch
-        && request->tick.tick >= system.tick && request->tick.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
+        && request->tick.tick >= system.tick
+        && ts.tickInCurrentEpochStorage(request->tick.tick)
         && request->tick.month >= 1 && request->tick.month <= 12
         && request->tick.day >= 1 && request->tick.day <= ((request->tick.month == 1 || request->tick.month == 3 || request->tick.month == 5 || request->tick.month == 7 || request->tick.month == 8 || request->tick.month == 10 || request->tick.month == 12) ? 31 : ((request->tick.month == 4 || request->tick.month == 6 || request->tick.month == 9 || request->tick.month == 11) ? 30 : ((request->tick.year & 3) ? 28 : 29)))
         && request->tick.hour <= 23
@@ -646,30 +645,33 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(NULL, header);
             }
 
-            ACQUIRE(tickLocks[request->tick.computorIndex]);
+            ts.ticks.acquireLock(request->tick.computorIndex);
 
-            const unsigned int offset = ((request->tick.tick - system.initialTick) * NUMBER_OF_COMPUTORS) + request->tick.computorIndex;
-            if (ticks[offset].epoch == system.epoch)
+            // Find element in tick storage and check if contains data (epoch is set to 0 on init)
+            Tick* tsTick = ts.ticks.getComputorsTicksInCurrentEpoch(request->tick.tick) + request->tick.computorIndex;
+            if (tsTick->epoch == system.epoch)
             {
-                if (*((unsigned long long*)&request->tick.millisecond) != *((unsigned long long*)&ticks[offset].millisecond)
-                    || request->tick.prevSpectrumDigest != ticks[offset].prevSpectrumDigest
-                    || request->tick.prevUniverseDigest != ticks[offset].prevUniverseDigest
-                    || request->tick.prevComputerDigest != ticks[offset].prevComputerDigest
-                    || request->tick.saltedSpectrumDigest != ticks[offset].saltedSpectrumDigest
-                    || request->tick.saltedUniverseDigest != ticks[offset].saltedUniverseDigest
-                    || request->tick.saltedComputerDigest != ticks[offset].saltedComputerDigest
-                    || request->tick.transactionDigest != ticks[offset].transactionDigest
-                    || request->tick.expectedNextTickTransactionDigest != ticks[offset].expectedNextTickTransactionDigest)
+                // Check if the sent tick matches the tick in tick storage
+                if (*((unsigned long long*)&request->tick.millisecond) != *((unsigned long long*)tsTick->millisecond)
+                    || request->tick.prevSpectrumDigest != tsTick->prevSpectrumDigest
+                    || request->tick.prevUniverseDigest != tsTick->prevUniverseDigest
+                    || request->tick.prevComputerDigest != tsTick->prevComputerDigest
+                    || request->tick.saltedSpectrumDigest != tsTick->saltedSpectrumDigest
+                    || request->tick.saltedUniverseDigest != tsTick->saltedUniverseDigest
+                    || request->tick.saltedComputerDigest != tsTick->saltedComputerDigest
+                    || request->tick.transactionDigest != tsTick->transactionDigest
+                    || request->tick.expectedNextTickTransactionDigest != tsTick->expectedNextTickTransactionDigest)
                 {
                     faultyComputorFlags[request->tick.computorIndex >> 6] |= (1ULL << (request->tick.computorIndex & 63));
                 }
             }
             else
             {
-                bs->CopyMem(&ticks[offset], &request->tick, sizeof(Tick));
+                // Copy the sent tick to the tick storage
+                bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
             }
 
-            RELEASE(tickLocks[request->tick.computorIndex]);
+            ts.ticks.releaseLock(request->tick.computorIndex);
         }
     }
 }
@@ -846,8 +848,25 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 {
     RequestQuorumTick* request = header->getPayload<RequestQuorumTick>();
+
+    unsigned short tickEpoch = 0;
+    const Tick* tsCompTicks;
     if (ts.tickInCurrentEpochStorage(request->quorumTick.tick))
     {
+        tickEpoch = system.epoch;
+        tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(request->quorumTick.tick);
+    }
+    else if (ts.tickInPreviousEpochStorage(request->quorumTick.tick))
+    {
+        tickEpoch = system.epoch - 1;
+        tsCompTicks = ts.ticks.getComputorsTicksInPreviousEpoch(request->quorumTick.tick);
+    }
+
+    if (tickEpoch != 0)
+    {
+        // Send Tick struct data from tick storage as requested by tick and voteFlags in request->quorumTick.
+        // The order of the computors is randomized.
+        // Todo: This function may be optimized by moving the checking of voteFlags in the first loop, reducing the number of calls to random().
         unsigned short computorIndices[NUMBER_OF_COMPUTORS];
         unsigned short numberOfComputorIndices;
         for (numberOfComputorIndices = 0; numberOfComputorIndices < NUMBER_OF_COMPUTORS; numberOfComputorIndices++)
@@ -860,10 +879,11 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 
             if (!(request->quorumTick.voteFlags[computorIndices[index] >> 3] & (1 << (computorIndices[index] & 7))))
             {
-                const unsigned int offset = ((request->quorumTick.tick - system.initialTick) * NUMBER_OF_COMPUTORS) + computorIndices[index];
-                if (ticks[offset].epoch == system.epoch)
+                // Todo: We should acquire ts.ticks lock here if tick >= system.tick
+                const Tick* tsTick = tsCompTicks + computorIndices[index];
+                if (tsTick->epoch == tickEpoch)
                 {
-                    enqueueResponse(peer, sizeof(Tick), BroadcastTick::type, header->dejavu(), &ticks[offset]);
+                    enqueueResponse(peer, sizeof(Tick), BroadcastTick::type, header->dejavu(), tsTick);
                 }
             }
 
@@ -2494,7 +2514,6 @@ static void beginEpoch1of2()
     }
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
-    bs->SetMem(ticks, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS * sizeof(Tick), 0);
     bs->SetMem(tickTransactions, FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS), 0);
     bs->SetMem(tickTransactionOffsets, sizeof(tickTransactionOffsets), 0);
     ts.beginEpoch(system.initialTick);
@@ -2778,11 +2797,11 @@ static void tickProcessor(void*)
             const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
 
             {
-                const unsigned int baseOffset = nextTickIndex * NUMBER_OF_COMPUTORS;
+                const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(nextTickIndex);
                 unsigned int futureTickTotalNumberOfComputors = 0;
                 for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
-                    if (ticks[baseOffset + i].epoch == system.epoch)
+                    if (tsCompTicks[i].epoch == system.epoch)
                     {
                         futureTickTotalNumberOfComputors++;
                     }
@@ -2800,24 +2819,24 @@ static void tickProcessor(void*)
 
                 if (futureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
                 {
-                    const unsigned int baseOffset = nextTickIndex * NUMBER_OF_COMPUTORS;
+                    const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(nextTickIndex);
                     unsigned int numberOfEmptyNextTickTransactionDigest = 0;
                     unsigned int numberOfUniqueNextTickTransactionDigests = 0;
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
-                        if (ticks[baseOffset + i].epoch == system.epoch)
+                        if (tsCompTicks[i].epoch == system.epoch)
                         {
                             unsigned int j;
                             for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
                             {
-                                if (ticks[baseOffset + i].transactionDigest == uniqueNextTickTransactionDigests[j])
+                                if (tsCompTicks[i].transactionDigest == uniqueNextTickTransactionDigests[j])
                                 {
                                     break;
                                 }
                             }
                             if (j == numberOfUniqueNextTickTransactionDigests)
                             {
-                                uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = ticks[baseOffset + i].transactionDigest;
+                                uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].transactionDigest;
                                 uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
                             }
                             else
@@ -2825,7 +2844,7 @@ static void tickProcessor(void*)
                                 uniqueNextTickTransactionDigestCounters[j]++;
                             }
 
-                            if (isZero(ticks[baseOffset + i].transactionDigest))
+                            if (isZero(tsCompTicks[i].transactionDigest))
                             {
                                 numberOfEmptyNextTickTransactionDigest++;
                             }
@@ -2858,24 +2877,24 @@ static void tickProcessor(void*)
 
                 if (!targetNextTickDataDigestIsKnown)
                 {
-                    const unsigned int baseOffset = currentTickIndex * NUMBER_OF_COMPUTORS;
+                    const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(currentTickIndex);
                     unsigned int numberOfEmptyNextTickTransactionDigest = 0;
                     unsigned int numberOfUniqueNextTickTransactionDigests = 0;
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
-                        if (ticks[baseOffset + i].epoch == system.epoch)
+                        if (tsCompTicks[i].epoch == system.epoch)
                         {
                             unsigned int j;
                             for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
                             {
-                                if (ticks[baseOffset + i].expectedNextTickTransactionDigest == uniqueNextTickTransactionDigests[j])
+                                if (tsCompTicks[i].expectedNextTickTransactionDigest == uniqueNextTickTransactionDigests[j])
                                 {
                                     break;
                                 }
                             }
                             if (j == numberOfUniqueNextTickTransactionDigests)
                             {
-                                uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = ticks[baseOffset + i].expectedNextTickTransactionDigest;
+                                uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].expectedNextTickTransactionDigest;
                                 uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
                             }
                             else
@@ -2883,7 +2902,7 @@ static void tickProcessor(void*)
                                 uniqueNextTickTransactionDigestCounters[j]++;
                             }
 
-                            if (isZero(ticks[baseOffset + i].expectedNextTickTransactionDigest))
+                            if (isZero(tsCompTicks[i].expectedNextTickTransactionDigest))
                             {
                                 numberOfEmptyNextTickTransactionDigest++;
                             }
@@ -2977,17 +2996,17 @@ static void tickProcessor(void*)
                 if (!tickDataSuits)
                 {
                     unsigned int tickTotalNumberOfComputors = 0;
-                    const unsigned int baseOffset = currentTickIndex * NUMBER_OF_COMPUTORS;
+                    const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(currentTickIndex);
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
-                        ACQUIRE(tickLocks[i]);
+                        ts.ticks.acquireLock(i);
 
-                        if (ticks[baseOffset + i].epoch == system.epoch)
+                        if (tsCompTicks[i].epoch == system.epoch)
                         {
                             tickTotalNumberOfComputors++;
                         }
 
-                        RELEASE(tickLocks[i]);
+                        ts.ticks.releaseLock(i);
                     }
                     ::tickNumberOfComputors = 0;
                     ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
@@ -3159,14 +3178,14 @@ static void tickProcessor(void*)
                             }
                         }
 
-                        const unsigned int baseOffset = currentTickIndex * NUMBER_OF_COMPUTORS;
+                        const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(currentTickIndex); 
 
                         unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0;
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
-                            ACQUIRE(tickLocks[i]);
+                            ts.ticks.acquireLock(i);
 
-                            const Tick* tick = &ticks[baseOffset + i];
+                            const Tick* tick = &tsCompTicks[i];
                             if (tick->epoch == system.epoch)
                             {
                                 tickTotalNumberOfComputors++;
@@ -3204,7 +3223,7 @@ static void tickProcessor(void*)
                                 }
                             }
 
-                            RELEASE(tickLocks[i]);
+                            ts.ticks.releaseLock(i);
                         }
                         ::tickNumberOfComputors = tickNumberOfComputors;
                         ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
@@ -3502,7 +3521,6 @@ static bool initialize()
 
     initTimeStampCounter();
 
-    bs->SetMem((void*)tickLocks, sizeof(tickLocks), 0);
     bs->SetMem(&tickTicks, sizeof(tickTicks), 0);
 
     bs->SetMem(processors, sizeof(processors), 0);
@@ -3524,12 +3542,6 @@ static bool initialize()
 
     EFI_STATUS status;
     {
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS * sizeof(Tick), (void**)&ticks))
-        {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
-
-            return false;
-        }
         if (!ts.init())
             return false;
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS), (void**)&tickTransactions))
@@ -3863,11 +3875,6 @@ static void deinitialize()
         bs->FreePool(tickTransactions);
     }
     ts.deinit();
-
-    if (ticks)
-    {
-        bs->FreePool(ticks);
-    }
 
     if (score)
     {
@@ -4665,11 +4672,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
                         bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
-                        const unsigned int baseOffset = (system.tick - system.initialTick) * NUMBER_OF_COMPUTORS;
+                        const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(system.tick);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
-                            const Tick* tick = &ticks[baseOffset + i];
-                            if (tick->epoch == system.epoch)
+                            if (tsCompTicks[i].epoch == system.epoch)
                             {
                                 requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags[i >> 3] |= (1 << (i & 7));
                             }
@@ -4682,11 +4688,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
                         bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
-                        const unsigned int baseOffset = (system.tick + 1 - system.initialTick) * NUMBER_OF_COMPUTORS;
+                        const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(system.tick + 1);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
-                            const Tick* tick = &ticks[baseOffset + i];
-                            if (tick->epoch == system.epoch)
+                            if (tsCompTicks[i].epoch == system.epoch)
                             {
                                 requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags[i >> 3] |= (1 << (i & 7));
                             }

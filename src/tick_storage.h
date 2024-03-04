@@ -12,28 +12,54 @@
 
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
+// It comprises:
+// - tickData (one TickData struct per tick)
+// - ticks (one Tick struct per tick and Computor)
 class TickStorage
 {
 private:
     static constexpr unsigned long long tickDataLength = MAX_NUMBER_OF_TICKS_PER_EPOCH + TICKS_TO_KEEP_FROM_PRIOR_EPOCH;
     static constexpr unsigned long long tickDataSize = tickDataLength * sizeof(TickData);
     
-    // Allocated tick data buffer with tickDataLength elements (includes current and previous epoch data)
-    inline static TickData* tickDataPtr = nullptr;
-    inline static volatile char tickDataLock = 0;
+    static constexpr unsigned long long ticksLengthCurrentEpoch = ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_COMPUTORS;
+    static constexpr unsigned long long ticksLengthPreviousEpoch = ((unsigned long long)TICKS_TO_KEEP_FROM_PRIOR_EPOCH) * NUMBER_OF_COMPUTORS;
+    static constexpr unsigned long long ticksLength = ticksLengthCurrentEpoch + ticksLengthPreviousEpoch;
+    static constexpr unsigned long long ticksSize = ticksLength * sizeof(Tick);
+
+
+    // Tick number range of current epoch storage
     inline static unsigned int tickBegin = 0;
     inline static unsigned int tickEnd = 0;
 
-    // Data of previous epoch. Points to tickData + MAX_NUMBER_OF_TICKS_PER_EPOCH
-    inline static TickData* oldTickDataPtr = nullptr;
+    // Tick number range of previous epoch storage
     inline static unsigned int oldTickBegin = 0;
     inline static unsigned int oldTickEnd = 0;
+
+    // Allocated tick data buffer with tickDataLength elements (includes current and previous epoch data)
+    inline static TickData* tickDataPtr = nullptr;
+
+    // Allocated ticks buffer with ticksLength elements (includes current and previous epoch data)
+    inline static Tick* ticksPtr = nullptr;
+
+    // Tick data of previous epoch. Points to tickData + MAX_NUMBER_OF_TICKS_PER_EPOCH
+    inline static TickData* oldTickDataPtr = nullptr;
+
+    // Ticks of previous epoch. Points to ticksPtr + ticksLengthCurrentEpoch
+    inline static Tick* oldTicksPtr = nullptr;
+
+    // Lock for securing tickData
+    inline static volatile char tickDataLock = 0;
+
+    // One lock per computor for securing ticks element in current tick (only the tick system.tick is written)
+    inline static volatile char ticksLocks[NUMBER_OF_COMPUTORS];
+
 
 public:
 
     // Init at node startup
     static bool init()
     {
+        // TODO: allocate everything with one continuous buffer
         EFI_STATUS status;
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, tickDataSize, (void**)&tickDataPtr)))
         {
@@ -41,6 +67,14 @@ public:
 
             return false;
         }
+        if (status = bs->AllocatePool(EfiRuntimeServicesData, ticksSize, (void**)&ticksPtr))
+        {
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+
+            return false;
+        }
+
+        setMem((void*)ticksLocks, sizeof(ticksLocks), 0);
 
         oldTickDataPtr = tickDataPtr + MAX_NUMBER_OF_TICKS_PER_EPOCH;
         return true;
@@ -52,6 +86,11 @@ public:
         if (tickDataPtr)
         {
             bs->FreePool(tickDataPtr);
+        }
+
+        if (ticksPtr)
+        {
+            bs->FreePool(ticksPtr);
         }
     }
 
@@ -67,8 +106,14 @@ public:
             if (oldTickBegin < tickBegin)
                 oldTickBegin = tickBegin;
 
-            copyMem(oldTickDataPtr, tickDataPtr + tickToIndexCurrentEpoch(oldTickBegin), (oldTickEnd - oldTickBegin) * sizeof(TickData));
+            const unsigned int tickIndex = tickToIndexCurrentEpoch(oldTickBegin);
+            const unsigned int tickCount = oldTickEnd - oldTickBegin;
+
+            copyMem(oldTickDataPtr, tickDataPtr + tickIndex, tickCount * sizeof(TickData));
             setMem(tickDataPtr, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(TickData), 0);
+
+            copyMem(oldTicksPtr, ticksPtr + (tickIndex * NUMBER_OF_COMPUTORS), tickCount * NUMBER_OF_COMPUTORS * sizeof(Tick));
+            setMem(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick), 0);
 
             tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
         }
@@ -76,6 +121,7 @@ public:
         {
             // node startup with no data of prior epoch (also use storage for prior epoch for current)
             setMem(tickDataPtr, tickDataSize, 0);
+            setMem(ticksPtr, ticksSize, 0);
             oldTickBegin = 0;
             oldTickEnd = 0;
             tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH; // +TICKS_TO_KEEP_FROM_PRIOR_EPOCH; // to add this, also include other tick buffer
@@ -158,4 +204,43 @@ public:
         }
     } tickData;
 
+    // Struct for structured, convenient access via ".ticks"
+    struct
+    {
+        // Acquire lock for ticks element of specific computor (only ticks >= system.tick are written)
+        inline static void acquireLock(unsigned short computorIndex)
+        {
+            ACQUIRE(ticksLocks[computorIndex]);
+        }
+
+        // Release lock for ticks element of specific computor (only ticks >= system.tick are written)
+        inline static void releaseLock(unsigned short computorIndex)
+        {
+            RELEASE(ticksLocks[computorIndex]);
+        }
+
+        // Return pointer to array of one Tick per computor in current epoch (not checking tick)
+        Tick* getComputorsTicksInCurrentEpoch(unsigned int tick)
+        {
+            return ticksPtr + tickToIndexCurrentEpoch(tick) * NUMBER_OF_COMPUTORS;
+        }
+
+        // Return pointer to array of one Tick per computor in previous epoch (not checking tick)
+        Tick* getComputorsTicksInPreviousEpoch(unsigned int tick)
+        {
+            return ticksPtr + tickToIndexPreviousEpoch(tick) * NUMBER_OF_COMPUTORS;
+        }
+
+        // Get ticks element at offset (not checking offset)
+        Tick& operator[](unsigned int offset)
+        {
+            return ticksPtr[offset];
+        }
+
+        // Get ticks element at offset (not checking offset)
+        const Tick& operator[](unsigned int offset) const
+        {
+            return ticksPtr[offset];
+        }
+    } ticks;
 };
