@@ -8,11 +8,11 @@
 #define NUMBER_OF_SOLUTION_PROCESSORS 4 // do not increase this for this epoch, because there may be issues due too fast ticking
 
 #define VERSION_A 1
-#define VERSION_B 194
-#define VERSION_C 2
+#define VERSION_B 195
+#define VERSION_C 0
 
-#define EPOCH 98
-#define TICK 12710000
+#define EPOCH 99
+#define TICK 12795000
 
 // random seed is now obtained from spectrumDigests
 
