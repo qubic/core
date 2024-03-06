@@ -109,6 +109,16 @@ struct ScoreFunction
         return (a < 0) ? -a : a;
     }
 
+    static inline void clampNeuron(long long& val)
+    {
+        if (val >= NEURON_VALUE_LIMIT) {
+            val = NEURON_VALUE_LIMIT - 1;
+        }
+        else if (val < -NEURON_VALUE_LIMIT) {
+            val = -NEURON_VALUE_LIMIT;
+        }
+    }
+
     void generateSynapse(int solutionBufIdx, const m256i& publicKey, const m256i& nonce)
     {
         auto& synapses = _synapses[solutionBufIdx];
@@ -234,14 +244,7 @@ struct ScoreFunction
                     for (int i = 0; i < totalIndice; i++)
                     {
                         neurons.input[dataLength + inputNeuronIndex] += sumBuffer[i];
-                        if (neurons.input[dataLength + inputNeuronIndex] > NEURON_VALUE_LIMIT)
-                        {
-                            neurons.input[dataLength + inputNeuronIndex] = NEURON_VALUE_LIMIT;
-                        }
-                        if (neurons.input[dataLength + inputNeuronIndex] <= -NEURON_VALUE_LIMIT)
-                        {
-                            neurons.input[dataLength + inputNeuronIndex] = -NEURON_VALUE_LIMIT + 1;
-                        }
+                        clampNeuron(neurons.input[dataLength + inputNeuronIndex]);
                     }
                 }
             }
@@ -336,14 +339,7 @@ struct ScoreFunction
                     for (int i = 0; i < totalIndice; i++)
                     {
                         neurons.output[infoLength + outputNeuronIndex] += sumBuffer[i];
-                        if (neurons.output[infoLength + outputNeuronIndex] > NEURON_VALUE_LIMIT)
-                        {
-                            neurons.output[infoLength + outputNeuronIndex] = NEURON_VALUE_LIMIT;
-                        }
-                        if (neurons.output[infoLength + outputNeuronIndex] <= -NEURON_VALUE_LIMIT)
-                        {
-                            neurons.output[infoLength + outputNeuronIndex] = -NEURON_VALUE_LIMIT + 1;
-                        }
+                        clampNeuron(neurons.output[infoLength + outputNeuronIndex]);
                     }
                 }
             }
@@ -398,9 +394,9 @@ struct ScoreFunction
         scoreCache.addEntry(publicKey, nonce, scoreCacheIndex, score);
 #endif
 #ifdef NO_UEFI
-        int y = 2 + score;
-        int ss = top_of_stack - ((int)(&y));
-        std::cout << "Stack size: " << ss << " bytes\n";
+       int y = 2 + score;
+       int ss = top_of_stack - ((int)(&y));
+       std::cout << "Stack size: " << ss << " bytes\n";
 #endif
         return score;
     }
