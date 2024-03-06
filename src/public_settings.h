@@ -5,14 +5,14 @@
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
 
 #define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 2 // do not increase this for this epoch, because there may be issues due too fast ticking
+#define NUMBER_OF_SOLUTION_PROCESSORS 4 // do not increase this for this epoch, because there may be issues due too fast ticking
 
 #define VERSION_A 1
-#define VERSION_B 194
-#define VERSION_C 2
+#define VERSION_B 195
+#define VERSION_C 0
 
-#define EPOCH 98
-#define TICK 12710000
+#define EPOCH 99
+#define TICK 12795000
 
 // random seed is now obtained from spectrumDigests
 
@@ -24,13 +24,14 @@ static unsigned short UNIVERSE_FILE_NAME[] = L"universe.???";
 static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";
 static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 
-#define DATA_LENGTH 1200
-#define INFO_LENGTH 1200
-#define NUMBER_OF_INPUT_NEURONS 2400
-#define NUMBER_OF_OUTPUT_NEURONS 2400
-#define MAX_INPUT_DURATION 200
-#define MAX_OUTPUT_DURATION 200
-#define SOLUTION_THRESHOLD_DEFAULT 694
+#define DATA_LENGTH 256
+#define INFO_LENGTH 128
+#define NUMBER_OF_INPUT_NEURONS 1024
+#define NUMBER_OF_OUTPUT_NEURONS 1024
+#define MAX_INPUT_DURATION 256
+#define MAX_OUTPUT_DURATION 256
+#define NEURON_VALUE_LIMIT 1099511627776LL
+#define SOLUTION_THRESHOLD_DEFAULT 45
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 1000000 // the larger the better
 #define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
