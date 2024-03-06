@@ -40,6 +40,16 @@ struct ScoreReferenceImplementation
         }
     }
 
+    static inline void clampNeuron(long long& val)
+    {
+        if (val >= NEURON_VALUE_LIMIT) {
+            val = NEURON_VALUE_LIMIT - 1;
+        }
+        else if (val < -NEURON_VALUE_LIMIT) {
+            val = -NEURON_VALUE_LIMIT;
+        }
+    }
+
     unsigned int operator()(unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
     {
         processorNumber %= solutionBufferCount;
@@ -98,15 +108,7 @@ struct ScoreReferenceImplementation
                         {
                             neurons.input[dataLength + inputNeuronIndex] -= neurons.input[anotherInputNeuronIndex];
                         }
-
-                        if (neurons.input[dataLength + inputNeuronIndex] > NEURON_VALUE_LIMIT)
-                        {
-                            neurons.input[dataLength + inputNeuronIndex] = NEURON_VALUE_LIMIT;
-                        }
-                        if (neurons.input[dataLength + inputNeuronIndex] <= -NEURON_VALUE_LIMIT)
-                        {
-                            neurons.input[dataLength + inputNeuronIndex] = -NEURON_VALUE_LIMIT + 1;
-                        }
+                        clampNeuron(neurons.input[dataLength + inputNeuronIndex]);
                     }
                 }
             }
@@ -135,15 +137,7 @@ struct ScoreReferenceImplementation
                         {
                             neurons.output[infoLength + outputNeuronIndex] -= neurons.output[anotherOutputNeuronIndex];
                         }
-
-                        if (neurons.output[infoLength + outputNeuronIndex] > NEURON_VALUE_LIMIT)
-                        {
-                            neurons.output[infoLength + outputNeuronIndex] = NEURON_VALUE_LIMIT;
-                        }
-                        if (neurons.output[infoLength + outputNeuronIndex] <= -NEURON_VALUE_LIMIT)
-                        {
-                            neurons.output[infoLength + outputNeuronIndex] = -NEURON_VALUE_LIMIT + 1;
-                        }
+                        clampNeuron(neurons.output[infoLength + outputNeuronIndex]);
                     }
                 }
             }
