@@ -542,8 +542,9 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     }
                                     if (k == system.numberOfSolutions)
                                     {
+                                        unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_nonce);
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && (*score)(processorNumber, request->destinationPublicKey, solution_nonce) >= (unsigned int)solutionThreshold[system.epoch])
+                                            && ((solutionScore >= (DATA_LENGTH / 2) + solutionThreshold[system.epoch]) || (solutionScore <= (DATA_LENGTH / 2) - solutionThreshold[system.epoch])))
                                         {
                                             ACQUIRE(solutionsLock);
 
@@ -2111,12 +2112,12 @@ static void processTick(unsigned long long processorNumber)
                                             {
                                                 minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
 
-                                                unsigned long long score = (*::score)(processorNumber, transaction->sourcePublicKey, solution_nonce);
+                                                unsigned long long solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_nonce);
 
-                                                resourceTestingDigest ^= score;
+                                                resourceTestingDigest ^= solutionScore;
                                                 KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
-                                                if (score >= solutionThreshold[system.epoch])
+                                                if (((solutionScore >= (DATA_LENGTH / 2) + solutionThreshold[system.epoch]) || (solutionScore <= (DATA_LENGTH / 2) - solutionThreshold[system.epoch])))
                                                 {
                                                     for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
                                                     {
