@@ -42,10 +42,7 @@
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TICK_REQUESTING_PERIOD 500ULL
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
-#define ISSUANCE_RATE 1000000000000LL
 #define MAX_NUMBER_EPOCH 1000ULL
-#define MAX_AMOUNT (ISSUANCE_RATE * 1000ULL)
-#define MAX_INPUT_SIZE 1024ULL
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
@@ -774,13 +771,12 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
 static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* header)
 {
     Transaction* request = header->getPayload<Transaction>();
-    if (request->amount >= 0 && request->amount <= MAX_AMOUNT
-        && request->inputSize <= MAX_INPUT_SIZE && request->inputSize == header->size() - sizeof(RequestResponseHeader) - sizeof(Transaction) - SIGNATURE_SIZE)
+    const unsigned int transactionSize = request->totalSize();
+    if (request->checkValidity() && transactionSize == header->size() - sizeof(RequestResponseHeader))
     {
-        const unsigned int transactionSize = sizeof(Transaction) + request->inputSize + SIGNATURE_SIZE;
         unsigned char digest[32];
         KangarooTwelve(request, transactionSize - SIGNATURE_SIZE, digest, sizeof(digest));
-        if (verify(request->sourcePublicKey.m256i_u8, digest, (((const unsigned char*)request) + sizeof(Transaction) + request->inputSize)))
+        if (verify(request->sourcePublicKey.m256i_u8, digest, request->signaturePtr()))
         {
             if (header->isDejavuZero())
             {
@@ -1951,7 +1947,7 @@ static void processTick(unsigned long long processorNumber)
                                 && transaction->inputSize == 32
                                 && !transaction->inputType)
                             {
-                                const m256i& solution_nonce = *(m256i*)((unsigned char*)transaction + sizeof(Transaction));
+                                const m256i& solution_nonce = *(m256i*)transaction->inputPtr();
                                 m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
                                 static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
                                 unsigned int flagIndex;
@@ -2021,7 +2017,7 @@ static void processTick(unsigned long long processorNumber)
                                         if (!transaction->amount
                                             && transaction->inputSize == sizeof(ContractIPOBid))
                                         {
-                                            ContractIPOBid* contractIPOBid = (ContractIPOBid*)(((unsigned char*)transaction) + sizeof(Transaction));
+                                            ContractIPOBid* contractIPOBid = (ContractIPOBid*)transaction->inputPtr();
                                             if (contractIPOBid->price > 0 && contractIPOBid->price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
                                                 && contractIPOBid->quantity > 0 && contractIPOBid->quantity <= NUMBER_OF_COMPUTORS)
                                             {
@@ -2112,7 +2108,7 @@ static void processTick(unsigned long long processorNumber)
                                             currentContract = _mm256_set_epi64x(0, 0, 0, executedContractIndex);
 
                                             bs->SetMem(&executedContractInput, sizeof(executedContractInput), 0);
-                                            bs->CopyMem(&executedContractInput, (((unsigned char*)transaction) + sizeof(Transaction)), transaction->inputSize);
+                                            bs->CopyMem(&executedContractInput, transaction->inputPtr(), transaction->inputSize);
                                             const unsigned long long startTick = __rdtsc();
                                             contractUserProcedures[executedContractIndex][transaction->inputType](contractStates[executedContractIndex], &executedContractInput, &executedContractOutput);
                                             contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
@@ -2127,7 +2123,7 @@ static void processTick(unsigned long long processorNumber)
                                             && transaction->inputSize == 32
                                             && !transaction->inputType)
                                         {
-                                            const m256i & solution_nonce = *(m256i*)((unsigned char*)transaction + sizeof(Transaction));
+                                            const m256i & solution_nonce = *(m256i*)transaction->inputPtr();
                                             m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
                                             static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
                                             unsigned int flagIndex;
@@ -3038,7 +3034,7 @@ static void tickProcessor(void*)
                                 {
                                     const Transaction* transaction = (Transaction*)&tickTransactions[tickTransactionOffsets(nextTick, i)];
                                     unsigned char digest[32];
-                                    KangarooTwelve(transaction, sizeof(Transaction) + transaction->inputSize + SIGNATURE_SIZE, digest, sizeof(digest));
+                                    KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
                                     if (digest == nextTickData.transactionDigests[i])
                                     {
                                         numberOfKnownNextTickTransactions++;
@@ -3067,7 +3063,7 @@ static void tickProcessor(void*)
                                             if (&entityPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
                                             {
                                                 unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
-                                                const unsigned int transactionSize = sizeof(Transaction) + pendingTransaction->inputSize + SIGNATURE_SIZE;
+                                                const unsigned int transactionSize = pendingTransaction->totalSize();
                                                 bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
 
                                                 pendingTransaction = (Transaction*)transactionBuffer;
