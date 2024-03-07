@@ -12,10 +12,16 @@
 
 
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
+// The number of ticks to keep from the previous epoch is TICKS_TO_KEEP_FROM_PRIOR_EPOCH (defined in public_settings.h).
+//
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
+//
 // It comprises:
 // - tickData (one TickData struct per tick)
 // - ticks (one Tick struct per tick and Computor)
+// - tickTransactions (continuous buffer efficiently storing the variable-size transactions)
+// - tickTransactionOffsets (offsets of transactions in buffer)
+// - nextTickTransactionOffset (offset of next transition to be added)
 class TickStorage
 {
 private:
