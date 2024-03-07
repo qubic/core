@@ -4823,6 +4823,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     mainLoopNumerator += __rdtsc() - curTimeTick;
                     mainLoopDenominator++;
                 }
+
+#if !defined(NDEBUG)
+                printDebugMessages();
+#endif
             }
 
             saveSystem();

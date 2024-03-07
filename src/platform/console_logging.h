@@ -32,12 +32,14 @@ static void logToConsole(const CHAR16* message)
 #else
 
 // Output to console on UEFI platform
+// CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
 static inline void outputStringToConsole(CHAR16* str)
 {
     st->ConOut->OutputString(st->ConOut, str);
 }
 
 // Log message to console (with line break) on UEFI platform (defined in qubic.cpp due to dependencies on time and qubic status)
+// CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
 static void logToConsole(const CHAR16* message);
 
 #endif
@@ -168,25 +170,62 @@ static void logStatusToConsole(const CHAR16* message, const EFI_STATUS status, c
 
 #elif defined(NDEBUG)
 
-// with NDEBUG, make ASSERT dissappear
+// with NDEBUG, make ASSERT disappear
 #define ASSERT(expression) ((void)0)
 
 #else
 
-static void logAssert(const CHAR16* message, const CHAR16* file, const unsigned int lineNumber)
+static CHAR16 debugMessage[128][16384];
+static int debugMessageCount = 0;
+static char volatile debugLogLock = 0;
+
+// Print debug messages added with addDebugMessage().
+// CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
+static void printDebugMessages()
 {
-    setText(::message, L"Assertion failed: ");
-    appendText(::message, message);
-    appendText(::message, L" at line ");
-    appendNumber(::message, lineNumber, FALSE);
-    appendText(::message, L" in ");
-    appendText(::message, file);
-    logToConsole(::message);
+    ACQUIRE(debugLogLock);
+    for (int i = 0; i < debugMessageCount; i++)
+    {
+        logToConsole(debugMessage[i]);
+    }
+    debugMessageCount = 0;
+    RELEASE(debugLogLock);
+}
+
+// Add a message for logging from arbitrary thread
+static void addDebugMessage(CHAR16* msg)
+{
+    ACQUIRE(debugLogLock);
+    if (debugMessageCount < 128)
+    {
+        setText(debugMessage[debugMessageCount], msg);
+        appendText(debugMessage[debugMessageCount], L"\r\n");
+        ++debugMessageCount;
+    }
+    RELEASE(debugLogLock);
+}
+
+// Add a assert message for logging from arbitrary thread
+static void addDebugMessageAssert(const CHAR16* message, const CHAR16* file, const unsigned int lineNumber)
+{
+    ACQUIRE(debugLogLock);
+    if (debugMessageCount < 128)
+    {
+        setText(debugMessage[debugMessageCount], L"Assertion failed: ");
+        appendText(debugMessage[debugMessageCount], message);
+        appendText(debugMessage[debugMessageCount], L" at line ");
+        appendNumber(debugMessage[debugMessageCount], lineNumber, FALSE);
+        appendText(debugMessage[debugMessageCount], L" in ");
+        appendText(debugMessage[debugMessageCount], file);
+        appendText(debugMessage[debugMessageCount], L"\r\n");
+        ++debugMessageCount;
+    }
+    RELEASE(debugLogLock);
 }
 
 #define ASSERT(expression) (void)(                                                       \
             (!!(expression)) ||                                                              \
-            (logAssert(_CRT_WIDE(#expression), _CRT_WIDE(__FILE__), (unsigned int)(__LINE__)), 0) \
+            (addDebugMessageAssert(_CRT_WIDE(#expression), _CRT_WIDE(__FILE__), (unsigned int)(__LINE__)), 0) \
         )
 
 #endif
