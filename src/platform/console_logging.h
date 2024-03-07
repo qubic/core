@@ -159,3 +159,34 @@ static void logStatusToConsole(const CHAR16* message, const EFI_STATUS status, c
     appendText(::message, L"!");
     logToConsole(::message);
 }
+
+
+#if defined(EXPECT_TRUE)
+
+// in gtest context, use EXPECT_TRUE as ASSERT
+#define ASSERT EXPECT_TRUE
+
+#elif defined(NDEBUG)
+
+// with NDEBUG, make ASSERT dissappear
+#define ASSERT(expression) ((void)0)
+
+#else
+
+static void logAssert(const CHAR16* message, const CHAR16* file, const unsigned int lineNumber)
+{
+    setText(::message, L"Assertion failed: ");
+    appendText(::message, message);
+    appendText(::message, L" at line ");
+    appendNumber(::message, lineNumber, FALSE);
+    appendText(::message, L" in ");
+    appendText(::message, file);
+    logToConsole(::message);
+}
+
+#define ASSERT(expression) (void)(                                                       \
+            (!!(expression)) ||                                                              \
+            (logAssert(_CRT_WIDE(#expression), _CRT_WIDE(__FILE__), (unsigned int)(__LINE__)), 0) \
+        )
+
+#endif
