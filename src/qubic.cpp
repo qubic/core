@@ -1393,7 +1393,7 @@ static void __registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short
 {
     contractUserProcedures[executedContractIndex][inputType] = userProcedure;
     contractUserProcedureInputSizes[executedContractIndex][inputType] = inputSize;
-    contractUserProcedureInputSizes[executedContractIndex][inputType] = outputSize;
+    contractUserFunctionOutputSizes[executedContractIndex][inputType] = outputSize;
 }
 
 static const m256i& __arbitrator()
