@@ -2522,6 +2522,9 @@ static void beginEpoch1of2()
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
     ts.beginEpoch(system.initialTick);
+#ifndef NDEBUG
+    ts.checkStateConsistencyWithAssert();
+#endif
 
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
@@ -2571,6 +2574,7 @@ static void beginEpoch1of2()
     // there are many global variables that were init at declaration, may need to re-check all of them again
     resourceTestingDigest = 0;
 
+    numberOfTransactions = 0;
 
 #if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
     CurrentTransferId = 0;
@@ -3354,23 +3358,8 @@ static void tickProcessor(void*)
                                             _mm_pause();
                                         }
 
-                                        // a temporary fix to set correct filenames because complete beginEpoch1of2() and beginEpoch2of2() is commented out
-                                        SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-                                        SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-                                        SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-
-                                        UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-                                        UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-                                        UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-
-                                        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
-                                        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
-                                        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-
-                                        /*
                                         beginEpoch1of2();
                                         beginEpoch2of2();
-                                        */
 
                                         spectrumMustBeSaved = true;
                                         universeMustBeSaved = true;
