@@ -41,11 +41,9 @@
 
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TICK_REQUESTING_PERIOD 500ULL
-#define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_NUMBER_EPOCH 1000ULL
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
-#define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
 #define MAX_CONTRACT_STATE_SIZE 1073741824
 #define MAX_UNIVERSE_SIZE 1073741824
@@ -105,10 +103,6 @@ static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(c
 static TickStorage ts;
 static Tick etalonTick;
 static TickData nextTickData;
-static volatile char tickTransactionsLock = 0;
-static unsigned char* tickTransactions = NULL;
-static unsigned long long* tickTransactionOffsetsPtr = nullptr;
-static unsigned long long nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
 
 static m256i uniqueNextTickTransactionDigests[NUMBER_OF_COMPUTORS];
 static unsigned int uniqueNextTickTransactionDigestCounters[NUMBER_OF_COMPUTORS];
@@ -217,11 +211,6 @@ static struct
 
 
 
-unsigned long long& tickTransactionOffsets(unsigned int tick, unsigned int transaction)
-{
-    const unsigned int tickIndex = tick - system.initialTick;
-    return tickTransactionOffsetsPtr[tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + transaction];
-}
 
 static void logToConsole(const CHAR16* message)
 {
@@ -808,21 +797,22 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 && ts.tickData[tickIndex].epoch == system.epoch)
             {
                 KangarooTwelve(request, transactionSize, digest, sizeof(digest));
+                auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
                 for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
                 {
                     if (digest == ts.tickData[tickIndex].transactionDigests[i])
                     {
-                        ACQUIRE(tickTransactionsLock);
-                        if (!tickTransactionOffsets(request->tick, i))
+                        ts.tickTransactions.acquireLock();
+                        if (!tsReqTickTransactionOffsets[i])
                         {
-                            if (nextTickTransactionOffset + transactionSize <= FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS))
+                            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                             {
-                                tickTransactionOffsets(request->tick, i) = nextTickTransactionOffset;
-                                bs->CopyMem(&tickTransactions[nextTickTransactionOffset], request, transactionSize);
-                                nextTickTransactionOffset += transactionSize;
+                                tsReqTickTransactionOffsets[i] = ts.nextTickTransactionOffset;
+                                bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
+                                ts.nextTickTransactionOffset += transactionSize;
                             }
                         }
-                        RELEASE(tickTransactionsLock);
+                        ts.tickTransactions.releaseLock();
 
                         break;
                     }
@@ -910,7 +900,22 @@ static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* header)
 {
     RequestedTickTransactions* request = header->getPayload<RequestedTickTransactions>();
+
+    typedef Transaction* (*GetTransactionFunc)(unsigned long long transactionOffset);
+    unsigned short tickEpoch = 0;
+    const unsigned long long* tsReqTickTransactionOffsets;
     if (ts.tickInCurrentEpochStorage(request->tick))
+    {
+        tickEpoch = system.epoch;
+        tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(request->tick);
+    }
+    else if (ts.tickInPreviousEpochStorage(request->tick))
+    {
+        tickEpoch = system.epoch - 1;
+        tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInPreviousEpoch(request->tick);
+    }
+
+    if (tickEpoch != 0)
     {
         unsigned short tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
         unsigned short numberOfTickTransactions;
@@ -924,11 +929,11 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
 
             if (!(request->transactionFlags[tickTransactionIndices[index] >> 3] & (1 << (tickTransactionIndices[index] & 7))))
             {
-                unsigned long long tickTransactionOffset = tickTransactionOffsets(request->tick, tickTransactionIndices[index]);
+                unsigned long long tickTransactionOffset = tsReqTickTransactionOffsets[tickTransactionIndices[index]];
                 if (tickTransactionOffset)
                 {
-                    const Transaction* transaction = (Transaction*)&tickTransactions[tickTransactionOffset];
-                    enqueueResponse(peer, sizeof(Transaction) + transaction->inputSize + SIGNATURE_SIZE, BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+                    const Transaction* transaction = ts.tickTransactions(tickTransactionOffset);
+                    enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
                 }
             }
 
@@ -1926,6 +1931,8 @@ static void processTick(unsigned long long processorNumber)
     ts.tickData.releaseLock();
     if (nextTickData.epoch == system.epoch)
     {
+        auto* tsCurrentTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+
         bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
         // reset solution task queue
         score->resetTaskQueue();
@@ -1934,9 +1941,9 @@ static void processTick(unsigned long long processorNumber)
         {
             if (!isZero(nextTickData.transactionDigests[transactionIndex]))
             {
-                if (tickTransactionOffsets(system.tick, transactionIndex))
+                if (tsCurrentTickTransactionOffsets[transactionIndex])
                 {
-                    Transaction* transaction = (Transaction*)&tickTransactions[tickTransactionOffsets(system.tick, transactionIndex)];
+                    Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     if (spectrumIndex >= 0
                         && !entityPendingTransactionIndices[spectrumIndex])
@@ -1978,9 +1985,9 @@ static void processTick(unsigned long long processorNumber)
         {
             if (!isZero(nextTickData.transactionDigests[transactionIndex]))
             {
-                if (tickTransactionOffsets(system.tick, transactionIndex))
+                if (tsCurrentTickTransactionOffsets[transactionIndex])
                 {
-                    Transaction* transaction = (Transaction*)&tickTransactions[tickTransactionOffsets(system.tick, transactionIndex)];
+                    Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     if (spectrumIndex >= 0
                         && !entityPendingTransactionIndices[spectrumIndex])
@@ -2396,19 +2403,19 @@ static void processTick(unsigned long long processorNumber)
                         const Transaction* pendingTransaction = ((Transaction*)&entityPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
                         if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
                         {
-                            const unsigned int transactionSize = sizeof(Transaction) + pendingTransaction->inputSize + SIGNATURE_SIZE;
-                            if (nextTickTransactionOffset + transactionSize <= FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS))
+                            const unsigned int transactionSize = pendingTransaction->totalSize();
+                            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                             {
-                                ACQUIRE(tickTransactionsLock);
-                                if (nextTickTransactionOffset + transactionSize <= FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS))
+                                ts.tickTransactions.acquireLock();
+                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
-                                    tickTransactionOffsets(pendingTransaction->tick, j) = nextTickTransactionOffset;
-                                    bs->CopyMem(&tickTransactions[nextTickTransactionOffset], (void*)pendingTransaction, transactionSize);
+                                    ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
+                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
                                     broadcastedFutureTickData.tickData.transactionDigests[j] = &entityPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
                                     j++;
-                                    nextTickTransactionOffset += transactionSize;
+                                    ts.nextTickTransactionOffset += transactionSize;
                                 }
-                                RELEASE(tickTransactionsLock);
+                                ts.tickTransactions.releaseLock();
                             }
                         }
 
@@ -2514,8 +2521,6 @@ static void beginEpoch1of2()
     }
     bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
 
-    bs->SetMem(tickTransactions, FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS), 0);
-    bs->SetMem(tickTransactionOffsetsPtr, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(*tickTransactionOffsetsPtr), 0);
     ts.beginEpoch(system.initialTick);
 
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
@@ -3022,17 +3027,18 @@ static void tickProcessor(void*)
                         bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0);
                         unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
                         bs->SetMem(unknownTransactions, sizeof(unknownTransactions), 0);
+                        const auto* tsNextTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(nextTickIndex);
                         for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
                         {
                             if (!isZero(nextTickData.transactionDigests[i]))
                             {
                                 numberOfNextTickTransactions++;
 
-                                ACQUIRE(tickTransactionsLock);
+                                ts.tickTransactions.acquireLock();
 
-                                if (tickTransactionOffsets(nextTick, i))
+                                if (tsNextTickTransactionOffsets[i])
                                 {
-                                    const Transaction* transaction = (Transaction*)&tickTransactions[tickTransactionOffsets(nextTick, i)];
+                                    const Transaction* transaction = ts.tickTransactions(tsNextTickTransactionOffsets[i]);
                                     unsigned char digest[32];
                                     KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
                                     if (digest == nextTickData.transactionDigests[i])
@@ -3044,7 +3050,7 @@ static void tickProcessor(void*)
                                         unknownTransactions[i >> 6] |= (1ULL << (i & 63));
                                     }
                                 }
-                                RELEASE(tickTransactionsLock);
+                                ts.tickTransactions.releaseLock();
                             }
                         }
                         if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
@@ -3056,6 +3062,7 @@ static void tickProcessor(void*)
                                 {
                                     ACQUIRE(entityPendingTransactionsLock);
 
+                                    auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
                                     for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                                     {
                                         if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
@@ -3067,17 +3074,17 @@ static void tickProcessor(void*)
                                                 bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
 
                                                 pendingTransaction = (Transaction*)transactionBuffer;
-                                                ACQUIRE(tickTransactionsLock);
-                                                if (!tickTransactionOffsets(pendingTransaction->tick, j))
+                                                ts.tickTransactions.acquireLock();
+                                                if (!tsPendingTransactionOffsets[j])
                                                 {
-                                                    if (nextTickTransactionOffset + transactionSize <= FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS))
+                                                    if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                                     {
-                                                        tickTransactionOffsets(pendingTransaction->tick, j) = nextTickTransactionOffset;
-                                                        bs->CopyMem(&tickTransactions[nextTickTransactionOffset], pendingTransaction, transactionSize);
-                                                        nextTickTransactionOffset += transactionSize;
+                                                        tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
+                                                        bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                                        ts.nextTickTransactionOffset += transactionSize;
                                                     }
                                                 }
-                                                RELEASE(tickTransactionsLock);
+                                                ts.tickTransactions.releaseLock();
 
                                                 numberOfKnownNextTickTransactions++;
                                                 unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
@@ -3558,15 +3565,8 @@ static bool initialize()
     {
         if (!ts.init())
             return false;
-        if ((status = bs->AllocatePool(EfiRuntimeServicesData, FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS), (void**)&tickTransactions))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
+        if ((status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * 32ULL, (void**)&entityPendingTransactionDigests)))
-        {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
-
-            return false;
-        }
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(*tickTransactionOffsetsPtr), (void**)&tickTransactionOffsetsPtr))
         {
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
@@ -3890,15 +3890,7 @@ static void deinitialize()
     {
         bs->FreePool(entityPendingTransactions);
     }
-    if (tickTransactions)
-    {
-        bs->FreePool(tickTransactions);
-    }
     ts.deinit();
-    if (tickTransactionOffsetsPtr)
-    {
-        bs->FreePool(tickTransactionOffsetsPtr);
-    }
 
     if (score)
     {
