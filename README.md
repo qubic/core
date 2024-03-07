@@ -48,9 +48,10 @@ echo -e "o\nY\nd\nn\n\n\n+200G\n\nt\n\nef00\nw\nY" | gdisk /dev/sda
 /efi/boot/startup.nsh
 /efi/boot/Qubic.efi
 ```
-- contract.000.XXX => must be the current contract.000 file. XXX must be replaced with the current epoch. (e.g. `computer.068`)
-- contract.001.XXX => must be the current contract.001 file. XXX must be replaced with the current epoch. (e.g. `computer.068`). Data from Qx.
-- contract.002.XXX => must be the current contract.002 file. XXX must be replaced with the current epoch. (e.g. `computer.068`). Data from Quottery.
+- contract000.XXX => must be the current contract #0 file. XXX must be replaced with the current epoch. (e.g. `contract000.068`)
+- contract001.XXX => must be the current contract #1 file. XXX must be replaced with the current epoch. (e.g. `contract001.068`). Data from Qx.
+- contract002.XXX => must be the current contract #2 file. XXX must be replaced with the current epoch. (e.g. `contract002.068`). Data from Quottery.
+- Other contract files with the same format as above. For now, we have 4 contracts.
 - universe.XXX => must be the current universe file. XXX must be replaced with the current epoch. (e.g `universe.068`)
 - spectrum.XXX => must be the current spectrum file. XXX must be replaced with the current epoch. (e.g `spectrum.068`)
 - system => to start from scratch, use an empty file. (e.g. `touch system`)
