@@ -77,7 +77,9 @@ static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
+
 static volatile unsigned char epochTransitionState = 0;
+static volatile long epochTransitionWaitingRequestProcessors = 0;
 
 static m256i operatorPublicKey;
 static m256i computorSubseeds[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
@@ -1228,6 +1230,17 @@ static void requestProcessor(void* ProcedureArgument)
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
     {
+        // in epoch transition, wait here
+        if (epochTransitionState)
+        {
+            _InterlockedIncrement(&epochTransitionWaitingRequestProcessors);
+            while (epochTransitionState)
+            {
+                _mm_pause();
+            }
+            _InterlockedDecrement(&epochTransitionWaitingRequestProcessors);
+        }
+
         // try to compute a solution if any is queued and this thread is assigned to compute solution
         if (solutionProcessorFlags[processorNumber])
         {
@@ -3349,6 +3362,12 @@ static void tickProcessor(void*)
 
                                     if (epochTransitionState == 1)
                                     {
+                                        // wait until all request processors are in waiting state
+                                        while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
+                                        {
+                                            _mm_pause();
+                                        }
+
                                         // seamless epoch transistion
                                         endEpoch();
 
@@ -3375,6 +3394,7 @@ static void tickProcessor(void*)
 
                                         epochTransitionState = 0;
                                     }
+                                    ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
                                     ::tickNumberOfComputors = 0;
                                     ::tickTotalNumberOfComputors = 0;
@@ -4673,7 +4693,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
                 if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000
-                    && ts.tickInCurrentEpochStorage(system.tick + 1))
+                    && ts.tickInCurrentEpochStorage(system.tick + 1)
+                    && !epochTransitionState)
                 {
                     // Request ticks
                     tickRequestingTick = curTimeTick;
