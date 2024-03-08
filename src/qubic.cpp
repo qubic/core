@@ -2892,6 +2892,7 @@ static void tickProcessor(void*)
                         if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
                             || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
                         {
+                            // Create empty tick
                             targetNextTickDataDigest = _mm256_setzero_si256();
                             targetNextTickDataDigestIsKnown = true;
                         }
@@ -2997,6 +2998,7 @@ static void tickProcessor(void*)
                 {
                     if (isZero(targetNextTickDataDigest))
                     {
+                        // Empty tick
                         ts.tickData.acquireLock();
                         ts.tickData[nextTickIndex].epoch = 0;
                         ts.tickData.releaseLock();
@@ -3005,6 +3007,7 @@ static void tickProcessor(void*)
                     }
                     else
                     {
+                        // Non-empty tick
                         if (nextTickData.epoch != system.epoch)
                         {
                             tickDataSuits = false;
@@ -3271,6 +3274,7 @@ static void tickProcessor(void*)
                                 tickDataSuits = false;
                                 if (isZero(targetNextTickDataDigest))
                                 {
+                                    // Empty tick
                                     ts.tickData.acquireLock();
                                     ts.tickData[nextTickIndex].epoch = 0;
                                     ts.tickData.releaseLock();

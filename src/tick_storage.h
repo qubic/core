@@ -102,7 +102,10 @@ public:
             return false;
         }
 
+        ASSERT(tickDataLock == 0);
         setMem((void*)ticksLocks, sizeof(ticksLocks), 0);
+        ASSERT(tickTransactionsLock == 0);
+        ASSERT(nextTickTransactionOffset == FIRST_TICK_TRANSACTION_OFFSET);
 
         oldTickDataPtr = tickDataPtr + MAX_NUMBER_OF_TICKS_PER_EPOCH;
         oldTicksPtr = ticksPtr + ticksLengthCurrentEpoch;
