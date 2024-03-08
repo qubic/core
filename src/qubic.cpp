@@ -3362,6 +3362,7 @@ static void tickProcessor(void*)
 
                                     if (epochTransitionState == 1)
                                     {
+                                        // seamless epoch transistion
 #ifndef NDEBUG
                                         addDebugMessage(L"Starting epoch transition");
 #endif
@@ -3372,7 +3373,7 @@ static void tickProcessor(void*)
                                             _mm_pause();
                                         }
 
-                                        // seamless epoch transistion
+                                        // end current epoch
                                         endEpoch();
 
                                         // instruct main loop to save system and wait until it is done
@@ -3391,16 +3392,25 @@ static void tickProcessor(void*)
                                         addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
 #endif
 
+
                                         spectrumMustBeSaved = true;
                                         universeMustBeSaved = true;
                                         computerMustBeSaved = true;
 
-                                        //update etalon tick:
+                                        // update etalon tick
                                         etalonTick.epoch++;
                                         etalonTick.tick++;
                                         etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
                                         getUniverseDigest(etalonTick.saltedUniverseDigest);
                                         getComputerDigest(etalonTick.saltedComputerDigest);
+
+                                        // run contract BEGIN_EPOCH procedures
+                                        contractProcessorPhase = BEGIN_EPOCH;
+                                        contractProcessorState = 1;
+                                        while (contractProcessorState)
+                                        {
+                                            _mm_pause();
+                                        }
 
                                         epochTransitionState = 0;
 
