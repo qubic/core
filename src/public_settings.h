@@ -35,6 +35,7 @@
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
 static unsigned short SYSTEM_FILE_NAME[] = L"system";
+static unsigned short SYSTEM_END_OF_EPOCH_FILE_NAME[] = L"system.eoe";
 static unsigned short SPECTRUM_FILE_NAME[] = L"spectrum.???";
 static unsigned short UNIVERSE_FILE_NAME[] = L"universe.???";
 static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";

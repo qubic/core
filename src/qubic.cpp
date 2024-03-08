@@ -3500,7 +3500,8 @@ static void saveSystem()
     logToConsole(L"Saving system file...");
 
     const unsigned long long beginningTick = __rdtsc();
-    long long savedSize = save(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
+    CHAR16* fn = (epochTransitionState) ? SYSTEM_END_OF_EPOCH_FILE_NAME : SYSTEM_FILE_NAME;
+    long long savedSize = save(fn, sizeof(system), (unsigned char*)&system);
     if (savedSize == sizeof(system))
     {
         setNumber(message, savedSize, TRUE);
