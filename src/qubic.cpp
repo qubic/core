@@ -3362,6 +3362,10 @@ static void tickProcessor(void*)
 
                                     if (epochTransitionState == 1)
                                     {
+#ifndef NDEBUG
+                                        addDebugMessage(L"Starting epoch transition");
+#endif
+
                                         // wait until all request processors are in waiting state
                                         while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
                                         {
@@ -3378,8 +3382,14 @@ static void tickProcessor(void*)
                                             _mm_pause();
                                         }
 
+#ifndef NDEBUG
+                                        addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
+#endif
                                         beginEpoch1of2();
                                         beginEpoch2of2();
+#ifndef NDEBUG
+                                        addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
+#endif
 
                                         spectrumMustBeSaved = true;
                                         universeMustBeSaved = true;
@@ -3393,6 +3403,10 @@ static void tickProcessor(void*)
                                         getComputerDigest(etalonTick.saltedComputerDigest);
 
                                         epochTransitionState = 0;
+
+#ifndef NDEBUG
+                                        addDebugMessage(L"Finished epoch transition");
+#endif
                                     }
                                     ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
