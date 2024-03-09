@@ -105,7 +105,7 @@ public:
         ASSERT(tickDataLock == 0);
         setMem((void*)ticksLocks, sizeof(ticksLocks), 0);
         ASSERT(tickTransactionsLock == 0);
-        ASSERT(nextTickTransactionOffset == FIRST_TICK_TRANSACTION_OFFSET);
+        nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
 
         oldTickDataPtr = tickDataPtr + MAX_NUMBER_OF_TICKS_PER_EPOCH;
         oldTicksPtr = ticksPtr + ticksLengthCurrentEpoch;
@@ -275,7 +275,7 @@ public:
             const TickData& tickData = TickDataAccess::getByTickInPreviousEpoch(tickId);
             ASSERT(tickData.epoch == 0 || (tickData.tick == tickId));
 
-            const Tick* computorsTicks = TicksAccess::getComputorsTicksInPreviousEpoch(tickId);
+            const Tick* computorsTicks = TicksAccess::getByTickInPreviousEpoch(tickId);
             for (unsigned int computor = 0; computor < NUMBER_OF_COMPUTORS; ++computor)
             {
                 const Tick& computorTick = computorsTicks[computor];
@@ -304,7 +304,7 @@ public:
             const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);
             ASSERT(tickData.epoch == 0 || (tickData.tick == tickId));
 
-            const Tick* computorsTicks = TicksAccess::getComputorsTicksInCurrentEpoch(tickId);
+            const Tick* computorsTicks = TicksAccess::getByTickInCurrentEpoch(tickId);
             for (unsigned int computor = 0; computor < NUMBER_OF_COMPUTORS; ++computor)
             {
                 const Tick& computorTick = computorsTicks[computor];
@@ -365,7 +365,7 @@ public:
             RELEASE(tickDataLock);
         }
 
-        // Return tick if it is stored and not empty (checks tick).
+        // Return tick if it is stored and not empty, or nullptr otherise (always checks tick).
         inline static TickData* getByTickIfNotEmpty(unsigned int tick)
         {
             unsigned int index;
@@ -383,27 +383,31 @@ public:
             return td;
         }
 
-        // Get tick data by tick in current epoch (not checking tick)
+        // Get tick data by tick in current epoch (checking tick with ASSERT)
         inline static TickData& getByTickInCurrentEpoch(unsigned int tick)
         {
+            ASSERT(tickInCurrentEpochStorage(tick));
             return tickDataPtr[tickToIndexCurrentEpoch(tick)];
         }
 
-        // Get tick data by tick in previous epoch (not checking tick)
+        // Get tick data by tick in previous epoch (checking tick with ASSERT)
         inline static TickData& getByTickInPreviousEpoch(unsigned int tick)
         {
+            ASSERT(tickInPreviousEpochStorage(tick));
             return tickDataPtr[tickToIndexPreviousEpoch(tick)];
         }
 
-        // Get tick data at index independent of epoch (not checking index)
+        // Get tick data at index independent of epoch (checking index with ASSERT)
         inline TickData& operator[](unsigned int index)
         {
+            ASSERT(index < tickDataLength);
             return tickDataPtr[index];
         }
 
-        // Get tick data at index independent of epoch (not checking index)
+        // Get tick data at index independent of epoch (checking index with ASSERT)
         inline const TickData& operator[](unsigned int index) const
         {
+            ASSERT(index < tickDataLength);
             return tickDataPtr[index];
         }
     } tickData;
@@ -423,27 +427,38 @@ public:
             RELEASE(ticksLocks[computorIndex]);
         }
 
-        // Return pointer to array of one Tick per computor in current epoch (not checking tick)
-        inline static Tick* getComputorsTicksInCurrentEpoch(unsigned int tick)
+        // Return pointer to array of one Tick per computor by tick index independent of epoch (checking index with ASSERT)
+        inline static Tick* getByTickIndex(unsigned int tickIndex)
         {
+            ASSERT(tickIndex < tickDataLength);
+            return ticksPtr + tickIndex * NUMBER_OF_COMPUTORS;
+        }
+
+        // Return pointer to array of one Tick per computor in current epoch by tick (checking tick with ASSERT)
+        inline static Tick* getByTickInCurrentEpoch(unsigned int tick)
+        {
+            ASSERT(tickInCurrentEpochStorage(tick));
             return ticksPtr + tickToIndexCurrentEpoch(tick) * NUMBER_OF_COMPUTORS;
         }
 
-        // Return pointer to array of one Tick per computor in previous epoch (not checking tick)
-        inline static Tick* getComputorsTicksInPreviousEpoch(unsigned int tick)
+        // Return pointer to array of one Tick per computor in previous epoch by tick (checking tick with ASSERT)
+        inline static Tick* getByTickInPreviousEpoch(unsigned int tick)
         {
+            ASSERT(tickInPreviousEpochStorage(tick));
             return ticksPtr + tickToIndexPreviousEpoch(tick) * NUMBER_OF_COMPUTORS;
         }
 
-        // Get ticks element at offset (not checking offset)
+        // Get ticks element at offset (checking offset with ASSERT)
         inline Tick& operator[](unsigned int offset)
         {
+            ASSERT(offset < ticksLength);
             return ticksPtr[offset];
         }
 
-        // Get ticks element at offset (not checking offset)
+        // Get ticks element at offset (checking offset with ASSERT)
         inline const Tick& operator[](unsigned int offset) const
         {
+            ASSERT(offset < ticksLength);
             return ticksPtr[offset];
         }
     } ticks;
@@ -451,29 +466,33 @@ public:
     // Struct for structured, convenient access via ".tickTransactionOffsets"
     struct TickTransactionOffsetsAccess
     {
-        // Return pointer to offset array of transactions by tick index independent of epoch (not checking index)
+        // Return pointer to offset array of transactions by tick index independent of epoch (checking index with ASSERT)
         inline static unsigned long long* getByTickIndex(unsigned int tickIndex)
         {
+            ASSERT(tickIndex < tickDataLength);
             return tickTransactionOffsetsPtr + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK);
         }
 
-        // Return pointer to offset array of transactions of tick in current epoch by tick (not checking tick)
+        // Return pointer to offset array of transactions of tick in current epoch by tick (checking tick with ASSERT)
         inline static unsigned long long* getByTickInCurrentEpoch(unsigned int tick)
         {
+            ASSERT(tickInCurrentEpochStorage(tick));
             const unsigned int tickIndex = tickToIndexCurrentEpoch(tick);
             return getByTickIndex(tickIndex);
         }
 
-        // Return pointer to offset array of transactions of tick in previous epoch by tick (not checking tick)
+        // Return pointer to offset array of transactions of tick in previous epoch by tick (checking tick with ASSERT)
         inline static unsigned long long* getByTickInPreviousEpoch(unsigned int tick)
         {
+            ASSERT(tickInPreviousEpochStorage(tick));
             const unsigned int tickIndex = tickToIndexPreviousEpoch(tick);
             return getByTickIndex(tickIndex);
         }
 
-        // Return reference to offset by tick and transaction in current epoch
+        // Return reference to offset by tick and transaction in current epoch (checking inputs with ASSERT)
         inline unsigned long long& operator()(unsigned int tick, unsigned int transaction)
         {
+            ASSERT(transaction < NUMBER_OF_TRANSACTIONS_PER_TICK);
             return getByTickInCurrentEpoch(tick)[transaction];
         }
     } tickTransactionOffsets;
@@ -497,13 +516,14 @@ public:
         // Number of bytes available for transactions in current epoch
         static constexpr unsigned long long storageSpaceCurrentEpoch = tickTransactionsSizeCurrentEpoch;
 
-        // Return pointer to Transaction based on transaction offset independent of epoch (offset not checked)
+        // Return pointer to Transaction based on transaction offset independent of epoch (checking offset with ASSERT)
         inline static Transaction* ptr(unsigned long long transactionOffset)
         {
+            ASSERT(transactionOffset < tickTransactionsSize);
             return (Transaction*)(tickTransactionsPtr + transactionOffset);
         }
 
-        // Return pointer to Transaction based on transaction offset in current epoch (offset not checked)
+        // Return pointer to Transaction based on transaction offset in current epoch (checking offset with ASSERT)
         inline Transaction * operator()(unsigned long long transactionOffset)
         {
             return ptr(transactionOffset);

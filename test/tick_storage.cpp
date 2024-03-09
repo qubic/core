@@ -53,7 +53,7 @@ void addTick(unsigned int tick, unsigned long long seed)
     td.tick = tick;
 
     // add computor ticks
-    Tick* computorTicks = ts.ticks.getComputorsTicksInCurrentEpoch(tick);
+    Tick* computorTicks = ts.ticks.getByTickInCurrentEpoch(tick);
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         computorTicks[i].epoch = 1234;
@@ -86,7 +86,7 @@ void checkTick(unsigned int tick, unsigned long long seed, bool previousEpoch = 
     EXPECT_EQ(td.tick, tick);
 
     // check computor ticks
-    Tick* computorTicks = previousEpoch ? ts.ticks.getComputorsTicksInPreviousEpoch(tick) : ts.ticks.getComputorsTicksInCurrentEpoch(tick);
+    Tick* computorTicks = previousEpoch ? ts.ticks.getByTickInPreviousEpoch(tick) : ts.ticks.getByTickInCurrentEpoch(tick);
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         EXPECT_EQ((int)computorTicks[i].epoch, (int)1234);

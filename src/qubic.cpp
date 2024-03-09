@@ -641,7 +641,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             ts.ticks.acquireLock(request->tick.computorIndex);
 
             // Find element in tick storage and check if contains data (epoch is set to 0 on init)
-            Tick* tsTick = ts.ticks.getComputorsTicksInCurrentEpoch(request->tick.tick) + request->tick.computorIndex;
+            Tick* tsTick = ts.ticks.getByTickInCurrentEpoch(request->tick.tick) + request->tick.computorIndex;
             if (tsTick->epoch == system.epoch)
             {
                 // Check if the sent tick matches the tick in tick storage
@@ -847,12 +847,12 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
     if (ts.tickInCurrentEpochStorage(request->quorumTick.tick))
     {
         tickEpoch = system.epoch;
-        tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(request->quorumTick.tick);
+        tsCompTicks = ts.ticks.getByTickInCurrentEpoch(request->quorumTick.tick);
     }
     else if (ts.tickInPreviousEpochStorage(request->quorumTick.tick))
     {
         tickEpoch = system.epoch - 1;
-        tsCompTicks = ts.ticks.getComputorsTicksInPreviousEpoch(request->quorumTick.tick);
+        tsCompTicks = ts.ticks.getByTickInPreviousEpoch(request->quorumTick.tick);
     }
 
     if (tickEpoch != 0)
@@ -2820,7 +2820,7 @@ static void tickProcessor(void*)
             const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
 
             {
-                const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(nextTickIndex);
+                const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
                 unsigned int futureTickTotalNumberOfComputors = 0;
                 for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
@@ -2842,7 +2842,7 @@ static void tickProcessor(void*)
 
                 if (futureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
                 {
-                    const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(nextTickIndex);
+                    const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
                     unsigned int numberOfEmptyNextTickTransactionDigest = 0;
                     unsigned int numberOfUniqueNextTickTransactionDigests = 0;
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -2901,7 +2901,7 @@ static void tickProcessor(void*)
 
                 if (!targetNextTickDataDigestIsKnown)
                 {
-                    const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(currentTickIndex);
+                    const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
                     unsigned int numberOfEmptyNextTickTransactionDigest = 0;
                     unsigned int numberOfUniqueNextTickTransactionDigests = 0;
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -3022,7 +3022,7 @@ static void tickProcessor(void*)
                 if (!tickDataSuits)
                 {
                     unsigned int tickTotalNumberOfComputors = 0;
-                    const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(currentTickIndex);
+                    const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
                         ts.ticks.acquireLock(i);
@@ -3207,7 +3207,7 @@ static void tickProcessor(void*)
                             }
                         }
 
-                        const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(currentTickIndex); 
+                        const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
 
                         unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0;
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4733,7 +4733,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
                         bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
-                        const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(system.tick);
+                        const Tick* tsCompTicks = ts.ticks.getByTickInCurrentEpoch(system.tick);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
                             if (tsCompTicks[i].epoch == system.epoch)
@@ -4749,7 +4749,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
                         bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
-                        const Tick* tsCompTicks = ts.ticks.getComputorsTicksInCurrentEpoch(system.tick + 1);
+                        const Tick* tsCompTicks = ts.ticks.getByTickInCurrentEpoch(system.tick + 1);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
                             if (tsCompTicks[i].epoch == system.epoch)
