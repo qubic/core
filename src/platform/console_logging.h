@@ -199,7 +199,6 @@ static void addDebugMessage(const CHAR16* msg)
     if (debugMessageCount < 128)
     {
         setText(debugMessage[debugMessageCount], msg);
-        appendText(debugMessage[debugMessageCount], L"\r\n");
         ++debugMessageCount;
     }
     RELEASE(debugLogLock);
