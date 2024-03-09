@@ -166,7 +166,7 @@ public:
             // copy transactions and transactionOffsets
             {
                 // find out how many of the last transactions fit into the previous transactions buffer by going through offsets array from end
-                const auto* transactionOffsetsEnd = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(oldTickEnd) + NUMBER_OF_TRANSACTIONS_PER_TICK;
+                const auto* transactionOffsetsEnd = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(oldTickEnd);
                 const auto* transactionOffsetsBegin = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(oldTickBegin);
                 unsigned long long sumTransactionSizes = 0;
                 const auto* transactionOffsetsFirstToKeep = transactionOffsetsEnd;
