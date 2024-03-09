@@ -178,6 +178,8 @@ public:
                     if (*transactionOffsetPtr != 0)
                     {
                         const Transaction* transaction = TickTransactionsAccess::ptr(*transactionOffsetPtr);
+                        ASSERT(transaction->checkValidity());
+                        ASSERT(oldTickBegin <= transaction->tick && transaction->tick < oldTickEnd);
                         unsigned long long newSize = sumTransactionSizes + transaction->totalSize();
                         if (newSize <= tickTransactionsSizePreviousEpoch)
                         {
@@ -219,6 +221,8 @@ public:
                         if (*transactionOffsetPtr)
                         {
                             const Transaction* transaction = TickTransactionsAccess::ptr(*transactionOffsetPtr);
+                            ASSERT(transaction->checkValidity());
+                            ASSERT(firstTick <= transaction->tick && transaction->tick < oldTickEnd);
                             *oldTransactionOffsetsPtr = copiedSumTransactionSizes + tickTransactionsSizeCurrentEpoch;
                             copiedSumTransactionSizes += transaction->totalSize();
                         }
