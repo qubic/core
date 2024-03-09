@@ -194,8 +194,26 @@ public:
                 }
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
+                CHAR16 buffer[200];
+                setText(buffer, L"transactionOffsetsFirstToKeep ");
+                appendNumber(buffer, (unsigned long long)transactionOffsetsFirstToKeep, FALSE);
+                addDebugMessage(buffer);
+                setText(buffer, L"*transactionOffsetsFirstToKeep ");
+                appendNumber(buffer, (unsigned long long) * transactionOffsetsFirstToKeep, FALSE);
+                addDebugMessage(buffer);
+                setText(buffer, L"first to keep tick ");
+                appendNumber(buffer, (unsigned long long) TickTransactionsAccess::ptr(*transactionOffsetsFirstToKeep)->tick, FALSE);
+                addDebugMessage(buffer);
+                setText(buffer, L"oldTickBegin ");
+                appendNumber(buffer, (unsigned long long) oldTickBegin, FALSE);
+                addDebugMessage(buffer);
+                setText(buffer, L"oldTickEnd ");
+                appendNumber(buffer, (unsigned long long) oldTickEnd, FALSE);
+                addDebugMessage(buffer);
+
                 addDebugMessage(L"Start copying of transactions in beginEpoch()");
 #endif
+
                 // copy transactions
                 if (sumTransactionSizes)
                     copyMem(oldTickTransactionsPtr, tickTransactionsPtr + *transactionOffsetsFirstToKeep, sumTransactionSizes);
@@ -203,6 +221,23 @@ public:
                 // copy adjusted transaction offsets
                 {
                     // get tick and transaction index of first transaction to keep
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    setText(buffer, L"transactionOffsetsFirstToKeep ");
+                    appendNumber(buffer, (unsigned long long)transactionOffsetsFirstToKeep, FALSE);
+                    addDebugMessage(buffer);
+                    setText(buffer, L"*transactionOffsetsFirstToKeep ");
+                    appendNumber(buffer, (unsigned long long) * transactionOffsetsFirstToKeep, FALSE);
+                    addDebugMessage(buffer);
+                    setText(buffer, L"first to keep tick ");
+                    appendNumber(buffer, (unsigned long long) TickTransactionsAccess::ptr(*transactionOffsetsFirstToKeep)->tick, FALSE);
+                    addDebugMessage(buffer);
+                    setText(buffer, L"oldTickBegin ");
+                    appendNumber(buffer, (unsigned long long) oldTickBegin, FALSE);
+                    addDebugMessage(buffer);
+                    setText(buffer, L"oldTickEnd ");
+                    appendNumber(buffer, (unsigned long long) oldTickEnd, FALSE);
+                    addDebugMessage(buffer);
+#endif
                     unsigned int firstTick = TickTransactionsAccess::ptr(*transactionOffsetsFirstToKeep)->tick;
                     ASSERT(firstTick >= oldTickBegin && firstTick < oldTickEnd);
                     transactionOffsetsBegin = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(firstTick);
