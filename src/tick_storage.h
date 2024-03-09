@@ -148,6 +148,9 @@ public:
     // are ticks in [newInitialTick-TICKS_TO_KEEP_FROM_PRIOR_EPOCH, newInitialTick-1].
     static void beginEpoch(unsigned int newInitialTick)
     {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"Begin beginEpoch()");
+#endif
         if (tickBegin && tickInCurrentEpochStorage(newInitialTick))
         {
             // seamless epoch transition: keep some ticks of prior epoch
@@ -188,6 +191,9 @@ public:
                     }
                 }
 
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                addDebugMessage(L"Start copying of transactions in beginEpoch()");
+#endif
                 // copy transactions
                 if (sumTransactionSizes)
                     copyMem(oldTickTransactionsPtr, tickTransactionsPtr + *transactionOffsetsFirstToKeep, sumTransactionSizes);
@@ -246,11 +252,17 @@ public:
         tickBegin = newInitialTick;
 
         nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"End beginEpoch()");
+#endif
     }
 
     // Useful for debugging, but expensive: check that everything is as expected.
     static void checkStateConsistencyWithAssert()
     {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"Begin checkStateConsistencyWithAssert()");
+#endif
         ASSERT(tickBegin <= tickEnd);
         ASSERT(tickEnd - tickBegin <= tickDataLength);
         ASSERT(oldTickBegin <= oldTickEnd);
@@ -326,6 +338,9 @@ public:
                 }
             }
         }
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"End checkStateConsistencyWithAssert()");
+#endif
     }
 
     // Check whether tick is stored in the current epoch storage.
