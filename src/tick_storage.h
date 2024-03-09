@@ -149,7 +149,7 @@ public:
     static void beginEpoch(unsigned int newInitialTick)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin beginEpoch()");
+        addDebugMessage(L"Begin ts.beginEpoch()");
 #endif
         if (tickBegin && tickInCurrentEpochStorage(newInitialTick))
         {
@@ -193,26 +193,6 @@ public:
                     }
                 }
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                CHAR16 buffer[200];
-                setText(buffer, L"transactionOffsetsFirstToKeep ");
-                appendNumber(buffer, (unsigned long long)transactionOffsetsFirstToKeep, FALSE);
-                addDebugMessage(buffer);
-                setText(buffer, L"*transactionOffsetsFirstToKeep ");
-                appendNumber(buffer, (unsigned long long) * transactionOffsetsFirstToKeep, FALSE);
-                addDebugMessage(buffer);
-                setText(buffer, L"first to keep tick ");
-                appendNumber(buffer, (unsigned long long) TickTransactionsAccess::ptr(*transactionOffsetsFirstToKeep)->tick, FALSE);
-                addDebugMessage(buffer);
-                setText(buffer, L"oldTickBegin ");
-                appendNumber(buffer, (unsigned long long) oldTickBegin, FALSE);
-                addDebugMessage(buffer);
-                setText(buffer, L"oldTickEnd ");
-                appendNumber(buffer, (unsigned long long) oldTickEnd, FALSE);
-                addDebugMessage(buffer);
-
-                addDebugMessage(L"Start copying of transactions in beginEpoch()");
-#endif
                 // set all transaction offsets of previous epoch storage to 0 (no transactions)
                 setMem(oldTickTransactionOffsetsPtr, tickTransactionOffsetsSizePreviousEpoch, 0);
 
@@ -223,23 +203,6 @@ public:
                     copyMem(oldTickTransactionsPtr, tickTransactionsPtr + *transactionOffsetsFirstToKeep, sumTransactionSizes);
 
                     // get tick and transaction index of first transaction to keep
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                    setText(buffer, L"transactionOffsetsFirstToKeep ");
-                    appendNumber(buffer, (unsigned long long)transactionOffsetsFirstToKeep, FALSE);
-                    addDebugMessage(buffer);
-                    setText(buffer, L"*transactionOffsetsFirstToKeep ");
-                    appendNumber(buffer, (unsigned long long) * transactionOffsetsFirstToKeep, FALSE);
-                    addDebugMessage(buffer);
-                    setText(buffer, L"first to keep tick ");
-                    appendNumber(buffer, (unsigned long long) TickTransactionsAccess::ptr(*transactionOffsetsFirstToKeep)->tick, FALSE);
-                    addDebugMessage(buffer);
-                    setText(buffer, L"oldTickBegin ");
-                    appendNumber(buffer, (unsigned long long) oldTickBegin, FALSE);
-                    addDebugMessage(buffer);
-                    setText(buffer, L"oldTickEnd ");
-                    appendNumber(buffer, (unsigned long long) oldTickEnd, FALSE);
-                    addDebugMessage(buffer);
-#endif
                     unsigned int firstTick = TickTransactionsAccess::ptr(*transactionOffsetsFirstToKeep)->tick;
                     ASSERT(firstTick >= oldTickBegin && firstTick < oldTickEnd);
                     transactionOffsetsBegin = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(firstTick);
@@ -291,7 +254,7 @@ public:
 
         nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"End beginEpoch()");
+        addDebugMessage(L"End ts.beginEpoch()");
 #endif
     }
 
@@ -299,7 +262,7 @@ public:
     static void checkStateConsistencyWithAssert()
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin checkStateConsistencyWithAssert()");
+        addDebugMessage(L"Begin ts.checkStateConsistencyWithAssert()");
 #endif
         ASSERT(tickBegin <= tickEnd);
         ASSERT(tickEnd - tickBegin <= tickDataLength);
@@ -377,7 +340,7 @@ public:
             }
         }
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"End checkStateConsistencyWithAssert()");
+        addDebugMessage(L"End ts.checkStateConsistencyWithAssert()");
 #endif
     }
 
