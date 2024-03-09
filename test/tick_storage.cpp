@@ -42,7 +42,7 @@ public:
 
 TestTickStorage ts;
 
-void addTick(unsigned int tick, unsigned long long seed)
+void addTick(unsigned int tick, unsigned long long seed, unsigned short maxTransactions)
 {
     // use pseudo-random sequence
     std::mt19937_64 gen64(seed);
@@ -62,8 +62,8 @@ void addTick(unsigned int tick, unsigned long long seed)
         computorTicks[i].prevResourceTestingDigest = gen64();
     }
 
-    // add transactions of first tick
-    unsigned int transactionNum = gen64() % NUMBER_OF_TRANSACTIONS_PER_TICK;
+    // add transactions of tick
+    unsigned int transactionNum = gen64() % (maxTransactions + 1);
     for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
     {
         ts.addTransaction(tick, transaction, gen64() % MAX_INPUT_SIZE);
@@ -71,7 +71,7 @@ void addTick(unsigned int tick, unsigned long long seed)
     ts.checkStateConsistencyWithAssert();
 }
 
-void checkTick(unsigned int tick, unsigned long long seed, bool previousEpoch = false)
+void checkTick(unsigned int tick, unsigned long long seed, unsigned short maxTransactions, bool previousEpoch = false)
 {
     // only last ticks of previous epoch are kept in storage -> check okay
     if (previousEpoch && !ts.tickInPreviousEpochStorage(tick))
@@ -98,7 +98,7 @@ void checkTick(unsigned int tick, unsigned long long seed, bool previousEpoch = 
     // check transactions of tick
     {
         const auto* offsets = previousEpoch ? ts.tickTransactionOffsets.getByTickInPreviousEpoch(tick) : ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
-        unsigned int transactionNum = gen64() % NUMBER_OF_TRANSACTIONS_PER_TICK;
+        unsigned int transactionNum = gen64() % (maxTransactions + 1);
         for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
         {
             int expectedInputSize = (int)(gen64() % MAX_INPUT_SIZE);
@@ -125,8 +125,11 @@ TEST(TestCoreTickStorage, EpochTransition) {
     std::mt19937_64 gen64(seed);
 
     // 5x test with running 2 epoch transitions
-    for (int testIdx = 0; testIdx < 5; ++testIdx)
+    for (int testIdx = 0; testIdx < 6; ++testIdx)
     {
+        // first, test case of having no transactions
+        unsigned short maxTransactions = (testIdx == 0) ? 0 : NUMBER_OF_TRANSACTIONS_PER_TICK;
+
         ts.init();
         ts.checkStateConsistencyWithAssert();
 
@@ -152,11 +155,11 @@ TEST(TestCoreTickStorage, EpochTransition) {
 
         // add ticks
         for (int i = 0; i < firstEpochTicks; ++i)
-            addTick(firstEpochTick0 + i, firstEpochSeeds[i]);
+            addTick(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions);
 
         // check ticks
         for (int i = 0; i < firstEpochTicks; ++i)
-            checkTick(firstEpochTick0 + i, firstEpochSeeds[i]);
+            checkTick(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions);
 
         // Epoch transistion
         ts.beginEpoch(secondEpochTick0);
@@ -164,13 +167,14 @@ TEST(TestCoreTickStorage, EpochTransition) {
 
         // add ticks
         for (int i = 0; i < secondEpochTicks; ++i)
-            addTick(secondEpochTick0 + i, secondEpochSeeds[i]);
+            addTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions);
 
         // check ticks
         for (int i = 0; i < secondEpochTicks; ++i)
-            checkTick(secondEpochTick0 + i, secondEpochSeeds[i]);
+            checkTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions);
+        bool previousEpoch = true;
         for (int i = 0; i < firstEpochTicks; ++i)
-            checkTick(firstEpochTick0 + i, firstEpochSeeds[i], true);
+            checkTick(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions, previousEpoch);
 
         // Epoch transistion
         ts.beginEpoch(thirdEpochTick0);
@@ -178,13 +182,13 @@ TEST(TestCoreTickStorage, EpochTransition) {
 
         // add ticks
         for (int i = 0; i < thirdEpochTicks; ++i)
-            addTick(thirdEpochTick0 + i, thirdEpochSeeds[i]);
+            addTick(thirdEpochTick0 + i, thirdEpochSeeds[i], maxTransactions);
 
         // check ticks
         for (int i = 0; i < thirdEpochTicks; ++i)
-            checkTick(thirdEpochTick0 + i, thirdEpochSeeds[i]);
+            checkTick(thirdEpochTick0 + i, thirdEpochSeeds[i], maxTransactions);
         for (int i = 0; i < secondEpochTicks; ++i)
-            checkTick(secondEpochTick0 + i, secondEpochSeeds[i], true);
+            checkTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions, previousEpoch);
 
         ts.deinit();
     }

@@ -162,7 +162,7 @@ public:
             const unsigned int tickIndex = tickToIndexCurrentEpoch(oldTickBegin);
             const unsigned int tickCount = oldTickEnd - oldTickBegin;
 
-            // copy ticks and tick data from current epoch into storage of previous epoch
+            // copy ticks and tick data from recently ended epoch into storage of previous epoch
             copyMem(oldTickDataPtr, tickDataPtr + tickIndex, tickCount * sizeof(TickData));
             copyMem(oldTicksPtr, ticksPtr + (tickIndex * NUMBER_OF_COMPUTORS), tickCount * NUMBER_OF_COMPUTORS * sizeof(Tick));
 
@@ -213,13 +213,15 @@ public:
 
                 addDebugMessage(L"Start copying of transactions in beginEpoch()");
 #endif
+                // set all transaction offsets of previous epoch storage to 0 (no transactions)
+                setMem(oldTickTransactionOffsetsPtr, tickTransactionOffsetsSizePreviousEpoch, 0);
 
-                // copy transactions
+                // if any transactions...
                 if (sumTransactionSizes)
+                {
+                    // copy transactions from from recently ended epoch to storage of previous epoch
                     copyMem(oldTickTransactionsPtr, tickTransactionsPtr + *transactionOffsetsFirstToKeep, sumTransactionSizes);
 
-                // copy adjusted transaction offsets
-                {
                     // get tick and transaction index of first transaction to keep
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                     setText(buffer, L"transactionOffsetsFirstToKeep ");
@@ -244,10 +246,7 @@ public:
                     ASSERT(transactionOffsetsBegin <= transactionOffsetsFirstToKeep && transactionOffsetsFirstToKeep < transactionOffsetsBegin + NUMBER_OF_TRANSACTIONS_PER_TICK);
                     long long firstTickTransactionIdx = transactionOffsetsFirstToKeep - transactionOffsetsBegin;
 
-                    // set all offsets to 0
-                    setMem(oldTickTransactionOffsetsPtr, tickTransactionOffsetsSizePreviousEpoch, 0);
-
-                    // set offsets of the transactions we copied
+                    // set offsets of the transactions we copied (in the storage of the previous epoch)
                     unsigned long long copiedSumTransactionSizes = 0;
                     auto* oldTransactionOffsetsPtr = TickTransactionOffsetsAccess::getByTickInPreviousEpoch(firstTick) + firstTickTransactionIdx;
                     const auto* transactionOffsetPtr = transactionOffsetsFirstToKeep;
