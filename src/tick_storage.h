@@ -263,6 +263,7 @@ public:
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin ts.checkStateConsistencyWithAssert()");
+        CHAR16 dbgMsgBuf[200];
 #endif
         ASSERT(tickBegin <= tickEnd);
         ASSERT(tickEnd - tickBegin <= tickDataLength);
@@ -297,21 +298,43 @@ public:
 
             const unsigned long long* tickOffsets = TickTransactionOffsetsAccess::getByTickInPreviousEpoch(tickId);
             unsigned long long prevOffset = 0;
-            for (unsigned int transaction = 0; transaction < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transaction)
+            for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
             {
-                unsigned long long offset = tickOffsets[transaction];
+                unsigned long long offset = tickOffsets[transactionIdx];
                 if (offset)
                 {
                     ASSERT(offset > prevOffset);
                     prevOffset = offset;
 
                     Transaction* transaction = TickTransactionsAccess::ptr(offset);
-                    ASSERT(transaction->checkValidity() && transaction->tick == tickId);
+                    ASSERT(transaction->checkValidity());
+                    ASSERT(transaction->tick == tickId);
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    setText(dbgMsgBuf, L"Error in prev. epoch transaction ");
+                    appendNumber(dbgMsgBuf, transactionIdx, FALSE);
+                    appendText(dbgMsgBuf, L" in tick ");
+                    appendNumber(dbgMsgBuf, tickId, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+                    
+                    setText(dbgMsgBuf, L"t->tick ");
+                    appendNumber(dbgMsgBuf, transaction->tick, FALSE);
+                    setText(dbgMsgBuf, L", t->inputSize ");
+                    appendNumber(dbgMsgBuf, transaction->inputSize, FALSE);
+                    setText(dbgMsgBuf, L", t->inputType ");
+                    appendNumber(dbgMsgBuf, transaction->inputType, FALSE);
+                    appendText(dbgMsgBuf, L", t->amount ");
+                    appendNumber(dbgMsgBuf, transaction->amount, TRUE);
+                    addDebugMessage(dbgMsgBuf);
+
+                    addDebugMessage(L"Skipping to check more transactions and ticks");
+                    goto test_current_epoch;
+#endif
                 }
             }
         }
 
         // Check current epoch data
+        test_current_epoch:
         for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
         {
             const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);
@@ -326,20 +349,42 @@ public:
 
             const unsigned long long* tickOffsets = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(tickId);
             unsigned long long prevOffset = 0;
-            for (unsigned int transaction = 0; transaction < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transaction)
+            for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
             {
-                unsigned long long offset = tickOffsets[transaction];
+                unsigned long long offset = tickOffsets[transactionIdx];
                 if (offset)
                 {
                     ASSERT(offset > prevOffset);
                     prevOffset = offset;
 
                     Transaction* transaction = TickTransactionsAccess::ptr(offset);
-                    ASSERT(transaction->checkValidity() && transaction->tick == tickId);
+                    ASSERT(transaction->checkValidity());
+                    ASSERT(transaction->tick == tickId);
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    setText(dbgMsgBuf, L"Error in cur. epoch transaction ");
+                    appendNumber(dbgMsgBuf, transactionIdx, FALSE);
+                    appendText(dbgMsgBuf, L" in tick ");
+                    appendNumber(dbgMsgBuf, tickId, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+
+                    setText(dbgMsgBuf, L"t->tick ");
+                    appendNumber(dbgMsgBuf, transaction->tick, FALSE);
+                    setText(dbgMsgBuf, L", t->inputSize ");
+                    appendNumber(dbgMsgBuf, transaction->inputSize, FALSE);
+                    setText(dbgMsgBuf, L", t->inputType ");
+                    appendNumber(dbgMsgBuf, transaction->inputType, FALSE);
+                    appendText(dbgMsgBuf, L", t->amount ");
+                    appendNumber(dbgMsgBuf, transaction->amount, TRUE);
+                    addDebugMessage(dbgMsgBuf);
+
+                    addDebugMessage(L"Skipping to check more transactions and ticks");
+                    goto leave_test;
+#endif
                 }
             }
         }
 #if !defined(NDEBUG) && !defined(NO_UEFI)
+        leave_test:
         addDebugMessage(L"End ts.checkStateConsistencyWithAssert()");
 #endif
     }
