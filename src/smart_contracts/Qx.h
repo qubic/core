@@ -26,7 +26,7 @@ public:
 	};
 	struct IssueAsset_output
 	{
-		long long issuedNumberOfShares;
+		sint64 issuedNumberOfShares;
 	};
 
 	struct TransferShareOwnershipAndPossession_input
@@ -34,12 +34,12 @@ public:
 		id issuer;
 		id possessor;
 		id newOwner;
-		unsigned long long assetName;
-		long long numberOfShares;
+		uint64 assetName;
+		sint64 numberOfShares;
 	};
 	struct TransferShareOwnershipAndPossession_output
 	{
-		long long transferredNumberOfShares;
+		sint64 transferredNumberOfShares;
 	};
 
 private:
