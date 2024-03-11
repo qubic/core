@@ -216,7 +216,6 @@ static void addDebugMessageAssert(const CHAR16* message, const CHAR16* file, con
         appendNumber(debugMessage[debugMessageCount], lineNumber, FALSE);
         appendText(debugMessage[debugMessageCount], L" in ");
         appendText(debugMessage[debugMessageCount], file);
-        appendText(debugMessage[debugMessageCount], L"\r\n");
         ++debugMessageCount;
     }
     RELEASE(debugLogLock);
