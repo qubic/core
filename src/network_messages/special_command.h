@@ -68,7 +68,7 @@ struct SpecialCommandSetProposalAndBallotResponse
 struct SpecialCommandSetSolutionThresholdResquestAndResponse
 {
     unsigned long long everIncreasingNonceAndCommandType;
-    unsigned int epoch;
+    unsigned short epoch;
     int threshold;
 };
 
