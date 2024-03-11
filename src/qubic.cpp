@@ -3408,14 +3408,6 @@ static void tickProcessor(void*)
                                         getUniverseDigest(etalonTick.saltedUniverseDigest);
                                         getComputerDigest(etalonTick.saltedComputerDigest);
 
-                                        // run contract BEGIN_EPOCH procedures
-                                        contractProcessorPhase = BEGIN_EPOCH;
-                                        contractProcessorState = 1;
-                                        while (contractProcessorState)
-                                        {
-                                            _mm_pause();
-                                        }
-
                                         epochTransitionState = 0;
 
 #ifndef NDEBUG
