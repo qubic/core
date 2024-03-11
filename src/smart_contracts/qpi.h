@@ -5496,9 +5496,9 @@ namespace QPI
 		id owner,
 		id possessor,
 		sint64 numberOfShares,
-		id newOwner
+		id newOwnerAndPossessor
 	) { // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
-		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwner);
+		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwnerAndPossessor);
 	}
 
 	static uint8 year(

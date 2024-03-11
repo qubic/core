@@ -1640,7 +1640,7 @@ static long long __transfer(const m256i& destination, long long amount)
     return remainingAmount;
 }
 
-static long long __transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwner)
+static long long __transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor)
 {
     if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
     {
@@ -1697,7 +1697,7 @@ iteration:
                                 if (assets[possessionIndex].varStruct.possession.numberOfShares >= numberOfShares)
                                 {
                                     int destinationOwnershipIndex, destinationPossessionIndex;
-                                    transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwner, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
+                                    transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwnerAndPossessor, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
 
                                     RELEASE(universeLock);
 

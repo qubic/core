@@ -32,8 +32,7 @@ public:
 	struct TransferShareOwnershipAndPossession_input
 	{
 		id issuer;
-		id possessor;
-		id newOwner;
+		id newOwnerAndPossessor;
 		uint64 assetName;
 		sint64 numberOfShares;
 	};
@@ -100,7 +99,7 @@ private:
 			}
 			state._earnedAmount += state._transferFee;
 
-			output.transferredNumberOfShares = transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), input.possessor, input.numberOfShares, input.newOwner) < 0 ? 0 : input.numberOfShares;
+			output.transferredNumberOfShares = transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), invocator(), input.numberOfShares, input.newOwnerAndPossessor) < 0 ? 0 : input.numberOfShares;
 		}
 	_
 
