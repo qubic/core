@@ -41,6 +41,54 @@ public:
 		sint64 transferredNumberOfShares;
 	};
 
+	struct AddToAskOrder_input
+	{
+		id issuer;
+		uint64 assetName;
+		uint64 price;
+		sint64 numberOfShares;
+	};
+	struct AddToAskOrder_output
+	{
+		sint64 addedNumberOfShares;
+	};
+
+	struct AddToBidOrder_input
+	{
+		id issuer;
+		uint64 assetName;
+		uint64 price;
+		sint64 numberOfShares;
+	};
+	struct AddToBidOrder_output
+	{
+		sint64 addedNumberOfShares;
+	};
+
+	struct RemoveFromAskOrder_input
+	{
+		id issuer;
+		uint64 assetName;
+		uint64 price;
+		sint64 numberOfShares;
+	};
+	struct RemoveFromAskOrder_output
+	{
+		sint64 removedNumberOfShares;
+	};
+
+	struct RemoveFromBidOrder_input
+	{
+		id issuer;
+		uint64 assetName;
+		uint64 price;
+		sint64 numberOfShares;
+	};
+	struct RemoveFromBidOrder_output
+	{
+		sint64 removedNumberOfShares;
+	};
+
 private:
 	uint64 _earnedAmount;
 	uint64 _distributedAmount;
@@ -101,6 +149,46 @@ private:
 
 			output.transferredNumberOfShares = transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), invocator(), input.numberOfShares, input.newOwnerAndPossessor) < 0 ? 0 : input.numberOfShares;
 		}
+	_
+
+	PUBLIC(AddToAskOrder)
+
+		if (invocationReward() > 0)
+		{
+			transfer(invocator(), invocationReward());
+		}
+
+		output.addedNumberOfShares = 0;
+	_
+
+	PUBLIC(AddToBidOrder)
+
+		if (invocationReward() > 0)
+		{
+			transfer(invocator(), invocationReward());
+		}
+
+		output.addedNumberOfShares = 0;
+	_
+
+	PUBLIC(RemoveFromAskOrder)
+
+		if (invocationReward() > 0)
+		{
+			transfer(invocator(), invocationReward());
+		}
+
+		output.removedNumberOfShares = 0;
+	_
+
+	PUBLIC(RemoveFromBidOrder)
+
+		if (invocationReward() > 0)
+		{
+			transfer(invocator(), invocationReward());
+		}
+
+		output.removedNumberOfShares = 0;
 	_
 
 	REGISTER_USER_FUNCTIONS
