@@ -17,9 +17,45 @@ public:
 		uint32 tradeFee; // Number of billionths
 	};
 
+	struct AssetAskOrders_input
+	{
+		id issuer;
+		uint64 assetName;
+		uint64 offset;
+	};
+	struct AssetAskOrders_output
+	{
+		struct Order
+		{
+			id entity;
+			sint64 price;
+			sint64 numberOfShares;
+		};
+
+		array<Order, 256> orders;
+	};
+
+	struct AssetBidOrders_input
+	{
+		id issuer;
+		uint64 assetName;
+		uint64 offset;
+	};
+	struct AssetBidOrders_output
+	{
+		struct Order
+		{
+			id entity;
+			sint64 price;
+			sint64 numberOfShares;
+		};
+
+		array<Order, 256> orders;
+	};
+
 	struct IssueAsset_input
 	{
-		uint64 name;
+		uint64 assetName;
 		sint64 numberOfShares;
 		uint64 unitOfMeasurement;
 		sint8 numberOfDecimalPlaces;
@@ -45,7 +81,7 @@ public:
 	{
 		id issuer;
 		uint64 assetName;
-		uint64 price;
+		sint64 price;
 		sint64 numberOfShares;
 	};
 	struct AddToAskOrder_output
@@ -57,7 +93,7 @@ public:
 	{
 		id issuer;
 		uint64 assetName;
-		uint64 price;
+		sint64 price;
 		sint64 numberOfShares;
 	};
 	struct AddToBidOrder_output
@@ -69,7 +105,7 @@ public:
 	{
 		id issuer;
 		uint64 assetName;
-		uint64 price;
+		sint64 price;
 		sint64 numberOfShares;
 	};
 	struct RemoveFromAskOrder_output
@@ -81,7 +117,7 @@ public:
 	{
 		id issuer;
 		uint64 assetName;
-		uint64 price;
+		sint64 price;
 		sint64 numberOfShares;
 	};
 	struct RemoveFromBidOrder_output
@@ -105,6 +141,12 @@ private:
 		output.tradeFee = state._tradeFee;
 	_
 
+	PUBLIC(AssetAskOrders)
+	_
+
+	PUBLIC(AssetBidOrders)
+	_
+
 	PUBLIC(IssueAsset)
 
 		if (invocationReward() < state._assetIssuanceFee)
@@ -124,7 +166,7 @@ private:
 			}
 			state._earnedAmount += state._assetIssuanceFee;
 
-			output.issuedNumberOfShares = issueAsset(input.name, invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
+			output.issuedNumberOfShares = issueAsset(input.assetName, invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
 		}
 	_
 
