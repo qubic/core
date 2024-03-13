@@ -645,7 +645,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             if (tsTick->epoch == system.epoch)
             {
                 // Check if the sent tick matches the tick in tick storage
-                if (*((unsigned long long*)&request->tick.millisecond) != *((unsigned long long*)tsTick->millisecond)
+                if (*((unsigned long long*)&request->tick.millisecond) != *((unsigned long long*)&tsTick->millisecond)
                     || request->tick.prevSpectrumDigest != tsTick->prevSpectrumDigest
                     || request->tick.prevUniverseDigest != tsTick->prevUniverseDigest
                     || request->tick.prevComputerDigest != tsTick->prevComputerDigest
