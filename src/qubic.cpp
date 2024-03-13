@@ -2562,7 +2562,6 @@ static void beginEpoch1of2()
 
     bs->SetMem(score, sizeof(*score), 0);
     score->resetTaskQueue();
-    score->loadScoreCache(system.epoch);
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     bs->SetMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
     bs->SetMem((void*)minerScores, sizeof(minerScores), 0);
@@ -3872,6 +3871,8 @@ static bool initialize()
             logToConsole(message);
         }
     }
+
+    score->loadScoreCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu0))
