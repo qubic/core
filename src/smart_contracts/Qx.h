@@ -17,29 +17,112 @@ public:
 		uint32 tradeFee; // Number of billionths
 	};
 
+	struct AssetAskOrders_input
+	{
+		id issuer;
+		uint64 assetName;
+		uint64 offset;
+	};
+	struct AssetAskOrders_output
+	{
+		struct Order
+		{
+			id entity;
+			sint64 price;
+			sint64 numberOfShares;
+		};
+
+		array<Order, 256> orders;
+	};
+
+	struct AssetBidOrders_input
+	{
+		id issuer;
+		uint64 assetName;
+		uint64 offset;
+	};
+	struct AssetBidOrders_output
+	{
+		struct Order
+		{
+			id entity;
+			sint64 price;
+			sint64 numberOfShares;
+		};
+
+		array<Order, 256> orders;
+	};
+
 	struct IssueAsset_input
 	{
-		uint64 name;
+		uint64 assetName;
 		sint64 numberOfShares;
 		uint64 unitOfMeasurement;
 		sint8 numberOfDecimalPlaces;
 	};
 	struct IssueAsset_output
 	{
-		long long issuedNumberOfShares;
+		sint64 issuedNumberOfShares;
 	};
 
 	struct TransferShareOwnershipAndPossession_input
 	{
 		id issuer;
-		id possessor;
-		id newOwner;
-		unsigned long long assetName;
-		long long numberOfShares;
+		id newOwnerAndPossessor;
+		uint64 assetName;
+		sint64 numberOfShares;
 	};
 	struct TransferShareOwnershipAndPossession_output
 	{
-		long long transferredNumberOfShares;
+		sint64 transferredNumberOfShares;
+	};
+
+	struct AddToAskOrder_input
+	{
+		id issuer;
+		uint64 assetName;
+		sint64 price;
+		sint64 numberOfShares;
+	};
+	struct AddToAskOrder_output
+	{
+		sint64 addedNumberOfShares;
+	};
+
+	struct AddToBidOrder_input
+	{
+		id issuer;
+		uint64 assetName;
+		sint64 price;
+		sint64 numberOfShares;
+	};
+	struct AddToBidOrder_output
+	{
+		sint64 addedNumberOfShares;
+	};
+
+	struct RemoveFromAskOrder_input
+	{
+		id issuer;
+		uint64 assetName;
+		sint64 price;
+		sint64 numberOfShares;
+	};
+	struct RemoveFromAskOrder_output
+	{
+		sint64 removedNumberOfShares;
+	};
+
+	struct RemoveFromBidOrder_input
+	{
+		id issuer;
+		uint64 assetName;
+		sint64 price;
+		sint64 numberOfShares;
+	};
+	struct RemoveFromBidOrder_output
+	{
+		sint64 removedNumberOfShares;
 	};
 
 private:
@@ -56,6 +139,12 @@ private:
 		output.assetIssuanceFee = state._assetIssuanceFee;
 		output.transferFee = state._transferFee;
 		output.tradeFee = state._tradeFee;
+	_
+
+	PUBLIC(AssetAskOrders)
+	_
+
+	PUBLIC(AssetBidOrders)
 	_
 
 	PUBLIC(IssueAsset)
@@ -77,7 +166,7 @@ private:
 			}
 			state._earnedAmount += state._assetIssuanceFee;
 
-			output.issuedNumberOfShares = issueAsset(input.name, invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
+			output.issuedNumberOfShares = issueAsset(input.assetName, invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
 		}
 	_
 
@@ -100,19 +189,67 @@ private:
 			}
 			state._earnedAmount += state._transferFee;
 
-			output.transferredNumberOfShares = transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), input.possessor, input.numberOfShares, input.newOwner) < 0 ? 0 : input.numberOfShares;
+			output.transferredNumberOfShares = transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), invocator(), input.numberOfShares, input.newOwnerAndPossessor) < 0 ? 0 : input.numberOfShares;
 		}
+	_
+
+	PUBLIC(AddToAskOrder)
+
+		if (invocationReward() > 0)
+		{
+			transfer(invocator(), invocationReward());
+		}
+
+		output.addedNumberOfShares = 0;
+	_
+
+	PUBLIC(AddToBidOrder)
+
+		if (invocationReward() > 0)
+		{
+			transfer(invocator(), invocationReward());
+		}
+
+		output.addedNumberOfShares = 0;
+	_
+
+	PUBLIC(RemoveFromAskOrder)
+
+		if (invocationReward() > 0)
+		{
+			transfer(invocator(), invocationReward());
+		}
+
+		output.removedNumberOfShares = 0;
+	_
+
+	PUBLIC(RemoveFromBidOrder)
+
+		if (invocationReward() > 0)
+		{
+			transfer(invocator(), invocationReward());
+		}
+
+		output.removedNumberOfShares = 0;
 	_
 
 	REGISTER_USER_FUNCTIONS
 
 		REGISTER_USER_FUNCTION(Fees, 1);
+		REGISTER_USER_FUNCTION(AssetAskOrders, 2);
+		REGISTER_USER_FUNCTION(AssetBidOrders, 3);
 	_
 
 	REGISTER_USER_PROCEDURES
 
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
 		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);
+		//
+		//
+		REGISTER_USER_PROCEDURE(AddToAskOrder, 5);
+		REGISTER_USER_PROCEDURE(AddToBidOrder, 6);
+		REGISTER_USER_PROCEDURE(RemoveFromAskOrder, 7);
+		REGISTER_USER_PROCEDURE(RemoveFromBidOrder, 8);
 	_
 
 	INITIALIZE

@@ -9,7 +9,7 @@
 // random seed is now obtained from spectrumDigests
 
 #define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 4 // do not increase this for this epoch, because there may be issues due too fast ticking
+#define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this for this epoch, because there may be issues due too fast ticking
 
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 1000000 // the larger the better
@@ -30,11 +30,11 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 195
-#define VERSION_C 1
+#define VERSION_B 196
+#define VERSION_C 0
 
-#define EPOCH 99
-#define TICK 12820000
+#define EPOCH 100
+#define TICK 12950000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -52,7 +52,7 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_INPUT_DURATION 256
 #define MAX_OUTPUT_DURATION 256
 #define NEURON_VALUE_LIMIT 1099511627776LL
-#define SOLUTION_THRESHOLD_DEFAULT 45
+#define SOLUTION_THRESHOLD_DEFAULT 44
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
@@ -60,3 +60,4 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
+
