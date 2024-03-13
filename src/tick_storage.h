@@ -310,24 +310,27 @@ public:
                     ASSERT(transaction->checkValidity());
                     ASSERT(transaction->tick == tickId);
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                    setText(dbgMsgBuf, L"Error in prev. epoch transaction ");
-                    appendNumber(dbgMsgBuf, transactionIdx, FALSE);
-                    appendText(dbgMsgBuf, L" in tick ");
-                    appendNumber(dbgMsgBuf, tickId, FALSE);
-                    addDebugMessage(dbgMsgBuf);
+                    if (!transaction->checkValidity() || transaction->tick != tickId)
+                    {
+                        setText(dbgMsgBuf, L"Error in prev. epoch transaction ");
+                        appendNumber(dbgMsgBuf, transactionIdx, FALSE);
+                        appendText(dbgMsgBuf, L" in tick ");
+                        appendNumber(dbgMsgBuf, tickId, FALSE);
+                        addDebugMessage(dbgMsgBuf);
                     
-                    setText(dbgMsgBuf, L"t->tick ");
-                    appendNumber(dbgMsgBuf, transaction->tick, FALSE);
-                    setText(dbgMsgBuf, L", t->inputSize ");
-                    appendNumber(dbgMsgBuf, transaction->inputSize, FALSE);
-                    setText(dbgMsgBuf, L", t->inputType ");
-                    appendNumber(dbgMsgBuf, transaction->inputType, FALSE);
-                    appendText(dbgMsgBuf, L", t->amount ");
-                    appendNumber(dbgMsgBuf, transaction->amount, TRUE);
-                    addDebugMessage(dbgMsgBuf);
+                        setText(dbgMsgBuf, L"t->tick ");
+                        appendNumber(dbgMsgBuf, transaction->tick, FALSE);
+                        appendText(dbgMsgBuf, L", t->inputSize ");
+                        appendNumber(dbgMsgBuf, transaction->inputSize, FALSE);
+                        appendText(dbgMsgBuf, L", t->inputType ");
+                        appendNumber(dbgMsgBuf, transaction->inputType, FALSE);
+                        appendText(dbgMsgBuf, L", t->amount ");
+                        appendNumber(dbgMsgBuf, transaction->amount, TRUE);
+                        addDebugMessage(dbgMsgBuf);
 
-                    addDebugMessage(L"Skipping to check more transactions and ticks");
-                    goto test_current_epoch;
+                        addDebugMessage(L"Skipping to check more transactions and ticks");
+                        goto test_current_epoch;
+                    }
 #endif
                 }
             }
@@ -361,24 +364,27 @@ public:
                     ASSERT(transaction->checkValidity());
                     ASSERT(transaction->tick == tickId);
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                    setText(dbgMsgBuf, L"Error in cur. epoch transaction ");
-                    appendNumber(dbgMsgBuf, transactionIdx, FALSE);
-                    appendText(dbgMsgBuf, L" in tick ");
-                    appendNumber(dbgMsgBuf, tickId, FALSE);
-                    addDebugMessage(dbgMsgBuf);
+                    if (!transaction->checkValidity() || transaction->tick != tickId)
+                    {
+                        setText(dbgMsgBuf, L"Error in cur. epoch transaction ");
+                        appendNumber(dbgMsgBuf, transactionIdx, FALSE);
+                        appendText(dbgMsgBuf, L" in tick ");
+                        appendNumber(dbgMsgBuf, tickId, FALSE);
+                        addDebugMessage(dbgMsgBuf);
 
-                    setText(dbgMsgBuf, L"t->tick ");
-                    appendNumber(dbgMsgBuf, transaction->tick, FALSE);
-                    setText(dbgMsgBuf, L", t->inputSize ");
-                    appendNumber(dbgMsgBuf, transaction->inputSize, FALSE);
-                    setText(dbgMsgBuf, L", t->inputType ");
-                    appendNumber(dbgMsgBuf, transaction->inputType, FALSE);
-                    appendText(dbgMsgBuf, L", t->amount ");
-                    appendNumber(dbgMsgBuf, transaction->amount, TRUE);
-                    addDebugMessage(dbgMsgBuf);
+                        setText(dbgMsgBuf, L"t->tick ");
+                        appendNumber(dbgMsgBuf, transaction->tick, FALSE);
+                        appendText(dbgMsgBuf, L", t->inputSize ");
+                        appendNumber(dbgMsgBuf, transaction->inputSize, FALSE);
+                        appendText(dbgMsgBuf, L", t->inputType ");
+                        appendNumber(dbgMsgBuf, transaction->inputType, FALSE);
+                        appendText(dbgMsgBuf, L", t->amount ");
+                        appendNumber(dbgMsgBuf, transaction->amount, TRUE);
+                        addDebugMessage(dbgMsgBuf);
 
-                    addDebugMessage(L"Skipping to check more transactions and ticks");
-                    goto leave_test;
+                        addDebugMessage(L"Skipping to check more transactions and ticks");
+                        goto leave_test;
+                    }
 #endif
                 }
             }
