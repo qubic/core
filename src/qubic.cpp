@@ -2801,11 +2801,91 @@ static void endEpoch()
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
 }
 
+#if !START_NETWORK_FROM_SCRATCH
+// try to pull quorum tick and update the etalonTick to correct timeStamp
+// A corner case: this function can't get initial time if more than 451 ID failed to switch the epoch
+// in this case, START_NETWORK_FROM_SCRATCH must be 1 to boot the network from scratch again, ie: first tick timestamp: 2022-04-13 12:00:00 UTC
+static void initializeFirstTick()
+{
+    unsigned long long uniqueTimestamp[NUMBER_OF_COMPUTORS];
+    int uniqueTimestampVoteCount[NUMBER_OF_COMPUTORS];
+    int uniqueTimestampCount = 0;
+    const unsigned int firstTickIndex = ts.tickToIndexCurrentEpoch(system.initialTick);
+    while (!shutDownNode)
+    {
+        if (broadcastedComputors.broadcastComputors.computors.epoch == system.epoch)
+        {
+            setMem(uniqueTimestamp, sizeof(uniqueTimestamp), 0);
+            setMem(uniqueTimestampVoteCount, sizeof(uniqueTimestampVoteCount), 0);
+            uniqueTimestampCount = 0;
+
+            const Tick* tsCompTicks = ts.ticks.getByTickIndex(firstTickIndex);
+            int total = 0;
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                ts.ticks.acquireLock(i);
+                const Tick* tick = &tsCompTicks[i];
+                if (tick->epoch == system.epoch)
+                {
+                    total++;
+                    unsigned long long timestampFromVote = *((unsigned long long*) & tick->millisecond);
+                    int unique_idx = -1;
+                    for (int j = 0; j < uniqueTimestampCount; j++) {
+                        if (uniqueTimestamp[j] == timestampFromVote)
+                        {
+                            unique_idx = j;
+                            break;
+                        }
+                    }
+                    if (unique_idx == -1)
+                    {
+                        uniqueTimestamp[uniqueTimestampCount] = timestampFromVote;
+                        uniqueTimestampVoteCount[uniqueTimestampCount] = 1;
+                        uniqueTimestampCount++;
+                    }
+                    else
+                    {
+                        uniqueTimestampVoteCount[unique_idx]++;
+                    }
+                }
+
+                ts.ticks.releaseLock(i);
+            }
+
+            if (uniqueTimestampCount > 0)
+            {
+                int maxUniqueTimestampVoteCountIndex = 0;
+                for (int i = 1; i < uniqueTimestampCount; i++)
+                {
+                    if (uniqueTimestampVoteCount[i] > uniqueTimestampVoteCount[maxUniqueTimestampVoteCountIndex])
+                    {
+                        maxUniqueTimestampVoteCountIndex = i;
+                    }
+                }
+                
+                int numberOfVote = uniqueTimestampVoteCount[maxUniqueTimestampVoteCountIndex];
+
+                if (numberOfVote >= NUMBER_OF_COMPUTORS - QUORUM)
+                {
+                    *((unsigned long long*) & etalonTick.millisecond) = uniqueTimestamp[maxUniqueTimestampVoteCountIndex];
+                    return;
+                }
+            }
+        }
+        _mm_pause();
+    }
+}
+#endif
+
 static void tickProcessor(void*)
 {
     enableAVX();
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+
+#if !START_NETWORK_FROM_SCRATCH    
+    initializeFirstTick();
+#endif
 
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)

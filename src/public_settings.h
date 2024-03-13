@@ -56,3 +56,7 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
+
+// this flag indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC)
+// if this flag is 0, the node will then try to fetch initial (first) tick from other nodes, which has the timestamp differ than (2022-04-13 Wed 12:00:00.000UTC)
+#define START_NETWORK_FROM_SCRATCH 0
