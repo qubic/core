@@ -87,11 +87,7 @@ static m256i computorPrivateKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0]
 static m256i computorPublicKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 static m256i arbitratorPublicKey;
 
-static struct
-{
-    RequestResponseHeader header;
-    BroadcastComputors broadcastComputors;
-} broadcastedComputors;
+BroadcastComputors broadcastedComputors;
 
 // data closely related to system
 static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
@@ -566,20 +562,21 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 {
     BroadcastComputors* request = header->getPayload<BroadcastComputors>();
-    // verify that all address are non-zeroes
-    // discard it even if ARB broadcast it
-    if (request->computors.epoch > broadcastedComputors.broadcastComputors.computors.epoch)
+
+    // Only accept computor list from current epoch (important in seamless epoch transition if this node is
+    // lagging behind the others that already switched epoch).
+    if (request->computors.epoch == system.epoch && request->computors.epoch > broadcastedComputors.computors.epoch)
     {
+        // Verify that all addresses are non-zeroes. Otherwise, discard it even if ARB broadcasted it.
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            if (request->computors.publicKeys[i] == NULL_ID) // NULL_ID is _mm256_setzero_si256()
+            if (isZero(request->computors.publicKeys[i]))
             {
                 return;
             }
         }
-    }
-    if (request->computors.epoch > broadcastedComputors.broadcastComputors.computors.epoch)
-    {
+
+        // Verify that list is signed by Arbitrator
         unsigned char digest[32];
         KangarooTwelve(request, sizeof(BroadcastComputors) - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify((unsigned char*)&arbitratorPublicKey, digest, request->computors.signature))
@@ -589,8 +586,10 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(NULL, header);
             }
 
-            bs->CopyMem(&broadcastedComputors.broadcastComputors.computors, &request->computors, sizeof(Computors));
+            // Copy computor list
+            bs->CopyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
 
+            // Update ownComputorIndices and minerPublicKeys
             if (request->computors.epoch == system.epoch)
             {
                 numberOfOwnComputorIndices = 0;
@@ -632,7 +631,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
         request->tick.computorIndex ^= BroadcastTick::type;
         KangarooTwelve(&request->tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
         request->tick.computorIndex ^= BroadcastTick::type;
-        if (verify(broadcastedComputors.broadcastComputors.computors.publicKeys[request->tick.computorIndex].m256i_u8, digest, request->tick.signature))
+        if (verify(broadcastedComputors.computors.publicKeys[request->tick.computorIndex].m256i_u8, digest, request->tick.signature))
         {
             if (header->isDejavuZero())
             {
@@ -707,7 +706,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
             request->tickData.computorIndex ^= BroadcastFutureTickData::type;
             KangarooTwelve(&request->tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
             request->tickData.computorIndex ^= BroadcastFutureTickData::type;
-            if (verify(broadcastedComputors.broadcastComputors.computors.publicKeys[request->tickData.computorIndex].m256i_u8, digest, request->tickData.signature))
+            if (verify(broadcastedComputors.computors.publicKeys[request->tickData.computorIndex].m256i_u8, digest, request->tickData.signature))
             {
                 if (header->isDejavuZero())
                 {
@@ -829,9 +828,9 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 
 static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
-    if (broadcastedComputors.broadcastComputors.computors.epoch)
+    if (broadcastedComputors.computors.epoch)
     {
-        enqueueResponse(peer, sizeof(broadcastedComputors.broadcastComputors), BroadcastComputors::type, header->dejavu(), &broadcastedComputors.broadcastComputors);
+        enqueueResponse(peer, sizeof(broadcastedComputors), BroadcastComputors::type, header->dejavu(), &broadcastedComputors);
     }
     else
     {
@@ -951,7 +950,7 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
 {
     CurrentTickInfo currentTickInfo;
 
-    if (broadcastedComputors.broadcastComputors.computors.epoch)
+    if (broadcastedComputors.computors.epoch)
     {
         unsigned long long tickDuration = (__rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1]) / frequency;
         if (tickDuration > 0xFFFF)
@@ -1476,7 +1475,7 @@ static long long __burn(long long amount)
 
 static const m256i& __computor(unsigned short computorIndex)
 {
-    return broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
+    return broadcastedComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
 }
 
 static unsigned char __day()
@@ -2528,14 +2527,12 @@ static void beginEpoch1of2()
 
     numberOfOwnComputorIndices = 0;
 
-    broadcastedComputors.header.setSize<sizeof(broadcastedComputors.header) + sizeof(broadcastedComputors.broadcastComputors)>();
-    broadcastedComputors.header.setType(BroadcastComputors::type);
-    broadcastedComputors.broadcastComputors.computors.epoch = 0;
+    broadcastedComputors.computors.epoch = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        broadcastedComputors.broadcastComputors.computors.publicKeys[i].setRandomValue();
+        broadcastedComputors.computors.publicKeys[i].setRandomValue();
     }
-    bs->SetMem(&broadcastedComputors.broadcastComputors.computors.signature, sizeof(broadcastedComputors.broadcastComputors.computors.signature), 0);
+    bs->SetMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
 
     ts.beginEpoch(system.initialTick);
 #ifndef NDEBUG
@@ -2725,10 +2722,10 @@ static void endEpoch()
     for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
         const long long revenue = (transactionCounters[computorIndex] >= sortedTransactionCounters[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)transactionCounters[computorIndex])) / sortedTransactionCounters[QUORUM - 1]);
-        increaseEnergy(broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex], revenue);
+        increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
         if (revenue)
         {
-            const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.broadcastComputors.computors.publicKeys[computorIndex] , revenue };
+            const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
             logQuTransfer(quTransfer);
         }
         arbitratorRevenue -= revenue;
@@ -2814,7 +2811,7 @@ static void initializeFirstTick()
     const unsigned int firstTickIndex = ts.tickToIndexCurrentEpoch(system.initialTick);
     while (!shutDownNode)
     {
-        if (broadcastedComputors.broadcastComputors.computors.epoch == system.epoch)
+        if (broadcastedComputors.computors.epoch == system.epoch)
         {
             setMem(uniqueTimestamp, sizeof(uniqueTimestamp), 0);
             setMem(uniqueTimestampVoteCount, sizeof(uniqueTimestampVoteCount), 0);
@@ -2894,7 +2891,7 @@ static void tickProcessor(void*)
         const unsigned long long curTimeTick = __rdtsc();
         const unsigned int nextTick = system.tick + 1;
 
-        if (broadcastedComputors.broadcastComputors.computors.epoch == system.epoch
+        if (broadcastedComputors.computors.epoch == system.epoch
             && ts.tickInCurrentEpochStorage(nextTick))
         {
             const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
@@ -3308,7 +3305,7 @@ static void tickProcessor(void*)
                                 {
                                     m256i saltedData[2];
                                     m256i saltedDigest;
-                                    saltedData[0] = broadcastedComputors.broadcastComputors.computors.publicKeys[tick->computorIndex];
+                                    saltedData[0] = broadcastedComputors.computors.publicKeys[tick->computorIndex];
                                     saltedData[1].m256i_u64[0] = resourceTestingDigest;
                                     KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &saltedDigest, sizeof(resourceTestingDigest));
                                     if (tick->saltedResourceTestingDigest == saltedDigest.m256i_u64[0])
@@ -4281,10 +4278,10 @@ static void processKeyPresses()
             {
                 if (faultyComputorFlags[i >> 6] & (1ULL << (i & 63)))
                 {
-                    getIdentity(broadcastedComputors.broadcastComputors.computors.publicKeys[i].m256i_u8, message, false);
+                    getIdentity(broadcastedComputors.computors.publicKeys[i].m256i_u8, message, false);
                     appendText(message, L" = ");
                     long long amount = 0;
-                    const int spectrumIndex = ::spectrumIndex(broadcastedComputors.broadcastComputors.computors.publicKeys[i]);
+                    const int spectrumIndex = ::spectrumIndex(broadcastedComputors.computors.publicKeys[i]);
                     if (spectrumIndex >= 0)
                     {
                         amount = energy(spectrumIndex);
@@ -4761,8 +4758,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         _InterlockedIncrement64(&numberOfDisseminatedRequests);
 
                         // send RequestComputors message at beginning of epoch
-                        if (!broadcastedComputors.broadcastComputors.computors.epoch
-                            || broadcastedComputors.broadcastComputors.computors.epoch != system.epoch)
+                        if (!broadcastedComputors.computors.epoch
+                            || broadcastedComputors.computors.epoch != system.epoch)
                         {
                             requestedComputors.header.randomizeDejavu();
                             bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
