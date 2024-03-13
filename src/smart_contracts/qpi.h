@@ -4969,7 +4969,7 @@ namespace QPI
 	{
 	private:
 		static_assert(L && !(L & (L - 1)),
-			"The capacity of the collection must be 2^N."
+			"The capacity of the array must be 2^N."
 			);
 
 		T _values[L];

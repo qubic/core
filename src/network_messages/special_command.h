@@ -65,7 +65,7 @@ struct SpecialCommandSetProposalAndBallotResponse
 
 #define SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST 5ULL
 #define SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_RESPONSE 6ULL
-struct SpecialCommandSetSolutionThresholdResquestAndResponse
+struct SpecialCommandSetSolutionThresholdRequestAndResponse
 {
     unsigned long long everIncreasingNonceAndCommandType;
     unsigned int epoch;
@@ -75,7 +75,7 @@ struct SpecialCommandSetSolutionThresholdResquestAndResponse
 
 #define SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST 7ULL // F12
 #define SPECIAL_COMMAND_TOGGLE_MAIN_MODE_RESPONSE 8ULL // F12
-struct SpecialCommandToggleMainModeResquestAndResponse
+struct SpecialCommandToggleMainModeRequestAndResponse
 {
     unsigned long long everIncreasingNonceAndCommandType;
     unsigned char mainModeFlag; // 0 Aux - 1 Main
