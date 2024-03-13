@@ -542,9 +542,10 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     }
                                     if (k == system.numberOfSolutions)
                                     {
-                                        unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_nonce);
+                                        unsigned long long solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_nonce);
+                                        const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && ((solutionScore >= (DATA_LENGTH / 2) + solutionThreshold[system.epoch]) || (solutionScore <= (DATA_LENGTH / 2) - solutionThreshold[system.epoch])))
+                                            && ((solutionScore >= (DATA_LENGTH / 2) + threshold) || (solutionScore <= (DATA_LENGTH / 2) - threshold)))
                                         {
                                             ACQUIRE(solutionsLock);
 
@@ -1124,24 +1125,24 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             
             case SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST:
             {
-                SpecialCommandSetSolutionThresholdResquestAndResponse* _request = header->getPayload<SpecialCommandSetSolutionThresholdResquestAndResponse>();
+                SpecialCommandSetSolutionThresholdRequestAndResponse* _request = header->getPayload<SpecialCommandSetSolutionThresholdRequestAndResponse>();
                 // can only set future epoch
-                if (_request->epoch > system.epoch)
+                if (_request->epoch > system.epoch && _request->epoch < MAX_NUMBER_EPOCH)
                 {
                     solutionThreshold[_request->epoch] = _request->threshold;
                 }
-                SpecialCommandSetSolutionThresholdResquestAndResponse response;
+                SpecialCommandSetSolutionThresholdRequestAndResponse response;
                 response.everIncreasingNonceAndCommandType = _request->everIncreasingNonceAndCommandType;
                 response.epoch = _request->epoch;
-                response.threshold = solutionThreshold[_request->epoch];
-                enqueueResponse(peer, sizeof(SpecialCommandSetSolutionThresholdResquestAndResponse), SpecialCommand::type, header->dejavu(), &response);
+                response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch] : SOLUTION_THRESHOLD_DEFAULT;
+                enqueueResponse(peer, sizeof(SpecialCommandSetSolutionThresholdRequestAndResponse), SpecialCommand::type, header->dejavu(), &response);
             }
             break;
             case SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST:
             {
-                SpecialCommandToggleMainModeResquestAndResponse* _request = header->getPayload<SpecialCommandToggleMainModeResquestAndResponse>();
+                SpecialCommandToggleMainModeRequestAndResponse* _request = header->getPayload<SpecialCommandToggleMainModeRequestAndResponse>();
                 mainAuxStatus = _request->mainModeFlag;
-                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeResquestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
             case SPECIAL_COMMAND_REFRESH_PEER_LIST:
@@ -1640,7 +1641,7 @@ static long long __transfer(const m256i& destination, long long amount)
     return remainingAmount;
 }
 
-static long long __transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwner)
+static long long __transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor)
 {
     if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
     {
@@ -1697,7 +1698,7 @@ iteration:
                                 if (assets[possessionIndex].varStruct.possession.numberOfShares >= numberOfShares)
                                 {
                                     int destinationOwnershipIndex, destinationPossessionIndex;
-                                    transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwner, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
+                                    transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwnerAndPossessor, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
 
                                     RELEASE(universeLock);
 
@@ -2117,7 +2118,8 @@ static void processTick(unsigned long long processorNumber)
                                                 resourceTestingDigest ^= solutionScore;
                                                 KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
-                                                if (((solutionScore >= (DATA_LENGTH / 2) + solutionThreshold[system.epoch]) || (solutionScore <= (DATA_LENGTH / 2) - solutionThreshold[system.epoch])))
+                                                const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+                                                if (((solutionScore >= (DATA_LENGTH / 2) + threshold) || (solutionScore <= (DATA_LENGTH / 2) - threshold)))
                                                 {
                                                     for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
                                                     {
@@ -2532,7 +2534,7 @@ static void beginEpoch1of2()
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
 
-    if (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > DATA_LENGTH) { // invalid threshold
+    if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > DATA_LENGTH)) { // invalid threshold
         solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
     }
 
@@ -2543,7 +2545,7 @@ static void beginEpoch1of2()
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
-    // Reset resource testing digest at begining of the epoch
+    // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
     resourceTestingDigest = 0;
 
@@ -4445,7 +4447,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
         
         // Initialize resource management
-        // ASSUMPTION: - each processor (CPU core) is binded to different functional thread.
+        // ASSUMPTION: - each processor (CPU core) is bound to different functional thread.
         //             - there are potentially 2+ tick processors in the future
         // procId is guaranteed lower than MAX_NUMBER_OF_PROCESSORS (https://github.com/tianocore/edk2/blob/master/MdePkg/Include/Protocol/MpService.h#L615)
         // First part: tick processors always process solutions         

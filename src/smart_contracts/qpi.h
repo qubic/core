@@ -623,12 +623,12 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values >> (index & 1)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values = (_values & (~(1ULL << (index & 1)))) | (((uint64)value) << (index & 1));
 		}
@@ -640,12 +640,12 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values >> (index & 3)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values = (_values & (~(1ULL << (index & 3)))) | (((uint64)value) << (index & 3));
 		}
@@ -657,12 +657,12 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values >> (index & 7)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values = (_values & (~(1ULL << (index & 7)))) | (((uint64)value) << (index & 7));
 		}
@@ -674,12 +674,12 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values >> (index & 15)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values = (_values & (~(1ULL << (index & 15)))) | (((uint64)value) << (index & 15));
 		}
@@ -691,12 +691,12 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values >> (index & 31)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values = (_values & (~(1ULL << (index & 31)))) | (((uint64)value) << (index & 31));
 		}
@@ -708,12 +708,12 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values = (_values & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -725,12 +725,12 @@ namespace QPI
 		uint64 _values[2];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -742,12 +742,12 @@ namespace QPI
 		uint64 _values[4];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -759,12 +759,12 @@ namespace QPI
 		uint64 _values[8];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -776,12 +776,12 @@ namespace QPI
 		uint64 _values[16];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -793,12 +793,12 @@ namespace QPI
 		uint64 _values[32];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -810,12 +810,12 @@ namespace QPI
 		uint64 _values[64];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -827,12 +827,12 @@ namespace QPI
 		uint64 _values[128];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -844,12 +844,12 @@ namespace QPI
 		uint64 _values[256];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -861,12 +861,12 @@ namespace QPI
 		uint64 _values[512];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -878,12 +878,12 @@ namespace QPI
 		uint64 _values[1024];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -895,12 +895,12 @@ namespace QPI
 		uint64 _values[2048];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -912,12 +912,12 @@ namespace QPI
 		uint64 _values[4096];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -929,12 +929,12 @@ namespace QPI
 		uint64 _values[8192];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -946,12 +946,12 @@ namespace QPI
 		uint64 _values[16384];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -963,12 +963,12 @@ namespace QPI
 		uint64 _values[32768];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -980,12 +980,12 @@ namespace QPI
 		uint64 _values[65536];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -997,12 +997,12 @@ namespace QPI
 		uint64 _values[131072];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -1014,12 +1014,12 @@ namespace QPI
 		uint64 _values[262144];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -1031,12 +1031,12 @@ namespace QPI
 		uint64 _values[524288];
 
 	public:
-		inline bit get(uint32 index)
+		inline bit get(uint64 index)
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
 
-		inline void set(uint32 index, bit value)
+		inline void set(uint64 index, bit value)
 		{
 			_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] = (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
@@ -1048,12 +1048,12 @@ namespace QPI
 		sint8 _values[2];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1065,12 +1065,12 @@ namespace QPI
 		sint8 _values[4];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1082,12 +1082,12 @@ namespace QPI
 		sint8 _values[8];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1099,12 +1099,12 @@ namespace QPI
 		sint8 _values[16];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1116,12 +1116,12 @@ namespace QPI
 		sint8 _values[32];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1138,12 +1138,12 @@ namespace QPI
 		sint8 _values[64];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1155,12 +1155,12 @@ namespace QPI
 		sint8 _values[128];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1172,12 +1172,12 @@ namespace QPI
 		sint8 _values[256];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1189,12 +1189,12 @@ namespace QPI
 		sint8 _values[512];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1206,12 +1206,12 @@ namespace QPI
 		sint8 _values[1024];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1223,12 +1223,12 @@ namespace QPI
 		sint8 _values[2048];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1240,12 +1240,12 @@ namespace QPI
 		sint8 _values[4096];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1257,12 +1257,12 @@ namespace QPI
 		sint8 _values[8192];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1274,12 +1274,12 @@ namespace QPI
 		sint8 _values[16384];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1291,12 +1291,12 @@ namespace QPI
 		sint8 _values[32768];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1308,12 +1308,12 @@ namespace QPI
 		sint8 _values[65536];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1325,12 +1325,12 @@ namespace QPI
 		sint8 _values[131072];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1342,12 +1342,12 @@ namespace QPI
 		sint8 _values[262144];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1359,12 +1359,12 @@ namespace QPI
 		sint8 _values[524288];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1376,12 +1376,12 @@ namespace QPI
 		sint8 _values[1048576];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1393,12 +1393,12 @@ namespace QPI
 		sint8 _values[2097152];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1410,12 +1410,12 @@ namespace QPI
 		sint8 _values[4194304];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1427,12 +1427,12 @@ namespace QPI
 		sint8 _values[8388608];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1444,12 +1444,12 @@ namespace QPI
 		sint8 _values[16777216];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1461,12 +1461,12 @@ namespace QPI
 		sint8 _values[33554432];
 
 	public:
-		inline sint8 get(uint32 index)
+		inline sint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint8 value)
+		inline void set(uint64 index, sint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1478,12 +1478,12 @@ namespace QPI
 		uint8 _values[2];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1495,12 +1495,12 @@ namespace QPI
 		uint8 _values[4];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1512,12 +1512,12 @@ namespace QPI
 		uint8 _values[8];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1529,12 +1529,12 @@ namespace QPI
 		uint8 _values[16];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1546,12 +1546,12 @@ namespace QPI
 		uint8 _values[32];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1568,12 +1568,12 @@ namespace QPI
 		uint8 _values[64];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1585,12 +1585,12 @@ namespace QPI
 		uint8 _values[128];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1602,12 +1602,12 @@ namespace QPI
 		uint8 _values[256];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1619,12 +1619,12 @@ namespace QPI
 		uint8 _values[512];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1636,12 +1636,12 @@ namespace QPI
 		uint8 _values[1024];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1653,12 +1653,12 @@ namespace QPI
 		uint8 _values[2048];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1670,12 +1670,12 @@ namespace QPI
 		uint8 _values[4096];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1687,12 +1687,12 @@ namespace QPI
 		uint8 _values[8192];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1704,12 +1704,12 @@ namespace QPI
 		uint8 _values[16384];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1721,12 +1721,12 @@ namespace QPI
 		uint8 _values[32768];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1738,12 +1738,12 @@ namespace QPI
 		uint8 _values[65536];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1755,12 +1755,12 @@ namespace QPI
 		uint8 _values[131072];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1772,12 +1772,12 @@ namespace QPI
 		uint8 _values[262144];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1789,12 +1789,12 @@ namespace QPI
 		uint8 _values[524288];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1806,12 +1806,12 @@ namespace QPI
 		uint8 _values[1048576];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1823,12 +1823,12 @@ namespace QPI
 		uint8 _values[2097152];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1840,12 +1840,12 @@ namespace QPI
 		uint8 _values[4194304];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1857,12 +1857,12 @@ namespace QPI
 		uint8 _values[8388608];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1874,12 +1874,12 @@ namespace QPI
 		uint8 _values[16777216];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1891,12 +1891,12 @@ namespace QPI
 		uint8 _values[33554432];
 
 	public:
-		inline uint8 get(uint32 index)
+		inline uint8 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint8 value)
+		inline void set(uint64 index, uint8 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1908,12 +1908,12 @@ namespace QPI
 		sint16 _values[2];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1925,12 +1925,12 @@ namespace QPI
 		sint16 _values[4];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1942,12 +1942,12 @@ namespace QPI
 		sint16 _values[8];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1959,12 +1959,12 @@ namespace QPI
 		sint16 _values[16];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1981,12 +1981,12 @@ namespace QPI
 		sint16 _values[32];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -1998,12 +1998,12 @@ namespace QPI
 		sint16 _values[64];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2015,12 +2015,12 @@ namespace QPI
 		sint16 _values[128];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2032,12 +2032,12 @@ namespace QPI
 		sint16 _values[256];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2049,12 +2049,12 @@ namespace QPI
 		sint16 _values[512];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2066,12 +2066,12 @@ namespace QPI
 		sint16 _values[1024];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2083,12 +2083,12 @@ namespace QPI
 		sint16 _values[2048];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2100,12 +2100,12 @@ namespace QPI
 		sint16 _values[4096];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2117,12 +2117,12 @@ namespace QPI
 		sint16 _values[8192];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2134,12 +2134,12 @@ namespace QPI
 		sint16 _values[16384];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2151,12 +2151,12 @@ namespace QPI
 		sint16 _values[32768];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2168,12 +2168,12 @@ namespace QPI
 		sint16 _values[65536];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2185,12 +2185,12 @@ namespace QPI
 		sint16 _values[131072];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2202,12 +2202,12 @@ namespace QPI
 		sint16 _values[262144];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2219,12 +2219,12 @@ namespace QPI
 		sint16 _values[524288];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2236,12 +2236,12 @@ namespace QPI
 		sint16 _values[1048576];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2253,12 +2253,12 @@ namespace QPI
 		sint16 _values[2097152];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2270,12 +2270,12 @@ namespace QPI
 		sint16 _values[4194304];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2287,12 +2287,12 @@ namespace QPI
 		sint16 _values[8388608];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2304,12 +2304,12 @@ namespace QPI
 		sint16 _values[16777216];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2321,12 +2321,12 @@ namespace QPI
 		sint16 _values[33554432];
 
 	public:
-		inline sint16 get(uint32 index)
+		inline sint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint16 value)
+		inline void set(uint64 index, sint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2338,12 +2338,12 @@ namespace QPI
 		uint16 _values[2];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2355,12 +2355,12 @@ namespace QPI
 		uint16 _values[4];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2372,12 +2372,12 @@ namespace QPI
 		uint16 _values[8];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2389,12 +2389,12 @@ namespace QPI
 		uint16 _values[16];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2411,12 +2411,12 @@ namespace QPI
 		uint16 _values[32];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2428,12 +2428,12 @@ namespace QPI
 		uint16 _values[64];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2445,12 +2445,12 @@ namespace QPI
 		uint16 _values[128];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2462,12 +2462,12 @@ namespace QPI
 		uint16 _values[256];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2479,12 +2479,12 @@ namespace QPI
 		uint16 _values[512];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2496,12 +2496,12 @@ namespace QPI
 		uint16 _values[1024];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2513,12 +2513,12 @@ namespace QPI
 		uint16 _values[2048];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2530,12 +2530,12 @@ namespace QPI
 		uint16 _values[4096];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2547,12 +2547,12 @@ namespace QPI
 		uint16 _values[8192];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2564,12 +2564,12 @@ namespace QPI
 		uint16 _values[16384];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2581,12 +2581,12 @@ namespace QPI
 		uint16 _values[32768];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2598,12 +2598,12 @@ namespace QPI
 		uint16 _values[65536];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2615,12 +2615,12 @@ namespace QPI
 		uint16 _values[131072];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2632,12 +2632,12 @@ namespace QPI
 		uint16 _values[262144];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2649,12 +2649,12 @@ namespace QPI
 		uint16 _values[524288];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2666,12 +2666,12 @@ namespace QPI
 		uint16 _values[1048576];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2683,12 +2683,12 @@ namespace QPI
 		uint16 _values[2097152];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2700,12 +2700,12 @@ namespace QPI
 		uint16 _values[4194304];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2717,12 +2717,12 @@ namespace QPI
 		uint16 _values[8388608];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2734,12 +2734,12 @@ namespace QPI
 		uint16 _values[16777216];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2751,12 +2751,12 @@ namespace QPI
 		uint16 _values[33554432];
 
 	public:
-		inline uint16 get(uint32 index)
+		inline uint16 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint16 value)
+		inline void set(uint64 index, uint16 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2768,12 +2768,12 @@ namespace QPI
 		sint32 _values[2];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2785,12 +2785,12 @@ namespace QPI
 		sint32 _values[4];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2802,12 +2802,12 @@ namespace QPI
 		sint32 _values[8];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2824,12 +2824,12 @@ namespace QPI
 		sint32 _values[16];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2841,12 +2841,12 @@ namespace QPI
 		sint32 _values[32];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2858,12 +2858,12 @@ namespace QPI
 		sint32 _values[64];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2875,12 +2875,12 @@ namespace QPI
 		sint32 _values[128];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2892,12 +2892,12 @@ namespace QPI
 		sint32 _values[256];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2909,12 +2909,12 @@ namespace QPI
 		sint32 _values[512];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2926,12 +2926,12 @@ namespace QPI
 		sint32 _values[1024];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2943,12 +2943,12 @@ namespace QPI
 		sint32 _values[2048];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2960,12 +2960,12 @@ namespace QPI
 		sint32 _values[4096];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2977,12 +2977,12 @@ namespace QPI
 		sint32 _values[8192];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -2994,12 +2994,12 @@ namespace QPI
 		sint32 _values[16384];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3011,12 +3011,12 @@ namespace QPI
 		sint32 _values[32768];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3028,12 +3028,12 @@ namespace QPI
 		sint32 _values[65536];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3045,12 +3045,12 @@ namespace QPI
 		sint32 _values[131072];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3062,12 +3062,12 @@ namespace QPI
 		sint32 _values[262144];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3079,12 +3079,12 @@ namespace QPI
 		sint32 _values[524288];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3096,12 +3096,12 @@ namespace QPI
 		sint32 _values[1048576];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3113,12 +3113,12 @@ namespace QPI
 		sint32 _values[2097152];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3130,12 +3130,12 @@ namespace QPI
 		sint32 _values[4194304];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3147,12 +3147,12 @@ namespace QPI
 		sint32 _values[8388608];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3164,12 +3164,12 @@ namespace QPI
 		sint32 _values[16777216];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3181,12 +3181,12 @@ namespace QPI
 		sint32 _values[33554432];
 
 	public:
-		inline sint32 get(uint32 index)
+		inline sint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint32 value)
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3198,12 +3198,12 @@ namespace QPI
 		uint32 _values[2];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3215,12 +3215,12 @@ namespace QPI
 		uint32 _values[4];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3232,12 +3232,12 @@ namespace QPI
 		uint32 _values[8];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3254,12 +3254,12 @@ namespace QPI
 		uint32 _values[16];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3271,12 +3271,12 @@ namespace QPI
 		uint32 _values[32];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3288,12 +3288,12 @@ namespace QPI
 		uint32 _values[64];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3305,12 +3305,12 @@ namespace QPI
 		uint32 _values[128];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3322,12 +3322,12 @@ namespace QPI
 		uint32 _values[256];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3339,12 +3339,12 @@ namespace QPI
 		uint32 _values[512];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3356,12 +3356,12 @@ namespace QPI
 		uint32 _values[1024];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3373,12 +3373,12 @@ namespace QPI
 		uint32 _values[2048];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3390,12 +3390,12 @@ namespace QPI
 		uint32 _values[4096];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3407,12 +3407,12 @@ namespace QPI
 		uint32 _values[8192];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3424,12 +3424,12 @@ namespace QPI
 		uint32 _values[16384];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3441,12 +3441,12 @@ namespace QPI
 		uint32 _values[32768];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3458,12 +3458,12 @@ namespace QPI
 		uint32 _values[65536];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3475,12 +3475,12 @@ namespace QPI
 		uint32 _values[131072];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3492,12 +3492,12 @@ namespace QPI
 		uint32 _values[262144];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3509,12 +3509,12 @@ namespace QPI
 		uint32 _values[524288];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3526,12 +3526,12 @@ namespace QPI
 		uint32 _values[1048576];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3543,12 +3543,12 @@ namespace QPI
 		uint32 _values[2097152];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3560,12 +3560,12 @@ namespace QPI
 		uint32 _values[4194304];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3577,12 +3577,12 @@ namespace QPI
 		uint32 _values[8388608];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3594,12 +3594,12 @@ namespace QPI
 		uint32 _values[16777216];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3611,12 +3611,12 @@ namespace QPI
 		uint32 _values[33554432];
 
 	public:
-		inline uint32 get(uint32 index)
+		inline uint32 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint32 value)
+		inline void set(uint64 index, uint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3628,12 +3628,12 @@ namespace QPI
 		sint64 _values[2];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3645,12 +3645,12 @@ namespace QPI
 		sint64 _values[4];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3667,12 +3667,12 @@ namespace QPI
 		sint64 _values[8];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3684,12 +3684,12 @@ namespace QPI
 		sint64 _values[16];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3701,12 +3701,12 @@ namespace QPI
 		sint64 _values[32];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3718,12 +3718,12 @@ namespace QPI
 		sint64 _values[64];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3735,12 +3735,12 @@ namespace QPI
 		sint64 _values[128];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3752,12 +3752,12 @@ namespace QPI
 		sint64 _values[256];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3769,12 +3769,12 @@ namespace QPI
 		sint64 _values[512];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3786,12 +3786,12 @@ namespace QPI
 		sint64 _values[1024];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3803,12 +3803,12 @@ namespace QPI
 		sint64 _values[2048];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3820,12 +3820,12 @@ namespace QPI
 		sint64 _values[4096];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3837,12 +3837,12 @@ namespace QPI
 		sint64 _values[8192];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3854,12 +3854,12 @@ namespace QPI
 		sint64 _values[16384];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3871,12 +3871,12 @@ namespace QPI
 		sint64 _values[32768];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3888,12 +3888,12 @@ namespace QPI
 		sint64 _values[65536];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3905,12 +3905,12 @@ namespace QPI
 		sint64 _values[131072];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3922,12 +3922,12 @@ namespace QPI
 		sint64 _values[262144];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3939,12 +3939,12 @@ namespace QPI
 		sint64 _values[524288];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3956,12 +3956,12 @@ namespace QPI
 		sint64 _values[1048576];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3973,12 +3973,12 @@ namespace QPI
 		sint64 _values[2097152];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -3990,12 +3990,12 @@ namespace QPI
 		sint64 _values[4194304];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4007,12 +4007,12 @@ namespace QPI
 		sint64 _values[8388608];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4024,12 +4024,12 @@ namespace QPI
 		sint64 _values[16777216];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4041,12 +4041,12 @@ namespace QPI
 		sint64 _values[33554432];
 
 	public:
-		inline sint64 get(uint32 index)
+		inline sint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, sint64 value)
+		inline void set(uint64 index, sint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4058,12 +4058,12 @@ namespace QPI
 		uint64 _values[2];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4075,12 +4075,12 @@ namespace QPI
 		uint64 _values[4];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4097,12 +4097,12 @@ namespace QPI
 		uint64 _values[8];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4114,12 +4114,12 @@ namespace QPI
 		uint64 _values[16];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4131,12 +4131,12 @@ namespace QPI
 		uint64 _values[32];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4148,12 +4148,12 @@ namespace QPI
 		uint64 _values[64];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4165,12 +4165,12 @@ namespace QPI
 		uint64 _values[128];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4182,12 +4182,12 @@ namespace QPI
 		uint64 _values[256];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4199,12 +4199,12 @@ namespace QPI
 		uint64 _values[512];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4216,12 +4216,12 @@ namespace QPI
 		uint64 _values[1024];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4233,12 +4233,12 @@ namespace QPI
 		uint64 _values[2048];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4250,12 +4250,12 @@ namespace QPI
 		uint64 _values[4096];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4267,12 +4267,12 @@ namespace QPI
 		uint64 _values[8192];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4284,12 +4284,12 @@ namespace QPI
 		uint64 _values[16384];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4301,12 +4301,12 @@ namespace QPI
 		uint64 _values[32768];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4318,12 +4318,12 @@ namespace QPI
 		uint64 _values[65536];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4335,12 +4335,12 @@ namespace QPI
 		uint64 _values[131072];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4352,12 +4352,12 @@ namespace QPI
 		uint64 _values[262144];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4369,12 +4369,12 @@ namespace QPI
 		uint64 _values[524288];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4386,12 +4386,12 @@ namespace QPI
 		uint64 _values[1048576];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4403,12 +4403,12 @@ namespace QPI
 		uint64 _values[2097152];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4420,12 +4420,12 @@ namespace QPI
 		uint64 _values[4194304];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4437,12 +4437,12 @@ namespace QPI
 		uint64 _values[8388608];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4454,12 +4454,12 @@ namespace QPI
 		uint64 _values[16777216];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4471,12 +4471,12 @@ namespace QPI
 		uint64 _values[33554432];
 
 	public:
-		inline uint64 get(uint32 index)
+		inline uint64 get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, uint64 value)
+		inline void set(uint64 index, uint64 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4488,12 +4488,12 @@ namespace QPI
 		id _value;
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _value;
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_value = value;
 		}
@@ -4545,12 +4545,12 @@ namespace QPI
 		id _values[2];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4562,12 +4562,12 @@ namespace QPI
 		id _values[4];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4579,12 +4579,12 @@ namespace QPI
 		id _values[8];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4596,12 +4596,12 @@ namespace QPI
 		id _values[16];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4613,12 +4613,12 @@ namespace QPI
 		id _values[32];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4630,12 +4630,12 @@ namespace QPI
 		id _values[64];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4647,12 +4647,12 @@ namespace QPI
 		id _values[128];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4664,12 +4664,12 @@ namespace QPI
 		id _values[256];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4681,12 +4681,12 @@ namespace QPI
 		id _values[512];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4698,12 +4698,12 @@ namespace QPI
 		id _values[1024];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4715,12 +4715,12 @@ namespace QPI
 		id _values[2048];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4732,12 +4732,12 @@ namespace QPI
 		id _values[4096];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4749,12 +4749,12 @@ namespace QPI
 		id _values[8192];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4766,12 +4766,12 @@ namespace QPI
 		id _values[16384];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4783,12 +4783,12 @@ namespace QPI
 		id _values[32768];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4800,12 +4800,12 @@ namespace QPI
 		id _values[65536];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4817,12 +4817,12 @@ namespace QPI
 		id _values[131072];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4834,12 +4834,12 @@ namespace QPI
 		id _values[262144];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4851,12 +4851,12 @@ namespace QPI
 		id _values[524288];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4868,12 +4868,12 @@ namespace QPI
 		id _values[1048576];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4885,12 +4885,12 @@ namespace QPI
 		id _values[2097152];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4902,12 +4902,12 @@ namespace QPI
 		id _values[4194304];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4919,12 +4919,12 @@ namespace QPI
 		id _values[8388608];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4936,12 +4936,12 @@ namespace QPI
 		id _values[16777216];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4953,12 +4953,34 @@ namespace QPI
 		id _values[33554432];
 
 	public:
-		inline id get(uint32 index)
+		inline id get(uint64 index)
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint32 index, id value)
+		inline void set(uint64 index, id value)
+		{
+			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
+		}
+	};
+
+	template <typename T, uint64 L>
+	struct array
+	{
+	private:
+		static_assert(L && !(L & (L - 1)),
+			"The capacity of the array must be 2^N."
+			);
+
+		T _values[L];
+
+	public:
+		inline T get(uint64 index)
+		{
+			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
+		}
+
+		inline void set(uint64 index, sint32 value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -4966,7 +4988,7 @@ namespace QPI
 
 	// Collection of priority queues of elements with type T and total element capacity L.
 	// Each ID pov (point of view) has an own queue.
-	template <typename T, unsigned long long L>
+	template <typename T, uint64 L>
 	struct collection
 	{
 	private:
@@ -5496,9 +5518,9 @@ namespace QPI
 		id owner,
 		id possessor,
 		sint64 numberOfShares,
-		id newOwner
+		id newOwnerAndPossessor
 	) { // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
-		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwner);
+		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwnerAndPossessor);
 	}
 
 	static uint8 year(
