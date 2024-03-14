@@ -3447,6 +3447,14 @@ static void tickProcessor(void*)
                                         // seamless epoch transistion
 #ifndef NDEBUG
                                         addDebugMessage(L"Starting epoch transition");
+                                        {
+                                            CHAR16 dbgMsgBuf[300];
+                                            CHAR16 digestChars[60 + 1];
+                                            getIdentity(score->initialRandomSeed.m256i_u8, digestChars, true);
+                                            setText(dbgMsgBuf, L"Old mining seed: ");
+                                            appendText(dbgMsgBuf, digestChars);
+                                            addDebugMessage(dbgMsgBuf);
+                                        }
 #endif
 
                                         // wait until all request processors are in waiting state
@@ -3472,7 +3480,28 @@ static void tickProcessor(void*)
                                         beginEpoch2of2();
 #ifndef NDEBUG
                                         addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
+                                        {
+                                            CHAR16 dbgMsgBuf[300];
+                                            CHAR16 digestChars[60 + 1];
+                                            getIdentity(score->initialRandomSeed.m256i_u8, digestChars, true);
+                                            setText(dbgMsgBuf, L"New mining seed: ");
+                                            appendText(dbgMsgBuf, digestChars);
+                                            addDebugMessage(dbgMsgBuf);
+                                        }
 #endif
+
+                                        // Some debug checks that we are ready for the next epoch
+                                        ASSERT(system.numberOfSolutions == 0);
+                                        ASSERT(numberOfMiners == NUMBER_OF_COMPUTORS);
+                                        ASSERT(isZero(system.solutions, sizeof(system.solutions)));
+                                        ASSERT(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
+                                        ASSERT(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
+                                        ASSERT(isZero((void*)minerScores, sizeof(minerScores)));
+                                        ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
+                                        ASSERT(isZero(competitorScores, sizeof(competitorScores)));
+                                        ASSERT(isZero(competitorPublicKeys, sizeof(competitorPublicKeys)));
+                                        ASSERT(isZero(competitorComputorStatuses, sizeof(competitorComputorStatuses)));
+                                        ASSERT(minimumComputorScore == 0 && minimumCandidateScore == 0);
 
                                         // instruct main loop to save files and wait until it is done
                                         spectrumMustBeSaved = true;

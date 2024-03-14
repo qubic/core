@@ -56,3 +56,15 @@ static inline void freePool(void* buffer)
 }
 
 #endif
+
+// This should to be optimized if used in non-debugging context (using unsigned long long comparison as much as possible)
+static inline bool isZero(const void* ptr, unsigned long long size)
+{
+    const char* cPtr = (const char*)ptr;
+    for (unsigned long long i = 0; i < size; ++i)
+    {
+        if (cPtr[i] != 0)
+            return false;
+    }
+    return true;
+}
