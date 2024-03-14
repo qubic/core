@@ -3474,10 +3474,14 @@ static void tickProcessor(void*)
                                         addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
 #endif
 
-
+                                        // instruct main loop to save files and wait until it is done
                                         spectrumMustBeSaved = true;
                                         universeMustBeSaved = true;
                                         computerMustBeSaved = true;
+                                        while (computerMustBeSaved || universeMustBeSaved || spectrumMustBeSaved)
+                                        {
+                                            _mm_pause();
+                                        }
 
                                         // update etalon tick
                                         etalonTick.epoch++;
@@ -4888,18 +4892,18 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
                 if (spectrumMustBeSaved)
                 {
-                    spectrumMustBeSaved = false;
                     saveSpectrum();
+                    spectrumMustBeSaved = false;
                 }
                 if (universeMustBeSaved)
                 {
-                    universeMustBeSaved = false;
                     saveUniverse();
+                    universeMustBeSaved = false;
                 }
                 if (computerMustBeSaved)
                 {
-                    computerMustBeSaved = false;
                     saveComputer();
+                    computerMustBeSaved = false;
                 }
 
                 if (forceRefreshPeerList)
