@@ -162,68 +162,11 @@ static void logStatusToConsole(const CHAR16* message, const EFI_STATUS status, c
     logToConsole(::message);
 }
 
-
-#if defined(EXPECT_TRUE)
-
-// in gtest context, use EXPECT_TRUE as ASSERT
-#define ASSERT EXPECT_TRUE
-
-#elif defined(NDEBUG)
-
-// with NDEBUG, make ASSERT disappear
-#define ASSERT(expression) ((void)0)
-
-#else
-
-static CHAR16 debugMessage[128][16384];
-static int debugMessageCount = 0;
-static char volatile debugLogLock = 0;
-
-// Print debug messages added with addDebugMessage().
-// CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
-static void printDebugMessages()
+// Count characters before terminating NULL
+static unsigned int stringLength(const CHAR16* str)
 {
-    ACQUIRE(debugLogLock);
-    for (int i = 0; i < debugMessageCount; i++)
-    {
-        logToConsole(debugMessage[i]);
-    }
-    debugMessageCount = 0;
-    RELEASE(debugLogLock);
+    unsigned int l = 0;
+    while (str[l] != 0)
+        l++;
+    return l;
 }
-
-// Add a message for logging from arbitrary thread
-static void addDebugMessage(const CHAR16* msg)
-{
-    ACQUIRE(debugLogLock);
-    if (debugMessageCount < 128)
-    {
-        setText(debugMessage[debugMessageCount], msg);
-        ++debugMessageCount;
-    }
-    RELEASE(debugLogLock);
-}
-
-// Add a assert message for logging from arbitrary thread
-static void addDebugMessageAssert(const CHAR16* message, const CHAR16* file, const unsigned int lineNumber)
-{
-    ACQUIRE(debugLogLock);
-    if (debugMessageCount < 128)
-    {
-        setText(debugMessage[debugMessageCount], L"Assertion failed: ");
-        appendText(debugMessage[debugMessageCount], message);
-        appendText(debugMessage[debugMessageCount], L" at line ");
-        appendNumber(debugMessage[debugMessageCount], lineNumber, FALSE);
-        appendText(debugMessage[debugMessageCount], L" in ");
-        appendText(debugMessage[debugMessageCount], file);
-        ++debugMessageCount;
-    }
-    RELEASE(debugLogLock);
-}
-
-#define ASSERT(expression) (void)(                                                       \
-            (!!(expression)) ||                                                              \
-            (addDebugMessageAssert(_CRT_WIDE(#expression), _CRT_WIDE(__FILE__), (unsigned int)(__LINE__)), 0) \
-        )
-
-#endif

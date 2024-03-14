@@ -6,6 +6,7 @@
 #include "platform/memory.h"
 #include "platform/concurrency.h"
 #include "platform/console_logging.h"
+#include "platform/debugging.h"
 
 #include "public_settings.h"
 
@@ -337,7 +338,9 @@ public:
         }
 
         // Check current epoch data
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         test_current_epoch:
+#endif
         for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
         {
             const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);
