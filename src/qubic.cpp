@@ -252,7 +252,15 @@ static void logToConsole(const CHAR16* message)
     appendText(timestampedMessage, message);
     appendText(timestampedMessage, L"\r\n");
 
+#ifdef NDEBUG
     outputStringToConsole(timestampedMessage);
+#else
+    bool logAsDebugMessage = epochTransitionState || system.tick - system.initialTick < 3;
+    if (logAsDebugMessage)
+        addDebugMessage(timestampedMessage);
+    else
+        outputStringToConsole(timestampedMessage);
+#endif
 }
 
 
@@ -4174,15 +4182,7 @@ static void logInfo()
     appendText(message, L" | Miss ");
     appendNumber(message, score->scoreCache.missCount(), TRUE);
 #endif
-#ifdef NDEBUG
     logToConsole(message);
-#else
-    bool logAsDebugMessage = epochTransitionState || system.tick - system.initialTick < 4;
-    if (logAsDebugMessage)
-        addDebugMessage(message);
-    else
-        logToConsole(message);
-#endif
     prevNumberOfProcessedRequests = numberOfProcessedRequests;
     prevNumberOfDiscardedRequests = numberOfDiscardedRequests;
     prevNumberOfDuplicateRequests = numberOfDuplicateRequests;
@@ -4219,14 +4219,7 @@ static void logInfo()
             }
         }
     }
-#ifdef NDEBUG
     logToConsole(message);
-#else
-    if (logAsDebugMessage)
-        addDebugMessage(message);
-    else
-        logToConsole(message);
-#endif
 
     unsigned int numberOfPendingTransactions = 0;
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
@@ -4283,14 +4276,7 @@ static void logInfo()
     }
     appendNumber(message, numberOfPendingTransactions, TRUE);
     appendText(message, L" pending transactions.");
-#ifdef NDEBUG
     logToConsole(message);
-#else
-    if (logAsDebugMessage)
-        addDebugMessage(message);
-    else
-        logToConsole(message);
-#endif
 
     unsigned int filledRequestQueueBufferSize = (requestQueueBufferHead >= requestQueueBufferTail) ? (requestQueueBufferHead - requestQueueBufferTail) : (REQUEST_QUEUE_BUFFER_SIZE - (requestQueueBufferTail - requestQueueBufferHead));
     unsigned int filledResponseQueueBufferSize = (responseQueueBufferHead >= responseQueueBufferTail) ? (responseQueueBufferHead - responseQueueBufferTail) : (RESPONSE_QUEUE_BUFFER_SIZE - (responseQueueBufferTail - responseQueueBufferHead));
@@ -4315,14 +4301,7 @@ static void logInfo()
     appendText(message, L" mcs | Total Qx execution time = ");
     appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] / frequency, TRUE);
     appendText(message, L" s.");
-#ifdef NDEBUG
     logToConsole(message);
-#else
-    if (logAsDebugMessage)
-        addDebugMessage(message);
-    else
-        logToConsole(message);
-#endif
 }
 
 static void processKeyPresses()

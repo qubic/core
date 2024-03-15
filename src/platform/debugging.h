@@ -47,13 +47,23 @@ static void printDebugMessages()
     ACQUIRE(debugLogLock);
     for (int i = 0; i < debugMessageCount; i++)
     {
-        logToConsole(debugMessage[i]);
+        // Make sure there is a newline at the end
+        unsigned int strLen = stringLength(debugMessage[i]);
+        if (debugMessage[i][strLen-1] != L'\n')
+        {
+            appendText(debugMessage[i], L"\r\n");
+            strLen += 2;
+        }
+
+        // Write to console
+        outputStringToConsole(debugMessage[i]);
+
 #if WRITE_DEBUG_MESSAGES_TO_FILE
+        // Write to log file
         if (file)
         {
-            // Write last timestamped message written to console also into file
-            char* buffer = (char*)timestampedMessage;
-            unsigned long long totalSize = stringLength(timestampedMessage) * sizeof(CHAR16);
+            char* buffer = (char*)debugMessage[i];
+            unsigned long long totalSize = strLen * sizeof(CHAR16);
             unsigned long long writtenSize = 0;
             while (writtenSize < totalSize)
             {
