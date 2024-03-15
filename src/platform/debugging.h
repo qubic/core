@@ -52,13 +52,13 @@ static void printDebugMessages()
         if (file)
         {
             // Write last timestamped message written to console also into file
-            const CHAR16* buffer = timestampedMessage;
-            unsigned long long totalSize = stringLength(buffer);
+            char* buffer = (char*)timestampedMessage;
+            unsigned long long totalSize = stringLength(timestampedMessage) * sizeof(CHAR16);
             unsigned long long writtenSize = 0;
             while (writtenSize < totalSize)
             {
                 unsigned long long size = (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize));
-                status = file->Write(file, &size, &timestampedMessage[writtenSize]);
+                status = file->Write(file, &size, &buffer[writtenSize]);
                 if (status
                     || size != (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize)))
                 {
