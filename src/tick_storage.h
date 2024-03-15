@@ -151,6 +151,7 @@ public:
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin ts.beginEpoch()");
+        CHAR16 dbgMsgBuf[300];
 #endif
         if (tickBegin && tickInCurrentEpochStorage(newInitialTick))
         {
@@ -159,6 +160,14 @@ public:
             oldTickBegin = newInitialTick - TICKS_TO_KEEP_FROM_PRIOR_EPOCH;
             if (oldTickBegin < tickBegin)
                 oldTickBegin = tickBegin;
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            setText(dbgMsgBuf, L"Keep ticks of prior epoch: oldTickBegin=");
+            appendNumber(dbgMsgBuf, oldTickBegin, FALSE);
+            appendText(dbgMsgBuf, L", oldTickEnd=");
+            appendNumber(dbgMsgBuf, oldTickEnd, FALSE);
+            addDebugMessage(dbgMsgBuf);
+#endif
 
             const unsigned int tickIndex = tickToIndexCurrentEpoch(oldTickBegin);
             const unsigned int tickCount = oldTickEnd - oldTickBegin;
@@ -203,6 +212,14 @@ public:
                     // copy transactions from from recently ended epoch to storage of previous epoch
                     copyMem(oldTickTransactionsPtr, tickTransactionsPtr + *transactionOffsetsFirstToKeep, sumTransactionSizes);
 
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    Transaction* taPtr = (Transaction*)oldTickTransactionsPtr;
+                    ASSERT(taPtr->checkValidity());
+                    setText(dbgMsgBuf, L"first transaction in buffer of prev. epoch: tick=");
+                    appendNumber(dbgMsgBuf, taPtr->tick, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+#endif
+
                     // get tick and transaction index of first transaction to keep
                     unsigned int firstTick = TickTransactionsAccess::ptr(*transactionOffsetsFirstToKeep)->tick;
                     ASSERT(firstTick >= oldTickBegin && firstTick < oldTickEnd);
@@ -214,6 +231,33 @@ public:
                     unsigned long long copiedSumTransactionSizes = 0;
                     auto* oldTransactionOffsetsPtr = TickTransactionOffsetsAccess::getByTickInPreviousEpoch(firstTick) + firstTickTransactionIdx;
                     const auto* transactionOffsetPtr = transactionOffsetsFirstToKeep;
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    setText(dbgMsgBuf, L"firstTick=");
+                    appendNumber(dbgMsgBuf, firstTick, FALSE);
+                    appendText(dbgMsgBuf, L", firstTickTransactionIdx=");
+                    appendNumber(dbgMsgBuf, firstTickTransactionIdx, FALSE);
+                    appendText(dbgMsgBuf, L", sumTransactionSizes=");
+                    appendNumber(dbgMsgBuf, sumTransactionSizes, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+
+                    setText(dbgMsgBuf, L"transactionOffsetsFirstToKeep=");
+                    appendNumber(dbgMsgBuf, (unsigned long long)transactionOffsetsFirstToKeep, FALSE);
+                    appendText(dbgMsgBuf, L", transactionOffsetsBegin=");
+                    appendNumber(dbgMsgBuf, (unsigned long long)transactionOffsetsBegin, FALSE);
+                    appendText(dbgMsgBuf, L", transactionOffsetsEnd=");
+                    appendNumber(dbgMsgBuf, (unsigned long long)transactionOffsetsEnd, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+
+                    setText(dbgMsgBuf, L"oldTransactionOffsetsPtr=");
+                    appendNumber(dbgMsgBuf, (unsigned long long)oldTransactionOffsetsPtr, FALSE);
+                    setText(dbgMsgBuf, L", oldTransactionOffsetsBegin=");
+                    appendNumber(dbgMsgBuf, (unsigned long long)TickTransactionOffsetsAccess::getByTickInPreviousEpoch(oldTickBegin), FALSE);
+                    setText(dbgMsgBuf, L", oldTransactionOffsetsEnd=");
+                    appendNumber(dbgMsgBuf, (unsigned long long)TickTransactionOffsetsAccess::getByTickInPreviousEpoch(oldTickEnd), FALSE);
+                    addDebugMessage(dbgMsgBuf);
+#endif
+
                     while (copiedSumTransactionSizes < sumTransactionSizes)
                     {
                         if (*transactionOffsetPtr)

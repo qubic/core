@@ -904,7 +904,6 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
 {
     RequestedTickTransactions* request = header->getPayload<RequestedTickTransactions>();
 
-    typedef Transaction* (*GetTransactionFunc)(unsigned long long transactionOffset);
     unsigned short tickEpoch = 0;
     const unsigned long long* tsReqTickTransactionOffsets;
     if (ts.tickInCurrentEpochStorage(request->tick))
@@ -936,6 +935,8 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
                 if (tickTransactionOffset)
                 {
                     const Transaction* transaction = ts.tickTransactions(tickTransactionOffset);
+                    ASSERT(transaction->tick == request->tick);
+                    ASSERT(transaction->checkValidity());
                     enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
                 }
             }
@@ -1958,6 +1959,8 @@ static void processTick(unsigned long long processorNumber)
                 if (tsCurrentTickTransactionOffsets[transactionIndex])
                 {
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
+                    ASSERT(transaction->checkValidity());
+                    ASSERT(transaction->tick == system.tick);
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     if (spectrumIndex >= 0
                         && !entityPendingTransactionIndices[spectrumIndex])
@@ -2002,6 +2005,8 @@ static void processTick(unsigned long long processorNumber)
                 if (tsCurrentTickTransactionOffsets[transactionIndex])
                 {
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
+                    ASSERT(transaction->checkValidity());
+                    ASSERT(transaction->tick == system.tick);
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     if (spectrumIndex >= 0
                         && !entityPendingTransactionIndices[spectrumIndex])
@@ -2416,6 +2421,7 @@ static void processTick(unsigned long long processorNumber)
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
 
                         const Transaction* pendingTransaction = ((Transaction*)&entityPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
+                        ASSERT(pendingTransaction->checkValidity());
                         if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
                         {
                             const unsigned int transactionSize = pendingTransaction->totalSize();
@@ -2534,6 +2540,9 @@ static void beginEpoch1of2()
     }
     bs->SetMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
 
+#ifndef NDEBUG
+    ts.checkStateConsistencyWithAssert();
+#endif
     ts.beginEpoch(system.initialTick);
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
@@ -3138,6 +3147,8 @@ static void tickProcessor(void*)
                                 if (tsNextTickTransactionOffsets[i])
                                 {
                                     const Transaction* transaction = ts.tickTransactions(tsNextTickTransactionOffsets[i]);
+                                    ASSERT(transaction->checkValidity());
+                                    ASSERT(transaction->tick == nextTick);
                                     unsigned char digest[32];
                                     KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
                                     if (digest == nextTickData.transactionDigests[i])
@@ -3157,6 +3168,7 @@ static void tickProcessor(void*)
                             for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                             {
                                 Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
+                                ASSERT(pendingTransaction->checkValidity());
                                 if (pendingTransaction->tick == nextTick)
                                 {
                                     ACQUIRE(entityPendingTransactionsLock);
