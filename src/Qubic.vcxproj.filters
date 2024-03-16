@@ -111,6 +111,9 @@
     <ClInclude Include="smart_contracts\QUtil.h">
       <Filter>smart_contracts</Filter>
     </ClInclude>
+    <ClInclude Include="smart_contracts\useful_functions.h">
+      <Filter>smart_contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
