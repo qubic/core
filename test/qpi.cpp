@@ -205,8 +205,8 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     // elements should be accessed
     EXPECT_EQ(coll.pov(0), QPI::id(0, 0, 0, 0));
     EXPECT_EQ(coll.element(0), 0);
-    EXPECT_EQ(coll.nextElementIndex(0), 0);
-    EXPECT_EQ(coll.prevElementIndex(0), 0);
+    EXPECT_EQ(coll.nextElementIndex(0), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(0), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(0), 0);
 
     // add an element with id1
@@ -594,8 +594,8 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     // elements should be accessed
     EXPECT_EQ(coll.pov(0), QPI::id(0, 0, 0, 0));
     EXPECT_EQ(coll.element(0), 0);
-    EXPECT_EQ(coll.nextElementIndex(0), 0);
-    EXPECT_EQ(coll.prevElementIndex(0), 0);
+    EXPECT_EQ(coll.nextElementIndex(0), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(0), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(0), 0);
 }
 
@@ -1049,28 +1049,28 @@ TEST(TestCoreQPI, CollectionPerformance) {
     std::vector<std::string> descriptions;
 
     durations.push_back(testCollectionPeformance<1024>(128, 333));
-    descriptions.push_back("[CollectionPeformance] Collection<1024>(128, 333)");
+    descriptions.push_back("[CollectionPerformance] Collection<1024>(128, 333)");
 
     durations.push_back(testCollectionPeformance<1024>(64, 333));
-    descriptions.push_back("[CollectionPeformance] Collection<1024>(64, 333)");
+    descriptions.push_back("[CollectionPerformance] Collection<1024>(64, 333)");
 
     durations.push_back(testCollectionPeformance<1024>(32, 333));
-    descriptions.push_back("[CollectionPeformance] Collection<1024>(32, 333)");
+    descriptions.push_back("[CollectionPerformance] Collection<1024>(32, 333)");
 
     durations.push_back(testCollectionPeformance<1024>(16, 333));
-    descriptions.push_back("[CollectionPeformance] Collection<1024>(16, 333)");
+    descriptions.push_back("[CollectionPerformance] Collection<1024>(16, 333)");
 
     durations.push_back(testCollectionPeformance<512>(128, 333));
-    descriptions.push_back("[CollectionPeformance] Collection<512>(128, 333)");
+    descriptions.push_back("[CollectionPerformance] Collection<512>(128, 333)");
 
     durations.push_back(testCollectionPeformance<512>(64, 333));
-    descriptions.push_back("[CollectionPeformance] Collection<512>(64, 333)");
+    descriptions.push_back("[CollectionPerformance] Collection<512>(64, 333)");
 
     durations.push_back(testCollectionPeformance<512>(32, 333));
-    descriptions.push_back("[CollectionPeformance] Collection<512>(32, 333)");
+    descriptions.push_back("[CollectionPerformance] Collection<512>(32, 333)");
 
     durations.push_back(testCollectionPeformance<512>(16, 333));
-    descriptions.push_back("[CollectionPeformance] Collection<512>(16, 333)");
+    descriptions.push_back("[CollectionPerformance] Collection<512>(16, 333)");
 
     delete[] __scratchpadBuffer;
     __scratchpadBuffer = nullptr;

@@ -5012,6 +5012,8 @@ namespace QPI
 		uint64 _povOccupationFlags[(L * 2 + 63) / 64];
 
 		// Array of elements (filled sequentially), each belongs to one PoV / priority queue (or is empty)
+		// Elements of a POV entry will be stored as a binary search tree (BST); so this structure has some properties related to BST
+		// (bstParentIndex, bstLeftIndex, bstRightIndex).
 		struct Element
 		{
 			T value;
@@ -5073,16 +5075,16 @@ namespace QPI
 		// Add element to priority queue, return elementIndex of new element
 		sint64 _addPovElement(const sint64 povIndex, const T value, const sint64 priority)
 		{
-			const sint64 new_element_idx = _population++;
-			auto& new_element = _elements[new_element_idx].init(value, priority, povIndex);
+			const sint64 newElementIdx = _population++;
+			auto& newElement = _elements[newElementIdx].init(value, priority, povIndex);
 			auto& pov = _povs[povIndex];
 
 			if (pov.population == 0)
 			{
 				pov.population = 1;
-				pov.headIndex = new_element_idx;
-				pov.tailIndex = new_element_idx;
-				pov.bstRootIndex = new_element_idx;
+				pov.headIndex = newElementIdx;
+				pov.tailIndex = newElementIdx;
+				pov.bstRootIndex = newElementIdx;
 			}
 			else
 			{
@@ -5091,31 +5093,31 @@ namespace QPI
 				while (idx != NULL_INDEX)
 				{
 					iterations_count++;
-					auto& cur_element = _elements[idx];
+					auto& curElement = _elements[idx];
 					if (_elements[idx].priority <= priority)
 					{
-						if (cur_element.bstRightIndex != NULL_INDEX)
+						if (curElement.bstRightIndex != NULL_INDEX)
 						{
-							idx = cur_element.bstRightIndex;
+							idx = curElement.bstRightIndex;
 						}
 						else
 						{
-							cur_element.bstRightIndex = new_element_idx;
-							new_element.bstParentIndex = idx;
+							curElement.bstRightIndex = newElementIdx;
+							newElement.bstParentIndex = idx;
 							pov.population++;
 							break;
 						}
 					}
 					else
 					{
-						if (cur_element.bstLeftIndex != NULL_INDEX)
+						if (curElement.bstLeftIndex != NULL_INDEX)
 						{
-							idx = cur_element.bstLeftIndex;
+							idx = curElement.bstLeftIndex;
 						}
 						else
 						{
-							cur_element.bstLeftIndex = new_element_idx;
-							new_element.bstParentIndex = idx;
+							curElement.bstLeftIndex = newElementIdx;
+							newElement.bstParentIndex = idx;
 							pov.population++;
 							break;
 						}
@@ -5123,11 +5125,11 @@ namespace QPI
 				}
 				if (_elements[pov.headIndex].priority > priority)
 				{
-					pov.headIndex = new_element_idx;
+					pov.headIndex = newElementIdx;
 				}
 				else if (_elements[pov.tailIndex].priority <= priority)
 				{
-					pov.tailIndex = new_element_idx;
+					pov.tailIndex = newElementIdx;
 				}
 				if (pov.population > 32 && iterations_count > pov.population / 4)
 				{
@@ -5135,43 +5137,43 @@ namespace QPI
 					pov.bstRootIndex = _rebuild(pov.bstRootIndex);
 				}
 			}
-			return new_element_idx;
+			return newElementIdx;
 		}
 
 		// Get element indices and store them in an array, return number of elements
 		uint64 _getSortedElements(const sint64 rootIdx, sint64* sortedElementIndices) const
 		{
 			uint64 count = 0;
-			sint64 element_idx = rootIdx;
-			sint64 last_element_idx = NULL_INDEX;
-			while (element_idx != NULL_INDEX)
+			sint64 elementIdx = rootIdx;
+			sint64 lastElementIdx = NULL_INDEX;
+			while (elementIdx != NULL_INDEX)
 			{
-				if (last_element_idx == _elements[element_idx].bstParentIndex)
+				if (lastElementIdx == _elements[elementIdx].bstParentIndex)
 				{
-					if (_elements[element_idx].bstLeftIndex != NULL_INDEX)
+					if (_elements[elementIdx].bstLeftIndex != NULL_INDEX)
 					{
-						last_element_idx = element_idx;
-						element_idx = _elements[element_idx].bstLeftIndex;
+						lastElementIdx = elementIdx;
+						elementIdx = _elements[elementIdx].bstLeftIndex;
 						continue;
 					}
-					last_element_idx = NULL_INDEX;
+					lastElementIdx = NULL_INDEX;
 				}
-				if (last_element_idx == _elements[element_idx].bstLeftIndex)
+				if (lastElementIdx == _elements[elementIdx].bstLeftIndex)
 				{
-					sortedElementIndices[count++] = element_idx;
+					sortedElementIndices[count++] = elementIdx;
 
-					if (_elements[element_idx].bstRightIndex != NULL_INDEX)
+					if (_elements[elementIdx].bstRightIndex != NULL_INDEX)
 					{
-						last_element_idx = element_idx;
-						element_idx = _elements[element_idx].bstRightIndex;
+						lastElementIdx = elementIdx;
+						elementIdx = _elements[elementIdx].bstRightIndex;
 						continue;
 					}
-					last_element_idx = NULL_INDEX;
+					lastElementIdx = NULL_INDEX;
 				}
-				if (last_element_idx == _elements[element_idx].bstRightIndex)
+				if (lastElementIdx == _elements[elementIdx].bstRightIndex)
 				{
-					last_element_idx = element_idx;
-					element_idx = _elements[element_idx].bstParentIndex;
+					lastElementIdx = elementIdx;
+					elementIdx = _elements[elementIdx].bstParentIndex;
 				}
 			}
 			return count;
@@ -5190,81 +5192,82 @@ namespace QPI
 		// Rebuild pov's elements indexing as balanced BST
 		sint64 _rebuild(sint64 rootIdx)
 		{
-			auto* sorted_element_indices = reinterpret_cast<sint64*>(::__scratchpad());
-			if (sorted_element_indices == NULL)
+			auto* sortedElementIndices = reinterpret_cast<sint64*>(::__scratchpad());
+			if (sortedElementIndices == NULL)
 			{
 				return rootIdx;
 			}
-			sint64 n = _getSortedElements(rootIdx, sorted_element_indices);
+			sint64 n = _getSortedElements(rootIdx, sortedElementIndices);
 			if (!n)
 			{
 				return rootIdx;
 			}
 			// initilize root
 			sint64 mid = n / 2;
-			rootIdx = sorted_element_indices[mid];
+			rootIdx = sortedElementIndices[mid];
 			_elements[rootIdx].bstParentIndex = NULL_INDEX;
 			_elements[rootIdx].bstLeftIndex = NULL_INDEX;
 			_elements[rootIdx].bstRightIndex = NULL_INDEX;
 			// initialize queue
-			auto* queue = reinterpret_cast<sint64_4*>(sorted_element_indices + ((n + 3) / 4) * 4);
-			sint64 dequeue_idx = 0;
-			sint64 enqueue_idx = 0;
-			sint64 queue_size = 0;
+			auto* queue = reinterpret_cast<sint64_4*>(sortedElementIndices + ((n + 3) / 4) * 4);
+			sint64 dequeueIdx = 0;
+			sint64 enqueueIdx = 0;
+			sint64 queueSize = 0;
 			// push left and right ranges to the queue
 			if (mid > 0)
 			{
-				_set(queue[enqueue_idx], rootIdx, 0, mid - 1, mid);
-				enqueue_idx = (enqueue_idx + 1) & (L - 1);
-				queue_size++;
+				_set(queue[enqueueIdx], rootIdx, 0, mid - 1, mid);
+				enqueueIdx = (enqueueIdx + 1) & (L - 1);
+				queueSize++;
 			}
 			if (mid + 1 < n)
 			{
-				_set(queue[enqueue_idx], rootIdx, mid + 1, n - 1, mid);
-				enqueue_idx = (enqueue_idx + 1) & (L - 1);
-				queue_size++;
+				_set(queue[enqueueIdx], rootIdx, mid + 1, n - 1, mid);
+				enqueueIdx = (enqueueIdx + 1) & (L - 1);
+				queueSize++;
 			}
-			while (queue_size > 0) {
+			while (queueSize > 0)
+			{
 				// get the front element from the queue
-				auto cur_range = queue[dequeue_idx];
-				dequeue_idx = (dequeue_idx + 1) & (L - 1);
-				queue_size--;
+				auto curRange = queue[dequeueIdx];
+				dequeueIdx = (dequeueIdx + 1) & (L - 1);
+				queueSize--;
 
 				// get the parent node and range
-				const auto parent_element_idx = cur_range.get(0);
-				const auto left = cur_range.get(1);
-				const auto right = cur_range.get(2);
+				const auto parentElementIdx = curRange.get(0);
+				const auto left = curRange.get(1);
+				const auto right = curRange.get(2);
 
 				if (left <= right) // if there are elements to process
 				{
 					mid = (left + right) / 2;
-					const auto element_idx = sorted_element_indices[mid];
-					_elements[element_idx].bstParentIndex = parent_element_idx;
-					_elements[element_idx].bstLeftIndex = NULL_INDEX;
-					_elements[element_idx].bstRightIndex = NULL_INDEX;
+					const auto elementIdx = sortedElementIndices[mid];
+					_elements[elementIdx].bstParentIndex = parentElementIdx;
+					_elements[elementIdx].bstLeftIndex = NULL_INDEX;
+					_elements[elementIdx].bstRightIndex = NULL_INDEX;
 
 					// set the child node for the parent node
-					if (mid < cur_range.get(3))
+					if (mid < curRange.get(3))
 					{
-						_elements[parent_element_idx].bstLeftIndex = element_idx;
+						_elements[parentElementIdx].bstLeftIndex = elementIdx;
 					}
 					else
 					{
-						_elements[parent_element_idx].bstRightIndex = element_idx;
+						_elements[parentElementIdx].bstRightIndex = elementIdx;
 					}
 
 					// push left and right ranges to the queue
 					if (mid > left)
 					{
-						_set(queue[enqueue_idx], element_idx, left, mid - 1, mid);
-						enqueue_idx = (enqueue_idx + 1) & (L - 1);
-						queue_size++;
+						_set(queue[enqueueIdx], elementIdx, left, mid - 1, mid);
+						enqueueIdx = (enqueueIdx + 1) & (L - 1);
+						queueSize++;
 					}
 					if (mid < right)
 					{
-						_set(queue[enqueue_idx], element_idx, mid + 1, right, mid);
-						enqueue_idx = (enqueue_idx + 1) & (L - 1);
-						queue_size++;
+						_set(queue[enqueueIdx], elementIdx, mid + 1, right, mid);
+						enqueueIdx = (enqueueIdx + 1) & (L - 1);
+						queueSize++;
 					}
 				}
 			}
@@ -5304,28 +5307,20 @@ namespace QPI
 				}
 				else if (_elements[elementIdx].bstParentIndex != NULL_INDEX)
 				{
-					auto parent_idx = _elements[elementIdx].bstParentIndex;
-					if (_elements[parent_idx].bstRightIndex == elementIdx)
+					auto parentIdx = _elements[elementIdx].bstParentIndex;
+					if (_elements[parentIdx].bstRightIndex == elementIdx)
 					{
-						return parent_idx;
+						return parentIdx;
 					}
-					if (_elements[parent_idx].bstLeftIndex == elementIdx)
+					if (_elements[parentIdx].bstLeftIndex == elementIdx)
 					{
-						while (parent_idx != NULL_INDEX && _elements[parent_idx].bstLeftIndex == elementIdx)
+						while (parentIdx != NULL_INDEX && _elements[parentIdx].bstLeftIndex == elementIdx)
 						{
-							elementIdx = parent_idx;
-							parent_idx = _elements[elementIdx].bstParentIndex;
+							elementIdx = parentIdx;
+							parentIdx = _elements[elementIdx].bstParentIndex;
 						}
-						return parent_idx;
+						return parentIdx;
 					}
-				}
-			}
-			if (!_population)
-			{
-				const bool SUPPORT_BACK_COMPATIBILITY = true;
-				if (SUPPORT_BACK_COMPATIBILITY)
-				{
-					return 0; // TODO[nbc]: remove this please! Just keep this here due to compability with old version
 				}
 			}
 			return NULL_INDEX;
@@ -5343,28 +5338,20 @@ namespace QPI
 				}
 				else if (_elements[elementIdx].bstParentIndex != NULL_INDEX)
 				{
-					auto parent_idx = _elements[elementIdx].bstParentIndex;
-					if (_elements[parent_idx].bstLeftIndex == elementIdx)
+					auto parentIdx = _elements[elementIdx].bstParentIndex;
+					if (_elements[parentIdx].bstLeftIndex == elementIdx)
 					{
-						return parent_idx;
+						return parentIdx;
 					}
-					if (_elements[parent_idx].bstRightIndex == elementIdx)
+					if (_elements[parentIdx].bstRightIndex == elementIdx)
 					{
-						while (parent_idx != NULL_INDEX && _elements[parent_idx].bstRightIndex == elementIdx)
+						while (parentIdx != NULL_INDEX && _elements[parentIdx].bstRightIndex == elementIdx)
 						{
-							elementIdx = parent_idx;
-							parent_idx = _elements[elementIdx].bstParentIndex;
+							elementIdx = parentIdx;
+							parentIdx = _elements[elementIdx].bstParentIndex;
 						}
-						return parent_idx;
+						return parentIdx;
 					}
-				}
-			}
-			if (!_population)
-			{
-				const bool SUPPORT_BACK_COMPATIBILITY = true;
-				if (SUPPORT_BACK_COMPATIBILITY)
-				{
-					return 0; // TODO[nbc]: remove this please! Just keep this here due to compability with old version
 				}
 			}
 			return NULL_INDEX;
@@ -5375,21 +5362,21 @@ namespace QPI
 		{
 			if (elementIdx != NULL_INDEX)
 			{
-				auto& cur_element = _elements[elementIdx];
-				if (cur_element.bstParentIndex != NULL_INDEX)
+				auto& curElement = _elements[elementIdx];
+				if (curElement.bstParentIndex != NULL_INDEX)
 				{
-					auto& parent_element = _elements[cur_element.bstParentIndex];
-					if (parent_element.bstRightIndex == elementIdx)
+					auto& parentElement = _elements[curElement.bstParentIndex];
+					if (parentElement.bstRightIndex == elementIdx)
 					{
-						parent_element.bstRightIndex = newElementIdx;
+						parentElement.bstRightIndex = newElementIdx;
 					}
 					else
 					{
-						parent_element.bstLeftIndex = newElementIdx;
+						parentElement.bstLeftIndex = newElementIdx;
 					}
 					if (newElementIdx != NULL_INDEX)
 					{
-						_elements[newElementIdx].bstParentIndex = cur_element.bstParentIndex;
+						_elements[newElementIdx].bstParentIndex = curElement.bstParentIndex;
 					}
 					return true;
 				}
@@ -5428,18 +5415,19 @@ namespace QPI
 			}
 			if (element.bstParentIndex != NULL_INDEX)
 			{
-				auto& parent_element = _elements[element.bstParentIndex];
-				if (parent_element.bstLeftIndex == srcIdx)
+				auto& parentElement = _elements[element.bstParentIndex];
+				if (parentElement.bstLeftIndex == srcIdx)
 				{
-					parent_element.bstLeftIndex = dstIdx;
+					parentElement.bstLeftIndex = dstIdx;
 				}
 				else
 				{
-					parent_element.bstRightIndex = dstIdx;
+					parentElement.bstRightIndex = dstIdx;
 				}
 			}
 		}
 
+		// Read and encode 32 POV occupation flags, return a 64bits number presents 32 occupation flags
 		QPI::uint64 _getEncodedPovOccupationFlags(
 			const uint64* povOccupationFlags, const sint64 povIndex) const
 		{			
@@ -5520,40 +5508,40 @@ namespace QPI
 			auto* _stackBuffer = reinterpret_cast<sint64*>(
 				_povOccupationFlagsBuffer + sizeof(_povOccupationFlags) / sizeof(_povOccupationFlags[0]));
 			setMem(::__scratchpad(), sizeof(_povs) + sizeof(_povOccupationFlags), 0);
-			uint64 new_population = 0;
+			uint64 newPopulation = 0;
 
 			// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new collection and copy priority queue in order,
 			// sequentially filling entry array of new collection.
 			for (sint64 oldPovIndexGroup = 0; oldPovIndexGroup < (L >> 5); oldPovIndexGroup++)
 			{
 				const uint64 flags = _povOccupationFlags[oldPovIndexGroup];
-				uint64 mask_bits = (0xAAAAAAAAAAAAAAAA & (flags << 1));
-				mask_bits &= mask_bits ^ (flags & 0xAAAAAAAAAAAAAAAA);
-				sint64 oldPovIndexOffset = _tzcnt_u64(mask_bits) & 0xFE;
-				const sint64 oldPovIndexOffsetEnd = 64 - (_lzcnt_u64(mask_bits) & 0xFE);
-				for (mask_bits >>= oldPovIndexOffset;
-					oldPovIndexOffset < oldPovIndexOffsetEnd; oldPovIndexOffset += 2, mask_bits >>= 2)
+				uint64 maskBits = (0xAAAAAAAAAAAAAAAA & (flags << 1));
+				maskBits &= maskBits ^ (flags & 0xAAAAAAAAAAAAAAAA);
+				sint64 oldPovIndexOffset = _tzcnt_u64(maskBits) & 0xFE;
+				const sint64 oldPovIndexOffsetEnd = 64 - (_lzcnt_u64(maskBits) & 0xFE);
+				for (maskBits >>= oldPovIndexOffset;
+					oldPovIndexOffset < oldPovIndexOffsetEnd; oldPovIndexOffset += 2, maskBits >>= 2)
 				{
 					// Only add pov to new collection that are occupied and not marked for removal
-					if (mask_bits & 3ULL)
+					if (maskBits & 3ULL)
 					{
 						const sint64 oldPovIndex = (oldPovIndexGroup << 5) + (oldPovIndexOffset >> 1);
 						sint64 newPovIndex = _povs[oldPovIndex].value.m256i_u64[0] & (L - 1);
-						bool found_valid_index = false;
-						for (sint64 counter = 0; counter < L && !found_valid_index; counter += 32)
+						bool foundValidIndex = false;
+						for (sint64 counter = 0; counter < L && !foundValidIndex; counter += 32)
 						{
-							QPI::uint64 new_flags = _getEncodedPovOccupationFlags(_povOccupationFlagsBuffer, newPovIndex);
-							for (sint64 i = 0; i < _nEncodedFlags; i++, new_flags >>= 2)
+							QPI::uint64 newFlags = _getEncodedPovOccupationFlags(_povOccupationFlagsBuffer, newPovIndex);
+							for (sint64 i = 0; i < _nEncodedFlags; i++, newFlags >>= 2)
 							{
-								if ((new_flags & 3ULL) == 0)
+								if ((newFlags & 3ULL) == 0)
 								{
-									found_valid_index = true;
+									foundValidIndex = true;
 									newPovIndex = (newPovIndex + i) & (L - 1);
 									break;
 								}
 							}
 						}
-						if (!found_valid_index)
+						if (!foundValidIndex)
 						{
 							newPovIndex = (newPovIndex + _nEncodedFlags) & (L - 1);
 							continue;
@@ -5565,25 +5553,25 @@ namespace QPI
 						// update newPovIndex for elements
 						if (newPovIndex != oldPovIndex)
 						{
-							sint64 stack_size = 0;
-							_stackBuffer[stack_size++] = _povsBuffer[newPovIndex].bstRootIndex;
-							while (stack_size > 0)
+							sint64 stackSize = 0;
+							_stackBuffer[stackSize++] = _povsBuffer[newPovIndex].bstRootIndex;
+							while (stackSize > 0)
 							{
-								auto& element = _elements[_stackBuffer[--stack_size]];
+								auto& element = _elements[_stackBuffer[--stackSize]];
 								element.povIndex = newPovIndex;
 								if (element.bstLeftIndex != NULL_INDEX)
 								{
-									_stackBuffer[stack_size++] = element.bstLeftIndex;
+									_stackBuffer[stackSize++] = element.bstLeftIndex;
 								}
 								if (element.bstRightIndex != NULL_INDEX)
 								{
-									_stackBuffer[stack_size++] = element.bstRightIndex;
+									_stackBuffer[stackSize++] = element.bstRightIndex;
 								}
 							}
 						}
 
-						new_population += _povs[oldPovIndex].population;
-						if (new_population == _population)
+						newPopulation += _povs[oldPovIndex].population;
+						if (newPopulation == _population)
 						{
 							copyMem(_povs, _povsBuffer, sizeof(_povs));
 							copyMem(_povOccupationFlags, _povOccupationFlagsBuffer, sizeof(_povOccupationFlags));
@@ -5594,8 +5582,10 @@ namespace QPI
 				}
 			}
 
+#ifdef NO_UEFI
 			// don't expect here, certainly got error!!!
 			printf("Error: Something went wrong at cleanup.");
+#endif
 		}
 
 		// Return element value at elementIndex.
@@ -5656,75 +5646,75 @@ namespace QPI
 			elementIdx &= (L - 1);
 			if (elementIdx < _population)
 			{
-				auto delete_element_idx = elementIdx;
+				auto deleteElementIdx = elementIdx;
 				const auto povIndex = _elements[elementIdx].povIndex;
 				auto& pov = _povs[povIndex];
 				if (pov.population > 1)
 				{
 					auto& rootIdx = pov.bstRootIndex;
-					auto& cur_element = _elements[elementIdx];
-					auto removed_element_idx = elementIdx;
+					auto& curElement = _elements[elementIdx];
+					auto removed_elementIdx = elementIdx;
 
-					if (cur_element.bstRightIndex != NULL_INDEX &&
-						cur_element.bstLeftIndex != NULL_INDEX)
+					if (curElement.bstRightIndex != NULL_INDEX &&
+						curElement.bstLeftIndex != NULL_INDEX)
 					{
 						// it contains both left and right child
-						const auto tmp_idx = _getMostLeft(cur_element.bstRightIndex);
-						if (tmp_idx == pov.tailIndex)
+						const auto tmpIdx = _getMostLeft(curElement.bstRightIndex);
+						if (tmpIdx == pov.tailIndex)
 						{
-							pov.tailIndex = _previousElementIndex(tmp_idx);
+							pov.tailIndex = _previousElementIndex(tmpIdx);
 						}
-						const auto right_tmp_index = _elements[tmp_idx].bstRightIndex;
-						if (tmp_idx == cur_element.bstRightIndex)
+						const auto rightTmpIndex = _elements[tmpIdx].bstRightIndex;
+						if (tmpIdx == curElement.bstRightIndex)
 						{
-							cur_element.bstRightIndex = right_tmp_index;
-							if (right_tmp_index != NULL_INDEX)
+							curElement.bstRightIndex = rightTmpIndex;
+							if (rightTmpIndex != NULL_INDEX)
 							{
-								_elements[right_tmp_index].bstParentIndex = elementIdx;
+								_elements[rightTmpIndex].bstParentIndex = elementIdx;
 							}
 						}
 						else
 						{
-							_elements[_elements[tmp_idx].bstParentIndex].bstLeftIndex = right_tmp_index;
-							if (right_tmp_index != NULL_INDEX)
+							_elements[_elements[tmpIdx].bstParentIndex].bstLeftIndex = rightTmpIndex;
+							if (rightTmpIndex != NULL_INDEX)
 							{
-								_elements[right_tmp_index].bstParentIndex = _elements[tmp_idx].bstParentIndex;
+								_elements[rightTmpIndex].bstParentIndex = _elements[tmpIdx].bstParentIndex;
 							}
 						}
-						copyMem(&cur_element.value, &_elements[tmp_idx].value, sizeof(T));
-						cur_element.priority = _elements[tmp_idx].priority;
+						copyMem(&curElement.value, &_elements[tmpIdx].value, sizeof(T));
+						curElement.priority = _elements[tmpIdx].priority;
 
 						const bool SUPPORT_BACK_COMPATIBILITY = true;
 						if (SUPPORT_BACK_COMPATIBILITY)
 						{
-							_moveElement(elementIdx, tmp_idx);
+							_moveElement(elementIdx, tmpIdx);
 						}
 						else
 						{
-							delete_element_idx = tmp_idx;
+							deleteElementIdx = tmpIdx;
 						}
 					}
-					else if (cur_element.bstRightIndex != NULL_INDEX)
+					else if (curElement.bstRightIndex != NULL_INDEX)
 					{
 						if (elementIdx == pov.headIndex)
 						{
 							pov.headIndex = _nextElementIndex(elementIdx);
 						}
-						if (!_updateParent(elementIdx, cur_element.bstRightIndex))
+						if (!_updateParent(elementIdx, curElement.bstRightIndex))
 						{
-							rootIdx = cur_element.bstRightIndex;
+							rootIdx = curElement.bstRightIndex;
 							_elements[rootIdx].bstParentIndex = NULL_INDEX;
 						}
 					}
-					else if (cur_element.bstLeftIndex != NULL_INDEX)
+					else if (curElement.bstLeftIndex != NULL_INDEX)
 					{
 						if (elementIdx == pov.tailIndex)
 						{
 							pov.tailIndex = _previousElementIndex(elementIdx);
 						}
-						if (!_updateParent(elementIdx, cur_element.bstLeftIndex))
+						if (!_updateParent(elementIdx, curElement.bstLeftIndex))
 						{
-							rootIdx = cur_element.bstLeftIndex;
+							rootIdx = curElement.bstLeftIndex;
 							_elements[rootIdx].bstParentIndex = NULL_INDEX;
 						}
 					}
@@ -5749,10 +5739,10 @@ namespace QPI
 					_povOccupationFlags[povIndex >> 5] ^= (3ULL << ((povIndex & 31) << 1));
 				}
 
-				if (--_population && delete_element_idx != _population)
+				if (--_population && deleteElementIdx != _population)
 				{
 					// Move last element to fill new gap in array
-					_moveElement(_population, delete_element_idx);
+					_moveElement(_population, deleteElementIdx);
 				}
 
 				const bool CLEAR_UNUSED_ELEMENT = true;
