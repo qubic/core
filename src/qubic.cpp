@@ -2429,9 +2429,9 @@ static void processTick(unsigned long long processorNumber)
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
 
                         const Transaction* pendingTransaction = ((Transaction*)&entityPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
-                        ASSERT(pendingTransaction->checkValidity());
                         if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
                         {
+                            ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
                             if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                             {
@@ -3176,11 +3176,10 @@ static void tickProcessor(void*)
                             for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                             {
                                 Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
-                                ASSERT(pendingTransaction->checkValidity());
                                 if (pendingTransaction->tick == nextTick)
                                 {
                                     ACQUIRE(entityPendingTransactionsLock);
-
+                                    ASSERT(pendingTransaction->checkValidity());
                                     auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
                                     for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                                     {
