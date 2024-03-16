@@ -4995,15 +4995,17 @@ namespace QPI
 		static_assert(L && !(L & (L - 1)),
 			"The capacity of the collection must be 2^N."
 			);
+		static constexpr sint64 _nEncodedFlags = L > 32 ? 32 : L;
 
 		// Hash map of point of views = element filters, each with one priority queue (or empty)
 		struct PoV
 		{
 			id value;
-			sint64 headIndex, tailIndex;
 			uint64 population;
+			sint64 headIndex, tailIndex;
+			sint64 bstRootIndex;
 		} _povs[L];
-		
+
 		// 2 bits per element of _povs: 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
 		// The state "occupied but marked for removal" is needed for finding the index of a pov in the hash map. Setting an entry to
 		// "not occupied" in remove() would potentially undo a collision, create a gap, and mess up the entry search.
@@ -5013,140 +5015,475 @@ namespace QPI
 		struct Element
 		{
 			T value;
-			sint64 prevElementIndex, nextElementIndex;
 			sint64 priority;
 			sint64 povIndex;
+			sint64 bstParentIndex;
+			sint64 bstLeftIndex;
+			sint64 bstRightIndex;
+
+			Element& init(const T& value, const sint64& priority, const sint64& povIndex)
+			{
+				copyMem(&this->value, &value, sizeof(T));
+				this->priority = priority;
+				this->povIndex = povIndex;
+				this->bstParentIndex = NULL_INDEX;
+				this->bstLeftIndex = NULL_INDEX;
+				this->bstRightIndex = NULL_INDEX;
+				return *this;
+			}
 		} _elements[L];
 		uint64 _population;
+		uint64 _markRemovalCounter;
+
+		// Internal reinitialize as empty collection.
+		void _softReset()
+		{
+			setMem(_povs, sizeof(_povs), 0);
+			setMem(_povOccupationFlags, sizeof(_povOccupationFlags), 0);
+			_population = 0;
+			_markRemovalCounter = 0;
+		}
 
 		// Return index of id pov in hash map _povs, or NULL_INDEX if not found
 		sint64 _povIndex(const id& pov) const
 		{
 			sint64 povIndex = pov.m256i_u64[0] & (L - 1);
-			for (sint64 counter = 0; counter < L; counter++)
+			for (sint64 counter = 0; counter < L; counter += 32)
 			{
-				if (!(_povOccupationFlags[povIndex >> 5] & (1ULL << ((povIndex & 31) << 1))))
+				uint64 flags = _getEncodedPovOccupationFlags(_povOccupationFlags, povIndex);
+				for (auto i = 0; i < _nEncodedFlags; i++, flags >>= 2)
 				{
-					if (!(_povOccupationFlags[povIndex >> 5] & (2ULL << ((povIndex & 31) << 1))))
+					switch (flags & 3ULL)
 					{
+					case 0:
 						return NULL_INDEX;
+					case 1:
+						if (_povs[povIndex].value == pov)
+						{
+							return povIndex;
+						}
+						break;
 					}
+					povIndex = (povIndex + 1) & (L - 1);
+				}
+			}
+			return NULL_INDEX;
+		}
+
+		// Add element to priority queue, return elementIndex of new element
+		sint64 _addPovElement(const sint64 povIndex, const T value, const sint64 priority)
+		{
+			const sint64 new_element_idx = _population++;
+			auto& new_element = _elements[new_element_idx].init(value, priority, povIndex);
+			auto& pov = _povs[povIndex];
+
+			if (pov.population == 0)
+			{
+				pov.population = 1;
+				pov.headIndex = new_element_idx;
+				pov.tailIndex = new_element_idx;
+				pov.bstRootIndex = new_element_idx;
+			}
+			else
+			{
+				int iterations_count = 0;
+				sint64 idx = pov.bstRootIndex;
+				while (idx != NULL_INDEX)
+				{
+					iterations_count++;
+					auto& cur_element = _elements[idx];
+					if (_elements[idx].priority <= priority)
+					{
+						if (cur_element.bstRightIndex != NULL_INDEX)
+						{
+							idx = cur_element.bstRightIndex;
+						}
+						else
+						{
+							cur_element.bstRightIndex = new_element_idx;
+							new_element.bstParentIndex = idx;
+							pov.population++;
+							break;
+						}
+					}
+					else
+					{
+						if (cur_element.bstLeftIndex != NULL_INDEX)
+						{
+							idx = cur_element.bstLeftIndex;
+						}
+						else
+						{
+							cur_element.bstLeftIndex = new_element_idx;
+							new_element.bstParentIndex = idx;
+							pov.population++;
+							break;
+						}
+					}
+				}
+				if (_elements[pov.headIndex].priority > priority)
+				{
+					pov.headIndex = new_element_idx;
+				}
+				else if (_elements[pov.tailIndex].priority <= priority)
+				{
+					pov.tailIndex = new_element_idx;
+				}
+				if (pov.population > 32 && iterations_count > pov.population / 4)
+				{
+					// make balanced binary search tree to get better performance
+					pov.bstRootIndex = _rebuild(pov.bstRootIndex);
+				}
+			}
+			return new_element_idx;
+		}
+
+		// Get element indices and store them in an array, return number of elements
+		uint64 _getSortedElements(const sint64 rootIdx, sint64* sortedElementIndices) const
+		{
+			uint64 count = 0;
+			sint64 element_idx = rootIdx;
+			sint64 last_element_idx = NULL_INDEX;
+			while (element_idx != NULL_INDEX)
+			{
+				if (last_element_idx == _elements[element_idx].bstParentIndex)
+				{
+					if (_elements[element_idx].bstLeftIndex != NULL_INDEX)
+					{
+						last_element_idx = element_idx;
+						element_idx = _elements[element_idx].bstLeftIndex;
+						continue;
+					}
+					last_element_idx = NULL_INDEX;
+				}
+				if (last_element_idx == _elements[element_idx].bstLeftIndex)
+				{
+					sortedElementIndices[count++] = element_idx;
+
+					if (_elements[element_idx].bstRightIndex != NULL_INDEX)
+					{
+						last_element_idx = element_idx;
+						element_idx = _elements[element_idx].bstRightIndex;
+						continue;
+					}
+					last_element_idx = NULL_INDEX;
+				}
+				if (last_element_idx == _elements[element_idx].bstRightIndex)
+				{
+					last_element_idx = element_idx;
+					element_idx = _elements[element_idx].bstParentIndex;
+				}
+			}
+			return count;
+		}
+
+		// Fill a sint64_4 vector with specified values
+		inline void _set(
+			sint64_4& vec, sint64 v0, sint64 v1, sint64 v2, sint64 v3) const
+		{
+			vec.set(0, v0);
+			vec.set(1, v1);
+			vec.set(2, v2);
+			vec.set(3, v3);
+		}
+
+		// Rebuild pov's elements indexing as balanced BST
+		sint64 _rebuild(sint64 rootIdx)
+		{
+			auto* sorted_element_indices = reinterpret_cast<sint64*>(::__scratchpad());
+			if (sorted_element_indices == NULL)
+			{
+				return rootIdx;
+			}
+			sint64 n = _getSortedElements(rootIdx, sorted_element_indices);
+			if (!n)
+			{
+				return rootIdx;
+			}
+			// initilize root
+			sint64 mid = n / 2;
+			rootIdx = sorted_element_indices[mid];
+			_elements[rootIdx].bstParentIndex = NULL_INDEX;
+			_elements[rootIdx].bstLeftIndex = NULL_INDEX;
+			_elements[rootIdx].bstRightIndex = NULL_INDEX;
+			// initialize queue
+			auto* queue = reinterpret_cast<sint64_4*>(sorted_element_indices + ((n + 3) / 4) * 4);
+			sint64 dequeue_idx = 0;
+			sint64 enqueue_idx = 0;
+			sint64 queue_size = 0;
+			// push left and right ranges to the queue
+			if (mid > 0)
+			{
+				_set(queue[enqueue_idx], rootIdx, 0, mid - 1, mid);
+				enqueue_idx = (enqueue_idx + 1) & (L - 1);
+				queue_size++;
+			}
+			if (mid + 1 < n)
+			{
+				_set(queue[enqueue_idx], rootIdx, mid + 1, n - 1, mid);
+				enqueue_idx = (enqueue_idx + 1) & (L - 1);
+				queue_size++;
+			}
+			while (queue_size > 0) {
+				// get the front element from the queue
+				auto cur_range = queue[dequeue_idx];
+				dequeue_idx = (dequeue_idx + 1) & (L - 1);
+				queue_size--;
+
+				// get the parent node and range
+				const auto parent_element_idx = cur_range.get(0);
+				const auto left = cur_range.get(1);
+				const auto right = cur_range.get(2);
+
+				if (left <= right) // if there are elements to process
+				{
+					mid = (left + right) / 2;
+					const auto element_idx = sorted_element_indices[mid];
+					_elements[element_idx].bstParentIndex = parent_element_idx;
+					_elements[element_idx].bstLeftIndex = NULL_INDEX;
+					_elements[element_idx].bstRightIndex = NULL_INDEX;
+
+					// set the child node for the parent node
+					if (mid < cur_range.get(3))
+					{
+						_elements[parent_element_idx].bstLeftIndex = element_idx;
+					}
+					else
+					{
+						_elements[parent_element_idx].bstRightIndex = element_idx;
+					}
+
+					// push left and right ranges to the queue
+					if (mid > left)
+					{
+						_set(queue[enqueue_idx], element_idx, left, mid - 1, mid);
+						enqueue_idx = (enqueue_idx + 1) & (L - 1);
+						queue_size++;
+					}
+					if (mid < right)
+					{
+						_set(queue[enqueue_idx], element_idx, mid + 1, right, mid);
+						enqueue_idx = (enqueue_idx + 1) & (L - 1);
+						queue_size++;
+					}
+				}
+			}
+
+			return rootIdx;
+		}
+
+		// Return most left element index
+		sint64 _getMostLeft(sint64 elementIdx) const
+		{
+			while (_elements[elementIdx].bstLeftIndex != NULL_INDEX)
+			{
+				elementIdx = _elements[elementIdx].bstLeftIndex;
+			}
+			return elementIdx;
+		}
+
+		// Return most right element index
+		sint64 _getMostRight(sint64 elementIdx) const
+		{
+			while (_elements[elementIdx].bstRightIndex != NULL_INDEX)
+			{
+				elementIdx = _elements[elementIdx].bstRightIndex;
+			}
+			return elementIdx;
+		}
+
+		// Return elementIndex of previous element in priority queue (or NULL_INDEX if this is the last element).
+		sint64 _previousElementIndex(sint64 elementIdx) const
+		{
+			elementIdx &= (L - 1);
+			if (elementIdx < _population)
+			{
+				if (_elements[elementIdx].bstLeftIndex != NULL_INDEX)
+				{
+					return _getMostRight(_elements[elementIdx].bstLeftIndex);
+				}
+				else if (_elements[elementIdx].bstParentIndex != NULL_INDEX)
+				{
+					auto parent_idx = _elements[elementIdx].bstParentIndex;
+					if (_elements[parent_idx].bstRightIndex == elementIdx)
+					{
+						return parent_idx;
+					}
+					if (_elements[parent_idx].bstLeftIndex == elementIdx)
+					{
+						while (parent_idx != NULL_INDEX && _elements[parent_idx].bstLeftIndex == elementIdx)
+						{
+							elementIdx = parent_idx;
+							parent_idx = _elements[elementIdx].bstParentIndex;
+						}
+						return parent_idx;
+					}
+				}
+			}
+			if (!_population)
+			{
+				const bool SUPPORT_BACK_COMPATIBILITY = true;
+				if (SUPPORT_BACK_COMPATIBILITY)
+				{
+					return 0; // TODO[nbc]: remove this please! Just keep this here due to compability with old version
+				}
+			}
+			return NULL_INDEX;
+		}
+
+		// Return elementIndex of next element in priority queue (or NULL_INDEX if this is the last element).
+		sint64 _nextElementIndex(sint64 elementIdx) const
+		{
+			elementIdx &= (L - 1);
+			if (elementIdx < _population)
+			{
+				if (_elements[elementIdx].bstRightIndex != NULL_INDEX)
+				{
+					return _getMostLeft(_elements[elementIdx].bstRightIndex);
+				}
+				else if (_elements[elementIdx].bstParentIndex != NULL_INDEX)
+				{
+					auto parent_idx = _elements[elementIdx].bstParentIndex;
+					if (_elements[parent_idx].bstLeftIndex == elementIdx)
+					{
+						return parent_idx;
+					}
+					if (_elements[parent_idx].bstRightIndex == elementIdx)
+					{
+						while (parent_idx != NULL_INDEX && _elements[parent_idx].bstRightIndex == elementIdx)
+						{
+							elementIdx = parent_idx;
+							parent_idx = _elements[elementIdx].bstParentIndex;
+						}
+						return parent_idx;
+					}
+				}
+			}
+			if (!_population)
+			{
+				const bool SUPPORT_BACK_COMPATIBILITY = true;
+				if (SUPPORT_BACK_COMPATIBILITY)
+				{
+					return 0; // TODO[nbc]: remove this please! Just keep this here due to compability with old version
+				}
+			}
+			return NULL_INDEX;
+		}
+
+		// Update parent of the current element into parent of the new element, return true if exists parent
+		inline bool _updateParent(const sint64 elementIdx, const sint64 newElementIdx)
+		{
+			if (elementIdx != NULL_INDEX)
+			{
+				auto& cur_element = _elements[elementIdx];
+				if (cur_element.bstParentIndex != NULL_INDEX)
+				{
+					auto& parent_element = _elements[cur_element.bstParentIndex];
+					if (parent_element.bstRightIndex == elementIdx)
+					{
+						parent_element.bstRightIndex = newElementIdx;
+					}
+					else
+					{
+						parent_element.bstLeftIndex = newElementIdx;
+					}
+					if (newElementIdx != NULL_INDEX)
+					{
+						_elements[newElementIdx].bstParentIndex = cur_element.bstParentIndex;
+					}
+					return true;
+				}
+			}
+			return false;
+		}
+
+		// Move the current element into new position
+		void _moveElement(const sint64 srcIdx, const sint64 dstIdx)
+		{
+			copyMem(&_elements[dstIdx], &_elements[srcIdx], sizeof(_elements[0]));
+
+			const auto povIndex = _elements[dstIdx].povIndex;
+			auto& pov = _povs[povIndex];
+			if (pov.bstRootIndex == srcIdx)
+			{
+				pov.bstRootIndex = dstIdx;
+			}
+			if (pov.headIndex == srcIdx)
+			{
+				pov.headIndex = dstIdx;
+			}
+			if (pov.tailIndex == srcIdx)
+			{
+				pov.tailIndex = dstIdx;
+			}
+
+			auto& element = _elements[dstIdx];
+			if (element.bstLeftIndex != NULL_INDEX)
+			{
+				_elements[element.bstLeftIndex].bstParentIndex = dstIdx;
+			}
+			if (element.bstRightIndex != NULL_INDEX)
+			{
+				_elements[element.bstRightIndex].bstParentIndex = dstIdx;
+			}
+			if (element.bstParentIndex != NULL_INDEX)
+			{
+				auto& parent_element = _elements[element.bstParentIndex];
+				if (parent_element.bstLeftIndex == srcIdx)
+				{
+					parent_element.bstLeftIndex = dstIdx;
 				}
 				else
 				{
-					if (_povs[povIndex].value == pov)
-					{
-						return povIndex;
-					}
+					parent_element.bstRightIndex = dstIdx;
 				}
-
-				povIndex = (povIndex + 1) & (L - 1);
 			}
+		}
 
-			return NULL_INDEX;
+		QPI::uint64 _getEncodedPovOccupationFlags(
+			const uint64* povOccupationFlags, const sint64 povIndex) const
+		{			
+			const sint64 offset = (povIndex & 31) << 1;
+			uint64 flags = povOccupationFlags[povIndex >> 5] >> offset;
+			if (offset > 0)
+			{
+				flags |= povOccupationFlags[((povIndex + 32) & (L - 1)) >> 5] << (64 - offset);
+			}
+			return flags;
 		}
 
 	public:
 		// Add element to priority queue of ID pov, return elementIndex of new element
 		sint64 add(const id& pov, T element, sint64 priority)
 		{
-			if (_population < capacity())
+			if (_population < capacity() && _markRemovalCounter < capacity())
 			{
 				// search in pov hash map
 				sint64 povIndex = pov.m256i_u64[0] & (L - 1);
-				for (sint64 counter = 0; counter < L; counter++)
+				for (sint64 counter = 0; counter < L; counter += 32)
 				{
-					if (!(_povOccupationFlags[povIndex >> 5] & (1ULL << ((povIndex & 31) << 1))))
+					uint64 flags = _getEncodedPovOccupationFlags(_povOccupationFlags, povIndex);
+					for (auto i = 0; i < _nEncodedFlags; i++, flags >>= 2)
 					{
-						if (!(_povOccupationFlags[povIndex >> 5] & (2ULL << ((povIndex & 31) << 1))))
+						switch (flags & 3ULL)
 						{
+						case 0:
 							// empty pov entry -> init new priority queue with 1 element
 							_povOccupationFlags[povIndex >> 5] |= (1ULL << ((povIndex & 31) << 1));
-
 							_povs[povIndex].value = pov;
-							_povs[povIndex].tailIndex = _povs[povIndex].headIndex = _population;
-							_povs[povIndex].population = 1;
-
-							copyMem(&_elements[_population].value, &element, sizeof(T));
-							_elements[_population].nextElementIndex = _elements[_population].prevElementIndex = NULL_INDEX;
-							_elements[_population].priority = priority;
-							_elements[_population].povIndex = povIndex;
-
-							return _population++;
+							return _addPovElement(povIndex, element, priority);
+						case 1:
+							if (_povs[povIndex].value == pov)
+							{
+								// found pov entry -> insert element in priority queue of pov
+								return _addPovElement(povIndex, element, priority);
+							}
+							break;
 						}
+						povIndex = (povIndex + 1) & (L - 1);
 					}
-					else
-					{
-						if (_povs[povIndex].value == pov)
-						{
-							// found pov entry -> insert element in priority queue of pov
-							sint64 elementIndex = _povs[povIndex].headIndex;
-							while (_elements[elementIndex].priority <= priority) // TODO: Use a more efficient approach instead of simple iteration
-							{
-								if (_elements[elementIndex].nextElementIndex >= 0)
-								{
-									elementIndex = _elements[elementIndex].nextElementIndex;
-								}
-								else
-								{
-									// insert at the end of the priority queue
-									_povs[povIndex].tailIndex = _population;
-									_povs[povIndex].population++;
-
-									copyMem(&_elements[_population].value, &element, sizeof(T));
-									_elements[_population].prevElementIndex = elementIndex;
-									_elements[_population].nextElementIndex = NULL_INDEX;
-									_elements[_population].priority = priority;
-									_elements[_population].povIndex = povIndex;
-
-									_elements[elementIndex].nextElementIndex = _population;
-
-									return _population++;
-								}
-							}
-							if (_elements[elementIndex].prevElementIndex < 0)
-							{
-								// insert at the beginning of the priority queue
-								_povs[povIndex].headIndex = _population;
-								_povs[povIndex].population++;
-
-								copyMem(&_elements[_population].value, &element, sizeof(T));
-								_elements[_population].prevElementIndex = NULL_INDEX;
-								_elements[_population].nextElementIndex = elementIndex;
-								_elements[_population].priority = priority;
-								_elements[_population].povIndex = povIndex;
-
-								_elements[elementIndex].prevElementIndex = _population;
-
-								return _population++;
-							}
-							else
-							{
-								// insert in the middle of the priority queue (before elementIndex)
-								const sint64 newElementIndex = _population;
-								const sint64 prevElementIndex = _elements[elementIndex].prevElementIndex;
-								const sint64 nextElementIndex = elementIndex;
-
-								_povs[povIndex].population++;
-
-								copyMem(&_elements[newElementIndex].value, &element, sizeof(T));
-								_elements[newElementIndex].prevElementIndex = prevElementIndex;
-								_elements[newElementIndex].nextElementIndex = nextElementIndex;
-								_elements[newElementIndex].priority = priority;
-								_elements[newElementIndex].povIndex = povIndex;
-
-								_elements[nextElementIndex].prevElementIndex = newElementIndex;
-								_elements[prevElementIndex].nextElementIndex = newElementIndex;
-
-								return _population++;
-							}
-						}
-					}
-
-					povIndex = (povIndex + 1) & (L - 1);
 				}
 			}
-
 			return NULL_INDEX;
 		}
 
@@ -5164,79 +5501,101 @@ namespace QPI
 			// Corresponding elements are be sorted too for faster uniform access, tail and head, prev and next are changed accordingly.
 			// Cleanup() called for a collection having only type 3 entries in _povs must give the result equal to reset() memory content wise.
 
-			// Speedup case of empty collection
-			if (!population())
+			// Quick check to cleanup
+			if (!_markRemovalCounter)
 			{
-				reset();
 				return;
 			}
-			
-			// Create empty collection in scratchpad
-			collection<T, L> * copy = reinterpret_cast<collection<T, L>*>(::__scratchpad());
-			copy->reset();
+
+			// Speedup case of empty collection but existed marked for removal povs
+			if (!population())
+			{
+				_softReset();
+				return;
+			}
+
+			// Init buffers
+			auto* _povsBuffer = reinterpret_cast<PoV*>(::__scratchpad());
+			auto* _povOccupationFlagsBuffer = reinterpret_cast<uint64*>(_povsBuffer + L);
+			auto* _stackBuffer = reinterpret_cast<sint64*>(
+				_povOccupationFlagsBuffer + sizeof(_povOccupationFlags) / sizeof(_povOccupationFlags[0]));
+			setMem(::__scratchpad(), sizeof(_povs) + sizeof(_povOccupationFlags), 0);
+			uint64 new_population = 0;
 
 			// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new collection and copy priority queue in order,
 			// sequentially filling entry array of new collection.
 			for (sint64 oldPovIndexGroup = 0; oldPovIndexGroup < (L >> 5); oldPovIndexGroup++)
 			{
-				// Fast skipping of empty entries
-				if (_povOccupationFlags[oldPovIndexGroup] == 0)
-				{
-					continue;
-				}
-
-				for (sint64 oldPovIndexOffset = 0; oldPovIndexOffset < 64; oldPovIndexOffset += 2)
+				const uint64 flags = _povOccupationFlags[oldPovIndexGroup];
+				uint64 mask_bits = (0xAAAAAAAAAAAAAAAA & (flags << 1));
+				mask_bits &= mask_bits ^ (flags & 0xAAAAAAAAAAAAAAAA);
+				sint64 oldPovIndexOffset = _tzcnt_u64(mask_bits) & 0xFE;
+				const sint64 oldPovIndexOffsetEnd = 64 - (_lzcnt_u64(mask_bits) & 0xFE);
+				for (mask_bits >>= oldPovIndexOffset;
+					oldPovIndexOffset < oldPovIndexOffsetEnd; oldPovIndexOffset += 2, mask_bits >>= 2)
 				{
 					// Only add pov to new collection that are occupied and not marked for removal
-					uint64 occupationFlags = (_povOccupationFlags[oldPovIndexGroup] >> oldPovIndexOffset) & 3ULL;
-					if (occupationFlags == 1)
+					if (mask_bits & 3ULL)
 					{
 						const sint64 oldPovIndex = (oldPovIndexGroup << 5) + (oldPovIndexOffset >> 1);
-						const PoV& oldPovEntry = _povs[oldPovIndex];
-						const id& pov = oldPovEntry.value;
-						const sint64 oldHeadIndex = oldPovEntry.headIndex;
-						const sint64 oldTailIndex = oldPovEntry.tailIndex;
-
-						// 1. Insert pov entry in new pov hash map (at empty entry)
-						sint64 newPovIndex = pov.m256i_u64[0] & (L - 1);
-						for (sint64 counter = 0; counter < L; counter++)
+						sint64 newPovIndex = _povs[oldPovIndex].value.m256i_u64[0] & (L - 1);
+						bool found_valid_index = false;
+						for (sint64 counter = 0; counter < L && !found_valid_index; counter += 32)
 						{
-							if ((copy->_povOccupationFlags[newPovIndex >> 5] & (3ULL << ((newPovIndex & 31) << 1))) == 0)
+							QPI::uint64 new_flags = _getEncodedPovOccupationFlags(_povOccupationFlagsBuffer, newPovIndex);
+							for (sint64 i = 0; i < _nEncodedFlags; i++, new_flags >>= 2)
 							{
-								copy->_povOccupationFlags[newPovIndex >> 5] |= (1ULL << ((newPovIndex & 31) << 1));
-
-								copy->_povs[newPovIndex].value = pov;
-								copy->_povs[newPovIndex].headIndex = copy->_population;
-								copy->_povs[newPovIndex].tailIndex = copy->_population + oldPovEntry.population - 1;
-								copy->_povs[newPovIndex].population = oldPovEntry.population;
-
-								break;
+								if ((new_flags & 3ULL) == 0)
+								{
+									found_valid_index = true;
+									newPovIndex = (newPovIndex + i) & (L - 1);
+									break;
+								}
 							}
-
-							newPovIndex = (newPovIndex + 1) & (L - 1);
+						}
+						if (!found_valid_index)
+						{
+							newPovIndex = (newPovIndex + _nEncodedFlags) & (L - 1);
+							continue;
 						}
 
-						// 2. Copy priority queue of pov
-						sint64 oldElementIndex = oldHeadIndex;
-						while (oldElementIndex != NULL_INDEX)
+						_povOccupationFlagsBuffer[newPovIndex >> 5] |= (1ULL << ((newPovIndex & 31) << 1));
+						copyMem(&_povsBuffer[newPovIndex], &_povs[oldPovIndex], sizeof(PoV));
+
+						// update newPovIndex for elements
+						if (newPovIndex != oldPovIndex)
 						{
-							const sint64 newElementIndex = copy->_population;
+							sint64 stack_size = 0;
+							_stackBuffer[stack_size++] = _povsBuffer[newPovIndex].bstRootIndex;
+							while (stack_size > 0)
+							{
+								auto& element = _elements[_stackBuffer[--stack_size]];
+								element.povIndex = newPovIndex;
+								if (element.bstLeftIndex != NULL_INDEX)
+								{
+									_stackBuffer[stack_size++] = element.bstLeftIndex;
+								}
+								if (element.bstRightIndex != NULL_INDEX)
+								{
+									_stackBuffer[stack_size++] = element.bstRightIndex;
+								}
+							}
+						}
 
-							copyMem(&copy->_elements[newElementIndex].value, &_elements[oldElementIndex].value, sizeof(T));
-							copy->_elements[newElementIndex].prevElementIndex = (oldElementIndex == oldHeadIndex) ? NULL_INDEX : newElementIndex - 1;
-							copy->_elements[newElementIndex].nextElementIndex = (oldElementIndex == oldTailIndex) ? NULL_INDEX : newElementIndex + 1;
-							copy->_elements[newElementIndex].priority = _elements[oldElementIndex].priority;
-							copy->_elements[newElementIndex].povIndex = newPovIndex;
-
-							++copy->_population;
-							oldElementIndex = _elements[oldElementIndex].nextElementIndex;
+						new_population += _povs[oldPovIndex].population;
+						if (new_population == _population)
+						{
+							copyMem(_povs, _povsBuffer, sizeof(_povs));
+							copyMem(_povOccupationFlags, _povOccupationFlagsBuffer, sizeof(_povOccupationFlags));
+							_markRemovalCounter = 0;
+							return;
 						}
 					}
 				}
 			}
 
-			// Replace content of this object with cleaned copy
-			copyMem(this, copy, sizeof(*this));
+			// don't expect here, certainly got error!!!
+			printf("Error: Something went wrong at cleanup.");
 		}
 
 		// Return element value at elementIndex.
@@ -5256,7 +5615,7 @@ namespace QPI
 		// Return elementIndex of next element in priority queue (or NULL_INDEX if this is the last element).
 		sint64 nextElementIndex(sint64 elementIndex) const
 		{
-			return _elements[elementIndex & (L - 1)].nextElementIndex;
+			return _nextElementIndex(elementIndex);
 		}
 
 		// Return overall number of elements.
@@ -5282,7 +5641,7 @@ namespace QPI
 		// Return elementIndex of previous element in priority queue (or NULL_INDEX if this is the last element).
 		sint64 prevElementIndex(sint64 elementIndex) const
 		{
-			return _elements[elementIndex & (L - 1)].prevElementIndex;
+			return _previousElementIndex(elementIndex);
 		}
 
 		// Return priority of elementIndex (or 0 id if unused).
@@ -5292,61 +5651,114 @@ namespace QPI
 		}
 
 		// Remove element and mark its pov for removal, if the last element.
-		void remove(sint64 elementIndex)
+		void remove(sint64 elementIdx)
 		{
-			elementIndex &= (L - 1); // Don't use "elementIndex %= _population;" for an non-empty collection to get rid of the following "if (elementIndex < _population)"!
-			if (elementIndex < _population)
+			elementIdx &= (L - 1);
+			if (elementIdx < _population)
 			{
-				const sint64 povIndex = _elements[elementIndex].povIndex;
-
-				if (_povs[povIndex].population)
+				auto delete_element_idx = elementIdx;
+				const auto povIndex = _elements[elementIdx].povIndex;
+				auto& pov = _povs[povIndex];
+				if (pov.population > 1)
 				{
-					if (--_povs[povIndex].population)
-					{
-						if (_elements[elementIndex].prevElementIndex == NULL_INDEX)
-						{
-							_povs[povIndex].headIndex = _elements[elementIndex].nextElementIndex;
-						}
-						else
-						{
-							_elements[_elements[elementIndex].prevElementIndex].nextElementIndex = _elements[elementIndex].nextElementIndex;
-						}
-						if (_elements[elementIndex].nextElementIndex == NULL_INDEX)
-						{
-							_povs[povIndex].tailIndex = _elements[elementIndex].prevElementIndex;
-						}
-						else
-						{
-							_elements[_elements[elementIndex].nextElementIndex].prevElementIndex = _elements[elementIndex].prevElementIndex;
-						}
-					}
-					else
-					{
-						_povOccupationFlags[povIndex >> 5] ^= (3ULL << ((povIndex & 31) << 1));
-					}
+					auto& rootIdx = pov.bstRootIndex;
+					auto& cur_element = _elements[elementIdx];
+					auto removed_element_idx = elementIdx;
 
-					if (--_population && elementIndex != _population)
+					if (cur_element.bstRightIndex != NULL_INDEX &&
+						cur_element.bstLeftIndex != NULL_INDEX)
 					{
-						// Move last element to fill new gap in array
-						copyMem(&_elements[elementIndex], &_elements[_population], sizeof(_elements[0]));
+						// it contains both left and right child
+						const auto tmp_idx = _getMostLeft(cur_element.bstRightIndex);
+						if (tmp_idx == pov.tailIndex)
+						{
+							pov.tailIndex = _previousElementIndex(tmp_idx);
+						}
+						const auto right_tmp_index = _elements[tmp_idx].bstRightIndex;
+						if (tmp_idx == cur_element.bstRightIndex)
+						{
+							cur_element.bstRightIndex = right_tmp_index;
+							if (right_tmp_index != NULL_INDEX)
+							{
+								_elements[right_tmp_index].bstParentIndex = elementIdx;
+							}
+						}
+						else
+						{
+							_elements[_elements[tmp_idx].bstParentIndex].bstLeftIndex = right_tmp_index;
+							if (right_tmp_index != NULL_INDEX)
+							{
+								_elements[right_tmp_index].bstParentIndex = _elements[tmp_idx].bstParentIndex;
+							}
+						}
+						copyMem(&cur_element.value, &_elements[tmp_idx].value, sizeof(T));
+						cur_element.priority = _elements[tmp_idx].priority;
 
-						if (_elements[elementIndex].prevElementIndex == NULL_INDEX)
+						const bool SUPPORT_BACK_COMPATIBILITY = true;
+						if (SUPPORT_BACK_COMPATIBILITY)
 						{
-							_povs[_elements[elementIndex].povIndex].headIndex = elementIndex;
+							_moveElement(elementIdx, tmp_idx);
 						}
 						else
 						{
-							_elements[_elements[elementIndex].prevElementIndex].nextElementIndex = elementIndex;
-						}
-						if (_elements[elementIndex].nextElementIndex == NULL_INDEX)
-						{
-							_povs[_elements[elementIndex].povIndex].tailIndex = elementIndex;
-						}
-						else
-						{
-							_elements[_elements[elementIndex].nextElementIndex].prevElementIndex = elementIndex;
+							delete_element_idx = tmp_idx;
 						}
 					}
+					else if (cur_element.bstRightIndex != NULL_INDEX)
+					{
+						if (elementIdx == pov.headIndex)
+						{
+							pov.headIndex = _nextElementIndex(elementIdx);
+						}
+						if (!_updateParent(elementIdx, cur_element.bstRightIndex))
+						{
+							rootIdx = cur_element.bstRightIndex;
+							_elements[rootIdx].bstParentIndex = NULL_INDEX;
+						}
+					}
+					else if (cur_element.bstLeftIndex != NULL_INDEX)
+					{
+						if (elementIdx == pov.tailIndex)
+						{
+							pov.tailIndex = _previousElementIndex(elementIdx);
+						}
+						if (!_updateParent(elementIdx, cur_element.bstLeftIndex))
+						{
+							rootIdx = cur_element.bstLeftIndex;
+							_elements[rootIdx].bstParentIndex = NULL_INDEX;
+						}
+					}
+					else // it's a leaf node
+					{
+						if (elementIdx == pov.headIndex)
+						{
+							pov.headIndex = _nextElementIndex(elementIdx);
+						}
+						else if (elementIdx == pov.tailIndex)
+						{
+							pov.tailIndex = _previousElementIndex(elementIdx);
+						}
+						_updateParent(elementIdx, NULL_INDEX);
+					}
+					--pov.population;
+				}
+				else
+				{
+					pov.population = 0;
+					_markRemovalCounter++;
+					_povOccupationFlags[povIndex >> 5] ^= (3ULL << ((povIndex & 31) << 1));
+				}
+
+				if (--_population && delete_element_idx != _population)
+				{
+					// Move last element to fill new gap in array
+					_moveElement(_population, delete_element_idx);
+				}
+
+				const bool CLEAR_UNUSED_ELEMENT = true;
+				if (CLEAR_UNUSED_ELEMENT)
+				{
+					setMem(&_elements[_population], sizeof(Element), 0);
 				}
 			}
 		}
