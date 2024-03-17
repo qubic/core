@@ -33,6 +33,7 @@ public:
         auto* offsets = tickTransactionOffsets.getByTickInCurrentEpoch(tick);
         if (nextTickTransactionOffset + transactionSize <= tickTransactions.storageSpaceCurrentEpoch)
         {
+            EXPECT_EQ(offsets[transactionIdx], 0);
             offsets[transactionIdx] = nextTickTransactionOffset;
             copyMem(tickTransactions(nextTickTransactionOffset), transaction, transactionSize);
             nextTickTransactionOffset += transactionSize;
@@ -64,9 +65,15 @@ void addTick(unsigned int tick, unsigned long long seed, unsigned short maxTrans
 
     // add transactions of tick
     unsigned int transactionNum = gen64() % (maxTransactions + 1);
+    unsigned int orderMode = gen64() % 2;
+    unsigned int transactionSlot;
     for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
     {
-        ts.addTransaction(tick, transaction, gen64() % MAX_INPUT_SIZE);
+        if (orderMode == 0)
+            transactionSlot = transaction;  // standard order
+        else if (orderMode == 1)
+            transactionSlot = transactionNum - 1 - transaction;  // backward order
+        ts.addTransaction(tick, transactionSlot, gen64() % MAX_INPUT_SIZE);
     }
     ts.checkStateConsistencyWithAssert();
 }
@@ -99,16 +106,24 @@ void checkTick(unsigned int tick, unsigned long long seed, unsigned short maxTra
     {
         const auto* offsets = previousEpoch ? ts.tickTransactionOffsets.getByTickInPreviousEpoch(tick) : ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
         unsigned int transactionNum = gen64() % (maxTransactions + 1);
+        unsigned int orderMode = gen64() % 2;
+        unsigned int transactionSlot;
+
         for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
         {
             int expectedInputSize = (int)(gen64() % MAX_INPUT_SIZE);
-            
+
+            if (orderMode == 0)
+                transactionSlot = transaction;  // standard order
+            else if (orderMode == 1)
+                transactionSlot = transactionNum - 1 - transaction;  // backward order
+
             // If previousEpoch, some transactions at the beginning may not have fit into the storage and are missing -> check okay
             // If current epoch, some may be missing at he end due to limited storage -> check okay
-            if (!offsets[transaction])
+            if (!offsets[transactionSlot])
                 continue;
 
-            Transaction* tp = ts.tickTransactions(offsets[transaction]);
+            Transaction* tp = ts.tickTransactions(offsets[transactionSlot]);
             EXPECT_TRUE(tp->checkValidity());
             EXPECT_EQ(tp->tick, tick);
             EXPECT_EQ((int)tp->inputSize, expectedInputSize);

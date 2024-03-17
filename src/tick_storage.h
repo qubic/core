@@ -21,7 +21,7 @@
 // - tickData (one TickData struct per tick)
 // - ticks (one Tick struct per tick and Computor)
 // - tickTransactions (continuous buffer efficiently storing the variable-size transactions)
-// - tickTransactionOffsets (offsets of transactions in buffer)
+// - tickTransactionOffsets (offsets of transactions in buffer, order in tickTransactions may differ)
 // - nextTickTransactionOffset (offset of next transition to be added)
 class TickStorage
 {
@@ -153,7 +153,7 @@ public:
         addDebugMessage(L"Begin ts.beginEpoch()");
         CHAR16 dbgMsgBuf[300];
 #endif
-        if (tickBegin && tickInCurrentEpochStorage(newInitialTick))
+        if (tickBegin && tickInCurrentEpochStorage(newInitialTick) && tickBegin < newInitialTick)
         {
             // seamless epoch transition: keep some ticks of prior epoch
             oldTickEnd = newInitialTick;
@@ -178,100 +178,52 @@ public:
 
             // copy transactions and transactionOffsets
             {
-                // find out how many of the last transactions fit into the previous transactions buffer by going through offsets array from end
-                const auto* transactionOffsetsEnd = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(oldTickEnd);
-                const auto* transactionOffsetsBegin = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(oldTickBegin);
-                unsigned long long sumTransactionSizes = 0;
-                const auto* transactionOffsetsFirstToKeep = transactionOffsetsEnd;
-                for (const auto* transactionOffsetPtr = transactionOffsetsEnd - 1; transactionOffsetPtr >= transactionOffsetsBegin; --transactionOffsetPtr)
+                // copy transactions
+                const unsigned long long totalTransactionSizesSum = nextTickTransactionOffset - FIRST_TICK_TRANSACTION_OFFSET;
+                const unsigned long long keepTransactionSizesSum = (totalTransactionSizesSum <= tickTransactionsSizePreviousEpoch) ? totalTransactionSizesSum : tickTransactionsSizePreviousEpoch;
+                const unsigned long long firstToKeepOffset = nextTickTransactionOffset - keepTransactionSizesSum;
+                copyMem(oldTickTransactionsPtr, tickTransactionsPtr + firstToKeepOffset, keepTransactionSizesSum);
+
+                // adjust offsets (based on end of transactions)
+                const unsigned long long offsetDelta = (tickTransactionsSizeCurrentEpoch + keepTransactionSizesSum) - nextTickTransactionOffset;
+                for (unsigned int tickId = oldTickBegin; tickId < oldTickEnd; ++tickId)
                 {
-                    if (*transactionOffsetPtr != 0)
+                    const unsigned long long* tickOffsets = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(tickId);
+                    unsigned long long* tickOffsetsPrevEp = TickTransactionOffsetsAccess::getByTickInPreviousEpoch(tickId);
+                    for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
                     {
-                        const Transaction* transaction = TickTransactionsAccess::ptr(*transactionOffsetPtr);
-                        ASSERT(transaction->checkValidity());
-                        ASSERT(oldTickBegin <= transaction->tick && transaction->tick < oldTickEnd);
-                        unsigned long long newSize = sumTransactionSizes + transaction->totalSize();
-                        if (newSize <= tickTransactionsSizePreviousEpoch)
+                        const unsigned long long offset = tickOffsets[transactionIdx];
+                        if (!offset || offset < firstToKeepOffset)
                         {
-                            sumTransactionSizes = newSize;
-                            transactionOffsetsFirstToKeep = transactionOffsetPtr;
+                            // transaction not available (either not available overall or not fitting in storage of previous epoch)
+                            tickOffsetsPrevEp[transactionIdx] = 0;
                         }
                         else
                         {
-                            break;
+                            // set offset of transcation
+                            const unsigned long long offsetPrevEp = offset + offsetDelta;
+                            tickOffsetsPrevEp[transactionIdx] = offsetPrevEp;
+
+                            // check offset and transaction
+                            ASSERT(offset >= FIRST_TICK_TRANSACTION_OFFSET);
+                            ASSERT(offset < tickTransactionsSizeCurrentEpoch);
+                            ASSERT(offsetPrevEp >= tickTransactionsSizeCurrentEpoch);
+                            ASSERT(offsetPrevEp < tickTransactionsSize);
+                            Transaction* transactionCurEp = TickTransactionsAccess::ptr(offset);
+                            Transaction* transactionPrevEp = TickTransactionsAccess::ptr(offsetPrevEp);
+                            ASSERT(transactionCurEp->checkValidity());
+                            ASSERT(transactionPrevEp->checkValidity());
+                            ASSERT(transactionPrevEp->tick == tickId);
+                            ASSERT(transactionPrevEp->tick == tickId);
+                            ASSERT(transactionPrevEp->amount == transactionCurEp->amount);
+                            ASSERT(transactionPrevEp->sourcePublicKey == transactionCurEp->sourcePublicKey);
+                            ASSERT(transactionPrevEp->destinationPublicKey == transactionCurEp->destinationPublicKey);
+                            ASSERT(transactionPrevEp->inputSize == transactionCurEp->inputSize);
+                            ASSERT(transactionPrevEp->inputType == transactionCurEp->inputType);
+                            ASSERT(offset + transactionCurEp->totalSize() <= tickTransactionsSizeCurrentEpoch);
+                            ASSERT(offsetPrevEp + transactionPrevEp->totalSize() <= tickTransactionsSize);
                         }
                     }
-                }
-
-                // set all transaction offsets of previous epoch storage to 0 (no transactions)
-                setMem(oldTickTransactionOffsetsPtr, tickTransactionOffsetsSizePreviousEpoch, 0);
-
-                // if any transactions...
-                if (sumTransactionSizes)
-                {
-                    // copy transactions from from recently ended epoch to storage of previous epoch
-                    copyMem(oldTickTransactionsPtr, tickTransactionsPtr + *transactionOffsetsFirstToKeep, sumTransactionSizes);
-
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                    Transaction* taPtr = (Transaction*)oldTickTransactionsPtr;
-                    ASSERT(taPtr->checkValidity());
-                    setText(dbgMsgBuf, L"first transaction in buffer of prev. epoch: tick=");
-                    appendNumber(dbgMsgBuf, taPtr->tick, FALSE);
-                    addDebugMessage(dbgMsgBuf);
-#endif
-
-                    // get tick and transaction index of first transaction to keep
-                    unsigned int firstTick = TickTransactionsAccess::ptr(*transactionOffsetsFirstToKeep)->tick;
-                    ASSERT(firstTick >= oldTickBegin && firstTick < oldTickEnd);
-                    transactionOffsetsBegin = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(firstTick);
-                    ASSERT(transactionOffsetsBegin <= transactionOffsetsFirstToKeep && transactionOffsetsFirstToKeep < transactionOffsetsBegin + NUMBER_OF_TRANSACTIONS_PER_TICK);
-                    long long firstTickTransactionIdx = transactionOffsetsFirstToKeep - transactionOffsetsBegin;
-
-                    // set offsets of the transactions we copied (in the storage of the previous epoch)
-                    unsigned long long copiedSumTransactionSizes = 0;
-                    auto* oldTransactionOffsetsPtr = TickTransactionOffsetsAccess::getByTickInPreviousEpoch(firstTick) + firstTickTransactionIdx;
-                    const auto* transactionOffsetPtr = transactionOffsetsFirstToKeep;
-
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                    setText(dbgMsgBuf, L"firstTick=");
-                    appendNumber(dbgMsgBuf, firstTick, FALSE);
-                    appendText(dbgMsgBuf, L", firstTickTransactionIdx=");
-                    appendNumber(dbgMsgBuf, firstTickTransactionIdx, FALSE);
-                    appendText(dbgMsgBuf, L", sumTransactionSizes=");
-                    appendNumber(dbgMsgBuf, sumTransactionSizes, FALSE);
-                    addDebugMessage(dbgMsgBuf);
-
-                    setText(dbgMsgBuf, L"transactionOffsetsFirstToKeep=");
-                    appendNumber(dbgMsgBuf, (unsigned long long)transactionOffsetsFirstToKeep, FALSE);
-                    appendText(dbgMsgBuf, L", transactionOffsetsBegin=");
-                    appendNumber(dbgMsgBuf, (unsigned long long)transactionOffsetsBegin, FALSE);
-                    appendText(dbgMsgBuf, L", transactionOffsetsEnd=");
-                    appendNumber(dbgMsgBuf, (unsigned long long)transactionOffsetsEnd, FALSE);
-                    addDebugMessage(dbgMsgBuf);
-
-                    setText(dbgMsgBuf, L"oldTransactionOffsetsPtr=");
-                    appendNumber(dbgMsgBuf, (unsigned long long)oldTransactionOffsetsPtr, FALSE);
-                    setText(dbgMsgBuf, L", oldTransactionOffsetsBegin=");
-                    appendNumber(dbgMsgBuf, (unsigned long long)TickTransactionOffsetsAccess::getByTickInPreviousEpoch(oldTickBegin), FALSE);
-                    setText(dbgMsgBuf, L", oldTransactionOffsetsEnd=");
-                    appendNumber(dbgMsgBuf, (unsigned long long)TickTransactionOffsetsAccess::getByTickInPreviousEpoch(oldTickEnd), FALSE);
-                    addDebugMessage(dbgMsgBuf);
-#endif
-
-                    while (copiedSumTransactionSizes < sumTransactionSizes)
-                    {
-                        if (*transactionOffsetPtr)
-                        {
-                            const Transaction* transaction = TickTransactionsAccess::ptr(*transactionOffsetPtr);
-                            ASSERT(transaction->checkValidity());
-                            ASSERT(firstTick <= transaction->tick && transaction->tick < oldTickEnd);
-                            *oldTransactionOffsetsPtr = copiedSumTransactionSizes + tickTransactionsSizeCurrentEpoch;
-                            copiedSumTransactionSizes += transaction->totalSize();
-                        }
-                        ++oldTransactionOffsetsPtr;
-                        ++transactionOffsetPtr;
-                    }
-                    ASSERT(copiedSumTransactionSizes == sumTransactionSizes);
                 }
             }
 
@@ -280,8 +232,6 @@ public:
             setMem(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick), 0);
             setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSizeCurrentEpoch, 0);
             setMem(tickTransactionsPtr, tickTransactionsSizeCurrentEpoch, 0);
-
-            tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
         }
         else
         {
@@ -292,10 +242,10 @@ public:
             setMem(tickTransactionsPtr, tickTransactionsSize, 0);
             oldTickBegin = 0;
             oldTickEnd = 0;
-            tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH; // +TICKS_TO_KEEP_FROM_PRIOR_EPOCH; // to add this, also include other tick buffer
         }
         
         tickBegin = newInitialTick;
+        tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
 
         nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
 #if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -342,15 +292,11 @@ public:
             }
 
             const unsigned long long* tickOffsets = TickTransactionOffsetsAccess::getByTickInPreviousEpoch(tickId);
-            unsigned long long prevOffset = 0;
             for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
             {
                 unsigned long long offset = tickOffsets[transactionIdx];
                 if (offset)
                 {
-                    ASSERT(offset > prevOffset);
-                    prevOffset = offset;
-
                     Transaction* transaction = TickTransactionsAccess::ptr(offset);
                     ASSERT(transaction->checkValidity());
                     ASSERT(transaction->tick == tickId);
@@ -385,6 +331,7 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         test_current_epoch:
 #endif
+        unsigned long long lastTransactionEndOffset = FIRST_TICK_TRANSACTION_OFFSET;
         for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
         {
             const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);
@@ -398,15 +345,11 @@ public:
             }
 
             const unsigned long long* tickOffsets = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(tickId);
-            unsigned long long prevOffset = 0;
             for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
             {
                 unsigned long long offset = tickOffsets[transactionIdx];
                 if (offset)
                 {
-                    ASSERT(offset > prevOffset);
-                    prevOffset = offset;
-
                     Transaction* transaction = TickTransactionsAccess::ptr(offset);
                     ASSERT(transaction->checkValidity());
                     ASSERT(transaction->tick == tickId);
@@ -433,9 +376,14 @@ public:
                         goto leave_test;
                     }
 #endif
+
+                    unsigned long long transactionEndOffset = offset + transaction->totalSize();
+                    if (lastTransactionEndOffset < transactionEndOffset)
+                        lastTransactionEndOffset = transactionEndOffset;
                 }
             }
         }
+        ASSERT(lastTransactionEndOffset == nextTickTransactionOffset);
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         leave_test:
         addDebugMessage(L"End ts.checkStateConsistencyWithAssert()");
@@ -479,7 +427,7 @@ public:
             RELEASE(tickDataLock);
         }
 
-        // Return tick if it is stored and not empty, or nullptr otherise (always checks tick).
+        // Return tick if it is stored and not empty, or nullptr otherwise (always checks tick).
         inline static TickData* getByTickIfNotEmpty(unsigned int tick)
         {
             unsigned int index;
@@ -637,7 +585,7 @@ public:
             return (Transaction*)(tickTransactionsPtr + transactionOffset);
         }
 
-        // Return pointer to Transaction based on transaction offset in current epoch (checking offset with ASSERT)
+        // Return pointer to Transaction based on transaction offset independent of epoch (checking offset with ASSERT)
         inline Transaction * operator()(unsigned long long transactionOffset)
         {
             return ptr(transactionOffset);
