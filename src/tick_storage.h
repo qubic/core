@@ -259,6 +259,15 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin ts.checkStateConsistencyWithAssert()");
         CHAR16 dbgMsgBuf[200];
+        setText(dbgMsgBuf, L"oldTickBegin=");
+        appendNumber(dbgMsgBuf, oldTickBegin, FALSE);
+        appendText(dbgMsgBuf, L", oldTickEnd=");
+        appendNumber(dbgMsgBuf, oldTickEnd, FALSE);
+        appendText(dbgMsgBuf, L", tickBegin=");
+        appendNumber(dbgMsgBuf, tickBegin, FALSE);
+        appendText(dbgMsgBuf, L", tickEnd=");
+        appendNumber(dbgMsgBuf, tickEnd, FALSE);
+        addDebugMessage(dbgMsgBuf);
 #endif
         ASSERT(tickBegin <= tickEnd);
         ASSERT(tickEnd - tickBegin <= tickDataLength);
