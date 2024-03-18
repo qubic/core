@@ -3498,6 +3498,7 @@ static void tickProcessor(void*)
                                         {
                                             _mm_pause();
                                         }
+                                        epochTransitionState = 2;
 
 #ifndef NDEBUG
                                         addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
@@ -3657,7 +3658,7 @@ static void saveSystem()
     logToConsole(L"Saving system file...");
 
     const unsigned long long beginningTick = __rdtsc();
-    CHAR16* fn = (epochTransitionState) ? SYSTEM_END_OF_EPOCH_FILE_NAME : SYSTEM_FILE_NAME;
+    CHAR16* fn = (epochTransitionState == 1) ? SYSTEM_END_OF_EPOCH_FILE_NAME : SYSTEM_FILE_NAME;
     long long savedSize = save(fn, sizeof(system), (unsigned char*)&system);
     if (savedSize == sizeof(system))
     {
