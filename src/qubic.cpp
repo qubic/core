@@ -2180,11 +2180,12 @@ static void processTick(unsigned long long processorNumber)
                                                         minerScores[minerIndex] = tmpScore;
                                                     }
 
+                                                    // combine 225 worst current computors with 225 best candidates
                                                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS - QUORUM; i++)
                                                     {
                                                         competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
                                                         competitorScores[i] = minerScores[QUORUM + i];
-                                                        competitorComputorStatuses[QUORUM + i] = true;
+                                                        competitorComputorStatuses[i] = true;
 
                                                         if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
                                                         {
@@ -2197,6 +2198,8 @@ static void processTick(unsigned long long processorNumber)
                                                         }
                                                         competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
                                                     }
+
+                                                    // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
                                                     for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
                                                     {
                                                         int j = i;
@@ -2208,8 +2211,10 @@ static void processTick(unsigned long long processorNumber)
                                                         {
                                                             competitorPublicKeys[j] = competitorPublicKeys[j - 1];
                                                             competitorScores[j] = competitorScores[j - 1];
+                                                            competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
                                                             competitorPublicKeys[--j] = tmpPublicKey;
                                                             competitorScores[j] = tmpScore;
+                                                            competitorComputorStatuses[j] = tmpComputorStatus;
                                                         }
                                                     }
 
@@ -4283,7 +4288,7 @@ static void processKeyPresses()
         * F3 Key
         * By Pressing the F3 Key the node will display the current state of the mining race
         * You can see which of your ID's is at which position.
-        *
+        */
         case 0x0D:
         {
             unsigned int numberOfSolutions = 0;
@@ -4301,7 +4306,7 @@ static void processKeyPresses()
             appendText(message, L").");
             logToConsole(message);
         }
-        break;*/
+        break;
 
         /*
         * F4 Key
