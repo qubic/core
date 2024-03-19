@@ -111,8 +111,8 @@ struct ScoreFunction
 
     static inline void clampNeuron(long long& val)
     {
-        if (val >= NEURON_VALUE_LIMIT) {
-            val = NEURON_VALUE_LIMIT - 1;
+        if (val > NEURON_VALUE_LIMIT) {
+            val = NEURON_VALUE_LIMIT;
         }
         else if (val < -NEURON_VALUE_LIMIT) {
             val = -NEURON_VALUE_LIMIT;
