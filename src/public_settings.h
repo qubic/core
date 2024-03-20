@@ -8,11 +8,11 @@
 #define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this for this epoch, because there may be issues due too fast ticking
 
 #define VERSION_A 1
-#define VERSION_B 196
+#define VERSION_B 197
 #define VERSION_C 0
 
-#define EPOCH 100
-#define TICK 12950000
+#define EPOCH 101
+#define TICK 13060000
 
 // random seed is now obtained from spectrumDigests
 
@@ -31,7 +31,7 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_INPUT_DURATION 256
 #define MAX_OUTPUT_DURATION 256
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 44
+#define SOLUTION_THRESHOLD_DEFAULT 42
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 1000000 // the larger the better
 #define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
