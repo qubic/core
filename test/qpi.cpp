@@ -13,7 +13,7 @@ static void* __scratchpad()
 #include <vector>
 #include <map>
 #include <random>
-
+#include <chrono>
 
 template <typename T, unsigned long long capacity>
 void checkPriorityQueue(const QPI::collection<T, capacity>& coll, const QPI::id& pov, bool print = false)
@@ -205,8 +205,8 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     // elements should be accessed
     EXPECT_EQ(coll.pov(0), QPI::id(0, 0, 0, 0));
     EXPECT_EQ(coll.element(0), 0);
-    EXPECT_EQ(coll.nextElementIndex(0), 0);
-    EXPECT_EQ(coll.prevElementIndex(0), 0);
+    EXPECT_EQ(coll.nextElementIndex(0), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(0), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(0), 0);
 
     // add an element with id1
@@ -594,8 +594,8 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     // elements should be accessed
     EXPECT_EQ(coll.pov(0), QPI::id(0, 0, 0, 0));
     EXPECT_EQ(coll.element(0), 0);
-    EXPECT_EQ(coll.nextElementIndex(0), 0);
-    EXPECT_EQ(coll.prevElementIndex(0), 0);
+    EXPECT_EQ(coll.nextElementIndex(0), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(0), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(0), 0);
 }
 
@@ -931,8 +931,162 @@ TEST(TestCoreQPI, CollectionCleanup) {
         testCollectionCleanupPseudoRandom<256>(10, 123 + i);
     }
     delete[] __scratchpadBuffer;
+    __scratchpadBuffer = nullptr;
 }
 
+template<typename T>
+T genNumber(
+    const T* genBuffer,
+    const QPI::uint64 genSize,
+    QPI::uint64& idx)
+{
+    T val = genBuffer[idx];
+    idx = (idx + 1) % genSize;
+    return val;
+}
+
+template <unsigned long long capacity>
+QPI::uint64 testCollectionPeformance(
+    QPI::collection<QPI::uint64, capacity>& coll,
+    const int povs,
+    const QPI::sint64* genBuffer,
+    const QPI::uint64 genSize,
+    const QPI::uint64 genSeed,
+    const QPI::uint64 maxCleanupCounter)
+{
+    // add and remove entries with pseudo-random sequence
+    QPI::uint64 idx = genSeed % genSize;
+
+    // test cleanup of empty collection
+    coll.cleanup();
+
+#define GEN64 genNumber(genBuffer, genSize, idx)
+
+    QPI::uint64 cleanupCounter = 0;
+    while (cleanupCounter < maxCleanupCounter)
+    {
+        int p = GEN64 % 100;
+
+        if (p == 0)
+        {
+            // cleanup (after about 100 add/remove)
+            coll.cleanup();
+            ++cleanupCounter;
+        }
+
+        if (p < 70)
+        {
+            // add to collection (more probable than remove)
+            QPI::id pov(GEN64 % povs, 0, 0, 0);
+            if (coll.add(pov, GEN64, GEN64) == QPI::NULL_INDEX)
+            {
+                for (int i = 0; i < 10; i++)
+                {
+                    p = GEN64 % 100;
+                    if (p < 70)
+                    {
+                        if (coll.population() > 0)
+                        {
+                            coll.remove(GEN64 % coll.population());
+                            if (!coll.population())
+                            {
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            coll.cleanup();
+                            ++cleanupCounter;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        else if (coll.population() > 0)
+        {
+            // remove from collection
+            coll.remove(GEN64 % coll.population());
+        }
+    }
+
+    return coll.population();
+}
+
+template <unsigned long long capacity>
+QPI::uint64 testCollectionPeformance(
+    const QPI::uint64 maxPovsCount, const QPI::uint64 maxCleanupCounter)
+{
+    std::mt19937_64 gen64(113377);
+    const QPI::uint64 genSize = 113377;
+    QPI::sint64 gen_buffers[genSize];
+    for (QPI::uint64 i = 0; i < genSize; i++)
+    {
+        gen_buffers[i] = gen64();
+    }
+
+    auto t0 = std::chrono::high_resolution_clock::now();
+
+    QPI::collection<QPI::uint64, capacity> coll;
+    coll.reset();
+    for (int i = 0; i < 333; ++i)
+    {
+        testCollectionPeformance(coll,
+            maxPovsCount, gen_buffers, genSize, i + 11, maxCleanupCounter);
+    }
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto duration = t1 - t0;
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0);
+    return ms.count();
+}
+
+TEST(TestCoreQPI, CollectionPerformance) {
+
+    __scratchpadBuffer = new char[16 * 1024 * 1024];
+
+    std::vector<QPI::uint64> durations;
+    std::vector<std::string> descriptions;
+
+    durations.push_back(testCollectionPeformance<1024>(128, 333));
+    descriptions.push_back("[CollectionPerformance] Collection<1024>(128, 333)");
+
+    durations.push_back(testCollectionPeformance<1024>(64, 333));
+    descriptions.push_back("[CollectionPerformance] Collection<1024>(64, 333)");
+
+    durations.push_back(testCollectionPeformance<1024>(32, 333));
+    descriptions.push_back("[CollectionPerformance] Collection<1024>(32, 333)");
+
+    durations.push_back(testCollectionPeformance<1024>(16, 333));
+    descriptions.push_back("[CollectionPerformance] Collection<1024>(16, 333)");
+
+    durations.push_back(testCollectionPeformance<512>(128, 333));
+    descriptions.push_back("[CollectionPerformance] Collection<512>(128, 333)");
+
+    durations.push_back(testCollectionPeformance<512>(64, 333));
+    descriptions.push_back("[CollectionPerformance] Collection<512>(64, 333)");
+
+    durations.push_back(testCollectionPeformance<512>(32, 333));
+    descriptions.push_back("[CollectionPerformance] Collection<512>(32, 333)");
+
+    durations.push_back(testCollectionPeformance<512>(16, 333));
+    descriptions.push_back("[CollectionPerformance] Collection<512>(16, 333)");
+
+    delete[] __scratchpadBuffer;
+    __scratchpadBuffer = nullptr;
+
+    bool verbose = true;
+    if (verbose)
+    {
+        QPI::uint64 total = 0;
+        for (size_t i = 0; i < durations.size(); i++)
+        {
+            total += durations[i];
+            std::cout << "- " << descriptions[i] << ":\t" << durations[i] << " ms\n";
+        }
+        std::cout << "* [CollectionPerformance] Total:\t\t" << total << " ms\n";
+    }
+}
 
 TEST(TestCoreQPI, Div) {
     EXPECT_EQ(QPI::div(0, 0), 0);
