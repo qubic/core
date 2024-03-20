@@ -53,6 +53,42 @@ public:
 		array<Order, 256> orders;
 	};
 
+	struct EntityAskOrders_input
+	{
+		id entity;
+		uint64 offset;
+	};
+	struct EntityAskOrders_output
+	{
+		struct Order
+		{
+			id issuer;
+			uint64 assetName;
+			sint64 price;
+			sint64 numberOfShares;
+		};
+
+		array<Order, 256> orders;
+	};
+
+	struct EntityBidOrders_input
+	{
+		id entity;
+		uint64 offset;
+	};
+	struct EntityBidOrders_output
+	{
+		struct Order
+		{
+			id issuer;
+			uint64 assetName;
+			sint64 price;
+			sint64 numberOfShares;
+		};
+
+		array<Order, 256> orders;
+	};
+
 	struct IssueAsset_input
 	{
 		uint64 assetName;
@@ -147,6 +183,12 @@ private:
 	PUBLIC(AssetBidOrders)
 	_
 
+	PUBLIC(EntityAskOrders)
+	_
+
+	PUBLIC(EntityBidOrders)
+	_
+
 	PUBLIC(IssueAsset)
 
 		if (invocationReward() < state._assetIssuanceFee)
@@ -238,6 +280,8 @@ private:
 		REGISTER_USER_FUNCTION(Fees, 1);
 		REGISTER_USER_FUNCTION(AssetAskOrders, 2);
 		REGISTER_USER_FUNCTION(AssetBidOrders, 3);
+		REGISTER_USER_FUNCTION(EntityAskOrders, 4);
+		REGISTER_USER_FUNCTION(EntityBidOrders, 5);
 	_
 
 	REGISTER_USER_PROCEDURES
