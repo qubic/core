@@ -2848,13 +2848,10 @@ static void endEpoch()
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
 }
 
+
 #if !START_NETWORK_FROM_SCRATCH
-// try to pull quorum tick and update the etalonTick to correct timeStamp
-// A corner case: this function can't get initial time if more than 451 ID failed to switch the epoch
-// in this case, START_NETWORK_FROM_SCRATCH must be 1 to boot the network from scratch again, ie: first tick timestamp: 2022-04-13 12:00:00 UTC
-// On the first tick of an epoch (after seamless transition), it contains the prevDigests of the last tick of last epoch, which can't be obtained
-// by a node that starts from scratch. 
-static bool comparePrevDigestsAndTime(const Tick& A, const Tick& B)
+
+static bool haveSamePrevDigestsAndTime(const Tick& A, const Tick& B)
 {
     return A.prevComputerDigest == B.prevComputerDigest &&
         A.prevResourceTestingDigest == B.prevResourceTestingDigest &&
@@ -2862,6 +2859,12 @@ static bool comparePrevDigestsAndTime(const Tick& A, const Tick& B)
         A.prevUniverseDigest == B.prevUniverseDigest &&
         *((unsigned long long*) & A.millisecond) == *((unsigned long long*) & B.millisecond);
 }
+
+// Try to pull quorum tick and update the etalonTick to correct timeStamp and digests.
+// A corner case: this function can't get initial time+digests if more than 451 ID failed to switch the epoch.
+// In this case, START_NETWORK_FROM_SCRATCH must be 1 to boot the network from scratch again, ie: first tick timestamp: 2022-04-13 12:00:00 UTC.
+// On the first tick of an epoch after seamless transition, it contains the prevDigests of the last tick of last epoch, which can't be obtained
+// by a node that starts from scratch.
 static void initializeFirstTick()
 {
     unsigned int uniqueVoteIndex[NUMBER_OF_COMPUTORS];
@@ -2872,6 +2875,7 @@ static void initializeFirstTick()
     {
         if (broadcastedComputors.computors.epoch == system.epoch)
         {
+            // group ticks with same digest+timestamp and count votes (how many are in each group)
             setMem(uniqueVoteIndex, sizeof(uniqueVoteIndex), 0);
             setMem(uniqueVoteCount, sizeof(uniqueVoteCount), 0);
             uniqueCount = 0;
@@ -2883,12 +2887,12 @@ static void initializeFirstTick()
                 const Tick* tick = &tsCompTicks[i];
                 if (tick->epoch == system.epoch)
                 {
-                    unsigned long long timestampFromVote = *((unsigned long long*) & tick->millisecond);
+                    // compare tick with all ticks with unique digest+timestamp that we have found before
                     int unique_idx = -1;
                     for (int j = 0; j < uniqueCount; j++) {
                         ts.ticks.acquireLock(uniqueVoteIndex[j]);
                         const Tick* unique = &tsCompTicks[uniqueVoteIndex[j]];
-                        if (comparePrevDigestsAndTime(*unique , *tick))
+                        if (haveSamePrevDigestsAndTime(*unique , *tick))
                         {
                             unique_idx = j;
                             ts.ticks.releaseLock(uniqueVoteIndex[j]);
@@ -2896,14 +2900,17 @@ static void initializeFirstTick()
                         }
                         ts.ticks.releaseLock(uniqueVoteIndex[j]);
                     }
+
                     if (unique_idx == -1)
                     {
+                        // tick is not in array of unique votes -> add and init counter to 1
                         uniqueVoteIndex[uniqueCount] = i;
                         uniqueVoteCount[uniqueCount] = 1;
                         uniqueCount++;
                     }
                     else
                     {
+                        // tick already is in array of unique ticks -> increment counter
                         uniqueVoteCount[unique_idx]++;
                     }
                 }
@@ -2911,8 +2918,10 @@ static void initializeFirstTick()
                 ts.ticks.releaseLock(i);
             }
 
+            // if we have groups...
             if (uniqueCount > 0)
             {
+                // find group with most votes
                 int maxUniqueVoteCountIndex = 0;
                 for (int i = 1; i < uniqueCount; i++)
                 {
@@ -2924,6 +2933,7 @@ static void initializeFirstTick()
                 
                 int numberOfVote = uniqueVoteCount[maxUniqueVoteCountIndex];
 
+                // accept the tick with most votes if it has more than 1/3 of quorum
                 if (numberOfVote >= NUMBER_OF_COMPUTORS - QUORUM)
                 {
                     ts.ticks.acquireLock(uniqueVoteIndex[maxUniqueVoteCountIndex]);
