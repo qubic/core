@@ -3176,6 +3176,20 @@ static void tickProcessor(void*)
                         }
                     }
                 }
+
+                // operator opt to force this node to switch to new epoch
+                // this can fix the problem of weak nodes getting stuck and can't automatically switch to new epoch
+                // due to lack of data (for detail, need to investigate deeper)
+                if (forceSwitchEpoch)
+                {
+                    nextTickData.epoch = 0;
+                    setMem(nextTickData.transactionDigests, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
+                    // first and second tick of an epoch are always empty tick
+                    targetNextTickDataDigest = _mm256_setzero_si256();
+                    targetNextTickDataDigestIsKnown = true;
+                    tickDataSuits = true;
+                }
+
                 if (!tickDataSuits)
                 {
                     unsigned int tickTotalNumberOfComputors = 0;
@@ -3198,18 +3212,6 @@ static void tickProcessor(void*)
                 {
                     numberOfNextTickTransactions = 0;
                     numberOfKnownNextTickTransactions = 0;
-
-                    // operator opt to force this node to switch to new epoch
-                    // this can fix the problem of weak nodes getting stuck and can't automatically switch to new epoch
-                    // due to lack of data (for detail, need to investigate deeper)
-                    if (forceSwitchEpoch)
-                    {
-                        nextTickData.epoch = 0;
-                        setMem(nextTickData.transactionDigests, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
-                        // first and second tick of an epoch are always empty tick
-                        targetNextTickDataDigest = _mm256_setzero_si256();
-                        targetNextTickDataDigestIsKnown = true;
-                    }
 
                     if (nextTickData.epoch == system.epoch)
                     {
