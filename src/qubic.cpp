@@ -75,6 +75,7 @@ static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
 static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
+static volatile bool forceSwitchEpoch = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
 
@@ -3198,6 +3199,18 @@ static void tickProcessor(void*)
                     numberOfNextTickTransactions = 0;
                     numberOfKnownNextTickTransactions = 0;
 
+                    // operator opt to force this node to switch to new epoch
+                    // this can fix the problem of weak nodes getting stuck and can't automatically switch to new epoch
+                    // due to lack of data (for detail, need to investigate deeper)
+                    if (forceSwitchEpoch)
+                    {
+                        nextTickData.epoch = 0;
+                        setMem(nextTickData.transactionDigests, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
+                        // first and second tick of an epoch are always empty tick
+                        targetNextTickDataDigest = _mm256_setzero_si256();
+                        targetNextTickDataDigestIsKnown = true;
+                    }
+
                     if (nextTickData.epoch == system.epoch)
                     {
                         nextTickTransactionsSemaphore = 1;
@@ -3459,6 +3472,7 @@ static void tickProcessor(void*)
                                     {
                                         // start seamless epoch transition
                                         epochTransitionState = 1;
+                                        forceSwitchEpoch = false;
                                     }
                                     else
                                     {
@@ -4586,6 +4600,18 @@ static void processKeyPresses()
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
             saveComputer();
+        }
+        break;
+
+        /*
+        * F7 Key
+        * Force switching epoch
+        * By pressing F7 key, next tick digest will be zeroes to fix a corner case where weak nodes cannot get through new epoch
+        * due to missing data. This flag will be reset only when the seamless transition procedure happen.
+        */
+        case 0x11:
+        {
+            forceSwitchEpoch = true;
         }
         break;
 
