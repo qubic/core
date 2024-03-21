@@ -4596,7 +4596,7 @@ static void processKeyPresses()
         */
         case 0x13:
         {
-            system.latestCreatedTick--;
+            if (system.latestCreatedTick > 0) system.latestCreatedTick--;
         }
         break;
 
