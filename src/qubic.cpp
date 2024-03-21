@@ -1919,10 +1919,37 @@ static void contractProcessor(void*)
 
 static void processTick(unsigned long long processorNumber)
 {
-    etalonTick.prevResourceTestingDigest = resourceTestingDigest;
-    etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
-    getUniverseDigest(etalonTick.prevUniverseDigest);
-    getComputerDigest(etalonTick.prevComputerDigest);
+    if (system.tick > system.initialTick)
+    {
+        etalonTick.prevResourceTestingDigest = resourceTestingDigest;
+        etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+        getUniverseDigest(etalonTick.prevUniverseDigest);
+        getComputerDigest(etalonTick.prevComputerDigest);
+    }
+    else if (system.tick == system.initialTick) // the first tick of an epoch
+    {
+        // RULE: prevDigests of tick T are the digests of tick T-1, so epoch number doesn't matter.        
+        // For seamless transition, spectrum and universe and computer have been changed after endEpoch event
+        // (miner rewards, IPO finalizing, contract endEpoch procedures,...)
+        // Here we still let prevDigests == digests of the last tick of last epoch
+        // so that lite client can verify the state of spectrum        
+
+#if START_NETWORK_FROM_SCRATCH // only update it if the whole network starts from scratch
+        // everything starts from files, there is no previous tick of the last epoch
+        // thus, prevDigests are the digests of the files
+        if (system.epoch == EPOCH)
+        {
+            etalonTick.prevResourceTestingDigest = resourceTestingDigest;
+            etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+            getUniverseDigest(etalonTick.prevUniverseDigest);
+            getComputerDigest(etalonTick.prevComputerDigest);
+        }
+#endif
+    }
+    else
+    {
+        // it should never go here
+    }
 
     if (system.tick == system.initialTick)
     {
@@ -2468,6 +2495,8 @@ static void processTick(unsigned long long processorNumber)
                     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastedFutureTickData.tickData.signature);
 
                     enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BroadcastFutureTickData::type, 0, &broadcastedFutureTickData);
+
+                    //bs->CopyMem(&tickData[broadcastedFutureTickData.tickData.tick - system.initialTick], &broadcastedFutureTickData.tickData, sizeof(TickData));
                 }
 
                 system.latestLedTick = system.tick;
@@ -2825,69 +2854,88 @@ static void endEpoch()
 // try to pull quorum tick and update the etalonTick to correct timeStamp
 // A corner case: this function can't get initial time if more than 451 ID failed to switch the epoch
 // in this case, START_NETWORK_FROM_SCRATCH must be 1 to boot the network from scratch again, ie: first tick timestamp: 2022-04-13 12:00:00 UTC
+// On the first tick of an epoch (after seamless transition), it contains the prevDigests of the last tick of last epoch, which can't be obtained
+// by a node that starts from scratch. 
+static bool comparePrevDigestsAndTime(const Tick& A, const Tick& B)
+{
+    return A.prevComputerDigest == B.prevComputerDigest &&
+        A.prevResourceTestingDigest == B.prevResourceTestingDigest &&
+        A.prevSpectrumDigest == B.prevSpectrumDigest &&
+        A.prevUniverseDigest == B.prevUniverseDigest &&
+        *((unsigned long long*) & A.millisecond) == *((unsigned long long*) & B.millisecond);
+}
 static void initializeFirstTick()
 {
-    unsigned long long uniqueTimestamp[NUMBER_OF_COMPUTORS];
-    int uniqueTimestampVoteCount[NUMBER_OF_COMPUTORS];
-    int uniqueTimestampCount = 0;
+    unsigned int uniqueVoteIndex[NUMBER_OF_COMPUTORS];
+    int uniqueVoteCount[NUMBER_OF_COMPUTORS];
+    int uniqueCount = 0;
     const unsigned int firstTickIndex = ts.tickToIndexCurrentEpoch(system.initialTick);
     while (!shutDownNode)
     {
         if (broadcastedComputors.computors.epoch == system.epoch)
         {
-            setMem(uniqueTimestamp, sizeof(uniqueTimestamp), 0);
-            setMem(uniqueTimestampVoteCount, sizeof(uniqueTimestampVoteCount), 0);
-            uniqueTimestampCount = 0;
+            setMem(uniqueVoteIndex, sizeof(uniqueVoteIndex), 0);
+            setMem(uniqueVoteCount, sizeof(uniqueVoteCount), 0);
+            uniqueCount = 0;
 
             const Tick* tsCompTicks = ts.ticks.getByTickIndex(firstTickIndex);
-            int total = 0;
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
                 ts.ticks.acquireLock(i);
                 const Tick* tick = &tsCompTicks[i];
                 if (tick->epoch == system.epoch)
                 {
-                    total++;
                     unsigned long long timestampFromVote = *((unsigned long long*) & tick->millisecond);
                     int unique_idx = -1;
-                    for (int j = 0; j < uniqueTimestampCount; j++) {
-                        if (uniqueTimestamp[j] == timestampFromVote)
+                    for (int j = 0; j < uniqueCount; j++) {
+                        ts.ticks.acquireLock(uniqueVoteIndex[j]);
+                        const Tick* unique = &tsCompTicks[uniqueVoteIndex[j]];
+                        if (comparePrevDigestsAndTime(*unique , *tick))
                         {
                             unique_idx = j;
+                            ts.ticks.releaseLock(uniqueVoteIndex[j]);
                             break;
                         }
+                        ts.ticks.releaseLock(uniqueVoteIndex[j]);
                     }
                     if (unique_idx == -1)
                     {
-                        uniqueTimestamp[uniqueTimestampCount] = timestampFromVote;
-                        uniqueTimestampVoteCount[uniqueTimestampCount] = 1;
-                        uniqueTimestampCount++;
+                        uniqueVoteIndex[uniqueCount] = i;
+                        uniqueVoteCount[uniqueCount] = 1;
+                        uniqueCount++;
                     }
                     else
                     {
-                        uniqueTimestampVoteCount[unique_idx]++;
+                        uniqueVoteCount[unique_idx]++;
                     }
                 }
 
                 ts.ticks.releaseLock(i);
             }
 
-            if (uniqueTimestampCount > 0)
+            if (uniqueCount > 0)
             {
-                int maxUniqueTimestampVoteCountIndex = 0;
-                for (int i = 1; i < uniqueTimestampCount; i++)
+                int maxUniqueVoteCountIndex = 0;
+                for (int i = 1; i < uniqueCount; i++)
                 {
-                    if (uniqueTimestampVoteCount[i] > uniqueTimestampVoteCount[maxUniqueTimestampVoteCountIndex])
+                    if (uniqueVoteCount[i] > uniqueVoteCount[maxUniqueVoteCountIndex])
                     {
-                        maxUniqueTimestampVoteCountIndex = i;
+                        maxUniqueVoteCountIndex = i;
                     }
                 }
                 
-                int numberOfVote = uniqueTimestampVoteCount[maxUniqueTimestampVoteCountIndex];
+                int numberOfVote = uniqueVoteCount[maxUniqueVoteCountIndex];
 
                 if (numberOfVote >= NUMBER_OF_COMPUTORS - QUORUM)
                 {
-                    *((unsigned long long*) & etalonTick.millisecond) = uniqueTimestamp[maxUniqueTimestampVoteCountIndex];
+                    ts.ticks.acquireLock(uniqueVoteIndex[maxUniqueVoteCountIndex]);
+                    const Tick* unique = &tsCompTicks[uniqueVoteIndex[maxUniqueVoteCountIndex]];
+                    ts.ticks.releaseLock(uniqueVoteIndex[maxUniqueVoteCountIndex]);
+                    *((unsigned long long*) & etalonTick.millisecond) = *((unsigned long long*) & unique->millisecond);
+                    etalonTick.prevComputerDigest = unique->prevComputerDigest;
+                    etalonTick.prevResourceTestingDigest = unique->prevResourceTestingDigest;
+                    etalonTick.prevSpectrumDigest = unique->prevSpectrumDigest;
+                    etalonTick.prevUniverseDigest = unique->prevUniverseDigest;
                     return;
                 }
             }
