@@ -2495,8 +2495,6 @@ static void processTick(unsigned long long processorNumber)
                     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastedFutureTickData.tickData.signature);
 
                     enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BroadcastFutureTickData::type, 0, &broadcastedFutureTickData);
-
-                    //bs->CopyMem(&tickData[broadcastedFutureTickData.tickData.tick - system.initialTick], &broadcastedFutureTickData.tickData, sizeof(TickData));
                 }
 
                 system.latestLedTick = system.tick;
