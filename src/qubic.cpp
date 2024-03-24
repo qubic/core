@@ -3538,13 +3538,6 @@ static void tickProcessor(void*)
 
                                     system.tick++;
 
-#ifndef NDEBUG
-                                    // TODO: remove later
-                                    // check consistency ever 10'th tick
-                                    if (system.tick % 10 == 0)
-                                        ts.checkStateConsistencyWithAssert();
-#endif
-
                                     if (epochTransitionState == 1)
                                     {
                                         // seamless epoch transistion
