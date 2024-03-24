@@ -30,11 +30,11 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 196
+#define VERSION_B 197
 #define VERSION_C 0
 
-#define EPOCH 100
-#define TICK 12950000
+#define EPOCH 101
+#define TICK 13060000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -52,7 +52,7 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_INPUT_DURATION 256
 #define MAX_OUTPUT_DURATION 256
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 44
+#define SOLUTION_THRESHOLD_DEFAULT 42
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
