@@ -5072,6 +5072,145 @@ namespace QPI
 			return NULL_INDEX;
 		}
 
+		// Return elementIndex of first element in priority queue of pov,
+		// and ignore elements with priority greater than maxPriority
+		sint64 _headIndex(const sint64 povIndex, const sint64 maxPriority) const
+		{
+			// with current code path, pov is not empty here
+			const auto& pov = _povs[povIndex];
+
+			// quick check head/tail
+			if (_elements[pov.headIndex].priority <= maxPriority)
+			{
+				return pov.headIndex;
+			}
+			if (_elements[pov.tailIndex].priority > maxPriority)
+			{
+				return NULL_INDEX;
+			}
+
+			// here, head's priority > maxPriority >= tail's priority
+			// => always found a valid element
+
+			// search index of parent element
+			// - always found parent element because pov is not empty
+			sint64 idx = _searchElement(pov.bstRootIndex, maxPriority);
+			if (_elements[idx].priority > maxPriority)
+			{
+				// forward iterating until meet element having priority <= maxPriority
+				while (true)
+				{
+					idx = _nextElementIndex(idx);
+					if (_elements[idx].priority <= maxPriority)
+					{
+						break;
+					}
+				}
+				return idx;
+			}
+
+			// backward iterating until meet element having priority > maxPriority
+			while (true)
+			{
+				sint64 prevIdx = _previousElementIndex(idx);
+				if (prevIdx == NULL_INDEX || _elements[prevIdx].priority > maxPriority)
+				{
+					break;
+				}
+				idx = prevIdx;
+			}
+			return idx;
+		}
+
+		// Return elementIndex of last element in priority queue of pov,
+		// and ignore elements with priority less than minPriority
+		sint64 _tailIndex(const sint64 povIndex, const sint64 minPriority) const
+		{
+			// with current code path, pov is not empty here
+			const auto& pov = _povs[povIndex];
+
+			// quick check head/tail
+			if (_elements[pov.headIndex].priority < minPriority)
+			{
+				return NULL_INDEX;
+			}
+			if (_elements[pov.tailIndex].priority >= minPriority)
+			{
+				return pov.tailIndex;
+			}
+
+			// here, head's priority >= minPriority > tail's priority
+			// => always found a valid element
+
+			// search index of parent element
+			// - always found parent element because pov is not empty
+			sint64 idx = _searchElement(pov.bstRootIndex, minPriority);
+
+			if (_elements[idx].priority >= minPriority)
+			{
+				// forward iterating until meet element having priority < minPriority
+				while (true)
+				{
+					sint64 nextIdx = _nextElementIndex(idx);
+					if (nextIdx == NULL_INDEX || _elements[nextIdx].priority < minPriority)
+					{
+						break;
+					}
+					idx = nextIdx;
+				}
+				return idx;
+			}
+
+			// backward iterating to meet element having priority >= minPriority
+			while (true)
+			{
+				idx = _previousElementIndex(idx);
+				if (_elements[idx].priority >= minPriority)
+				{
+					break;
+				}
+			}
+			return idx;
+		}
+
+		// Return index of parent element to insert a priority
+		sint64 _searchElement(const sint64 bstRootIndex,
+			const sint64 priority, int* pIterationsCount = nullptr) const
+		{
+			sint64 idx = bstRootIndex;
+			while (idx != NULL_INDEX)
+			{
+				if (pIterationsCount)
+				{
+					*pIterationsCount += 1;
+				}
+				auto& curElement = _elements[idx];
+				if (curElement.priority > priority)
+				{
+					if (curElement.bstRightIndex != NULL_INDEX)
+					{
+						idx = curElement.bstRightIndex;
+					}
+					else
+					{
+						return idx;
+					}
+				}
+				else
+				{
+					if (curElement.bstLeftIndex != NULL_INDEX)
+					{
+						idx = curElement.bstLeftIndex;
+					}
+					else
+					{
+						return idx;
+					}
+				}
+			}
+			return NULL_INDEX;
+		}
+
 		// Add element to priority queue, return elementIndex of new element
 		sint64 _addPovElement(const sint64 povIndex, const T value, const sint64 priority)
 		{
@@ -5089,40 +5228,19 @@ namespace QPI
 			else
 			{
 				int iterations_count = 0;
-				sint64 idx = pov.bstRootIndex;
-				while (idx != NULL_INDEX)
+				sint64 parentIdx = _searchElement(pov.bstRootIndex, priority, &iterations_count);				
+				if (_elements[parentIdx].priority > priority)
 				{
-					iterations_count++;
-					auto& curElement = _elements[idx];
-					if (_elements[idx].priority > priority)
-					{
-						if (curElement.bstRightIndex != NULL_INDEX)
-						{
-							idx = curElement.bstRightIndex;
-						}
-						else
-						{
-							curElement.bstRightIndex = newElementIdx;
-							newElement.bstParentIndex = idx;
-							pov.population++;
-							break;
-						}
-					}
-					else
-					{
-						if (curElement.bstLeftIndex != NULL_INDEX)
-						{
-							idx = curElement.bstLeftIndex;
-						}
-						else
-						{
-							curElement.bstLeftIndex = newElementIdx;
-							newElement.bstParentIndex = idx;
-							pov.population++;
-							break;
-						}
-					}
+					_elements[parentIdx].bstRightIndex = newElementIdx;
 				}
+				else
+				{
+					_elements[parentIdx].bstLeftIndex = newElementIdx;
+				}
+				newElement.bstParentIndex = parentIdx;
+				pov.population++;
+
+
 				if (_elements[pov.headIndex].priority < priority)
 				{
 					pov.headIndex = newElementIdx;
@@ -5605,7 +5723,13 @@ namespace QPI
 		// Return elementIndex of first element with priority <= maxPriority in priority queue of pov (or NULL_INDEX if pov is unknown).
 		sint64 headIndex(const id& pov, sint64 maxPriority) const
 		{
-			return NULL_INDEX; // TODO: Implement
+			const sint64 povIndex = _povIndex(pov);
+			if (povIndex < 0)
+			{
+				return NULL_INDEX;
+			}
+
+			return _headIndex(povIndex, maxPriority);
 		}
 
 		// Return elementIndex of next element in priority queue (or NULL_INDEX if this is the last element).
@@ -5776,7 +5900,13 @@ namespace QPI
 		// Return elementIndex of last element with priority >= minPriority in priority queue of pov (or NULL_INDEX if pov is unknown).
 		sint64 tailIndex(const id& pov, sint64 minPriority) const
 		{
-			return NULL_INDEX; // TODO: Implement
+			const sint64 povIndex = _povIndex(pov);
+			if (povIndex < 0)
+			{
+				return NULL_INDEX;
+			}
+
+			return _tailIndex(povIndex, minPriority);
 		}
 	};
 

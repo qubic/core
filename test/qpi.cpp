@@ -882,6 +882,181 @@ TEST(TestCoreQPI, CollectionOneRemoveLastHeadTail) {
     checkPriorityQueue(coll, pov, print);
 }
 
+TEST(TestCoreQPI, CollectionSubCollections) {
+    QPI::id pov(1, 2, 3, 4);
+
+    QPI::collection<size_t, 512> coll;
+    coll.reset();
+
+    // test empty
+    auto headIdx = coll.headIndex(pov, 0);
+    EXPECT_EQ(headIdx, QPI::NULL_INDEX);
+    auto tailIdx = coll.tailIndex(pov, 0);
+    EXPECT_EQ(tailIdx, QPI::NULL_INDEX);
+
+    std::vector<QPI::sint64> priorities = {
+        44, 22, 88, 111, 55, 56, 11, 55, 55, 54, 66, 77, 99
+    };
+
+    for (size_t i = 0; i < priorities.size(); i++)
+    {
+        coll.add(pov, i, priorities[i]);
+    }
+    checkPriorityQueue(coll, pov, false);
+
+    // sorted priorities: 111, 99, 88, 77, 66, .... 44, 22, 11
+
+    // test head/tail
+    headIdx = coll.headIndex(pov);
+    EXPECT_EQ(coll.priority(headIdx), 111);
+    tailIdx = coll.tailIndex(pov);
+    EXPECT_EQ(coll.priority(tailIdx), 11);
+
+    // test prev/next
+    auto idx = coll.prevElementIndex(tailIdx);
+    idx = coll.prevElementIndex(idx);
+    EXPECT_EQ(coll.priority(idx), 44);
+    idx = coll.nextElementIndex(headIdx);
+    idx = coll.nextElementIndex(idx);
+    EXPECT_EQ(coll.priority(idx), 88);
+
+    // test sub-collection's head priority <= maxPriority
+    headIdx = coll.headIndex(pov, 112);
+    EXPECT_EQ(coll.priority(headIdx), 111);
+
+    // test sub-collection's tail priority > maxPriority
+    headIdx = coll.headIndex(pov, 10);
+    EXPECT_EQ(headIdx, QPI::NULL_INDEX);
+
+    // test sub-collection's head priority < minPriority
+    tailIdx = coll.tailIndex(pov, 112);
+    EXPECT_EQ(tailIdx, QPI::NULL_INDEX);
+
+    // test sub-collection's tail priority >= minPriority
+    tailIdx = coll.tailIndex(pov, 10);
+    EXPECT_EQ(coll.priority(tailIdx), 11);
+
+    // test sub-collection's head
+    headIdx = coll.headIndex(pov, 100);
+    EXPECT_EQ(coll.priority(headIdx), 99);
+    headIdx = coll.headIndex(pov, 99);
+    EXPECT_EQ(coll.priority(headIdx), 99);
+
+    // test sub-collection's head: duplicated priorites
+    headIdx = coll.headIndex(pov, 55);
+    EXPECT_EQ(coll.priority(headIdx), 55);
+    idx = coll.prevElementIndex(headIdx);
+    EXPECT_EQ(coll.priority(idx), 56);
+
+    // test sub-collection's tail
+    tailIdx = coll.tailIndex(pov, 33);
+    EXPECT_EQ(coll.priority(tailIdx), 44);
+    tailIdx = coll.tailIndex(pov, 44);
+    EXPECT_EQ(coll.priority(tailIdx), 44);
+
+    // test sub-collection's tail: duplicated priorites
+    tailIdx = coll.tailIndex(pov, 55);
+    EXPECT_EQ(coll.priority(tailIdx), 55);
+    idx = coll.nextElementIndex(tailIdx);
+    EXPECT_EQ(coll.priority(idx), 54);
+}
+
+TEST(TestCoreQPI, CollectionSubCollectionsRandom) {
+    QPI::id pov(1, 2, 3, 4);
+
+    QPI::collection<size_t, 1024> coll;
+    coll.reset();
+
+    const int seed = 246357;
+    std::mt19937_64 gen64(seed);
+
+    const int numTests = 10;
+    for (int test = 1; test <= numTests; test++)
+    {
+        coll.reset();
+        std::vector< QPI::sint64> priorities(777);
+        for (size_t i = 0; i < priorities.size(); i++) {
+            auto v = std::abs((QPI::sint64)gen64()) % 0xFFFF;
+            priorities[i] = v;
+            coll.add(pov, (i + 1) * test, priorities[i]);
+        }
+        checkPriorityQueue(coll, pov, false);
+
+        std::sort(priorities.begin(), priorities.end(), std::greater<>());
+        const auto size = priorities.size();
+
+        // test sub-collection's head priority <= maxPriority
+        auto headIdx = coll.headIndex(pov, priorities[0] + 1);
+        EXPECT_EQ(coll.priority(headIdx), priorities[0]);
+        headIdx = coll.headIndex(pov, priorities[0]);
+        EXPECT_EQ(coll.priority(headIdx), priorities[0]);
+
+        // test sub-collection's tail priority > maxPriority
+        headIdx = coll.headIndex(pov, priorities[size - 1] - 1);
+        EXPECT_EQ(headIdx, QPI::NULL_INDEX);
+
+        // test sub-collection's head priority < minPriority
+        auto tailIdx = coll.tailIndex(pov, priorities[0] + 1);
+        EXPECT_EQ(tailIdx, QPI::NULL_INDEX);
+
+        // test sub-collection's tail priority >= minPriority
+        tailIdx = coll.tailIndex(pov, priorities[size - 1] - 1);
+        EXPECT_EQ(coll.priority(tailIdx), priorities[size - 1]);
+        tailIdx = coll.tailIndex(pov, priorities[size - 1]);
+        EXPECT_EQ(coll.priority(tailIdx), priorities[size - 1]);
+
+        std::vector<int> indices(std::min((int)size, std::max(1, int(size / 5))));
+        for (size_t i = 0; i < indices.size(); i++) {
+            indices[i] = std::abs((QPI::sint64)gen64()) % indices.size();
+        }
+
+        for (int i : indices)
+        {
+            const auto priority = priorities[i];
+
+            // test sub-collection: head
+            auto idx = coll.headIndex(pov, priority);
+            EXPECT_EQ(coll.priority(idx), priority);
+
+            // test sub-collection: higher priority
+            if (idx != coll.headIndex(pov))
+            {
+                auto higher_priority = priority;
+                for (int j = i - 1; j >= 0; j--)
+                {
+                    if (priorities[j] > priority)
+                    {
+                        higher_priority = priorities[j];
+                        break;
+                    }
+                }
+                auto prev_idx = coll.prevElementIndex(idx);
+                EXPECT_EQ(coll.priority(prev_idx), higher_priority);
+            }
+
+            // test sub-collection: tail
+            idx = coll.tailIndex(pov, priority);
+            EXPECT_EQ(coll.priority(idx), priority);
+
+            // test sub-collection: lower priority
+            if (idx != coll.tailIndex(pov))
+            {
+                auto lower_priority = priority;
+                for (int j = i + 1; j < size; j++)
+                {
+                    if (priorities[j] < priority)
+                    {
+                        lower_priority = priorities[j];
+                        break;
+                    }
+                }
+                auto next_idx = coll.nextElementIndex(idx);
+                EXPECT_EQ(coll.priority(next_idx), lower_priority);
+            }
+        }
+    }
+}
+
 template <unsigned long long capacity>
 void testCollectionCleanupPseudoRandom(int povs, int seed)
 {
