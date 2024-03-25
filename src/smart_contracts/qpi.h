@@ -5094,7 +5094,7 @@ namespace QPI
 				{
 					iterations_count++;
 					auto& curElement = _elements[idx];
-					if (_elements[idx].priority <= priority)
+					if (_elements[idx].priority > priority)
 					{
 						if (curElement.bstRightIndex != NULL_INDEX)
 						{
@@ -5123,11 +5123,11 @@ namespace QPI
 						}
 					}
 				}
-				if (_elements[pov.headIndex].priority > priority)
+				if (_elements[pov.headIndex].priority < priority)
 				{
 					pov.headIndex = newElementIdx;
 				}
-				else if (_elements[pov.tailIndex].priority <= priority)
+				else if (_elements[pov.tailIndex].priority >= priority)
 				{
 					pov.tailIndex = newElementIdx;
 				}

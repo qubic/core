@@ -40,7 +40,7 @@ void checkPriorityQueue(const QPI::collection<T, capacity>& coll, const QPI::id&
 
         if (!first)
         {
-            EXPECT_GE(coll.priority(elementIndex), prevPriority);
+            EXPECT_LE(coll.priority(elementIndex), prevPriority);
         }
         EXPECT_EQ(coll.prevElementIndex(elementIndex), prevElementIdx);
         EXPECT_EQ(coll.pov(elementIndex), pov);
@@ -232,7 +232,7 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.priority(firstElementIdx), firstElementPriority);
     
     // add another element with with id1, but higher priority value
-    // id1 priority queue order: firstElement, secondElement
+    // id1 priority queue order: secondElement, firstElement
     constexpr int secondElementValue = 987;
     constexpr QPI::sint64 secondElementPriority = 12345;
     QPI::sint64 secondElementIdx = coll.add(id1, secondElementValue, secondElementPriority);
@@ -240,8 +240,8 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_TRUE(secondElementIdx != firstElementIdx);
     EXPECT_EQ(coll.capacity(), capacity);
     EXPECT_EQ(coll.population(), 2);
-    EXPECT_EQ(coll.headIndex(id1), firstElementIdx);
-    EXPECT_EQ(coll.tailIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.headIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.tailIndex(id1), firstElementIdx);
     EXPECT_EQ(coll.population(id1), 2);
     EXPECT_EQ(coll.headIndex(id2), QPI::NULL_INDEX);
     EXPECT_EQ(coll.tailIndex(id2), QPI::NULL_INDEX);
@@ -251,17 +251,17 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.population(id3), 0);
     EXPECT_EQ(coll.pov(firstElementIdx), id1);
     EXPECT_EQ(coll.element(firstElementIdx), firstElementValue);
-    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), secondElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), secondElementIdx);
     EXPECT_EQ(coll.priority(firstElementIdx), firstElementPriority);
     EXPECT_EQ(coll.pov(secondElementIdx), id1);
     EXPECT_EQ(coll.element(secondElementIdx), secondElementValue);
-    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(secondElementIdx), secondElementPriority);
 
     // add another element with id1, but lower priority value
-    // id1 priority queue order: thirdElement, firstElement, secondElement
+    // id1 priority queue order: secondElement, firstElement, thirdElement
     constexpr int thirdElementValue = 98;
     constexpr QPI::sint64 thirdElementPriority = 12;
     QPI::sint64 thirdElementIdx = coll.add(id1, thirdElementValue, thirdElementPriority);
@@ -270,8 +270,8 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_TRUE(thirdElementIdx != secondElementIdx);
     EXPECT_EQ(coll.capacity(), capacity);
     EXPECT_EQ(coll.population(), 3);
-    EXPECT_EQ(coll.headIndex(id1), thirdElementIdx);
-    EXPECT_EQ(coll.tailIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.headIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.tailIndex(id1), thirdElementIdx);
     EXPECT_EQ(coll.population(id1), 3);
     EXPECT_EQ(coll.headIndex(id2), QPI::NULL_INDEX);
     EXPECT_EQ(coll.tailIndex(id2), QPI::NULL_INDEX);
@@ -281,18 +281,18 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.population(id3), 0);
     EXPECT_EQ(coll.pov(firstElementIdx), id1);
     EXPECT_EQ(coll.element(firstElementIdx), firstElementValue);
-    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), secondElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), secondElementIdx);
     EXPECT_EQ(coll.priority(firstElementIdx), firstElementPriority);
     EXPECT_EQ(coll.pov(secondElementIdx), id1);
     EXPECT_EQ(coll.element(secondElementIdx), secondElementValue);
-    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(secondElementIdx), secondElementPriority);
     EXPECT_EQ(coll.pov(secondElementIdx), id1);
     EXPECT_EQ(coll.element(thirdElementIdx), thirdElementValue);
-    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), firstElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), firstElementIdx);
     EXPECT_EQ(coll.priority(thirdElementIdx), thirdElementPriority);
 
     // add element with id2
@@ -306,8 +306,8 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_TRUE(fourthElementIdx != thirdElementIdx);
     EXPECT_EQ(coll.capacity(), capacity);
     EXPECT_EQ(coll.population(), 4);
-    EXPECT_EQ(coll.headIndex(id1), thirdElementIdx);
-    EXPECT_EQ(coll.tailIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.headIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.tailIndex(id1), thirdElementIdx);
     EXPECT_EQ(coll.population(id1), 3);
     EXPECT_EQ(coll.headIndex(id2), fourthElementIdx);
     EXPECT_EQ(coll.tailIndex(id2), fourthElementIdx);
@@ -317,18 +317,18 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.population(id3), 0);
     EXPECT_EQ(coll.pov(firstElementIdx), id1);
     EXPECT_EQ(coll.element(firstElementIdx), firstElementValue);
-    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), secondElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), secondElementIdx);
     EXPECT_EQ(coll.priority(firstElementIdx), firstElementPriority);
     EXPECT_EQ(coll.pov(secondElementIdx), id1);
     EXPECT_EQ(coll.element(secondElementIdx), secondElementValue);
-    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(secondElementIdx), secondElementPriority);
     EXPECT_EQ(coll.pov(thirdElementIdx), id1);
     EXPECT_EQ(coll.element(thirdElementIdx), thirdElementValue);
-    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), firstElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), firstElementIdx);
     EXPECT_EQ(coll.priority(thirdElementIdx), thirdElementPriority);
     EXPECT_EQ(coll.pov(fourthElementIdx), id2);
     EXPECT_EQ(coll.element(fourthElementIdx), fourthElementValue);
@@ -348,8 +348,8 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_TRUE(fifthElementIdx != fourthElementIdx);
     EXPECT_EQ(coll.capacity(), capacity);
     EXPECT_EQ(coll.population(), 5);
-    EXPECT_EQ(coll.headIndex(id1), thirdElementIdx);
-    EXPECT_EQ(coll.tailIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.headIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.tailIndex(id1), thirdElementIdx);
     EXPECT_EQ(coll.population(id1), 3);
     EXPECT_EQ(coll.headIndex(id2), fourthElementIdx);
     EXPECT_EQ(coll.tailIndex(id2), fourthElementIdx);
@@ -359,18 +359,18 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.population(id3), 1);
     EXPECT_EQ(coll.pov(firstElementIdx), id1);
     EXPECT_EQ(coll.element(firstElementIdx), firstElementValue);
-    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), secondElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), secondElementIdx);
     EXPECT_EQ(coll.priority(firstElementIdx), firstElementPriority);
     EXPECT_EQ(coll.pov(secondElementIdx), id1);
     EXPECT_EQ(coll.element(secondElementIdx), secondElementValue);
-    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(secondElementIdx), secondElementPriority);
     EXPECT_EQ(coll.pov(thirdElementIdx), id1);
     EXPECT_EQ(coll.element(thirdElementIdx), thirdElementValue);
-    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), firstElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), firstElementIdx);
     EXPECT_EQ(coll.priority(thirdElementIdx), thirdElementPriority);
     EXPECT_EQ(coll.pov(fourthElementIdx), id2);
     EXPECT_EQ(coll.element(fourthElementIdx), fourthElementValue);
@@ -384,7 +384,7 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.priority(fifthElementIdx), fifthElementPriority);
 
     // add another element with id1, with lowest priority value
-    // id1 priority queue order: sixthElement, thirdElement, firstElement, secondElement
+    // id1 priority queue order: secondElement, firstElement, thirdElement, sixthElement
     constexpr int sixthElementValue = 600;
     constexpr QPI::sint64 sixthElementPriority = -60;
     QPI::sint64 sixthElementIdx = coll.add(id1, sixthElementValue, sixthElementPriority);
@@ -396,8 +396,8 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_TRUE(sixthElementIdx != fifthElementIdx);
     EXPECT_EQ(coll.capacity(), capacity);
     EXPECT_EQ(coll.population(), 6);
-    EXPECT_EQ(coll.headIndex(id1), sixthElementIdx);
-    EXPECT_EQ(coll.tailIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.headIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.tailIndex(id1), sixthElementIdx);
     EXPECT_EQ(coll.population(id1), 4);
     EXPECT_EQ(coll.headIndex(id2), fourthElementIdx);
     EXPECT_EQ(coll.tailIndex(id2), fourthElementIdx);
@@ -407,18 +407,18 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.population(id3), 1);
     EXPECT_EQ(coll.pov(firstElementIdx), id1);
     EXPECT_EQ(coll.element(firstElementIdx), firstElementValue);
-    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), secondElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), secondElementIdx);
     EXPECT_EQ(coll.priority(firstElementIdx), firstElementPriority);
     EXPECT_EQ(coll.pov(secondElementIdx), id1);
     EXPECT_EQ(coll.element(secondElementIdx), secondElementValue);
-    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(secondElementIdx), secondElementPriority);
     EXPECT_EQ(coll.pov(thirdElementIdx), id1);
     EXPECT_EQ(coll.element(thirdElementIdx), thirdElementValue);
-    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), firstElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), sixthElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), sixthElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), firstElementIdx);
     EXPECT_EQ(coll.priority(thirdElementIdx), thirdElementPriority);
     EXPECT_EQ(coll.pov(fourthElementIdx), id2);
     EXPECT_EQ(coll.element(fourthElementIdx), fourthElementValue);
@@ -432,12 +432,12 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.priority(fifthElementIdx), fifthElementPriority);
     EXPECT_EQ(coll.pov(sixthElementIdx), id1);
     EXPECT_EQ(coll.element(sixthElementIdx), sixthElementValue);
-    EXPECT_EQ(coll.nextElementIndex(sixthElementIdx), thirdElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(sixthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(sixthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(sixthElementIdx), thirdElementIdx);
     EXPECT_EQ(coll.priority(sixthElementIdx), sixthElementPriority);
 
     // add another element with id3, with highest priority value
-    // id3 priority queue order: fifthElement, seventhElement
+    // id3 priority queue order: seventhElement, fifthElement
     constexpr int seventhElementValue = 700;
     constexpr QPI::sint64 seventhElementPriority = 70000;
     QPI::sint64 seventhElementIdx = coll.add(id3, seventhElementValue, seventhElementPriority);
@@ -450,29 +450,29 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_TRUE(seventhElementIdx != sixthElementIdx);
     EXPECT_EQ(coll.capacity(), capacity);
     EXPECT_EQ(coll.population(), 7);
-    EXPECT_EQ(coll.headIndex(id1), sixthElementIdx);
-    EXPECT_EQ(coll.tailIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.headIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.tailIndex(id1), sixthElementIdx);
     EXPECT_EQ(coll.population(id1), 4);
     EXPECT_EQ(coll.headIndex(id2), fourthElementIdx);
     EXPECT_EQ(coll.tailIndex(id2), fourthElementIdx);
     EXPECT_EQ(coll.population(id2), 1);
-    EXPECT_EQ(coll.headIndex(id3), fifthElementIdx);
-    EXPECT_EQ(coll.tailIndex(id3), seventhElementIdx);
+    EXPECT_EQ(coll.headIndex(id3), seventhElementIdx);
+    EXPECT_EQ(coll.tailIndex(id3), fifthElementIdx);
     EXPECT_EQ(coll.population(id3), 2);
     EXPECT_EQ(coll.pov(firstElementIdx), id1);
     EXPECT_EQ(coll.element(firstElementIdx), firstElementValue);
-    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), secondElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), secondElementIdx);
     EXPECT_EQ(coll.priority(firstElementIdx), firstElementPriority);
     EXPECT_EQ(coll.pov(secondElementIdx), id1);
     EXPECT_EQ(coll.element(secondElementIdx), secondElementValue);
-    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(secondElementIdx), secondElementPriority);
     EXPECT_EQ(coll.pov(thirdElementIdx), id1);
     EXPECT_EQ(coll.element(thirdElementIdx), thirdElementValue);
-    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), firstElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), sixthElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), sixthElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), firstElementIdx);
     EXPECT_EQ(coll.priority(thirdElementIdx), thirdElementPriority);
     EXPECT_EQ(coll.pov(fourthElementIdx), id2);
     EXPECT_EQ(coll.element(fourthElementIdx), fourthElementValue);
@@ -481,23 +481,23 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.priority(fourthElementIdx), fourthElementPriority);
     EXPECT_EQ(coll.pov(fifthElementIdx), id3);
     EXPECT_EQ(coll.element(fifthElementIdx), fifthElementValue);
-    EXPECT_EQ(coll.nextElementIndex(fifthElementIdx), seventhElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(fifthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(fifthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(fifthElementIdx), seventhElementIdx);
     EXPECT_EQ(coll.priority(fifthElementIdx), fifthElementPriority);
     EXPECT_EQ(coll.pov(sixthElementIdx), id1);
     EXPECT_EQ(coll.element(sixthElementIdx), sixthElementValue);
-    EXPECT_EQ(coll.nextElementIndex(sixthElementIdx), thirdElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(sixthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(sixthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(sixthElementIdx), thirdElementIdx);
     EXPECT_EQ(coll.priority(sixthElementIdx), sixthElementPriority);
     EXPECT_EQ(coll.pov(seventhElementIdx), id3);
     EXPECT_EQ(coll.element(seventhElementIdx), seventhElementValue);
-    EXPECT_EQ(coll.nextElementIndex(seventhElementIdx), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(seventhElementIdx), fifthElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(seventhElementIdx), fifthElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(seventhElementIdx), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(seventhElementIdx), seventhElementPriority);
 
     // add another element with id1, with medium priority value
-    // id1 priority queue order: sixthElement, thirdElement, eighthElement, firstElement, secondElement
-    //               priorities:          -60,           12,           123,         1234,         12345
+    // id1 priority queue order: secondElement, firstElement,   eighthElement,  thirdElement,   sixthElement
+    //               priorities: 12345,         1234,           123,            12,             -60
     constexpr int eighthElementValue = 800;
     constexpr QPI::sint64 eighthElementPriority = 123;
     QPI::sint64 eighthElementIdx = coll.add(id1, eighthElementValue, eighthElementPriority);
@@ -511,29 +511,29 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_TRUE(eighthElementIdx != seventhElementIdx);
     EXPECT_EQ(coll.capacity(), capacity);
     EXPECT_EQ(coll.population(), 8);
-    EXPECT_EQ(coll.headIndex(id1), sixthElementIdx);
-    EXPECT_EQ(coll.tailIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.headIndex(id1), secondElementIdx);
+    EXPECT_EQ(coll.tailIndex(id1), sixthElementIdx);
     EXPECT_EQ(coll.population(id1), 5);
     EXPECT_EQ(coll.headIndex(id2), fourthElementIdx);
     EXPECT_EQ(coll.tailIndex(id2), fourthElementIdx);
     EXPECT_EQ(coll.population(id2), 1);
-    EXPECT_EQ(coll.headIndex(id3), fifthElementIdx);
-    EXPECT_EQ(coll.tailIndex(id3), seventhElementIdx);
+    EXPECT_EQ(coll.headIndex(id3), seventhElementIdx);
+    EXPECT_EQ(coll.tailIndex(id3), fifthElementIdx);
     EXPECT_EQ(coll.population(id3), 2);
     EXPECT_EQ(coll.pov(firstElementIdx), id1);
     EXPECT_EQ(coll.element(firstElementIdx), firstElementValue);
-    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), secondElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), eighthElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(firstElementIdx), eighthElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(firstElementIdx), secondElementIdx);
     EXPECT_EQ(coll.priority(firstElementIdx), firstElementPriority);
     EXPECT_EQ(coll.pov(secondElementIdx), id1);
     EXPECT_EQ(coll.element(secondElementIdx), secondElementValue);
-    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(secondElementIdx), firstElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(secondElementIdx), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(secondElementIdx), secondElementPriority);
     EXPECT_EQ(coll.pov(thirdElementIdx), id1);
     EXPECT_EQ(coll.element(thirdElementIdx), thirdElementValue);
-    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), eighthElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), sixthElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(thirdElementIdx), sixthElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(thirdElementIdx), eighthElementIdx);
     EXPECT_EQ(coll.priority(thirdElementIdx), thirdElementPriority);
     EXPECT_EQ(coll.pov(fourthElementIdx), id2);
     EXPECT_EQ(coll.element(fourthElementIdx), fourthElementValue);
@@ -542,23 +542,23 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.priority(fourthElementIdx), fourthElementPriority);
     EXPECT_EQ(coll.pov(fifthElementIdx), id3);
     EXPECT_EQ(coll.element(fifthElementIdx), fifthElementValue);
-    EXPECT_EQ(coll.nextElementIndex(fifthElementIdx), seventhElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(fifthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(fifthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(fifthElementIdx), seventhElementIdx);
     EXPECT_EQ(coll.priority(fifthElementIdx), fifthElementPriority);
     EXPECT_EQ(coll.pov(sixthElementIdx), id1);
     EXPECT_EQ(coll.element(sixthElementIdx), sixthElementValue);
-    EXPECT_EQ(coll.nextElementIndex(sixthElementIdx), thirdElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(sixthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.nextElementIndex(sixthElementIdx), QPI::NULL_INDEX);
+    EXPECT_EQ(coll.prevElementIndex(sixthElementIdx), thirdElementIdx);
     EXPECT_EQ(coll.priority(sixthElementIdx), sixthElementPriority);
     EXPECT_EQ(coll.pov(seventhElementIdx), id3);
     EXPECT_EQ(coll.element(seventhElementIdx), seventhElementValue);
-    EXPECT_EQ(coll.nextElementIndex(seventhElementIdx), QPI::NULL_INDEX);
-    EXPECT_EQ(coll.prevElementIndex(seventhElementIdx), fifthElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(seventhElementIdx), fifthElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(seventhElementIdx), QPI::NULL_INDEX);
     EXPECT_EQ(coll.priority(seventhElementIdx), seventhElementPriority);
     EXPECT_EQ(coll.pov(eighthElementIdx), id1);
     EXPECT_EQ(coll.element(eighthElementIdx), eighthElementValue);
-    EXPECT_EQ(coll.nextElementIndex(eighthElementIdx), firstElementIdx);
-    EXPECT_EQ(coll.prevElementIndex(eighthElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.nextElementIndex(eighthElementIdx), thirdElementIdx);
+    EXPECT_EQ(coll.prevElementIndex(eighthElementIdx), firstElementIdx);
     EXPECT_EQ(coll.priority(eighthElementIdx), eighthElementPriority);
     
     checkPriorityQueue(coll, id1);
@@ -684,7 +684,6 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
         checkPriorityQueue(coll, pov);
 
         tailIndex = coll.tailIndex(pov);
-        EXPECT_EQ(tailIndex, beforeTailIndex);
         EXPECT_EQ(coll.nextElementIndex(tailIndex), QPI::NULL_INDEX);
         EXPECT_EQ(coll.priority(tailIndex), beforeTailPrio);
         EXPECT_EQ(coll.element(tailIndex), beforeTailValue);
@@ -742,10 +741,10 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
 
         newIdx1 = coll.tailIndex(pov);
         newIdx2 = coll.headIndex(pov);
-        EXPECT_EQ(coll.priority(newIdx1), newPrio1);
-        EXPECT_EQ(coll.priority(newIdx2), newPrio2);
-        EXPECT_EQ(coll.element(newIdx1), newValue1);
-        EXPECT_EQ(coll.element(newIdx2), newValue2);
+        EXPECT_EQ(coll.priority(newIdx1), newPrio2);
+        EXPECT_EQ(coll.priority(newIdx2), newPrio1);
+        EXPECT_EQ(coll.element(newIdx1), newValue2);
+        EXPECT_EQ(coll.element(newIdx2), newValue1);
     }
 
     // remove remaining elements except last
