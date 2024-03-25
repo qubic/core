@@ -5602,6 +5602,12 @@ namespace QPI
 			return povIndex < 0 ? NULL_INDEX : _povs[povIndex].headIndex;
 		}
 
+		// Return elementIndex of first element with priority <= maxPriority in priority queue of pov (or NULL_INDEX if pov is unknown).
+		sint64 headIndex(const id& pov, sint64 maxPriority) const
+		{
+			return NULL_INDEX; // TODO: Implement
+		}
+
 		// Return elementIndex of next element in priority queue (or NULL_INDEX if this is the last element).
 		sint64 nextElementIndex(sint64 elementIndex) const
 		{
@@ -5765,6 +5771,12 @@ namespace QPI
 			const sint64 povIndex = _povIndex(pov);
 
 			return povIndex < 0 ? NULL_INDEX : _povs[povIndex].tailIndex;
+		}
+
+		// Return elementIndex of last element with priority >= minPriority in priority queue of pov (or NULL_INDEX if pov is unknown).
+		sint64 tailIndex(const id& pov, sint64 minPriority) const
+		{
+			return NULL_INDEX; // TODO: Implement
 		}
 	};
 
