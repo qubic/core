@@ -32,12 +32,14 @@ static void logToConsole(const CHAR16* message)
 #else
 
 // Output to console on UEFI platform
+// CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
 static inline void outputStringToConsole(CHAR16* str)
 {
     st->ConOut->OutputString(st->ConOut, str);
 }
 
 // Log message to console (with line break) on UEFI platform (defined in qubic.cpp due to dependencies on time and qubic status)
+// CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
 static void logToConsole(const CHAR16* message);
 
 #endif
@@ -158,4 +160,13 @@ static void logStatusToConsole(const CHAR16* message, const EFI_STATUS status, c
     appendNumber(::message, lineNumber, FALSE);
     appendText(::message, L"!");
     logToConsole(::message);
+}
+
+// Count characters before terminating NULL
+static unsigned int stringLength(const CHAR16* str)
+{
+    unsigned int l = 0;
+    while (str[l] != 0)
+        l++;
+    return l;
 }

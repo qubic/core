@@ -111,6 +111,10 @@
     <ClInclude Include="smart_contracts\QUtil.h">
       <Filter>smart_contracts</Filter>
     </ClInclude>
+    <ClInclude Include="tick_storage.h" />
+    <ClInclude Include="platform\debugging.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="smart_contracts">
