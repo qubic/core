@@ -35,6 +35,7 @@ static unsigned short __millisecond();
 static unsigned char __minute();
 static unsigned char __month();
 static m256i __nextId(const m256i&);
+static long long __numberOfPossessedShares(unsigned long long, const m256i&, const m256i&, const m256i&, unsigned short, unsigned short);
 static m256i __originator();
 static void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short);
 static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short);

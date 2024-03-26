@@ -6034,6 +6034,17 @@ namespace QPI
 		return ::__nextId(currentId);
 	}
 
+	static sint64 numberOfPossessedShares(
+		uint64 assetName,
+		id issuer,
+		id owner,
+		id possessor,
+		uint16 ownershipManagingContractIndex,
+		uint16 possessionManagingContractIndex
+	) {
+		return ::__numberOfPossessedShares(assetName, issuer, owner, possessor, ownershipManagingContractIndex, possessionManagingContractIndex);
+	}
+
 	static id originator(
 	) { // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
 		return ::__originator();
