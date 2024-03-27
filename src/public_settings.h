@@ -30,11 +30,11 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 197
+#define VERSION_B 198
 #define VERSION_C 0
 
-#define EPOCH 101
-#define TICK 13060000
+#define EPOCH 102
+#define TICK 13110000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
