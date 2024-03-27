@@ -206,7 +206,7 @@ static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
     RELEASE(responseQueueHeadLock);
 }
 
-static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, void* data)
+static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
 {
     ACQUIRE(responseQueueHeadLock);
 
@@ -228,7 +228,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
         responseHeader->setDejavu(dejavu);
         if (data)
         {
-            bs->CopyMem(&responseQueueBuffer[responseQueueBufferHead + sizeof(RequestResponseHeader)], data, dataSize);
+            copyMem(&responseQueueBuffer[responseQueueBufferHead + sizeof(RequestResponseHeader)], data, dataSize);
         }
         responseQueueBufferHead += responseHeader->size();
         responseQueueElements[responseQueueElementHead].peer = peer;

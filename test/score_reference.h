@@ -147,7 +147,7 @@ struct ScoreReferenceImplementation
 
         for (unsigned int i = 0; i < dataLength; i++)
         {
-            if ((miningData[i] >= 0) == (neurons.output[infoLength + numberOfOutputNeurons + i] >= 0))
+            if (miningData[i] == neurons.output[infoLength + numberOfOutputNeurons + i])
             {
                 score++;
             }

@@ -7,6 +7,10 @@
 #define NUMBER_OF_EXCHANGED_PEERS 4
 #define SPECTRUM_DEPTH 24 // Defines SPECTRUM_CAPACITY (1 << SPECTRUM_DEPTH)
 
+#define MAX_INPUT_SIZE 1024ULL
+#define ISSUANCE_RATE 1000000000000LL
+#define MAX_AMOUNT (ISSUANCE_RATE * 1000ULL)
+
 
 // If you want to use the network_meassges directory in your project without dependencies to other code,
 // you may define NETWORK_MESSAGES_WITHOUT_CORE_DEPENDENCIES before including any header or change the
