@@ -12,7 +12,7 @@
 #define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this for this epoch, because there may be issues due too fast ticking
 
 #define USE_SCORE_CACHE 1
-#define SCORE_CACHE_SIZE 1000000 // the larger the better
+#define SCORE_CACHE_SIZE 2000000 // the larger the better
 #define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
 
 // Number of ticks to from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
