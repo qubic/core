@@ -533,7 +533,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         unsigned long long solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_nonce);
                                         const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && ((solutionScore >= (DATA_LENGTH / 2) + threshold) || (solutionScore <= (DATA_LENGTH / 2) - threshold)))
+                                            && (score >= (DATA_LENGTH / 3) + threshold) || (score <= (DATA_LENGTH / 3) - threshold))
                                         {
                                             ACQUIRE(solutionsLock);
 
@@ -2277,7 +2277,7 @@ static void processTick(unsigned long long processorNumber)
                                                 KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
                                                 const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
-                                                if (((solutionScore >= (DATA_LENGTH / 2) + threshold) || (solutionScore <= (DATA_LENGTH / 2) - threshold)))
+                                                if ((score >= (DATA_LENGTH / 3) + threshold) || (score <= (DATA_LENGTH / 3) - threshold))
                                                 {
                                                     for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
                                                     {
