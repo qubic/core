@@ -669,7 +669,7 @@ namespace QPI
 #define MONDAY 5
 #define TUESDAY 6
 
-#define X_MULTIPLIER 1
+#define X_MULTIPLIER 1ULL
 
 	struct bit_2
 	{
