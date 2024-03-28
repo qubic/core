@@ -451,7 +451,7 @@ private:
 				state._elementIndex = state._entityOrders.prevElementIndex(state._elementIndex);
 			}
 
-			if (state._elementIndex == NULL_INDEX) // No other ask orders for the same asset at the same price found
+			if (state._elementIndex == NULL_INDEX) // No other bid orders for the same asset at the same price found
 			{
 				state._assetOrder.entity = invocator();
 				state._assetOrder.numberOfShares = input.numberOfShares;
@@ -480,7 +480,78 @@ private:
 			transfer(invocator(), invocationReward());
 		}
 
-		output.removedNumberOfShares = 0;
+		if (input.price <= 0
+			|| input.numberOfShares <= 0)
+		{
+			output.removedNumberOfShares = 0;
+		}
+		else
+		{
+			state._issuerAndAssetName = input.issuer;
+			state._issuerAndAssetName._0 = input.assetName;
+
+			state._elementIndex = state._entityOrders.headIndex(invocator(), -input.price);
+			while (state._elementIndex != NULL_INDEX)
+			{
+				if (state._entityOrders.priority(state._elementIndex) < -input.price)
+				{
+					state._elementIndex = NULL_INDEX;
+
+					break;
+				}
+
+				state._entityOrder = state._entityOrders.element(state._elementIndex);
+				if (state._entityOrder.assetName == input.assetName
+					&& state._entityOrder.issuer == input.issuer)
+				{
+					if (state._entityOrder.numberOfShares < input.numberOfShares)
+					{
+						state._elementIndex = NULL_INDEX;
+					}
+					else
+					{
+						state._entityOrders.remove(state._elementIndex);
+						state._entityOrder.numberOfShares -= input.numberOfShares;
+						if (state._entityOrder.numberOfShares > 0)
+						{
+							state._entityOrders.add(invocator(), state._entityOrder, -input.price);
+						}
+
+						state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, -input.price);
+						while (true) // Impossible for the corresponding asset order to not exist
+						{
+							state._assetOrder = state._assetOrders.element(state._elementIndex);
+							if (state._assetOrder.entity == invocator())
+							{
+								state._assetOrders.remove(state._elementIndex);
+								state._assetOrder.numberOfShares -= input.numberOfShares;
+								if (state._assetOrder.numberOfShares > 0)
+								{
+									state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, -input.price);
+								}
+
+								break;
+							}
+
+							state._elementIndex = state._assetOrders.nextElementIndex(state._elementIndex);
+						}
+					}
+
+					break;
+				}
+
+				state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+			}
+
+			if (state._elementIndex == NULL_INDEX) // No other ask orders for the same asset at the same price found
+			{
+				output.removedNumberOfShares = 0;
+			}
+			else
+			{
+				output.removedNumberOfShares = input.numberOfShares;
+			}
+		}
 	_
 
 	PUBLIC(RemoveFromBidOrder)
