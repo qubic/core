@@ -186,12 +186,13 @@ private:
 	collection<_EntityOrder, 8388608> _entityOrders;
 
 	sint64 _elementIndex;
+	id _issuerAndAssetName;
+	_AssetOrder _assetOrder;
 	_EntityOrder _entityOrder;
 
 	struct _NumberOfReservedShares_input
 	{
 		id issuer;
-		id ownerAndPossessor;
 		uint64 assetName;
 	} _numberOfReservedShares_input;
 	struct _NumberOfReservedShares_output
@@ -203,7 +204,7 @@ private:
 
 		output.numberOfShares = 0;
 
-		state._elementIndex = state._entityOrders.headIndex(input.ownerAndPossessor, 0);
+		state._elementIndex = state._entityOrders.headIndex(invocator(), 0);
 		while (state._elementIndex != NULL_INDEX)
 		{
 			state._entityOrder = state._entityOrders.element(state._elementIndex);
@@ -212,8 +213,21 @@ private:
 			{
 				output.numberOfShares += state._entityOrder.numberOfShares;
 			}
+
 			state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
 		}
+	_
+
+	struct _MatchOrders_input
+	{
+		id issuerAndAssetName;
+	} _matchOrders_input;
+	struct _MatchOrders_output
+	{
+	} _matchOrders_output;
+	PRIVATE(_MatchOrders)
+
+		// TODO
 	_
 
 	PUBLIC(Fees)
@@ -278,10 +292,9 @@ private:
 			state._earnedAmount += state._transferFee;
 
 			state._numberOfReservedShares_input.issuer = input.issuer;
-			state._numberOfReservedShares_input.ownerAndPossessor = invocator();
 			state._numberOfReservedShares_input.assetName = input.assetName;
 			_NumberOfReservedShares(state, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
-			if (numberOfPossessedShares(input.assetName, input.issuer, invocator(), invocator(), CONTRACT_INDEX, CONTRACT_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
+			if (numberOfPossessedShares(input.assetName, input.issuer, invocator(), invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
 			{
 				output.transferredNumberOfShares = 0;
 			}
@@ -299,17 +312,106 @@ private:
 			transfer(invocator(), invocationReward());
 		}
 
-		output.addedNumberOfShares = 0;
+		if (input.price <= 0
+			|| input.numberOfShares <= 0)
+		{
+			output.addedNumberOfShares = 0;
+		}
+		else
+		{
+			state._numberOfReservedShares_input.issuer = input.issuer;
+			state._numberOfReservedShares_input.assetName = input.assetName;
+			_NumberOfReservedShares(state, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
+			if (numberOfPossessedShares(input.assetName, input.issuer, invocator(), invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
+			{
+				output.addedNumberOfShares = 0;
+			}
+			else
+			{
+				output.addedNumberOfShares = input.numberOfShares;
+
+				state._issuerAndAssetName = input.issuer;
+				state._issuerAndAssetName._0 = input.assetName;
+
+				state._elementIndex = state._entityOrders.headIndex(invocator(), -input.price);
+				while (state._elementIndex != NULL_INDEX)
+				{
+					if (state._entityOrders.priority(state._elementIndex) < -input.price)
+					{
+						state._elementIndex = NULL_INDEX;
+
+						break;
+					}
+
+					state._entityOrder = state._entityOrders.element(state._elementIndex);
+					if (state._entityOrder.assetName == input.assetName
+						&& state._entityOrder.issuer == input.issuer)
+					{
+						state._entityOrders.remove(state._elementIndex);
+						state._entityOrder.numberOfShares += input.numberOfShares;
+						state._entityOrders.add(invocator(), state._entityOrder, -input.price);
+
+						state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, -input.price);
+						while (true) // Impossible for the corresponding asset order to not exist
+						{
+							state._assetOrder = state._assetOrders.element(state._elementIndex);
+							if (state._assetOrder.entity == invocator())
+							{
+								state._assetOrders.remove(state._elementIndex);
+								state._assetOrder.numberOfShares += input.numberOfShares;
+								state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, -input.price);
+
+								break;
+							}
+
+							state._elementIndex = state._assetOrders.nextElementIndex(state._elementIndex);
+						}
+
+						break;
+					}
+
+					state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+				}
+
+				if (state._elementIndex == NULL_INDEX) // No other ask orders for the same asset at the same price found
+				{
+					state._assetOrder.entity = invocator();
+					state._assetOrder.numberOfShares = input.numberOfShares;
+					state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, -input.price);
+
+					state._entityOrder.issuer = input.issuer;
+					state._entityOrder.assetName = input.assetName;
+					state._entityOrder.numberOfShares = input.numberOfShares;
+					state._entityOrders.add(invocator(), state._entityOrder, -input.price);
+
+					state._matchOrders_input.issuerAndAssetName = state._issuerAndAssetName;
+					_MatchOrders(state, state._matchOrders_input, state._matchOrders_output);
+				}
+			}
+		}
 	_
 
 	PUBLIC(AddToBidOrder)
 
-		if (invocationReward() > 0)
+		if (input.price <= 0
+			|| input.numberOfShares <= 0)
 		{
-			transfer(invocator(), invocationReward());
-		}
+			output.addedNumberOfShares = 0;
 
-		output.addedNumberOfShares = 0;
+			if (invocationReward() > 0)
+			{
+				transfer(invocator(), invocationReward());
+			}
+		}
+		else
+		{
+
+
+			if (invocationReward() > input.price * input.numberOfShares)
+			{
+				transfer(invocator(), invocationReward() - input.price * input.numberOfShares);
+			}
+		}
 	_
 
 	PUBLIC(RemoveFromAskOrder)

@@ -24,6 +24,7 @@ namespace QPI
 	__
 	double
 	float
+	return
 	typedef
 	union
 
