@@ -43,6 +43,10 @@ namespace QPI
 	{
 		unsigned long long _0, _1, _2, _3;
 
+		id()
+		{
+		}
+
 		id(unsigned long long _0, unsigned long long _1, unsigned long long _2, unsigned long long _3)
 		{
 			this->_0 = _0;
@@ -76,6 +80,16 @@ namespace QPI
 		bool operator != (id anotherId) const
 		{
 			return _0 != anotherId._0 || _1 != anotherId._1 || _2 != anotherId._2 || _3 != anotherId._3;
+		}
+
+		bool operator < (id anotherId) const
+		{
+			return _3 < anotherId._3 || _2 < anotherId._2 || _1 < anotherId._1 || _0 < anotherId._0;
+		}
+
+		bool operator > (id anotherId) const
+		{
+			return _3 > anotherId._3 || _2 > anotherId._2 || _1 > anotherId._1 || _0 > anotherId._0;
 		}
 	};
 
@@ -6170,4 +6184,6 @@ namespace QPI
 	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) __registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output));
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
+
+	#define SELF_INDEX CONTRACT_INDEX
 }
