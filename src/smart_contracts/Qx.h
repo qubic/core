@@ -394,7 +394,8 @@ private:
 	PUBLIC(AddToBidOrder)
 
 		if (input.price <= 0
-			|| input.numberOfShares <= 0)
+			|| input.numberOfShares <= 0
+			|| invocationReward() < input.price * input.numberOfShares)
 		{
 			output.addedNumberOfShares = 0;
 
@@ -405,7 +406,65 @@ private:
 		}
 		else
 		{
+			output.addedNumberOfShares = input.numberOfShares;
 
+			state._issuerAndAssetName = input.issuer;
+			state._issuerAndAssetName._0 = input.assetName;
+
+			state._elementIndex = state._entityOrders.tailIndex(invocator(), input.price);
+			while (state._elementIndex != NULL_INDEX)
+			{
+				if (state._entityOrders.priority(state._elementIndex) > input.price)
+				{
+					state._elementIndex = NULL_INDEX;
+
+					break;
+				}
+
+				state._entityOrder = state._entityOrders.element(state._elementIndex);
+				if (state._entityOrder.assetName == input.assetName
+					&& state._entityOrder.issuer == input.issuer)
+				{
+					state._entityOrders.remove(state._elementIndex);
+					state._entityOrder.numberOfShares += input.numberOfShares;
+					state._entityOrders.add(invocator(), state._entityOrder, input.price);
+
+					state._elementIndex = state._assetOrders.tailIndex(state._issuerAndAssetName, input.price);
+					while (true) // Impossible for the corresponding asset order to not exist
+					{
+						state._assetOrder = state._assetOrders.element(state._elementIndex);
+						if (state._assetOrder.entity == invocator())
+						{
+							state._assetOrders.remove(state._elementIndex);
+							state._assetOrder.numberOfShares += input.numberOfShares;
+							state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, input.price);
+
+							break;
+						}
+
+						state._elementIndex = state._assetOrders.prevElementIndex(state._elementIndex);
+					}
+
+					break;
+				}
+
+				state._elementIndex = state._entityOrders.prevElementIndex(state._elementIndex);
+			}
+
+			if (state._elementIndex == NULL_INDEX) // No other ask orders for the same asset at the same price found
+			{
+				state._assetOrder.entity = invocator();
+				state._assetOrder.numberOfShares = input.numberOfShares;
+				state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, input.price);
+
+				state._entityOrder.issuer = input.issuer;
+				state._entityOrder.assetName = input.assetName;
+				state._entityOrder.numberOfShares = input.numberOfShares;
+				state._entityOrders.add(invocator(), state._entityOrder, input.price);
+
+				state._matchOrders_input.issuerAndAssetName = state._issuerAndAssetName;
+				_MatchOrders(state, state._matchOrders_input, state._matchOrders_output);
+			}
 
 			if (invocationReward() > input.price * input.numberOfShares)
 			{
