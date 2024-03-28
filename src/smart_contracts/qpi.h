@@ -38,7 +38,46 @@ namespace QPI
 	typedef unsigned int uint32;
 	typedef signed long long sint64;
 	typedef unsigned long long uint64;
-	typedef m256i id;
+
+	struct id
+	{
+		unsigned long long _0, _1, _2, _3;
+
+		id(unsigned long long _0, unsigned long long _1, unsigned long long _2, unsigned long long _3)
+		{
+			this->_0 = _0;
+			this->_1 = _1;
+			this->_2 = _2;
+			this->_3 = _3;
+		}
+
+		id& operator = (__m256i anotherId)
+		{
+			*((__m256i*)&_0) = anotherId;
+
+			return *this;
+		}
+
+		id& operator = (id anotherId)
+		{
+			_0 = anotherId._0;
+			_1 = anotherId._1;
+			_2 = anotherId._2;
+			_3 = anotherId._3;
+
+			return *this;
+		}
+
+		bool operator == (id anotherId) const
+		{
+			return _0 == anotherId._0 && _1 == anotherId._1 && _2 == anotherId._2 && _3 == anotherId._3;
+		}
+
+		bool operator != (id anotherId) const
+		{
+			return _0 != anotherId._0 || _1 != anotherId._1 || _2 != anotherId._2 || _3 != anotherId._3;
+		}
+	};
 
 #define bit_2x bit_2
 #define bit_4x bit_4
@@ -561,7 +600,7 @@ namespace QPI
 #define index_8388608x2 index_<16777216>
 #define index_16777216x2 index_<33554432>
 
-#define NULL_ID _mm256_setzero_si256()
+#define NULL_ID id(0, 0, 0, 0)
 	constexpr sint64 NULL_INDEX = -1;
 
 #define _A 0
@@ -5049,7 +5088,7 @@ namespace QPI
 		// Return index of id pov in hash map _povs, or NULL_INDEX if not found
 		sint64 _povIndex(const id& pov) const
 		{
-			sint64 povIndex = pov.m256i_u64[0] & (L - 1);
+			sint64 povIndex = pov._0 & (L - 1);
 			for (sint64 counter = 0; counter < L; counter += 32)
 			{
 				uint64 flags = _getEncodedPovOccupationFlags(_povOccupationFlags, povIndex);
@@ -5565,7 +5604,7 @@ namespace QPI
 			if (_population < capacity() && _markRemovalCounter < capacity())
 			{
 				// search in pov hash map
-				sint64 povIndex = pov.m256i_u64[0] & (L - 1);
+				sint64 povIndex = pov._0 & (L - 1);
 				for (sint64 counter = 0; counter < L; counter += 32)
 				{
 					uint64 flags = _getEncodedPovOccupationFlags(_povOccupationFlags, povIndex);
@@ -5644,7 +5683,7 @@ namespace QPI
 					if (maskBits & 3ULL)
 					{
 						const sint64 oldPovIndex = (oldPovIndexGroup << 5) + (oldPovIndexOffset >> 1);
-						sint64 newPovIndex = _povs[oldPovIndex].value.m256i_u64[0] & (L - 1);
+						sint64 newPovIndex = _povs[oldPovIndex].value._0 & (L - 1);
 						bool foundValidIndex = false;
 						for (sint64 counter = 0; counter < L && !foundValidIndex; counter += 32)
 						{
@@ -5941,7 +5980,9 @@ namespace QPI
 #if !defined(NO_UEFI)
 	static id arbitrator(
 	) {
-		return ::__arbitrator();
+		const m256i arbitrator = ::__arbitrator();
+
+		return id(arbitrator.m256i_u64[0], arbitrator.m256i_u64[1], arbitrator.m256i_u64[2], arbitrator.m256i_u64[3]);
 	}
 
 	static sint64 burn(
@@ -5953,7 +5994,9 @@ namespace QPI
 	static id computor(
 		uint16 computorIndex // [0..675]
 	) {
-		return ::__computor(computorIndex);
+		const m256i computor = ::__computor(computorIndex);
+
+		return id(computor.m256i_u64[0], computor.m256i_u64[1], computor.m256i_u64[2], computor.m256i_u64[3]);
 	}
 
 	static uint8 day(
@@ -5978,7 +6021,7 @@ namespace QPI
 		id id,
 		::Entity& entity
 	) { // Returns "true" if the entity has been found, returns "false" otherwise
-		return ::__getEntity(id, entity);
+		return ::__getEntity(m256i(id._0, id._1, id._2, id._3), entity);
 	}
 
 	static uint8 hour(
@@ -5993,7 +6036,9 @@ namespace QPI
 
 	static id invocator(
 	) { // Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
-		return ::__invocator();
+		const m256i invocator = ::__invocator();
+
+		return id(invocator.m256i_u64[0], invocator.m256i_u64[1], invocator.m256i_u64[2], invocator.m256i_u64[3]);
 	}
 
 	static sint64 issueAsset(
@@ -6003,7 +6048,7 @@ namespace QPI
 		sint64 numberOfShares,
 		uint64 unitOfMeasurement
 	) {
-		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfShares, unitOfMeasurement);
+		return ::__issueAsset(name, m256i(issuer._0, issuer._1, issuer._2, issuer._3), numberOfDecimalPlaces, numberOfShares, unitOfMeasurement);
 	}
 
 	template <typename T>
@@ -6031,7 +6076,9 @@ namespace QPI
 	static id nextId(
 		id currentId
 	) {
-		return ::__nextId(currentId);
+		const m256i nextId = ::__nextId(m256i(currentId._0, currentId._1, currentId._2, currentId._3));
+
+		return id(nextId.m256i_u64[0], nextId.m256i_u64[1], nextId.m256i_u64[2], nextId.m256i_u64[3]);
 	}
 
 	static sint64 numberOfPossessedShares(
@@ -6042,12 +6089,14 @@ namespace QPI
 		uint16 ownershipManagingContractIndex,
 		uint16 possessionManagingContractIndex
 	) {
-		return ::__numberOfPossessedShares(assetName, issuer, owner, possessor, ownershipManagingContractIndex, possessionManagingContractIndex);
+		return ::__numberOfPossessedShares(assetName, m256i(issuer._0, issuer._1, issuer._2, issuer._3), m256i(owner._0, owner._1, owner._2, owner._3), m256i(possessor._0, possessor._1, possessor._2, possessor._3), ownershipManagingContractIndex, possessionManagingContractIndex);
 	}
 
 	static id originator(
 	) { // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
-		return ::__originator();
+		const m256i originator = ::__originator();
+
+		return id(originator.m256i_u64[0], originator.m256i_u64[1], originator.m256i_u64[2], originator.m256i_u64[3]);
 	}
 
 	static uint8 second(
@@ -6064,7 +6113,7 @@ namespace QPI
 		id destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
 		sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
 	) { // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
-		return ::__transfer(destination, amount);
+		return ::__transfer(m256i(destination._0, destination._1, destination._2, destination._3), amount);
 	}
 
 	static sint64 transferShareOwnershipAndPossession(
@@ -6075,7 +6124,7 @@ namespace QPI
 		sint64 numberOfShares,
 		id newOwnerAndPossessor
 	) { // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
-		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwnerAndPossessor);
+		return ::__transferShareOwnershipAndPossession(assetName, m256i(issuer._0, issuer._1, issuer._2, issuer._3), m256i(owner._0, owner._1, owner._2, owner._3), m256i(possessor._0, possessor._1, possessor._2, possessor._3), numberOfShares, m256i(newOwnerAndPossessor._0, newOwnerAndPossessor._1, newOwnerAndPossessor._2, newOwnerAndPossessor._3));
 	}
 
 	static uint8 year(
@@ -6120,5 +6169,5 @@ namespace QPI
 
 	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) __registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output));
 
-	#define SELF _mm256_set_epi64x(0, 0, 0, CONTRACT_INDEX)
+	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 }
