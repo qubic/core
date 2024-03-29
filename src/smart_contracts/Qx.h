@@ -516,16 +516,90 @@ private:
 
 			if (state._elementIndex == NULL_INDEX) // No other bid orders for the same asset at the same price found
 			{
-				state._assetOrder.entity = invocator();
-				state._assetOrder.numberOfShares = input.numberOfShares;
-				state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, input.price);
+				state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, 0);
+				while (state._elementIndex != NULL_INDEX
+					&& input.numberOfShares > 0)
+				{
+					state._price = -state._assetOrders.priority(state._elementIndex);
 
-				state._entityOrder.issuer = input.issuer;
-				state._entityOrder.assetName = input.assetName;
-				state._entityOrder.numberOfShares = input.numberOfShares;
-				state._entityOrders.add(invocator(), state._entityOrder, input.price);
+					if (state._price > input.price)
+					{
+						break;
+					}
 
-				// TODO
+					state._assetOrder = state._assetOrders.element(state._elementIndex);
+					if (state._assetOrder.numberOfShares <= input.numberOfShares)
+					{
+						state._elementIndex2 = state._assetOrders.nextElementIndex(state._elementIndex);
+
+						state._assetOrders.remove(state._elementIndex);
+
+						state._elementIndex = state._entityOrders.headIndex(state._assetOrder.entity, -state._price);
+						while (true) // Impossible for the corresponding entity order to not exist
+						{
+							state._entityOrder = state._entityOrders.element(state._elementIndex);
+							if (state._entityOrder.assetName == input.assetName
+								&& state._entityOrder.issuer == input.issuer)
+							{
+								state._entityOrders.remove(state._elementIndex);
+
+								break;
+							}
+
+							state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+						}
+
+						state._fee = (state._price * state._assetOrder.numberOfShares * state._tradeFee / 1000000000UL) + 1;
+						state._earnedAmount += state._fee;
+						transfer(state._assetOrder.entity, state._price * state._assetOrder.numberOfShares - state._fee);
+						transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, state._assetOrder.numberOfShares, invocator());
+
+						state._elementIndex = state._elementIndex2;
+						input.numberOfShares -= state._assetOrder.numberOfShares;
+					}
+					else
+					{
+						state._assetOrder.numberOfShares -= input.numberOfShares;
+						state._assetOrders.replace(state._elementIndex, state._assetOrder);
+
+						state._elementIndex = state._entityOrders.headIndex(state._assetOrder.entity, -state._price);
+						while (true) // Impossible for the corresponding entity order to not exist
+						{
+							state._entityOrder = state._entityOrders.element(state._elementIndex);
+							if (state._entityOrder.assetName == input.assetName
+								&& state._entityOrder.issuer == input.issuer)
+							{
+								state._entityOrder.numberOfShares -= input.numberOfShares;
+								state._entityOrders.replace(state._elementIndex, state._entityOrder);
+
+								break;
+							}
+
+							state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+						}
+
+						state._fee = (state._price * input.numberOfShares * state._tradeFee / 1000000000UL) + 1;
+						state._earnedAmount += state._fee;
+						transfer(state._assetOrder.entity, state._price * input.numberOfShares - state._fee);
+						transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, input.numberOfShares, invocator());
+
+						input.numberOfShares = 0;
+
+						break;
+					}
+				}
+
+				if (input.numberOfShares > 0)
+				{
+					state._assetOrder.entity = invocator();
+					state._assetOrder.numberOfShares = input.numberOfShares;
+					state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, input.price);
+
+					state._entityOrder.issuer = input.issuer;
+					state._entityOrder.assetName = input.assetName;
+					state._entityOrder.numberOfShares = input.numberOfShares;
+					state._entityOrders.add(invocator(), state._entityOrder, input.price);
+				}
 			}
 
 			if (invocationReward() > input.price * input.numberOfShares)
