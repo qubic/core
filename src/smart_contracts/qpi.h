@@ -5937,6 +5937,12 @@ namespace QPI
 			}
 		}
 
+		// Replace *existing* element, do nothing otherwise
+		void replace(sint64 oldElementIndex, T newElement)
+		{
+			// TODO
+		}
+
 		// Reinitialize as empty collection.
 		void reset()
 		{
