@@ -218,6 +218,12 @@ static struct {
     unsigned char second;
 } threadTimeCheckin[MAX_NUMBER_OF_PROCESSORS];
 
+static struct {
+    unsigned int tick;
+    unsigned long long clock;
+} emptyTickResolver;
+
+
 static void logToConsole(const CHAR16* message)
 {
     if (disableConsoleLogging)
@@ -3671,6 +3677,27 @@ static void tickProcessor(void*)
                                 {
                                     targetNextTickDataDigest = _mm256_setzero_si256();
                                     targetNextTickDataDigestIsKnown = true;
+                                }
+                                if (tickTotalNumberOfComputors >= QUORUM && mainAuxStatus & 1)
+                                {
+                                    if (emptyTickResolver.tick != system.tick)
+                                    {
+                                        emptyTickResolver.tick = system.tick;
+                                        emptyTickResolver.clock = __rdtsc();
+                                    }
+                                    else
+                                    {
+                                        if (__rdtsc() - emptyTickResolver.clock > frequency * TARGET_TICK_DURATION/1000)
+                                        {
+                                            emptyTickResolver.clock = __rdtsc();
+                                            unsigned int randNumber = random(10000);
+                                            if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
+                                            {
+                                                targetNextTickDataDigest = _mm256_setzero_si256();
+                                                targetNextTickDataDigestIsKnown = true;   
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             forceNextTick = false;
