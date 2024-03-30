@@ -5034,7 +5034,7 @@ namespace QPI
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint64 index, sint32 value)
+		inline void set(uint64 index, T value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}

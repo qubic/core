@@ -191,6 +191,10 @@ private:
 	_EntityOrder _entityOrder;
 	sint64 _price;
 	sint64 _fee;
+	AssetAskOrders_output::Order _assetAskOrder;
+	AssetBidOrders_output::Order _assetBidOrder;
+	EntityAskOrders_output::Order _entityAskOrder;
+	EntityBidOrders_output::Order _entityBidOrder;
 
 	struct _NumberOfReservedShares_input
 	{
@@ -225,12 +229,92 @@ private:
 		output.assetIssuanceFee = state._assetIssuanceFee;
 		output.transferFee = state._transferFee;
 		output.tradeFee = state._tradeFee;
-	_
+		_
 
 	PUBLIC(AssetAskOrders)
+
+		state._issuerAndAssetName = input.issuer;
+		state._issuerAndAssetName._0 = input.assetName;
+
+		state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, 0);
+		state._elementIndex2 = 0;
+		while (state._elementIndex != NULL_INDEX
+			&& state._elementIndex2 < 256)
+		{
+			if (input.offset > 0)
+			{
+				input.offset--;
+			}
+			else
+			{
+				state._assetAskOrder.price = -state._assetOrders.priority(state._elementIndex);
+				state._assetOrder = state._assetOrders.element(state._elementIndex);
+				state._assetAskOrder.entity = state._assetOrder.entity;
+				state._assetAskOrder.numberOfShares = state._assetOrder.numberOfShares;
+				output.orders.set(state._elementIndex2, state._assetAskOrder);
+				state._elementIndex2++;
+			}
+
+			state._elementIndex = state._assetOrders.nextElementIndex(state._elementIndex);
+		}
+
+		if (state._elementIndex2 < 256)
+		{
+			state._assetAskOrder.entity = NULL_ID;
+			state._assetAskOrder.price = 0;
+			state._assetAskOrder.numberOfShares = 0;
+			while (state._elementIndex2 < 256)
+			{
+				output.orders.set(state._elementIndex2, state._assetAskOrder);
+				state._elementIndex2++;
+			}
+		}
 	_
 
 	PUBLIC(AssetBidOrders)
+
+		state._issuerAndAssetName = input.issuer;
+		state._issuerAndAssetName._0 = input.assetName;
+
+		state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName);
+		state._elementIndex2 = 0;
+		while (state._elementIndex != NULL_INDEX
+			&& state._elementIndex2 < 256)
+		{
+			state._assetBidOrder.price = state._assetOrders.priority(state._elementIndex);
+
+			if (state._assetBidOrder.price <= 0)
+			{
+				break;
+			}
+
+			if (input.offset > 0)
+			{
+				input.offset--;
+			}
+			else
+			{
+				state._assetOrder = state._assetOrders.element(state._elementIndex);
+				state._assetBidOrder.entity = state._assetOrder.entity;
+				state._assetBidOrder.numberOfShares = state._assetOrder.numberOfShares;
+				output.orders.set(state._elementIndex2, state._assetBidOrder);
+				state._elementIndex2++;
+			}
+
+			state._elementIndex = state._assetOrders.nextElementIndex(state._elementIndex);
+		}
+
+		if (state._elementIndex2 < 256)
+		{
+			state._assetBidOrder.entity = NULL_ID;
+			state._assetBidOrder.price = 0;
+			state._assetBidOrder.numberOfShares = 0;
+			while (state._elementIndex2 < 256)
+			{
+				output.orders.set(state._elementIndex2, state._assetBidOrder);
+				state._elementIndex2++;
+			}
+		}
 	_
 
 	PUBLIC(EntityAskOrders)
