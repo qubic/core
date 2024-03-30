@@ -175,7 +175,7 @@ private:
 		id entity;
 		sint64 numberOfShares;
 	};
-	collection<_AssetOrder, 8388608 * X_MULTIPLIER> _assetOrders;
+	collection<_AssetOrder, 2097152 * X_MULTIPLIER> _assetOrders;
 
 	struct _EntityOrder
 	{
@@ -183,7 +183,7 @@ private:
 		uint64 assetName;
 		sint64 numberOfShares;
 	};
-	collection<_EntityOrder, 8388608 * X_MULTIPLIER> _entityOrders;
+	collection<_EntityOrder, 2097152 * X_MULTIPLIER> _entityOrders;
 
 	sint64 _elementIndex, _elementIndex2;
 	id _issuerAndAssetName;
