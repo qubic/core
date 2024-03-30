@@ -207,9 +207,12 @@ static struct
     RequestedTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
 
-
-
-
+static struct {
+    unsigned char day;
+    unsigned char hour;
+    unsigned char minute;
+    unsigned char second;
+} threadTimeCheckin[MAX_NUMBER_OF_PROCESSORS];
 
 static void logToConsole(const CHAR16* message)
 {
@@ -1229,6 +1232,15 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
     }
 }
 
+// a tracker to detect if a thread is crashed
+static void checkinTime(unsigned long long processorNumber)
+{
+    threadTimeCheckin[processorNumber].second = time.Second;
+    threadTimeCheckin[processorNumber].minute = time.Minute;
+    threadTimeCheckin[processorNumber].hour = time.Hour;
+    threadTimeCheckin[processorNumber].day = time.Day;
+}
+
 static void requestProcessor(void* ProcedureArgument)
 {
     enableAVX();
@@ -1240,6 +1252,7 @@ static void requestProcessor(void* ProcedureArgument)
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
     {
+        checkinTime(processorNumber);
         // in epoch transition, wait here
         if (epochTransitionState)
         {
@@ -3044,6 +3057,7 @@ static void tickProcessor(void*)
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
+        checkinTime(processorNumber);
         const unsigned long long curTimeTick = __rdtsc();
         const unsigned int nextTick = system.tick + 1;
 
@@ -4597,6 +4611,43 @@ static void processKeyPresses()
             setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
             appendText(message, L"&");
             appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+            logToConsole(message);
+
+            // print statuses of thread
+            // this accepts a small error when switching day to first day of the next month
+            bool allThreadsAreGood = true;
+            setText(message, L"Thread status: ");
+            for (int i = 0; i < nTickProcessorIDs; i++)
+            {
+                unsigned long long tid = tickProcessorIDs[i];
+                long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
+                    + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+                if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
+                {
+                    allThreadsAreGood = false;
+                    appendText(message, L"Tick Processor #");
+                    appendNumber(message, tid, false);
+                    appendText(message, L" is not responsive | ");
+                }
+            }
+
+            for (int i = 0; i < nRequestProcessorIDs; i++)
+            {
+                unsigned long long tid = requestProcessorIDs[i];
+                long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
+                    + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+                if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
+                {
+                    allThreadsAreGood = false;
+                    appendText(message, L"Request Processor #");
+                    appendNumber(message, tid, false);
+                    appendText(message, L" is not responsive | ");
+                }
+            }
+            if (allThreadsAreGood)
+            {
+                appendText(message, L"All threads are healthy.");
+            }
             logToConsole(message);
         }
         break;
