@@ -1057,6 +1057,84 @@ TEST(TestCoreQPI, CollectionSubCollectionsRandom) {
     }
 }
 
+TEST(TestCoreQPI, CollectionReplaceElements) {
+    QPI::id pov(1, 2, 3, 4);
+
+    QPI::collection<size_t, 1024> coll;
+    coll.reset();
+
+    const int seed = 246357;
+    std::mt19937_64 gen64(seed);
+
+    // init a collection for test
+    const size_t numElements = 1000;
+    std::vector<QPI::sint64> priorities(numElements);
+    for (size_t i = 0; i < numElements; i++)
+    {
+        priorities[i] = std::abs((QPI::sint64)gen64()) % 0xFFFF;
+        coll.add(pov, i, priorities[i]);
+    }
+    checkPriorityQueue(coll, pov, false);
+
+    // test for special cases out of bound element index
+    size_t replaceElement = 999;
+
+    // out of collection's capacity
+    coll.replace(coll.capacity(), replaceElement);
+    for (size_t i = 0; i < numElements; i++)
+    {
+        EXPECT_EQ(coll.element(i), i);
+    }
+
+    // out of  collection's size
+    coll.replace(numElements, replaceElement);
+    for (size_t i = 0; i < numElements; i++)
+    {
+        EXPECT_EQ(coll.element(i), i);
+    }
+
+    // generate random replace indices
+    const size_t numTests = 500;
+    std::vector<QPI::sint64> replaceIndices(numTests);
+    for (size_t i = 0; i < numTests; i++)
+    {
+        replaceIndices[i] = std::abs((QPI::sint64)gen64()) % numElements;
+        // remove some of indices in the list
+        if (i % 4)
+        {
+            coll.remove(replaceIndices[i]);
+        }
+    }
+
+    // get the new priorities list
+    size_t numRemainedElements = coll.population();
+    priorities.resize(numRemainedElements);
+    for (size_t i = 0; i < numRemainedElements; i++)
+    {
+        priorities[i] = coll.priority(i);
+    }
+
+    // run the test on the list
+    for (size_t i = 0; i < numTests; i++)
+    {
+        QPI::sint64 replaceElement = i;
+        QPI::sint64 replaceIndex = replaceIndices[i];
+
+        QPI::sint64 nextElementIndex = coll.nextElementIndex(replaceIndex);
+        QPI::sint64 prevElementIndex = coll.prevElementIndex(replaceIndex);
+
+        coll.replace(replaceIndex, replaceElement);
+
+        if (replaceIndex < numRemainedElements)
+        {
+            EXPECT_EQ(coll.element(replaceIndex), replaceElement);
+            EXPECT_EQ(coll.priority(replaceIndex), priorities[replaceIndex]);
+            EXPECT_EQ(coll.nextElementIndex(replaceIndex), nextElementIndex);
+            EXPECT_EQ(coll.prevElementIndex(replaceIndex), prevElementIndex);
+        }
+    }
+}
+
 template <unsigned long long capacity>
 void testCollectionCleanupPseudoRandom(int povs, int seed)
 {

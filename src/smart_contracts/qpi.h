@@ -5938,9 +5938,15 @@ namespace QPI
 		}
 
 		// Replace *existing* element, do nothing otherwise
+		// - The element exists: replace its value.
+		// - The element has been removed: replace the value of the new element that fills this position after removal.
+		// - The index is out of bounds: no action is taken.
 		void replace(sint64 oldElementIndex, T newElement)
 		{
-			// TODO
+			if (oldElementIndex < _population)
+			{
+				_elements[oldElementIndex & (L - 1)].value = newElement;
+			}
 		}
 
 		// Reinitialize as empty collection.
