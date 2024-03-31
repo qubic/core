@@ -196,6 +196,19 @@ private:
 	EntityAskOrders_output::Order _entityAskOrder;
 	EntityBidOrders_output::Order _entityBidOrder;
 
+	struct _TradeMessage
+	{
+		unsigned int _contractIndex;
+		unsigned int _type;
+
+		id issuer;
+		uint64 assetName;
+		sint64 price;
+		sint64 numberOfShares;
+
+		char _terminator;
+	} _tradeMessage;
+
 	struct _NumberOfReservedShares_input
 	{
 		id issuer;
@@ -565,6 +578,12 @@ private:
 							transfer(invocator(), state._price * state._assetOrder.numberOfShares - state._fee);
 							transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), invocator(), state._assetOrder.numberOfShares, state._assetOrder.entity);
 
+							state._tradeMessage.issuer = input.issuer;
+							state._tradeMessage.assetName = input.assetName;
+							state._tradeMessage.price = state._price;
+							state._tradeMessage.numberOfShares = state._assetOrder.numberOfShares;
+							LOG_INFO(state._tradeMessage);
+
 							state._elementIndex = state._elementIndex2;
 							input.numberOfShares -= state._assetOrder.numberOfShares;
 						}
@@ -593,6 +612,12 @@ private:
 							state._earnedAmount += state._fee;
 							transfer(invocator(), state._price * input.numberOfShares - state._fee);
 							transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), invocator(), input.numberOfShares, state._assetOrder.entity);
+
+							state._tradeMessage.issuer = input.issuer;
+							state._tradeMessage.assetName = input.assetName;
+							state._tradeMessage.price = state._price;
+							state._tradeMessage.numberOfShares = input.numberOfShares;
+							LOG_INFO(state._tradeMessage);
 
 							input.numberOfShares = 0;
 
@@ -716,6 +741,12 @@ private:
 						transfer(state._assetOrder.entity, state._price * state._assetOrder.numberOfShares - state._fee);
 						transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, state._assetOrder.numberOfShares, invocator());
 
+						state._tradeMessage.issuer = input.issuer;
+						state._tradeMessage.assetName = input.assetName;
+						state._tradeMessage.price = state._price;
+						state._tradeMessage.numberOfShares = state._assetOrder.numberOfShares;
+						LOG_INFO(state._tradeMessage);
+
 						state._elementIndex = state._elementIndex2;
 						input.numberOfShares -= state._assetOrder.numberOfShares;
 					}
@@ -744,6 +775,12 @@ private:
 						state._earnedAmount += state._fee;
 						transfer(state._assetOrder.entity, state._price * input.numberOfShares - state._fee);
 						transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, input.numberOfShares, invocator());
+
+						state._tradeMessage.issuer = input.issuer;
+						state._tradeMessage.assetName = input.assetName;
+						state._tradeMessage.price = state._price;
+						state._tradeMessage.numberOfShares = input.numberOfShares;
+						LOG_INFO(state._tradeMessage);
 
 						input.numberOfShares = 0;
 
