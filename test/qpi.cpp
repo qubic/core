@@ -785,9 +785,9 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
     EXPECT_TRUE(isCompletelySame(resetColl, coll));
 }
 
-TEST(TestCoreQPI, CollectionMultiPovOneElement) {
-    constexpr unsigned long long capacity = 32;
-
+template <unsigned long long capacity>
+void testCollectionMultiPovOneElement(bool cleanupAfterEachRemove)
+{
     // for valid init you either need to call reset or load the data from a file (in SC, state is zeroed before INITIALIZE is called)
     QPI::collection<int, capacity> coll;
     coll.reset();
@@ -846,14 +846,28 @@ TEST(TestCoreQPI, CollectionMultiPovOneElement) {
         coll.remove(coll.headIndex(removePov));
         EXPECT_EQ(coll.population(removePov), 0);
         EXPECT_EQ(coll.population(), capacity - j - 1);
+
+        if (cleanupAfterEachRemove)
+            coll.cleanup();
     }
 
     // check that cleanup after removing all elements leads to same as reset() in terms of memory
     QPI::collection<int, capacity> resetColl;
     resetColl.reset();
-    EXPECT_FALSE(isCompletelySame(resetColl, coll));
+    if (!cleanupAfterEachRemove)
+        EXPECT_FALSE(isCompletelySame(resetColl, coll));
+    EXPECT_TRUE(haveSameContent(resetColl, coll, true));
     coll.cleanup();
     EXPECT_TRUE(isCompletelySame(resetColl, coll));
+}
+
+TEST(TestCoreQPI, CollectionMultiPovOneElement)
+{
+    bool cleanupAfterEachRemove = false;
+    testCollectionMultiPovOneElement<16>(cleanupAfterEachRemove);
+    testCollectionMultiPovOneElement<32>(cleanupAfterEachRemove);
+    testCollectionMultiPovOneElement<64>(cleanupAfterEachRemove);
+    testCollectionMultiPovOneElement<128>(cleanupAfterEachRemove);
 }
 
 TEST(TestCoreQPI, CollectionOneRemoveLastHeadTail) {
@@ -1058,7 +1072,7 @@ TEST(TestCoreQPI, CollectionSubCollectionsRandom) {
 }
 
 template <unsigned long long capacity>
-void testCollectionCleanupPseudoRandom(int povs, int seed)
+void testCollectionCleanupPseudoRandom(int povs, int seed, bool povCollisions)
 {
     // add and remove entries with pseudo-random sequence
     std::mt19937_64 gen64(seed);
@@ -1084,7 +1098,7 @@ void testCollectionCleanupPseudoRandom(int povs, int seed)
         if (p < 70)
         {
             // add to collection (more probable than remove)
-            QPI::id pov(gen64() % povs, 0, 0, 0);
+            QPI::id pov = (povCollisions) ? QPI::id(0, 0, 0, gen64() % povs) : QPI::id(gen64() % povs, 0, 0, 0);
             coll.add(pov, gen64(), gen64());
         }
         else if (coll.population() > 0)
@@ -1092,7 +1106,6 @@ void testCollectionCleanupPseudoRandom(int povs, int seed)
             // remove from collection
             coll.remove(gen64() % coll.population());
         }
-
     }
 }
 
@@ -1100,13 +1113,35 @@ TEST(TestCoreQPI, CollectionCleanup) {
     __scratchpadBuffer = new char[10 * 1024 * 1024];
     for (int i = 0; i < 3; ++i)
     {
-        testCollectionCleanupPseudoRandom<512>(300, 12345 + i);
-        testCollectionCleanupPseudoRandom<256>(256, 1234 + i);
-        testCollectionCleanupPseudoRandom<256>(10, 123 + i);
+        bool povCollisions = false;
+        testCollectionCleanupPseudoRandom<512>(300, 12345 + i, povCollisions);
+        testCollectionCleanupPseudoRandom<256>(256, 1234 + i, povCollisions);
+        testCollectionCleanupPseudoRandom<256>(10, 123 + i, povCollisions);
+        testCollectionCleanupPseudoRandom<16>(10, 12 + i, povCollisions);
+
+        povCollisions = true;
+        testCollectionCleanupPseudoRandom<512>(300, 12345 + i, povCollisions);
+        testCollectionCleanupPseudoRandom<256>(256, 1234 + i, povCollisions);
+        testCollectionCleanupPseudoRandom<256>(10, 123 + i, povCollisions);
+        testCollectionCleanupPseudoRandom<16>(10, 12 + i, povCollisions);
     }
     delete[] __scratchpadBuffer;
     __scratchpadBuffer = nullptr;
 }
+
+TEST(TestCoreQPI, CollectionCleanupWithPovCollisions)
+{
+    // Shows bugs in cleanup() that occur in case of massive pov hash map collisions and in case of capacity < 32
+    __scratchpadBuffer = new char[10 * 1024 * 1024];
+    bool cleanupAfterEachRemove = true;
+    testCollectionMultiPovOneElement<16>(cleanupAfterEachRemove);
+    testCollectionMultiPovOneElement<32>(cleanupAfterEachRemove);
+    testCollectionMultiPovOneElement<64>(cleanupAfterEachRemove);
+    testCollectionMultiPovOneElement<128>(cleanupAfterEachRemove);
+    delete[] __scratchpadBuffer;
+    __scratchpadBuffer = nullptr;
+}
+
 
 template<typename T>
 T genNumber(
