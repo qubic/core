@@ -1,6 +1,6 @@
 #pragma once
 #ifdef NO_UEFI
-int top_of_stack;
+unsigned long long top_of_stack;
 #endif
 #include "platform/memory.h"
 #include "platform/m256.h"
@@ -566,7 +566,7 @@ struct ScoreFunction
 #endif
 #ifdef NO_UEFI
        int y = 2 + score;
-       int ss = top_of_stack - ((int)(&y));
+       unsigned long long ss = top_of_stack - ((unsigned long long)(&y));
        std::cout << "Stack size: " << ss << " bytes\n";
 #endif
         return score;

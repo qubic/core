@@ -5471,7 +5471,7 @@ namespace QPI
 		sint64 _previousElementIndex(sint64 elementIdx) const
 		{
 			elementIdx &= (L - 1);
-			if (elementIdx < _population)
+			if (uint64(elementIdx) < _population)
 			{
 				if (_elements[elementIdx].bstLeftIndex != NULL_INDEX)
 				{
@@ -5502,7 +5502,7 @@ namespace QPI
 		sint64 _nextElementIndex(sint64 elementIdx) const
 		{
 			elementIdx &= (L - 1);
-			if (elementIdx < _population)
+			if (uint64(elementIdx) < _population)
 			{
 				if (_elements[elementIdx].bstRightIndex != NULL_INDEX)
 				{
@@ -5833,7 +5833,7 @@ namespace QPI
 		void remove(sint64 elementIdx)
 		{
 			elementIdx &= (L - 1);
-			if (elementIdx < _population)
+			if (uint64(elementIdx) < _population)
 			{
 				auto deleteElementIdx = elementIdx;
 				const auto povIndex = _elements[elementIdx].povIndex;

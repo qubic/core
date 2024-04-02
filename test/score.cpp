@@ -59,7 +59,7 @@ struct ScoreTester
     bool operator()(const unsigned long long processorNumber, unsigned char* publicKey, unsigned char* nonce)
     {
         int x = 0;
-        top_of_stack = (int)(&x);
+        top_of_stack = (unsigned long long)(&x);
         auto t0 = std::chrono::high_resolution_clock::now();
         unsigned int current = (*score)(processorNumber, publicKey, nonce);
         auto t1 = std::chrono::high_resolution_clock::now();

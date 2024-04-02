@@ -1019,12 +1019,12 @@ TEST(TestCoreQPI, CollectionSubCollectionsRandom) {
         tailIdx = coll.tailIndex(pov, priorities[size - 1]);
         EXPECT_EQ(coll.priority(tailIdx), priorities[size - 1]);
 
-        std::vector<int> indices(std::min((int)size, std::max(1, int(size / 5))));
+        std::vector<size_t> indices(std::min(size, std::max(1llu, size / 5)));
         for (size_t i = 0; i < indices.size(); i++) {
             indices[i] = std::abs((QPI::sint64)gen64()) % indices.size();
         }
 
-        for (int i : indices)
+        for (size_t i : indices)
         {
             const auto priority = priorities[i];
 
@@ -1036,7 +1036,7 @@ TEST(TestCoreQPI, CollectionSubCollectionsRandom) {
             if (idx != coll.headIndex(pov))
             {
                 auto higher_priority = priority;
-                for (int j = i - 1; j >= 0; j--)
+                for (size_t j = i - 1; j >= 0; j--)
                 {
                     if (priorities[j] > priority)
                     {
@@ -1056,7 +1056,7 @@ TEST(TestCoreQPI, CollectionSubCollectionsRandom) {
             if (idx != coll.tailIndex(pov))
             {
                 auto lower_priority = priority;
-                for (int j = i + 1; j < size; j++)
+                for (size_t j = i + 1; j < size; j++)
                 {
                     if (priorities[j] < priority)
                     {
@@ -1157,7 +1157,7 @@ T genNumber(
 template <unsigned long long capacity>
 QPI::uint64 testCollectionPeformance(
     QPI::collection<QPI::uint64, capacity>& coll,
-    const int povs,
+    const QPI::uint64 povs,
     const QPI::sint64* genBuffer,
     const QPI::uint64 genSize,
     const QPI::uint64 genSeed,
