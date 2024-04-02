@@ -5374,7 +5374,7 @@ namespace QPI
 			{
 				return rootIdx;
 			}
-			// initilize root
+			// initialize root
 			sint64 mid = n / 2;
 			rootIdx = sortedElementIndices[mid];
 			_elements[rootIdx].bstParentIndex = NULL_INDEX;
@@ -5748,7 +5748,7 @@ namespace QPI
 						newPopulation += _povs[oldPovIndex].population;
 						if (newPopulation == _population)
 						{
-							// povs of all elements have been transfered -> overwrite old pov arrays with new pov arrays
+							// povs of all elements have been transferred -> overwrite old pov arrays with new pov arrays
 							copyMem(_povs, _povsBuffer, sizeof(_povs));
 							copyMem(_povOccupationFlags, _povOccupationFlagsBuffer, sizeof(_povOccupationFlags));
 							_markRemovalCounter = 0;

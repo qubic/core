@@ -1155,7 +1155,7 @@ T genNumber(
 }
 
 template <unsigned long long capacity>
-QPI::uint64 testCollectionPeformance(
+QPI::uint64 testCollectionPerformance(
     QPI::collection<QPI::uint64, capacity>& coll,
     const QPI::uint64 povs,
     const QPI::sint64* genBuffer,
@@ -1223,7 +1223,7 @@ QPI::uint64 testCollectionPeformance(
 }
 
 template <unsigned long long capacity>
-QPI::uint64 testCollectionPeformance(
+QPI::uint64 testCollectionPerformance(
     const QPI::uint64 maxPovsCount, const QPI::uint64 maxCleanupCounter)
 {
     std::mt19937_64 gen64(113377);
@@ -1240,7 +1240,7 @@ QPI::uint64 testCollectionPeformance(
     coll.reset();
     for (int i = 0; i < 333; ++i)
     {
-        testCollectionPeformance(coll,
+        testCollectionPerformance(coll,
             maxPovsCount, gen_buffers, genSize, i + 11, maxCleanupCounter);
     }
 
@@ -1257,28 +1257,28 @@ TEST(TestCoreQPI, CollectionPerformance) {
     std::vector<QPI::uint64> durations;
     std::vector<std::string> descriptions;
 
-    durations.push_back(testCollectionPeformance<1024>(128, 333));
+    durations.push_back(testCollectionPerformance<1024>(128, 333));
     descriptions.push_back("[CollectionPerformance] Collection<1024>(128, 333)");
 
-    durations.push_back(testCollectionPeformance<1024>(64, 333));
+    durations.push_back(testCollectionPerformance<1024>(64, 333));
     descriptions.push_back("[CollectionPerformance] Collection<1024>(64, 333)");
 
-    durations.push_back(testCollectionPeformance<1024>(32, 333));
+    durations.push_back(testCollectionPerformance<1024>(32, 333));
     descriptions.push_back("[CollectionPerformance] Collection<1024>(32, 333)");
 
-    durations.push_back(testCollectionPeformance<1024>(16, 333));
+    durations.push_back(testCollectionPerformance<1024>(16, 333));
     descriptions.push_back("[CollectionPerformance] Collection<1024>(16, 333)");
 
-    durations.push_back(testCollectionPeformance<512>(128, 333));
+    durations.push_back(testCollectionPerformance<512>(128, 333));
     descriptions.push_back("[CollectionPerformance] Collection<512>(128, 333)");
 
-    durations.push_back(testCollectionPeformance<512>(64, 333));
+    durations.push_back(testCollectionPerformance<512>(64, 333));
     descriptions.push_back("[CollectionPerformance] Collection<512>(64, 333)");
 
-    durations.push_back(testCollectionPeformance<512>(32, 333));
+    durations.push_back(testCollectionPerformance<512>(32, 333));
     descriptions.push_back("[CollectionPerformance] Collection<512>(32, 333)");
 
-    durations.push_back(testCollectionPeformance<512>(16, 333));
+    durations.push_back(testCollectionPerformance<512>(16, 333));
     descriptions.push_back("[CollectionPerformance] Collection<512>(16, 333)");
 
     delete[] __scratchpadBuffer;
