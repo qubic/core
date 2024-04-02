@@ -5607,7 +5607,7 @@ namespace QPI
 			uint64 flags = povOccupationFlags[povIndex >> 5] >> offset;
 			if (offset > 0)
 			{
-				flags |= povOccupationFlags[((povIndex + 32) & (L - 1)) >> 5] << (64 - offset);
+				flags |= povOccupationFlags[((povIndex + 32) & (L - 1)) >> 5] << (2*_nEncodedFlags - offset);
 			}
 			return flags;
 		}
