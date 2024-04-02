@@ -1234,19 +1234,23 @@ QPI::uint64 testCollectionPerformance(
         gen_buffers[i] = gen64();
     }
 
+    QPI::collection<QPI::uint64, capacity> * coll = new QPI::collection<QPI::uint64, capacity>();
+    coll->reset();
+
     auto t0 = std::chrono::high_resolution_clock::now();
 
-    QPI::collection<QPI::uint64, capacity> coll;
-    coll.reset();
     for (int i = 0; i < 333; ++i)
     {
-        testCollectionPerformance(coll,
+        testCollectionPerformance(*coll,
             maxPovsCount, gen_buffers, genSize, i + 11, maxCleanupCounter);
     }
 
     auto t1 = std::chrono::high_resolution_clock::now();
     auto duration = t1 - t0;
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0);
+
+    delete coll;
+
     return ms.count();
 }
 
