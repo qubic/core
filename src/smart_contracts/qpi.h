@@ -5658,7 +5658,7 @@ namespace QPI
 		{
 			// _povs gets occupied over time with entries of type 3 which means they are marked for cleanup.
 			// Once cleanup is called it's necessary to remove all these type 3 entries by reconstructing a fresh collection residing in scratchpad buffer.
-			// Corresponding elements are be sorted too for faster uniform access, tail and head, prev and next are changed accordingly.
+			// The _elements array is not reorganized by the cleanup (only references to _povs are updated).
 			// Cleanup() called for a collection having only type 3 entries in _povs must give the result equal to reset() memory content wise.
 
 			// Quick check to cleanup
@@ -5682,9 +5682,10 @@ namespace QPI
 			setMem(::__scratchpad(), sizeof(_povs) + sizeof(_povOccupationFlags), 0);
 			uint64 newPopulation = 0;
 
-			// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new collection and copy priority queue in order,
-			// sequentially filling entry array of new collection.
-			for (sint64 oldPovIndexGroup = 0; oldPovIndexGroup < (L >> 5); oldPovIndexGroup++)
+			// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new collection's pov buffers and
+			// update povIndex in elements belonging to pov.
+			constexpr uint64 oldPovIndexGroupCount = (L >> 5) ? (L >> 5) : 1;
+			for (sint64 oldPovIndexGroup = 0; oldPovIndexGroup < oldPovIndexGroupCount; oldPovIndexGroup++)
 			{
 				const uint64 flags = _povOccupationFlags[oldPovIndexGroup];
 				uint64 maskBits = (0xAAAAAAAAAAAAAAAA & (flags << 1));
@@ -5697,28 +5698,29 @@ namespace QPI
 					// Only add pov to new collection that are occupied and not marked for removal
 					if (maskBits & 3ULL)
 					{
+						// find empty position in new pov hash map
 						const sint64 oldPovIndex = (oldPovIndexGroup << 5) + (oldPovIndexOffset >> 1);
 						sint64 newPovIndex = _povs[oldPovIndex].value._0 & (L - 1);
-						bool foundValidIndex = false;
-						for (sint64 counter = 0; counter < L && !foundValidIndex; counter += 32)
+						for (sint64 counter = 0; counter < L; counter += 32)
 						{
 							QPI::uint64 newFlags = _getEncodedPovOccupationFlags(_povOccupationFlagsBuffer, newPovIndex);
 							for (sint64 i = 0; i < _nEncodedFlags; i++, newFlags >>= 2)
 							{
 								if ((newFlags & 3ULL) == 0)
 								{
-									foundValidIndex = true;
 									newPovIndex = (newPovIndex + i) & (L - 1);
-									break;
+									goto foundEmptyPosition;
 								}
 							}
-						}
-						if (!foundValidIndex)
-						{
 							newPovIndex = (newPovIndex + _nEncodedFlags) & (L - 1);
-							continue;
 						}
+#ifdef NO_UEFI
+						// should never be reached, because old and new map have same capacity (there should always be an empty slot)
+						goto cleanupBug;
+#endif
 
+					foundEmptyPosition:
+						// occupy empty pov hash map entry
 						_povOccupationFlagsBuffer[newPovIndex >> 5] |= (1ULL << ((newPovIndex & 31) << 1));
 						copyMem(&_povsBuffer[newPovIndex], &_povs[oldPovIndex], sizeof(PoV));
 
@@ -5742,9 +5744,11 @@ namespace QPI
 							}
 						}
 
+						// check if we are done
 						newPopulation += _povs[oldPovIndex].population;
 						if (newPopulation == _population)
 						{
+							// povs of all elements have been transfered -> overwrite old pov arrays with new pov arrays
 							copyMem(_povs, _povsBuffer, sizeof(_povs));
 							copyMem(_povOccupationFlags, _povOccupationFlagsBuffer, sizeof(_povOccupationFlags));
 							_markRemovalCounter = 0;
@@ -5755,8 +5759,9 @@ namespace QPI
 			}
 
 #ifdef NO_UEFI
+		cleanupBug:
 			// don't expect here, certainly got error!!!
-			printf("Error: Something went wrong at cleanup.");
+			printf("ERROR: Something went wrong at cleanup!\n");
 #endif
 		}
 
