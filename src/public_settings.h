@@ -24,7 +24,7 @@
 // Set START_NETWORK_FROM_SCRATCH to 0 if you start the node for syncing with the already ticking network.
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
-#define START_NETWORK_FROM_SCRATCH 1
+#define START_NETWORK_FROM_SCRATCH 0
 
 //////////////////////////////////////////////////////////////////////////
 // Config options that should NOT be changed by operators
@@ -33,8 +33,8 @@
 #define VERSION_B 198
 #define VERSION_C 0
 
-#define EPOCH 102
-#define TICK 13110000
+#define EPOCH 103
+#define TICK 13218818
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
