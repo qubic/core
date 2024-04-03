@@ -1746,6 +1746,7 @@ static void contractProcessor(void*)
     }
     break;
 
+    // TODO: rename to invoke (with option to have amount)
     case USER_PROCEDURE_CALL:
     {
         const Transaction* transaction = contractProcessorTransaction;
@@ -2323,7 +2324,7 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick); // reset here to persist the data when we do seamless transition
+        logger.reset(system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
@@ -2955,7 +2956,7 @@ static void endEpoch()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
         qpiContext.call(5, "", 0);
         ASSERT(qpiContext.outputSize == sizeof(GQMPROP::RevenueDonationT));
-        GQMPROP::RevenueDonationT* emissionDist = (GQMPROP::RevenueDonationT*)qpiContext.outputBuffer;
+        const GQMPROP::RevenueDonationT* emissionDist = (GQMPROP::RevenueDonationT*)qpiContext.outputBuffer;
 
         // Compute revenue of computors and arbitrator
         long long arbitratorRevenue = ISSUANCE_RATE;
@@ -2998,7 +2999,7 @@ static void endEpoch()
                 if (rdEntry.millionthAmount > 0 && rdEntry.millionthAmount <= 1000000 && system.epoch >= rdEntry.firstEpoch)
                 {
                     // Compute donation and update revenue
-                    long long donation = revenue * rdEntry.millionthAmount / 1000000;
+                    const long long donation = revenue * rdEntry.millionthAmount / 1000000;
                     revenue -= donation;
 
                     // Generate revenue donation

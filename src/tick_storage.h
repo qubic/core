@@ -591,7 +591,7 @@ public:
         }
         else
         {
-            // node startup with no data of prior epoch (also use storage for prior epoch for current)
+            // node startup with no data of prior epoch
             setMem(tickDataPtr, tickDataSize, 0);
             setMem(ticksPtr, ticksSize, 0);
             setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSize, 0);

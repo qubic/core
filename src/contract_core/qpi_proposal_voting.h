@@ -406,17 +406,19 @@ namespace QPI
 		if (vote.proposalIndex >= pv.maxProposals)
 			return false;
 
+		// Check that vote matches proposal
 		auto& proposal = pv.proposals[vote.proposalIndex];
 		if (vote.proposalType != proposal.type)
 			return false;
-
 		if (qpi.epoch() != proposal.epoch)
 			return false;
-
 		if (vote.proposalTick != proposal.tick)
 			return false;
 
+		// Return voter index (which may be INVALID_VOTER_INDEX if voter has no right to vote)
 		unsigned int voterIndex = pv.proposersAndVoters.getVoterIndex(qpi, voter);
+
+		// Set vote value (checking that voter index and value are valid)
 		return proposal.setVoteValue(voterIndex, vote.voteValue);
 	}
 

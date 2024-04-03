@@ -22,7 +22,7 @@
 
 // If you want to use the network_meassges directory in your project without dependencies to other code,
 // you may define NETWORK_MESSAGES_WITHOUT_CORE_DEPENDENCIES before including any header or change the
-// following line to "#if 1#.
+// following line to "#if 1".
 #if defined(NETWORK_MESSAGES_WITHOUT_CORE_DEPENDENCIES)
 
 #include <intrin.h>
