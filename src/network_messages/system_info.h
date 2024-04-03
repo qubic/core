@@ -27,6 +27,8 @@ struct RespondSystemInfo
     unsigned int numberOfTransactions;
 
     m256i randomMiningSeed;
+    int solutionThreshold;
+
 };
 
-static_assert(sizeof(RespondSystemInfo) == 2 + 2 + 4 + 4 + 4 + 2 + 1 + 1 + 1 + 1 + 1 + 1 + 4 + 32 + 4, "Something is wrong with the struct size of RespondSystemInfo.");
+static_assert(sizeof(RespondSystemInfo) == 2 + 2 + 4 + 4 + 4 + 2 + 1 + 1 + 1 + 1 + 1 + 1 + 4 + 32 + 4 + 4, "Something is wrong with the struct size of RespondSystemInfo.");
