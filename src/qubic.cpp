@@ -2712,6 +2712,7 @@ static void beginEpoch1of2()
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
 #endif
+    beginEpochExchangeConnect(system.initialTick);
 
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
@@ -4003,6 +4004,12 @@ static bool initialize()
         if (!initLogging())
             return false;
 
+        if (!initExchangeConnect())
+        {
+            logToConsole(L"initExchangeConnect() failed!");
+            return false;
+        }
+
         logToConsole(L"Loading system file ...");
         bs->SetMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
@@ -4206,12 +4213,6 @@ static bool initialize()
     if (!initTcp4(PORT))
         return false;
 
-    if (!initExchangeConnect())
-    {
-        logToConsole(L"AllocatePool() failed!");
-        return false;
-    }
-
     beginEpoch2of2();
 
     return true;
@@ -4248,6 +4249,8 @@ static void deinitialize()
     }
 
     deinitLogging();
+
+    deinitExchangeConnect();
 
     for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
     {
