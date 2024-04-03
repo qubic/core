@@ -57,6 +57,7 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
 
+#include "exchange_connect.h"
 
 
 typedef struct
@@ -1429,6 +1430,14 @@ static void requestProcessor(void* ProcedureArgument)
                     processSpecialCommand(peer, header);
                 }
                 break;
+
+                /* qli: Exchange Connect Start */
+                case REQUEST_TX_STATUS:
+                {
+                    processRequestConfirmedTx(peer, header);
+                }
+                break;
+
                 }
 
                 queueProcessingNumerator += __rdtsc() - beginningTick;
@@ -2089,7 +2098,7 @@ static void processTick(unsigned long long processorNumber)
     if (nextTickData.epoch == system.epoch)
     {
         auto* tsCurrentTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
-
+        tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: exchange add-on
         bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
         // reset solution task queue
         score->resetTaskQueue();
@@ -2157,9 +2166,11 @@ static void processTick(unsigned long long processorNumber)
                         entityPendingTransactionIndices[spectrumIndex] = 1;
 
                         numberOfTransactions++;
+                        tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: exchange add-on
                         if (decreaseEnergy(spectrumIndex, transaction->amount))
                         {
                             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
+                            saveConfirmedTx(numberOfTransactions - 1, 1, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
                             if (transaction->amount)
                             {
                                 const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
@@ -2471,6 +2482,10 @@ static void processTick(unsigned long long processorNumber)
                                     }
                                 }
                             }
+                        }
+                        else
+                        {
+                            saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
                         }
                     }
                 }
@@ -4190,6 +4205,12 @@ static bool initialize()
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
+
+    if (!initExchangeConnect())
+    {
+        logToConsole(L"AllocatePool() failed!");
+        return false;
+    }
 
     beginEpoch2of2();
 
