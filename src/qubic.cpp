@@ -1098,6 +1098,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
     respondedSystemInfo.randomMiningSeed = score->initialRandomSeed;
+    respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
 
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
 }
