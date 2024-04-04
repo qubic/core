@@ -1421,6 +1421,13 @@ static void requestProcessor(void* ProcedureArgument)
     }
 }
 
+// Return reference to fee reserve of contract for changing its value (data stored in state of contract 0)
+static long long & contractFeeReserve(unsigned int contractIndex)
+{
+    contractStateChangeFlags[0] |= 1ULL;
+    return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
+}
+
 static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
     // TODO
@@ -1473,8 +1480,7 @@ static long long __burn(long long amount)
 
     if (decreaseEnergy(index, amount))
     {
-        Contract0State* contract0State = (Contract0State*)contractStates[0];
-        contract0State->contractFeeReserves[executedContractIndex] += amount;
+        contractFeeReserve(executedContractIndex) += amount;
 
         const Burning burning = { currentContract , amount };
         logBurning(burning);
@@ -2743,7 +2749,6 @@ static void endEpoch()
     getUniverseDigest(etalonTick.prevUniverseDigest);
     getComputerDigest(etalonTick.prevComputerDigest);
 
-    Contract0State* contract0State = (Contract0State*)contractStates[0];
     for (unsigned int contractIndex = 1; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
     {
         if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
@@ -2794,7 +2799,7 @@ static void endEpoch()
                 logQuTransfer(quTransfer);
             }
 
-            contract0State->contractFeeReserves[contractIndex] = finalPrice * NUMBER_OF_COMPUTORS;
+            contractFeeReserve(contractIndex) = finalPrice * NUMBER_OF_COMPUTORS;
         }
     }
 
