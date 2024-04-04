@@ -26,7 +26,7 @@ static bool addTick(unsigned int tick, unsigned long long seed, unsigned short m
     // set start index of tick transactions
     tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions;
 
-    // use pseudo-random sequence
+    // use pseudo-random sequence for generating test data
     std::mt19937_64 gen64(seed);
 
     // add transactions of tick
@@ -48,25 +48,18 @@ struct {
     RequestTxStatus payload;
 } requestMessage;
 
-int expectedMoneyFlew = 0;
-bool expectedToBeFound = true;
+RespondTxStatus responseMessage;
 
 
 static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
 {
+    const RespondTxStatus* txStatus = (const RespondTxStatus*)data;
+
     EXPECT_EQ(type, RESPOND_TX_STATUS);
     EXPECT_EQ(dejavu, requestMessage.header.dejavu());
-    EXPECT_EQ(dataSize, sizeof(RespondTxStatus));
+    EXPECT_EQ(dataSize, txStatus->size());
 
-    const RespondTxStatus* txStatus = (const RespondTxStatus*)data;
-    EXPECT_EQ(txStatus->digest, requestMessage.payload.digest);
-    EXPECT_EQ(txStatus->tickOfTx, requestMessage.payload.tick);
-    if (expectedToBeFound)
-    {
-        EXPECT_EQ(txStatus->moneyFlew, expectedMoneyFlew);
-        EXPECT_EQ(txStatus->notfound, 0);
-        EXPECT_EQ(txStatus->executed, 1);
-    }
+    copyMem(&responseMessage, txStatus, txStatus->size());
 }
 
 static void checkTick(unsigned int tick, unsigned long long seed, unsigned short maxTransactions, bool fullyStoredTick, bool previousEpoch)
@@ -75,26 +68,7 @@ static void checkTick(unsigned int tick, unsigned long long seed, unsigned short
     if (system.tick <= tick)
         system.tick = tick + 1;
 
-    // use pseudo-random sequence
-    std::mt19937_64 gen64(seed);
-
-    requestMessage.header.checkAndSetSize(sizeof(requestMessage));
-    requestMessage.header.setType(REQUEST_TX_STATUS);
-    requestMessage.header.setDejavu(seed % UINT_MAX);
-    requestMessage.payload.tick = tick;
-
-    expectedToBeFound = fullyStoredTick;
-
-    // check transactions of tick
-    unsigned int transactionNum = gen64() % (maxTransactions + 1);
-    for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
-    {
-        requestMessage.payload.digest = m256i(gen64(), gen64(), gen64(), gen64());
-        expectedMoneyFlew = gen64() % 2;
-        processRequestConfirmedTx(nullptr, &requestMessage.header);
-    }
-
-    unsigned int tickIndex;
+    // check tick number dependent on if it is previous epoch
     if (previousEpoch)
     {
         ASSERT(confirmedTxPreviousEpochBeginTick != 0);
@@ -104,20 +78,49 @@ static void checkTick(unsigned int tick, unsigned long long seed, unsigned short
             // tick not available -> okay
             return;
         }
-        tickIndex = tick - confirmedTxPreviousEpochBeginTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
     }
     else
     {
         ASSERT(tick >= confirmedTxCurrentEpochBeginTick && tick < confirmedTxCurrentEpochBeginTick + MAX_NUMBER_OF_TICKS_PER_EPOCH);
-        tickIndex = tick - confirmedTxCurrentEpochBeginTick;
     }
+
+    // prepare request message
+    requestMessage.header.checkAndSetSize(sizeof(requestMessage));
+    requestMessage.header.setType(REQUEST_TX_STATUS);
+    requestMessage.header.setDejavu(seed % UINT_MAX);
+    requestMessage.payload.tick = tick;
+
+    // get status of tick transactions
+    responseMessage.tick = responseMessage.currentTickOfNode = 0;
+    processRequestConfirmedTx(nullptr, &requestMessage.header);
+
+    // check that we received right data
+    EXPECT_EQ(responseMessage.tick, tick);
+    EXPECT_EQ(responseMessage.currentTickOfNode, system.tick);
+
+    // use pseudo-random sequence for generating test data
+    std::mt19937_64 gen64(seed);
+
+    // check number of transactions
+    unsigned int transactionNum = gen64() % (maxTransactions + 1);
     if (fullyStoredTick)
     {
-        EXPECT_EQ(tickTxCounter[tickIndex], transactionNum);
+        EXPECT_EQ(responseMessage.txCount, transactionNum);
     }
     else
     {
-        EXPECT_LE(tickTxCounter[tickIndex], transactionNum);
+        EXPECT_LE(responseMessage.txCount, transactionNum);
+    }
+
+    // check tick's transaction digests and money flows
+    for (unsigned int transaction = 0; transaction < responseMessage.txCount; ++transaction)
+    {
+        m256i digest(gen64(), gen64(), gen64(), gen64());
+        EXPECT_EQ(responseMessage.txDigests[transaction], digest); // CAUTION: responseMessage.txDigests only available up to responseMessage.txCount
+
+        unsigned char receivedMoneyFlow = (responseMessage.moneyFlew[transaction / 8] >> (transaction % 8)) & 1;
+        unsigned char expectedMoneyFlew = gen64() % 2;
+        EXPECT_EQ(receivedMoneyFlow, expectedMoneyFlew);
     }
 }
 
@@ -130,7 +133,7 @@ TEST(TestCoreTxStatusRequestAddOn, EpochTransition)
     std::mt19937_64 gen64(seed);
 
     // 5x test with running 2 epoch transitions
-    for (int testIdx = 0; testIdx < 6; ++testIdx)
+    for (int testIdx = 0; testIdx < 20; ++testIdx)
     {
         // first, test case of having no transactions, then of having few transaction, later of having many transactions
         unsigned short maxTransactions = 0;

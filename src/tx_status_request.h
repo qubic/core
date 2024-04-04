@@ -34,30 +34,33 @@ static unsigned int confirmedTxCurrentEpochBeginTick = 0;   // first tick of cur
 
 #define REQUEST_TX_STATUS 201
 
-// Use "#pragma pack" keep the binary struct compatibility after changing from unsigned char [32] to m256i
-#pragma pack(push,1)
-typedef struct
+struct RequestTxStatus
 {
     unsigned int tick;
-    m256i digest;
-} RequestTxStatus;
-#pragma pack(pop)
+};
 
-static_assert(sizeof(m256i) == 32, "");
-static_assert(sizeof(RequestTxStatus) == 36, "unexpected size");
+static_assert(sizeof(RequestTxStatus) == 4, "unexpected size");
 
 #define RESPOND_TX_STATUS 202
 
-typedef struct
+#pragma pack(push, 1)
+struct RespondTxStatus
 {
     unsigned int currentTickOfNode;
-    unsigned int tickOfTx;
-    unsigned char moneyFlew;
-    unsigned char executed;
-    unsigned char notfound;
-    unsigned char _padding[5];
-    m256i digest;
-} RespondTxStatus;
+    unsigned int tick;
+    unsigned int txCount;
+    unsigned char moneyFlew[(NUMBER_OF_TRANSACTIONS_PER_TICK + 7) / 8];
+
+    // only txCount digests are sent with this message, so only read the first txCount digests when using this as a view to the received data
+    m256i txDigests[NUMBER_OF_TRANSACTIONS_PER_TICK];
+
+    // return size of this struct to be sent (last txDigests are 0 and do not need to be sent)
+    unsigned int size() const
+    {
+        return offsetof(RespondTxStatus, txDigests) + txCount * sizeof(m256i);
+    }
+};
+#pragma pack(pop)
 
 
 // Allocate buffers
@@ -87,7 +90,7 @@ static void beginEpochTxStatusRequestAddOn(unsigned int newInitialTick)
     unsigned int& tickBegin = confirmedTxCurrentEpochBeginTick;
     unsigned int& oldTickBegin = confirmedTxPreviousEpochBeginTick;
 
-    bool keepTicks = tickBegin && newInitialTick > tickBegin && newInitialTick < tickBegin + MAX_NUMBER_OF_TICKS_PER_EPOCH;
+    bool keepTicks = tickBegin && newInitialTick > tickBegin && newInitialTick <= tickBegin + MAX_NUMBER_OF_TICKS_PER_EPOCH;
     if (keepTicks)
     {
         // Seamless epoch transition: keep some ticks of prior epoch
@@ -210,31 +213,27 @@ static void processRequestConfirmedTx(Peer *peer, RequestResponseHeader *header)
     // get index where confirmedTx are starting to be stored in memory
     int index = tickTxIndexStart[tickIndex];
 
-    RespondTxStatus currentTxStatus = {};
-    currentTxStatus.currentTickOfNode = system.tick;
-    currentTxStatus.tickOfTx = request->tick;
-    currentTxStatus.executed = 0;
-    currentTxStatus.moneyFlew = 0;
-    currentTxStatus.notfound = 1;
-    currentTxStatus.digest = request->digest;
+    // init response message data
+    RespondTxStatus tickTxStatus;
+    tickTxStatus.currentTickOfNode = system.tick;
+    tickTxStatus.tick = request->tick;
+    tickTxStatus.txCount = tickTxCounter[tickIndex];
+    setMem(&tickTxStatus.moneyFlew, sizeof(tickTxStatus.moneyFlew), 0);
 
     // loop over the number of tx which were stored for the given tick
-    for (unsigned int i = 0; i < tickTxCounter[tickIndex]; i++)
+    ASSERT(tickTxStatus.txCount <= NUMBER_OF_TRANSACTIONS_PER_TICK);
+    for (unsigned int i = 0; i < tickTxStatus.txCount; i++)
     {
         ConfirmedTx& localConfirmedTx = confirmedTx[index + i];
 
         ASSERT(index + i < confirmedTxLength);
         ASSERT(localConfirmedTx.tick == request->tick);
+        ASSERT(localConfirmedTx.moneyFlew == 1 || localConfirmedTx.moneyFlew == 0);
 
-        // if requested tx digest match stored digest tx has been found and is confirmed
-        if (request->digest == localConfirmedTx.digest)
-        {
-            currentTxStatus.executed = 1;
-            currentTxStatus.notfound = 0;
-            currentTxStatus.moneyFlew = localConfirmedTx.moneyFlew;
-            break;
-        }
+        tickTxStatus.txDigests[i] = localConfirmedTx.digest;
+        tickTxStatus.moneyFlew[i >> 3] |= (localConfirmedTx.moneyFlew << (i & 7));
     }
 
-    enqueueResponse(peer, sizeof(currentTxStatus), RESPOND_TX_STATUS, header->dejavu(), &currentTxStatus);
+    ASSERT(tickTxStatus.size() <= sizeof(tickTxStatus));
+    enqueueResponse(peer, tickTxStatus.size(), RESPOND_TX_STATUS, header->dejavu(), &tickTxStatus);
 }
