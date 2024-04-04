@@ -1475,6 +1475,7 @@ static long long __burn(long long amount)
     {
         Contract0State* contract0State = (Contract0State*)contractStates[0];
         contract0State->contractFeeReserves[executedContractIndex] += amount;
+        contractStateChangeFlags[0] |= 1ULL;
 
         const Burning burning = { currentContract , amount };
         logBurning(burning);
@@ -2795,6 +2796,7 @@ static void endEpoch()
             }
 
             contract0State->contractFeeReserves[contractIndex] = finalPrice * NUMBER_OF_COMPUTORS;
+            contractStateChangeFlags[0] |= 1ULL;
         }
     }
 
