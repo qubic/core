@@ -2170,11 +2170,14 @@ static void processTick(unsigned long long processorNumber)
                         if (decreaseEnergy(spectrumIndex, transaction->amount))
                         {
                             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
-                            saveConfirmedTx(numberOfTransactions - 1, 1, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
+                            
                             if (transaction->amount)
                             {
+                                saveConfirmedTx(numberOfTransactions - 1, 1, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
                                 const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
                                 logQuTransfer(quTransfer);
+                            }else{
+                                saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
                             }
 
                             if (isZero(transaction->destinationPublicKey))
