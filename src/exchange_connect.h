@@ -38,13 +38,11 @@ typedef struct
 {
     unsigned int tick;
     m256i digest;
- //   char digest[32];
-    unsigned char signature[64];
 } RequestTxStatus;
 #pragma pack(pop)
 
 static_assert(sizeof(m256i) == 32, "");
-static_assert(sizeof(RequestTxStatus) == 100, "unexpected size");
+static_assert(sizeof(RequestTxStatus) == 36, "unexpected size");
 
 #define RESPOND_TX_STATUS 202
 
