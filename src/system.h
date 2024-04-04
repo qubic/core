@@ -2,7 +2,7 @@
 
 #include "platform/m256.h"
 
-#include "network_messages/common_def.h"
+#include "network_messages/special_command.h"
 
 #define MAX_NUMBER_OF_SOLUTIONS 65536 // Must be 2^N
 
