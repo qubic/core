@@ -7,6 +7,7 @@
 
 #define RESPOND_SYSTEM_INFO 47
 
+#pragma pack(push, 1)
 struct RespondSystemInfo
 {
     short version;
@@ -28,7 +29,7 @@ struct RespondSystemInfo
 
     m256i randomMiningSeed;
     int solutionThreshold;
-
 };
+#pragma pack(pop)
 
-static_assert(sizeof(RespondSystemInfo) == 2 + 2 + 4 + 4 + 4 + 2 + 1 + 1 + 1 + 1 + 1 + 1 + 4 + 32 + 4 + 4, "Something is wrong with the struct size of RespondSystemInfo.");
+static_assert(sizeof(RespondSystemInfo) == (2 + 2 + 4 + 4 + 4) + (2 + 1 + 1 + 1 + 1 + 1 + 1) + (4 + 4) + (32 + 4), "Something is wrong with the struct size of RespondSystemInfo.");
