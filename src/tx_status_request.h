@@ -1,3 +1,5 @@
+// This is an extension by qli allowing to query transaction status with RequestTxStatus message
+
 #pragma once
 
 #include "platform/m256.h"
@@ -59,7 +61,7 @@ typedef struct
 
 
 // Allocate buffers
-static bool initExchangeConnect()
+static bool initTxStatusRequestAddOn()
 {
     // Allocate pool to store confirmed TX's
     if (!allocatePool(confirmedTxLength * sizeof(ConfirmedTx), (void**)&confirmedTx))
@@ -71,7 +73,7 @@ static bool initExchangeConnect()
 
 
 // Free buffers
-static void deinitExchangeConnect()
+static void deinitTxStatusRequestAddOn()
 {
     if (confirmedTx)
         freePool(confirmedTx);
@@ -80,7 +82,7 @@ static void deinitExchangeConnect()
 
 // Begin new epoch. If not called the first time (seamless transition), assume that the ticks to keep
 // are ticks in [newInitialTick-TICKS_TO_KEEP_FROM_PRIOR_EPOCH, newInitialTick-1].
-static void beginEpochExchangeConnect(unsigned int newInitialTick)
+static void beginEpochTxStatusRequestAddOn(unsigned int newInitialTick)
 {
     unsigned int& tickBegin = confirmedTxCurrentEpochBeginTick;
     unsigned int& oldTickBegin = confirmedTxPreviousEpochBeginTick;

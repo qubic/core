@@ -36,6 +36,8 @@
 
 #include "tick_storage.h"
 
+#include "tx_status_request.h"
+
 
 ////////// Qubic \\\\\\\\\\
 
@@ -56,8 +58,6 @@
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
-
-#include "exchange_connect.h"
 
 
 typedef struct
@@ -1431,7 +1431,7 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                /* qli: Exchange Connect Start */
+                /* qli: process RequestTxStatus message */
                 case REQUEST_TX_STATUS:
                 {
                     processRequestConfirmedTx(peer, header);
@@ -2098,7 +2098,7 @@ static void processTick(unsigned long long processorNumber)
     if (nextTickData.epoch == system.epoch)
     {
         auto* tsCurrentTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
-        tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: exchange add-on
+        tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
         bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
         // reset solution task queue
         score->resetTaskQueue();
@@ -2166,7 +2166,7 @@ static void processTick(unsigned long long processorNumber)
                         entityPendingTransactionIndices[spectrumIndex] = 1;
 
                         numberOfTransactions++;
-                        tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: exchange add-on
+                        tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
                         if (decreaseEnergy(spectrumIndex, transaction->amount))
                         {
                             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
@@ -2712,7 +2712,7 @@ static void beginEpoch1of2()
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
 #endif
-    beginEpochExchangeConnect(system.initialTick);
+    beginEpochTxStatusRequestAddOn(system.initialTick);
 
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
@@ -4004,9 +4004,10 @@ static bool initialize()
         if (!initLogging())
             return false;
 
-        if (!initExchangeConnect())
+        // qli: init tx_status_request
+        if (!initTxStatusRequestAddOn())
         {
-            logToConsole(L"initExchangeConnect() failed!");
+            logToConsole(L"initTxStatusRequestAddOn() failed!");
             return false;
         }
 
@@ -4250,7 +4251,7 @@ static void deinitialize()
 
     deinitLogging();
 
-    deinitExchangeConnect();
+    deinitTxStatusRequestAddOn();
 
     for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
     {

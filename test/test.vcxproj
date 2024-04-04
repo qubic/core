@@ -61,7 +61,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="contract_core.cpp" />
-    <ClCompile Include="exchange_connect.cpp" />
+    <ClCompile Include="tx_status_request.cpp" />
     <ClCompile Include="m256.cpp" />
     <ClCompile Include="math_lib.cpp" />
     <ClCompile Include="network_messages.cpp" />

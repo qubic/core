@@ -11,7 +11,7 @@ void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsi
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH 50
 #undef TICKS_TO_KEEP_FROM_PRIOR_EPOCH
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 32
-#include "../src/exchange_connect.h"
+#include "../src/tx_status_request.h"
 
 #include <random>
 
@@ -122,7 +122,7 @@ static void checkTick(unsigned int tick, unsigned long long seed, unsigned short
 }
 
 
-TEST(TestCoreExchangeConnect, EpochTransition)
+TEST(TestCoreTxStatusRequestAddOn, EpochTransition)
 {
     unsigned long long seed = 42;
 
@@ -139,7 +139,7 @@ TEST(TestCoreExchangeConnect, EpochTransition)
         else if (testIdx > 1)
             maxTransactions = NUMBER_OF_TRANSACTIONS_PER_TICK;
 
-        initExchangeConnect();
+        initTxStatusRequestAddOn();
 
         const int firstEpochTicks = gen64() % (MAX_NUMBER_OF_TICKS_PER_EPOCH + 1);
         const int secondEpochTicks = gen64() % (MAX_NUMBER_OF_TICKS_PER_EPOCH + 1);
@@ -160,7 +160,7 @@ TEST(TestCoreExchangeConnect, EpochTransition)
         // first epoch
         numberOfTransactions = 0;
         system.initialTick = firstEpochTick0;
-        beginEpochExchangeConnect(firstEpochTick0);
+        beginEpochTxStatusRequestAddOn(firstEpochTick0);
 
         // add ticks
         int firstEpochLastFullyStoredTick = -1;
@@ -178,7 +178,7 @@ TEST(TestCoreExchangeConnect, EpochTransition)
         // Epoch transistion
         numberOfTransactions = 0;
         system.initialTick = secondEpochTick0;
-        beginEpochExchangeConnect(secondEpochTick0);
+        beginEpochTxStatusRequestAddOn(secondEpochTick0);
 
         // add ticks
         int secondEpochLastFullyStoredTick = -1;
@@ -197,7 +197,7 @@ TEST(TestCoreExchangeConnect, EpochTransition)
         // Epoch transistion
         numberOfTransactions = 0;
         system.initialTick = thirdEpochTick0;
-        beginEpochExchangeConnect(thirdEpochTick0);
+        beginEpochTxStatusRequestAddOn(thirdEpochTick0);
 
         // add ticks
         int thirdEpochLastFullyStoredTick = -1;
@@ -213,7 +213,7 @@ TEST(TestCoreExchangeConnect, EpochTransition)
         for (int i = 0; i < secondEpochTicks; ++i)
             checkTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions, i < secondEpochLastFullyStoredTick, previousEpoch);
 
-        deinitExchangeConnect();
+        deinitTxStatusRequestAddOn();
     }
 }
 
