@@ -21,6 +21,7 @@ struct ScoreReferenceImplementation
     {
         long long input[dataLength + numberOfInputNeurons + infoLength];
         long long output[infoLength + numberOfOutputNeurons + dataLength];
+        long long neuronBuffer[dataLength + numberOfInputNeurons + infoLength];
     } _neurons[solutionBufferCount];
     struct
     {
@@ -54,6 +55,7 @@ struct ScoreReferenceImplementation
     {
         processorNumber %= solutionBufferCount;
         auto& neurons = _neurons[processorNumber];
+        auto& buffer = neurons.neuronBuffer;
         auto& synapses = _synapses[processorNumber];
         memset(&neurons, 0, sizeof(neurons));
         random(publicKey, nonce, (unsigned char*)&synapses, sizeof(synapses));
@@ -88,10 +90,11 @@ struct ScoreReferenceImplementation
             synapses.outputLength[outputNeuronIndex * (infoLength + numberOfOutputNeurons + dataLength) + (infoLength + outputNeuronIndex)] = 0;
         }
 
-        memcpy(&neurons.input[0], &miningData, sizeof(miningData));
+        memcpy(&neurons.input[0], &miningData, sizeof(miningData));        
 
         for (int tick = 1; tick <= maxInputDuration; tick++)
         {
+            memcpy(buffer, neurons.input, sizeof(neurons.input));
             for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeurons + infoLength; inputNeuronIndex++)
             {
                 for (unsigned int anotherInputNeuronIndex = 0; anotherInputNeuronIndex < dataLength + numberOfInputNeurons + infoLength; anotherInputNeuronIndex++)
@@ -102,11 +105,11 @@ struct ScoreReferenceImplementation
                     {
                         if (synapses.inputLength[offset] > 0)
                         {
-                            neurons.input[dataLength + inputNeuronIndex] += neurons.input[anotherInputNeuronIndex];
+                            neurons.input[dataLength + inputNeuronIndex] += buffer[anotherInputNeuronIndex];
                         }
                         else
                         {
-                            neurons.input[dataLength + inputNeuronIndex] -= neurons.input[anotherInputNeuronIndex];
+                            neurons.input[dataLength + inputNeuronIndex] -= buffer[anotherInputNeuronIndex];
                         }
                         clampNeuron(neurons.input[dataLength + inputNeuronIndex]);
                     }
@@ -121,6 +124,7 @@ struct ScoreReferenceImplementation
 
         for (int tick = 1; tick <= maxOutputDuration; tick++)
         {
+            memcpy(buffer, neurons.output, sizeof(neurons.output));
             for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < numberOfOutputNeurons + dataLength; outputNeuronIndex++)
             {
                 for (unsigned int anotherOutputNeuronIndex = 0; anotherOutputNeuronIndex < infoLength + numberOfOutputNeurons + dataLength; anotherOutputNeuronIndex++)
@@ -131,11 +135,11 @@ struct ScoreReferenceImplementation
                     {
                         if (synapses.outputLength[offset] > 0)
                         {
-                            neurons.output[infoLength + outputNeuronIndex] += neurons.output[anotherOutputNeuronIndex];
+                            neurons.output[infoLength + outputNeuronIndex] += buffer[anotherOutputNeuronIndex];
                         }
                         else
                         {
-                            neurons.output[infoLength + outputNeuronIndex] -= neurons.output[anotherOutputNeuronIndex];
+                            neurons.output[infoLength + outputNeuronIndex] -= buffer[anotherOutputNeuronIndex];
                         }
                         clampNeuron(neurons.output[infoLength + outputNeuronIndex]);
                     }

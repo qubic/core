@@ -28,6 +28,7 @@ struct ScoreFunction
     {
         long long input[dataLength + numberOfInputNeurons + infoLength];
         long long output[infoLength + numberOfOutputNeurons + dataLength];
+        long long buffer[dataLength + numberOfInputNeurons + infoLength];
     } _neurons[solutionBufferCount];
     struct
     {
@@ -328,6 +329,7 @@ struct ScoreFunction
     void computeInputNeuron(int solutionBufIdx)
     {
         auto& neurons = _neurons[solutionBufIdx];
+        auto& neuronBuffer = neurons.buffer;
         auto& synapses = _synapses[solutionBufIdx];
         auto& indicePosInput = _indicePosInput[solutionBufIdx];
         auto& bucketPosInput = _bucketPosInput[solutionBufIdx];
@@ -338,22 +340,23 @@ struct ScoreFunction
         copyMem(&neurons.input[0], miningData, sizeof(miningData));
         int totalIndice;
         for (int tick = 1; tick <= maxInputDuration; tick++) {
+            copyMem(neuronBuffer, &neurons.input[0], sizeof(neurons.input[0]) * (dataLength + numberOfInputNeurons + infoLength));
             for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfInputNeurons + infoLength; inputNeuronIndex++) {
                 // pre scan for shortcut
                 if (tick > 3)
                 {
                     int elemCount = 0;
                     getLastNeurons(indicePosInput[inputNeuronIndex], bucketPosInput[inputNeuronIndex], _modNum[tick], indices,
-                        nSample, _totalModNum[tick], elemCount, neurons.input);
+                        nSample, _totalModNum[tick], elemCount, neuronBuffer);
                     for (int i = 0; i < elemCount; i++)
                     {
                         unsigned int anotherInputNeuronIndex = indices[i];
                         const unsigned int offset = inputNeuronIndex * (dataLength + numberOfInputNeurons + infoLength) + anotherInputNeuronIndex;
                         if (synapses.inputLength[offset] > 0) {
-                            sumBuffer[i] = neurons.input[anotherInputNeuronIndex];
+                            sumBuffer[i] = neuronBuffer[anotherInputNeuronIndex];
                         }
                         else {
-                            sumBuffer[i] = -neurons.input[anotherInputNeuronIndex];
+                            sumBuffer[i] = -neuronBuffer[anotherInputNeuronIndex];
                         }
                     }
                     int found = -1;
@@ -386,10 +389,10 @@ struct ScoreFunction
                     unsigned int anotherInputNeuronIndex = indices[i];
                     const unsigned int offset = inputNeuronIndex * (dataLength + numberOfInputNeurons + infoLength) + anotherInputNeuronIndex;
                     if (synapses.inputLength[offset] > 0) {
-                        sumBuffer[i] = neurons.input[anotherInputNeuronIndex];
+                        sumBuffer[i] = neuronBuffer[anotherInputNeuronIndex];
                     }
                     else {
-                        sumBuffer[i] = -neurons.input[anotherInputNeuronIndex];
+                        sumBuffer[i] = -neuronBuffer[anotherInputNeuronIndex];
                     }
                 }
                 for (int i = 0; i < totalIndice; i++)
@@ -443,31 +446,34 @@ struct ScoreFunction
     void computeOutputNeuron(int solutionBufIdx)
     {
         auto& neurons = _neurons[solutionBufIdx];
+        auto& neuronBuffer = neurons.buffer;
         auto& synapses = _synapses[solutionBufIdx];
-
         auto& indicePosOutput = _indicePosOutput[solutionBufIdx];
         auto& bucketPosOutput = _bucketPosOutput[solutionBufIdx];
         auto& bufferPosOutput = _bufferPosOutput[solutionBufIdx];
         auto& sumBuffer = _sumBuffer[solutionBufIdx];
         auto& indices = _indices[solutionBufIdx];
+
+        setMem(&neuronBuffer[0], sizeof(neuronBuffer), 0);
         int totalIndice;
         for (int tick = 1; tick <= maxOutputDuration; tick++) {
+            copyMem(neuronBuffer, &neurons.output[0], sizeof(neurons.output));
             for (unsigned int outputNeuronIndex = 0; outputNeuronIndex < numberOfOutputNeurons + dataLength; outputNeuronIndex++) {
                 // pre scan for shortcut
                 if (tick > 3)
                 {
                     int elemCount = 0;
                     getLastNeurons(indicePosOutput[outputNeuronIndex], bucketPosOutput[outputNeuronIndex], _modNum[tick], indices,
-                        nSample, _totalModNum[tick], elemCount, neurons.output);
+                        nSample, _totalModNum[tick], elemCount, neuronBuffer);
                     for (int i = 0; i < elemCount; i++)
                     {
                         unsigned int anotherOutputNeuronIndex = indices[i];
                         const unsigned int offset = outputNeuronIndex * (dataLength + numberOfOutputNeurons + infoLength) + anotherOutputNeuronIndex;
                         if (synapses.outputLength[offset] > 0) {
-                            sumBuffer[i] = neurons.output[anotherOutputNeuronIndex];
+                            sumBuffer[i] = neuronBuffer[anotherOutputNeuronIndex];
                         }
                         else {
-                            sumBuffer[i] = -neurons.output[anotherOutputNeuronIndex];
+                            sumBuffer[i] = -neuronBuffer[anotherOutputNeuronIndex];
                         }
                     }
                     int found = -1;
@@ -500,12 +506,12 @@ struct ScoreFunction
                         unsigned int anotherOutputNeuronIndex = indices[i];
                         const unsigned int offset = outputNeuronIndex * (dataLength + numberOfOutputNeurons + infoLength) + anotherOutputNeuronIndex;
                         if (synapses.outputLength[offset] > 0) {
-                            sumBuffer[i] = neurons.output[anotherOutputNeuronIndex];
+                            sumBuffer[i] = neuronBuffer[anotherOutputNeuronIndex];
                         }
                         else {
-                            sumBuffer[i] = -neurons.output[anotherOutputNeuronIndex];
+                            sumBuffer[i] = -neuronBuffer[anotherOutputNeuronIndex];
                         }
-                    }
+                    }                    
 
                     for (int i = 0; i < totalIndice; i++)
                     {
@@ -543,6 +549,7 @@ struct ScoreFunction
 
         computeInputNeuron(solutionBufIdx);
 
+        setMem(&neurons.output[0], sizeof(neurons.output), 0);
         for (unsigned int i = 0; i < infoLength; i++)
         {
             neurons.output[i] = (neurons.input[dataLength + numberOfInputNeurons + i] >= 0 ? 1 : -1);
