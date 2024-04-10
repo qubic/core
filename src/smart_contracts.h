@@ -148,6 +148,9 @@ executedContractIndex = contractIndex;\
 _##contractName->__registerUserFunctions();\
 _##contractName->__registerUserProcedures();
 
+// Protect executedContractIndex and other global contract state variables to prevent race conditions in parallel processing
+static volatile char executedContractIndexLock = 0;
+
 static volatile unsigned int executedContractIndex;
 
 static void initializeContract(const unsigned int contractIndex, void* contractState)
