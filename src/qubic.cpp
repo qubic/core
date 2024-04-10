@@ -207,9 +207,12 @@ static struct
     RequestedTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
 
-
-
-
+static struct {
+    unsigned char day;
+    unsigned char hour;
+    unsigned char minute;
+    unsigned char second;
+} threadTimeCheckin[MAX_NUMBER_OF_PROCESSORS];
 
 static void logToConsole(const CHAR16* message)
 {
@@ -1050,6 +1053,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
     RespondContractFunction* response = (RespondContractFunction*)contractFunctionOutputs[processorNumber];
 
     RequestContractFunction* request = header->getPayload<RequestContractFunction>();
+    ACQUIRE(executedContractIndexLock);
     executedContractIndex = request->contractIndex;
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
         || !executedContractIndex || executedContractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
@@ -1074,6 +1078,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
 
         enqueueResponse(peer, contractUserFunctionOutputSizes[executedContractIndex][request->inputType], response->type, header->dejavu(), response);
     }
+    RELEASE(executedContractIndexLock);
 }
 
 static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
@@ -1098,6 +1103,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
     respondedSystemInfo.randomMiningSeed = score->initialRandomSeed;
+    respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
 
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
 }
@@ -1229,6 +1235,15 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
     }
 }
 
+// a tracker to detect if a thread is crashed
+static void checkinTime(unsigned long long processorNumber)
+{
+    threadTimeCheckin[processorNumber].second = time.Second;
+    threadTimeCheckin[processorNumber].minute = time.Minute;
+    threadTimeCheckin[processorNumber].hour = time.Hour;
+    threadTimeCheckin[processorNumber].day = time.Day;
+}
+
 static void requestProcessor(void* ProcedureArgument)
 {
     enableAVX();
@@ -1240,6 +1255,7 @@ static void requestProcessor(void* ProcedureArgument)
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
     {
+        checkinTime(processorNumber);
         // in epoch transition, wait here
         if (epochTransitionState)
         {
@@ -1421,6 +1437,13 @@ static void requestProcessor(void* ProcedureArgument)
     }
 }
 
+// Return reference to fee reserve of contract for changing its value (data stored in state of contract 0)
+static long long & contractFeeReserve(unsigned int contractIndex)
+{
+    contractStateChangeFlags[0] |= 1ULL;
+    return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
+}
+
 static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
     // TODO
@@ -1473,8 +1496,7 @@ static long long __burn(long long amount)
 
     if (decreaseEnergy(index, amount))
     {
-        Contract0State* contract0State = (Contract0State*)contractStates[0];
-        contract0State->contractFeeReserves[executedContractIndex] += amount;
+        contractFeeReserve(executedContractIndex) += amount;
 
         const Burning burning = { currentContract , amount };
         logBurning(burning);
@@ -1891,6 +1913,8 @@ static void contractProcessor(void*)
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
+    ACQUIRE(executedContractIndexLock);
+
     switch (contractProcessorPhase)
     {
     case INITIALIZE:
@@ -1993,6 +2017,8 @@ static void contractProcessor(void*)
     }
     break;
     }
+
+    RELEASE(executedContractIndexLock);
 }
 
 static void processTick(unsigned long long processorNumber)
@@ -2147,10 +2173,12 @@ static void processTick(unsigned long long processorNumber)
                                 // only 32 bits are used for the contract index.
                                 m256i maskedDestinationPublicKey = transaction->destinationPublicKey;
                                 maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
-                                executedContractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
+                                unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
                                 if (isZero(maskedDestinationPublicKey)
-                                    && executedContractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
+                                    && contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
                                 {
+                                    ACQUIRE(executedContractIndexLock);
+                                    executedContractIndex = contractIndex;
                                     if (system.epoch < contractDescriptions[executedContractIndex].constructionEpoch)
                                     {
                                         if (!transaction->amount
@@ -2253,6 +2281,7 @@ static void processTick(unsigned long long processorNumber)
                                             contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
                                         }
                                     }
+                                    RELEASE(executedContractIndexLock);
                                 }
                                 else
                                 {
@@ -2743,7 +2772,6 @@ static void endEpoch()
     getUniverseDigest(etalonTick.prevUniverseDigest);
     getComputerDigest(etalonTick.prevComputerDigest);
 
-    Contract0State* contract0State = (Contract0State*)contractStates[0];
     for (unsigned int contractIndex = 1; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
     {
         if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
@@ -2794,7 +2822,7 @@ static void endEpoch()
                 logQuTransfer(quTransfer);
             }
 
-            contract0State->contractFeeReserves[contractIndex] = finalPrice * NUMBER_OF_COMPUTORS;
+            contractFeeReserve(contractIndex) = finalPrice * NUMBER_OF_COMPUTORS;
         }
     }
 
@@ -3044,6 +3072,7 @@ static void tickProcessor(void*)
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
+        checkinTime(processorNumber);
         const unsigned long long curTimeTick = __rdtsc();
         const unsigned int nextTick = system.tick + 1;
 
@@ -4597,6 +4626,43 @@ static void processKeyPresses()
             setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
             appendText(message, L"&");
             appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+            logToConsole(message);
+
+            // print statuses of thread
+            // this accepts a small error when switching day to first day of the next month
+            bool allThreadsAreGood = true;
+            setText(message, L"Thread status: ");
+            for (int i = 0; i < nTickProcessorIDs; i++)
+            {
+                unsigned long long tid = tickProcessorIDs[i];
+                long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
+                    + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+                if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
+                {
+                    allThreadsAreGood = false;
+                    appendText(message, L"Tick Processor #");
+                    appendNumber(message, tid, false);
+                    appendText(message, L" is not responsive | ");
+                }
+            }
+
+            for (int i = 0; i < nRequestProcessorIDs; i++)
+            {
+                unsigned long long tid = requestProcessorIDs[i];
+                long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
+                    + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+                if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
+                {
+                    allThreadsAreGood = false;
+                    appendText(message, L"Request Processor #");
+                    appendNumber(message, tid, false);
+                    appendText(message, L" is not responsive | ");
+                }
+            }
+            if (allThreadsAreGood)
+            {
+                appendText(message, L"All threads are healthy.");
+            }
             logToConsole(message);
         }
         break;
