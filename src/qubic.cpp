@@ -1053,6 +1053,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
     RespondContractFunction* response = (RespondContractFunction*)contractFunctionOutputs[processorNumber];
 
     RequestContractFunction* request = header->getPayload<RequestContractFunction>();
+    ACQUIRE(executedContractIndexLock);
     executedContractIndex = request->contractIndex;
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
         || !executedContractIndex || executedContractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
@@ -1077,6 +1078,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
 
         enqueueResponse(peer, contractUserFunctionOutputSizes[executedContractIndex][request->inputType], response->type, header->dejavu(), response);
     }
+    RELEASE(executedContractIndexLock);
 }
 
 static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
@@ -1911,6 +1913,8 @@ static void contractProcessor(void*)
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
+    ACQUIRE(executedContractIndexLock);
+
     switch (contractProcessorPhase)
     {
     case INITIALIZE:
@@ -2013,6 +2017,8 @@ static void contractProcessor(void*)
     }
     break;
     }
+
+    RELEASE(executedContractIndexLock);
 }
 
 static void processTick(unsigned long long processorNumber)
@@ -2167,10 +2173,12 @@ static void processTick(unsigned long long processorNumber)
                                 // only 32 bits are used for the contract index.
                                 m256i maskedDestinationPublicKey = transaction->destinationPublicKey;
                                 maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
-                                executedContractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
+                                unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
                                 if (isZero(maskedDestinationPublicKey)
-                                    && executedContractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
+                                    && contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
                                 {
+                                    ACQUIRE(executedContractIndexLock);
+                                    executedContractIndex = contractIndex;
                                     if (system.epoch < contractDescriptions[executedContractIndex].constructionEpoch)
                                     {
                                         if (!transaction->amount
@@ -2273,6 +2281,7 @@ static void processTick(unsigned long long processorNumber)
                                             contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
                                         }
                                     }
+                                    RELEASE(executedContractIndexLock);
                                 }
                                 else
                                 {
