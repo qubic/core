@@ -23,13 +23,19 @@ template<
 >
 struct ScoreFunction
 {
+
+#if numberOfInputNeurons >= numberOfOutputNeurons
+    static constexpr int maxAllNeuronLength = dataLength + numberOfInputNeurons + infoLength;
+#else
+    static constexpr int maxAllNeuronLength = dataLength + numberOfOutputNeurons + infoLength;
+#endif
     long long miningData[dataLength];
     //neuron only has values [-1, 0, 1]
     struct
     {
         char input[dataLength + numberOfInputNeurons + infoLength];
         char output[infoLength + numberOfOutputNeurons + dataLength];
-        char buffer[dataLength + numberOfInputNeurons + infoLength];
+        char buffer[maxAllNeuronLength];
     } _neurons[solutionBufferCount];
     struct
     {
@@ -53,8 +59,8 @@ struct ScoreFunction
     int _bufferPos[solutionBufferCount][numberOfOutputNeurons + dataLength][129];
 #endif
     int nSample;
-    char _sumBuffer[solutionBufferCount][dataLength + numberOfInputNeurons + infoLength];
-    unsigned short _indices[solutionBufferCount][dataLength + numberOfInputNeurons + infoLength];
+    char _sumBuffer[solutionBufferCount][maxAllNeuronLength*2];
+    unsigned short _indices[solutionBufferCount][maxAllNeuronLength];
 
     m256i initialRandomSeed;
 
@@ -422,6 +428,7 @@ struct ScoreFunction
                 }
                 // full compute
                 if (!found) {
+                    static_assert(sizeof(sumBuffer) >= maxAllNeuronLength * sizeof(unsigned short), "merge sort may be not enough");
                     int totalIndice = mergeSortBucket(indicePos[neuronIndex], bucketPos[neuronIndex], _modNum[tick], indices, (unsigned short*)sumBuffer, _totalModNum[tick]);
                     if (totalIndice == 0) continue;
 
