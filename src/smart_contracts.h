@@ -118,14 +118,16 @@ constexpr struct ContractDescription
     {"QUTIL", 99, 10000, sizeof(IPO)},
 };
 
-static SYSTEM_PROCEDURE contractSystemProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][5];
-static EXPAND_PROCEDURE contractExpandProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])];
-static USER_FUNCTION contractUserFunctions[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
-static unsigned short contractUserFunctionInputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
-static unsigned short contractUserFunctionOutputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
-static USER_PROCEDURE contractUserProcedures[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
-static unsigned short contractUserProcedureInputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
-static unsigned short contractUserProcedureOutputSizes[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])][65536];
+constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
+
+static SYSTEM_PROCEDURE contractSystemProcedures[contractCount][5];
+static EXPAND_PROCEDURE contractExpandProcedures[contractCount];
+static USER_FUNCTION contractUserFunctions[contractCount][65536];
+static unsigned short contractUserFunctionInputSizes[contractCount][65536];
+static unsigned short contractUserFunctionOutputSizes[contractCount][65536];
+static USER_PROCEDURE contractUserProcedures[contractCount][65536];
+static unsigned short contractUserProcedureInputSizes[contractCount][65536];
+static unsigned short contractUserProcedureOutputSizes[contractCount][65536];
 
 #pragma warning(push)
 #pragma warning(disable: 4005)

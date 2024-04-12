@@ -129,10 +129,10 @@ static EFI_EVENT contractProcessorEvent;
 static m256i originator, invocator;
 static long long invocationReward;
 static m256i currentContract;
-static unsigned char* contractStates[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])];
+static unsigned char* contractStates[contractCount];
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 static unsigned long long* contractStateChangeFlags = NULL;
-static unsigned long long contractTotalExecutionTicks[sizeof(contractDescriptions) / sizeof(contractDescriptions[0])] = { 0 };
+static unsigned long long contractTotalExecutionTicks[contractCount] = { 0 };
 static volatile char contractStateCopyLock = 0;
 static char* contractStateCopy = NULL;
 static char contractFunctionInputs[MAX_NUMBER_OF_PROCESSORS][65536];
@@ -386,7 +386,7 @@ static void getComputerDigest(m256i& digest)
     {
         if (contractStateChangeFlags[digestIndex >> 6] & (1ULL << (digestIndex & 63)))
         {
-            const unsigned long long size = digestIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]) ? contractDescriptions[digestIndex].stateSize : 0;
+            const unsigned long long size = digestIndex < contractCount ? contractDescriptions[digestIndex].stateSize : 0;
             if (!size)
             {
                 contractStateDigests[digestIndex] = _mm256_setzero_si256();
@@ -1029,7 +1029,7 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
     RequestContractIPO* request = header->getPayload<RequestContractIPO>();
     respondContractIPO.contractIndex = request->contractIndex;
     respondContractIPO.tick = system.tick;
-    if (request->contractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
+    if (request->contractIndex >= contractCount
         || system.epoch >= contractDescriptions[request->contractIndex].constructionEpoch)
     {
         bs->SetMem(respondContractIPO.publicKeys, sizeof(respondContractIPO.publicKeys), 0);
@@ -1056,7 +1056,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
     ACQUIRE(executedContractIndexLock);
     executedContractIndex = request->contractIndex;
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
-        || !executedContractIndex || executedContractIndex >= sizeof(contractDescriptions) / sizeof(contractDescriptions[0])
+        || !executedContractIndex || executedContractIndex >= contractCount
         || system.epoch < contractDescriptions[executedContractIndex].constructionEpoch
         || !contractUserFunctions[executedContractIndex][request->inputType])
     {
@@ -1919,7 +1919,7 @@ static void contractProcessor(void*)
     {
     case INITIALIZE:
     {
-        for (executedContractIndex = 1; executedContractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); executedContractIndex++)
+        for (executedContractIndex = 1; executedContractIndex < contractCount; executedContractIndex++)
         {
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
@@ -1939,7 +1939,7 @@ static void contractProcessor(void*)
 
     case BEGIN_EPOCH:
     {
-        for (executedContractIndex = 1; executedContractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); executedContractIndex++)
+        for (executedContractIndex = 1; executedContractIndex < contractCount; executedContractIndex++)
         {
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
@@ -1959,7 +1959,7 @@ static void contractProcessor(void*)
 
     case BEGIN_TICK:
     {
-        for (executedContractIndex = 1; executedContractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); executedContractIndex++)
+        for (executedContractIndex = 1; executedContractIndex < contractCount; executedContractIndex++)
         {
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
@@ -1979,7 +1979,7 @@ static void contractProcessor(void*)
 
     case END_TICK:
     {
-        for (executedContractIndex = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); executedContractIndex-- > 1; )
+        for (executedContractIndex = contractCount; executedContractIndex-- > 1; )
         {
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
@@ -1999,7 +1999,7 @@ static void contractProcessor(void*)
 
     case END_EPOCH:
     {
-        for (executedContractIndex = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); executedContractIndex-- > 1; )
+        for (executedContractIndex = contractCount; executedContractIndex-- > 1; )
         {
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
@@ -2175,7 +2175,7 @@ static void processTick(unsigned long long processorNumber)
                                 maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
                                 unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
                                 if (isZero(maskedDestinationPublicKey)
-                                    && contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]))
+                                    && contractIndex < contractCount)
                                 {
                                     ACQUIRE(executedContractIndexLock);
                                     executedContractIndex = contractIndex;
@@ -2772,7 +2772,7 @@ static void endEpoch()
     getUniverseDigest(etalonTick.prevUniverseDigest);
     getComputerDigest(etalonTick.prevComputerDigest);
 
-    for (unsigned int contractIndex = 1; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
+    for (unsigned int contractIndex = 1; contractIndex < contractCount; contractIndex++)
     {
         if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
         {
@@ -3801,7 +3801,7 @@ static void saveComputer()
 
     ACQUIRE(computerLock);
 
-    for (unsigned int contractIndex = 0; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 9] = contractIndex / 1000 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
@@ -3855,7 +3855,7 @@ static bool initialize()
     initAVX512FourQConstants();
 #endif
 
-    for (unsigned int contractIndex = 0; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
         contractStates[contractIndex] = NULL;
     }
@@ -3937,7 +3937,7 @@ static bool initialize()
         if (!initAssets())
             return false;
 
-        for (unsigned int contractIndex = 0; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
+        for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
             if (status = bs->AllocatePool(EfiRuntimeServicesData, size, (void**)&contractStates[contractIndex]))
@@ -4072,7 +4072,7 @@ static bool initialize()
             return false;
 
         logToConsole(L"Loading contract files ...");
-        for (unsigned int contractIndex = 0; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
+        for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             if (contractDescriptions[contractIndex].constructionEpoch == system.epoch)
             {
@@ -4221,7 +4221,7 @@ static void deinitialize()
     {
         bs->FreePool(contractStateChangeFlags);
     }
-    for (unsigned int contractIndex = 0; contractIndex < sizeof(contractDescriptions) / sizeof(contractDescriptions[0]); contractIndex++)
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
         if (contractStates[contractIndex])
         {
