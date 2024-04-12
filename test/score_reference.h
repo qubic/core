@@ -16,6 +16,8 @@ template<
 >
 struct ScoreReferenceImplementation
 {
+    static constexpr unsigned int numberOfNeuronsMaxInputOutput = (numberOfInputNeurons > numberOfOutputNeurons) ? numberOfInputNeurons : numberOfOutputNeurons;
+
     long long miningData[dataLength];
 
     //neuron only has values [-1, 0, 1]
@@ -23,7 +25,7 @@ struct ScoreReferenceImplementation
     {
         char input[dataLength + numberOfInputNeurons + infoLength];
         char output[infoLength + numberOfOutputNeurons + dataLength];
-        char neuronBuffer[dataLength + numberOfInputNeurons + infoLength];
+        char neuronBuffer[dataLength + numberOfNeuronsMaxInputOutput + infoLength];
     } _neurons[solutionBufferCount];
     struct
     {
