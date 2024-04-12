@@ -23,14 +23,12 @@ template<
 >
 struct ScoreFunction
 {
+    static constexpr unsigned int numberOfNeuronsMaxInputOutput = (numberOfInputNeurons > numberOfOutputNeurons) ? numberOfInputNeurons : numberOfOutputNeurons;
+    static constexpr unsigned int maxAllNeuronLength = dataLength + numberOfNeuronsMaxInputOutput + infoLength;
 
-#if numberOfInputNeurons >= numberOfOutputNeurons
-    static constexpr int maxAllNeuronLength = dataLength + numberOfInputNeurons + infoLength;
-#else
-    static constexpr int maxAllNeuronLength = dataLength + numberOfOutputNeurons + infoLength;
-#endif
     long long miningData[dataLength];
-    //neuron only has values [-1, 0, 1]
+
+    // neuron only has values [-1, 0, 1]
     struct
     {
         char input[dataLength + numberOfInputNeurons + infoLength];
@@ -48,16 +46,12 @@ struct ScoreFunction
     int _totalModNum[257];
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
     int _modNum[257][129];
+
     // indice pos
-#if (numberOfInputNeurons+infoLength)>(numberOfOutputNeurons+dataLength)
-    unsigned short _indicePos[solutionBufferCount][numberOfInputNeurons + infoLength][dataLength + numberOfInputNeurons + infoLength];
-    int _bucketPos[solutionBufferCount][numberOfInputNeurons + infoLength][129];
-    int _bufferPos[solutionBufferCount][numberOfInputNeurons + infoLength][129];
-#else
-    unsigned short _indicePos[solutionBufferCount][numberOfOutputNeurons + dataLength][dataLength + numberOfInputNeurons + infoLength];
-    int _bucketPos[solutionBufferCount][numberOfOutputNeurons + dataLength][129];
-    int _bufferPos[solutionBufferCount][numberOfOutputNeurons + dataLength][129];
-#endif
+    static constexpr unsigned int posBufferLength = (numberOfInputNeurons + infoLength > numberOfOutputNeurons + dataLength) ? numberOfInputNeurons + infoLength : numberOfOutputNeurons + dataLength;
+    unsigned short _indicePos[solutionBufferCount][posBufferLength][dataLength + numberOfInputNeurons + infoLength];
+    int _bucketPos[solutionBufferCount][posBufferLength][129];
+    int _bufferPos[solutionBufferCount][posBufferLength][129];
     int nSample;
     char _sumBuffer[solutionBufferCount][maxAllNeuronLength*2];
     unsigned short _indices[solutionBufferCount][maxAllNeuronLength];
