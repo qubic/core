@@ -2,8 +2,11 @@
 
 #include <intrin.h>
 
+// Used for all kinds of IDs, including in QPI and contracts.
+// Existing interface and behavior should never be changed! (However, it may be extended.)
 union m256i
 {
+    // access for loops and compatability with __m256i
     __int8              m256i_i8[32];
     __int16             m256i_i16[16];
     __int32             m256i_i32[8];
@@ -12,6 +15,42 @@ union m256i
     unsigned __int16    m256i_u16[16];
     unsigned __int32    m256i_u32[8];
     unsigned __int64    m256i_u64[4];
+
+    // interface for QPI (no [] allowed)
+    struct
+    {
+        unsigned __int64 _0, _1, _2, _3;
+    } u64;
+    struct
+    {
+        __int64 _0, _1, _2, _3;
+    } i64;
+    struct
+    {
+        unsigned __int32 _0, _1, _2, _3, _4, _5, _6, _7;
+    } u32;
+    struct
+    {
+        __int32 _0, _1, _2, _3, _4, _5, _6, _7;
+    } i32;
+    struct
+    {
+        unsigned __int16 _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15;
+    } u16;
+    struct
+    {
+        __int16 _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15;
+    } i16;
+    struct
+    {
+        unsigned __int8 _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15;
+        unsigned __int8 _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, _31;
+    } u8;
+    struct
+    {
+        __int8 _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15;
+        __int8 _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, _31;
+    } i8;
 
     m256i() = default;
 

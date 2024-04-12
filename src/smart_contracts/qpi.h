@@ -40,59 +40,7 @@ namespace QPI
 	typedef signed long long sint64;
 	typedef unsigned long long uint64;
 
-	struct id
-	{
-		unsigned long long _0, _1, _2, _3;
-
-		id()
-		{
-		}
-
-		id(unsigned long long _0, unsigned long long _1, unsigned long long _2, unsigned long long _3)
-		{
-			this->_0 = _0;
-			this->_1 = _1;
-			this->_2 = _2;
-			this->_3 = _3;
-		}
-
-		id& operator = (__m256i anotherId)
-		{
-			*((__m256i*)&_0) = anotherId;
-
-			return *this;
-		}
-
-		id& operator = (id anotherId)
-		{
-			_0 = anotherId._0;
-			_1 = anotherId._1;
-			_2 = anotherId._2;
-			_3 = anotherId._3;
-
-			return *this;
-		}
-
-		bool operator == (id anotherId) const
-		{
-			return _0 == anotherId._0 && _1 == anotherId._1 && _2 == anotherId._2 && _3 == anotherId._3;
-		}
-
-		bool operator != (id anotherId) const
-		{
-			return _0 != anotherId._0 || _1 != anotherId._1 || _2 != anotherId._2 || _3 != anotherId._3;
-		}
-
-		bool operator < (id anotherId) const
-		{
-			return _3 < anotherId._3 || _2 < anotherId._2 || _1 < anotherId._1 || _0 < anotherId._0;
-		}
-
-		bool operator > (id anotherId) const
-		{
-			return _3 > anotherId._3 || _2 > anotherId._2 || _1 > anotherId._1 || _0 > anotherId._0;
-		}
-	};
+	typedef m256i id;
 
 #define bit_2x bit_2
 #define bit_4x bit_4
@@ -5103,7 +5051,7 @@ namespace QPI
 		// Return index of id pov in hash map _povs, or NULL_INDEX if not found
 		sint64 _povIndex(const id& pov) const
 		{
-			sint64 povIndex = pov._0 & (L - 1);
+			sint64 povIndex = pov.u64._0 & (L - 1);
 			for (sint64 counter = 0; counter < L; counter += 32)
 			{
 				uint64 flags = _getEncodedPovOccupationFlags(_povOccupationFlags, povIndex);
@@ -5619,7 +5567,7 @@ namespace QPI
 			if (_population < capacity() && _markRemovalCounter < capacity())
 			{
 				// search in pov hash map
-				sint64 povIndex = pov._0 & (L - 1);
+				sint64 povIndex = pov.u64._0 & (L - 1);
 				for (sint64 counter = 0; counter < L; counter += 32)
 				{
 					uint64 flags = _getEncodedPovOccupationFlags(_povOccupationFlags, povIndex);
@@ -5700,7 +5648,7 @@ namespace QPI
 					{
 						// find empty position in new pov hash map
 						const sint64 oldPovIndex = (oldPovIndexGroup << 5) + (oldPovIndexOffset >> 1);
-						sint64 newPovIndex = _povs[oldPovIndex].value._0 & (L - 1);
+						sint64 newPovIndex = _povs[oldPovIndex].value.u64._0 & (L - 1);
 						for (sint64 counter = 0; counter < L; counter += 32)
 						{
 							QPI::uint64 newFlags = _getEncodedPovOccupationFlags(_povOccupationFlagsBuffer, newPovIndex);
@@ -6047,7 +5995,7 @@ namespace QPI
 		id id,
 		::Entity& entity
 	) { // Returns "true" if the entity has been found, returns "false" otherwise
-		return ::__getEntity(m256i(id._0, id._1, id._2, id._3), entity);
+		return ::__getEntity(id, entity);
 	}
 
 	static uint8 hour(
@@ -6062,9 +6010,7 @@ namespace QPI
 
 	static id invocator(
 	) { // Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
-		const m256i invocator = ::__invocator();
-
-		return id(invocator.m256i_u64[0], invocator.m256i_u64[1], invocator.m256i_u64[2], invocator.m256i_u64[3]);
+		return ::__invocator();
 	}
 
 	static sint64 issueAsset(
@@ -6074,7 +6020,7 @@ namespace QPI
 		sint64 numberOfShares,
 		uint64 unitOfMeasurement
 	) {
-		return ::__issueAsset(name, m256i(issuer._0, issuer._1, issuer._2, issuer._3), numberOfDecimalPlaces, numberOfShares, unitOfMeasurement);
+		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfShares, unitOfMeasurement);
 	}
 
 	template <typename T>
@@ -6102,9 +6048,7 @@ namespace QPI
 	static id nextId(
 		id currentId
 	) {
-		const m256i nextId = ::__nextId(m256i(currentId._0, currentId._1, currentId._2, currentId._3));
-
-		return id(nextId.m256i_u64[0], nextId.m256i_u64[1], nextId.m256i_u64[2], nextId.m256i_u64[3]);
+		return ::__nextId(currentId);
 	}
 
 	static sint64 numberOfPossessedShares(
@@ -6115,14 +6059,12 @@ namespace QPI
 		uint16 ownershipManagingContractIndex,
 		uint16 possessionManagingContractIndex
 	) {
-		return ::__numberOfPossessedShares(assetName, m256i(issuer._0, issuer._1, issuer._2, issuer._3), m256i(owner._0, owner._1, owner._2, owner._3), m256i(possessor._0, possessor._1, possessor._2, possessor._3), ownershipManagingContractIndex, possessionManagingContractIndex);
+		return ::__numberOfPossessedShares(assetName, issuer, owner, possessor, ownershipManagingContractIndex, possessionManagingContractIndex);
 	}
 
 	static id originator(
 	) { // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
-		const m256i originator = ::__originator();
-
-		return id(originator.m256i_u64[0], originator.m256i_u64[1], originator.m256i_u64[2], originator.m256i_u64[3]);
+		return ::__originator();
 	}
 
 	static uint8 second(
@@ -6139,7 +6081,7 @@ namespace QPI
 		id destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
 		sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
 	) { // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
-		return ::__transfer(m256i(destination._0, destination._1, destination._2, destination._3), amount);
+		return ::__transfer(destination, amount);
 	}
 
 	static sint64 transferShareOwnershipAndPossession(
@@ -6150,7 +6092,7 @@ namespace QPI
 		sint64 numberOfShares,
 		id newOwnerAndPossessor
 	) { // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
-		return ::__transferShareOwnershipAndPossession(assetName, m256i(issuer._0, issuer._1, issuer._2, issuer._3), m256i(owner._0, owner._1, owner._2, owner._3), m256i(possessor._0, possessor._1, possessor._2, possessor._3), numberOfShares, m256i(newOwnerAndPossessor._0, newOwnerAndPossessor._1, newOwnerAndPossessor._2, newOwnerAndPossessor._3));
+		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwnerAndPossessor);
 	}
 
 	static uint8 year(

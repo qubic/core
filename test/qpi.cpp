@@ -20,8 +20,8 @@ void checkPriorityQueue(const QPI::collection<T, capacity>& coll, const QPI::id&
 {
     if (print)
     {
-        std::cout << "Priority queue ID(" << pov._0 << ", " << pov._1 << ", "
-            << pov._2 << ", " << pov._3 << ")" << std::endl;
+        std::cout << "Priority queue ID(" << pov.u64._0 << ", " << pov.u64._1 << ", "
+            << pov.u64._2 << ", " << pov.u64._3 << ")" << std::endl;
     }
     bool first = true;
     QPI::sint64 elementIndex = coll.headIndex(pov);
@@ -63,7 +63,7 @@ void printPovElementCounts(const std::map<QPI::id, unsigned long long>& povEleme
     {
         QPI::id id = id_count_pair.first;
         unsigned long long count = id_count_pair.second;
-        std::cout << "\t(" << id._0 << ", " << id._1 << ", " << id._2 << ", " << id._3 << "): " << count << std::endl;
+        std::cout << "\t(" << id.u64._0 << ", " << id.u64._1 << ", " << id.u64._2 << ", " << id.u64._3 << "): " << count << std::endl;
     }
 }
 
