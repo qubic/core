@@ -24,11 +24,12 @@ template<
 struct ScoreFunction
 {
     long long miningData[dataLength];
+    //neuron only has values [-1, 0, 1]
     struct
     {
-        long long input[dataLength + numberOfInputNeurons + infoLength];
-        long long output[infoLength + numberOfOutputNeurons + dataLength];
-        long long buffer[dataLength + numberOfInputNeurons + infoLength];
+        char input[dataLength + numberOfInputNeurons + infoLength];
+        char output[infoLength + numberOfOutputNeurons + dataLength];
+        char buffer[dataLength + numberOfInputNeurons + infoLength];
     } _neurons[solutionBufferCount];
     struct
     {
@@ -52,7 +53,7 @@ struct ScoreFunction
     int _bufferPos[solutionBufferCount][numberOfOutputNeurons + dataLength][129];
 #endif
     int nSample;
-    long long _sumBuffer[solutionBufferCount][dataLength + numberOfInputNeurons + infoLength];
+    char _sumBuffer[solutionBufferCount][dataLength + numberOfInputNeurons + infoLength];
     unsigned short _indices[solutionBufferCount][dataLength + numberOfInputNeurons + infoLength];
 
     m256i initialRandomSeed;
@@ -261,7 +262,7 @@ struct ScoreFunction
     }
 
     void getLastNeurons(const unsigned short* indices, const int* bucket, const int* modNum, unsigned short* topMax,
-                        const int nMax, const int totalModNum, int& currentCount, long long* neuron, int* index)
+                        const int nMax, const int totalModNum, int& currentCount, char* neuron, int* index)
     {
         while (currentCount < nMax)
         {
@@ -285,7 +286,7 @@ struct ScoreFunction
     }
 
     short getLastNeuronsIndex(const unsigned short* indices, const int* bucket, const int* modNum,
-                              const int totalModNum, long long* neuron, int* index)
+                              const int totalModNum, char* neuron, int* index)
     {
         int current_max = -1;
         int max_id = -1;
@@ -359,7 +360,7 @@ struct ScoreFunction
     template <bool isInput, int beginLength, int neuronLength, int endLength, int duration>
     void computeNeuron(int solutionBufIdx)
     {
-        long long* neurons = nullptr;
+        char* neurons = nullptr;
         char* synapses = nullptr;
         if (isInput) {
             neurons = _neurons[solutionBufIdx].input;
@@ -462,7 +463,10 @@ struct ScoreFunction
 
         // compute input
         setMem(&neurons.input[0], sizeof(neurons.input), 0);
-        copyMem(&neurons.input[0], miningData, sizeof(miningData));
+        for (int i = 0; i < dataLength; i++)
+        {
+            neurons.input[i] = (char)(miningData[i]);
+        }
         computeBucket<true, dataLength, numberOfInputNeurons, infoLength>(solutionBufIdx);
         computeNeuron<true, dataLength, numberOfInputNeurons, infoLength, maxInputDuration>(solutionBufIdx);
 
