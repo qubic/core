@@ -247,7 +247,7 @@ private:
 	PUBLIC(AssetAskOrders)
 
 		state._issuerAndAssetName = input.issuer;
-		state._issuerAndAssetName.u64._0 = input.assetName;
+		state._issuerAndAssetName.u64._3 = input.assetName;
 
 		state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, 0);
 		state._elementIndex2 = 0;
@@ -287,7 +287,7 @@ private:
 	PUBLIC(AssetBidOrders)
 
 		state._issuerAndAssetName = input.issuer;
-		state._issuerAndAssetName.u64._0 = input.assetName;
+		state._issuerAndAssetName.u64._3 = input.assetName;
 
 		state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName);
 		state._elementIndex2 = 0;
@@ -496,7 +496,7 @@ private:
 				output.addedNumberOfShares = input.numberOfShares;
 
 				state._issuerAndAssetName = input.issuer;
-				state._issuerAndAssetName.u64._0 = input.assetName;
+				state._issuerAndAssetName.u64._3 = input.assetName;
 
 				state._elementIndex = state._entityOrders.headIndex(invocator(), -input.price);
 				while (state._elementIndex != NULL_INDEX)
@@ -659,7 +659,7 @@ private:
 			output.addedNumberOfShares = input.numberOfShares;
 
 			state._issuerAndAssetName = input.issuer;
-			state._issuerAndAssetName.u64._0 = input.assetName;
+			state._issuerAndAssetName.u64._3 = input.assetName;
 
 			state._elementIndex = state._entityOrders.tailIndex(invocator(), input.price);
 			while (state._elementIndex != NULL_INDEX)
@@ -823,7 +823,7 @@ private:
 		else
 		{
 			state._issuerAndAssetName = input.issuer;
-			state._issuerAndAssetName.u64._0 = input.assetName;
+			state._issuerAndAssetName.u64._3 = input.assetName;
 
 			state._elementIndex = state._entityOrders.headIndex(invocator(), -input.price);
 			while (state._elementIndex != NULL_INDEX)
@@ -904,7 +904,7 @@ private:
 		else
 		{
 			state._issuerAndAssetName = input.issuer;
-			state._issuerAndAssetName.u64._0 = input.assetName;
+			state._issuerAndAssetName.u64._3 = input.assetName;
 
 			state._elementIndex = state._entityOrders.tailIndex(invocator(), input.price);
 			while (state._elementIndex != NULL_INDEX)
