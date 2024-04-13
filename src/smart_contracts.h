@@ -129,9 +129,6 @@ contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractNa
 contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 _##contractName->__registerUserFunctionsAndProcedures(qpi);
 
-// Protect executedContractIndex and other global contract state variables to prevent race conditions in parallel processing
-static volatile char executedContractIndexLock = 0;
-
 
 static void initializeContract(const unsigned int contractIndex, void* contractState)
 {

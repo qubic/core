@@ -121,11 +121,11 @@ static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY];
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
 static m256i* spectrumDigests = NULL;
 
-static volatile char computerLock = 0;
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static EFI_EVENT contractProcessorEvent;
+static volatile char contractStateLock[contractCount];
 static unsigned char* contractStates[contractCount];
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 static unsigned long long* contractStateChangeFlags = NULL;
@@ -390,7 +390,13 @@ static void getComputerDigest(m256i& digest)
             }
             else
             {
+                // FIXME: We may have a race condition here if a digest is computed here by thread A, the state is changed
+                // + contractStateChangeFlags set afterwards by thread B and contractStateChangeFlags cleared below below
+                // by thread A. We then have a changed state but a cleared contractStateChangeFlags flag leading to wrong
+                // digest.
+                ACQUIRE(contractStateLock[digestIndex]);
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
+                RELEASE(contractStateLock[digestIndex]);
             }
         }
     }
@@ -1034,9 +1040,11 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
     }
     else
     {
+        ACQUIRE(contractStateLock[request->contractIndex]);
         IPO* ipo = (IPO*)contractStates[request->contractIndex];
         bs->CopyMem(respondContractIPO.publicKeys, ipo->publicKeys, sizeof(respondContractIPO.publicKeys));
         bs->CopyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
+        RELEASE(contractStateLock[request->contractIndex]);
     }
 
     enqueueResponse(peer, sizeof(respondContractIPO), RespondContractIPO::type, header->dejavu(), &respondContractIPO);
@@ -1050,29 +1058,28 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
     RespondContractFunction* response = (RespondContractFunction*)contractFunctionOutputs[processorNumber];
 
     RequestContractFunction* request = header->getPayload<RequestContractFunction>();
-    ACQUIRE(executedContractIndexLock);
-    const unsigned int executedContractIndex = request->contractIndex;
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
-        || !executedContractIndex || executedContractIndex >= contractCount
-        || system.epoch < contractDescriptions[executedContractIndex].constructionEpoch
-        || !contractUserFunctions[executedContractIndex][request->inputType])
+        || !request->contractIndex || request->contractIndex >= contractCount
+        || system.epoch < contractDescriptions[request->contractIndex].constructionEpoch
+        || !contractUserFunctions[request->contractIndex][request->inputType])
     {
         enqueueResponse(peer, 0, response->type, header->dejavu(), NULL);
     }
     else
     {
-        QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
+        QPI::QpiContextNoOriginatorAndReward qpiContext(request->contractIndex);
 
         bs->SetMem(&contractFunctionInputs[processorNumber], sizeof(contractFunctionInputs[processorNumber]), 0);
         bs->CopyMem(&contractFunctionInputs[processorNumber], (((unsigned char*)request) + sizeof(RequestContractFunction)), request->inputSize);
+        ACQUIRE(contractStateLock[request->contractIndex]);
         ACQUIRE(contractStateCopyLock); // A single contract state buffer is used because of lack of memory, if we could afford we would use a buffer per request processing thread
-        bs->CopyMem(contractStateCopy, contractStates[executedContractIndex], contractDescriptions[executedContractIndex].stateSize);
-        contractUserFunctions[executedContractIndex][request->inputType](qpiContext, contractStateCopy, &contractFunctionInputs[processorNumber], response);
+        bs->CopyMem(contractStateCopy, contractStates[request->contractIndex], contractDescriptions[request->contractIndex].stateSize);
+        contractUserFunctions[request->contractIndex][request->inputType](qpiContext, contractStateCopy, &contractFunctionInputs[processorNumber], response);
         RELEASE(contractStateCopyLock);
+        RELEASE(contractStateLock[request->contractIndex]);
 
-        enqueueResponse(peer, contractUserFunctionOutputSizes[executedContractIndex][request->inputType], response->type, header->dejavu(), response);
+        enqueueResponse(peer, contractUserFunctionOutputSizes[request->contractIndex][request->inputType], response->type, header->dejavu(), response);
     }
-    RELEASE(executedContractIndexLock);
 }
 
 static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
@@ -1490,7 +1497,9 @@ long long QPI::QpiContext::burn(long long amount) const
 
     if (decreaseEnergy(index, amount))
     {
+        ACQUIRE(contractStateLock[0]);
         contractFeeReserve(_currentContractIndex) += amount;
+        RELEASE(contractStateLock[0]);
 
         const Burning burning = { _currentContractId , amount };
         logBurning(burning);
@@ -1907,8 +1916,6 @@ static void contractProcessor(void*)
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
-    ACQUIRE(executedContractIndexLock);
-
     unsigned int executedContractIndex;
     switch (contractProcessorPhase)
     {
@@ -1921,9 +1928,11 @@ static void contractProcessor(void*)
             {
                 QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
 
+                ACQUIRE(contractStateLock[executedContractIndex]);
                 const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][INITIALIZE](qpiContext, contractStates[executedContractIndex]);
                 contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
+                RELEASE(contractStateLock[executedContractIndex]);
             }
         }
     }
@@ -1938,9 +1947,11 @@ static void contractProcessor(void*)
             {
                 QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
 
+                ACQUIRE(contractStateLock[executedContractIndex]);
                 const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][BEGIN_EPOCH](qpiContext, contractStates[executedContractIndex]);
                 contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
+                RELEASE(contractStateLock[executedContractIndex]);
             }
         }
     }
@@ -1955,9 +1966,11 @@ static void contractProcessor(void*)
             {
                 QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
 
+                ACQUIRE(contractStateLock[executedContractIndex]);
                 const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][BEGIN_TICK](qpiContext, contractStates[executedContractIndex]);
                 contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
+                RELEASE(contractStateLock[executedContractIndex]);
             }
         }
     }
@@ -1972,9 +1985,11 @@ static void contractProcessor(void*)
             {
                 QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
 
+                ACQUIRE(contractStateLock[executedContractIndex]);
                 const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][END_TICK](qpiContext, contractStates[executedContractIndex]);
                 contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
+                RELEASE(contractStateLock[executedContractIndex]);
             }
         }
     }
@@ -1989,16 +2004,16 @@ static void contractProcessor(void*)
             {
                 QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
 
+                ACQUIRE(contractStateLock[executedContractIndex]);
                 const unsigned long long startTick = __rdtsc();
                 contractSystemProcedures[executedContractIndex][END_EPOCH](qpiContext, contractStates[executedContractIndex]);
                 contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
+                RELEASE(contractStateLock[executedContractIndex]);
             }
         }
     }
     break;
     }
-
-    RELEASE(executedContractIndexLock);
 }
 
 static void processTick(unsigned long long processorNumber)
@@ -2157,7 +2172,6 @@ static void processTick(unsigned long long processorNumber)
                                 if (isZero(maskedDestinationPublicKey)
                                     && contractIndex < contractCount)
                                 {
-                                    ACQUIRE(executedContractIndexLock);
                                     if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
                                     {
                                         if (!transaction->amount
@@ -2174,6 +2188,7 @@ static void processTick(unsigned long long processorNumber)
                                                     logQuTransfer(quTransfer);
 
                                                     numberOfReleasedEntities = 0;
+                                                    ACQUIRE(contractStateLock[contractIndex]);
                                                     IPO* ipo = (IPO*)contractStates[contractIndex];
                                                     for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
                                                     {
@@ -2234,6 +2249,8 @@ static void processTick(unsigned long long processorNumber)
                                                             contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
                                                         }
                                                     }
+                                                    RELEASE(contractStateLock[contractIndex]);
+
                                                     for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
                                                     {
                                                         increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
@@ -2252,12 +2269,13 @@ static void processTick(unsigned long long processorNumber)
 
                                             bs->SetMem(&executedContractInput, sizeof(executedContractInput), 0);
                                             bs->CopyMem(&executedContractInput, transaction->inputPtr(), transaction->inputSize);
+                                            ACQUIRE(contractStateLock[contractIndex]);
                                             const unsigned long long startTick = __rdtsc();
                                             contractUserProcedures[contractIndex][transaction->inputType](qpiContext, contractStates[contractIndex], &executedContractInput, &executedContractOutput);
                                             contractTotalExecutionTicks[contractIndex] += __rdtsc() - startTick;
+                                            RELEASE(contractStateLock[contractIndex]);
                                         }
                                     }
-                                    RELEASE(executedContractIndexLock);
                                 }
                                 else
                                 {
@@ -2752,6 +2770,7 @@ static void endEpoch()
     {
         if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
         {
+            ACQUIRE(contractStateLock[contractIndex]);
             IPO* ipo = (IPO*)contractStates[contractIndex];
             long long finalPrice = ipo->prices[NUMBER_OF_COMPUTORS - 1];
             int issuanceIndex, ownershipIndex, possessionIndex;
@@ -2797,8 +2816,11 @@ static void endEpoch()
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
                 logQuTransfer(quTransfer);
             }
+            RELEASE(contractStateLock[contractIndex]);
 
+            ACQUIRE(contractStateLock[0]);
             contractFeeReserve(contractIndex) = finalPrice * NUMBER_OF_COMPUTORS;
+            RELEASE(contractStateLock[0]);
         }
     }
 
@@ -3775,15 +3797,15 @@ static void saveComputer()
     bool ok = true;
     unsigned long long totalSize = 0;
 
-    ACQUIRE(computerLock);
-
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 9] = contractIndex / 1000 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
+        ACQUIRE(contractStateLock[contractIndex]);
         long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex]);
+        RELEASE(contractStateLock[contractIndex]);
         totalSize += savedSize;
         if (savedSize != contractDescriptions[contractIndex].stateSize)
         {
@@ -3792,8 +3814,6 @@ static void saveComputer()
             break;
         }
     }
-
-    RELEASE(computerLock);
 
     if (ok)
     {
@@ -3913,6 +3933,7 @@ static bool initialize()
         if (!initAssets())
             return false;
 
+        bs->SetMem((void*)contractStateLock, sizeof(contractStateLock), 0);
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
