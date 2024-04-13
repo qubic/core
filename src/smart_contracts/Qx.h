@@ -223,7 +223,7 @@ private:
 
 		output.numberOfShares = 0;
 
-		state._elementIndex = state._entityOrders.headIndex(invocator(), 0);
+		state._elementIndex = state._entityOrders.headIndex(qpi.invocator(), 0);
 		while (state._elementIndex != NULL_INDEX)
 		{
 			state._entityOrder = state._entityOrders.element(state._elementIndex);
@@ -416,65 +416,65 @@ private:
 
 	PUBLIC(IssueAsset)
 
-		if (invocationReward() < state._assetIssuanceFee)
+		if (qpi.invocationReward() < state._assetIssuanceFee)
 		{
-			if (invocationReward() > 0)
+			if (qpi.invocationReward() > 0)
 			{
-				transfer(invocator(), invocationReward());
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
 			output.issuedNumberOfShares = 0;
 		}
 		else
 		{
-			if (invocationReward() > state._assetIssuanceFee)
+			if (qpi.invocationReward() > state._assetIssuanceFee)
 			{
-				transfer(invocator(), invocationReward() - state._assetIssuanceFee);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - state._assetIssuanceFee);
 			}
 			state._earnedAmount += state._assetIssuanceFee;
 
-			output.issuedNumberOfShares = issueAsset(input.assetName, invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
+			output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
 		}
 	_
 
 	PUBLIC(TransferShareOwnershipAndPossession)
 
-		if (invocationReward() < state._transferFee)
+		if (qpi.invocationReward() < state._transferFee)
 		{
-			if (invocationReward() > 0)
+			if (qpi.invocationReward() > 0)
 			{
-				transfer(invocator(), invocationReward());
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
 			output.transferredNumberOfShares = 0;
 		}
 		else
 		{
-			if (invocationReward() > state._transferFee)
+			if (qpi.invocationReward() > state._transferFee)
 			{
-				transfer(invocator(), invocationReward() - state._transferFee);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - state._transferFee);
 			}
 			state._earnedAmount += state._transferFee;
 
 			state._numberOfReservedShares_input.issuer = input.issuer;
 			state._numberOfReservedShares_input.assetName = input.assetName;
-			_NumberOfReservedShares(state, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
-			if (numberOfPossessedShares(input.assetName, input.issuer, invocator(), invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
+			qpi.call(_NumberOfReservedShares, state, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
+			if (qpi.numberOfPossessedShares(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
 			{
 				output.transferredNumberOfShares = 0;
 			}
 			else
 			{
-				output.transferredNumberOfShares = transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), invocator(), input.numberOfShares, input.newOwnerAndPossessor) < 0 ? 0 : input.numberOfShares;
+				output.transferredNumberOfShares = qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newOwnerAndPossessor) < 0 ? 0 : input.numberOfShares;
 			}
 		}
 	_
 
 	PUBLIC(AddToAskOrder)
 
-		if (invocationReward() > 0)
+		if (qpi.invocationReward() > 0)
 		{
-			transfer(invocator(), invocationReward());
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
 		if (input.price <= 0
@@ -486,8 +486,8 @@ private:
 		{
 			state._numberOfReservedShares_input.issuer = input.issuer;
 			state._numberOfReservedShares_input.assetName = input.assetName;
-			_NumberOfReservedShares(state, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
-			if (numberOfPossessedShares(input.assetName, input.issuer, invocator(), invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
+			qpi.call(_NumberOfReservedShares, state, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
+			if (qpi.numberOfPossessedShares(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
 			{
 				output.addedNumberOfShares = 0;
 			}
@@ -498,7 +498,7 @@ private:
 				state._issuerAndAssetName = input.issuer;
 				state._issuerAndAssetName.u64._0 = input.assetName;
 
-				state._elementIndex = state._entityOrders.headIndex(invocator(), -input.price);
+				state._elementIndex = state._entityOrders.headIndex(qpi.invocator(), -input.price);
 				while (state._elementIndex != NULL_INDEX)
 				{
 					if (state._entityOrders.priority(state._elementIndex) != -input.price)
@@ -514,13 +514,13 @@ private:
 					{
 						state._entityOrders.remove(state._elementIndex);
 						state._entityOrder.numberOfShares += input.numberOfShares;
-						state._entityOrders.add(invocator(), state._entityOrder, -input.price);
+						state._entityOrders.add(qpi.invocator(), state._entityOrder, -input.price);
 
 						state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, -input.price);
 						while (true) // Impossible for the corresponding asset order to not exist
 						{
 							state._assetOrder = state._assetOrders.element(state._elementIndex);
-							if (state._assetOrder.entity == invocator())
+							if (state._assetOrder.entity == qpi.invocator())
 							{
 								state._assetOrders.remove(state._elementIndex);
 								state._assetOrder.numberOfShares += input.numberOfShares;
@@ -575,8 +575,8 @@ private:
 
 							state._fee = (state._price * state._assetOrder.numberOfShares * state._tradeFee / 1000000000UL) + 1;
 							state._earnedAmount += state._fee;
-							transfer(invocator(), state._price * state._assetOrder.numberOfShares - state._fee);
-							transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), invocator(), state._assetOrder.numberOfShares, state._assetOrder.entity);
+							qpi.transfer(qpi.invocator(), state._price * state._assetOrder.numberOfShares - state._fee);
+							qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), state._assetOrder.numberOfShares, state._assetOrder.entity);
 
 							state._tradeMessage.issuer = input.issuer;
 							state._tradeMessage.assetName = input.assetName;
@@ -610,8 +610,8 @@ private:
 
 							state._fee = (state._price * input.numberOfShares * state._tradeFee / 1000000000UL) + 1;
 							state._earnedAmount += state._fee;
-							transfer(invocator(), state._price * input.numberOfShares - state._fee);
-							transferShareOwnershipAndPossession(input.assetName, input.issuer, invocator(), invocator(), input.numberOfShares, state._assetOrder.entity);
+							qpi.transfer(qpi.invocator(), state._price * input.numberOfShares - state._fee);
+							qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, state._assetOrder.entity);
 
 							state._tradeMessage.issuer = input.issuer;
 							state._tradeMessage.assetName = input.assetName;
@@ -627,14 +627,14 @@ private:
 
 					if (input.numberOfShares > 0)
 					{
-						state._assetOrder.entity = invocator();
+						state._assetOrder.entity = qpi.invocator();
 						state._assetOrder.numberOfShares = input.numberOfShares;
 						state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, -input.price);
 
 						state._entityOrder.issuer = input.issuer;
 						state._entityOrder.assetName = input.assetName;
 						state._entityOrder.numberOfShares = input.numberOfShares;
-						state._entityOrders.add(invocator(), state._entityOrder, -input.price);
+						state._entityOrders.add(qpi.invocator(), state._entityOrder, -input.price);
 					}
 				}
 			}
@@ -645,13 +645,13 @@ private:
 
 		if (input.price <= 0
 			|| input.numberOfShares <= 0
-			|| invocationReward() < input.price * input.numberOfShares)
+			|| qpi.invocationReward() < input.price * input.numberOfShares)
 		{
 			output.addedNumberOfShares = 0;
 
-			if (invocationReward() > 0)
+			if (qpi.invocationReward() > 0)
 			{
-				transfer(invocator(), invocationReward());
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 		}
 		else
@@ -661,7 +661,7 @@ private:
 			state._issuerAndAssetName = input.issuer;
 			state._issuerAndAssetName.u64._0 = input.assetName;
 
-			state._elementIndex = state._entityOrders.tailIndex(invocator(), input.price);
+			state._elementIndex = state._entityOrders.tailIndex(qpi.invocator(), input.price);
 			while (state._elementIndex != NULL_INDEX)
 			{
 				if (state._entityOrders.priority(state._elementIndex) != input.price)
@@ -677,13 +677,13 @@ private:
 				{
 					state._entityOrders.remove(state._elementIndex);
 					state._entityOrder.numberOfShares += input.numberOfShares;
-					state._entityOrders.add(invocator(), state._entityOrder, input.price);
+					state._entityOrders.add(qpi.invocator(), state._entityOrder, input.price);
 
 					state._elementIndex = state._assetOrders.tailIndex(state._issuerAndAssetName, input.price);
 					while (true) // Impossible for the corresponding asset order to not exist
 					{
 						state._assetOrder = state._assetOrders.element(state._elementIndex);
-						if (state._assetOrder.entity == invocator())
+						if (state._assetOrder.entity == qpi.invocator())
 						{
 							state._assetOrders.remove(state._elementIndex);
 							state._assetOrder.numberOfShares += input.numberOfShares;
@@ -738,8 +738,8 @@ private:
 
 						state._fee = (state._price * state._assetOrder.numberOfShares * state._tradeFee / 1000000000UL) + 1;
 						state._earnedAmount += state._fee;
-						transfer(state._assetOrder.entity, state._price * state._assetOrder.numberOfShares - state._fee);
-						transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, state._assetOrder.numberOfShares, invocator());
+						qpi.transfer(state._assetOrder.entity, state._price * state._assetOrder.numberOfShares - state._fee);
+						qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, state._assetOrder.numberOfShares, qpi.invocator());
 
 						state._tradeMessage.issuer = input.issuer;
 						state._tradeMessage.assetName = input.assetName;
@@ -773,8 +773,8 @@ private:
 
 						state._fee = (state._price * input.numberOfShares * state._tradeFee / 1000000000UL) + 1;
 						state._earnedAmount += state._fee;
-						transfer(state._assetOrder.entity, state._price * input.numberOfShares - state._fee);
-						transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, input.numberOfShares, invocator());
+						qpi.transfer(state._assetOrder.entity, state._price * input.numberOfShares - state._fee);
+						qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, input.numberOfShares, qpi.invocator());
 
 						state._tradeMessage.issuer = input.issuer;
 						state._tradeMessage.assetName = input.assetName;
@@ -790,29 +790,29 @@ private:
 
 				if (input.numberOfShares > 0)
 				{
-					state._assetOrder.entity = invocator();
+					state._assetOrder.entity = qpi.invocator();
 					state._assetOrder.numberOfShares = input.numberOfShares;
 					state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, input.price);
 
 					state._entityOrder.issuer = input.issuer;
 					state._entityOrder.assetName = input.assetName;
 					state._entityOrder.numberOfShares = input.numberOfShares;
-					state._entityOrders.add(invocator(), state._entityOrder, input.price);
+					state._entityOrders.add(qpi.invocator(), state._entityOrder, input.price);
 				}
 			}
 
-			if (invocationReward() > input.price * input.numberOfShares)
+			if (qpi.invocationReward() > input.price * input.numberOfShares)
 			{
-				transfer(invocator(), invocationReward() - input.price * input.numberOfShares);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.price * input.numberOfShares);
 			}
 		}
 	_
 
 	PUBLIC(RemoveFromAskOrder)
 
-		if (invocationReward() > 0)
+		if (qpi.invocationReward() > 0)
 		{
-			transfer(invocator(), invocationReward());
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
 		if (input.price <= 0
@@ -825,7 +825,7 @@ private:
 			state._issuerAndAssetName = input.issuer;
 			state._issuerAndAssetName.u64._0 = input.assetName;
 
-			state._elementIndex = state._entityOrders.headIndex(invocator(), -input.price);
+			state._elementIndex = state._entityOrders.headIndex(qpi.invocator(), -input.price);
 			while (state._elementIndex != NULL_INDEX)
 			{
 				if (state._entityOrders.priority(state._elementIndex) != -input.price)
@@ -849,14 +849,14 @@ private:
 						state._entityOrder.numberOfShares -= input.numberOfShares;
 						if (state._entityOrder.numberOfShares > 0)
 						{
-							state._entityOrders.add(invocator(), state._entityOrder, -input.price);
+							state._entityOrders.add(qpi.invocator(), state._entityOrder, -input.price);
 						}
 
 						state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, -input.price);
 						while (true) // Impossible for the corresponding asset order to not exist
 						{
 							state._assetOrder = state._assetOrders.element(state._elementIndex);
-							if (state._assetOrder.entity == invocator())
+							if (state._assetOrder.entity == qpi.invocator())
 							{
 								state._assetOrders.remove(state._elementIndex);
 								state._assetOrder.numberOfShares -= input.numberOfShares;
@@ -891,9 +891,9 @@ private:
 
 	PUBLIC(RemoveFromBidOrder)
 
-		if (invocationReward() > 0)
+		if (qpi.invocationReward() > 0)
 		{
-			transfer(invocator(), invocationReward());
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
 		if (input.price <= 0
@@ -906,7 +906,7 @@ private:
 			state._issuerAndAssetName = input.issuer;
 			state._issuerAndAssetName.u64._0 = input.assetName;
 
-			state._elementIndex = state._entityOrders.tailIndex(invocator(), input.price);
+			state._elementIndex = state._entityOrders.tailIndex(qpi.invocator(), input.price);
 			while (state._elementIndex != NULL_INDEX)
 			{
 				if (state._entityOrders.priority(state._elementIndex) != input.price)
@@ -930,14 +930,14 @@ private:
 						state._entityOrder.numberOfShares -= input.numberOfShares;
 						if (state._entityOrder.numberOfShares > 0)
 						{
-							state._entityOrders.add(invocator(), state._entityOrder, input.price);
+							state._entityOrders.add(qpi.invocator(), state._entityOrder, input.price);
 						}
 
 						state._elementIndex = state._assetOrders.tailIndex(state._issuerAndAssetName, input.price);
 						while (true) // Impossible for the corresponding asset order to not exist
 						{
 							state._assetOrder = state._assetOrders.element(state._elementIndex);
-							if (state._assetOrder.entity == invocator())
+							if (state._assetOrder.entity == qpi.invocator())
 							{
 								state._assetOrders.remove(state._elementIndex);
 								state._assetOrder.numberOfShares -= input.numberOfShares;
@@ -967,21 +967,18 @@ private:
 			{
 				output.removedNumberOfShares = input.numberOfShares;
 
-				transfer(invocator(), input.price * input.numberOfShares);
+				qpi.transfer(qpi.invocator(), input.price * input.numberOfShares);
 			}
 		}
 	_
 
-	REGISTER_USER_FUNCTIONS
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 
 		REGISTER_USER_FUNCTION(Fees, 1);
 		REGISTER_USER_FUNCTION(AssetAskOrders, 2);
 		REGISTER_USER_FUNCTION(AssetBidOrders, 3);
 		REGISTER_USER_FUNCTION(EntityAskOrders, 4);
 		REGISTER_USER_FUNCTION(EntityBidOrders, 5);
-	_
-
-	REGISTER_USER_PROCEDURES
 
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
 		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);

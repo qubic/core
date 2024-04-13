@@ -6,45 +6,26 @@
 
 ////////// Smart contracts \\\\\\\\\\
 
-typedef void (*SYSTEM_PROCEDURE)(void*);
-typedef void (*EXPAND_PROCEDURE)(void*, void*);
-typedef void (*USER_FUNCTION)(void*, void*, void*);
-typedef void (*USER_PROCEDURE)(void*, void*, void*);
+namespace QPI
+{
+    struct QpiContext;
+}
+
+typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContext&, void*);
+typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContext&, void*, void*);
+typedef void (*USER_FUNCTION)(const QPI::QpiContext&, void*, void*, void*);
+typedef void (*USER_PROCEDURE)(const QPI::QpiContext&, void*, void*, void*);
 
 
 
-static const m256i& __arbitrator();
-static long long __burn(long long);
 static void __beginFunctionOrProcedure(const unsigned int);
-static const m256i& __computor(unsigned short);
-static unsigned char __day();
-static unsigned char __dayOfWeek(unsigned char, unsigned char, unsigned char);
 static void __endFunctionOrProcedure(const unsigned int);
-static unsigned short __epoch();
-static bool __getEntity(const m256i&, ::Entity&);
-static unsigned char __hour();
-static long long __invocationReward();
-static const m256i& __invocator();
-static long long __issueAsset(unsigned long long, const m256i&, char, long long, unsigned long long);
 template <typename T> static m256i __K12(T);
-template <typename T> static void __logContractDebugMessage(T);
-template <typename T> static void __logContractErrorMessage(T);
-template <typename T> static void __logContractInfoMessage(T);
-template <typename T> static void __logContractWarningMessage(T);
-static unsigned short __millisecond();
-static unsigned char __minute();
-static unsigned char __month();
-static m256i __nextId(const m256i&);
-static long long __numberOfPossessedShares(unsigned long long, const m256i&, const m256i&, const m256i&, unsigned short, unsigned short);
-static m256i __originator();
-static void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short);
-static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short);
-static void* __scratchpad();
-static unsigned char __second();
-static unsigned int __tick();
-static long long __transfer(const m256i&, long long);
-static long long __transferShareOwnershipAndPossession(unsigned long long, const m256i&, const m256i&, const m256i&, long long, const m256i&);
-static unsigned char __year();
+template <typename T> static void __logContractDebugMessage(unsigned int, const T&);
+template <typename T> static void __logContractErrorMessage(unsigned int, const T&);
+template <typename T> static void __logContractInfoMessage(unsigned int, const T&);
+template <typename T> static void __logContractWarningMessage(unsigned int, const T&);
+static void* __scratchpad();    // TODO: concurrency support (n buffers for n allowed concurrent contract executions)
 
 #include "smart_contracts/qpi.h"
 
@@ -140,23 +121,21 @@ static unsigned short contractUserProcedureOutputSizes[contractCount][65536];
 
 #define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName)\
 _##contractName = (contractName*)contractState;\
-contractSystemProcedures[contractIndex][INITIALIZE] = (void (*)(void*))contractName::__initialize;\
-contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (void (*)(void*))contractName::__beginEpoch;\
-contractSystemProcedures[contractIndex][END_EPOCH] = (void (*)(void*))contractName::__endEpoch;\
-contractSystemProcedures[contractIndex][BEGIN_TICK] = (void (*)(void*))contractName::__beginTick;\
-contractSystemProcedures[contractIndex][END_TICK] = (void (*)(void*))contractName::__endTick;\
-contractExpandProcedures[contractIndex] = (void (*)(void*, void*))contractName::__expand;\
-executedContractIndex = contractIndex;\
-_##contractName->__registerUserFunctions();\
-_##contractName->__registerUserProcedures();
+contractSystemProcedures[contractIndex][INITIALIZE] = (SYSTEM_PROCEDURE)contractName::__initialize;\
+contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (SYSTEM_PROCEDURE)contractName::__beginEpoch;\
+contractSystemProcedures[contractIndex][END_EPOCH] = (SYSTEM_PROCEDURE)contractName::__endEpoch;\
+contractSystemProcedures[contractIndex][BEGIN_TICK] = (SYSTEM_PROCEDURE)contractName::__beginTick;\
+contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
+contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
+_##contractName->__registerUserFunctionsAndProcedures(qpi);
 
 // Protect executedContractIndex and other global contract state variables to prevent race conditions in parallel processing
 static volatile char executedContractIndexLock = 0;
 
-static volatile unsigned int executedContractIndex;
 
 static void initializeContract(const unsigned int contractIndex, void* contractState)
 {
+    QpiContextForInit qpi(contractIndex);
     switch (contractIndex)
     {
     case QX_CONTRACT_INDEX:
