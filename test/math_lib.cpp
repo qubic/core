@@ -1,6 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "../src/smart_contracts/math_lib.h"
+#include "../src/contracts/math_lib.h"
 
 TEST(TestCoreMathLib, Max) {
     EXPECT_EQ(math_lib::max(0, 0), 0);

@@ -2,7 +2,7 @@
 
 #include "network_messages/all.h"
 
-#include "smart_contracts.h"
+#include "contract_core/contract_def.h"
 
 #include "private_settings.h"
 #include "public_settings.h"

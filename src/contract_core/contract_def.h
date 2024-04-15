@@ -27,13 +27,13 @@ template <typename T> static void __logContractInfoMessage(unsigned int, const T
 template <typename T> static void __logContractWarningMessage(unsigned int, const T&);
 static void* __scratchpad();    // TODO: concurrency support (n buffers for n allowed concurrent contract executions)
 
-#include "smart_contracts/qpi.h"
+#include "contracts/qpi.h"
 
 #define QX_CONTRACT_INDEX 1
 #define CONTRACT_INDEX QX_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QX
 #define CONTRACT_STATE2_TYPE QX2
-#include "smart_contracts/Qx.h"
+#include "contracts/Qx.h"
 static CONTRACT_STATE_TYPE* _QX;
 
 #undef CONTRACT_INDEX
@@ -44,7 +44,7 @@ static CONTRACT_STATE_TYPE* _QX;
 #define CONTRACT_INDEX QUOTTERY_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QUOTTERY
 #define CONTRACT_STATE2_TYPE QUOTTERY2
-#include "smart_contracts/Quottery.h"
+#include "contracts/Quottery.h"
 static CONTRACT_STATE_TYPE* _QUOTTERY;
 
 #undef CONTRACT_INDEX
@@ -55,7 +55,7 @@ static CONTRACT_STATE_TYPE* _QUOTTERY;
 #define CONTRACT_INDEX RANDOM_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE RANDOM
 #define CONTRACT_STATE2_TYPE RANDOM2
-#include "smart_contracts/Random.h"
+#include "contracts/Random.h"
 static CONTRACT_STATE_TYPE* _RANDOM;
 
 #undef CONTRACT_INDEX
@@ -66,7 +66,7 @@ static CONTRACT_STATE_TYPE* _RANDOM;
 #define CONTRACT_INDEX QUTIL_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QUTIL
 #define CONTRACT_STATE2_TYPE QUTIL2
-#include "smart_contracts/QUtil.h"
+#include "contracts/QUtil.h"
 static CONTRACT_STATE_TYPE* _QUTIL;
 
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0

@@ -19,6 +19,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="assets.h" />
+    <ClInclude Include="contracts\math_lib.h" />
+    <ClInclude Include="contracts\qpi.h" />
+    <ClInclude Include="contracts\Quottery.h" />
+    <ClInclude Include="contracts\QUtil.h" />
+    <ClInclude Include="contracts\Qx.h" />
+    <ClInclude Include="contracts\Random.h" />
+    <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="logging.h" />
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />
@@ -49,17 +56,10 @@
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />
     <ClInclude Include="score_cache.h" />
-    <ClInclude Include="smart_contracts\math_lib.h" />
-    <ClInclude Include="smart_contracts\qpi.h" />
-    <ClInclude Include="smart_contracts\Quottery.h" />
-    <ClInclude Include="smart_contracts\QUtil.h" />
-    <ClInclude Include="smart_contracts\Qx.h" />
-    <ClInclude Include="smart_contracts\Random.h" />
     <ClInclude Include="system.h" />
     <ClInclude Include="text_output.h" />
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />
-    <ClInclude Include="smart_contracts.h" />
     <ClInclude Include="platform\time.h" />
     <ClInclude Include="platform\uefi.h" />
     <ClInclude Include="tick_storage.h" />
