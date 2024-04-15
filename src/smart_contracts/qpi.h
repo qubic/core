@@ -5778,8 +5778,11 @@ namespace QPI
 		}
 
 		// Remove element and mark its pov for removal, if the last element.
-		void remove(sint64 elementIdx)
+		// Returns element index of next element in priority queue (the one following elementIdx).
+		// Element indices obatined before this call are invalidated, because at least one element is moved.
+		sint64 remove(sint64 elementIdx)
 		{
+			sint64 nextElementIdxOfRemoved = NULL_INDEX;
 			elementIdx &= (L - 1);
 			if (uint64(elementIdx) < _population)
 			{
@@ -5790,13 +5793,15 @@ namespace QPI
 				{
 					auto& rootIdx = pov.bstRootIndex;
 					auto& curElement = _elements[elementIdx];
-					auto removed_elementIdx = elementIdx;
+
+					nextElementIdxOfRemoved = _nextElementIndex(elementIdx);
 
 					if (curElement.bstRightIndex != NULL_INDEX &&
 						curElement.bstLeftIndex != NULL_INDEX)
 					{
 						// it contains both left and right child
-						const auto tmpIdx = _getMostLeft(curElement.bstRightIndex);
+						// -> move next element in priority queue to curElement, delete next element
+						const auto tmpIdx = nextElementIdxOfRemoved;
 						if (tmpIdx == pov.tailIndex)
 						{
 							pov.tailIndex = _previousElementIndex(tmpIdx);
@@ -5820,22 +5825,16 @@ namespace QPI
 						}
 						copyMem(&curElement.value, &_elements[tmpIdx].value, sizeof(T));
 						curElement.priority = _elements[tmpIdx].priority;
+						nextElementIdxOfRemoved = elementIdx;
 
-						const bool SUPPORT_BACK_COMPATIBILITY = true;
-						if (SUPPORT_BACK_COMPATIBILITY)
-						{
-							_moveElement(elementIdx, tmpIdx);
-						}
-						else
-						{
-							deleteElementIdx = tmpIdx;
-						}
+						deleteElementIdx = tmpIdx;
 					}
 					else if (curElement.bstRightIndex != NULL_INDEX)
 					{
+						// contains only right child
 						if (elementIdx == pov.headIndex)
 						{
-							pov.headIndex = _nextElementIndex(elementIdx);
+							pov.headIndex = nextElementIdxOfRemoved;
 						}
 						if (!_updateParent(elementIdx, curElement.bstRightIndex))
 						{
@@ -5845,6 +5844,7 @@ namespace QPI
 					}
 					else if (curElement.bstLeftIndex != NULL_INDEX)
 					{
+						// contains lonly left child
 						if (elementIdx == pov.tailIndex)
 						{
 							pov.tailIndex = _previousElementIndex(elementIdx);
@@ -5859,7 +5859,7 @@ namespace QPI
 					{
 						if (elementIdx == pov.headIndex)
 						{
-							pov.headIndex = _nextElementIndex(elementIdx);
+							pov.headIndex = nextElementIdxOfRemoved;
 						}
 						else if (elementIdx == pov.tailIndex)
 						{
@@ -5880,6 +5880,8 @@ namespace QPI
 				{
 					// Move last element to fill new gap in array
 					_moveElement(_population, deleteElementIdx);
+					if (nextElementIdxOfRemoved == _population)
+						nextElementIdxOfRemoved = deleteElementIdx;
 				}
 
 				const bool CLEAR_UNUSED_ELEMENT = true;
@@ -5888,6 +5890,8 @@ namespace QPI
 					setMem(&_elements[_population], sizeof(Element), 0);
 				}
 			}
+
+			return nextElementIdxOfRemoved;
 		}
 
 		// Replace *existing* element, do nothing otherwise.

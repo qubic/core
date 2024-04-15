@@ -657,7 +657,9 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
         EXPECT_EQ(coll.population(), coll.capacity());
         EXPECT_EQ(coll.population(pov), coll.capacity());
         checkPriorityQueue(coll, pov);
-        coll.remove(headIndex);
+        QPI::sint64 followingRemovedIndex = coll.remove(headIndex);
+        EXPECT_EQ(coll.priority(followingRemovedIndex), afterHeadPrio);
+        EXPECT_EQ(coll.element(followingRemovedIndex), afterHeadValue);
         EXPECT_EQ(coll.population(), coll.capacity() - 1);
         EXPECT_EQ(coll.population(pov), coll.capacity() - 1);
         
@@ -677,7 +679,8 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
         int beforeTailValue = coll.element(beforeTailIndex);
         EXPECT_EQ(coll.population(), coll.capacity() - 1);
         EXPECT_EQ(coll.population(pov), coll.capacity() - 1);
-        coll.remove(tailIndex);
+        QPI::sint64 followingRemovedIndex = coll.remove(tailIndex);
+        EXPECT_EQ(followingRemovedIndex, QPI::NULL_INDEX);
         EXPECT_EQ(coll.population(), coll.capacity() - 2);
         EXPECT_EQ(coll.population(pov), coll.capacity() - 2);
 
@@ -700,7 +703,9 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
         int twoBeforeTailValue = coll.element(twoBeforeTailIndex);
         EXPECT_EQ(coll.population(), coll.capacity() - 2);
         EXPECT_EQ(coll.population(pov), coll.capacity() - 2);
-        coll.remove(beforeTailIndex);
+        QPI::sint64 followingRemovedIndex = coll.remove(beforeTailIndex);
+        EXPECT_EQ(coll.priority(followingRemovedIndex), tailPrio);
+        EXPECT_EQ(coll.element(followingRemovedIndex), tailValue);
         EXPECT_EQ(coll.population(), coll.capacity() - 3);
         EXPECT_EQ(coll.population(pov), coll.capacity() - 3);
 
@@ -731,14 +736,27 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
         EXPECT_EQ(coll.population(pov), coll.capacity() - 1);
 
         checkPriorityQueue(coll, pov);
-        coll.remove(0);
+
+        // remove one
+        int followingRemovedValue = coll.element(coll.nextElementIndex(0));
+        QPI::sint64 followingRemovedPrio = coll.priority(coll.nextElementIndex(0));
+        QPI::sint64 followingRemovedIndex = coll.remove(0);
+        EXPECT_EQ(followingRemovedValue, coll.element(followingRemovedIndex));
+        EXPECT_EQ(followingRemovedPrio, coll.priority(followingRemovedIndex));
         checkPriorityQueue(coll, pov);
-        coll.remove(1);
+
+        // remove another
+        followingRemovedValue = coll.element(coll.nextElementIndex(1));
+        followingRemovedPrio = coll.priority(coll.nextElementIndex(1));
+        followingRemovedIndex = coll.remove(1);
+        EXPECT_EQ(followingRemovedValue, coll.element(followingRemovedIndex));
+        EXPECT_EQ(followingRemovedPrio, coll.priority(followingRemovedIndex));
         checkPriorityQueue(coll, pov);
 
         EXPECT_EQ(coll.population(), coll.capacity() - 3);
         EXPECT_EQ(coll.population(pov), coll.capacity() - 3);
 
+        // check tail and head
         newIdx1 = coll.tailIndex(pov);
         newIdx2 = coll.headIndex(pov);
         EXPECT_EQ(coll.priority(newIdx1), newPrio2);
@@ -750,7 +768,11 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
     // remove remaining elements except last
     while (coll.population() > 1)
     {
-        coll.remove(0);
+        int followingRemovedValue = coll.element(coll.nextElementIndex(0));
+        QPI::sint64 followingRemovedPrio = coll.priority(coll.nextElementIndex(0));
+        QPI::sint64 followingRemovedIndex = coll.remove(0);
+        EXPECT_EQ(followingRemovedValue, coll.element(followingRemovedIndex));
+        EXPECT_EQ(followingRemovedPrio, coll.priority(followingRemovedIndex));
         checkPriorityQueue(coll, pov);
         EXPECT_EQ(coll.population(), coll.population(pov));
     }
@@ -759,7 +781,7 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
     {
         EXPECT_EQ(coll.headIndex(pov), 0);
         EXPECT_EQ(coll.tailIndex(pov), 0);
-        coll.remove(0);
+        EXPECT_EQ(coll.remove(0), QPI::NULL_INDEX);
         checkPriorityQueue(coll, pov);
         EXPECT_EQ(coll.headIndex(pov), QPI::NULL_INDEX);
         EXPECT_EQ(coll.tailIndex(pov), QPI::NULL_INDEX);
@@ -769,7 +791,7 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
 
     // test that removing element from empty collection has no effect
     {
-        coll.remove(0);
+        EXPECT_EQ(coll.remove(0), QPI::NULL_INDEX);
         checkPriorityQueue(coll, pov);
         EXPECT_EQ(coll.headIndex(pov), QPI::NULL_INDEX);
         EXPECT_EQ(coll.tailIndex(pov), QPI::NULL_INDEX);
@@ -843,7 +865,7 @@ void testCollectionMultiPovOneElement(bool cleanupAfterEachRemove)
         // remove
         QPI::id removePov(j / 2, j % 2, j * 2, j * 3);
         EXPECT_EQ(coll.population(removePov), 1);
-        coll.remove(coll.headIndex(removePov));
+        EXPECT_EQ(coll.remove(coll.headIndex(removePov)), QPI::NULL_INDEX);
         EXPECT_EQ(coll.population(removePov), 0);
         EXPECT_EQ(coll.population(), capacity - j - 1);
 
@@ -885,14 +907,14 @@ TEST(TestCoreQPI, CollectionOneRemoveLastHeadTail) {
     coll.add(pov, 1234, 1000);
     coll.add(pov, 1234, 10000);
     checkPriorityQueue(coll, pov, print);
-    coll.remove(1);
+    EXPECT_EQ(coll.remove(1), 0);
     checkPriorityQueue(coll, pov, print);
 
     coll.reset();
     coll.add(pov, 1234, 10000);
     coll.add(pov, 1234, 1000);
     checkPriorityQueue(coll, pov, print);
-    coll.remove(1);
+    EXPECT_EQ(coll.remove(1), QPI::NULL_INDEX);
     checkPriorityQueue(coll, pov, print);
 }
 
@@ -1181,8 +1203,21 @@ void testCollectionCleanupPseudoRandom(int povs, int seed, bool povCollisions)
         }
         else if (coll.population() > 0)
         {
-            // remove from collection
-            coll.remove(gen64() % coll.population());
+            // remove from collection (also testing next index returned by remove)
+            QPI::sint64 removeIdx = gen64() % coll.population();
+            QPI::sint64 followingRemovedIndex = coll.nextElementIndex(removeIdx);
+            if (followingRemovedIndex != QPI::NULL_INDEX)
+            {
+                unsigned long long followingRemovedValue = coll.element(followingRemovedIndex);
+                QPI::sint64 followingRemovedPrio = coll.priority(followingRemovedIndex);
+                followingRemovedIndex = coll.remove(removeIdx);
+                EXPECT_EQ(followingRemovedValue, coll.element(followingRemovedIndex));
+                EXPECT_EQ(followingRemovedPrio, coll.priority(followingRemovedIndex));
+            }
+            else
+            {
+                EXPECT_EQ(coll.remove(removeIdx), QPI::NULL_INDEX);
+            }
         }
     }
 }
