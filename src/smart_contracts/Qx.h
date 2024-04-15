@@ -247,7 +247,7 @@ private:
 	PUBLIC(AssetAskOrders)
 
 		state._issuerAndAssetName = input.issuer;
-		state._issuerAndAssetName.u64._0 = input.assetName;
+		state._issuerAndAssetName.u64._3 = input.assetName;
 
 		state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, 0);
 		state._elementIndex2 = 0;
@@ -287,7 +287,7 @@ private:
 	PUBLIC(AssetBidOrders)
 
 		state._issuerAndAssetName = input.issuer;
-		state._issuerAndAssetName.u64._0 = input.assetName;
+		state._issuerAndAssetName.u64._3 = input.assetName;
 
 		state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName);
 		state._elementIndex2 = 0;
@@ -496,7 +496,7 @@ private:
 				output.addedNumberOfShares = input.numberOfShares;
 
 				state._issuerAndAssetName = input.issuer;
-				state._issuerAndAssetName.u64._0 = input.assetName;
+				state._issuerAndAssetName.u64._3 = input.assetName;
 
 				state._elementIndex = state._entityOrders.headIndex(qpi.invocator(), -input.price);
 				while (state._elementIndex != NULL_INDEX)
@@ -512,9 +512,8 @@ private:
 					if (state._entityOrder.assetName == input.assetName
 						&& state._entityOrder.issuer == input.issuer)
 					{
-						state._entityOrders.remove(state._elementIndex);
 						state._entityOrder.numberOfShares += input.numberOfShares;
-						state._entityOrders.add(qpi.invocator(), state._entityOrder, -input.price);
+						state._entityOrders.replace(state._elementIndex, state._entityOrder);
 
 						state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, -input.price);
 						while (true) // Impossible for the corresponding asset order to not exist
@@ -522,9 +521,8 @@ private:
 							state._assetOrder = state._assetOrders.element(state._elementIndex);
 							if (state._assetOrder.entity == qpi.invocator())
 							{
-								state._assetOrders.remove(state._elementIndex);
 								state._assetOrder.numberOfShares += input.numberOfShares;
-								state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, -input.price);
+								state._assetOrders.replace(state._elementIndex, state._assetOrder);
 
 								break;
 							}
@@ -554,23 +552,21 @@ private:
 						state._assetOrder = state._assetOrders.element(state._elementIndex);
 						if (state._assetOrder.numberOfShares <= input.numberOfShares)
 						{
-							state._elementIndex2 = state._assetOrders.nextElementIndex(state._elementIndex);
+							state._elementIndex = state._assetOrders.remove(state._elementIndex);
 
-							state._assetOrders.remove(state._elementIndex);
-
-							state._elementIndex = state._entityOrders.headIndex(state._assetOrder.entity, state._price);
+							state._elementIndex2 = state._entityOrders.headIndex(state._assetOrder.entity, state._price);
 							while (true) // Impossible for the corresponding entity order to not exist
 							{
-								state._entityOrder = state._entityOrders.element(state._elementIndex);
+								state._entityOrder = state._entityOrders.element(state._elementIndex2);
 								if (state._entityOrder.assetName == input.assetName
 									&& state._entityOrder.issuer == input.issuer)
 								{
-									state._entityOrders.remove(state._elementIndex);
+									state._entityOrders.remove(state._elementIndex2);
 
 									break;
 								}
 
-								state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+								state._elementIndex2 = state._entityOrders.nextElementIndex(state._elementIndex2);
 							}
 
 							state._fee = (state._price * state._assetOrder.numberOfShares * state._tradeFee / 1000000000UL) + 1;
@@ -584,7 +580,6 @@ private:
 							state._tradeMessage.numberOfShares = state._assetOrder.numberOfShares;
 							LOG_INFO(state._tradeMessage);
 
-							state._elementIndex = state._elementIndex2;
 							input.numberOfShares -= state._assetOrder.numberOfShares;
 						}
 						else
@@ -659,7 +654,7 @@ private:
 			output.addedNumberOfShares = input.numberOfShares;
 
 			state._issuerAndAssetName = input.issuer;
-			state._issuerAndAssetName.u64._0 = input.assetName;
+			state._issuerAndAssetName.u64._3 = input.assetName;
 
 			state._elementIndex = state._entityOrders.tailIndex(qpi.invocator(), input.price);
 			while (state._elementIndex != NULL_INDEX)
@@ -675,9 +670,8 @@ private:
 				if (state._entityOrder.assetName == input.assetName
 					&& state._entityOrder.issuer == input.issuer)
 				{
-					state._entityOrders.remove(state._elementIndex);
 					state._entityOrder.numberOfShares += input.numberOfShares;
-					state._entityOrders.add(qpi.invocator(), state._entityOrder, input.price);
+					state._entityOrders.replace(state._elementIndex, state._entityOrder);
 
 					state._elementIndex = state._assetOrders.tailIndex(state._issuerAndAssetName, input.price);
 					while (true) // Impossible for the corresponding asset order to not exist
@@ -685,9 +679,8 @@ private:
 						state._assetOrder = state._assetOrders.element(state._elementIndex);
 						if (state._assetOrder.entity == qpi.invocator())
 						{
-							state._assetOrders.remove(state._elementIndex);
 							state._assetOrder.numberOfShares += input.numberOfShares;
-							state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, input.price);
+							state._assetOrders.replace(state._elementIndex, state._assetOrder);
 
 							break;
 						}
@@ -717,23 +710,21 @@ private:
 					state._assetOrder = state._assetOrders.element(state._elementIndex);
 					if (state._assetOrder.numberOfShares <= input.numberOfShares)
 					{
-						state._elementIndex2 = state._assetOrders.nextElementIndex(state._elementIndex);
+						state._elementIndex = state._assetOrders.remove(state._elementIndex);
 
-						state._assetOrders.remove(state._elementIndex);
-
-						state._elementIndex = state._entityOrders.headIndex(state._assetOrder.entity, -state._price);
+						state._elementIndex2 = state._entityOrders.headIndex(state._assetOrder.entity, -state._price);
 						while (true) // Impossible for the corresponding entity order to not exist
 						{
-							state._entityOrder = state._entityOrders.element(state._elementIndex);
+							state._entityOrder = state._entityOrders.element(state._elementIndex2);
 							if (state._entityOrder.assetName == input.assetName
 								&& state._entityOrder.issuer == input.issuer)
 							{
-								state._entityOrders.remove(state._elementIndex);
+								state._entityOrders.remove(state._elementIndex2);
 
 								break;
 							}
 
-							state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+							state._elementIndex2 = state._entityOrders.nextElementIndex(state._elementIndex2);
 						}
 
 						state._fee = (state._price * state._assetOrder.numberOfShares * state._tradeFee / 1000000000UL) + 1;
@@ -747,7 +738,6 @@ private:
 						state._tradeMessage.numberOfShares = state._assetOrder.numberOfShares;
 						LOG_INFO(state._tradeMessage);
 
-						state._elementIndex = state._elementIndex2;
 						input.numberOfShares -= state._assetOrder.numberOfShares;
 					}
 					else
@@ -823,7 +813,7 @@ private:
 		else
 		{
 			state._issuerAndAssetName = input.issuer;
-			state._issuerAndAssetName.u64._0 = input.assetName;
+			state._issuerAndAssetName.u64._3 = input.assetName;
 
 			state._elementIndex = state._entityOrders.headIndex(qpi.invocator(), -input.price);
 			while (state._elementIndex != NULL_INDEX)
@@ -845,11 +835,14 @@ private:
 					}
 					else
 					{
-						state._entityOrders.remove(state._elementIndex);
 						state._entityOrder.numberOfShares -= input.numberOfShares;
 						if (state._entityOrder.numberOfShares > 0)
 						{
-							state._entityOrders.add(qpi.invocator(), state._entityOrder, -input.price);
+							state._entityOrders.replace(state._elementIndex, state._entityOrder);
+						}
+						else
+						{
+							state._entityOrders.remove(state._elementIndex);
 						}
 
 						state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, -input.price);
@@ -858,11 +851,14 @@ private:
 							state._assetOrder = state._assetOrders.element(state._elementIndex);
 							if (state._assetOrder.entity == qpi.invocator())
 							{
-								state._assetOrders.remove(state._elementIndex);
 								state._assetOrder.numberOfShares -= input.numberOfShares;
 								if (state._assetOrder.numberOfShares > 0)
 								{
-									state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, -input.price);
+									state._assetOrders.replace(state._elementIndex, state._assetOrder);
+								}
+								else
+								{
+									state._assetOrders.remove(state._elementIndex);
 								}
 
 								break;
@@ -904,7 +900,7 @@ private:
 		else
 		{
 			state._issuerAndAssetName = input.issuer;
-			state._issuerAndAssetName.u64._0 = input.assetName;
+			state._issuerAndAssetName.u64._3 = input.assetName;
 
 			state._elementIndex = state._entityOrders.tailIndex(qpi.invocator(), input.price);
 			while (state._elementIndex != NULL_INDEX)
@@ -926,11 +922,14 @@ private:
 					}
 					else
 					{
-						state._entityOrders.remove(state._elementIndex);
 						state._entityOrder.numberOfShares -= input.numberOfShares;
 						if (state._entityOrder.numberOfShares > 0)
 						{
-							state._entityOrders.add(qpi.invocator(), state._entityOrder, input.price);
+							state._entityOrders.replace(state._elementIndex, state._entityOrder);
+						}
+						else
+						{
+							state._entityOrders.remove(state._elementIndex);
 						}
 
 						state._elementIndex = state._assetOrders.tailIndex(state._issuerAndAssetName, input.price);
@@ -939,11 +938,14 @@ private:
 							state._assetOrder = state._assetOrders.element(state._elementIndex);
 							if (state._assetOrder.entity == qpi.invocator())
 							{
-								state._assetOrders.remove(state._elementIndex);
 								state._assetOrder.numberOfShares -= input.numberOfShares;
 								if (state._assetOrder.numberOfShares > 0)
 								{
-									state._assetOrders.add(state._issuerAndAssetName, state._assetOrder, input.price);
+									state._assetOrders.replace(state._elementIndex, state._assetOrder);
+								}
+								else
+								{
+									state._assetOrders.remove(state._elementIndex);
 								}
 
 								break;
