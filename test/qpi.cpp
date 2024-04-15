@@ -1139,7 +1139,7 @@ TEST(TestCoreQPI, CollectionReplaceElements) {
 
         coll.replace(replaceIndex, replaceElement);
 
-        if (replaceIndex < numRemainedElements)
+        if (size_t(replaceIndex) < numRemainedElements)
         {
             EXPECT_EQ(coll.element(replaceIndex), replaceElement);
             EXPECT_EQ(coll.priority(replaceIndex), priorities[replaceIndex]);

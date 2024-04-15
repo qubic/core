@@ -5890,15 +5890,14 @@ namespace QPI
 			}
 		}
 
-		// Replace *existing* element, do nothing otherwise
+		// Replace *existing* element, do nothing otherwise.
 		// - The element exists: replace its value.
-		// - The element has been removed: replace the value of the new element that fills this position after removal.
 		// - The index is out of bounds: no action is taken.
-		void replace(sint64 oldElementIndex, T newElement)
+		void replace(sint64 oldElementIndex, const T& newElement)
 		{
-			if (oldElementIndex < _population)
+			if (uint64(oldElementIndex) < _population)
 			{
-				_elements[oldElementIndex & (L - 1)].value = newElement;
+				_elements[oldElementIndex].value = newElement;
 			}
 		}
 
