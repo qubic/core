@@ -651,6 +651,11 @@ private:
 		}
 		else
 		{
+			if (invocationReward() > input.price * input.numberOfShares)
+			{
+				transfer(invocator(), invocationReward() - input.price * input.numberOfShares);
+			}
+
 			output.addedNumberOfShares = input.numberOfShares;
 
 			state._issuerAndAssetName = input.issuer;
@@ -789,11 +794,6 @@ private:
 					state._entityOrder.numberOfShares = input.numberOfShares;
 					state._entityOrders.add(invocator(), state._entityOrder, input.price);
 				}
-			}
-
-			if (invocationReward() > input.price * input.numberOfShares)
-			{
-				transfer(invocator(), invocationReward() - input.price * input.numberOfShares);
 			}
 		}
 	_
