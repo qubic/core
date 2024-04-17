@@ -56,6 +56,7 @@ union m256i
 
     m256i(unsigned long long ull0, unsigned long long ull1, unsigned long long ull2, unsigned long long ull3)
     {
+        // TODO: set with _mm256_set_epi64x
         m256i_u64[0] = ull0;
         m256i_u64[1] = ull1;
         m256i_u64[2] = ull2;

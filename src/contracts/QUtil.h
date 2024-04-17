@@ -71,7 +71,7 @@ public:
     /*
     * @return return SendToManyV1 fee per invocation
     */
-    PUBLIC(GetSendToManyV1Fee)
+    PUBLIC_FUNCTION(GetSendToManyV1Fee)
         output.fee = STM1_INVOCATION_FEE;
     _
 
@@ -81,7 +81,7 @@ public:
     * @param list of 25 amounts (200 bytes): 8 bytes(long long) for each amount, leave empty(zeroes) for unused memory space
     * @return returnCode (0 means success)
     */
-    PUBLIC(SendToManyV1)
+    PUBLIC_PROCEDURE(SendToManyV1)
         state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), STM1_TRIGGERED };
         LOG_INFO(state.logger);
         state.total = input.amt0 + input.amt1 + input.amt2 + input.amt3 + input.amt4 + input.amt5 + input.amt6 + input.amt7 + input.amt8 + input.amt9 + input.amt10 + input.amt11 + input.amt12 + input.amt13 + input.amt14 + input.amt15 + input.amt16 + input.amt17 + input.amt18 + input.amt19 + input.amt20 + input.amt21 + input.amt22 + input.amt23 + input.amt24 + STM1_INVOCATION_FEE;

@@ -120,6 +120,9 @@
     <ClInclude Include="contract_core\stack_buffer.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="contract_core\contract_exec.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

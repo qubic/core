@@ -12,7 +12,12 @@ struct StackBuffer
     typedef StackBufferSizeType SizeType;
     static_assert(SizeType(-1) > 0, "Signed StackBufferSizeType is not supported!");
 
-    // Initialize as empty stack (momory not zeroed)
+    StackBuffer()
+    {
+        init();
+    }
+
+    // Initialize as empty stack (memory not zeroed)
     void init()
     {
         _allocatedSize = 0;
@@ -41,7 +46,7 @@ struct StackBuffer
 #endif
 
     // Allocate storage in buffer.
-    void* allocate(SizeType size)
+    char* allocate(SizeType size)
     {
         // allocate fails of size after allocating overflows buffer size or the used size type
         StackBufferSizeType newSize = _allocatedSize + size + sizeof(SizeType);
@@ -61,6 +66,8 @@ struct StackBuffer
         if (_allocatedSize > _maxAllocatedSize)
             _maxAllocatedSize = _allocatedSize;
 #endif
+
+        return allocatedBuffer;
     }
 
     // Free storage allocated by last call to allocate().

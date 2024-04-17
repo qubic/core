@@ -30,7 +30,9 @@ namespace QPI
 
 	const_cast
 	QpiContext
-	__registerUser
+	__qpi
+	TODO: prevent other casts trying to cast const away from state
+	TODO: #undef and other methods trying to redefine QPI (maybe completely disallow #define?)
 
 	*/
 
@@ -5965,27 +5967,53 @@ namespace QPI
 	//////////
 
 #if !defined(NO_UEFI)
+
+	// QPI context base class (common data, by default has no stack for locals)
 	struct QpiContext
+	{
+	protected:
+		// Construction is done in core, not allowed in contracts
+		QpiContext(
+			unsigned int contractIndex,
+			const m256i& originator,
+			const m256i& invocator,
+			long long invocationReward
+		) {
+			init(contractIndex, originator, invocator, invocationReward);
+		}
+
+		void init(
+			unsigned int contractIndex,
+			const m256i& originator,
+			const m256i& invocator,
+			long long invocationReward
+		) {
+			_currentContractIndex = contractIndex;
+			_currentContractId = m256i(contractIndex, 0, 0, 0);
+			_originator = originator;
+			_invocator = invocator;
+			_invocationReward = invocationReward;
+			_stackIndex = -1;
+		}
+
+		unsigned int _currentContractIndex;
+		m256i _currentContractId, _originator, _invocator;
+		long long _invocationReward;
+		int _stackIndex;
+
+	private:
+		// Disabling copy and move
+		QpiContext(const QpiContext&) = delete;
+		QpiContext(QpiContext&&) = delete;
+		QpiContext& operator=(const QpiContext&) = delete;
+		QpiContext& operator=(QpiContext&&) = delete;
+	};
+
+	// QPI function available to contract functions and procedures
+	struct QpiContextFunctionCall : public QpiContext
 	{
 		id arbitrator(
 		) const;
-
-		sint64 burn(
-			sint64 amount
-		) const;
-
-		// TODO: needs to be macro to access private members
-		// TODO: remove need to pass state explicitly
-		// call function or procedure of contract
-		template <typename Callable, typename State, typename Input, typename Output>
-		void call(Callable& callable, State& state, Input& input, Output& output) const
-		{
-			callable(*this, state, input, output);
-		}
-
-		// TODO: calling of other contracts, make sure to avoid race conditions
-		// write note about use of stack and risk of stack overlow with many -> we may have a separate per-processor stack to store the context (or changing variables of the context)
-
 
 		id computor(
 			uint16 computorIndex // [0..675]
@@ -6016,14 +6044,6 @@ namespace QPI
 
 		id invocator(
 		) const; // Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
-
-		sint64 issueAsset(
-			uint64 name,
-			const id& issuer,
-			sint8 numberOfDecimalPlaces,
-			sint64 numberOfShares,
-			uint64 unitOfMeasurement
-		) const; // Returns number of shares or 0 on error
 
 		template <typename T>
 		id K12(
@@ -6061,6 +6081,38 @@ namespace QPI
 		uint32 tick(
 		) const; // [0..999'999'999]
 
+		uint8 year(
+		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
+
+
+		// Internal functions, calling not allowed in contracts
+		void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
+		void __qpiFreeLocals() const;
+		const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
+		void __qpiFreeContextOtherContract() const;
+		void * __qpiAquireStateForReading(unsigned int contractIndex) const;
+		void __qpiReleaseStateForReading(unsigned int contractIndex) const;
+
+	protected:
+		// Construction is done in core, not allowed in contracts
+		QpiContextFunctionCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContext(contractIndex, originator, originator, invocationReward) {}
+	};
+
+	// QPI procedures available to contract procedures (not to contract functions)
+	struct QpiContextProcedureCall : public QPI::QpiContextFunctionCall
+	{
+		sint64 burn(
+			sint64 amount
+		) const;
+
+		sint64 issueAsset(
+			uint64 name,
+			const id& issuer,
+			sint8 numberOfDecimalPlaces,
+			sint64 numberOfShares,
+			uint64 unitOfMeasurement
+		) const; // Returns number of shares or 0 on error
+
 		sint64 transfer( // Attempts to transfer energy from this qubic
 			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
 			sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
@@ -6075,57 +6127,34 @@ namespace QPI
 			const id& newOwnerAndPossessor
 		) const; // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
 
-		uint8 year(
-		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
+
+		// Internal functions, calling not allowed in contracts
+		const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex) const;
+		void* __qpiAquireStateForWriting(unsigned int contractIndex) const;
+		void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 
 	protected:
 		// Construction is done in core, not allowed in contracts
-		QpiContext(
-			unsigned int contractIndex,
-			const m256i& originator,
-			const m256i& invocator,
-			long long invocationReward
-		) :
-			_currentContractIndex(contractIndex),
-			_currentContractId(contractIndex, 0, 0, 0),
-			_originator(originator),
-			_invocator(invocator),
-			_invocationReward(invocationReward)
-		{}
-
-		unsigned int _currentContractIndex;
-		m256i _currentContractId, _originator, _invocator;
-		long long _invocationReward;
-
-	private:
-		// Disabling copy and move
-		QpiContext(const QpiContext&) = delete;
-		QpiContext(QpiContext&&) = delete;
-		QpiContext& operator=(const QpiContext&) = delete;
-		QpiContext& operator=(QpiContext&&) = delete;
+		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContextFunctionCall(contractIndex, originator, invocationReward) {}
 	};
 
-	struct QpiContextProcedureCall : public QPI::QpiContext
-	{
-		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContext(contractIndex, originator, originator, invocationReward) {}
-	};
-
+	// QPI available in REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 	struct QpiContextForInit : public QPI::QpiContext
 	{
+		void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
+
+		// Construction is done in core, not allowed in contracts
 		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
-		void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short) const;
-		void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short) const;
 	};
 
-	struct QpiContextNoOriginatorAndReward : public QPI::QpiContext
-	{
-		QpiContextNoOriginatorAndReward(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
-	};
+	struct NoLocalVariables {};
 
 #endif
 
 	//////////
 
+	// TODO: make sure these cannot be called from contract body
 	#define INITIALIZE public: static void __initialize(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
 	#define BEGIN_EPOCH public: static void __beginEpoch(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
@@ -6138,6 +6167,7 @@ namespace QPI
 
 	#define EXPAND public: static void __expand(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
+	// TODO: move to QPI to prevent from spamming log of other contract (by calling local function)
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
 
 	#define LOG_ERROR(message) __logContractErrorMessage(CONTRACT_INDEX, message);
@@ -6146,17 +6176,101 @@ namespace QPI
 
 	#define LOG_WARNING(message) __logContractWarningMessage(CONTRACT_INDEX, message);
 
-	#define PRIVATE(functionOrProcedure) private: static void functionOrProcedure(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define PRIVATE_FUNCTION(function) \
+		private: \
+			typedef QPI::NoLocalVariables function##_locals; \
+			PRIVATE_FUNCTION_WITH_LOCALS(function)
 
-	#define PUBLIC(functionOrProcedure) public: static void functionOrProcedure(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define PRIVATE_FUNCTION_WITH_LOCALS(function) \
+		private: \
+			enum { __is_function_##function = true }; \
+			static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define REGISTER_USER_FUNCTIONS_AND_PROCEDURES public: static void __registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define PRIVATE_PROCEDURE(procedure) \
+		private: \
+			typedef QPI::NoLocalVariables procedure##_locals; \
+			PRIVATE_PROCEDURE_WITH_LOCALS(procedure);
+
+	#define PRIVATE_PROCEDURE_WITH_LOCALS(procedure) \
+		private: \
+			enum { __is_function_##procedure = false }; \
+			static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+
+	#define PUBLIC_FUNCTION(function) \
+		public: \
+			typedef QPI::NoLocalVariables function##_locals; \
+			PUBLIC_FUNCTION_WITH_LOCALS(function);
+
+	#define PUBLIC_FUNCTION_WITH_LOCALS(function) \
+		public: \
+			enum { __is_function_##function = true }; \
+			static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+
+	#define PUBLIC_PROCEDURE(procedure) \
+		public: \
+			typedef QPI::NoLocalVariables procedure##_locals; \
+			PUBLIC_PROCEDURE_WITH_LOCALS(procedure);
+
+	#define PUBLIC_PROCEDURE_WITH_LOCALS(procedure) \
+		public: \
+			enum { __is_function_##procedure = false }; \
+			static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+
+	#define REGISTER_USER_FUNCTIONS_AND_PROCEDURES \
+		public: \
+			enum { __contract_index = CONTRACT_INDEX }; \
+			static void __registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
 	#define _ ::__endFunctionOrProcedure(__functionOrProcedureId); }
 
-	#define REGISTER_USER_FUNCTION(userFunction, inputType) qpi.__registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output));
+	#define REGISTER_USER_FUNCTION(userFunction, inputType) \
+		static_assert(__is_function_##userFunction, #userFunction " is procedure"); \
+		static_assert(sizeof(userFunction##_output) <= 65536, #userFunction "_output size too large"); \
+		static_assert(sizeof(userFunction##_input) <= 65536, #userFunction "_input size too large"); \
+		static_assert(sizeof(userFunction##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userFunction "_locals size too large"); \
+		qpi.__registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output), sizeof(userFunction##_locals));
 
-	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output));
+	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) \
+		static_assert(!__is_function_##userProcedure, #userProcedure " is function"); \
+		static_assert(sizeof(userProcedure##_output) <= 65536, #userProcedure "_output size too large"); \
+		static_assert(sizeof(userProcedure##_input) <= 65536, #userProcedure "_input size too large"); \
+		static_assert(sizeof(userProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userProcedure "_locals size too large"); \
+		qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
+
+	// Call function or procedure of current contract
+	#define CALL(functionOrProcedure, input, output) \
+		static_assert(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #functionOrProcedure "_locals size too large"); \
+		functionOrProcedure(qpi, state, input, output, *(functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals))); \
+		qpi.__qpiFreeLocals()
+
+	// Call function or procedure of other contract
+	// TODO: static_assert(contractStateType != CONTRACT_STATE_TYPE, "Use CALL to call a function/procedure of this contract");
+	#define CALL_OTHER_CONTRACT(contractStateType, functionOrProcedure, input, output) \
+		static_assert(sizeof(contractStateType::functionOrProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #functionOrProcedure "_locals size too large"); \
+		if (contractStateType::__is_function_##functionOrProcedure) { \
+			contractStateType::functionOrProcedure( \
+				qpi.__qpiConstructContextOtherContractFunctionCall(contractStateType::__contract_index), \
+				*(contractStateType*)qpi.__qpiAquireStateForReading(contractStateType::__contract_index), \
+				input, output, \
+				*(contractStateType::functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::functionOrProcedure##_locals))); \
+			qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
+		} else { \
+			contractStateType::functionOrProcedure( \
+				qpi.__qpiConstructContextOtherContractProcedureCall(contractStateType::__contract_index), \
+				*(contractStateType*)qpi.__qpiAquireStateForWriting(contractStateType::__contract_index), \
+				input, output, \
+				*(contractStateType::functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::functionOrProcedure##_locals))); \
+			qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
+		} \
+		qpi.__qpiFreeLocals()
+
+		// call function or procedure of contract (test case function -> function, procedure -> function, procedure -> proc, forbidden func -> proc)
+
+	
+	// TODO: calling of other contracts, make sure to avoid race conditions, prevent deadlocks (A -> A not allowed)
+	// check that private cannot be called from other
+	// only allow to call contracts with smaller ID
+	// write note about use of stack and risk of stack overlow with many -> we may have a separate per-processor stack to store the context (or changing variables of the context)
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 

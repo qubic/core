@@ -43,5 +43,8 @@ TEST(TestCoreContractCore, StackBuffer)
     s1.free();
     EXPECT_EQ(s1.size(), 0);
 
-    
+    char* p = s1.allocate(70);
+    *p = 100;
+    EXPECT_EQ(*p, 100);
+    s1.free();
 }
