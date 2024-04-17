@@ -23,7 +23,8 @@
 
 // Set START_NETWORK_FROM_SCRATCH to 0 if you start the node for syncing with the already ticking network.
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
-// If this flag is 0, the node will try to fetch the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
+// If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
+// If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
 #define START_NETWORK_FROM_SCRATCH 0
 
 //////////////////////////////////////////////////////////////////////////
@@ -33,6 +34,7 @@
 #define VERSION_B 199
 #define VERSION_C 0
 
+// Epoch and initial tick for node startup
 #define EPOCH 105
 #define TICK 13461049
 
