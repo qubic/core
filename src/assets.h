@@ -128,6 +128,7 @@ iteration:
             && ((*((unsigned long long*)assets[*issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == ((*((unsigned long long*)name)) & 0xFFFFFFFFFFFFFF)
             && assets[*issuanceIndex].varStruct.issuance.publicKey == issuerPublicKey)
         {
+            RELEASE(universeLock);
             return 0;
         }
 
