@@ -249,6 +249,7 @@ iteration:
     }
 }
 
+// Should only be called from tick processor to avoid concurrent asset state changes, which may cause race conditions
 static void getUniverseDigest(m256i& digest)
 {
     unsigned int digestIndex;
