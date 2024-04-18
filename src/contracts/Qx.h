@@ -651,6 +651,11 @@ private:
 		}
 		else
 		{
+			if (qpi.invocationReward() > input.price * input.numberOfShares)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.price * input.numberOfShares);
+			}
+
 			output.addedNumberOfShares = input.numberOfShares;
 
 			state._issuerAndAssetName = input.issuer;
@@ -789,11 +794,6 @@ private:
 					state._entityOrder.numberOfShares = input.numberOfShares;
 					state._entityOrders.add(qpi.invocator(), state._entityOrder, input.price);
 				}
-			}
-
-			if (qpi.invocationReward() > input.price * input.numberOfShares)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.price * input.numberOfShares);
 			}
 		}
 	_
