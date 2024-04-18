@@ -379,6 +379,7 @@ static void enableAVX()
         ));
 }
 
+// Should only be called from tick processor to avoid concurrent state changes, which can cause race conditions as detailed in FIXME below.
 static void getComputerDigest(m256i& digest)
 {
     unsigned int digestIndex;
@@ -4560,7 +4561,7 @@ static void processKeyPresses()
 
             CHAR16 digestChars[60 + 1];
 
-            getIdentity((unsigned char*)&spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1], digestChars, true);
+            getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
             unsigned int numberOfEntities = 0;
             unsigned long long totalAmount = 0;
             for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
@@ -4581,18 +4582,14 @@ static void processKeyPresses()
             appendText(message, L" transactions.");
             logToConsole(message);
 
-            m256i digest;
-
             setText(message, L"Universe digest = ");
-            getUniverseDigest(digest);
-            getIdentity((unsigned char*)&digest, digestChars, true);
+            getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
             logToConsole(message);
 
             setText(message, L"Computer digest = ");
-            getComputerDigest(digest);
-            getIdentity((unsigned char*)&digest, digestChars, true);
+            getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
             logToConsole(message);
