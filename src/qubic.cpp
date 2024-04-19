@@ -5067,7 +5067,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     systemDataSavingTick = curTimeTick;
 
                     saveSystem();
-                    score->saveScoreCache();
+                    score->saveScoreCache(system.epoch);
                 }
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
@@ -5240,7 +5240,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             }
 
             saveSystem();
-            score->saveScoreCache();
+            score->saveScoreCache(system.epoch);
 
             setText(message, L"Qubic ");
             appendQubicVersion(message);
