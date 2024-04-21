@@ -1748,6 +1748,11 @@ static unsigned char __second()
     return etalonTick.second;
 }
 
+static bool __signatureValidity(const m256i& entity, const m256i& digest, array<char, 64> signature)
+{
+    return verify(entity, digest, signature);
+}
+
 static void* __scratchpad()
 {
     return reorgBuffer;

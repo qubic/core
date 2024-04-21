@@ -6081,6 +6081,14 @@ namespace QPI
 		return ::__second();
 	}
 
+	static bit signatureValidity(
+		id entity,
+		id digest,
+		array<sint8, 64> signature
+	) {
+		return ::__signatureValidity(entity, digest, signature);
+	}
+
 	static uint32 tick(
 	) { // [0..999'999'999]
 		return ::__tick();
