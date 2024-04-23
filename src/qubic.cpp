@@ -1748,9 +1748,9 @@ static unsigned char __second()
     return etalonTick.second;
 }
 
-static bool __signatureValidity(const m256i& entity, const m256i& digest, array<char, 64> signature)
+static bool __signatureValidity(const m256i& entity, const m256i& digest, const array<signed char, 64>& signature)
 {
-    return verify(entity, digest, signature);
+    return verify(entity.m256i_u8, digest.m256i_u8, reinterpret_cast<const unsigned char*>(&signature));
 }
 
 static void* __scratchpad()

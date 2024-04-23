@@ -12,6 +12,10 @@ typedef void (*USER_FUNCTION)(void*, void*, void*);
 typedef void (*USER_PROCEDURE)(void*, void*, void*);
 
 
+namespace QPI
+{
+    template <typename T, unsigned long long L> struct array;
+}
 
 static const m256i& __arbitrator();
 static long long __burn(long long);
@@ -41,7 +45,7 @@ static void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short
 static void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short);
 static void* __scratchpad();
 static unsigned char __second();
-static bool __signatureValidity(const m256i&, const m256i&, array<char, 64>);
+static bool __signatureValidity(const m256i&, const m256i&, const QPI::array<signed char, 64>&);
 static unsigned int __tick();
 static long long __transfer(const m256i&, long long);
 static long long __transferShareOwnershipAndPossession(unsigned long long, const m256i&, const m256i&, const m256i&, long long, const m256i&);
