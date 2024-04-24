@@ -1736,6 +1736,11 @@ unsigned char QPI::QpiContextFunctionCall::second() const
     return etalonTick.second;
 }
 
+bool QPI::QpiContextFunctionCall::signatureValidity(const m256i& entity, const m256i& digest, const array<signed char, 64>& signature) const
+{
+    return verify(entity.m256i_u8, digest.m256i_u8, reinterpret_cast<const unsigned char*>(&signature));
+}
+
 static void* __scratchpad()
 {
     return reorgBuffer;
@@ -4994,7 +4999,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     systemDataSavingTick = curTimeTick;
 
                     saveSystem();
-                    score->saveScoreCache();
+                    score->saveScoreCache(system.epoch);
                 }
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
@@ -5167,7 +5172,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             }
 
             saveSystem();
-            score->saveScoreCache();
+            score->saveScoreCache(system.epoch);
 
             setText(message, L"Qubic ");
             appendQubicVersion(message);

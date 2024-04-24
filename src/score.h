@@ -58,6 +58,7 @@ struct ScoreFunction
     m256i initialRandomSeed;
 
     volatile char solutionEngineLock[solutionBufferCount];
+    volatile char scoreCacheLock;
 
 #if USE_SCORE_CACHE
     ScoreCache<SCORE_CACHE_SIZE, SCORE_CACHE_COLLISION_RETRIES> scoreCache;
@@ -86,10 +87,15 @@ struct ScoreFunction
     }
 
     // Save score cache to SCORE_CACHE_FILE_NAME
-    void saveScoreCache()
+    void saveScoreCache(int epoch)
     {
 #if USE_SCORE_CACHE
+        ACQUIRE(scoreCacheLock);
+        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
+        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
+        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
         scoreCache.save(SCORE_CACHE_FILE_NAME);
+        RELEASE(scoreCacheLock);
 #endif
     }
 
@@ -98,10 +104,12 @@ struct ScoreFunction
     {
         bool success = true;
 #if USE_SCORE_CACHE
+        ACQUIRE(scoreCacheLock);
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
         success = scoreCache.load(SCORE_CACHE_FILE_NAME);
+        RELEASE(scoreCacheLock);
 #endif
         return success;
     }

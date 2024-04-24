@@ -6078,6 +6078,12 @@ namespace QPI
 		uint8 second(
 		) const; // [0..59]
 
+		bit signatureValidity(
+			const id& entity,
+			const id& digest,
+			const array<sint8, 64>& signature
+		) const;
+
 		uint32 tick(
 		) const; // [0..999'999'999]
 
