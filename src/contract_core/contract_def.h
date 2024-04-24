@@ -49,8 +49,6 @@ static void* __scratchpad();    // TODO: concurrency support (n buffers for n al
 #define CONTRACT_STATE_TYPE QX
 #define CONTRACT_STATE2_TYPE QX2
 #include "contracts/Qx.h"
-// TODO: remove state variables to prevent manipulation and make sure contracts can only call other contracts through the API
-static CONTRACT_STATE_TYPE* _QX;
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -61,7 +59,6 @@ static CONTRACT_STATE_TYPE* _QX;
 #define CONTRACT_STATE_TYPE QUOTTERY
 #define CONTRACT_STATE2_TYPE QUOTTERY2
 #include "contracts/Quottery.h"
-static CONTRACT_STATE_TYPE* _QUOTTERY;
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -72,7 +69,6 @@ static CONTRACT_STATE_TYPE* _QUOTTERY;
 #define CONTRACT_STATE_TYPE RANDOM
 #define CONTRACT_STATE2_TYPE RANDOM2
 #include "contracts/Random.h"
-static CONTRACT_STATE_TYPE* _RANDOM;
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -83,7 +79,6 @@ static CONTRACT_STATE_TYPE* _RANDOM;
 #define CONTRACT_STATE_TYPE QUTIL
 #define CONTRACT_STATE2_TYPE QUTIL2
 #include "contracts/QUtil.h"
-static CONTRACT_STATE_TYPE* _QUTIL;
 
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0
 
@@ -152,14 +147,13 @@ enum SystemProcedureID
 };
 
 #define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName)\
-_##contractName = (contractName*)contractState;\
 contractSystemProcedures[contractIndex][INITIALIZE] = (SYSTEM_PROCEDURE)contractName::__initialize;\
 contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (SYSTEM_PROCEDURE)contractName::__beginEpoch;\
 contractSystemProcedures[contractIndex][END_EPOCH] = (SYSTEM_PROCEDURE)contractName::__endEpoch;\
 contractSystemProcedures[contractIndex][BEGIN_TICK] = (SYSTEM_PROCEDURE)contractName::__beginTick;\
 contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
 contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
-_##contractName->__registerUserFunctionsAndProcedures(qpi);
+((contractName*)contractState)->__registerUserFunctionsAndProcedures(qpi);
 
 
 static void initializeContract(const unsigned int contractIndex, void* contractState)
