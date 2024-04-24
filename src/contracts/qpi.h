@@ -6129,7 +6129,7 @@ namespace QPI
 
 
 		// Internal functions, calling not allowed in contracts
-		const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex) const;
+		const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
 		void* __qpiAquireStateForWriting(unsigned int contractIndex) const;
 		void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 
@@ -6243,34 +6243,34 @@ namespace QPI
 		functionOrProcedure(qpi, state, input, output, *(functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals))); \
 		qpi.__qpiFreeLocals()
 
-	// Call function or procedure of other contract
-	// TODO: static_assert(contractStateType != CONTRACT_STATE_TYPE, "Use CALL to call a function/procedure of this contract");
-	#define CALL_OTHER_CONTRACT(contractStateType, functionOrProcedure, input, output) \
-		static_assert(sizeof(contractStateType::functionOrProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #functionOrProcedure "_locals size too large"); \
-		if (contractStateType::__is_function_##functionOrProcedure) { \
-			contractStateType::functionOrProcedure( \
-				qpi.__qpiConstructContextOtherContractFunctionCall(contractStateType::__contract_index), \
-				*(contractStateType*)qpi.__qpiAquireStateForReading(contractStateType::__contract_index), \
-				input, output, \
-				*(contractStateType::functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::functionOrProcedure##_locals))); \
-			qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
-		} else { \
-			contractStateType::functionOrProcedure( \
-				qpi.__qpiConstructContextOtherContractProcedureCall(contractStateType::__contract_index), \
-				*(contractStateType*)qpi.__qpiAquireStateForWriting(contractStateType::__contract_index), \
-				input, output, \
-				*(contractStateType::functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::functionOrProcedure##_locals))); \
-			qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
-		} \
+	// Call function of other contract
+	#define CALL_OTHER_CONTRACT_FUNCTION(contractStateType, function, input, output) \
+		static_assert(sizeof(contractStateType::function##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #function "_locals size too large"); \
+		static_assert(contractStateType::__is_function_##function, "CALL_OTHER_CONTRACT_FUNCTION() cannot be used to invoke procedures."); \
+		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function of this contract."); \
+		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
+		contractStateType::function( \
+			qpi.__qpiConstructContextOtherContractFunctionCall(contractStateType::__contract_index), \
+			*(contractStateType*)qpi.__qpiAquireStateForReading(contractStateType::__contract_index), \
+			input, output, \
+			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
+		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
-		// call function or procedure of contract (test case function -> function, procedure -> function, procedure -> proc, forbidden func -> proc)
-
-	
-	// TODO: calling of other contracts, make sure to avoid race conditions, prevent deadlocks (A -> A not allowed)
-	// check that private cannot be called from other
-	// only allow to call contracts with smaller ID
-	// write note about use of stack and risk of stack overlow with many -> we may have a separate per-processor stack to store the context (or changing variables of the context)
+	// Transfer invocation reward and invoke of other contract (procedure only)
+	#define INVOKE_OTHER_CONTRACT_PROCEDURE(contractStateType, procedure, input, output, invocationReward) \
+		static_assert(sizeof(contractStateType::procedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #procedure "_locals size too large"); \
+		static_assert(!contractStateType::__is_function_##procedure, "INVOKE_OTHER_CONTRACT_PROCEDURE() cannot be used to call functions."); \
+		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function/procedure of this contract."); \
+		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
+		static_assert(invocationReward >= 0, "The invocationReward cannot be negative!"); \
+		contractStateType::procedure( \
+			qpi.__qpiConstructContextOtherContractProcedureCall(contractStateType::__contract_index, invocationReward), \
+			*(contractStateType*)qpi.__qpiAquireStateForWriting(contractStateType::__contract_index), \
+			input, output, \
+			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
+		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
+		qpi.__qpiFreeLocals()
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 

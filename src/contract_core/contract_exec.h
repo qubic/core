@@ -76,12 +76,14 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
     return newContext;
 }
 
-const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex) const
+const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, QPI::sint64 invocationReward) const
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
     QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
-    newContext.init(otherContractIndex, _originator, _currentContractId, _invocationReward);
+    if (transfer(QPI::id(otherContractIndex, 0, 0, 0), invocationReward) < 0)
+        invocationReward = 0;
+    newContext.init(otherContractIndex, _originator, _currentContractId, invocationReward);
     return newContext;
 }
 
