@@ -61,13 +61,16 @@ struct RespondTxStatus
     }
 };
 #pragma pack(pop)
-
+static RespondTxStatus* tickTxStatusStorage = NULL;
 
 // Allocate buffers
 static bool initTxStatusRequestAddOn()
 {
     // Allocate pool to store confirmed TX's
     if (!allocatePool(confirmedTxLength * sizeof(ConfirmedTx), (void**)&confirmedTx))
+        return false;
+    // allocate tickTxStatus responses storage
+    if (!allocatePool(MAX_NUMBER_OF_PROCESSORS * sizeof(RespondTxStatus), (void**)&tickTxStatusStorage))
         return false;
     confirmedTxPreviousEpochBeginTick = 0;
     confirmedTxCurrentEpochBeginTick = 0;
@@ -182,7 +185,7 @@ static bool saveConfirmedTx(unsigned int txNumberMinusOne, unsigned char moneyFl
 }
 
 
-static void processRequestConfirmedTx(Peer *peer, RequestResponseHeader *header)
+static void processRequestConfirmedTx(long long processorNumber, Peer *peer, RequestResponseHeader *header)
 {
     ASSERT(confirmedTxCurrentEpochBeginTick == system.initialTick);
     ASSERT(system.tick >= system.initialTick);
@@ -213,8 +216,8 @@ static void processRequestConfirmedTx(Peer *peer, RequestResponseHeader *header)
     // get index where confirmedTx are starting to be stored in memory
     int index = tickTxIndexStart[tickIndex];
 
-    // init response message data
-    RespondTxStatus tickTxStatus;
+    // init response message data, get it from the storage to avoid increasing stack mem
+    RespondTxStatus& tickTxStatus = tickTxStatusStorage[processorNumber];
     tickTxStatus.currentTickOfNode = system.tick;
     tickTxStatus.tick = request->tick;
     tickTxStatus.txCount = tickTxCounter[tickIndex];

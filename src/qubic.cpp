@@ -1434,7 +1434,7 @@ static void requestProcessor(void* ProcedureArgument)
                 /* qli: process RequestTxStatus message */
                 case REQUEST_TX_STATUS:
                 {
-                    processRequestConfirmedTx(peer, header);
+                    processRequestConfirmedTx(processorNumber, peer, header);
                 }
                 break;
 
