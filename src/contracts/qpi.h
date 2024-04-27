@@ -5247,11 +5247,11 @@ namespace QPI
 				pov.population++;
 
 
-				if (_elements[pov.headIndex].priority < priority)
+				if (_elements[pov.headIndex].priority <= priority)
 				{
 					pov.headIndex = newElementIdx;
 				}
-				else if (_elements[pov.tailIndex].priority >= priority)
+				else if (_elements[pov.tailIndex].priority > priority)
 				{
 					pov.tailIndex = newElementIdx;
 				}
