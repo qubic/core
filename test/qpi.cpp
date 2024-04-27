@@ -599,10 +599,9 @@ TEST(TestCoreQPI, CollectionMultiPovMultiElements) {
     EXPECT_EQ(coll.priority(0), 0);
 }
 
-
-TEST(TestCoreQPI, CollectionOnePovMultiElements) {
-    constexpr unsigned long long capacity = 128;
-
+template <unsigned long long capacity>
+void testCollectionOnePovMultiElements(int prioAmpFactor, int prioFreqDiv)
+{
     // for valid init you either need to call reset or load the data from a file (in SC, state is zeroed before INITIALIZE is called)
     QPI::collection<int, capacity> coll;
     coll.reset();
@@ -615,7 +614,7 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
     QPI::id pov(1, 2, 3, 4);
     for (int i = 0; i < capacity; ++i)
     {
-        QPI::sint64 prio = QPI::sint64(i * 10 * sin(i / 3));
+        QPI::sint64 prio = QPI::sint64(i * prioAmpFactor * sin(i / prioFreqDiv));
         int value = i * 4;
 
         EXPECT_EQ(coll.capacity(), capacity);
@@ -624,6 +623,7 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
 
         QPI::sint64 elementIndex = coll.add(pov, value, prio);
         elementIndices.push_back(elementIndex);
+        checkPriorityQueue(coll, pov);
 
         EXPECT_TRUE(elementIndex != QPI::NULL_INDEX);
         EXPECT_EQ(coll.population(pov), i + 1);
@@ -640,7 +640,7 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
     checkPriorityQueue(coll, pov);
     for (int i = 0; i < capacity; ++i)
     {
-        QPI::sint64 prio = QPI::sint64(i * 10 * sin(i / 3));
+        QPI::sint64 prio = QPI::sint64(i * prioAmpFactor * sin(i / prioFreqDiv));
         int value = i * 4;
 
         QPI::sint64 elementIndex = elementIndices[i];
@@ -805,6 +805,14 @@ TEST(TestCoreQPI, CollectionOnePovMultiElements) {
     EXPECT_FALSE(isCompletelySame(resetColl, coll));
     coll.cleanup();
     EXPECT_TRUE(isCompletelySame(resetColl, coll));
+}
+
+TEST(TestCoreQPI, CollectionOnePovMultiElements)
+{
+    testCollectionOnePovMultiElements<128>(10, 3);
+    testCollectionOnePovMultiElements<128>(10, 10);
+    testCollectionOnePovMultiElements<128>(1, 10);
+    testCollectionOnePovMultiElements<128>(1, 1);
 }
 
 template <unsigned long long capacity>
