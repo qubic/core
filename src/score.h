@@ -23,12 +23,17 @@ template<
 >
 struct ScoreFunction
 {
+    static constexpr unsigned int numberOfNeuronsMaxInputOutput = (numberOfInputNeurons > numberOfOutputNeurons) ? numberOfInputNeurons : numberOfOutputNeurons;
+    static constexpr unsigned int maxAllNeuronLength = dataLength + numberOfNeuronsMaxInputOutput + infoLength;
+
     long long miningData[dataLength];
+
+    // neuron only has values [-1, 0, 1]
     struct
     {
-        long long input[dataLength + numberOfInputNeurons + infoLength];
-        long long output[infoLength + numberOfOutputNeurons + dataLength];
-        long long buffer[dataLength + numberOfInputNeurons + infoLength];
+        char input[dataLength + numberOfInputNeurons + infoLength];
+        char output[infoLength + numberOfOutputNeurons + dataLength];
+        char buffer[maxAllNeuronLength];
     } _neurons[solutionBufferCount];
     struct
     {
@@ -41,23 +46,20 @@ struct ScoreFunction
     int _totalModNum[257];
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
     int _modNum[257][129];
+
     // indice pos
-#if (numberOfInputNeurons+infoLength)>(numberOfOutputNeurons+dataLength)
-    unsigned short _indicePos[solutionBufferCount][numberOfInputNeurons + infoLength][dataLength + numberOfInputNeurons + infoLength];
-    int _bucketPos[solutionBufferCount][numberOfInputNeurons + infoLength][129];
-    int _bufferPos[solutionBufferCount][numberOfInputNeurons + infoLength][129];
-#else
-    unsigned short _indicePos[solutionBufferCount][numberOfOutputNeurons + dataLength][dataLength + numberOfInputNeurons + infoLength];
-    int _bucketPos[solutionBufferCount][numberOfOutputNeurons + dataLength][129];
-    int _bufferPos[solutionBufferCount][numberOfOutputNeurons + dataLength][129];
-#endif
+    static constexpr unsigned int posBufferLength = (numberOfInputNeurons + infoLength > numberOfOutputNeurons + dataLength) ? numberOfInputNeurons + infoLength : numberOfOutputNeurons + dataLength;
+    unsigned short _indicePos[solutionBufferCount][posBufferLength][dataLength + numberOfInputNeurons + infoLength];
+    int _bucketPos[solutionBufferCount][posBufferLength][129];
+    int _bufferPos[solutionBufferCount][posBufferLength][129];
     int nSample;
-    long long _sumBuffer[solutionBufferCount][dataLength + numberOfInputNeurons + infoLength];
-    unsigned short _indices[solutionBufferCount][dataLength + numberOfInputNeurons + infoLength];
+    char _sumBuffer[solutionBufferCount][maxAllNeuronLength*2];
+    unsigned short _indices[solutionBufferCount][maxAllNeuronLength];
 
     m256i initialRandomSeed;
 
     volatile char solutionEngineLock[solutionBufferCount];
+    volatile char scoreCacheLock;
 
 #if USE_SCORE_CACHE
     ScoreCache<SCORE_CACHE_SIZE, SCORE_CACHE_COLLISION_RETRIES> scoreCache;
@@ -86,10 +88,15 @@ struct ScoreFunction
     }
 
     // Save score cache to SCORE_CACHE_FILE_NAME
-    void saveScoreCache()
+    void saveScoreCache(int epoch)
     {
 #if USE_SCORE_CACHE
+        ACQUIRE(scoreCacheLock);
+        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
+        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
+        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
         scoreCache.save(SCORE_CACHE_FILE_NAME);
+        RELEASE(scoreCacheLock);
 #endif
     }
 
@@ -98,10 +105,12 @@ struct ScoreFunction
     {
         bool success = true;
 #if USE_SCORE_CACHE
+        ACQUIRE(scoreCacheLock);
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
         success = scoreCache.load(SCORE_CACHE_FILE_NAME);
+        RELEASE(scoreCacheLock);
 #endif
         return success;
     }
@@ -261,7 +270,7 @@ struct ScoreFunction
     }
 
     void getLastNeurons(const unsigned short* indices, const int* bucket, const int* modNum, unsigned short* topMax,
-                        const int nMax, const int totalModNum, int& currentCount, long long* neuron, int* index)
+                        const int nMax, const int totalModNum, int& currentCount, char* neuron, int* index)
     {
         while (currentCount < nMax)
         {
@@ -285,7 +294,7 @@ struct ScoreFunction
     }
 
     short getLastNeuronsIndex(const unsigned short* indices, const int* bucket, const int* modNum,
-                              const int totalModNum, long long* neuron, int* index)
+                              const int totalModNum, char* neuron, int* index)
     {
         int current_max = -1;
         int max_id = -1;
@@ -359,7 +368,7 @@ struct ScoreFunction
     template <bool isInput, int beginLength, int neuronLength, int endLength, int duration>
     void computeNeuron(int solutionBufIdx)
     {
-        long long* neurons = nullptr;
+        char* neurons = nullptr;
         char* synapses = nullptr;
         if (isInput) {
             neurons = _neurons[solutionBufIdx].input;
@@ -421,6 +430,7 @@ struct ScoreFunction
                 }
                 // full compute
                 if (!found) {
+                    static_assert(sizeof(sumBuffer) >= maxAllNeuronLength * sizeof(unsigned short), "merge sort may be not enough");
                     int totalIndice = mergeSortBucket(indicePos[neuronIndex], bucketPos[neuronIndex], _modNum[tick], indices, (unsigned short*)sumBuffer, _totalModNum[tick]);
                     if (totalIndice == 0) continue;
 
@@ -462,7 +472,10 @@ struct ScoreFunction
 
         // compute input
         setMem(&neurons.input[0], sizeof(neurons.input), 0);
-        copyMem(&neurons.input[0], miningData, sizeof(miningData));
+        for (int i = 0; i < dataLength; i++)
+        {
+            neurons.input[i] = (char)(miningData[i]);
+        }
         computeBucket<true, dataLength, numberOfInputNeurons, infoLength>(solutionBufIdx);
         computeNeuron<true, dataLength, numberOfInputNeurons, infoLength, maxInputDuration>(solutionBufIdx);
 

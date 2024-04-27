@@ -23,18 +23,20 @@
 
 // Set START_NETWORK_FROM_SCRATCH to 0 if you start the node for syncing with the already ticking network.
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
-// If this flag is 0, the node will try to fetch the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
-#define START_NETWORK_FROM_SCRATCH 1
+// If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
+// If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
+#define START_NETWORK_FROM_SCRATCH 0
 
 //////////////////////////////////////////////////////////////////////////
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 199
+#define VERSION_B 200
 #define VERSION_C 0
 
-#define EPOCH 104
-#define TICK 13360000
+// Epoch and initial tick for node startup
+#define EPOCH 106
+#define TICK 13547630
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -52,7 +54,7 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_INPUT_DURATION 256
 #define MAX_OUTPUT_DURATION 256
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 43
+#define SOLUTION_THRESHOLD_DEFAULT 44
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"

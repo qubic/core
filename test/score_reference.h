@@ -16,12 +16,16 @@ template<
 >
 struct ScoreReferenceImplementation
 {
+    static constexpr unsigned int numberOfNeuronsMaxInputOutput = (numberOfInputNeurons > numberOfOutputNeurons) ? numberOfInputNeurons : numberOfOutputNeurons;
+
     long long miningData[dataLength];
+
+    //neuron only has values [-1, 0, 1]
     struct
     {
-        long long input[dataLength + numberOfInputNeurons + infoLength];
-        long long output[infoLength + numberOfOutputNeurons + dataLength];
-        long long neuronBuffer[dataLength + numberOfInputNeurons + infoLength];
+        char input[dataLength + numberOfInputNeurons + infoLength];
+        char output[infoLength + numberOfOutputNeurons + dataLength];
+        char neuronBuffer[dataLength + numberOfNeuronsMaxInputOutput + infoLength];
     } _neurons[solutionBufferCount];
     struct
     {
@@ -41,7 +45,7 @@ struct ScoreReferenceImplementation
         }
     }
 
-    static inline void clampNeuron(long long& val)
+    static inline void clampNeuron(char& val)
     {
         if (val > NEURON_VALUE_LIMIT) {
             val = NEURON_VALUE_LIMIT;
@@ -90,7 +94,10 @@ struct ScoreReferenceImplementation
             synapses.outputLength[outputNeuronIndex * (infoLength + numberOfOutputNeurons + dataLength) + (infoLength + outputNeuronIndex)] = 0;
         }
 
-        memcpy(&neurons.input[0], &miningData, sizeof(miningData));        
+        for (int i = 0; i < dataLength; i++)
+        {
+            neurons.input[i] = (char)(miningData[i]);
+        }
 
         for (int tick = 1; tick <= maxInputDuration; tick++)
         {

@@ -76,16 +76,16 @@ struct ScoreTester
         std::cout << "current score() returns " << current << ", reference score() returns " << reference << std::endl;
         bool matchedInputNeuron = true;
         bool matchedOutputNeuron = true;
-        for (int i = 0; i < 1024 + 2048 + 512; i++) {
+        for (int i = 0; i < dataLength + numberOfInputNeurons + infoLength; i++) {
             if ((*score)._neurons[0].input[i] != (*score_ref_impl)._neurons[0].input[i]) {
-                printf("DIFF Input neuron %d: %lld vs %lld\n", i, (*score)._neurons[0].input[i], (*score_ref_impl)._neurons[0].input[i]);
+                printf("DIFF Input neuron %d: %d vs %d\n", i, (*score)._neurons[0].input[i], (*score_ref_impl)._neurons[0].input[i]);
                 matchedInputNeuron = false;
                 break;
             }
         }
-        for (int i = 0; i < 1024 + 2048 + 512; i++) {
+        for (int i = 0; i < dataLength + numberOfOutputNeurons + infoLength; i++) {
             if ((*score)._neurons[0].output[i] != (*score_ref_impl)._neurons[0].output[i]) {
-                printf("DIFF Output neuron %d: %lld vs %lld\n", i, (*score)._neurons[0].output[i], (*score_ref_impl)._neurons[0].output[i]);
+                printf("DIFF Output neuron %d: %d vs %d\n", i, (*score)._neurons[0].output[i], (*score_ref_impl)._neurons[0].output[i]);
                 matchedOutputNeuron = false;
                 break;
             }
