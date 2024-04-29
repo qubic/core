@@ -600,7 +600,39 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
             }
 
             // Copy computor list
-            bs->CopyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+           // bs->CopyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+
+            //computors has indexed
+            Computors tmpComputors;
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                bool hasKeptStatus = false;
+
+                for (unsigned int j = 0; j < NUMBER_OF_COMPUTORS; ++j) {
+                    if (request->computors.publicKeys[i] == broadcastedComputors.computors.publicKeys[j]) {
+                        hasKeptStatus = true;
+                        break;
+                    }
+                }
+                if (hasKeptStatus) 
+                {
+                    tmpComputors.publicKeys[i] = request->computors.publicKeys[i];
+                    tmpComputors.signature[i] = request->computors.signature[i];
+                }
+                else {
+                    // Find an empty slot
+                    int emptySlotIndex = 0;
+                    while (tmpComputors.publicKeys[emptySlotIndex] != nullptr) {
+                        ++emptySlotIndex;
+                    }
+                    tmpComputors.publicKeys[emptySlotIndex] = request->computors.publicKeys[i];
+                    tmpComputors.signature[emptySlotIndex] = request->computors.signature[i];
+                }
+
+            }
+            tmpComputors.epoch = request->computors.epoch;
+            // Copy computor with keept index list
+            bs->CopyMem(&broadcastedComputors.computors, &tmpComputors, sizeof(Computors));
 
             // Update ownComputorIndices and minerPublicKeys
             if (request->computors.epoch == system.epoch)
