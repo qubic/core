@@ -4073,6 +4073,16 @@ static bool initialize()
         logToConsole(L"Loading universe file ...");
         if (!loadUniverse())
             return false;
+        m256i universeDigest;
+        {
+            setText(message, L"Universe digest = ");
+            getUniverseDigest(universeDigest);
+            CHAR16 digestChars[60 + 1];
+            getIdentity(universeDigest.m256i_u8, digestChars, true);
+            appendText(message, digestChars);
+            appendText(message, L".");
+            logToConsole(message);
+        }
 
         logToConsole(L"Loading contract files ...");
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
@@ -4098,16 +4108,22 @@ static bool initialize()
 
             initializeContract(contractIndex, contractStates[contractIndex]);
         }
+        m256i computerDigest;
         {
             setText(message, L"Computer digest = ");
-            m256i digest;
-            getComputerDigest(digest);
+            getComputerDigest(computerDigest);
             CHAR16 digestChars[60 + 1];
-            getIdentity((unsigned char*)&digest, digestChars, true);
+            getIdentity(computerDigest.m256i_u8, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
             logToConsole(message);
         }
+
+        // initialize salted digests of etalonTick, otherwise F2 key would output invalid digests
+        // before ticking begins
+        etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+        etalonTick.saltedUniverseDigest = universeDigest;
+        etalonTick.saltedComputerDigest = computerDigest;
     }
 
     score->loadScoreCache(system.epoch);
