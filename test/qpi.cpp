@@ -8,7 +8,7 @@ static void* __scratchpad()
     return __scratchpadBuffer;
 }
 
-#include "../src/smart_contracts/qpi.h"
+#include "../src/contracts/qpi.h"
 
 #include <vector>
 #include <map>

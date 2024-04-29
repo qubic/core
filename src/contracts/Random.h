@@ -25,13 +25,10 @@ private:
 
 	PUBLIC(RevealAndCommit)
 
-		transfer(invocator(), invocationReward());
+		qpi.transfer(qpi.invocator(), qpi.invocationReward());
 	_
 
-	REGISTER_USER_FUNCTIONS
-	_
-		
-	REGISTER_USER_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 
 		REGISTER_USER_PROCEDURE(RevealAndCommit, 1);
 	_

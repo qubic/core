@@ -78,7 +78,7 @@ static void deinitLogging()
 #endif
 }
 
-static void logMessage(unsigned int messageSize, unsigned char messageType, void* message)
+static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
 {
     for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
     {
@@ -97,7 +97,7 @@ static void logMessage(unsigned int messageSize, unsigned char messageType, void
             *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 8))) = system.tick;
 
             *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 12))) = messageSize | (messageType << 24);
-            bs->CopyMem(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 16), message, messageSize);
+            copyMem(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 16), message, messageSize);
             logBufferTails[logReaderIndex] += 16 + messageSize;
         }
         else
@@ -210,12 +210,12 @@ struct DummyContractErrorMessage
 };
 
 template <typename T>
-static void __logContractErrorMessage(T message)
+static void __logContractErrorMessage(unsigned int contractIndex, const T& message)
 {
     static_assert(offsetof(T, _terminator) >= 8, "Invalid contract error message structure");
 
 #if LOG_CONTRACT_ERROR_MESSAGES
-    * ((unsigned int*)&message) = executedContractIndex;
+    * ((unsigned int*)&message) = contractIndex;
     logMessage(offsetof(T, _terminator), CONTRACT_ERROR_MESSAGE, &message);
 #endif
 }
@@ -231,12 +231,12 @@ struct DummyContractWarningMessage
 };
 
 template <typename T>
-static void __logContractWarningMessage(T message)
+static void __logContractWarningMessage(unsigned int contractIndex, const T& message)
 {
     static_assert(offsetof(T, _terminator) >= 8, "Invalid contract warning message structure");
 
 #if LOG_CONTRACT_WARNING_MESSAGES
-    * ((unsigned int*)&message) = executedContractIndex;
+    * ((unsigned int*)&message) = contractIndex;
     logMessage(offsetof(T, _terminator), CONTRACT_WARNING_MESSAGE, &message);
 #endif
 }
@@ -252,12 +252,12 @@ struct DummyContractInfoMessage
 };
 
 template <typename T>
-static void __logContractInfoMessage(T message)
+static void __logContractInfoMessage(unsigned int contractIndex, const T& message)
 {
     static_assert(offsetof(T, _terminator) >= 8, "Invalid contract info message structure");
 
 #if LOG_CONTRACT_INFO_MESSAGES
-    * ((unsigned int*)&message) = executedContractIndex;
+    * ((unsigned int*)&message) = contractIndex;
     logMessage(offsetof(T, _terminator), CONTRACT_INFORMATION_MESSAGE, &message);
 #endif
 }
@@ -273,12 +273,12 @@ struct DummyContractDebugMessage
 };
 
 template <typename T>
-static void __logContractDebugMessage(T message)
+static void __logContractDebugMessage(unsigned int contractIndex, const T& message)
 {
     static_assert(offsetof(T, _terminator) >= 8, "Invalid contract debug message structure");
 
 #if LOG_CONTRACT_DEBUG_MESSAGES
-    * ((unsigned int*)&message) = executedContractIndex;
+    * ((unsigned int*)&message) = contractIndex;
     logMessage(offsetof(T, _terminator), CONTRACT_DEBUG_MESSAGE, &message);
 #endif
 }

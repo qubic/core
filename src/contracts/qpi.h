@@ -9,7 +9,7 @@ namespace QPI
 {
 	/*
 
-	Prohibited character combinations:
+	Prohibited character combinations in contracts:
 
 	"
 	#
@@ -27,6 +27,10 @@ namespace QPI
 	return
 	typedef
 	union
+
+	const_cast
+	QpiContext
+	__registerUser
 
 	*/
 
@@ -5961,198 +5965,204 @@ namespace QPI
 	//////////
 
 #if !defined(NO_UEFI)
-	static id arbitrator(
-	) {
-		const m256i arbitrator = ::__arbitrator();
+	struct QpiContext
+	{
+		id arbitrator(
+		) const;
 
-		return id(arbitrator.m256i_u64[0], arbitrator.m256i_u64[1], arbitrator.m256i_u64[2], arbitrator.m256i_u64[3]);
-	}
+		sint64 burn(
+			sint64 amount
+		) const;
 
-	static sint64 burn(
-		sint64 amount
-	) {
-		return ::__burn(amount);
-	}
+		// TODO: needs to be macro to access private members
+		// TODO: remove need to pass state explicitly
+		// call function or procedure of contract
+		template <typename Callable, typename State, typename Input, typename Output>
+		void call(Callable& callable, State& state, Input& input, Output& output) const
+		{
+			callable(*this, state, input, output);
+		}
 
-	static id computor(
-		uint16 computorIndex // [0..675]
-	) {
-		const m256i computor = ::__computor(computorIndex);
+		// TODO: calling of other contracts, make sure to avoid race conditions
+		// write note about use of stack and risk of stack overlow with many -> we may have a separate per-processor stack to store the context (or changing variables of the context)
 
-		return id(computor.m256i_u64[0], computor.m256i_u64[1], computor.m256i_u64[2], computor.m256i_u64[3]);
-	}
 
-	static uint8 day(
-	) { // [1..31]
-		return ::__day();
-	}
+		id computor(
+			uint16 computorIndex // [0..675]
+		) const;
 
-	static uint8 dayOfWeek(
-		uint8 year, // (0 = 2000, 1 = 2001, ..., 99 = 2099)
-		uint8 month,
-		uint8 day
-	) { // [0..6]
-		return ::__dayOfWeek(year, month, day);
-	}
+		uint8 day(
+		) const; // [1..31]
 
-	static uint16 epoch(
-	) { // [0..9'999]
-		return ::__epoch();
-	}
+		uint8 dayOfWeek(
+			uint8 year, // (0 = 2000, 1 = 2001, ..., 99 = 2099)
+			uint8 month,
+			uint8 day
+		) const; // [0..6]
 
-	static bit getEntity(
-		id id,
-		::Entity& entity
-	) { // Returns "true" if the entity has been found, returns "false" otherwise
-		return ::__getEntity(id, entity);
-	}
+		uint16 epoch(
+		) const; // [0..9'999]
 
-	static uint8 hour(
-	) { // [0..23]
-		return ::__hour();
-	}
+		bit getEntity(
+			const id& id,
+			::Entity& entity
+		) const; // Returns "true" if the entity has been found, returns "false" otherwise
 
-	static sint64 invocationReward(
-	) {
-		return ::__invocationReward();
-	}
+		uint8 hour(
+		) const; // [0..23]
 
-	static id invocator(
-	) { // Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
-		return ::__invocator();
-	}
+		sint64 invocationReward(
+		) const;
 
-	static sint64 issueAsset(
-		uint64 name,
-		id issuer,
-		sint8 numberOfDecimalPlaces,
-		sint64 numberOfShares,
-		uint64 unitOfMeasurement
-	) {
-		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfShares, unitOfMeasurement);
-	}
+		id invocator(
+		) const; // Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
 
-	template <typename T>
-	static id K12(
-		T data
-	) {
-		return __K12(data);
-	}
+		sint64 issueAsset(
+			uint64 name,
+			const id& issuer,
+			sint8 numberOfDecimalPlaces,
+			sint64 numberOfShares,
+			uint64 unitOfMeasurement
+		) const; // Returns number of shares or 0 on error
 
-	static uint16 millisecond(
-	) { // [0..999]
-		return ::__millisecond();
-	}
+		template <typename T>
+		id K12(
+			const T& data
+		) const;
 
-	static uint8 minute(
-	) { // [0..59]
-		return ::__minute();
-	}
+		uint16 millisecond(
+		) const; // [0..999]
 
-	static uint8 month(
-	) { // [1..12]
-		return ::__month();
-	}
+		uint8 minute(
+		) const; // [0..59]
 
-	static id nextId(
-		id currentId
-	) {
-		return ::__nextId(currentId);
-	}
+		uint8 month(
+		) const; // [1..12]
 
-	static sint64 numberOfPossessedShares(
-		uint64 assetName,
-		id issuer,
-		id owner,
-		id possessor,
-		uint16 ownershipManagingContractIndex,
-		uint16 possessionManagingContractIndex
-	) {
-		return ::__numberOfPossessedShares(assetName, issuer, owner, possessor, ownershipManagingContractIndex, possessionManagingContractIndex);
-	}
+		id nextId(
+			const id& currentId
+		) const;
 
-	static id originator(
-	) { // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
-		return ::__originator();
-	}
+		sint64 numberOfPossessedShares(
+			uint64 assetName,
+			const id& issuer,
+			const id& owner,
+			const id& possessor,
+			uint16 ownershipManagingContractIndex,
+			uint16 possessionManagingContractIndex
+		) const;
 
-	static uint8 second(
-	) { // [0..59]
-		return ::__second();
-	}
+		id originator(
+		) const; // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
 
-	static bit signatureValidity(
-		id entity,
-		id digest,
-		array<sint8, 64> signature
-	) {
-		return ::__signatureValidity(entity, digest, signature);
-	}
+		bit signatureValidity(
+			const id& entity,
+			const id& digest,
+			const array<sint8, 64>& signature
+		) const;
 
-	static uint32 tick(
-	) { // [0..999'999'999]
-		return ::__tick();
-	}
+		uint8 second(
+		) const; // [0..59]
 
-	static sint64 transfer( // Attempts to transfer energy from this qubic
-		id destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
-		sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
-	) { // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
-		return ::__transfer(destination, amount);
-	}
+		uint32 tick(
+		) const; // [0..999'999'999]
 
-	static sint64 transferShareOwnershipAndPossession(
-		uint64 assetName,
-		id issuer,
-		id owner,
-		id possessor,
-		sint64 numberOfShares,
-		id newOwnerAndPossessor
-	) { // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
-		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwnerAndPossessor);
-	}
+		sint64 transfer( // Attempts to transfer energy from this qubic
+			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
+			sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
+		) const; // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
 
-	static uint8 year(
-	) { // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
-		return ::__year();
-	}
+		sint64 transferShareOwnershipAndPossession(
+			uint64 assetName,
+			const id& issuer,
+			const id& owner,
+			const id& possessor,
+			sint64 numberOfShares,
+			const id& newOwnerAndPossessor
+		) const; // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
+
+		uint8 year(
+		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
+
+	protected:
+		// Construction is done in core, not allowed in contracts
+		QpiContext(
+			unsigned int contractIndex,
+			const m256i& originator,
+			const m256i& invocator,
+			long long invocationReward
+		) :
+			_currentContractIndex(contractIndex),
+			_currentContractId(contractIndex, 0, 0, 0),
+			_originator(originator),
+			_invocator(invocator),
+			_invocationReward(invocationReward)
+		{}
+
+		unsigned int _currentContractIndex;
+		m256i _currentContractId, _originator, _invocator;
+		long long _invocationReward;
+
+	private:
+		// Disabling copy and move
+		QpiContext(const QpiContext&) = delete;
+		QpiContext(QpiContext&&) = delete;
+		QpiContext& operator=(const QpiContext&) = delete;
+		QpiContext& operator=(QpiContext&&) = delete;
+	};
+
+	struct QpiContextProcedureCall : public QPI::QpiContext
+	{
+		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContext(contractIndex, originator, originator, invocationReward) {}
+	};
+
+	struct QpiContextForInit : public QPI::QpiContext
+	{
+		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
+		void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short) const;
+		void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short) const;
+	};
+
+	struct QpiContextNoOriginatorAndReward : public QPI::QpiContext
+	{
+		QpiContextNoOriginatorAndReward(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
+	};
+
 #endif
 
 	//////////
 
-	#define INITIALIZE public: static void __initialize(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define INITIALIZE public: static void __initialize(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define BEGIN_EPOCH public: static void __beginEpoch(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define BEGIN_EPOCH public: static void __beginEpoch(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define END_EPOCH public: static void __endEpoch(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define END_EPOCH public: static void __endEpoch(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define BEGIN_TICK public: static void __beginTick(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define BEGIN_TICK public: static void __beginTick(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define END_TICK public: static void __endTick(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define END_TICK public: static void __endTick(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define EXPAND public: static void __expand(CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define EXPAND public: static void __expand(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define LOG_DEBUG(message) __logContractDebugMessage(message);
+	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
 
-	#define LOG_ERROR(message) __logContractErrorMessage(message);
+	#define LOG_ERROR(message) __logContractErrorMessage(CONTRACT_INDEX, message);
 
-	#define LOG_INFO(message) __logContractInfoMessage(message);
+	#define LOG_INFO(message) __logContractInfoMessage(CONTRACT_INDEX, message);
 
-	#define LOG_WARNING(message) __logContractWarningMessage(message);
+	#define LOG_WARNING(message) __logContractWarningMessage(CONTRACT_INDEX, message);
 
-	#define PRIVATE(functionOrProcedure) private: static void functionOrProcedure(CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define PRIVATE(functionOrProcedure) private: static void functionOrProcedure(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define PUBLIC(functionOrProcedure) public: static void functionOrProcedure(CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define PUBLIC(functionOrProcedure) public: static void functionOrProcedure(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define REGISTER_USER_FUNCTIONS public: static void __registerUserFunctions() { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
-
-	#define REGISTER_USER_PROCEDURES public: static void __registerUserProcedures() { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define REGISTER_USER_FUNCTIONS_AND_PROCEDURES public: static void __registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
 	#define _ ::__endFunctionOrProcedure(__functionOrProcedureId); }
 
-	#define REGISTER_USER_FUNCTION(userFunction, inputType) __registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output));
+	#define REGISTER_USER_FUNCTION(userFunction, inputType) qpi.__registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output));
 
-	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) __registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output));
+	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output));
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 

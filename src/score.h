@@ -5,7 +5,6 @@ unsigned long long top_of_stack;
 #include "platform/memory.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
-#include "smart_contracts/math_lib.h"
 #include "public_settings.h"
 #include "score_cache.h"
 
