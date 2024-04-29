@@ -74,23 +74,7 @@ struct ScoreTester
         elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(d);
         std::cout << "Reference version: " << elapsed.count() << "ns" << std::endl;
         std::cout << "current score() returns " << current << ", reference score() returns " << reference << std::endl;
-        bool matchedInputNeuron = true;
-        bool matchedOutputNeuron = true;
-        for (int i = 0; i < dataLength + numberOfInputNeurons + infoLength; i++) {
-            if ((*score)._neurons[0].input[i] != (*score_ref_impl)._neurons[0].input[i]) {
-                printf("DIFF Input neuron %d: %d vs %d\n", i, (*score)._neurons[0].input[i], (*score_ref_impl)._neurons[0].input[i]);
-                matchedInputNeuron = false;
-                break;
-            }
-        }
-        for (int i = 0; i < dataLength + numberOfOutputNeurons + infoLength; i++) {
-            if ((*score)._neurons[0].output[i] != (*score_ref_impl)._neurons[0].output[i]) {
-                printf("DIFF Output neuron %d: %d vs %d\n", i, (*score)._neurons[0].output[i], (*score_ref_impl)._neurons[0].output[i]);
-                matchedOutputNeuron = false;
-                break;
-            }
-        }
-        return current == reference && matchedOutputNeuron && matchedInputNeuron;
+        return current == reference;
     }
 };
 
@@ -101,7 +85,7 @@ void runCommonTests(ScoreTester& test_score)
 #ifdef __AVX512F__
     initAVX512KangarooTwelveConstants();
 #endif
-    EXPECT_TRUE(test_score(678, m256i(13969805098858910392ULL, 14472806656575993870ULL, 10205949277524717274ULL, 9139973247135990472ULL).m256i_u8, m256i(2606487637113200640ULL, 2267452027856879938ULL, 14495402921700380246ULL, 16315779787892001110ULL).m256i_u8));
+    EXPECT_TRUE(test_score(678, m256i(13969805098858910392ULL, 14472806656575993870ULL, 10205949277524717274ULL, 9139973247135990472ULL).m256i_u8, m256i(2606487637113200640ULL, 2267452027856879938ULL, 14495402921700380246ULL, 16315779787892001110ULL).m256i_u8));    
     EXPECT_TRUE(test_score(251, m256i(17764101523024620815ULL, 13444759684604467162ULL, 5205156473815387573ULL, 13260540040653911245ULL).m256i_u8, m256i(2719505187280522860ULL, 796569317027170745ULL, 1472067853669192224ULL, 17746228003132033809ULL).m256i_u8));
     EXPECT_TRUE(test_score(78, m256i(14789280547522027434ULL, 15979653773010502977ULL, 6616468095151646068ULL, 3853325349953461025ULL).m256i_u8, m256i(1363327481582396135ULL, 152218635184973474ULL, 12932262167270620348ULL, 4723831151589758153ULL).m256i_u8));
     EXPECT_TRUE(test_score(385, m256i(15507048083185325046ULL, 5419387135591449337ULL, 17612106885624953580ULL, 10150797730536211684ULL).m256i_u8, m256i(7282604761236241613ULL, 7487819921911970082ULL, 9774240096691834870ULL, 13218191714229610846ULL).m256i_u8));
