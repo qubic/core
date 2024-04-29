@@ -92,7 +92,7 @@ static void checkTick(unsigned int tick, unsigned long long seed, unsigned short
 
     // get status of tick transactions
     responseMessage.tick = responseMessage.currentTickOfNode = 0;
-    processRequestConfirmedTx(nullptr, &requestMessage.header);
+    processRequestConfirmedTx(0, nullptr, &requestMessage.header);
 
     // check that we received right data
     EXPECT_EQ(responseMessage.tick, tick);
