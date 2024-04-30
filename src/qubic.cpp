@@ -130,6 +130,7 @@ static unsigned char* contractStates[contractCount];
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 static unsigned long long* contractStateChangeFlags = NULL;
 static unsigned long long contractTotalExecutionTicks[contractCount] = { 0 };
+static unsigned long long solutionTotalExecutionTicks = 0;
 static volatile char contractStateCopyLock = 0;
 static char* contractStateCopy = NULL;
 static char contractFunctionInputs[MAX_NUMBER_OF_PROCESSORS][65536];
@@ -2084,6 +2085,7 @@ static void processTick(unsigned long long processorNumber)
     ts.tickData.acquireLock();
     bs->CopyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
     ts.tickData.releaseLock();
+    unsigned long long solutionProcessStartTick = __rdtsc(); // for tracking the time processing solutions
     if (nextTickData.epoch == system.epoch)
     {
         auto* tsCurrentTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
@@ -2137,6 +2139,7 @@ static void processTick(unsigned long long processorNumber)
             }
             score->stopProcessTaskQueue();
         }
+        solutionTotalExecutionTicks = __rdtsc() - solutionProcessStartTick; // for tracking the time processing solutions
 
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
@@ -4501,8 +4504,10 @@ static void logInfo()
         appendText(message, L"?");
     }
     appendText(message, L" mcs | Total Qx execution time = ");
-    appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] / frequency, TRUE);
-    appendText(message, L" s.");
+    appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
+    appendText(message, L" ms | Solution process time = ");
+    appendNumber(message, solutionTotalExecutionTicks * 1000 / frequency, TRUE);
+    appendText(message, L" ms.");
     logToConsole(message);
 }
 
