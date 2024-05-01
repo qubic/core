@@ -27,6 +27,9 @@
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
 #define START_NETWORK_FROM_SCRATCH 1
 
+// Addons: If you don't know it, leave it 0.
+#define ADDON_TX_STATUS_REQUEST 0
+
 //////////////////////////////////////////////////////////////////////////
 // Config options that should NOT be changed by operators
 

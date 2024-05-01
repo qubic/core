@@ -36,6 +36,7 @@
 
 #include "tick_storage.h"
 
+#include "addons/tx_status_request.h"
 
 ////////// Qubic \\\\\\\\\\
 
@@ -56,7 +57,6 @@
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
-
 
 
 typedef struct
@@ -1429,6 +1429,16 @@ static void requestProcessor(void* ProcedureArgument)
                     processSpecialCommand(peer, header);
                 }
                 break;
+
+#if ADDON_TX_STATUS_REQUEST
+                /* qli: process RequestTxStatus message */
+                case REQUEST_TX_STATUS:
+                {
+                    processRequestConfirmedTx(processorNumber, peer, header);
+                }
+                break;
+#endif
+
                 }
 
                 queueProcessingNumerator += __rdtsc() - beginningTick;
@@ -2089,7 +2099,9 @@ static void processTick(unsigned long long processorNumber)
     if (nextTickData.epoch == system.epoch)
     {
         auto* tsCurrentTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
-
+#if ADDON_TX_STATUS_REQUEST
+        tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
+#endif
         bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
         // reset solution task queue
         score->resetTaskQueue();
@@ -2157,13 +2169,26 @@ static void processTick(unsigned long long processorNumber)
                         entityPendingTransactionIndices[spectrumIndex] = 1;
 
                         numberOfTransactions++;
+#if ADDON_TX_STATUS_REQUEST
+                        tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
+#endif
                         if (decreaseEnergy(spectrumIndex, transaction->amount))
                         {
                             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
+                            
                             if (transaction->amount)
                             {
+#if ADDON_TX_STATUS_REQUEST
+                                saveConfirmedTx(numberOfTransactions - 1, 1, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
+#endif
                                 const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
                                 logQuTransfer(quTransfer);
+                            }
+                            else
+                            {
+#if ADDON_TX_STATUS_REQUEST
+                                saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
+#endif
                             }
 
                             if (isZero(transaction->destinationPublicKey))
@@ -2472,6 +2497,12 @@ static void processTick(unsigned long long processorNumber)
                                 }
                             }
                         }
+                        else
+                        {
+#if ADDON_TX_STATUS_REQUEST
+                            saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
+#endif
+                        }
                     }
                 }
                 else
@@ -2696,6 +2727,9 @@ static void beginEpoch1of2()
     ts.beginEpoch(system.initialTick);
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
+#endif
+#if ADDON_TX_STATUS_REQUEST
+    beginEpochTxStatusRequestAddOn(system.initialTick);
 #endif
 
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
@@ -3988,6 +4022,14 @@ static bool initialize()
         if (!initLogging())
             return false;
 
+#if ADDON_TX_STATUS_REQUEST
+        if (!initTxStatusRequestAddOn())
+        {
+            logToConsole(L"initTxStatusRequestAddOn() failed!");
+            return false;
+        }
+#endif
+
         logToConsole(L"Loading system file ...");
         bs->SetMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
@@ -4227,6 +4269,10 @@ static void deinitialize()
     }
 
     deinitLogging();
+
+#if ADDON_TX_STATUS_REQUEST
+    deinitTxStatusRequestAddOn();
+#endif
 
     for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
     {
