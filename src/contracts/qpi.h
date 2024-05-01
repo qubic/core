@@ -5193,7 +5193,7 @@ namespace QPI
 					*pIterationsCount += 1;
 				}
 				auto& curElement = _elements[idx];
-				if (curElement.priority > priority)
+				if (curElement.priority >= priority)
 				{
 					if (curElement.bstRightIndex != NULL_INDEX)
 					{
@@ -5237,7 +5237,7 @@ namespace QPI
 			{
 				int iterations_count = 0;
 				sint64 parentIdx = _searchElement(pov.bstRootIndex, priority, &iterations_count);				
-				if (_elements[parentIdx].priority > priority)
+				if (_elements[parentIdx].priority >= priority)
 				{
 					_elements[parentIdx].bstRightIndex = newElementIdx;
 				}
@@ -5249,11 +5249,11 @@ namespace QPI
 				pov.population++;
 
 
-				if (_elements[pov.headIndex].priority <= priority)
+				if (_elements[pov.headIndex].priority < priority)
 				{
 					pov.headIndex = newElementIdx;
 				}
-				else if (_elements[pov.tailIndex].priority > priority)
+				else if (_elements[pov.tailIndex].priority >= priority)
 				{
 					pov.tailIndex = newElementIdx;
 				}

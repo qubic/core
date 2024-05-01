@@ -853,8 +853,6 @@ TEST(TestCoreQPI, CollectionOnePovMultiElementsSamePrioOrder)
         EXPECT_EQ(coll.population(), i + 1);
     }
 
-    checkPriorityQueue(coll, pov, true);
-
     // check that priority queue order of same priorty items matches the order of insertion
     QPI::sint64 elementIndex = coll.headIndex(pov);
     for (int i = 0; i < capacity; ++i)
