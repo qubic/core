@@ -245,7 +245,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 
 /**
 * checks if a given address is a bogon address
-* a bogon address is an ip address which should not be used pubicly (e.g. private networks)
+* a bogon address is an ip address which should not be used publicly (e.g. private networks)
 *
 * @param address the ip address to be checked
 * @return true if address is bogon or false if not

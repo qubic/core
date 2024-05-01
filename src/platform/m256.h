@@ -6,7 +6,7 @@
 // Existing interface and behavior should never be changed! (However, it may be extended.)
 union m256i
 {
-    // access for loops and compatability with __m256i
+    // access for loops and compatibility with __m256i
     __int8              m256i_i8[32];
     __int16             m256i_i16[16];
     __int32             m256i_i32[8];

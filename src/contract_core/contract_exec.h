@@ -94,7 +94,7 @@ void QPI::QpiContextFunctionCall::__qpiFreeContextOtherContract() const
     contractLocalsStack[_stackIndex].free();
 }
 
-void* QPI::QpiContextFunctionCall::__qpiAquireStateForReading(unsigned int contractIndex) const
+void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int contractIndex) const
 {
     ASSERT(contractIndex < contractCount);
     ACQUIRE(contractStateLock[contractIndex]);
@@ -108,9 +108,9 @@ void QPI::QpiContextFunctionCall::__qpiReleaseStateForReading(unsigned int contr
     RELEASE(contractStateLock[contractIndex]);
 }
 
-void* QPI::QpiContextProcedureCall::__qpiAquireStateForWriting(unsigned int contractIndex) const
+void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int contractIndex) const
 {
-    return QpiContextFunctionCall::__qpiAquireStateForReading(contractIndex);
+    return QpiContextFunctionCall::__qpiAcquireStateForReading(contractIndex);
 }
 
 void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int contractIndex) const
@@ -167,7 +167,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         copyMem(inputBuffer, inputPtr, inputSize);
         setMem(outputBuffer, outputSize + localsSize, 0);
 
-        // aquire lock of contract state for writing (may block)
+        // acquire lock of contract state for writing (may block)
         ACQUIRE(contractStateLock[_currentContractIndex]);
 
         // run procedure
@@ -227,7 +227,7 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         copyMem(inputBuffer, inputPtr, inputSize);
         setMem(outputBuffer, outputSize + localsSize, 0);
 
-        // aquire lock of contract state for writing (may block)
+        // acquire lock of contract state for writing (may block)
         ACQUIRE(contractStateLock[_currentContractIndex]);
 
         // run function

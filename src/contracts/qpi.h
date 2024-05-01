@@ -5785,7 +5785,7 @@ namespace QPI
 
 		// Remove element and mark its pov for removal, if the last element.
 		// Returns element index of next element in priority queue (the one following elementIdx).
-		// Element indices obatined before this call are invalidated, because at least one element is moved.
+		// Element indices obtained before this call are invalidated, because at least one element is moved.
 		sint64 remove(sint64 elementIdx)
 		{
 			sint64 nextElementIdxOfRemoved = NULL_INDEX;
@@ -5850,7 +5850,7 @@ namespace QPI
 					}
 					else if (curElement.bstLeftIndex != NULL_INDEX)
 					{
-						// contains lonly left child
+						// contains only left child
 						if (elementIdx == pov.tailIndex)
 						{
 							pov.tailIndex = _previousElementIndex(elementIdx);
@@ -6096,7 +6096,7 @@ namespace QPI
 		void __qpiFreeLocals() const;
 		const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
 		void __qpiFreeContextOtherContract() const;
-		void * __qpiAquireStateForReading(unsigned int contractIndex) const;
+		void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
 		void __qpiReleaseStateForReading(unsigned int contractIndex) const;
 
 	protected:
@@ -6136,7 +6136,7 @@ namespace QPI
 
 		// Internal functions, calling not allowed in contracts
 		const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
-		void* __qpiAquireStateForWriting(unsigned int contractIndex) const;
+		void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
 		void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 
 	protected:
@@ -6257,7 +6257,7 @@ namespace QPI
 		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
 		contractStateType::function( \
 			qpi.__qpiConstructContextOtherContractFunctionCall(contractStateType::__contract_index), \
-			*(contractStateType*)qpi.__qpiAquireStateForReading(contractStateType::__contract_index), \
+			*(contractStateType*)qpi.__qpiAcquireStateForReading(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
 		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
@@ -6272,7 +6272,7 @@ namespace QPI
 		static_assert(invocationReward >= 0, "The invocationReward cannot be negative!"); \
 		contractStateType::procedure( \
 			qpi.__qpiConstructContextOtherContractProcedureCall(contractStateType::__contract_index, invocationReward), \
-			*(contractStateType*)qpi.__qpiAquireStateForWriting(contractStateType::__contract_index), \
+			*(contractStateType*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
 		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
