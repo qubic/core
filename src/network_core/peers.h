@@ -513,6 +513,10 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                                     {
                                         dejavu0[saltedId >> 6] |= (1ULL << (saltedId & 63));
 
+                                        ASSERT(requestQueueElementHead < REQUEST_QUEUE_LENGTH);
+                                        ASSERT(requestQueueBufferHead < REQUEST_QUEUE_BUFFER_SIZE);
+                                        ASSERT(requestQueueBufferHead + requestResponseHeader->size() < REQUEST_QUEUE_BUFFER_SIZE);
+
                                         requestQueueElements[requestQueueElementHead].offset = requestQueueBufferHead;
                                         bs->CopyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
                                         requestQueueBufferHead += requestResponseHeader->size();
