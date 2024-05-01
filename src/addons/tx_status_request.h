@@ -2,14 +2,16 @@
 
 #pragma once
 
-#include "platform/m256.h"
-#include "platform/debugging.h"
-#include "platform/memory.h"
+#if ADDON_TX_STATUS_REQUEST
 
-#include "network_messages/header.h"
+#include "../platform/m256.h"
+#include "../platform/debugging.h"
+#include "../platform/memory.h"
 
-#include "public_settings.h"
-#include "system.h"
+#include "../network_messages/header.h"
+
+#include "../public_settings.h"
+#include "../system.h"
 
 
 typedef struct
@@ -240,3 +242,5 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
     ASSERT(tickTxStatus.size() <= sizeof(tickTxStatus));
     enqueueResponse(peer, tickTxStatus.size(), RESPOND_TX_STATUS, header->dejavu(), &tickTxStatus);
 }
+
+#endif

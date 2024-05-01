@@ -11,7 +11,9 @@ void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsi
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH 50
 #undef TICKS_TO_KEEP_FROM_PRIOR_EPOCH
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 32
-#include "../src/tx_status_request.h"
+#undef ADDON_TX_STATUS_REQUEST
+#define ADDON_TX_STATUS_REQUEST 1
+#include "../src/addons/tx_status_request.h"
 
 #include <random>
 

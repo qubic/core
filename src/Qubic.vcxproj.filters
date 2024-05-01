@@ -120,7 +120,9 @@
     <ClInclude Include="contract_core\stack_buffer.h">
       <Filter>contract_core</Filter>
     </ClInclude>
-    <ClInclude Include="tx_status_request.h" />
+    <ClInclude Include="addons\tx_status_request.h">
+      <Filter>addons</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -137,6 +139,9 @@
     </Filter>
     <Filter Include="contract_core">
       <UniqueIdentifier>{e18dc5b0-6ba9-4b8a-9221-71165f0335b9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="addons">
+      <UniqueIdentifier>{d409258b-a63c-443f-8c7a-918c14f192a6}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

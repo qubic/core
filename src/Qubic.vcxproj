@@ -18,6 +18,7 @@
     <ClCompile Include="qubic.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="addons\tx_status_request.h" />
     <ClInclude Include="assets.h" />
     <ClInclude Include="contracts\math_lib.h" />
     <ClInclude Include="contracts\qpi.h" />
@@ -27,7 +28,6 @@
     <ClInclude Include="contracts\Random.h" />
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
-    <ClInclude Include="tx_status_request.h" />
     <ClInclude Include="logging.h" />
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />
