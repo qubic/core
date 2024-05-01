@@ -171,6 +171,7 @@ static unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
 static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
+static unsigned long long solutionTotalExecutionTicks = 0;
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -2044,6 +2045,7 @@ static void processTick(unsigned long long processorNumber)
     ts.tickData.acquireLock();
     bs->CopyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
     ts.tickData.releaseLock();
+    unsigned long long solutionProcessStartTick = __rdtsc(); // for tracking the time processing solutions
     if (nextTickData.epoch == system.epoch)
     {
         auto* tsCurrentTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
@@ -2097,6 +2099,7 @@ static void processTick(unsigned long long processorNumber)
             }
             score->stopProcessTaskQueue();
         }
+        solutionTotalExecutionTicks = __rdtsc() - solutionProcessStartTick; // for tracking the time processing solutions
 
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
@@ -4014,6 +4017,16 @@ static bool initialize()
         logToConsole(L"Loading universe file ...");
         if (!loadUniverse())
             return false;
+        m256i universeDigest;
+        {
+            setText(message, L"Universe digest = ");
+            getUniverseDigest(universeDigest);
+            CHAR16 digestChars[60 + 1];
+            getIdentity(universeDigest.m256i_u8, digestChars, true);
+            appendText(message, digestChars);
+            appendText(message, L".");
+            logToConsole(message);
+        }
 
         logToConsole(L"Loading contract files ...");
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
@@ -4039,16 +4052,22 @@ static bool initialize()
 
             initializeContract(contractIndex, contractStates[contractIndex]);
         }
+        m256i computerDigest;
         {
             setText(message, L"Computer digest = ");
-            m256i digest;
-            getComputerDigest(digest);
+            getComputerDigest(computerDigest);
             CHAR16 digestChars[60 + 1];
-            getIdentity((unsigned char*)&digest, digestChars, true);
+            getIdentity(computerDigest.m256i_u8, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
             logToConsole(message);
         }
+
+        // initialize salted digests of etalonTick, otherwise F2 key would output invalid digests
+        // before ticking begins
+        etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+        etalonTick.saltedUniverseDigest = universeDigest;
+        etalonTick.saltedComputerDigest = computerDigest;
     }
 
     score->loadScoreCache(system.epoch);
@@ -4415,8 +4434,10 @@ static void logInfo()
         appendText(message, L"?");
     }
     appendText(message, L" mcs | Total Qx execution time = ");
-    appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] / frequency, TRUE);
-    appendText(message, L" s.");
+    appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
+    appendText(message, L" ms | Solution process time = ");
+    appendNumber(message, solutionTotalExecutionTicks * 1000 / frequency, TRUE);
+    appendText(message, L" ms.");
     logToConsole(message);
 }
 
