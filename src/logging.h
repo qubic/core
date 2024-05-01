@@ -210,12 +210,14 @@ struct DummyContractErrorMessage
 };
 
 template <typename T>
-static void __logContractErrorMessage(unsigned int contractIndex, const T& message)
+static void __logContractErrorMessage(unsigned int contractIndex, T& message)
 {
     static_assert(offsetof(T, _terminator) >= 8, "Invalid contract error message structure");
 
+    // In order to keep state changes consistent, this needs to be set independently of whether logging is enabled
+    *((unsigned int*)&message) = contractIndex;
+
 #if LOG_CONTRACT_ERROR_MESSAGES
-    * ((unsigned int*)&message) = contractIndex;
     logMessage(offsetof(T, _terminator), CONTRACT_ERROR_MESSAGE, &message);
 #endif
 }
@@ -231,12 +233,14 @@ struct DummyContractWarningMessage
 };
 
 template <typename T>
-static void __logContractWarningMessage(unsigned int contractIndex, const T& message)
+static void __logContractWarningMessage(unsigned int contractIndex, T& message)
 {
     static_assert(offsetof(T, _terminator) >= 8, "Invalid contract warning message structure");
 
+    // In order to keep state changes consistent, this needs to be set independently of whether logging is enabled
+    *((unsigned int*)&message) = contractIndex;
+
 #if LOG_CONTRACT_WARNING_MESSAGES
-    * ((unsigned int*)&message) = contractIndex;
     logMessage(offsetof(T, _terminator), CONTRACT_WARNING_MESSAGE, &message);
 #endif
 }
@@ -252,12 +256,14 @@ struct DummyContractInfoMessage
 };
 
 template <typename T>
-static void __logContractInfoMessage(unsigned int contractIndex, const T& message)
+static void __logContractInfoMessage(unsigned int contractIndex, T& message)
 {
     static_assert(offsetof(T, _terminator) >= 8, "Invalid contract info message structure");
 
+    // In order to keep state changes consistent, this needs to be set independently of whether logging is enabled
+    *((unsigned int*)&message) = contractIndex;
+
 #if LOG_CONTRACT_INFO_MESSAGES
-    * ((unsigned int*)&message) = contractIndex;
     logMessage(offsetof(T, _terminator), CONTRACT_INFORMATION_MESSAGE, &message);
 #endif
 }
@@ -273,12 +279,14 @@ struct DummyContractDebugMessage
 };
 
 template <typename T>
-static void __logContractDebugMessage(unsigned int contractIndex, const T& message)
+static void __logContractDebugMessage(unsigned int contractIndex, T& message)
 {
     static_assert(offsetof(T, _terminator) >= 8, "Invalid contract debug message structure");
 
+    // In order to keep state changes consistent, this needs to be set independently of whether logging is enabled
+    *((unsigned int*)&message) = contractIndex;
+
 #if LOG_CONTRACT_DEBUG_MESSAGES
-    * ((unsigned int*)&message) = contractIndex;
     logMessage(offsetof(T, _terminator), CONTRACT_DEBUG_MESSAGE, &message);
 #endif
 }
