@@ -19,6 +19,10 @@ static ReadWriteLock contractStateLock[contractCount];
 static unsigned char* contractStates[contractCount];
 static volatile long long contractTotalExecutionTicks[contractCount];
 
+// TODO: If we ever have parallel procedure calls (of different contracts), we need to make
+// access to contractStateChangeFlags thread-safe
+static unsigned long long* contractStateChangeFlags = NULL;
+
 
 bool initContractExec()
 {
@@ -134,6 +138,7 @@ void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int cont
 {
     ASSERT(contractIndex < contractCount);
     contractStateLock[contractIndex].releaseWrite();
+    contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
 }
 
 struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
@@ -153,7 +158,9 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
         contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex]);
         _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
 
+        // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
+        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
     }
 };
 
@@ -193,8 +200,9 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         contractUserProcedures[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
         _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
 
-        // release lock of contract state
+        // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
+        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
 
         // free data on stack (output is unused)
         contractLocalsStack[_stackIndex].free();

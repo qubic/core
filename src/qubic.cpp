@@ -128,7 +128,6 @@ static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
-static unsigned long long* contractStateChangeFlags = NULL;
 
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
@@ -1437,8 +1436,7 @@ static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
 
 static void __endFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
-    // TODO: move this to procedure call cleanup (so it is not set by function calls)
-    contractStateChangeFlags[functionOrProcedureId >> (22 + 6)] |= (1ULL << ((functionOrProcedureId >> 22) & 63));
+    // TODO
 }
 
 void QPI::QpiContextForInit::__registerUserFunction(USER_FUNCTION userFunction, unsigned short inputType, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
