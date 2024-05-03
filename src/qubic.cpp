@@ -389,9 +389,10 @@ static void getComputerDigest(m256i& digest)
                 // + contractStateChangeFlags set afterwards by thread B and contractStateChangeFlags cleared below below
                 // by thread A. We then have a changed state but a cleared contractStateChangeFlags flag leading to wrong
                 // digest.
-                ACQUIRE(contractStateLock[digestIndex]);
+                // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
+                contractStateLock[digestIndex].acquireRead();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
-                RELEASE(contractStateLock[digestIndex]);
+                contractStateLock[digestIndex].releaseRead();
             }
         }
     }
@@ -1035,11 +1036,11 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
     }
     else
     {
-        ACQUIRE(contractStateLock[request->contractIndex]);
+        contractStateLock[request->contractIndex].acquireRead();
         IPO* ipo = (IPO*)contractStates[request->contractIndex];
         bs->CopyMem(respondContractIPO.publicKeys, ipo->publicKeys, sizeof(respondContractIPO.publicKeys));
         bs->CopyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
-        RELEASE(contractStateLock[request->contractIndex]);
+        contractStateLock[request->contractIndex].releaseRead();
     }
 
     enqueueResponse(peer, sizeof(respondContractIPO), RespondContractIPO::type, header->dejavu(), &respondContractIPO);
@@ -1484,9 +1485,9 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
 
     if (decreaseEnergy(index, amount))
     {
-        ACQUIRE(contractStateLock[0]);
+        contractStateLock[0].acquireWrite();
         contractFeeReserve(_currentContractIndex) += amount;
-        RELEASE(contractStateLock[0]);
+        contractStateLock[0].releaseWrite();
 
         const Burning burning = { _currentContractId , amount };
         logBurning(burning);
@@ -2157,7 +2158,7 @@ static void processTick(unsigned long long processorNumber)
                                                     logQuTransfer(quTransfer);
 
                                                     numberOfReleasedEntities = 0;
-                                                    ACQUIRE(contractStateLock[contractIndex]);
+                                                    contractStateLock[contractIndex].acquireWrite();
                                                     IPO* ipo = (IPO*)contractStates[contractIndex];
                                                     for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
                                                     {
@@ -2218,7 +2219,7 @@ static void processTick(unsigned long long processorNumber)
                                                             contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
                                                         }
                                                     }
-                                                    RELEASE(contractStateLock[contractIndex]);
+                                                    contractStateLock[contractIndex].releaseWrite();
 
                                                     for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
                                                     {
@@ -2732,7 +2733,7 @@ static void endEpoch()
     {
         if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
         {
-            ACQUIRE(contractStateLock[contractIndex]);
+            contractStateLock[contractIndex].acquireRead();
             IPO* ipo = (IPO*)contractStates[contractIndex];
             long long finalPrice = ipo->prices[NUMBER_OF_COMPUTORS - 1];
             int issuanceIndex, ownershipIndex, possessionIndex;
@@ -2778,11 +2779,11 @@ static void endEpoch()
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
                 logQuTransfer(quTransfer);
             }
-            RELEASE(contractStateLock[contractIndex]);
+            contractStateLock[contractIndex].releaseRead();
 
-            ACQUIRE(contractStateLock[0]);
+            contractStateLock[0].acquireWrite();
             contractFeeReserve(contractIndex) = finalPrice * NUMBER_OF_COMPUTORS;
-            RELEASE(contractStateLock[0]);
+            contractStateLock[0].releaseWrite();
         }
     }
 
@@ -3765,9 +3766,9 @@ static void saveComputer()
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
-        ACQUIRE(contractStateLock[contractIndex]);
+        contractStateLock[contractIndex].acquireRead();
         long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex]);
-        RELEASE(contractStateLock[contractIndex]);
+        contractStateLock[contractIndex].releaseRead();
         totalSize += savedSize;
         if (savedSize != contractDescriptions[contractIndex].stateSize)
         {

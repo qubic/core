@@ -53,6 +53,7 @@
     <ClInclude Include="platform\console_logging.h" />
     <ClInclude Include="platform\common_types.h" />
     <ClInclude Include="platform\random.h" />
+    <ClInclude Include="platform\read_write_lock.h" />
     <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />

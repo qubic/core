@@ -1,6 +1,6 @@
 #pragma once
 
-#include "platform/concurrency.h"
+#include "platform/read_write_lock.h"
 #include "platform/debugging.h"
 #include "platform/memory.h"
 
@@ -13,6 +13,12 @@
 typedef StackBuffer<unsigned int, 32 * 1024 * 1024> ContractLocalsStack;
 ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS];
 static volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS];
+
+
+static ReadWriteLock contractStateLock[contractCount];
+static unsigned char* contractStates[contractCount];
+static unsigned long long contractTotalExecutionTicks[contractCount];
+
 
 bool initContractExec()
 {
@@ -97,25 +103,27 @@ void QPI::QpiContextFunctionCall::__qpiFreeContextOtherContract() const
 void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int contractIndex) const
 {
     ASSERT(contractIndex < contractCount);
-    ACQUIRE(contractStateLock[contractIndex]);
+    contractStateLock[contractIndex].acquireRead();
     return contractStates[contractIndex];
 }
 
 void QPI::QpiContextFunctionCall::__qpiReleaseStateForReading(unsigned int contractIndex) const
 {
     ASSERT(contractIndex < contractCount);
-    ASSERT(contractStateLock[contractIndex]);
-    RELEASE(contractStateLock[contractIndex]);
+    contractStateLock[contractIndex].releaseRead();
 }
 
 void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int contractIndex) const
 {
-    return QpiContextFunctionCall::__qpiAcquireStateForReading(contractIndex);
+    ASSERT(contractIndex < contractCount);
+    contractStateLock[contractIndex].acquireWrite();
+    return contractStates[contractIndex];
 }
 
 void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int contractIndex) const
 {
-    QpiContextFunctionCall::__qpiReleaseStateForReading(contractIndex);
+    ASSERT(contractIndex < contractCount);
+    contractStateLock[contractIndex].releaseWrite();
 }
 
 struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
@@ -129,13 +137,13 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
         ASSERT(_currentContractIndex < contractCount);
 
         // reserve resources for this processor (may block)
-        ACQUIRE(contractStateLock[_currentContractIndex]);
+        contractStateLock[_currentContractIndex].acquireWrite();
 
         const unsigned long long startTick = __rdtsc();
         contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex]);
         contractTotalExecutionTicks[_currentContractIndex] += __rdtsc() - startTick;
         
-        RELEASE(contractStateLock[_currentContractIndex]);
+        contractStateLock[_currentContractIndex].releaseWrite();
     }
 };
 
@@ -168,7 +176,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         setMem(outputBuffer, outputSize + localsSize, 0);
 
         // acquire lock of contract state for writing (may block)
-        ACQUIRE(contractStateLock[_currentContractIndex]);
+        contractStateLock[_currentContractIndex].acquireWrite();
 
         // run procedure
         const unsigned long long startTick = __rdtsc();
@@ -176,7 +184,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         contractTotalExecutionTicks[_currentContractIndex] += __rdtsc() - startTick;
 
         // release lock of contract state
-        RELEASE(contractStateLock[_currentContractIndex]);
+        contractStateLock[_currentContractIndex].releaseWrite();
 
         // free data on stack (output is unused)
         contractLocalsStack[_stackIndex].free();
@@ -227,8 +235,8 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         copyMem(inputBuffer, inputPtr, inputSize);
         setMem(outputBuffer, outputSize + localsSize, 0);
 
-        // acquire lock of contract state for writing (may block)
-        ACQUIRE(contractStateLock[_currentContractIndex]);
+        // acquire lock of contract state for reading (may block)
+        contractStateLock[_currentContractIndex].acquireRead();
 
         // run function
         const unsigned long long startTick = __rdtsc();
@@ -236,7 +244,7 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         contractTotalExecutionTicks[_currentContractIndex] += __rdtsc() - startTick;
 
         // release lock of contract state
-        RELEASE(contractStateLock[_currentContractIndex]);
+        contractStateLock[_currentContractIndex].releaseRead();
     }
 
     // free buffer after output has been copied

@@ -123,6 +123,9 @@
     <ClInclude Include="contract_core\contract_exec.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="platform\read_write_lock.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

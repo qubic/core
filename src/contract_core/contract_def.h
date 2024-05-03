@@ -132,11 +132,6 @@ static unsigned short contractUserProcedureInputSizes[contractCount][65536];
 static unsigned short contractUserProcedureOutputSizes[contractCount][65536];
 static unsigned int contractUserProcedureLocalsSizes[contractCount][65536];
 
-// TODO: allow parallel reading with distinguishing read/write lock
-static volatile char contractStateLock[contractCount];
-static unsigned char* contractStates[contractCount];
-static unsigned long long contractTotalExecutionTicks[contractCount];
-
 enum SystemProcedureID
 {
     INITIALIZE = 0,
