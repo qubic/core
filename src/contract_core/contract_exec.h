@@ -57,7 +57,7 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
 
 void releaseContractLocalsStack(int& stackIdx)
 {
-    ASSERT(stackIdx > 0);
+    ASSERT(stackIdx >= 0);
     ASSERT(stackIdx < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
     ASSERT(contractLocalsStackLock[stackIdx]);
     RELEASE(contractLocalsStackLock[stackIdx]);
