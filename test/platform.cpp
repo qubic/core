@@ -6,6 +6,7 @@
 TEST(TestCoreReadWriteLock, SimpleSingleThread)
 {
     ReadWriteLock l;
+    l.reset();
 
     // Aquire lock for multiple readers
     constexpr int numReaders = 10;

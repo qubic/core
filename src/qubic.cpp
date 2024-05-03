@@ -3892,8 +3892,6 @@ static bool initialize()
         if (!initAssets())
             return false;
 
-        bs->SetMem((void*)contractStateLock, sizeof(contractStateLock), 0);
-        bs->SetMem(contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
         initContractExec();
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {

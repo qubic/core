@@ -8,11 +8,11 @@
 class ReadWriteLock
 {
 public:
-    // Constructor
-    ReadWriteLock()
-    {
-        reset();
-    }
+    // Constructor (disabled because not called without MS CRT, you need to call reset() to init)
+    //ReadWriteLock()
+    //{
+    //    reset();
+    //}
 
     // Set lock fully unlocked state.
     void reset()

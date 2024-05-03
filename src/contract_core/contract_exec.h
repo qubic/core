@@ -25,6 +25,13 @@ bool initContractExec()
     for (ContractLocalsStack::SizeType i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS; ++i)
         contractLocalsStack[i].init();
     setMem((void*)contractLocalsStackLock, sizeof(contractLocalsStackLock), 0);
+
+    setMem(contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
+    for (int i = 0; i < contractCount; ++i)
+    {
+        contractStateLock[i].reset();
+    }
+
     return true;
 }
 
