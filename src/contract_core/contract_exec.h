@@ -36,17 +36,20 @@ bool initContractExec()
 }
 
 // Acquire lock of an currently unused stack (may block if all in use)
-void acquireContractLocalsStack(int& stackIdx)
+// stacksToIgnore > 0 can be passed by low priority tasks to keep some stacks reserved for high prio purposes.
+void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
 {
+    static_assert(NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS >= 2, "NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS should be at least 2.");
     ASSERT(stackIdx < 0);
+    ASSERT(stacksToIgnore < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
 
-    int i = 0;
+    int i = stacksToIgnore;
     while (TRY_ACQUIRE(contractLocalsStackLock[i]) == false)
     {
         _mm_pause();
         ++i;
         if (i == NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS)
-            i = 0;
+            i = stacksToIgnore;
     }
 
     stackIdx = i;
@@ -226,7 +229,8 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         ASSERT(contractUserFunctions[_currentContractIndex][inputType]);
 
         // reserve stack for this processor (may block)
-        acquireContractLocalsStack(_stackIndex);
+        constexpr unsigned int stacksNotUsedToReserveThemForStateWriter = 1;
+        acquireContractLocalsStack(_stackIndex, stacksNotUsedToReserveThemForStateWriter);
         ASSERT(contractLocalsStack[_stackIndex].size() == 0);
 
         // allocate input, output, and locals buffer from stack and init them
