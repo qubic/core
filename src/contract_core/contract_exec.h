@@ -17,7 +17,7 @@ static volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTION_PROCES
 
 static ReadWriteLock contractStateLock[contractCount];
 static unsigned char* contractStates[contractCount];
-static unsigned long long contractTotalExecutionTicks[contractCount];
+static volatile long long contractTotalExecutionTicks[contractCount];
 
 
 bool initContractExec()
@@ -26,7 +26,7 @@ bool initContractExec()
         contractLocalsStack[i].init();
     setMem((void*)contractLocalsStackLock, sizeof(contractLocalsStackLock), 0);
 
-    setMem(contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
+    setMem((void*)contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
     for (int i = 0; i < contractCount; ++i)
     {
         contractStateLock[i].reset();
@@ -151,8 +151,8 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
 
         const unsigned long long startTick = __rdtsc();
         contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex]);
-        contractTotalExecutionTicks[_currentContractIndex] += __rdtsc() - startTick;
-        
+        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+
         contractStateLock[_currentContractIndex].releaseWrite();
     }
 };
@@ -191,7 +191,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         // run procedure
         const unsigned long long startTick = __rdtsc();
         contractUserProcedures[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
-        contractTotalExecutionTicks[_currentContractIndex] += __rdtsc() - startTick;
+        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
 
         // release lock of contract state
         contractStateLock[_currentContractIndex].releaseWrite();
@@ -252,7 +252,7 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         // run function
         const unsigned long long startTick = __rdtsc();
         contractUserFunctions[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
-        contractTotalExecutionTicks[_currentContractIndex] += __rdtsc() - startTick;
+        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
 
         // release lock of contract state
         contractStateLock[_currentContractIndex].releaseRead();
