@@ -420,16 +420,6 @@ static bool loadUniverse()
 
         return false;
     }
-    {
-        setText(message, L"Universe digest = ");
-        m256i digest;
-        getUniverseDigest(digest);
-        CHAR16 digestChars[60 + 1];
-        getIdentity((unsigned char*)&digest, digestChars, true);
-        appendText(message, digestChars);
-        appendText(message, L".");
-        logToConsole(message);
-    }
     return true;
 }
 

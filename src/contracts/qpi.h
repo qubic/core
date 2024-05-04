@@ -9,7 +9,7 @@ namespace QPI
 {
 	/*
 
-	Prohibited character combinations:
+	Prohibited character combinations in contracts:
 
 	"
 	#
@@ -24,8 +24,13 @@ namespace QPI
 	__
 	double
 	float
+	return
 	typedef
 	union
+
+	const_cast
+	QpiContext
+	__registerUser
 
 	*/
 
@@ -38,6 +43,7 @@ namespace QPI
 	typedef unsigned int uint32;
 	typedef signed long long sint64;
 	typedef unsigned long long uint64;
+
 	typedef m256i id;
 
 #define bit_2x bit_2
@@ -561,7 +567,7 @@ namespace QPI
 #define index_8388608x2 index_<16777216>
 #define index_16777216x2 index_<33554432>
 
-#define NULL_ID _mm256_setzero_si256()
+#define NULL_ID id(0, 0, 0, 0)
 	constexpr sint64 NULL_INDEX = -1;
 
 #define _A 0
@@ -615,7 +621,7 @@ namespace QPI
 #define MONDAY 5
 #define TUESDAY 6
 
-#define X_MULTIPLIER 1
+#define X_MULTIPLIER 1ULL
 
 	struct bit_2
 	{
@@ -4980,7 +4986,7 @@ namespace QPI
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
 
-		inline void set(uint64 index, sint32 value)
+		inline void set(uint64 index, T value)
 		{
 			_values[index & (sizeof(_values) / sizeof(_values[0]) - 1)] = value;
 		}
@@ -5049,7 +5055,7 @@ namespace QPI
 		// Return index of id pov in hash map _povs, or NULL_INDEX if not found
 		sint64 _povIndex(const id& pov) const
 		{
-			sint64 povIndex = pov.m256i_u64[0] & (L - 1);
+			sint64 povIndex = pov.u64._0 & (L - 1);
 			for (sint64 counter = 0; counter < L; counter += 32)
 			{
 				uint64 flags = _getEncodedPovOccupationFlags(_povOccupationFlags, povIndex);
@@ -5241,11 +5247,11 @@ namespace QPI
 				pov.population++;
 
 
-				if (_elements[pov.headIndex].priority < priority)
+				if (_elements[pov.headIndex].priority <= priority)
 				{
 					pov.headIndex = newElementIdx;
 				}
-				else if (_elements[pov.tailIndex].priority >= priority)
+				else if (_elements[pov.tailIndex].priority > priority)
 				{
 					pov.tailIndex = newElementIdx;
 				}
@@ -5320,7 +5326,7 @@ namespace QPI
 			{
 				return rootIdx;
 			}
-			// initilize root
+			// initialize root
 			sint64 mid = n / 2;
 			rootIdx = sortedElementIndices[mid];
 			_elements[rootIdx].bstParentIndex = NULL_INDEX;
@@ -5417,7 +5423,7 @@ namespace QPI
 		sint64 _previousElementIndex(sint64 elementIdx) const
 		{
 			elementIdx &= (L - 1);
-			if (elementIdx < _population)
+			if (uint64(elementIdx) < _population)
 			{
 				if (_elements[elementIdx].bstLeftIndex != NULL_INDEX)
 				{
@@ -5448,7 +5454,7 @@ namespace QPI
 		sint64 _nextElementIndex(sint64 elementIdx) const
 		{
 			elementIdx &= (L - 1);
-			if (elementIdx < _population)
+			if (uint64(elementIdx) < _population)
 			{
 				if (_elements[elementIdx].bstRightIndex != NULL_INDEX)
 				{
@@ -5553,7 +5559,7 @@ namespace QPI
 			uint64 flags = povOccupationFlags[povIndex >> 5] >> offset;
 			if (offset > 0)
 			{
-				flags |= povOccupationFlags[((povIndex + 32) & (L - 1)) >> 5] << (64 - offset);
+				flags |= povOccupationFlags[((povIndex + 32) & (L - 1)) >> 5] << (2*_nEncodedFlags - offset);
 			}
 			return flags;
 		}
@@ -5565,7 +5571,7 @@ namespace QPI
 			if (_population < capacity() && _markRemovalCounter < capacity())
 			{
 				// search in pov hash map
-				sint64 povIndex = pov.m256i_u64[0] & (L - 1);
+				sint64 povIndex = pov.u64._0 & (L - 1);
 				for (sint64 counter = 0; counter < L; counter += 32)
 				{
 					uint64 flags = _getEncodedPovOccupationFlags(_povOccupationFlags, povIndex);
@@ -5604,7 +5610,7 @@ namespace QPI
 		{
 			// _povs gets occupied over time with entries of type 3 which means they are marked for cleanup.
 			// Once cleanup is called it's necessary to remove all these type 3 entries by reconstructing a fresh collection residing in scratchpad buffer.
-			// Corresponding elements are be sorted too for faster uniform access, tail and head, prev and next are changed accordingly.
+			// The _elements array is not reorganized by the cleanup (only references to _povs are updated).
 			// Cleanup() called for a collection having only type 3 entries in _povs must give the result equal to reset() memory content wise.
 
 			// Quick check to cleanup
@@ -5628,9 +5634,10 @@ namespace QPI
 			setMem(::__scratchpad(), sizeof(_povs) + sizeof(_povOccupationFlags), 0);
 			uint64 newPopulation = 0;
 
-			// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new collection and copy priority queue in order,
-			// sequentially filling entry array of new collection.
-			for (sint64 oldPovIndexGroup = 0; oldPovIndexGroup < (L >> 5); oldPovIndexGroup++)
+			// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new collection's pov buffers and
+			// update povIndex in elements belonging to pov.
+			constexpr uint64 oldPovIndexGroupCount = (L >> 5) ? (L >> 5) : 1;
+			for (sint64 oldPovIndexGroup = 0; oldPovIndexGroup < oldPovIndexGroupCount; oldPovIndexGroup++)
 			{
 				const uint64 flags = _povOccupationFlags[oldPovIndexGroup];
 				uint64 maskBits = (0xAAAAAAAAAAAAAAAA & (flags << 1));
@@ -5643,28 +5650,29 @@ namespace QPI
 					// Only add pov to new collection that are occupied and not marked for removal
 					if (maskBits & 3ULL)
 					{
+						// find empty position in new pov hash map
 						const sint64 oldPovIndex = (oldPovIndexGroup << 5) + (oldPovIndexOffset >> 1);
-						sint64 newPovIndex = _povs[oldPovIndex].value.m256i_u64[0] & (L - 1);
-						bool foundValidIndex = false;
-						for (sint64 counter = 0; counter < L && !foundValidIndex; counter += 32)
+						sint64 newPovIndex = _povs[oldPovIndex].value.u64._0 & (L - 1);
+						for (sint64 counter = 0; counter < L; counter += 32)
 						{
 							QPI::uint64 newFlags = _getEncodedPovOccupationFlags(_povOccupationFlagsBuffer, newPovIndex);
 							for (sint64 i = 0; i < _nEncodedFlags; i++, newFlags >>= 2)
 							{
 								if ((newFlags & 3ULL) == 0)
 								{
-									foundValidIndex = true;
 									newPovIndex = (newPovIndex + i) & (L - 1);
-									break;
+									goto foundEmptyPosition;
 								}
 							}
-						}
-						if (!foundValidIndex)
-						{
 							newPovIndex = (newPovIndex + _nEncodedFlags) & (L - 1);
-							continue;
 						}
+#ifdef NO_UEFI
+						// should never be reached, because old and new map have same capacity (there should always be an empty slot)
+						goto cleanupBug;
+#endif
 
+					foundEmptyPosition:
+						// occupy empty pov hash map entry
 						_povOccupationFlagsBuffer[newPovIndex >> 5] |= (1ULL << ((newPovIndex & 31) << 1));
 						copyMem(&_povsBuffer[newPovIndex], &_povs[oldPovIndex], sizeof(PoV));
 
@@ -5688,9 +5696,11 @@ namespace QPI
 							}
 						}
 
+						// check if we are done
 						newPopulation += _povs[oldPovIndex].population;
 						if (newPopulation == _population)
 						{
+							// povs of all elements have been transferred -> overwrite old pov arrays with new pov arrays
 							copyMem(_povs, _povsBuffer, sizeof(_povs));
 							copyMem(_povOccupationFlags, _povOccupationFlagsBuffer, sizeof(_povOccupationFlags));
 							_markRemovalCounter = 0;
@@ -5701,8 +5711,9 @@ namespace QPI
 			}
 
 #ifdef NO_UEFI
+		cleanupBug:
 			// don't expect here, certainly got error!!!
-			printf("Error: Something went wrong at cleanup.");
+			printf("ERROR: Something went wrong at cleanup!\n");
 #endif
 		}
 
@@ -5771,10 +5782,13 @@ namespace QPI
 		}
 
 		// Remove element and mark its pov for removal, if the last element.
-		void remove(sint64 elementIdx)
+		// Returns element index of next element in priority queue (the one following elementIdx).
+		// Element indices obatined before this call are invalidated, because at least one element is moved.
+		sint64 remove(sint64 elementIdx)
 		{
+			sint64 nextElementIdxOfRemoved = NULL_INDEX;
 			elementIdx &= (L - 1);
-			if (elementIdx < _population)
+			if (uint64(elementIdx) < _population)
 			{
 				auto deleteElementIdx = elementIdx;
 				const auto povIndex = _elements[elementIdx].povIndex;
@@ -5783,13 +5797,15 @@ namespace QPI
 				{
 					auto& rootIdx = pov.bstRootIndex;
 					auto& curElement = _elements[elementIdx];
-					auto removed_elementIdx = elementIdx;
+
+					nextElementIdxOfRemoved = _nextElementIndex(elementIdx);
 
 					if (curElement.bstRightIndex != NULL_INDEX &&
 						curElement.bstLeftIndex != NULL_INDEX)
 					{
 						// it contains both left and right child
-						const auto tmpIdx = _getMostLeft(curElement.bstRightIndex);
+						// -> move next element in priority queue to curElement, delete next element
+						const auto tmpIdx = nextElementIdxOfRemoved;
 						if (tmpIdx == pov.tailIndex)
 						{
 							pov.tailIndex = _previousElementIndex(tmpIdx);
@@ -5813,22 +5829,16 @@ namespace QPI
 						}
 						copyMem(&curElement.value, &_elements[tmpIdx].value, sizeof(T));
 						curElement.priority = _elements[tmpIdx].priority;
+						nextElementIdxOfRemoved = elementIdx;
 
-						const bool SUPPORT_BACK_COMPATIBILITY = true;
-						if (SUPPORT_BACK_COMPATIBILITY)
-						{
-							_moveElement(elementIdx, tmpIdx);
-						}
-						else
-						{
-							deleteElementIdx = tmpIdx;
-						}
+						deleteElementIdx = tmpIdx;
 					}
 					else if (curElement.bstRightIndex != NULL_INDEX)
 					{
+						// contains only right child
 						if (elementIdx == pov.headIndex)
 						{
-							pov.headIndex = _nextElementIndex(elementIdx);
+							pov.headIndex = nextElementIdxOfRemoved;
 						}
 						if (!_updateParent(elementIdx, curElement.bstRightIndex))
 						{
@@ -5838,6 +5848,7 @@ namespace QPI
 					}
 					else if (curElement.bstLeftIndex != NULL_INDEX)
 					{
+						// contains lonly left child
 						if (elementIdx == pov.tailIndex)
 						{
 							pov.tailIndex = _previousElementIndex(elementIdx);
@@ -5852,7 +5863,7 @@ namespace QPI
 					{
 						if (elementIdx == pov.headIndex)
 						{
-							pov.headIndex = _nextElementIndex(elementIdx);
+							pov.headIndex = nextElementIdxOfRemoved;
 						}
 						else if (elementIdx == pov.tailIndex)
 						{
@@ -5873,6 +5884,8 @@ namespace QPI
 				{
 					// Move last element to fill new gap in array
 					_moveElement(_population, deleteElementIdx);
+					if (nextElementIdxOfRemoved == _population)
+						nextElementIdxOfRemoved = deleteElementIdx;
 				}
 
 				const bool CLEAR_UNUSED_ELEMENT = true;
@@ -5880,6 +5893,19 @@ namespace QPI
 				{
 					setMem(&_elements[_population], sizeof(Element), 0);
 				}
+			}
+
+			return nextElementIdxOfRemoved;
+		}
+
+		// Replace *existing* element, do nothing otherwise.
+		// - The element exists: replace its value.
+		// - The index is out of bounds: no action is taken.
+		void replace(sint64 oldElementIndex, const T& newElement)
+		{
+			if (uint64(oldElementIndex) < _population)
+			{
+				_elements[oldElementIndex].value = newElement;
 			}
 		}
 
@@ -5939,186 +5965,206 @@ namespace QPI
 	//////////
 
 #if !defined(NO_UEFI)
-	static id arbitrator(
-	) {
-		return ::__arbitrator();
-	}
+	struct QpiContext
+	{
+		id arbitrator(
+		) const;
 
-	static sint64 burn(
-		sint64 amount
-	) {
-		return ::__burn(amount);
-	}
+		sint64 burn(
+			sint64 amount
+		) const;
 
-	static id computor(
-		uint16 computorIndex // [0..675]
-	) {
-		return ::__computor(computorIndex);
-	}
+		// TODO: needs to be macro to access private members
+		// TODO: remove need to pass state explicitly
+		// call function or procedure of contract
+		template <typename Callable, typename State, typename Input, typename Output>
+		void call(Callable& callable, State& state, Input& input, Output& output) const
+		{
+			callable(*this, state, input, output);
+		}
 
-	static uint8 day(
-	) { // [1..31]
-		return ::__day();
-	}
+		// TODO: calling of other contracts, make sure to avoid race conditions
+		// write note about use of stack and risk of stack overlow with many -> we may have a separate per-processor stack to store the context (or changing variables of the context)
 
-	static uint8 dayOfWeek(
-		uint8 year, // (0 = 2000, 1 = 2001, ..., 99 = 2099)
-		uint8 month,
-		uint8 day
-	) { // [0..6]
-		return ::__dayOfWeek(year, month, day);
-	}
 
-	static uint16 epoch(
-	) { // [0..9'999]
-		return ::__epoch();
-	}
+		id computor(
+			uint16 computorIndex // [0..675]
+		) const;
 
-	static bit getEntity(
-		id id,
-		::Entity& entity
-	) { // Returns "true" if the entity has been found, returns "false" otherwise
-		return ::__getEntity(id, entity);
-	}
+		uint8 day(
+		) const; // [1..31]
 
-	static uint8 hour(
-	) { // [0..23]
-		return ::__hour();
-	}
+		uint8 dayOfWeek(
+			uint8 year, // (0 = 2000, 1 = 2001, ..., 99 = 2099)
+			uint8 month,
+			uint8 day
+		) const; // [0..6]
 
-	static sint64 invocationReward(
-	) {
-		return ::__invocationReward();
-	}
+		uint16 epoch(
+		) const; // [0..9'999]
 
-	static id invocator(
-	) { // Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
-		return ::__invocator();
-	}
+		bit getEntity(
+			const id& id,
+			::Entity& entity
+		) const; // Returns "true" if the entity has been found, returns "false" otherwise
 
-	static sint64 issueAsset(
-		uint64 name,
-		id issuer,
-		sint8 numberOfDecimalPlaces,
-		sint64 numberOfShares,
-		uint64 unitOfMeasurement
-	) {
-		return ::__issueAsset(name, issuer, numberOfDecimalPlaces, numberOfShares, unitOfMeasurement);
-	}
+		uint8 hour(
+		) const; // [0..23]
 
-	template <typename T>
-	static id K12(
-		T data
-	) {
-		return __K12(data);
-	}
+		sint64 invocationReward(
+		) const;
 
-	static uint16 millisecond(
-	) { // [0..999]
-		return ::__millisecond();
-	}
+		id invocator(
+		) const; // Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
 
-	static uint8 minute(
-	) { // [0..59]
-		return ::__minute();
-	}
+		sint64 issueAsset(
+			uint64 name,
+			const id& issuer,
+			sint8 numberOfDecimalPlaces,
+			sint64 numberOfShares,
+			uint64 unitOfMeasurement
+		) const; // Returns number of shares or 0 on error
 
-	static uint8 month(
-	) { // [1..12]
-		return ::__month();
-	}
+		template <typename T>
+		id K12(
+			const T& data
+		) const;
 
-	static id nextId(
-		id currentId
-	) {
-		return ::__nextId(currentId);
-	}
+		uint16 millisecond(
+		) const; // [0..999]
 
-	static sint64 numberOfPossessedShares(
-		uint64 assetName,
-		id issuer,
-		id owner,
-		id possessor,
-		uint16 ownershipManagingContractIndex,
-		uint16 possessionManagingContractIndex
-	) {
-		return ::__numberOfPossessedShares(assetName, issuer, owner, possessor, ownershipManagingContractIndex, possessionManagingContractIndex);
-	}
+		uint8 minute(
+		) const; // [0..59]
 
-	static id originator(
-	) { // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
-		return ::__originator();
-	}
+		uint8 month(
+		) const; // [1..12]
 
-	static uint8 second(
-	) { // [0..59]
-		return ::__second();
-	}
+		id nextId(
+			const id& currentId
+		) const;
 
-	static uint32 tick(
-	) { // [0..999'999'999]
-		return ::__tick();
-	}
+		sint64 numberOfPossessedShares(
+			uint64 assetName,
+			const id& issuer,
+			const id& owner,
+			const id& possessor,
+			uint16 ownershipManagingContractIndex,
+			uint16 possessionManagingContractIndex
+		) const;
 
-	static sint64 transfer( // Attempts to transfer energy from this qubic
-		id destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
-		sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
-	) { // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
-		return ::__transfer(destination, amount);
-	}
+		id originator(
+		) const; // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
 
-	static sint64 transferShareOwnershipAndPossession(
-		uint64 assetName,
-		id issuer,
-		id owner,
-		id possessor,
-		sint64 numberOfShares,
-		id newOwnerAndPossessor
-	) { // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
-		return ::__transferShareOwnershipAndPossession(assetName, issuer, owner, possessor, numberOfShares, newOwnerAndPossessor);
-	}
+		bit signatureValidity(
+			const id& entity,
+			const id& digest,
+			const array<sint8, 64>& signature
+		) const;
 
-	static uint8 year(
-	) { // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
-		return ::__year();
-	}
+		uint8 second(
+		) const; // [0..59]
+
+		uint32 tick(
+		) const; // [0..999'999'999]
+
+		sint64 transfer( // Attempts to transfer energy from this qubic
+			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
+			sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
+		) const; // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
+
+		sint64 transferShareOwnershipAndPossession(
+			uint64 assetName,
+			const id& issuer,
+			const id& owner,
+			const id& possessor,
+			sint64 numberOfShares,
+			const id& newOwnerAndPossessor
+		) const; // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
+
+		uint8 year(
+		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
+
+	protected:
+		// Construction is done in core, not allowed in contracts
+		QpiContext(
+			unsigned int contractIndex,
+			const m256i& originator,
+			const m256i& invocator,
+			long long invocationReward
+		) :
+			_currentContractIndex(contractIndex),
+			_currentContractId(contractIndex, 0, 0, 0),
+			_originator(originator),
+			_invocator(invocator),
+			_invocationReward(invocationReward)
+		{}
+
+		unsigned int _currentContractIndex;
+		m256i _currentContractId, _originator, _invocator;
+		long long _invocationReward;
+
+	private:
+		// Disabling copy and move
+		QpiContext(const QpiContext&) = delete;
+		QpiContext(QpiContext&&) = delete;
+		QpiContext& operator=(const QpiContext&) = delete;
+		QpiContext& operator=(QpiContext&&) = delete;
+	};
+
+	struct QpiContextProcedureCall : public QPI::QpiContext
+	{
+		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContext(contractIndex, originator, originator, invocationReward) {}
+	};
+
+	struct QpiContextForInit : public QPI::QpiContext
+	{
+		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
+		void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short) const;
+		void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short) const;
+	};
+
+	struct QpiContextNoOriginatorAndReward : public QPI::QpiContext
+	{
+		QpiContextNoOriginatorAndReward(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
+	};
+
 #endif
 
 	//////////
 
-	#define INITIALIZE public: static void __initialize(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define INITIALIZE public: static void __initialize(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define BEGIN_EPOCH public: static void __beginEpoch(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define BEGIN_EPOCH public: static void __beginEpoch(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define END_EPOCH public: static void __endEpoch(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define END_EPOCH public: static void __endEpoch(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define BEGIN_TICK public: static void __beginTick(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define BEGIN_TICK public: static void __beginTick(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define END_TICK public: static void __endTick(CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define END_TICK public: static void __endTick(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define EXPAND public: static void __expand(CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define EXPAND public: static void __expand(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define LOG_DEBUG(message) __logContractDebugMessage(message);
+	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
 
-	#define LOG_ERROR(message) __logContractErrorMessage(message);
+	#define LOG_ERROR(message) __logContractErrorMessage(CONTRACT_INDEX, message);
 
-	#define LOG_INFO(message) __logContractInfoMessage(message);
+	#define LOG_INFO(message) __logContractInfoMessage(CONTRACT_INDEX, message);
 
-	#define LOG_WARNING(message) __logContractWarningMessage(message);
+	#define LOG_WARNING(message) __logContractWarningMessage(CONTRACT_INDEX, message);
 
-	#define PRIVATE(functionOrProcedure) private: static void functionOrProcedure(CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define PRIVATE(functionOrProcedure) private: static void functionOrProcedure(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define PUBLIC(functionOrProcedure) public: static void functionOrProcedure(CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define PUBLIC(functionOrProcedure) public: static void functionOrProcedure(const QPI::QpiContext& qpi, CONTRACT_STATE_TYPE& state, functionOrProcedure##_input& input, functionOrProcedure##_output& output) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
-	#define REGISTER_USER_FUNCTIONS public: static void __registerUserFunctions() { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
-
-	#define REGISTER_USER_PROCEDURES public: static void __registerUserProcedures() { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define REGISTER_USER_FUNCTIONS_AND_PROCEDURES public: static void __registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
 
 	#define _ ::__endFunctionOrProcedure(__functionOrProcedureId); }
 
-	#define REGISTER_USER_FUNCTION(userFunction, inputType) __registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output));
+	#define REGISTER_USER_FUNCTION(userFunction, inputType) qpi.__registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output));
 
-	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) __registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output));
+	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output));
 
-	#define SELF _mm256_set_epi64x(0, 0, 0, CONTRACT_INDEX)
+	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
+
+	#define SELF_INDEX CONTRACT_INDEX
 }

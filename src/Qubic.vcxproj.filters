@@ -4,19 +4,12 @@
     <ClCompile Include="qubic.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="smart_contracts.h" />
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />
     <ClInclude Include="kangaroo_twelve.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="text_output.h" />
     <ClInclude Include="score.h" />
-    <ClInclude Include="smart_contracts\Quottery.h">
-      <Filter>smart_contracts</Filter>
-    </ClInclude>
-    <ClInclude Include="smart_contracts\Qx.h">
-      <Filter>smart_contracts</Filter>
-    </ClInclude>
     <ClInclude Include="platform\concurrency.h">
       <Filter>platform</Filter>
     </ClInclude>
@@ -46,9 +39,6 @@
     </ClInclude>
     <ClInclude Include="platform\random.h">
       <Filter>platform</Filter>
-    </ClInclude>
-    <ClInclude Include="smart_contracts\Random.h">
-      <Filter>smart_contracts</Filter>
     </ClInclude>
     <ClInclude Include="system.h" />
     <ClInclude Include="assets.h" />
@@ -93,12 +83,6 @@
       <Filter>network_messages</Filter>
     </ClInclude>
     <ClInclude Include="score_cache.h" />
-    <ClInclude Include="smart_contracts\qpi.h">
-      <Filter>smart_contracts</Filter>
-    </ClInclude>
-    <ClInclude Include="smart_contracts\math_lib.h">
-      <Filter>smart_contracts</Filter>
-    </ClInclude>
     <ClInclude Include="network_core\peers.h">
       <Filter>network_core</Filter>
     </ClInclude>
@@ -108,18 +92,36 @@
     <ClInclude Include="network_messages\system_info.h">
       <Filter>network_messages</Filter>
     </ClInclude>
-    <ClInclude Include="smart_contracts\QUtil.h">
-      <Filter>smart_contracts</Filter>
-    </ClInclude>
     <ClInclude Include="tick_storage.h" />
     <ClInclude Include="platform\debugging.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\math_lib.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\qpi.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\Quottery.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\QUtil.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\Qx.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\Random.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\contract_def.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\stack_buffer.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Filter Include="smart_contracts">
-      <UniqueIdentifier>{b15197d9-5a5c-4c37-9009-6c2faf0f45a8}</UniqueIdentifier>
-    </Filter>
     <Filter Include="platform">
       <UniqueIdentifier>{160e9f94-b706-42f6-8517-2be8ade5c99d}</UniqueIdentifier>
     </Filter>
@@ -128,6 +130,12 @@
     </Filter>
     <Filter Include="network_core">
       <UniqueIdentifier>{33440ff4-d5a6-4881-ac01-cbd601935a3c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="contracts">
+      <UniqueIdentifier>{b15197d9-5a5c-4c37-9009-6c2faf0f45a8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="contract_core">
+      <UniqueIdentifier>{e18dc5b0-6ba9-4b8a-9221-71165f0335b9}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>
