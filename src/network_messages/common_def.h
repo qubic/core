@@ -3,7 +3,10 @@
 #define SIGNATURE_SIZE 64
 #define NUMBER_OF_TRANSACTIONS_PER_TICK 1024 // Must be 2^N
 #define MAX_NUMBER_OF_CONTRACTS 1024 // Must be 1024
-#define NUMBER_OF_COMPUTORS 676
+
+//changed by frex for dymic allocate the number of computors
+#define NUMBER_OF_COMPUTORS 6
+
 #define NUMBER_OF_EXCHANGED_PEERS 4
 #define SPECTRUM_DEPTH 24 // Defines SPECTRUM_CAPACITY (1 << SPECTRUM_DEPTH)
 
