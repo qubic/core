@@ -6,7 +6,7 @@
 // Existing interface and behavior should never be changed! (However, it may be extended.)
 union m256i
 {
-    // access for loops and compatability with __m256i
+    // access for loops and compatibility with __m256i
     __int8              m256i_i8[32];
     __int16             m256i_i16[16];
     __int32             m256i_i32[8];
@@ -56,6 +56,7 @@ union m256i
 
     m256i(unsigned long long ull0, unsigned long long ull1, unsigned long long ull2, unsigned long long ull3)
     {
+        // TODO: set with _mm256_set_epi64x
         m256i_u64[0] = ull0;
         m256i_u64[1] = ull1;
         m256i_u64[2] = ull2;

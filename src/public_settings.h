@@ -10,6 +10,7 @@
 
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this for this epoch, because there may be issues due too fast ticking
+#define NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS 4  // number of processors that can execute contract functions in parallel
 
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 2000000 // the larger the better

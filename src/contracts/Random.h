@@ -23,7 +23,7 @@ private:
 
 	uint32 _bitFee; // Amount of qus
 
-	PUBLIC(RevealAndCommit)
+	PUBLIC_PROCEDURE(RevealAndCommit)
 
 		qpi.transfer(qpi.invocator(), qpi.invocationReward());
 	_
