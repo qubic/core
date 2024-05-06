@@ -185,7 +185,7 @@ private:
 	};
 	collection<_EntityOrder, 2097152 * X_MULTIPLIER> _entityOrders;
 
-	// TODO: change to "locals" variables -> every func/proc can define struct of "locals" that are provided to function (stored on stack structure per processor)
+	// TODO: change to "locals" variables and remove from state? -> every func/proc can define struct of "locals" that is passed as an argument (stored on stack structure per processor)
 	sint64 _elementIndex, _elementIndex2;
 	id _issuerAndAssetName;
 	_AssetOrder _assetOrder;

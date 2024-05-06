@@ -59,6 +59,7 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
     stackIdx = i;
 }
 
+// Release locked stack (and reset stackIdx)
 void releaseContractLocalsStack(int& stackIdx)
 {
     ASSERT(stackIdx >= 0);
@@ -68,6 +69,7 @@ void releaseContractLocalsStack(int& stackIdx)
     stackIdx = -1;
 }
 
+// Allocate storage on ContractLocalsStack of QPI execution context
 void* QPI::QpiContextFunctionCall::__qpiAllocLocals(unsigned int sizeOfLocals) const
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
@@ -79,6 +81,7 @@ void* QPI::QpiContextFunctionCall::__qpiAllocLocals(unsigned int sizeOfLocals) c
     return p;
 }
 
+// Free last allocated storage on ContractLocalsStack of QPI execution context
 void QPI::QpiContextFunctionCall::__qpiFreeLocals() const
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
@@ -87,6 +90,7 @@ void QPI::QpiContextFunctionCall::__qpiFreeLocals() const
     contractLocalsStack[_stackIndex].free();
 }
 
+// Called before one contract calls a function of a different contract
 const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
@@ -96,6 +100,7 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
     return newContext;
 }
 
+// Called before one contract calls a procedure of a different contract
 const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, QPI::sint64 invocationReward) const
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
@@ -107,13 +112,14 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructConte
     return newContext;
 }
 
-
+// Called before one contract calls a function or procedure of a different contract
 void QPI::QpiContextFunctionCall::__qpiFreeContextOtherContract() const
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
     contractLocalsStack[_stackIndex].free();
 }
 
+// Used to acquire a contract state lock when one contract calls a function of a different contract
 void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int contractIndex) const
 {
     ASSERT(contractIndex < contractCount);
@@ -121,12 +127,14 @@ void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int cont
     return contractStates[contractIndex];
 }
 
+// Used to release a contract state lock when one contract calls a function of a different contract
 void QPI::QpiContextFunctionCall::__qpiReleaseStateForReading(unsigned int contractIndex) const
 {
     ASSERT(contractIndex < contractCount);
     contractStateLock[contractIndex].releaseRead();
 }
 
+// Used to acquire a contract state lock when one contract calls a procedure of a different contract
 void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int contractIndex) const
 {
     ASSERT(contractIndex < contractCount);
@@ -134,6 +142,7 @@ void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int con
     return contractStates[contractIndex];
 }
 
+// Used to release a contract state lock when one contract calls a procedure of a different contract
 void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int contractIndex) const
 {
     ASSERT(contractIndex < contractCount);
@@ -141,6 +150,8 @@ void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int cont
     contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
 }
 
+
+// QPI context used to call contract system procedure from qubic core (contract processor)
 struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
 {
     QpiContextSystemProcedureCall(unsigned int contractIndex) : QPI::QpiContextProcedureCall(contractIndex, NULL_ID, 0)
@@ -164,6 +175,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
     }
 };
 
+// QPI context used to call contract user procedure from qubic core (tick processor)
 struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 {
     QpiContextUserProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QPI::QpiContextProcedureCall(contractIndex, originator, invocationReward)
@@ -213,7 +225,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
     }
 };
 
-
+// QPI context used to call contract user function from qubic core (request processor)
 struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
 {
     char* outputBuffer;
