@@ -10,6 +10,7 @@
 
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this for this epoch, because there may be issues due too fast ticking
+#define NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS 4  // number of processors that can execute contract functions in parallel
 
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 2000000 // the larger the better
@@ -27,16 +28,19 @@
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
 #define START_NETWORK_FROM_SCRATCH 1
 
+// Addons: If you don't know it, leave it 0.
+#define ADDON_TX_STATUS_REQUEST 0
+
 //////////////////////////////////////////////////////////////////////////
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 201
+#define VERSION_B 202
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 107
-#define TICK 13680000
+#define EPOCH 108
+#define TICK 13820000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 

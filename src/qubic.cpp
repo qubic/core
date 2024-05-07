@@ -2,7 +2,9 @@
 
 #include "network_messages/all.h"
 
+// needs to be included early to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
+#include "contract_core/contract_exec.h"
 
 #include "private_settings.h"
 #include "public_settings.h"
@@ -36,6 +38,7 @@
 
 #include "tick_storage.h"
 
+#include "addons/tx_status_request.h"
 
 ////////// Qubic \\\\\\\\\\
 
@@ -56,7 +59,6 @@
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
-
 
 
 typedef struct
@@ -125,18 +127,7 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static EFI_EVENT contractProcessorEvent;
-static volatile char contractStateLock[contractCount];
-static unsigned char* contractStates[contractCount];
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
-static unsigned long long* contractStateChangeFlags = NULL;
-static unsigned long long contractTotalExecutionTicks[contractCount] = { 0 };
-static unsigned long long solutionTotalExecutionTicks = 0;
-static volatile char contractStateCopyLock = 0;
-static char* contractStateCopy = NULL;
-static char contractFunctionInputs[MAX_NUMBER_OF_PROCESSORS][65536];
-static char* contractFunctionOutputs[MAX_NUMBER_OF_PROCESSORS];
-static char executedContractInput[65536];
-static char executedContractOutput[RequestResponseHeader::max_size + 1];
 
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
@@ -179,6 +170,7 @@ static unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
 static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
+static unsigned long long solutionTotalExecutionTicks = 0;
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -396,9 +388,10 @@ static void getComputerDigest(m256i& digest)
                 // + contractStateChangeFlags set afterwards by thread B and contractStateChangeFlags cleared below below
                 // by thread A. We then have a changed state but a cleared contractStateChangeFlags flag leading to wrong
                 // digest.
-                ACQUIRE(contractStateLock[digestIndex]);
+                // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
+                contractStateLock[digestIndex].acquireRead();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
-                RELEASE(contractStateLock[digestIndex]);
+                contractStateLock[digestIndex].releaseRead();
             }
         }
     }
@@ -1042,11 +1035,11 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
     }
     else
     {
-        ACQUIRE(contractStateLock[request->contractIndex]);
+        contractStateLock[request->contractIndex].acquireRead();
         IPO* ipo = (IPO*)contractStates[request->contractIndex];
         bs->CopyMem(respondContractIPO.publicKeys, ipo->publicKeys, sizeof(respondContractIPO.publicKeys));
         bs->CopyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
-        RELEASE(contractStateLock[request->contractIndex]);
+        contractStateLock[request->contractIndex].releaseRead();
     }
 
     enqueueResponse(peer, sizeof(respondContractIPO), RespondContractIPO::type, header->dejavu(), &respondContractIPO);
@@ -1057,30 +1050,19 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
     // TODO: Invoked function may enter endless loop, so a timeout (and restart) is required for request processing threads
     // TODO: Enable parallel execution of contract functions
 
-    RespondContractFunction* response = (RespondContractFunction*)contractFunctionOutputs[processorNumber];
-
     RequestContractFunction* request = header->getPayload<RequestContractFunction>();
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
         || !request->contractIndex || request->contractIndex >= contractCount
         || system.epoch < contractDescriptions[request->contractIndex].constructionEpoch
         || !contractUserFunctions[request->contractIndex][request->inputType])
     {
-        enqueueResponse(peer, 0, response->type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, RespondContractFunction::type, header->dejavu(), NULL);
     }
     else
     {
-        QPI::QpiContextNoOriginatorAndReward qpiContext(request->contractIndex);
-
-        bs->SetMem(&contractFunctionInputs[processorNumber], sizeof(contractFunctionInputs[processorNumber]), 0);
-        bs->CopyMem(&contractFunctionInputs[processorNumber], (((unsigned char*)request) + sizeof(RequestContractFunction)), request->inputSize);
-        ACQUIRE(contractStateLock[request->contractIndex]);
-        ACQUIRE(contractStateCopyLock); // A single contract state buffer is used because of lack of memory, if we could afford we would use a buffer per request processing thread
-        bs->CopyMem(contractStateCopy, contractStates[request->contractIndex], contractDescriptions[request->contractIndex].stateSize);
-        contractUserFunctions[request->contractIndex][request->inputType](qpiContext, contractStateCopy, &contractFunctionInputs[processorNumber], response);
-        RELEASE(contractStateCopyLock);
-        RELEASE(contractStateLock[request->contractIndex]);
-
-        enqueueResponse(peer, contractUserFunctionOutputSizes[request->contractIndex][request->inputType], response->type, header->dejavu(), response);
+        QpiContextUserFunctionCall qpiContext(request->contractIndex);
+        qpiContext.call(request->inputType, (((unsigned char*)request) + sizeof(RequestContractFunction)), request->inputSize);
+        enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type, header->dejavu(), qpiContext.outputBuffer);
     }
 }
 
@@ -1429,6 +1411,16 @@ static void requestProcessor(void* ProcedureArgument)
                     processSpecialCommand(peer, header);
                 }
                 break;
+
+#if ADDON_TX_STATUS_REQUEST
+                /* qli: process RequestTxStatus message */
+                case REQUEST_TX_STATUS:
+                {
+                    processRequestConfirmedTx(processorNumber, peer, header);
+                }
+                break;
+#endif
+
                 }
 
                 queueProcessingNumerator += __rdtsc() - beginningTick;
@@ -1454,29 +1446,31 @@ static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
 
 static void __endFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
-    contractStateChangeFlags[functionOrProcedureId >> (22 + 6)] |= (1ULL << ((functionOrProcedureId >> 22) & 63));
+    // TODO
 }
 
-void QPI::QpiContextForInit::__registerUserFunction(USER_FUNCTION userFunction, unsigned short inputType, unsigned short inputSize, unsigned short outputSize) const
+void QPI::QpiContextForInit::__registerUserFunction(USER_FUNCTION userFunction, unsigned short inputType, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
 {
     contractUserFunctions[_currentContractIndex][inputType] = userFunction;
     contractUserFunctionInputSizes[_currentContractIndex][inputType] = inputSize;
     contractUserFunctionOutputSizes[_currentContractIndex][inputType] = outputSize;
+    contractUserFunctionLocalsSizes[_currentContractIndex][inputType] = localsSize;
 }
 
-void QPI::QpiContextForInit::__registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize, unsigned short outputSize) const
+void QPI::QpiContextForInit::__registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
 {
     contractUserProcedures[_currentContractIndex][inputType] = userProcedure;
     contractUserProcedureInputSizes[_currentContractIndex][inputType] = inputSize;
     contractUserProcedureOutputSizes[_currentContractIndex][inputType] = outputSize;
+    contractUserProcedureLocalsSizes[_currentContractIndex][inputType] = localsSize;
 }
 
-QPI::id QPI::QpiContext::arbitrator() const
+QPI::id QPI::QpiContextFunctionCall::arbitrator() const
 {
     return arbitratorPublicKey;
 }
 
-long long QPI::QpiContext::burn(long long amount) const
+long long QPI::QpiContextProcedureCall::burn(long long amount) const
 {
     if (amount < 0 || amount > MAX_AMOUNT)
     {
@@ -1499,9 +1493,9 @@ long long QPI::QpiContext::burn(long long amount) const
 
     if (decreaseEnergy(index, amount))
     {
-        ACQUIRE(contractStateLock[0]);
+        contractStateLock[0].acquireWrite();
         contractFeeReserve(_currentContractIndex) += amount;
-        RELEASE(contractStateLock[0]);
+        contractStateLock[0].releaseWrite();
 
         const Burning burning = { _currentContractId , amount };
         logBurning(burning);
@@ -1510,27 +1504,27 @@ long long QPI::QpiContext::burn(long long amount) const
     return remainingAmount;
 }
 
-QPI::id QPI::QpiContext::computor(unsigned short computorIndex) const
+QPI::id QPI::QpiContextFunctionCall::computor(unsigned short computorIndex) const
 {
     return broadcastedComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
 }
 
-unsigned char QPI::QpiContext::day() const
+unsigned char QPI::QpiContextFunctionCall::day() const
 {
     return etalonTick.day;
 }
 
-unsigned char QPI::QpiContext::dayOfWeek(unsigned char year, unsigned char month, unsigned char day) const
+unsigned char QPI::QpiContextFunctionCall::dayOfWeek(unsigned char year, unsigned char month, unsigned char day) const
 {
     return dayIndex(year, month, day) % 7;
 }
 
-unsigned short QPI::QpiContext::epoch() const
+unsigned short QPI::QpiContextFunctionCall::epoch() const
 {
     return system.epoch;
 }
 
-bool QPI::QpiContext::getEntity(const m256i& id, ::Entity& entity) const
+bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, ::Entity& entity) const
 {
     int index = spectrumIndex(id);
     if (index < 0)
@@ -1559,22 +1553,22 @@ bool QPI::QpiContext::getEntity(const m256i& id, ::Entity& entity) const
     }
 }
 
-unsigned char QPI::QpiContext::hour() const
+unsigned char QPI::QpiContextFunctionCall::hour() const
 {
     return etalonTick.hour;
 }
 
-long long QPI::QpiContext::invocationReward() const
+long long QPI::QpiContextFunctionCall::invocationReward() const
 {
     return _invocationReward;
 }
 
-QPI::id QPI::QpiContext::invocator() const
+QPI::id QPI::QpiContextFunctionCall::invocator() const
 {
     return _invocator;
 }
 
-long long QPI::QpiContext::issueAsset(unsigned long long name, const QPI::id& issuer, signed char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement) const
+long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, const QPI::id& issuer, signed char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement) const
 {
     if (((unsigned char)name) < 'A' || ((unsigned char)name) > 'Z'
         || name > 0xFFFFFFFFFFFFFF)
@@ -1633,22 +1627,22 @@ long long QPI::QpiContext::issueAsset(unsigned long long name, const QPI::id& is
     return numberOfShares;
 }
 
-unsigned short QPI::QpiContext::millisecond() const
+unsigned short QPI::QpiContextFunctionCall::millisecond() const
 {
     return etalonTick.millisecond;
 }
 
-unsigned char QPI::QpiContext::minute() const
+unsigned char QPI::QpiContextFunctionCall::minute() const
 {
     return etalonTick.minute;
 }
 
-unsigned char QPI::QpiContext::month() const
+unsigned char QPI::QpiContextFunctionCall::month() const
 {
     return etalonTick.month;
 }
 
-m256i QPI::QpiContext::nextId(const m256i& currentId) const
+m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
 {
     int index = spectrumIndex(currentId);
     while (++index < SPECTRUM_CAPACITY)
@@ -1663,7 +1657,7 @@ m256i QPI::QpiContext::nextId(const m256i& currentId) const
     return _mm256_setzero_si256();
 }
 
-long long QPI::QpiContext::numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex) const
+long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex) const
 {
     ACQUIRE(universeLock);
 
@@ -1742,17 +1736,17 @@ iteration:
     }
 }
 
-m256i QPI::QpiContext::originator() const
+m256i QPI::QpiContextFunctionCall::originator() const
 {
     return _originator;
 }
 
-unsigned char QPI::QpiContext::second() const
+unsigned char QPI::QpiContextFunctionCall::second() const
 {
     return etalonTick.second;
 }
 
-bool QPI::QpiContext::signatureValidity(const m256i& entity, const m256i& digest, const array<signed char, 64>& signature) const
+bool QPI::QpiContextFunctionCall::signatureValidity(const m256i& entity, const m256i& digest, const array<signed char, 64>& signature) const
 {
     return verify(entity.m256i_u8, digest.m256i_u8, reinterpret_cast<const unsigned char*>(&signature));
 }
@@ -1762,12 +1756,12 @@ static void* __scratchpad()
     return reorgBuffer;
 }
 
-unsigned int QPI::QpiContext::tick() const
+unsigned int QPI::QpiContextFunctionCall::tick() const
 {
     return system.tick;
 }
 
-long long QPI::QpiContext::transfer(const m256i& destination, long long amount) const
+long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
 {
     if (amount < 0 || amount > MAX_AMOUNT)
     {
@@ -1799,7 +1793,7 @@ long long QPI::QpiContext::transfer(const m256i& destination, long long amount) 
     return remainingAmount;
 }
 
-long long QPI::QpiContext::transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor) const
+long long QPI::QpiContextProcedureCall::transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor) const
 {
     if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
     {
@@ -1901,13 +1895,13 @@ iteration:
     }
 }
 
-unsigned char QPI::QpiContext::year() const
+unsigned char QPI::QpiContextFunctionCall::year() const
 {
     return etalonTick.year;
 }
 
 template <typename T>
-m256i QPI::QpiContext::K12(const T& data) const
+m256i QPI::QpiContextFunctionCall::K12(const T& data) const
 {
     m256i digest;
 
@@ -1933,13 +1927,8 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
-
-                ACQUIRE(contractStateLock[executedContractIndex]);
-                const unsigned long long startTick = __rdtsc();
-                contractSystemProcedures[executedContractIndex][INITIALIZE](qpiContext, contractStates[executedContractIndex]);
-                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
-                RELEASE(contractStateLock[executedContractIndex]);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
+                qpiContext.call(INITIALIZE);
             }
         }
     }
@@ -1952,13 +1941,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
-
-                ACQUIRE(contractStateLock[executedContractIndex]);
-                const unsigned long long startTick = __rdtsc();
-                contractSystemProcedures[executedContractIndex][BEGIN_EPOCH](qpiContext, contractStates[executedContractIndex]);
-                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
-                RELEASE(contractStateLock[executedContractIndex]);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
+                qpiContext.call(BEGIN_EPOCH);
             }
         }
     }
@@ -1971,13 +1955,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
-
-                ACQUIRE(contractStateLock[executedContractIndex]);
-                const unsigned long long startTick = __rdtsc();
-                contractSystemProcedures[executedContractIndex][BEGIN_TICK](qpiContext, contractStates[executedContractIndex]);
-                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
-                RELEASE(contractStateLock[executedContractIndex]);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
+                qpiContext.call(BEGIN_TICK);
             }
         }
     }
@@ -1990,13 +1969,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
-
-                ACQUIRE(contractStateLock[executedContractIndex]);
-                const unsigned long long startTick = __rdtsc();
-                contractSystemProcedures[executedContractIndex][END_TICK](qpiContext, contractStates[executedContractIndex]);
-                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
-                RELEASE(contractStateLock[executedContractIndex]);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
+                qpiContext.call(END_TICK);
             }
         }
     }
@@ -2009,13 +1983,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QPI::QpiContextNoOriginatorAndReward qpiContext(executedContractIndex);
-
-                ACQUIRE(contractStateLock[executedContractIndex]);
-                const unsigned long long startTick = __rdtsc();
-                contractSystemProcedures[executedContractIndex][END_EPOCH](qpiContext, contractStates[executedContractIndex]);
-                contractTotalExecutionTicks[executedContractIndex] += __rdtsc() - startTick;
-                RELEASE(contractStateLock[executedContractIndex]);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
+                qpiContext.call(END_EPOCH);
             }
         }
     }
@@ -2089,7 +2058,9 @@ static void processTick(unsigned long long processorNumber)
     if (nextTickData.epoch == system.epoch)
     {
         auto* tsCurrentTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
-
+#if ADDON_TX_STATUS_REQUEST
+        tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
+#endif
         bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
         // reset solution task queue
         score->resetTaskQueue();
@@ -2157,13 +2128,26 @@ static void processTick(unsigned long long processorNumber)
                         entityPendingTransactionIndices[spectrumIndex] = 1;
 
                         numberOfTransactions++;
+#if ADDON_TX_STATUS_REQUEST
+                        tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
+#endif
                         if (decreaseEnergy(spectrumIndex, transaction->amount))
                         {
                             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
+                            
                             if (transaction->amount)
                             {
+#if ADDON_TX_STATUS_REQUEST
+                                saveConfirmedTx(numberOfTransactions - 1, 1, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
+#endif
                                 const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
                                 logQuTransfer(quTransfer);
+                            }
+                            else
+                            {
+#if ADDON_TX_STATUS_REQUEST
+                                saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
+#endif
                             }
 
                             if (isZero(transaction->destinationPublicKey))
@@ -2197,7 +2181,7 @@ static void processTick(unsigned long long processorNumber)
                                                     logQuTransfer(quTransfer);
 
                                                     numberOfReleasedEntities = 0;
-                                                    ACQUIRE(contractStateLock[contractIndex]);
+                                                    contractStateLock[contractIndex].acquireWrite();
                                                     IPO* ipo = (IPO*)contractStates[contractIndex];
                                                     for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
                                                     {
@@ -2258,7 +2242,7 @@ static void processTick(unsigned long long processorNumber)
                                                             contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
                                                         }
                                                     }
-                                                    RELEASE(contractStateLock[contractIndex]);
+                                                    contractStateLock[contractIndex].releaseWrite();
 
                                                     for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
                                                     {
@@ -2274,15 +2258,8 @@ static void processTick(unsigned long long processorNumber)
                                     {
                                         if (contractUserProcedures[contractIndex][transaction->inputType])
                                         {
-                                            QpiContextProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
-
-                                            bs->SetMem(&executedContractInput, sizeof(executedContractInput), 0);
-                                            bs->CopyMem(&executedContractInput, transaction->inputPtr(), transaction->inputSize);
-                                            ACQUIRE(contractStateLock[contractIndex]);
-                                            const unsigned long long startTick = __rdtsc();
-                                            contractUserProcedures[contractIndex][transaction->inputType](qpiContext, contractStates[contractIndex], &executedContractInput, &executedContractOutput);
-                                            contractTotalExecutionTicks[contractIndex] += __rdtsc() - startTick;
-                                            RELEASE(contractStateLock[contractIndex]);
+                                            QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
+                                            qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
                                         }
                                     }
                                 }
@@ -2471,6 +2448,12 @@ static void processTick(unsigned long long processorNumber)
                                     }
                                 }
                             }
+                        }
+                        else
+                        {
+#if ADDON_TX_STATUS_REQUEST
+                            saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
+#endif
                         }
                     }
                 }
@@ -2697,6 +2680,9 @@ static void beginEpoch1of2()
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
 #endif
+#if ADDON_TX_STATUS_REQUEST
+    beginEpochTxStatusRequestAddOn(system.initialTick);
+#endif
 
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
@@ -2779,7 +2765,7 @@ static void endEpoch()
     {
         if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
         {
-            ACQUIRE(contractStateLock[contractIndex]);
+            contractStateLock[contractIndex].acquireRead();
             IPO* ipo = (IPO*)contractStates[contractIndex];
             long long finalPrice = ipo->prices[NUMBER_OF_COMPUTORS - 1];
             int issuanceIndex, ownershipIndex, possessionIndex;
@@ -2825,11 +2811,11 @@ static void endEpoch()
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
                 logQuTransfer(quTransfer);
             }
-            RELEASE(contractStateLock[contractIndex]);
+            contractStateLock[contractIndex].releaseRead();
 
-            ACQUIRE(contractStateLock[0]);
+            contractStateLock[0].acquireWrite();
             contractFeeReserve(contractIndex) = finalPrice * NUMBER_OF_COMPUTORS;
-            RELEASE(contractStateLock[0]);
+            contractStateLock[0].releaseWrite();
         }
     }
 
@@ -3812,9 +3798,9 @@ static void saveComputer()
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
-        ACQUIRE(contractStateLock[contractIndex]);
+        contractStateLock[contractIndex].acquireRead();
         long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex]);
-        RELEASE(contractStateLock[contractIndex]);
+        contractStateLock[contractIndex].releaseRead();
         totalSize += savedSize;
         if (savedSize != contractDescriptions[contractIndex].stateSize)
         {
@@ -3867,10 +3853,6 @@ static bool initialize()
     bs->SetMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
     bs->SetMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
     bs->SetMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
-    for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
-    {
-        contractFunctionOutputs[processorIndex] = NULL;
-    }
 
     getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
     if (isZero(operatorPublicKey))
@@ -3942,7 +3924,7 @@ static bool initialize()
         if (!initAssets())
             return false;
 
-        bs->SetMem((void*)contractStateLock, sizeof(contractStateLock), 0);
+        initContractExec();
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
@@ -3953,23 +3935,13 @@ static bool initialize()
                 return false;
             }
         }
-        if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, MAX_CONTRACT_STATE_SIZE, (void**)&contractStateCopy)))
+        if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags)))
         {
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
             return false;
         }
         bs->SetMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);
-        for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
-        {
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, RequestResponseHeader::max_size - sizeof(RequestResponseHeader), (void**)&contractFunctionOutputs[processorIndex]))
-            {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
-
-                return false;
-            }
-        }
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(*score), (void**)&score))
         {
@@ -3987,6 +3959,14 @@ static bool initialize()
 
         if (!initLogging())
             return false;
+
+#if ADDON_TX_STATUS_REQUEST
+        if (!initTxStatusRequestAddOn())
+        {
+            logToConsole(L"initTxStatusRequestAddOn() failed!");
+            return false;
+        }
+#endif
 
         logToConsole(L"Loading system file ...");
         bs->SetMem(&system, sizeof(system), 0);
@@ -4228,17 +4208,10 @@ static void deinitialize()
 
     deinitLogging();
 
-    for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
-    {
-        if (contractFunctionOutputs[processorIndex])
-        {
-            bs->FreePool(contractFunctionOutputs[processorIndex]);
-        }
-    }
-    if (contractStateCopy)
-    {
-        bs->FreePool(contractStateCopy);
-    }
+#if ADDON_TX_STATUS_REQUEST
+    deinitTxStatusRequestAddOn();
+#endif
+
     if (contractStateChangeFlags)
     {
         bs->FreePool(contractStateChangeFlags);

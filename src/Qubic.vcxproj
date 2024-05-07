@@ -18,6 +18,7 @@
     <ClCompile Include="qubic.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="addons\tx_status_request.h" />
     <ClInclude Include="assets.h" />
     <ClInclude Include="contracts\math_lib.h" />
     <ClInclude Include="contracts\qpi.h" />
@@ -26,6 +27,7 @@
     <ClInclude Include="contracts\Qx.h" />
     <ClInclude Include="contracts\Random.h" />
     <ClInclude Include="contract_core\contract_def.h" />
+    <ClInclude Include="contract_core\contract_exec.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
     <ClInclude Include="logging.h" />
     <ClInclude Include="network_core\peers.h" />
@@ -52,6 +54,7 @@
     <ClInclude Include="platform\console_logging.h" />
     <ClInclude Include="platform\common_types.h" />
     <ClInclude Include="platform\random.h" />
+    <ClInclude Include="platform\read_write_lock.h" />
     <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />

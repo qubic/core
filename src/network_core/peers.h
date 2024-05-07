@@ -245,7 +245,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 
 /**
 * checks if a given address is a bogon address
-* a bogon address is an ip address which should not be used pubicly (e.g. private networks)
+* a bogon address is an ip address which should not be used publicly (e.g. private networks)
 *
 * @param address the ip address to be checked
 * @return true if address is bogon or false if not
@@ -512,6 +512,10 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                                         && (unsigned short)(requestQueueElementHead + 1) != requestQueueElementTail)
                                     {
                                         dejavu0[saltedId >> 6] |= (1ULL << (saltedId & 63));
+
+                                        ASSERT(requestQueueElementHead < REQUEST_QUEUE_LENGTH);
+                                        ASSERT(requestQueueBufferHead < REQUEST_QUEUE_BUFFER_SIZE);
+                                        ASSERT(requestQueueBufferHead + requestResponseHeader->size() < REQUEST_QUEUE_BUFFER_SIZE);
 
                                         requestQueueElements[requestQueueElementHead].offset = requestQueueBufferHead;
                                         bs->CopyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
