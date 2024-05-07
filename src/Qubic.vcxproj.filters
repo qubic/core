@@ -122,6 +122,7 @@
     </ClInclude>
     <ClInclude Include="addons\tx_status_request.h">
       <Filter>addons</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_exec.h">
       <Filter>contract_core</Filter>
     </ClInclude>
