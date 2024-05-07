@@ -5960,7 +5960,10 @@ namespace QPI
 	{
 		id id;
 		sint64 incomingAmount, outgoingAmount;
+
+		// Numbers of transfers. These may overflow for entities with high traffic, such as Qx.
 		uint32 numberOfIncomingTransfers, numberOfOutgoingTransfers;
+
 		uint32 latestIncomingTransferTick, latestOutgoingTransferTick;
 	};
 
