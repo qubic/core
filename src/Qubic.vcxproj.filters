@@ -108,6 +108,9 @@
     <ClInclude Include="contracts\QUtil.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\QAirdrop.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\Qx.h">
       <Filter>contracts</Filter>
     </ClInclude>
