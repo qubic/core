@@ -72,11 +72,12 @@ static CONTRACT_STATE_TYPE* _QUTIL;
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QAIRDROP_CONTRACT_INDEX 5
-#define CONTRACT_INDEX QAIRDROP_CONTRACT_INDEX
-#define CONTRACT_STATE_TYPE QAIRDROP
-#define CONTRACT_STATE2_TYPE QAIRDROP2
-#include "contracts/QAirdrop.h"
+#define AIRDROP_CONTRACT_INDEX 5
+#define CONTRACT_INDEX AIRDROP_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE AIRDROP
+#define CONTRACT_STATE2_TYPE AIRDROP2
+#include "contracts/Airdrop.h"
+static CONTRACT_STATE_TYPE* _AIRDROP;
 
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0
 
@@ -96,7 +97,7 @@ static_assert(sizeof(IPO) == 32 * NUMBER_OF_COMPUTORS + 8 * NUMBER_OF_COMPUTORS,
 
 constexpr struct ContractDescription
 {
-    char assetName[10];
+    char assetName[8];
     // constructionEpoch needs to be set to after IPO (IPO is before construction)
     unsigned short constructionEpoch, destructionEpoch;
     unsigned long long stateSize;
@@ -106,7 +107,7 @@ constexpr struct ContractDescription
     {"QTRY", 72, 10000, sizeof(IPO)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
     {"QUTIL", 99, 10000, sizeof(IPO)},
-    {"QAIRDROP", 107, 10000, sizeof(IPO)},
+    {"AIRDROP", 107, 10000, sizeof(IPO)},
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -137,7 +138,7 @@ contractSystemProcedures[contractIndex][END_EPOCH] = (SYSTEM_PROCEDURE)contractN
 contractSystemProcedures[contractIndex][BEGIN_TICK] = (SYSTEM_PROCEDURE)contractName::__beginTick;\
 contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
 contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
-_##contractName->__registerUserFunctionsAndProcedures(qpi);
+    _##contractName->__registerUserFunctionsAndProcedures(qpi);
 
 
 static void initializeContract(const unsigned int contractIndex, void* contractState)
@@ -169,9 +170,9 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
     }
     break;
 
-    case QAIRDROP_CONTRACT_INDEX:
+    case AIRDROP_CONTRACT_INDEX:
     {
-        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QAIRDROP);
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(AIRDROP);
     }
     break;
     }
