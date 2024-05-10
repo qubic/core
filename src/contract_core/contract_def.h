@@ -138,7 +138,7 @@ contractSystemProcedures[contractIndex][END_EPOCH] = (SYSTEM_PROCEDURE)contractN
 contractSystemProcedures[contractIndex][BEGIN_TICK] = (SYSTEM_PROCEDURE)contractName::__beginTick;\
 contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
 contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
-    _##contractName->__registerUserFunctionsAndProcedures(qpi);
+_##contractName->__registerUserFunctionsAndProcedures(qpi);
 
 
 static void initializeContract(const unsigned int contractIndex, void* contractState)

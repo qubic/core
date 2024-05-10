@@ -18,11 +18,13 @@ using namespace QPI;
 
 struct AirdropLogger
 {
+    uint32 contractId; // to distinguish bw SCs (set when LOG_*() is called
+    uint32 padding;
     id src;
     id dst;
     sint64 amt;
     uint32 logtype;
-    char _terminator;
+    char _terminator; // Only data before "_terminator" are logged
 };
 
 struct AIRDROP2
@@ -38,8 +40,6 @@ private:
     uint64 end_time;              // end time of Airdrop
     uint64 _burnedAmount;
     AirdropLogger logger;
-    sint64 _elementIndex, _elementIndex2;
-	id _issuerAndAssetName;
     uint64 assetName;
 
 public:
@@ -104,7 +104,7 @@ public:
 
     // Start Airdrop(Setting detailed Airdrop)
     PUBLIC(StartAirdrop)
-    state.logger = AirdropLogger{qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_STARTED};
+    state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_STARTED};
     LOG_INFO(state.logger);
     if (qpi.invocationReward() < AIRDROP_START_FEE)
     {
@@ -112,14 +112,14 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
-        state.logger = AirdropLogger{qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
+        state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
         output.returnCode = AIRDROP_START_ERROR;
         LOG_INFO(state.logger);
         return;
     }
     if (input._start_time > input._end_time || input._end_time < 0)
     {
-        state.logger = AirdropLogger{qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INCORRECT_TIME};
+        state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INCORRECT_TIME};
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
         output.returnCode = AIRDROP_START_ERROR;
         LOG_INFO(state.logger);
@@ -135,7 +135,7 @@ public:
     {
         qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_START_FEE);
     }
-    state.logger = AirdropLogger{qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_START_SUCCESS};
+    state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_START_SUCCESS};
     LOG_INFO(state.logger);
     output.returnCode = AIRDROP_START_SUCCESS;
     qpi.burn(AIRDROP_START_FEE);
@@ -148,7 +148,7 @@ public:
         uint64 total = input.amount * input.issuers.size();
         if (qpi.invocationReward() < AIRDROP_TRANSER_FEE)
         {
-            state.logger = AirdropLogger{qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
+            state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
             LOG_INFO(state.logger);
             if (qpi.invocationReward() > 0)
             {
@@ -159,7 +159,7 @@ public:
         }
         if (input._current_time > state.end_time)
         {
-            state.logger = AirdropLogger{qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_PERIOD_LIMITED};
+            state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_PERIOD_LIMITED};
             LOG_INFO(state.logger);
             if (qpi.invocationReward() > 0)
             {
@@ -171,7 +171,7 @@ public:
         if (qpi.numberOfPossessedShares(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < total)
         {
             output.transferredAmount = 0;
-            state.logger = AirdropLogger{qpi.invocator(), SELF, input.amount, AIRDROP_INSUFFICIENT_TOKEN};
+            state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, input.amount, AIRDROP_INSUFFICIENT_TOKEN};
             LOG_INFO(state.logger);
         }
         else
@@ -183,7 +183,7 @@ public:
             output.transferredAmount = total;
             if(output.transferredAmount == 0) 
             {
-                state.logger = AirdropLogger{qpi.invocator(), SELF, input.amount, AIRDROP_DISTRIBUTE_FAILD};
+                state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, input.amount, AIRDROP_DISTRIBUTE_FAILD};
                 LOG_INFO(state.logger);
             }
             else 
@@ -194,7 +194,7 @@ public:
                 }
                 qpi.burn(AIRDROP_TRANSER_FEE);
                 state._burnedAmount += AIRDROP_TRANSER_FEE; 
-                state.logger = AirdropLogger{qpi.invocator(), input.newOwnerAndPossessor, input.amount, AIRDROP_DISTRIBUTE_SUCCESS};
+                state.logger = AirdropLogger{0, 0, qpi.invocator(), input.newOwnerAndPossessor, input.amount, AIRDROP_DISTRIBUTE_SUCCESS};
                 LOG_INFO(state.logger);
             }
         }
