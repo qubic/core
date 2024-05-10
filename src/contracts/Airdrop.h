@@ -1,7 +1,5 @@
 using namespace QPI;
 
-#include <vector>
-
 #define AIRDROP_START_SUCCESS 0
 #define AIRDROP_INSUFFICIENT_FUND 1
 #define AIRDROP_STARTED 2
@@ -82,7 +80,7 @@ public:
     struct DistributeToken_input
     {
         uint64 _current_time;
-        std::vector<QPI::id> issuers;
+        id* issuers;
 		id newOwnerAndPossessor;
 		uint64 assetName;
 		sint64 amount;
@@ -144,7 +142,7 @@ public:
 
     // Procedure to be call When there is a user that meets the conditions
     PUBLIC(DistributeToken)
-        uint64 total = input.amount * input.issuers.size();
+        uint64 total = input.amount * sizeof(input.issuers) / sizeof(int);
         if (qpi.invocationReward() < AIRDROP_TRANSER_FEE)
         {
             state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
@@ -175,7 +173,7 @@ public:
         }
         else
         {
-            for(int i = 0 ; i < input.issuers.size(); i++) 
+            for(int i = 0 ; i < sizeof(input.issuers) / sizeof(int); i++) 
             {
                 qpi.transferShareOwnershipAndPossession(input.assetName, input.issuers[i], qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor);
             }
