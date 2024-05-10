@@ -1,5 +1,7 @@
 using namespace QPI;
 
+#include <vector>
+
 #define AIRDROP_START_SUCCESS 0
 #define AIRDROP_INSUFFICIENT_FUND 1
 #define AIRDROP_STARTED 2
@@ -11,6 +13,8 @@ using namespace QPI;
 #define AIRDROP_PERIOD_LIMITED 8
 #define AIRDROP_FUND_LIMITED 9
 #define AIRDROP_INSUFFICIENT_TOKEN 10
+#define AIRDROP_START_FEE 100000000LL 
+#define AIRDROP_TRANSER_FEE 1000LL // Amount of qus
 
 struct AirdropLogger
 {
@@ -28,33 +32,15 @@ struct AIRDROP2
 struct AIRDROP
 {
 private:
-    struct _AssetOrder
-	{
-		id entity;
-		sint64 numberOfShares;
-	};
-	collection<_AssetOrder, 2097152 * X_MULTIPLIER> _assetOrders;
-
-	struct _EntityOrder
-	{
-		id issuer;
-		uint64 assetName;
-		sint64 numberOfShares;
-	};
-	collection<_EntityOrder, 2097152 * X_MULTIPLIER> _entityOrders;
-
     id contractOwner;             // address of owner
     sint64 TotalAmountForAirdrop; // amount of Airdrop
     uint64 start_time;            // start time of Airdrop
     uint64 end_time;              // end time of Airdrop
     uint64 _burnedAmount;
     AirdropLogger logger;
-    uint32 _airdropStartFee;// Amount of qus
-	uint32 _transferFee; // Amount of qus
     sint64 _elementIndex, _elementIndex2;
 	id _issuerAndAssetName;
-	_AssetOrder _assetOrder;
-	_EntityOrder _entityOrder;
+    uint64 assetName;
 
 public:
     struct Fees_input
@@ -63,9 +49,18 @@ public:
 	struct Fees_output
 	{
         uint32 airdropStartFee;  // Amount of qus
-		uint32 assetIssuanceFee; // Amount of qus
 		uint32 transferFee; // Amount of qus
 	};
+
+    struct Get_balance_input 
+    {
+        id address;
+    };
+
+    struct Get_balance_output
+    {
+        uint64 amount;
+    };
 
     // Variables to store input parameters when calling the StartAirdrop() function`
     struct StartAirdrop_input
@@ -87,28 +82,31 @@ public:
     struct DistributeToken_input
     {
         uint64 _current_time;
-        id issuer;
+        std::vector<QPI::id> issuers;
 		id newOwnerAndPossessor;
 		uint64 assetName;
-		sint64 numberOfShares;
+		sint64 amount;
     };
 
     struct DistributeToken_output
     {
-        sint64 transferredNumberOfShares;
+        sint64 transferredAmount;
     };
     // getting fees
     PUBLIC(Fees)
-
-		output.airdropStartFee = state._airdropStartFee;
-		output.transferFee = state._transferFee;
+		output.airdropStartFee = AIRDROP_START_FEE;
+		output.transferFee = AIRDROP_TRANSER_FEE;
 	_
+
+    PUBLIC(Get_balance)
+        output.amount = qpi.numberOfPossessedShares(state.assetName, state.contractOwner, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+    _
 
     // Start Airdrop(Setting detailed Airdrop)
     PUBLIC(StartAirdrop)
     state.logger = AirdropLogger{qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_STARTED};
     LOG_INFO(state.logger);
-    if (qpi.invocationReward() < state._airdropStartFee)
+    if (qpi.invocationReward() < AIRDROP_START_FEE)
     {
         if (qpi.invocationReward() > 0)
         {
@@ -127,26 +125,28 @@ public:
         LOG_INFO(state.logger);
         return;
     }
+    state.assetName = input.assetName;
     state.contractOwner = input._contractOwner;
     state.start_time = input._start_time;
     state.end_time = input._end_time;
     state.TotalAmountForAirdrop = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
 
-    if(qpi.invocationReward() > state._airdropStartFee)
+    if(qpi.invocationReward() > AIRDROP_START_FEE)
     {
-        qpi.transfer(qpi.invocator(), qpi.invocationReward() - state._airdropStartFee);
+        qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_START_FEE);
     }
     state.logger = AirdropLogger{qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_START_SUCCESS};
     LOG_INFO(state.logger);
     output.returnCode = AIRDROP_START_SUCCESS;
-    qpi.burn(state._airdropStartFee);
-    state._burnedAmount += state._airdropStartFee; 
+    qpi.burn(AIRDROP_START_FEE);
+    state._burnedAmount += AIRDROP_START_FEE; 
     _
 
     // Procedure to be call When there is a user that meets the conditions
     PUBLIC(DistributeToken)
     {
-        if (qpi.invocationReward() < state._transferFee)
+        uint64 total = input.amount * input.issuers.size();
+        if (qpi.invocationReward() < AIRDROP_TRANSER_FEE)
         {
             state.logger = AirdropLogger{qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
             LOG_INFO(state.logger);
@@ -154,7 +154,7 @@ public:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.transferredNumberOfShares = 0;
+            output.transferredAmount = 0;
             return;
         }
         if (input._current_time > state.end_time)
@@ -165,32 +165,36 @@ public:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.transferredNumberOfShares = 0;
+            output.transferredAmount = 0;
             return;
         }
-        if (qpi.numberOfPossessedShares(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+        if (qpi.numberOfPossessedShares(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < total)
         {
-            output.transferredNumberOfShares = 0;
-            state.logger = AirdropLogger{qpi.invocator(), SELF, input.numberOfShares, AIRDROP_INSUFFICIENT_TOKEN};
+            output.transferredAmount = 0;
+            state.logger = AirdropLogger{qpi.invocator(), SELF, input.amount, AIRDROP_INSUFFICIENT_TOKEN};
             LOG_INFO(state.logger);
         }
         else
         {
-            output.transferredNumberOfShares = qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newOwnerAndPossessor) < 0 ? 0 : input.numberOfShares;
-            if(output.transferredNumberOfShares == 0) 
+            for(int i = 0 ; i < input.issuers.size(); i++) 
             {
-                state.logger = AirdropLogger{qpi.invocator(), SELF, input.numberOfShares, AIRDROP_DISTRIBUTE_FAILD};
+                qpi.transferShareOwnershipAndPossession(input.assetName, input.issuers[i], qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor);
+            }
+            output.transferredAmount = total;
+            if(output.transferredAmount == 0) 
+            {
+                state.logger = AirdropLogger{qpi.invocator(), SELF, input.amount, AIRDROP_DISTRIBUTE_FAILD};
                 LOG_INFO(state.logger);
             }
             else 
             {
-                if (qpi.invocationReward() > state._transferFee)
+                if (qpi.invocationReward() > AIRDROP_TRANSER_FEE)
                 {
-                    qpi.transfer(qpi.invocator(), qpi.invocationReward() - state._transferFee);
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_TRANSER_FEE);
                 }
-                qpi.burn(state._transferFee);
-                state._burnedAmount += state._transferFee; 
-                state.logger = AirdropLogger{qpi.invocator(), input.newOwnerAndPossessor, input.numberOfShares, AIRDROP_DISTRIBUTE_SUCCESS};
+                qpi.burn(AIRDROP_TRANSER_FEE);
+                state._burnedAmount += AIRDROP_TRANSER_FEE; 
+                state.logger = AirdropLogger{qpi.invocator(), input.newOwnerAndPossessor, input.amount, AIRDROP_DISTRIBUTE_SUCCESS};
                 LOG_INFO(state.logger);
             }
         }
@@ -200,14 +204,13 @@ public:
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_FUNCTION(Fees, 1);
+        REGISTER_USER_FUNCTION(Get_balance, 2);
 
         REGISTER_USER_PROCEDURE(StartAirdrop, 1);
         REGISTER_USER_PROCEDURE(DistributeToken, 2);
     _
 
     INITIALIZE
-        state._transferFee = 1000;   // fee to discribute to user
-        state._airdropStartFee = 100000000; // fee to start Airdrop
     _
 
     BEGIN_EPOCH
