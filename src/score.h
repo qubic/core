@@ -135,6 +135,7 @@ struct ScoreFunction
         for (int i = 0; i < solutionBufferCount; i++) {
             setMem(&_computeBuffer[i], sizeof(computeBuffer), 0);
         }
+        setMem(&scoreCache, sizeof(scoreCache), 0);
         return true;
     }
 
