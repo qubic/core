@@ -36,11 +36,11 @@ struct ScoreFunction
     static constexpr unsigned int maxAllNeuronLength = dataLength + numberOfNeuronsMaxInputOutput + infoLength;
     long long miningData[dataLength];
 
-    struct
+    struct synapseStruct
     {
         char inputLength[(numberOfInputNeurons + infoLength) * (dataLength + numberOfInputNeurons + infoLength)];
         char outputLength[(numberOfOutputNeurons + dataLength) * (infoLength + numberOfOutputNeurons + dataLength)];
-    } _synapses[solutionBufferCount];
+    } * _synapses;
 
     struct queueItem {
         short tick;
@@ -74,7 +74,7 @@ struct ScoreFunction
         unsigned char _maxIndexBuffer[allParamsCount * 2][32];
         static_assert(maxInputDuration <= 256 && maxOutputDuration <= 256, "Need to increase size of _maxIndexBuffer");
         short buffer[256];
-    } _computeBuffer[solutionBufferCount];
+    } * _computeBuffer;
     static_assert(maxInputDuration <= 256 && maxOutputDuration <= 256, "Need to regenerate mod num table");
     // _totalModNum[i]: total of divisible numbers of i
     unsigned char _totalModNum[257];
@@ -109,6 +109,34 @@ struct ScoreFunction
                 }
             }
         }
+    }
+
+    bool initMemory()
+    {
+        if (_synapses == nullptr) {
+            EFI_STATUS status;
+            if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(synapseStruct) * solutionBufferCount, (void**)&_synapses))
+            {
+                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                return false;
+            }
+        }
+        if (_computeBuffer == nullptr) {
+            EFI_STATUS status;
+            if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(computeBuffer) * solutionBufferCount, (void**)&_computeBuffer))
+            {
+                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                return false;
+            }
+        }
+        for (int i = 0; i < solutionBufferCount; i++) {
+            setMem(&_synapses[i], sizeof(synapseStruct), 0);
+        }
+        for (int i = 0; i < solutionBufferCount; i++) {
+            setMem(&_computeBuffer[i], sizeof(computeBuffer), 0);
+        }
+        setMem(&scoreCache, sizeof(scoreCache), 0);
+        return true;
     }
 
     // Save score cache to SCORE_CACHE_FILE_NAME
