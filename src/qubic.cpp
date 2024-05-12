@@ -1011,14 +1011,7 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
     {
         bs->CopyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
 
-        int sibling = respondedEntity.spectrumIndex;
-        unsigned int spectrumDigestInputOffset = 0;
-        for (unsigned int j = 0; j < SPECTRUM_DEPTH; j++)
-        {
-            respondedEntity.siblings[j] = spectrumDigests[spectrumDigestInputOffset + (sibling ^ 1)];
-            spectrumDigestInputOffset += (SPECTRUM_CAPACITY >> j);
-            sibling >>= 1;
-        }
+        getSiblings<SPECTRUM_DEPTH>(respondedEntity.spectrumIndex, spectrumDigests, respondedEntity.siblings);
     }
 
     enqueueResponse(peer, sizeof(respondedEntity), RESPOND_ENTITY, header->dejavu(), &respondedEntity);
