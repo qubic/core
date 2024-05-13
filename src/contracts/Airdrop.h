@@ -36,9 +36,9 @@ private:
     sint64 TotalAmountForAirdrop; // amount of Airdrop
     uint64 start_time;            // start time of Airdrop
     uint64 end_time;              // end time of Airdrop
-    uint64 _burnedAmount;
     AirdropLogger logger;
     uint64 assetName;
+    uint64 _earnedAmount;
 
 public:
     struct Fees_input
@@ -63,9 +63,6 @@ public:
     // Variables to store input parameters when calling the StartAirdrop() function`
     struct StartAirdrop_input
     {
-        id _contractOwner;  // address of owner
-        uint64 _start_time; // start time of Airdrop
-        uint64 _end_time;   // end time of Airdrop
         uint64 assetName;
 		sint64 numberOfShares;
 		uint64 unitOfMeasurement;
@@ -74,7 +71,7 @@ public:
 
     struct StartAirdrop_output
     {
-        sint32 returnCode;
+		sint64 issuedNumberOfShares;
     };
 
     struct DistributeToken_input
@@ -96,48 +93,29 @@ public:
 		output.transferFee = AIRDROP_TRANSER_FEE;
 	_
 
-    PUBLIC(Getbalance)
-        output.amount = qpi.numberOfPossessedShares(state.assetName, state.contractOwner, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
-    _
-
     // Start Airdrop(Setting detailed Airdrop)
     PUBLIC(StartAirdrop)
         state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_STARTED};
         LOG_INFO(state.logger);
         if (qpi.invocationReward() < AIRDROP_START_FEE)
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
-            output.returnCode = AIRDROP_START_ERROR;
-            LOG_INFO(state.logger);
-            return;
-        }
-        if (input._start_time > input._end_time || input._end_time < 0)
-        {
-            state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INCORRECT_TIME};
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            output.returnCode = AIRDROP_START_ERROR;
-            LOG_INFO(state.logger);
-            return;
-        }
-        state.assetName = input.assetName;
-        state.contractOwner = input._contractOwner;
-        state.start_time = input._start_time;
-        state.end_time = input._end_time;
-        state.TotalAmountForAirdrop = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 
-        if(qpi.invocationReward() > AIRDROP_START_FEE)
-        {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_START_FEE);
-        }
-        state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_START_SUCCESS};
-        LOG_INFO(state.logger);
-        output.returnCode = AIRDROP_START_SUCCESS;
-        qpi.burn(AIRDROP_START_FEE);
-        state._burnedAmount += AIRDROP_START_FEE; 
+			output.issuedNumberOfShares = 0;
+		}
+		else
+		{
+			if (qpi.invocationReward() > AIRDROP_START_FEE)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_START_FEE);
+			}
+			state._earnedAmount += AIRDROP_START_FEE;
+
+			output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
+		}
     _
 
     // Procedure to be call When there is a user that meets the conditions
@@ -190,7 +168,7 @@ public:
                     qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_TRANSER_FEE);
                 }
                 qpi.burn(AIRDROP_TRANSER_FEE);
-                state._burnedAmount += AIRDROP_TRANSER_FEE; 
+                state._earnedAmount += AIRDROP_TRANSER_FEE; 
                 state.logger = AirdropLogger{0, 0, qpi.invocator(), input.newOwnerAndPossessor, input.amount, AIRDROP_DISTRIBUTE_SUCCESS};
                 LOG_INFO(state.logger);
             }
@@ -199,7 +177,6 @@ public:
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_FUNCTION(Fees, 1);
-        REGISTER_USER_FUNCTION(Getbalance, 2);
 
         REGISTER_USER_PROCEDURE(StartAirdrop, 1);
         REGISTER_USER_PROCEDURE(DistributeToken, 2);
