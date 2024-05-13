@@ -11,7 +11,7 @@ using namespace QPI;
 #define AIRDROP_PERIOD_LIMITED 8
 #define AIRDROP_FUND_LIMITED 9
 #define AIRDROP_INSUFFICIENT_TOKEN 10
-#define AIRDROP_START_FEE 100000000LL 
+#define AIRDROP_START_FEE 1200000000LL 
 #define AIRDROP_TRANSER_FEE 1000LL // Amount of qus
 
 struct AirdropLogger
@@ -49,16 +49,6 @@ public:
         uint32 airdropStartFee;  // Amount of qus
 		uint32 transferFee; // Amount of qus
 	};
-
-    struct Getbalance_input 
-    {
-        id address;
-    };
-
-    struct Getbalance_output
-    {
-        uint64 amount;
-    };
 
     // Variables to store input parameters when calling the StartAirdrop() function`
     struct StartAirdrop_input
