@@ -5172,6 +5172,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                 }
 
+                // Add messages from response queue to sending buffer
                 const unsigned short responseQueueElementHead = ::responseQueueElementHead;
                 if (responseQueueElementTail != responseQueueElementHead)
                 {

@@ -128,6 +128,7 @@ static void closePeer(Peer* peer)
     }
 }
 
+// Add message to sending buffer of specific peer, can only called from main thread (not thread-safe).
 static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 {
     // The sending buffer may queue multiple messages, each of which may need to transmitted in many small packets.
@@ -149,6 +150,7 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
     }
 }
 
+// Add message to sending buffer of random peer, can only called from main thread (not thread-safe).
 static void pushToAny(RequestResponseHeader* requestResponseHeader)
 {
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
@@ -166,6 +168,7 @@ static void pushToAny(RequestResponseHeader* requestResponseHeader)
     }
 }
 
+// Add message to sending buffer of some random peers, can only called from main thread (not thread-safe).
 static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
 {
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
@@ -186,6 +189,7 @@ static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
     }
 }
 
+// Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
 {
     ACQUIRE(responseQueueHeadLock);
@@ -207,6 +211,7 @@ static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
     RELEASE(responseQueueHeadLock);
 }
 
+// Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
 {
     ACQUIRE(responseQueueHeadLock);
