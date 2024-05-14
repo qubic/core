@@ -171,6 +171,8 @@ static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
 static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 static unsigned long long solutionTotalExecutionTicks = 0;
+static volatile char minerScoreArrayLock = 0;
+static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -603,6 +605,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
             if (request->computors.epoch == system.epoch)
             {
                 numberOfOwnComputorIndices = 0;
+                ACQUIRE(minerScoreArrayLock);
                 for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
                     minerPublicKeys[i] = request->computors.publicKeys[i];
@@ -618,6 +621,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                         }
                     }
                 }
+                RELEASE(minerScoreArrayLock);
             }
         }
     }
@@ -1213,6 +1217,28 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 updateTime();
                 copyMem(&response.utcTime, &time, sizeof(response.utcTime)); // caution: response.utcTime is subset of time (smaller size)
                 enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type, header->dejavu(), &response);
+            }
+            break;
+            case SPECIAL_COMMAND_GET_MINING_SCORE_RANKING:
+            {
+                requestMiningScoreRanking.everIncreasingNonceAndCommandType = 
+                    (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_GET_MINING_SCORE_RANKING << 56);
+
+                ACQUIRE(minerScoreArrayLock);
+                requestMiningScoreRanking.numberOfRankings = numberOfMiners;
+                for (unsigned int i = 0; i < requestMiningScoreRanking.numberOfRankings; ++i)
+                {
+                    requestMiningScoreRanking.rankings[i].minerPublicKey = minerPublicKeys[i];
+                    requestMiningScoreRanking.rankings[i].minerScore = minerScores[i];
+                }
+                RELEASE(minerScoreArrayLock);
+                enqueueResponse(peer,
+                    sizeof(requestMiningScoreRanking.everIncreasingNonceAndCommandType)
+                    + sizeof(requestMiningScoreRanking.numberOfRankings)
+                    + sizeof(requestMiningScoreRanking.rankings[0]) * requestMiningScoreRanking.numberOfRankings,
+                    SpecialCommand::type,
+                    header->dejavu(),
+                    &requestMiningScoreRanking);
             }
             break;
             }
@@ -2319,6 +2345,7 @@ static void processTick(unsigned long long processorNumber)
                                                         }
                                                     }
 
+                                                    ACQUIRE(minerScoreArrayLock);
                                                     unsigned int minerIndex;
                                                     for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
                                                     {
@@ -2365,6 +2392,7 @@ static void processTick(unsigned long long processorNumber)
                                                         }
                                                         competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
                                                     }
+                                                    RELEASE(minerScoreArrayLock);
 
                                                     // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
                                                     for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
@@ -2401,10 +2429,13 @@ static void processTick(unsigned long long processorNumber)
                                                         minimumCandidateScore = minimumComputorScore;
                                                     }
 
+                                                    ACQUIRE(minerScoreArrayLock);
                                                     for (unsigned int i = 0; i < QUORUM; i++)
                                                     {
                                                         system.futureComputors[i] = minerPublicKeys[i];
                                                     }
+                                                    RELEASE(minerScoreArrayLock);
+
                                                     for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
                                                     {
                                                         system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
@@ -2704,7 +2735,7 @@ static void beginEpoch1of2()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
 
-    bs->SetMem(score, sizeof(*score), 0);
+    score->initMemory();
     score->resetTaskQueue();
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     bs->SetMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
@@ -3948,6 +3979,7 @@ static bool initialize()
             logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
             return false;
         }
+        setMem(score, sizeof(*score), 0);
 
         bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
@@ -5139,6 +5171,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                 }
 
+                // Add messages from response queue to sending buffer
                 const unsigned short responseQueueElementHead = ::responseQueueElementHead;
                 if (responseQueueElementTail != responseQueueElementHead)
                 {

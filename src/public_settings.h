@@ -35,12 +35,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 202
+#define VERSION_B 203
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 108
-#define TICK 13820000
+#define EPOCH 109
+#define TICK 13960000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -53,8 +53,8 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 
 #define DATA_LENGTH 256
 #define INFO_LENGTH 128
-#define NUMBER_OF_INPUT_NEURONS 8192
-#define NUMBER_OF_OUTPUT_NEURONS 8192
+#define NUMBER_OF_INPUT_NEURONS 16384
+#define NUMBER_OF_OUTPUT_NEURONS 16384
 #define MAX_INPUT_DURATION 256
 #define MAX_OUTPUT_DURATION 256
 #define NEURON_VALUE_LIMIT 1LL
