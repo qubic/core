@@ -1226,11 +1226,10 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
                 ACQUIRE(minerScoreArrayLock);
                 requestMiningScoreRanking.numberOfRankings = numberOfMiners;
-                for (int i = 0; i < requestMiningScoreRanking.numberOfRankings; ++i)
+                for (unsigned int i = 0; i < requestMiningScoreRanking.numberOfRankings; ++i)
                 {
                     requestMiningScoreRanking.rankings[i].minerPublicKey = minerPublicKeys[i];
                     requestMiningScoreRanking.rankings[i].minerScore = minerScores[i];
-                    
                 }
                 RELEASE(minerScoreArrayLock);
                 enqueueResponse(peer,
