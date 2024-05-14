@@ -130,10 +130,10 @@ struct ScoreFunction
         }
         for (int i = 0; i < solutionBufferCount; i++) {
             setMem(&_synapses[i], sizeof(synapseStruct), 0);
-        }
-        for (int i = 0; i < solutionBufferCount; i++) {
             setMem(&_computeBuffer[i], sizeof(computeBuffer), 0);
+            solutionEngineLock[i] = 0;
         }
+        scoreCacheLock = 0;
         setMem(&scoreCache, sizeof(scoreCache), 0);
         return true;
     }
