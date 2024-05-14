@@ -64,8 +64,7 @@ public:
 
     struct DistributeToken_input
     {
-        id* issuers;
-		id newOwnerAndPossessor;
+		id* newOwnerAndPossessor;
 		uint64 assetName;
 		sint64 amount;
     };
@@ -107,8 +106,8 @@ public:
 
     // Procedure to be call When there is a user that meets the conditions
     PUBLIC(DistributeToken)
-        uint64 total = input.amount * sizeof(input.issuers) / sizeof(id);
-        if (qpi.invocationReward() < AIRDROP_TRANSER_FEE)
+        uint64 total = input.amount * sizeof(input.newOwnerAndPossessor) / sizeof(input.newOwnerAndPossessor[0]);
+        if (qpi.invocationReward() < AIRDROP_TRANSER_FEE * sizeof(input.newOwnerAndPossessor) / sizeof(input.newOwnerAndPossessor[0]))
         {
             state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
             LOG_INFO(state.logger);
@@ -127,17 +126,17 @@ public:
         }
         else
         {
-            for(int i = 0 ; i < sizeof(input.issuers) / sizeof(id); i++) 
+            for(int i = 0 ; i < sizeof(input.newOwnerAndPossessor) / sizeof(input.newOwnerAndPossessor[0]); i++) 
             {
-                qpi.transferShareOwnershipAndPossession(input.assetName, input.issuers[i], qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor);
+                qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor[i]);
             }
             output.transferredAmount = total;
-            if (qpi.invocationReward() > AIRDROP_TRANSER_FEE)
+            if (qpi.invocationReward() > AIRDROP_TRANSER_FEE * sizeof(input.newOwnerAndPossessor) / sizeof(input.newOwnerAndPossessor[0]))
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward() - total);
             }
             state._earnedAmount += total; 
-            state.logger = AirdropLogger{0, 0, qpi.invocator(), input.newOwnerAndPossessor, input.amount, AIRDROP_DISTRIBUTE_SUCCESS};
+            state.logger = AirdropLogger{0, 0, qpi.invocator(), qpi.invocator(), input.amount, AIRDROP_DISTRIBUTE_SUCCESS};
             LOG_INFO(state.logger);
         }
     _
