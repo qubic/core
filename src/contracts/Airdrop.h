@@ -65,6 +65,7 @@ public:
     struct DistributeToken_input
     {
 		id* newOwnerAndPossessor;
+        int count;
 		uint64 assetName;
 		sint64 amount;
     };
@@ -106,8 +107,8 @@ public:
 
     // Procedure to be call When there is a user that meets the conditions
     PUBLIC(DistributeToken)
-        uint64 total = input.amount * sizeof(input.newOwnerAndPossessor) / sizeof(input.newOwnerAndPossessor[0]);
-        if (qpi.invocationReward() < AIRDROP_TRANSER_FEE * sizeof(input.newOwnerAndPossessor) / sizeof(input.newOwnerAndPossessor[0]))
+        uint64 total = input.amount * input.count;
+        if (qpi.invocationReward() < AIRDROP_TRANSER_FEE * input.count)
         {
             state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
             LOG_INFO(state.logger);
@@ -126,12 +127,12 @@ public:
         }
         else
         {
-            for(int i = 0 ; i < sizeof(input.newOwnerAndPossessor) / sizeof(input.newOwnerAndPossessor[0]); i++) 
+            for(int i = 0 ; i < input.count; i++) 
             {
                 qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor[i]);
             }
             output.transferredAmount = total;
-            if (qpi.invocationReward() > AIRDROP_TRANSER_FEE * sizeof(input.newOwnerAndPossessor) / sizeof(input.newOwnerAndPossessor[0]))
+            if (qpi.invocationReward() > AIRDROP_TRANSER_FEE * input.count)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward() - total);
             }
