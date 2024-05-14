@@ -113,19 +113,18 @@ struct ScoreFunction
 
     bool initMemory()
     {
+        // TODO: call freePool() for buffers allocated below
         if (_synapses == nullptr) {
-            EFI_STATUS status;
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(synapseStruct) * solutionBufferCount, (void**)&_synapses))
+            if (!allocatePool(sizeof(synapseStruct) * solutionBufferCount, (void**)&_synapses))
             {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logToConsole(L"Failed to allocate memory for score solution buffer!");
                 return false;
             }
         }
         if (_computeBuffer == nullptr) {
-            EFI_STATUS status;
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(computeBuffer) * solutionBufferCount, (void**)&_computeBuffer))
+            if (!allocatePool(sizeof(computeBuffer) * solutionBufferCount, (void**)&_computeBuffer))
             {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logToConsole(L"Failed to allocate memory for score solution buffer!");
                 return false;
             }
         }

@@ -46,6 +46,7 @@ struct ScoreTester
         score_ref_impl = new ScoreFuncRef;
         memset(score, 0, sizeof(ScoreFuncOpt));
         memset(score_ref_impl, 0, sizeof(ScoreFuncRef));
+        EXPECT_TRUE(score->initMemory());
         score->initMiningData(_mm256_setzero_si256());
         score_ref_impl->initMiningData();
     }
