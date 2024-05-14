@@ -64,7 +64,7 @@ public:
 
     struct DistributeToken_input
     {
-		id* newOwnerAndPossessor;
+		id_16384 newOwnerAndPossessor;
         int count;
 		uint64 assetName;
 		sint64 amount;
@@ -129,7 +129,7 @@ public:
         {
             for(int i = 0 ; i < input.count; i++) 
             {
-                qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor[i]);
+                qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor.get(i));
             }
             output.transferredAmount = total;
             if (qpi.invocationReward() > AIRDROP_TRANSER_FEE * input.count)
