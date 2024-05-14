@@ -65,7 +65,7 @@ public:
     struct DistributeToken_input
     {
 		id_16384 newOwnerAndPossessor;
-        int count;
+        uint64 count;
 		uint64 assetName;
 		sint64 amount;
     };
