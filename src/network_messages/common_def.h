@@ -57,7 +57,9 @@ static inline bool operator!=(const IPv4Address& a, const IPv4Address& b)
 {
     return a.u32 != b.u32;
 }
-// Compute the siblings array of each level of tree
+
+// Compute the siblings array of each level of tree. This function is not thread safe
+// make sure resource protection is handled outside
 template <unsigned int depth>
 static void getSiblings(int digestIndex, const m256i* digests, m256i siblings[depth])
 {

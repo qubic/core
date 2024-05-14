@@ -994,6 +994,7 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
 
     RequestedEntity* request = header->getPayload<RequestedEntity>();
     respondedEntity.entity.publicKey = request->publicKey;
+    // Inside spectrumIndex already have acquire/release lock
     respondedEntity.spectrumIndex = spectrumIndex(respondedEntity.entity.publicKey);
     respondedEntity.tick = system.tick;
     if (respondedEntity.spectrumIndex < 0)
@@ -1010,9 +1011,11 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
     else
     {
         bs->CopyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
-
+        ACQUIRE(spectrumLock);
         getSiblings<SPECTRUM_DEPTH>(respondedEntity.spectrumIndex, spectrumDigests, respondedEntity.siblings);
+        RELEASE(spectrumLock);
     }
+
 
     enqueueResponse(peer, sizeof(respondedEntity), RESPOND_ENTITY, header->dejavu(), &respondedEntity);
 }
@@ -2501,6 +2504,7 @@ static void processTick(unsigned long long processorNumber)
     }
 
     unsigned int digestIndex;
+    ACQUIRE(spectrumLock);
     for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
     {
         if (spectrum[digestIndex].latestIncomingTransferTick == system.tick || spectrum[digestIndex].latestOutgoingTransferTick == system.tick)
@@ -2529,6 +2533,8 @@ static void processTick(unsigned long long processorNumber)
     spectrumChangeFlags[0] = 0;
 
     etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+    RELEASE(spectrumLock);
+
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
 
