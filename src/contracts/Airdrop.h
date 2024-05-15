@@ -37,7 +37,6 @@ private:
     AirdropLogger logger;
     uint64 assetName;
     uint64 _earnedAmount;
-    sint64 _elementIndex;
 
 public:
     struct Fees_input
@@ -65,7 +64,7 @@ public:
 
     struct DistributeToken_input
     {
-        collection<id, 2097152> newOwnerAndPossessor;
+        id_4096 newOwnerAndPossessor;
 		uint64 assetName;
 		sint64 amount;
     };
@@ -107,14 +106,7 @@ public:
 
     // Procedure to be call When there is a user that meets the conditions
     PUBLIC(DistributeToken)
-        state._elementIndex = input.newOwnerAndPossessor.headIndex(qpi.invocator(), 0);
-		while (state._elementIndex != NULL_INDEX)
-		{
-			qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor.element(state._elementIndex));
-
-			state._elementIndex = input.newOwnerAndPossessor.nextElementIndex(state._elementIndex);
-		}
-        output.transferredAmount = input.amount;
+        output.transferredAmount = qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor.get(0)); 
     _
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
