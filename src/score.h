@@ -133,8 +133,10 @@ struct ScoreFunction
             setMem(&_computeBuffer[i], sizeof(computeBuffer), 0);
             solutionEngineLock[i] = 0;
         }
+#if USE_SCORE_CACHE
         scoreCacheLock = 0;
         setMem(&scoreCache, sizeof(scoreCache), 0);
+#endif
         return true;
     }
 
