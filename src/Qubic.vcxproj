@@ -24,6 +24,7 @@
     <ClInclude Include="contracts\qpi.h" />
     <ClInclude Include="contracts\Quottery.h" />
     <ClInclude Include="contracts\QUtil.h" />
+    <ClInclude Include="contracts\Airdrop.h" />
     <ClInclude Include="contracts\Qx.h" />
     <ClInclude Include="contracts\Random.h" />
     <ClInclude Include="contract_core\contract_def.h" />

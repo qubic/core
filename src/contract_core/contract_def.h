@@ -80,6 +80,17 @@ static void* __scratchpad();    // TODO: concurrency support (n buffers for n al
 #define CONTRACT_STATE2_TYPE QUTIL2
 #include "contracts/QUtil.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define AIRDROP_CONTRACT_INDEX 5
+#define CONTRACT_INDEX AIRDROP_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE AIRDROP
+#define CONTRACT_STATE2_TYPE AIRDROP2
+#include "contracts/Airdrop.h"
+static CONTRACT_STATE_TYPE* _AIRDROP;
+
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0
 
 #undef INITIALIZE
@@ -115,6 +126,7 @@ constexpr struct ContractDescription
     {"QTRY", 72, 10000, sizeof(IPO)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
     {"QUTIL", 99, 10000, sizeof(IPO)},
+    {"AIRDROP", 107, 10000, sizeof(IPO)},
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -177,6 +189,12 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
     case QUTIL_CONTRACT_INDEX:
     {
         REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUTIL);
+    }
+    break;
+
+    case AIRDROP_CONTRACT_INDEX:
+    {
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(AIRDROP);
     }
     break;
     }
