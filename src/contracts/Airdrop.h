@@ -64,8 +64,7 @@ public:
 
     struct DistributeToken_input
     {
-		id_4096 newOwnerAndPossessor;
-        uint64 count;
+		id newOwnerAndPossessor;
 		uint64 assetName;
 		sint64 amount;
     };
@@ -107,39 +106,7 @@ public:
 
     // Procedure to be call When there is a user that meets the conditions
     PUBLIC(DistributeToken)
-        uint64 total = input.amount * input.count;
-        if (qpi.invocationReward() < AIRDROP_TRANSER_FEE * input.count)
-        {
-            state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, qpi.invocationReward(), AIRDROP_INSUFFICIENT_FUND};
-            LOG_INFO(state.logger);
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            output.transferredAmount = 0;
-            return;
-        }
-        if (qpi.numberOfPossessedShares(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < total)
-        {
-            output.transferredAmount = 0;
-            state.logger = AirdropLogger{0, 0, qpi.invocator(), SELF, input.amount, AIRDROP_INSUFFICIENT_TOKEN};
-            LOG_INFO(state.logger);
-        }
-        else
-        {
-            for(int i = 0 ; i < input.count; i++) 
-            {
-                qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor.get(i));
-            }
-            output.transferredAmount = total;
-            if (qpi.invocationReward() > AIRDROP_TRANSER_FEE * input.count)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_TRANSER_FEE * input.count);
-            }
-            state._earnedAmount += AIRDROP_TRANSER_FEE * input.count; 
-            state.logger = AirdropLogger{0, 0, qpi.invocator(), qpi.invocator(), input.amount, AIRDROP_DISTRIBUTE_SUCCESS};
-            LOG_INFO(state.logger);
-        }
+        output.transferredAmount = qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor);
     _
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
