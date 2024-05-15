@@ -55,6 +55,7 @@
 #define EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID {0x0964e5b22, 0x6459, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}}
 #define EFI_TCP4_PROTOCOL_GUID {0x65530BC7, 0xA359, 0x410f, {0xB0, 0x10, 0x5A, 0xAD, 0xC7, 0xEC, 0x2B, 0x62}}
 #define EFI_TCP4_SERVICE_BINDING_PROTOCOL_GUID {0x00720665, 0x67EB, 0x4a99, {0xBA, 0xF7, 0xD3, 0xC3, 0x3A, 0x1C, 0x7C, 0xC9}}
+#define EFI_FILE_INFO_ID { 0x9576e92, 0x6d3f, 0x11d2, {0x8e, 0x39, 0x0, 0xa0, 0xc9, 0x69, 0x72, 0x3b }}
 
 #define EFI_FILE_MODE_READ 0x0000000000000001
 #define EFI_FILE_MODE_WRITE 0x0000000000000002
@@ -657,6 +658,17 @@ typedef struct
 	EFI_FILE_WRITE_EX WriteEx;
 	EFI_FILE_FLUSH_EX FlushEx;
 } EFI_FILE_PROTOCOL;
+
+typedef struct {
+	unsigned long long             Size;
+	unsigned long long             FileSize;
+	unsigned long long             PhysicalSize;
+	EFI_TIME                       CreateTime;
+	EFI_TIME                       LastAccessTime;
+	EFI_TIME                       ModificationTime;
+	unsigned long long             Attribute;
+	CHAR16                         FileName[];
+} EFI_FILE_INFO;
 
 typedef struct
 {
