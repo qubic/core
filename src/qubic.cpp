@@ -1074,7 +1074,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.epoch = system.epoch;
     respondedSystemInfo.tick = system.tick;
     respondedSystemInfo.initialTick = system.initialTick;
-    respondedSystemInfo.latestCreatedTick = system.latestLedTick;
+    respondedSystemInfo.latestCreatedTick = system.latestCreatedTick;
 
     respondedSystemInfo.initialMillisecond = system.initialMillisecond;
     respondedSystemInfo.initialSecond = system.initialSecond;
