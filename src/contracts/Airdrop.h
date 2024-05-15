@@ -134,9 +134,9 @@ public:
             output.transferredAmount = total;
             if (qpi.invocationReward() > AIRDROP_TRANSER_FEE * input.count)
             {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward() - total);
+                qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_TRANSER_FEE * input.count);
             }
-            state._earnedAmount += total; 
+            state._earnedAmount += AIRDROP_TRANSER_FEE * input.count; 
             state.logger = AirdropLogger{0, 0, qpi.invocator(), qpi.invocator(), input.amount, AIRDROP_DISTRIBUTE_SUCCESS};
             LOG_INFO(state.logger);
         }
