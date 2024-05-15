@@ -38,8 +38,8 @@
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 107
-#define TICK 13680000
+#define EPOCH 108
+#define TICK 13820000
 
 // random seed is now obtained from spectrumDigests
 

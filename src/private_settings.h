@@ -4,7 +4,7 @@
 
 // Do NOT share the data of "Private Settings" section with anybody!!!
 
-#define OPERATOR "MEFKYFCDXDUILCAJKOIKWQAPENJDUHSSYPBRWFOTLALILAYWQFDSITJELLHG"
+#define OPERATOR "PTISGHDLNMNEBASUPNOACIMCJTNADIPRCKDUZLJPACIIEITJKQGYFYDHIIVF"
 
 static unsigned char computorSeeds[][55 + 1] = {
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -13,8 +13,9 @@ static unsigned char computorSeeds[][55 + 1] = {
 // Enter static IPs of peers (ideally at least 4 including your own IP) to disseminate them to other peers.
 // You can find current peer IPs at https://app.qubic.li/network/live
 static const unsigned char knownPublicPeers[][4] = {
-    {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
-};
+    {57,129,19,155},
+    {45,143,199,16}, 
+}; 
 
 #define LOG_BUFFER_SIZE 16777200 // Must be less or equal to 16777200
 #define LOG_QU_TRANSFERS 1 // "0" disables logging, "1" enables it

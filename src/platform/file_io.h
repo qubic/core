@@ -8,8 +8,8 @@
 // If you get an error reading and writing files, set the chunk sizes below to
 // the cluster size set for formatting you disk. If you have no idea about the
 // cluster size, try 32768.
-#define READING_CHUNK_SIZE 1048576
-#define WRITING_CHUNK_SIZE 1048576
+#define READING_CHUNK_SIZE 32768
+#define WRITING_CHUNK_SIZE 32768
 #define VOLUME_LABEL L"Qubic"
 
 static EFI_FILE_PROTOCOL* root = NULL;
