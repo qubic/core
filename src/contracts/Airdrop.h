@@ -65,7 +65,7 @@ public:
 
     struct DistributeToken_input
     {
-        collection<id, 1000001> newOwnerAndPossessor;
+        collection<id, 2097152> newOwnerAndPossessor;
 		uint64 assetName;
 		sint64 amount;
     };
