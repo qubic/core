@@ -4241,6 +4241,16 @@ static bool initialize()
 
     beginEpoch2of2();
 
+    logToConsole(L"Initialize tickStorage loader");
+    ts.initMetaData();
+    if (system.epoch == EPOCH) // only load once and when this node starts from scratch
+    {
+        if (ts.tryLoadFromFile(system.epoch, true) == 0)
+        {
+            logToConsole(L"Successfully loaded checkpoint");
+        }
+    }
+
     return true;
 }
 
@@ -4880,6 +4890,19 @@ static void processKeyPresses()
         break;
 
         /*
+        * F8 Key
+        * Takes a snapshot of tick storage and save it to disk
+        */
+        case 0x12:
+        {
+            logToConsole(L"Pressed F8 key");
+            if (system.tick - system.initialTick > 0 && system.tick - 2 > system.initialTick) {
+                ts.trySaveToFile(system.epoch, system.tick - 2, true);
+            }            
+        }
+        break;
+
+        /*
         * F9 Key
         * By Pressing the F9 Key the latestCreatedTick got's decreased by one.
         * By decreasing this by one, the Node will resend the issued votes for its Computors.
@@ -5243,7 +5266,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     // Request ticks
                     tickRequestingTick = curTimeTick;
 
-                    if (tickRequestingIndicator == tickTotalNumberOfComputors)
+                    if (tickRequestingIndicator == tickTotalNumberOfComputors
+                        &&system.tick >= ts.getPreloadTick())
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
@@ -5259,7 +5283,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAny(&requestedQuorumTick.header);
                     }
                     tickRequestingIndicator = tickTotalNumberOfComputors;
-                    if (futureTickRequestingIndicator == futureTickTotalNumberOfComputors)
+                    if (futureTickRequestingIndicator == futureTickTotalNumberOfComputors
+                        && system.tick + 1 >= ts.getPreloadTick()
+                        )
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
@@ -5276,14 +5302,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                     futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
 
-                    if (ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
-                        || !targetNextTickDataDigestIsKnown)
+                    if ((ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
+                        || !targetNextTickDataDigestIsKnown)// is this correct?
+                        && (system.tick + 1 >= ts.getPreloadTick())) 
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
                         pushToAny(&requestedTickData.header);
                     }
-                    if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch)
+                    if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch && system.tick+2 >= ts.getPreloadTick())
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 2;
@@ -5356,6 +5383,28 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
                 processKeyPresses();
+
+#if TICK_STORAGE_AUTOSAVE_MODE
+                if ( (TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1)) // autosave in aux mode
+                    || TICK_STORAGE_AUTOSAVE_MODE == 2
+                    ) 
+                {
+                    if (system.tick - system.initialTick > 0 && system.tick - 2 > system.initialTick) {
+                        logToConsole(L"Autosaving tick storage...");
+                        int status = ts.trySaveToFile(system.epoch, system.tick - 2, true);
+                        if (status == 0)
+                        {
+                            logToConsole(L"Successfully saved tick storage");
+                        }
+                        else
+                        {
+                            setText(message, L"Failed to save tick storage. Error code: ");
+                            appendNumber(message, status, false);
+                            logToConsole(message);
+                        }
+                    }
+                }
+#endif
 
                 if (curTimeTick - loggingTick >= frequency)
                 {

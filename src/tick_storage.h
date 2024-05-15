@@ -10,7 +10,11 @@
 
 #include "public_settings.h"
 
-
+static unsigned short SNAPSHOT_METADATA_FILE_NAME[] = L"snapshotMetadata.???";
+static unsigned short SNAPSHOT_TICK_DATA_FILE_NAME[] = L"snapshotTickdata.???";
+static unsigned short SNAPSHOT_TICKS_FILE_NAME[] = L"snapshotTicks.???";
+static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
+static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
 
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
 // The number of ticks to keep from the previous epoch is TICKS_TO_KEEP_FROM_PRIOR_EPOCH (defined in public_settings.h).
@@ -88,7 +92,373 @@ private:
     // Lock for securing tickTransactions and tickTransactionOffsets
     inline static volatile char tickTransactionsLock = 0;
 
+    inline static unsigned long long fileChunkSize = 209715200ULL; //200MB
+
+    struct {
+        unsigned int epoch;
+        unsigned int tickBegin;
+        unsigned int tickEnd;
+        long long outTotalTransactionSize;
+        unsigned long long outNextTickTransactionOffset;
+        // may need to store more meta data here to verify consistency when loading (ie: some nodes have different configs and can't use the saved files)
+    } metaData;
+
+    static long long saveLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, bool showError = true)
+    {
+        const unsigned long long maxWriteSizePerChunk = fileChunkSize;
+        if (totalSize < maxWriteSizePerChunk) {
+            return save(fileName, totalSize, buffer, showError);
+        }
+        int chunkId = 0;
+        unsigned long long totalWriteSize = 0;
+        while (totalSize) {
+            CHAR16 fileNameWithChunkId[64];
+            setText(fileNameWithChunkId, fileName);
+            appendText(fileNameWithChunkId, L".XXX");
+            addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
+            const unsigned long long writeSize = maxWriteSizePerChunk < totalSize ? maxWriteSizePerChunk : totalSize;
+            long long existFileSize = getFileSize(fileNameWithChunkId);
+            if (existFileSize != writeSize) {
+                unsigned long long res = save(fileNameWithChunkId, writeSize, buffer, showError);
+                if (res != writeSize) {
+                    return totalWriteSize;
+                }
+            }
+            buffer += writeSize;
+            totalWriteSize += writeSize;
+            totalSize -= writeSize;
+            chunkId++;
+        }
+        return totalWriteSize;
+    }
+
+    static long long loadLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, bool showError = true)
+    {
+        const unsigned long long maxReadSizePerChunk = fileChunkSize;
+        if (totalSize < maxReadSizePerChunk) {
+            return load(fileName, totalSize, buffer, showError);
+        }
+        int chunkId = 0;
+        unsigned long long totalReadSize = 0;
+        while (totalSize) {
+            CHAR16 fileNameWithChunkId[64];
+            setText(fileNameWithChunkId, fileName);
+            appendText(fileNameWithChunkId, L".XXX");
+            addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
+            const unsigned long long readSize = maxReadSizePerChunk < totalSize ? maxReadSizePerChunk : totalSize;
+            unsigned long long res = load(fileNameWithChunkId, readSize, buffer, showError);
+            if (res != readSize) {
+                return totalReadSize;
+            }
+            buffer += readSize;
+            totalReadSize += readSize;
+            totalSize -= readSize;
+            chunkId++;
+        }
+        return totalReadSize;
+    }
+
+    void prepareMetaDataFilename(short epoch)
+    {
+        addEpochToFileName(SNAPSHOT_METADATA_FILE_NAME, sizeof(SNAPSHOT_METADATA_FILE_NAME) / sizeof(SNAPSHOT_METADATA_FILE_NAME[0]), epoch);
+    }
+
+    void prepareFilenames(short epoch)
+    {
+        prepareMetaDataFilename(epoch);
+        addEpochToFileName(SNAPSHOT_TICK_DATA_FILE_NAME, sizeof(SNAPSHOT_TICK_DATA_FILE_NAME) / sizeof(SNAPSHOT_TICK_DATA_FILE_NAME[0]), epoch);
+        addEpochToFileName(SNAPSHOT_TICKS_FILE_NAME, sizeof(SNAPSHOT_TICKS_FILE_NAME) / sizeof(SNAPSHOT_TICKS_FILE_NAME[0]), epoch);
+        addEpochToFileName(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, sizeof(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME) / sizeof(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[0]), epoch);
+        addEpochToFileName(SNAPSHOT_TRANSACTIONS_FILE_NAME, sizeof(SNAPSHOT_TRANSACTIONS_FILE_NAME) / sizeof(SNAPSHOT_TRANSACTIONS_FILE_NAME[0]), epoch);
+    }
+
+    bool saveMetaData(short epoch, unsigned int tickEnd, long long outTotalTransactionSize, unsigned long long outNextTickTransactionOffset)
+    {
+        metaData.epoch = epoch;
+        metaData.tickBegin = tickBegin;
+        metaData.tickEnd = tickEnd;
+        metaData.outTotalTransactionSize = outTotalTransactionSize;
+        metaData.outNextTickTransactionOffset = outNextTickTransactionOffset;
+        auto sz = saveLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(metaData), (unsigned char*) & metaData);
+        if (sz != sizeof(metaData))
+        {
+            return false;
+        }
+        return true;
+    }
+
+    bool saveTickData(unsigned long long nTick)
+    {
+        long long totalWriteSize = nTick * sizeof(TickData);
+        auto sz = saveLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalWriteSize, (unsigned char*)tickDataPtr);
+        if (sz != totalWriteSize)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    bool saveTicks(unsigned long long nTick)
+    {
+        long long totalWriteSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
+        auto sz = saveLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalWriteSize, (unsigned char*)ticksPtr);
+        if (sz != totalWriteSize)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    bool saveTickTransactionOffsets(unsigned long long nTick)
+    {
+        long long totalWriteSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+        auto sz = saveLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalWriteSize, (unsigned char*)tickTransactionOffsetsPtr);
+        if (sz != totalWriteSize)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset)
+    {
+        unsigned int toTick = tickBegin + nTick;
+        unsigned long long toPtr = 0;
+        outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
+        // find the offset
+        {
+            bool found = false;
+            for (unsigned int tick = toTick; tick >= tickBegin; tick--)
+            {
+                for (int idx = NUMBER_OF_TRANSACTIONS_PER_TICK - 1; idx >= 0; idx--)
+                {
+                    if (this->tickTransactionOffsets(tick, idx))
+                    {
+                        found = true;
+                        unsigned long long offset = this->tickTransactionOffsets(tick, idx);
+                        Transaction* tx = (Transaction*)(tickTransactionsPtr + offset);
+                        toPtr = offset + tx->totalSize();
+                        outNextTickTransactionOffset = toPtr;
+                        break;
+                    }
+                }
+                if (found) break;
+            }
+        }
+        // saving from the first tx of from tick to the last tx of (totick)
+        long long totalWriteSize = toPtr;
+        unsigned char* ptr = tickTransactionsPtr;
+        auto sz = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalWriteSize, (unsigned char*)ptr);
+        if (sz != totalWriteSize)
+        {
+            outTotalTransactionSize = -1;
+            return false;
+        }
+        outTotalTransactionSize = totalWriteSize;
+
+        return true;
+    }
+
+    bool loadMetaData()
+    {
+        auto sz = loadLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(metaData), (unsigned char*)&metaData);
+        if (sz != sizeof(metaData))
+        {
+            return false;
+        }
+        return true;
+    }
+
+    bool checkMetaData()
+    {
+        if (metaData.tickBegin > metaData.tickEnd) {
+            return false;
+        }
+        if (metaData.tickBegin != tickBegin) {
+            return false;
+        }
+        if (metaData.tickBegin + MAX_NUMBER_OF_TICKS_PER_EPOCH < metaData.tickEnd) {
+            return false;
+        }
+        if (metaData.epoch != system.epoch) {
+            return false;
+        }
+        return true;
+    }
+
+    bool loadTickData(unsigned long long nTick)
+    {
+        long long totalLoadSize = nTick * sizeof(TickData);
+        auto sz = loadLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalLoadSize, (unsigned char*)tickDataPtr);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool loadTicks(unsigned long long nTick)
+    {
+        long long totalLoadSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
+        auto sz = loadLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalLoadSize, (unsigned char*)ticksPtr);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool loadTickTransactionOffsets(unsigned long long nTick)
+    {
+        long long totalLoadSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+        auto sz = loadLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalLoadSize, (unsigned char*)tickTransactionOffsetsPtr);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool loadTransactions(unsigned long long nTick, unsigned long long totalLoadSize)
+    {
+        unsigned char* ptr = tickTransactionsPtr;
+        auto sz = loadLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalLoadSize, (unsigned char*)ptr);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    
+
 public:
+    unsigned int getPreloadTick() const
+    {
+        return metaData.tickEnd;
+    }
+
+
+    // Here we only save all data from tickStorage, which will save ~70-80% of syncing time since it's mostly networking (fetching tick data)
+    // with scoreCache feature, nodes can get synced to the network in a few hours instead of days.
+    // We can actually save all states (ie: etalonTick, minerScore, contract states...) of the node beside tickStorage and resume the node without any computation.
+    // But that will need extra effort to maintain this feature when we add something new to the protocol.
+    // And probably cause critical bugs if we forget to do update this feature.
+    // 
+    // Save procedure:
+    // (1) check current meta data state
+    // (2) write all missing chunks to disk
+    // (3) update metadata state
+    int trySaveToFile(unsigned int epoch, unsigned int tick, bool showLog=false)
+    {   
+        if (tick <= tickBegin) {
+            return 6;
+        }
+        unsigned long long nTick = tick - tickBegin + 1; // inclusive [tickBegin, tick]
+        prepareFilenames(epoch);
+        if (showLog) logToConsole(L"Saving tick data...");
+
+        if (!saveTickData(nTick))
+        {
+            if (showLog) logToConsole(L"Failed to save tickData");
+            return 5;
+        }
+
+        if (showLog) logToConsole(L"Saving quorum ticks");
+        if (!saveTicks(nTick))
+        {
+            if (showLog) logToConsole(L"Failed to save Ticks");
+            return 4;
+        }
+
+        if (showLog) logToConsole(L"Saving tick transaction offset");
+        if (!saveTickTransactionOffsets(nTick))
+        {
+            if (showLog) logToConsole(L"Failed to save transactionOffset");
+            return 3;
+        }
+
+        if (showLog) logToConsole(L"Saving transactions");
+        long long outTotalTransactionSize = 0;
+        unsigned long long outNextTickTransactionOffset = 0;
+        if (!saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset))
+        {
+            if (showLog) logToConsole(L"Failed to save transactions");
+            return 2;
+        }
+
+        if (showLog) logToConsole(L"Saving meta data");
+        if (!saveMetaData(epoch, tick, outTotalTransactionSize, outNextTickTransactionOffset))
+        {
+            if (showLog) logToConsole(L"Failed to save metaData");
+            return 1;
+        }
+
+        return 0;
+    }
+
+    // Load procedure:
+    // (1) try to load metadata file
+    // (2) sanity check meta data file
+    // (3) load these in order: tickData -> Ticks -> tx offset -> tx 
+    // only load once at start up
+    int tryLoadFromFile(unsigned short epoch, bool showLog = false)
+    {
+        prepareMetaDataFilename(epoch);
+
+        if (showLog) logToConsole(L"Loading checkpoint meta data...");
+        if (!loadMetaData()) {
+            if (showLog) logToConsole(L"Cannot load meta data file, Computor will not load tickStorage data from files");
+            initMetaData();
+            return 1;
+        }
+        if (!checkMetaData()) {
+            if (showLog) logToConsole(L"Invalid meta data file for tick storage");
+            initMetaData();
+            return 2;
+        }
+        nextTickTransactionOffset = metaData.outNextTickTransactionOffset;
+        unsigned long long nTick = metaData.tickEnd - metaData.tickBegin + 1;
+        prepareFilenames(epoch);
+
+        if (showLog) logToConsole(L"Loading tick data...");
+        if (!loadTickData(nTick))
+        {
+            if (showLog) logToConsole(L"Failed to load loadTickData");
+            initMetaData();
+            return 5;
+        }
+
+        if (showLog) logToConsole(L"Loading ticks...");
+        if (!loadTicks(nTick))
+        {
+            if (showLog) logToConsole(L"Failed to load loadTicks");
+            initMetaData();
+            return 4;
+        }
+
+        if (showLog) logToConsole(L"Loading transaction offset...");
+        if (!loadTickTransactionOffsets(nTick))
+        {
+            if (showLog) logToConsole(L"Failed to load loadTickTransactionOffsets");
+            initMetaData();
+            return 3;
+        }
+
+        if (showLog) logToConsole(L"Loading transactions...");
+        if (!loadTransactions(nTick, metaData.outTotalTransactionSize))
+        {
+            if (showLog) logToConsole(L"Failed to load loadTransactions");
+            initMetaData();
+            return 2;
+        }
+        return 0;
+    }
+
+    bool initMetaData()
+    {
+        metaData.tickBegin = tickBegin;
+        metaData.tickEnd = tickBegin;
+        metaData.epoch = system.epoch;
+        return true;
+    }
 
     // Init at node startup
     static bool init()
@@ -243,7 +613,7 @@ public:
             oldTickBegin = 0;
             oldTickEnd = 0;
         }
-        
+
         tickBegin = newInitialTick;
         tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
 
