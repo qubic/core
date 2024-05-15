@@ -64,7 +64,11 @@ public:
 
     struct DistributeToken_input
     {
-        id_4096 newOwnerAndPossessor;
+        id newOwnerAndPossessor1, 
+            newOwnerAndPossessor2, 
+            newOwnerAndPossessor3, 
+            newOwnerAndPossessor4, 
+            newOwnerAndPossessor5;
 		uint64 assetName;
 		sint64 amount;
     };
@@ -106,7 +110,12 @@ public:
 
     // Procedure to be call When there is a user that meets the conditions
     PUBLIC(DistributeToken)
-        output.transferredAmount = qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor.get(0)); 
+        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor1); 
+        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor2); 
+        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor3); 
+        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor4); 
+        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor5); 
+        output.transferredAmount = input.amount;
     _
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
