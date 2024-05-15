@@ -5148,7 +5148,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
 
                     if (ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
-                        || targetNextTickDataDigestIsKnown)
+                        || !targetNextTickDataDigestIsKnown)
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
