@@ -37,6 +37,8 @@ private:
     AirdropLogger logger;
     uint64 assetName;
     uint64 _earnedAmount;
+    ::Entity entitys;
+    id currentID;
 
 public:
     struct Fees_input
@@ -64,13 +66,7 @@ public:
 
     struct DistributeToken_input
     {
-        id newOwnerAndPossessor1,
-        newOwnerAndPossessor2,
-        newOwnerAndPossessor3,
-        newOwnerAndPossessor4,
-        newOwnerAndPossessor5;
 		uint64 assetName;
-		sint64 amount;
     };
 
     struct DistributeToken_output
@@ -110,12 +106,16 @@ public:
 
     // Procedure to be call When there is a user that meets the conditions
     PUBLIC(DistributeToken)
-        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor1);
-        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor2);
-        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor3);
-        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor4);
-        qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), input.amount, input.newOwnerAndPossessor5);
-        output.transferredAmount = input.amount;
+        output.transferredAmount = 0;
+        state.currentID = qpi.nextId(qpi.invocator());
+        while(state.currentID != NULL_ID) {
+            qpi.getEntity(state.currentID, state.entitys);
+            if(state.entitys.incomingAmount - state.entitys.outgoingAmount > 0) {
+                qpi.transferShareOwnershipAndPossession(input.assetName, qpi.invocator(), qpi.invocator(), qpi.invocator(), 1, state.entitys.publicKey);
+                output.transferredAmount++;
+            }
+            state.currentID = qpi.nextId(state.currentID);
+        }
     _
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
