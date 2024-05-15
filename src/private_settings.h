@@ -37,3 +37,10 @@ static const unsigned char whiteListPeers[][4] = {
 static unsigned long long logReaderPasscodes[][4] = {
     {0, 0, 0, 0}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN RANDOM NUMBERS IN [0..18446744073709551615] RANGE IF LOGGING IS ENABLED
 };
+
+// Mode for auto save ticks:
+// 0: disable
+// 1: save tick storage every TICK_STORAGE_AUTOSAVE_TICK_PERIOD ticks, only AUX mode
+// 2: save tick storage every TICK_STORAGE_AUTOSAVE_TICK_PERIOD ticks, both AUX and MAIN mode
+#define TICK_STORAGE_AUTOSAVE_MODE 1
+#define TICK_STORAGE_AUTOSAVE_TICK_PERIOD 1000
