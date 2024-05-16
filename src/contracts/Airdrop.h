@@ -115,6 +115,7 @@ public:
             }
 
             output.transferredAmount = 0;
+            return ;
         }
         if (qpi.invocationReward() > AIRDROP_TRANSER_FEE)
         {
