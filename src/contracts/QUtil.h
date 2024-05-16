@@ -305,6 +305,7 @@ public:
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
+        REGISTER_USER_PROCEDURE(BurnQubic, 2);
     _
 
     INITIALIZE
