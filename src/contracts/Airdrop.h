@@ -107,6 +107,19 @@ public:
 
     // Procedure to be call When there is a user that meets the conditions
     PUBLIC(DistributeToken)
+        if (qpi.invocationReward() < AIRDROP_TRANSER_FEE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+
+            output.transferredAmount = 0;
+        }
+        if (qpi.invocationReward() > AIRDROP_TRANSER_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_TRANSER_FEE);
+        }
         output.transferredAmount = 0;
         state.currentID = qpi.nextId(qpi.invocator());
         while(state.currentID != NULL_ID) {
