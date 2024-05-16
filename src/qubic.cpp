@@ -5385,23 +5385,25 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 processKeyPresses();
 
 #if TICK_STORAGE_AUTOSAVE_MODE
-                if ( (TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1)) // autosave in aux mode
-                    || TICK_STORAGE_AUTOSAVE_MODE == 2
-                    ) 
+                if ((TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1)) // autosave in aux mode
+                    || TICK_STORAGE_AUTOSAVE_MODE == 2) 
                 {
-                    unsigned int deltaTick = system.tick - system.initialTick;
-                    if (deltaTick > 2 && (deltaTick % TICK_STORAGE_AUTOSAVE_TICK_PERIOD == 0)) {
-                        logToConsole(L"Autosaving tick storage...");
-                        int status = ts.trySaveToFile(system.epoch, system.tick - 2, true);
-                        if (status == 0)
-                        {
-                            logToConsole(L"Successfully saved tick storage");
-                        }
-                        else
-                        {
-                            setText(message, L"Failed to save tick storage. Error code: ");
-                            appendNumber(message, status, false);
-                            logToConsole(message);
+                    if (system.tick > ts.getPreloadTick()) // check the last saved tick
+                    {
+                        unsigned int deltaTick = system.tick - system.initialTick;
+                        if (deltaTick > 2 && (deltaTick % TICK_STORAGE_AUTOSAVE_TICK_PERIOD == 0)) {
+                            logToConsole(L"Autosaving tick storage...");
+                            int status = ts.trySaveToFile(system.epoch, system.tick - 2, true);
+                            if (status == 0)
+                            {
+                                logToConsole(L"Successfully saved tick storage");
+                            }
+                            else
+                            {
+                                setText(message, L"Failed to save tick storage. Error code: ");
+                                appendNumber(message, status, false);
+                                logToConsole(message);
+                            }
                         }
                     }
                 }
