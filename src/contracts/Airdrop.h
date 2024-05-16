@@ -55,8 +55,8 @@ public:
     {
         uint64 assetName;
 		sint64 numberOfShares;
-		uint64 unitOfMeasurement;
 		sint8 numberOfDecimalPlaces;
+        uint64 unitOfMeasurement;
     };
 
     struct StartAirdrop_output
