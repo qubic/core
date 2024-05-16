@@ -124,10 +124,12 @@ public:
         output.transferredAmount = 0;
         state.currentID = qpi.nextId(qpi.invocator());
         while(state.currentID != qpi.invocator()) {
-            if(state.currentID != NULL_ID && state.entitys.incomingAmount - state.entitys.outgoingAmount > 0) {
+            if(state.currentID != NULL_ID) {
                 qpi.getEntity(state.currentID, state.entitys);
-                qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), 1, state.entitys.publicKey);
-                output.transferredAmount++;
+                if(state.entitys.incomingAmount - state.entitys.outgoingAmount > 0) {
+                    qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), 1, state.entitys.publicKey);
+                    output.transferredAmount++;
+                }
             }
             state.currentID = qpi.nextId(state.currentID);
         }
