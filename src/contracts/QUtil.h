@@ -65,6 +65,15 @@ public:
         sint64 fee;
     };
 
+    struct BurnQubic_input
+    {
+        sint64 amount;
+    };
+    struct BurnQubic_output
+    {
+        sint64 amount;
+    };
+
     /**************************************/
     /************CORE FUNCTIONS************/
     /**************************************/
@@ -268,6 +277,28 @@ public:
         LOG_INFO(state.logger);
         output.returnCode = STM1_SUCCESS;
         qpi.burn(STM1_INVOCATION_FEE);
+    _
+
+    /**
+    * Practicing burning qubic in the QChurch
+    * @param the amount of qubic to burn
+    * @return the amount of qubic has burned, -1 if failed to burn
+    */
+    PUBLIC_PROCEDURE(BurnQubic)
+        // lack of fund => return the coins        
+        if (qpi.invocationReward() < input.amount)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.amount = -1;
+            return;
+        }
+        if (qpi.invocationReward() > input.amount)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount); // return the changes
+        }
+        qpi.burn(input.amount);
+        output.amount = input.amount;
+        return;
     _
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
