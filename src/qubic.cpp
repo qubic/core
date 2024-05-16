@@ -5389,7 +5389,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     || TICK_STORAGE_AUTOSAVE_MODE == 2
                     ) 
                 {
-                    if (system.tick - system.initialTick > 0 && system.tick - 2 > system.initialTick) {
+                    unsigned int deltaTick = system.tick - system.initialTick;
+                    if (deltaTick > 2 && (deltaTick % TICK_STORAGE_AUTOSAVE_TICK_PERIOD == 0)) {
                         logToConsole(L"Autosaving tick storage...");
                         int status = ts.trySaveToFile(system.epoch, system.tick - 2, true);
                         if (status == 0)
