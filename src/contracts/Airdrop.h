@@ -74,6 +74,17 @@ public:
     {
         sint64 transferredAmount;
     };
+
+    struct TransferToken_input {
+        id issuer;
+		uint64 assetName;
+        uint64 amount;
+        id receiver;
+    };
+
+    struct TransferToken_output {
+        sint64 transferredAmount;
+    };
     // getting fees
     PUBLIC(Fees)
 		output.airdropStartFee = AIRDROP_START_FEE;
@@ -135,11 +146,31 @@ public:
         }
     _
 
+    // Procedure for transferring the token
+    PUBLIC(TransferToken)
+        if (qpi.invocationReward() < AIRDROP_TRANSER_FEE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+
+            output.transferredAmount = 0;
+            return ;
+        }
+        if (qpi.invocationReward() > AIRDROP_TRANSER_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - AIRDROP_TRANSER_FEE);
+        }
+        output.transferredAmount = qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amount, input.receiver);
+    _
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_FUNCTION(Fees, 1);
 
         REGISTER_USER_PROCEDURE(StartAirdrop, 1);
         REGISTER_USER_PROCEDURE(DistributeToken, 2);
+        REGISTER_USER_PROCEDURE(TransferToken, 3);
     _
 
     INITIALIZE
