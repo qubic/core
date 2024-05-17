@@ -84,9 +84,9 @@ struct ScoreFunction
     m256i initialRandomSeed;
 
     volatile char solutionEngineLock[solutionBufferCount];
-    volatile char scoreCacheLock;
 
 #if USE_SCORE_CACHE
+    volatile char scoreCacheLock;
     ScoreCache<SCORE_CACHE_SIZE, SCORE_CACHE_COLLISION_RETRIES> scoreCache;
 #endif
 
