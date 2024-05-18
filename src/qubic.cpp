@@ -2771,7 +2771,22 @@ static void beginEpoch1of2()
 
 static void beginEpoch2of2()
 {
-    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+    // temporary fix to keep solution results for ep 109
+    // todo: remove for next epoch
+    if (system.epoch == 109)
+    {
+        unsigned char ep109RandomSeed[] = {
+    0x3c, 0x47, 0x0a, 0x27, 0x86, 0x43, 0x04, 0xbe,
+    0x3b, 0xdb, 0x7f, 0xb3, 0x6d, 0x11, 0x14, 0xac,
+    0x79, 0x42, 0xb6, 0x90, 0x30, 0x8b, 0x80, 0x0e,
+    0xcf, 0xb9, 0x39, 0x98, 0x6a, 0xe3, 0x4f, 0xb3
+        };
+        score->initMiningData(ep109RandomSeed);
+    }
+    else
+    {
+        score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+    }
 }
 
 // called by tickProcessor() after system.tick has been incremented
