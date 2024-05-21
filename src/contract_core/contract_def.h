@@ -141,6 +141,11 @@ enum SystemProcedureID
     END_TICK = 4,
 };
 
+enum MoreProcedureIDs
+{
+    USER_PROCEDURE_CALL = 5,
+};
+
 #define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName)\
 contractSystemProcedures[contractIndex][INITIALIZE] = (SYSTEM_PROCEDURE)contractName::__initialize;\
 contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (SYSTEM_PROCEDURE)contractName::__beginEpoch;\

@@ -126,6 +126,7 @@ static m256i* spectrumDigests = NULL;
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
+static Transaction* contractProcessorTransaction = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 
@@ -2015,6 +2016,23 @@ static void contractProcessor(void*)
         }
     }
     break;
+
+    case USER_PROCEDURE_CALL:
+    {
+        Transaction* transaction = contractProcessorTransaction;
+        ASSERT(transaction && transaction->checkValidity());
+
+        unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
+        ASSERT(system.epoch >= contractDescriptions[contractIndex].constructionEpoch);
+        ASSERT(system.epoch < contractDescriptions[contractIndex].destructionEpoch);
+        ASSERT(contractUserProcedures[contractIndex][transaction->inputType]);
+
+        QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
+        qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
+
+        contractProcessorTransaction = 0;
+    }
+    break;
     }
 }
 
@@ -2280,12 +2298,19 @@ static void processTick(unsigned long long processorNumber)
                                             }
                                         }
                                     }
-                                    else
+                                    else if (system.epoch < contractDescriptions[contractIndex].destructionEpoch)
                                     {
                                         if (contractUserProcedures[contractIndex][transaction->inputType])
                                         {
-                                            QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
-                                            qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
+                                            // Run user procedure call of transaction in contract processor
+                                            // and wait for completion
+                                            contractProcessorTransaction = transaction;
+                                            contractProcessorPhase = USER_PROCEDURE_CALL;
+                                            contractProcessorState = 1;
+                                            while (contractProcessorState)
+                                            {
+                                                _mm_pause();
+                                            }
                                         }
                                     }
                                 }
