@@ -23,6 +23,8 @@
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
 
+#include "platform/stack_size_tracker.h"
+
 #include "text_output.h"
 
 #include "kangaroo_twelve.h"
@@ -154,6 +156,14 @@ static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
 static int nSolutionProcessorIDs = 0;
+
+// Used for tracking size of function call stacks for debugging
+// TODO: move to processors and pass processor pointer around to consistently track used size also in functions
+//       that are used on different processors
+// TODO: allow to disable stack size tracking
+DEFINE_STACK_SIZE_TRACKER(contractProcessorCallStackTracker);
+
+
 
 static ScoreFunction<
     DATA_LENGTH, INFO_LENGTH,
@@ -1495,6 +1505,8 @@ QPI::id QPI::QpiContextFunctionCall::arbitrator() const
 
 long long QPI::QpiContextProcedureCall::burn(long long amount) const
 {
+    UPDATE_STACK_SIZE_TRACKER(contractProcessorCallStackTracker);
+
     if (amount < 0 || amount > MAX_AMOUNT)
     {
         return -((long long)(MAX_AMOUNT + 1));
@@ -1593,6 +1605,8 @@ QPI::id QPI::QpiContextFunctionCall::invocator() const
 
 long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, const QPI::id& issuer, signed char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement) const
 {
+    UPDATE_STACK_SIZE_TRACKER(contractProcessorCallStackTracker);
+
     if (((unsigned char)name) < 'A' || ((unsigned char)name) > 'Z'
         || name > 0xFFFFFFFFFFFFFF)
     {
@@ -1786,6 +1800,8 @@ unsigned int QPI::QpiContextFunctionCall::tick() const
 
 long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
 {
+    UPDATE_STACK_SIZE_TRACKER(contractProcessorCallStackTracker);
+
     if (amount < 0 || amount > MAX_AMOUNT)
     {
         return -((long long)(MAX_AMOUNT + 1));
@@ -1818,6 +1834,8 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
 
 long long QPI::QpiContextProcedureCall::transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor) const
 {
+    UPDATE_STACK_SIZE_TRACKER(contractProcessorCallStackTracker);
+
     if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
     {
         return -((long long)(MAX_AMOUNT + 1));
@@ -1935,6 +1953,8 @@ m256i QPI::QpiContextFunctionCall::K12(const T& data) const
 
 static void contractProcessor(void*)
 {
+    INIT_STACK_SIZE_TRACKER(contractProcessorCallStackTracker);
+
     enableAVX();
 
     unsigned long long processorNumber;
@@ -4711,6 +4731,15 @@ static void processKeyPresses()
             if (allThreadsAreGood)
             {
                 appendText(message, L"All threads are healthy.");
+            }
+            logToConsole(message);
+
+            // Print used function call stack size
+            setText(message, L"Function call stack usage: ");
+            if (contractProcessorCallStackTracker.maxStackSize() != StackSizeTracker::uninitialized)
+            {
+                appendText(message, L"Contract Processor ");
+                appendNumber(message, contractProcessorCallStackTracker.maxStackSize(), TRUE);
             }
             logToConsole(message);
         }

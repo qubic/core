@@ -175,7 +175,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
     }
 };
 
-// QPI context used to call contract user procedure from qubic core (tick processor)
+// QPI context used to call contract user procedure from qubic core (contract processor)
 struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 {
     QpiContextUserProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QPI::QpiContextProcedureCall(contractIndex, originator, invocationReward)
