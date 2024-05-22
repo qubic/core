@@ -80,7 +80,7 @@ static void* __scratchpad();    // TODO: concurrency support (n buffers for n al
 #define CONTRACT_STATE2_TYPE QUTIL2
 #include "contracts/QUtil.h"
 
-#define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0
+#define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to diable timeout, because a rollback mechanism needs to be implmented to properly handle timeout
 
 #undef INITIALIZE
 #undef BEGIN_EPOCH
