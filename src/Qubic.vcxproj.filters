@@ -129,6 +129,9 @@
     <ClInclude Include="platform\read_write_lock.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="platform\stack_size_tracker.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
