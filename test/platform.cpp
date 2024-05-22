@@ -44,8 +44,9 @@ StackSizeTracker stackSizeTracker;
 template <unsigned int stackVarSize>
 void recursion(int i)
 {
-    int data[stackVarSize];
-    data[0] = 0;
+    // use volatile and get address to make sure this is not optimized away and kept on stack
+    volatile unsigned long long data[stackVarSize];
+    data[0] = (unsigned long long)(volatile unsigned long long*)data;
 
     unsigned long long oldSize = stackSizeTracker.maxStackSize();
     stackSizeTracker.update();
@@ -78,6 +79,23 @@ unsigned long long testStackSizeTracker(int recursionLevel)
     return size;
 }
 
+// Test that max. measured stack size is kept if tracker is reused with other stack top address
+// (relevant if restarted processor/thread gets other stack address)
+void testStackSizeTrackerKeepSizeCheck(unsigned long long prevSize)
+{
+    // check that max size is kept on reuse
+    INIT_STACK_SIZE_TRACKER(stackSizeTracker);
+    EXPECT_EQ(stackSizeTracker.maxStackSize(), prevSize);
+}
+void testStackSizeTrackerKeepSize()
+{
+    // first use
+    stackSizeTracker.reset();
+    INIT_STACK_SIZE_TRACKER(stackSizeTracker);
+    UPDATE_STACK_SIZE_TRACKER(stackSizeTracker);
+    testStackSizeTrackerKeepSizeCheck(stackSizeTracker.maxStackSize());
+}
+
 
 TEST(TestCoreStackSizeTracker, SimpleTest)
 {
@@ -96,4 +114,7 @@ TEST(TestCoreStackSizeTracker, SimpleTest)
     EXPECT_LT(testStackSizeTracker<10>(5), testStackSizeTracker<10>(10));
     EXPECT_LT(testStackSizeTracker<10>(10), testStackSizeTracker<20>(10));
     EXPECT_LT(testStackSizeTracker<30>(20), testStackSizeTracker<30>(40));
+
+    // Test that max. measured stack size is kept if tracker is reused with other stack top address
+    testStackSizeTrackerKeepSize();
 }

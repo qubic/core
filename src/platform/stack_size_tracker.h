@@ -34,14 +34,21 @@ public:
     // Call this once passing the top of the stack (first variable at entry point)
     void initStackTop(void* stackTop)
     {
-        pTop = (unsigned long long)stackTop;
+        unsigned long long pTopNew = (unsigned long long)stackTop;
+        if (pTop != uninitialized && pBottom != uninitialized && pTop != pTopNew)
+        {
+            // Keep max size value if the stack tracker is reused with other tack top
+            ASSERT(pTop >= pBottom);
+            unsigned long long maxSize = pTop - pBottom;
+            pBottom = pTopNew - maxSize;
+        }
+        pTop = pTopNew;
     }
 
     // Update the maximum used stack size. Call this in deep functions
     void update()
     {
-        char a;
-        unsigned long long pCurBottom = (unsigned long long) & a;
+        unsigned long long pCurBottom = (unsigned long long) & pCurBottom;
         if (pCurBottom < pBottom)
             pBottom = pCurBottom;
     }
