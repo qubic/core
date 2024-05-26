@@ -1,13 +1,13 @@
 #pragma once
 
+#include "public_settings.h"
+
 #include "platform/read_write_lock.h"
 #include "platform/debugging.h"
 #include "platform/memory.h"
 
 #include "contract_core/contract_def.h"
 #include "contract_core/stack_buffer.h"
-
-#include "public_settings.h"
 
 // Used to store: locals and for first invocation level also input and output
 typedef StackBuffer<unsigned int, 32 * 1024 * 1024> ContractLocalsStack;
