@@ -4756,6 +4756,8 @@ static void processKeyPresses()
 #ifdef TRACK_MAX_STACK_BUFFER_SIZE
                 appendText(message, L", max ");
                 appendNumber(message, contractLocalsStack[i].maxSizeObserved(), TRUE);
+                appendText(message, L", failed alloc ");
+                appendNumber(message, contractLocalsStack[i].failedAllocAttempts(), TRUE);
 #endif
                 appendText(message, L" | ");
             }

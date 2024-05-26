@@ -23,6 +23,7 @@ struct StackBuffer
         _allocatedSize = 0;
 #ifdef TRACK_MAX_STACK_BUFFER_SIZE
         _maxAllocatedSize = 0;
+        _failedAllocAttempts = 0;
 #endif
     }
 
@@ -43,6 +44,11 @@ struct StackBuffer
     {
         return _maxAllocatedSize;
     }
+
+    unsigned int failedAllocAttempts() const
+    {
+        return _failedAllocAttempts;
+    }
 #endif
 
     // Allocate storage in buffer.
@@ -51,7 +57,12 @@ struct StackBuffer
         // allocate fails of size after allocating overflows buffer size or the used size type
         StackBufferSizeType newSize = _allocatedSize + size + sizeof(SizeType);
         if (newSize > bufferSize || newSize <= _allocatedSize)
+        {
+#ifdef TRACK_MAX_STACK_BUFFER_SIZE
+            ++_failedAllocAttempts;
+#endif
             return nullptr;
+        }
 
         // get pointer to return
         char* allocatedBuffer = _buffer + _allocatedSize;
@@ -91,5 +102,6 @@ protected:
 
 #ifdef TRACK_MAX_STACK_BUFFER_SIZE
     SizeType _maxAllocatedSize;
+    unsigned int _failedAllocAttempts;
 #endif
 };
