@@ -659,6 +659,8 @@ typedef struct
 	EFI_FILE_FLUSH_EX FlushEx;
 } EFI_FILE_PROTOCOL;
 
+/*
+Template for development
 typedef struct {
 	unsigned long long             Size;
 	unsigned long long             FileSize;
@@ -669,7 +671,7 @@ typedef struct {
 	unsigned long long             Attribute;
 	CHAR16                         FileName[];
 } EFI_FILE_INFO;
-
+*/
 typedef struct
 {
 	EFI_MP_SERVICES_GET_NUMBER_OF_PROCESSORS GetNumberOfProcessors;

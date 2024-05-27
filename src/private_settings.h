@@ -43,4 +43,9 @@ static unsigned long long logReaderPasscodes[][4] = {
 // 1: save tick storage every TICK_STORAGE_AUTOSAVE_TICK_PERIOD ticks, only AUX mode
 // 2: save tick storage every TICK_STORAGE_AUTOSAVE_TICK_PERIOD ticks, both AUX and MAIN mode
 #define TICK_STORAGE_AUTOSAVE_MODE 1
+// NOTE: Strategy to pick TICK_STORAGE_AUTOSAVE_TICK_PERIOD:
+// Although the default value is 1000, there is a chance that your node can be misaligned at tick XXXX2000,XXXX3000,XXXX4000,... 
+// Perform state persisting when your node is misaligned will also make your node misaligned after resuming.
+// Thus, picking various TICK_STORAGE_AUTOSAVE_TICK_PERIOD numbers across AUX nodes is recommended.
+// some suggested prime numbers you can try: 971 977 983 991 997
 #define TICK_STORAGE_AUTOSAVE_TICK_PERIOD 1000
