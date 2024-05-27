@@ -20,6 +20,7 @@
 static volatile char universeLock = 0;
 static Asset* assets = NULL;
 static m256i* assetDigests = NULL;
+const unsigned long long assetDigestsSizeInBytes = (ASSETS_CAPACITY * 2 - 1) * 32ULL;
 static unsigned long long* assetChangeFlags = NULL;
 static char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
@@ -27,7 +28,7 @@ static bool initAssets()
 {
     EFI_STATUS status;
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, ASSETS_CAPACITY * sizeof(Asset), (void**)&assets))
-        || (status = bs->AllocatePool(EfiRuntimeServicesData, (ASSETS_CAPACITY * 2 - 1) * 32ULL, (void**)&assetDigests))
+        || (status = bs->AllocatePool(EfiRuntimeServicesData, assetDigestsSizeInBytes, (void**)&assetDigests))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, ASSETS_CAPACITY / 8, (void**)&assetChangeFlags)))
     {
         logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
@@ -395,7 +396,7 @@ iteration:
     RELEASE(universeLock);
 }
 
-static void saveUniverse()
+static bool saveUniverse()
 {
     logToConsole(L"Saving universe file...");
 
@@ -412,7 +413,9 @@ static void saveUniverse()
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
         logToConsole(message);
+        return true;
     }
+    return false;
 }
 
 static bool loadUniverse()

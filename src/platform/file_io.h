@@ -28,11 +28,13 @@ static long long getFileSize(CHAR16* fileName)
     unsigned char buffer[1024];
     status = file->GetInfo(file, &fileSystemInfoId, &bufferSize, buffer);
     unsigned long long fileSize = 0;
+#ifndef NO_UEFI
     copyMem(&fileSize, buffer+8, 8);
+#endif
     return fileSize;
 }
 
-static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, bool showError = true)
+static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
 {
 #ifdef NO_UEFI
     logToConsole(L"NO_UEFI implementation of load() is missing! No file loaded!");
@@ -42,7 +44,7 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
     EFI_FILE_PROTOCOL* file;
     if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
     {
-        if (showError) logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
 
         return -1;
     }
@@ -57,7 +59,7 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
                 || size != (READING_CHUNK_SIZE <= (totalSize - readSize) ? READING_CHUNK_SIZE : (totalSize - readSize)))
             {
                 // If this error occurs, see the definition of READING_CHUNK_SIZE above.
-                if (showError) logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() fails", status, __LINE__);
 
                 file->Close(file);
 
@@ -72,7 +74,7 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
 #endif
 }
 
-static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, bool showError = true)
+static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
 {
 #ifdef NO_UEFI
     logToConsole(L"NO_UEFI implementation of save() is missing! No file saved!");
@@ -82,7 +84,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
     EFI_FILE_PROTOCOL* file;
     if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
     {
-        if (showError) logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+        logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
 
         return -1;
     }
@@ -97,7 +99,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
                 || size != (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize)))
             {
                 // If this error occurs, see the definition of WRITING_CHUNK_SIZE above.
-                if (showError) logStatusToConsole(L"EFI_FILE_PROTOCOL.Write() fails", status, __LINE__);
+                logStatusToConsole(L"EFI_FILE_PROTOCOL.Write() fails", status, __LINE__);
 
                 file->Close(file);
 
@@ -224,7 +226,7 @@ static bool initFilesystem()
 }
 
 // add epoch number as an extension to a filename
-void addEpochToFileName(unsigned short* filename, int nameSize, short epoch)
+static void addEpochToFileName(unsigned short* filename, int nameSize, short epoch)
 {
     filename[nameSize - 4] = epoch / 100 + L'0';
     filename[nameSize - 3] = (epoch % 100) / 10 + L'0';
@@ -232,9 +234,9 @@ void addEpochToFileName(unsigned short* filename, int nameSize, short epoch)
 }
 
 // note: remember to plus 1 for end of string symbol if you going to use this returned value for addEpochToFileName
-unsigned int getTextSize(CHAR16* text, int maximumSize)
+static unsigned int getTextSize(CHAR16* text, int maximumSize)
 {
-    unsigned int result = 0;
+    int result = 0;
     while (result < maximumSize && text[result]) result++;
     return result;
 }
