@@ -132,6 +132,9 @@
     <ClInclude Include="platform\stack_size_tracker.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="platform\custom_stack.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -152,5 +155,10 @@
     <Filter Include="addons">
       <UniqueIdentifier>{d409258b-a63c-443f-8c7a-918c14f192a6}</UniqueIdentifier>
     </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="platform\custom_stack.asm">
+      <Filter>platform</Filter>
+    </MASM>
   </ItemGroup>
 </Project>
