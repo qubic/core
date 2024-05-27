@@ -9,6 +9,7 @@
 // in gtest context, use EXPECT_TRUE as ASSERT
 #define ASSERT EXPECT_TRUE
 
+static void addDebugMessage(const CHAR16* msg){} // empty impl
 #elif defined(NDEBUG)
 
 // with NDEBUG, make ASSERT disappear
