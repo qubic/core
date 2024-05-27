@@ -190,6 +190,7 @@ static volatile int requestPersistingNodeState = 0;
 static volatile int persistingNodeStateTickProcWaiting = 0;
 static m256i initialRandomSeedFromPersistingState;
 static bool loadMiningSeedFromFile = false;
+static bool loadAllNodeStateFromFile = false;
 #if TICK_STORAGE_AUTOSAVE_MODE
 struct
 {
@@ -3379,8 +3380,12 @@ static void tickProcessor(void*)
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
-#if !START_NETWORK_FROM_SCRATCH    
-    initializeFirstTick();
+#if !START_NETWORK_FROM_SCRATCH
+    // only init first tick if it doesn't load all node states from file
+    if (!loadAllNodeStateFromFile)
+    {
+        initializeFirstTick();
+    }
 #endif
 
     unsigned int latestProcessedTick = 0;
@@ -4488,6 +4493,7 @@ static bool initialize()
         }
         else
         {
+            loadAllNodeStateFromFile = true;
             logToConsole(L"Loaded node state from snapshot, if you want to start from scratch please delete all snapshot files.");
         }
     }
