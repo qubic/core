@@ -3324,6 +3324,21 @@ static bool loadAllNodeStates()
     initialRandomSeedFromPersistingState = nodeStateBuffer.initialRandomSeed;
     loadMiningSeedFromFile = true;
 
+    // update own computor indices
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+        {
+            if (broadcastedComputors.computors.publicKeys[i] == computorPublicKeys[j])
+            {
+                ownComputorIndices[numberOfOwnComputorIndices] = i;
+                ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
+
+                break;
+            }
+        }
+    }
+
     static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
     loadedSize = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system);
     if (loadedSize != sizeof(system))
