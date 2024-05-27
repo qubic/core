@@ -23,6 +23,7 @@
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
 
+#include "platform/custom_stack.h"
 #include "platform/stack_size_tracker.h"
 
 #include "text_output.h"
@@ -63,12 +64,14 @@
 #define TIME_ACCURACY 5000
 
 
-typedef struct
+struct Processor : public CustomStack
 {
+    enum Type { Unused = 0, RequestProcessor, TickProcessor, ContractProcessor };
+    Type type;
     EFI_EVENT event;
     Peer* peer;
     void* buffer;
-} Processor;
+};
 
 
 
@@ -4736,12 +4739,49 @@ static void processKeyPresses()
 
             // Print used function call stack size
             setText(message, L"Function call stack usage: ");
+            unsigned int maxStackUsageTick = 0;
+            unsigned int maxStackUsageContract = 0;
+            unsigned int maxStackUsageRequest = 0;
+            for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+            {
+                const Processor& processor = processors[i];
+                unsigned int used = processor.maxStackUsed();
+                switch (processor.type)
+                {
+                case Processor::TickProcessor:
+                    if (maxStackUsageTick < used)
+                        maxStackUsageTick = used;
+                    break;
+                case Processor::ContractProcessor:
+                    if (maxStackUsageContract < used)
+                        maxStackUsageContract = used;
+                    break;
+                case Processor::RequestProcessor:
+                    if (maxStackUsageRequest < used)
+                        maxStackUsageRequest = used;
+                    break;
+                }
+            }
+            appendText(message, L"Contract Processor ");
+            appendNumber(message, maxStackUsageContract, TRUE);
+            appendText(message, L" | Tick Processor ");
+            appendNumber(message, maxStackUsageTick, TRUE);
+            appendText(message, L" | Request Processor ");
+            appendNumber(message, maxStackUsageRequest, TRUE);
+            appendText(message, L" | Capacity ");
+            appendNumber(message, STACK_SIZE, TRUE);
+            /*
             if (contractProcessorCallStackTracker.maxStackSize() != StackSizeTracker::uninitialized)
             {
                 appendText(message, L"Contract Processor ");
                 appendNumber(message, contractProcessorCallStackTracker.maxStackSize(), TRUE);
             }
+            */
             logToConsole(message);
+            if (maxStackUsageContract > STACK_SIZE / 2 || maxStackUsageTick > STACK_SIZE / 2 || maxStackUsageRequest > STACK_SIZE / 2)
+            {
+                logToConsole(L"WARNING: Developers should increase stack size!");
+            }
 
             // Print info about stack buffers used to run contracts
             setText(message, L"Contract stack buffer usage: ");
@@ -4981,25 +5021,37 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     break;
                 }
+                if (!processors[numberOfProcessors].alloc(STACK_SIZE))
+                {
+                    logToConsole(L"Failed to allocate stack for processor!");
+                    numberOfProcessors = 0;
+                    break;
+                }
 
                 if (numberOfProcessors == 2)
                 {
-                    computingProcessorNumber = i;
+                    processors[numberOfProcessors].type = Processor::ContractProcessor;
+                    processors[numberOfProcessors].setupFunction(contractProcessor, 0);
+                    computingProcessorNumber = numberOfProcessors;
                     contractProcessorIDs[nContractProcessorIDs++] = i;
                 }
                 else
                 {
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
-                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, numberOfProcessors == 1 ? tickProcessor : requestProcessor, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
-
                     if (numberOfProcessors == 1)
                     {
+                        processors[numberOfProcessors].type = Processor::TickProcessor;
+                        processors[numberOfProcessors].setupFunction(tickProcessor, &processors[numberOfProcessors]);
                         tickProcessorIDs[nTickProcessorIDs++] = i;
                     }
                     else
                     {
+                        processors[numberOfProcessors].type = Processor::RequestProcessor;
+                        processors[numberOfProcessors].setupFunction(requestProcessor, &processors[numberOfProcessors]);
                         requestProcessorIDs[nRequestProcessorIDs++] = i;
                     }
+
+                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
+                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
 
                     if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
                         && !solutionProcessorFlags[i])
@@ -5084,7 +5136,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     contractProcessorState = 2;
                     bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
-                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, contractProcessor, computingProcessorNumber, contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL);
+                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, contractProcessor, contractProcessorIDs[0], contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, &processors[computingProcessorNumber], NULL);
                 }
                 /*if (!computationProcessorState && (computation || __computation))
                 {

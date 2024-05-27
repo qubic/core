@@ -67,4 +67,5 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
+#define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
