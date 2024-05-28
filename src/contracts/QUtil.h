@@ -282,22 +282,31 @@ public:
     /**
     * Practicing burning qubic in the QChurch
     * @param the amount of qubic to burn
-    * @return the amount of qubic has burned, -1 if failed to burn
+    * @return the amount of qubic has burned, < 0 if failed to burn
     */
     PUBLIC_PROCEDURE(BurnQubic)
-        // lack of fund => return the coins        
-        if (qpi.invocationReward() < input.amount)
+        // lack of fund => return the coins
+        if (input.amount < 0) // invalid input amount
+        {
+            output.amount = -1;
+            return;
+        }
+        if (input.amount == 0)
+        {
+            output.amount = 0;
+            return;            
+        }
+        if (qpi.invocationReward() < input.amount) // not sending enough qu to burn
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.amount = -1;
             return;
         }
-        if (qpi.invocationReward() > input.amount)
+        if (qpi.invocationReward() > input.amount) // send more than qu to burn
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount); // return the changes
         }
-        qpi.burn(input.amount);
-        output.amount = input.amount;
+        output.amount = qpi.burn(input.amount);
         return;
     _
 
