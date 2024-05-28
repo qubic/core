@@ -79,6 +79,17 @@ static CONTRACT_STATE_TYPE* _QUTIL;
 #include "contracts/Airdrop.h"
 static CONTRACT_STATE_TYPE* _AIRDROP;
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QPOOL_CONTRACT_INDEX 6
+#define CONTRACT_INDEX QPOOL_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QPOOL
+#define CONTRACT_STATE2_TYPE QPOOL2
+#include "contracts/Qpool.h"
+static CONTRACT_STATE_TYPE* _QPOOL;
+
 #define MAX_CONTRACT_ITERATION_DURATION 1000 // In milliseconds, must be above 0
 
 struct Contract0State
@@ -108,6 +119,7 @@ constexpr struct ContractDescription
     {"RANDOM", 88, 10000, sizeof(IPO)},
     {"QUTIL", 99, 10000, sizeof(IPO)},
     {"AIRDROP", 107, 10000, sizeof(IPO)},
+    {"QPOOL", 110, 10000, sizeof(IPO)},
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -173,6 +185,12 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
     case AIRDROP_CONTRACT_INDEX:
     {
         REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(AIRDROP);
+    }
+    break;
+
+    case QPOOL_CONTRACT_INDEX:
+    {
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPOOL);
     }
     break;
     }
