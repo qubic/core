@@ -2834,6 +2834,7 @@ static void beginEpoch2of2()
     if (loadMiningSeedFromFile)
     {
         score->initMiningData(initialRandomSeedFromPersistingState);
+        loadMiningSeedFromFile = false;
     }
     else
     {
