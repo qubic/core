@@ -136,6 +136,7 @@ void customStackTest2(void* data)
 TEST(TestCoreCustomStack, SimpleTest)
 {
     CustomStack s;
+    s.init();
     EXPECT_EQ(s.maxStackUsed(), 0);
     EXPECT_TRUE(s.alloc(128*1024));
     EXPECT_EQ(s.maxStackUsed(), 0);

@@ -10,9 +10,19 @@ typedef EFI_AP_PROCEDURE CustomStackProcessorFunc;
 class CustomStack
 {
 public:
-    CustomStack() : stackTop(nullptr), stackBottom(nullptr), setupFuncToCall(nullptr), setupDataToPass(nullptr)
-    {
+    // Constructor (disabled because not called without MS CRT, you need to call init() to init)
+    //CustomStack()
+    //{
+    //    init();
+    //}
 
+    // Init (set all to 0).
+    void init()
+    {
+        stackTop = nullptr;
+        stackBottom = nullptr;
+        setupFuncToCall = nullptr;
+        setupDataToPass = nullptr;
     }
 
     // Allocate memory, return if successful

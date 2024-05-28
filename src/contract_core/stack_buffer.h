@@ -12,10 +12,11 @@ struct StackBuffer
     typedef StackBufferSizeType SizeType;
     static_assert(SizeType(-1) > 0, "Signed StackBufferSizeType is not supported!");
 
-    StackBuffer()
-    {
-        init();
-    }
+    // Constructor (disabled because not called without MS CRT, you need to call init() to init)
+    //StackBuffer()
+    //{
+    //    init();
+    //}
 
     // Initialize as empty stack (memory not zeroed)
     void init()
