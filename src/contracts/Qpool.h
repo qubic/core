@@ -3,6 +3,7 @@ using namespace QPI;
 #define INITIAL_QPT 1000
 #define MAX_NUMBER_OF_POOL 128
 #define FEE_CREATE_POOL 100000000LL
+#define FEE_ISSUE_ASSET 1000000LL
 
 struct QPOOL2
 {
@@ -126,15 +127,47 @@ public:
 		uint64 totalSupplyByQU;
 	};
 
+	struct IssueAsset_input
+	{
+		uint64 assetName;
+		sint64 numberOfShares;
+		uint64 unitOfMeasurement;
+		sint8 numberOfDecimalPlaces;
+	};
+	
+	struct IssueAsset_output
+	{
+		sint64 issuedNumberOfShares;
+	};
+
 	PUBLIC(CreateLiquidityPool)
-		if(qpi.invocationReward() < FEE_CREATE_POOL) return ;
-		if(input.NumberOfToken > 5) return;
+		if(qpi.invocationReward() < FEE_CREATE_POOL) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+		if(input.NumberOfToken > 5) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
 		uint32 totalWeight = 0;
 		for(uint32 i = 0 ; i < input.NumberOfToken; i++) {
 			totalWeight += input.Weight.get(i);
 		}
 
-		if(totalWeight != 100) return;
+		if(totalWeight != 100) 
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
 
 		PoolInfo newPool;
 		newPool.NumberOfToken = input.NumberOfToken;
@@ -163,6 +196,24 @@ public:
 		state.totalSupply.set(state.NumberOfPool, qpi.invocationReward() - FEE_CREATE_POOL);
 //		add the number of pool
 		state.NumberOfPool++;
+	_
+	
+	PUBLIC(IssueAsset)
+		if(qpi.invocationReward() < FEE_ISSUE_ASSET) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.issuedNumberOfShares = 0;
+			return ;
+		}
+		if (qpi.invocationReward() > FEE_ISSUE_ASSET)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - FEE_ISSUE_ASSET);
+		}
+
+		output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
 	_
 
 	PUBLIC(PoolList)
