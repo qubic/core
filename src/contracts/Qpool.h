@@ -49,7 +49,7 @@ public:
 	};
 
 	struct CreateLiquidityPool_output {
-		id poolAddress;               // created pool address
+		uint64 poolAddress;               // created pool address
 	};
 
 	struct AddLiquidity_input {
