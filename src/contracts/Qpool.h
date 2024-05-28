@@ -43,7 +43,7 @@ public:
 	struct CreateLiquidityPool_input {
 		uint32 NumberOfToken;        // Number(maximum 5) of token in a pool
 		id_8 Token;                  // Token addresses
-		sint64_8 initialAmount;      // Initial amount of Tokens
+		uint64_8 initialAmount;      // Initial amount of Tokens
 		uint32_8 Weight;             // Weight of Tokens in Pool
 		uint64 swapFee;              // Swap fee in a Pool
 	};
@@ -235,6 +235,7 @@ public:
 		REGISTER_USER_FUNCTION(PoolList, 1);
 
 		REGISTER_USER_PROCEDURE(CreateLiquidityPool, 1);
+		REGISTER_USER_PROCEDURE(IssueAsset, 2);
 	_
 
 	INITIALIZE
