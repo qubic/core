@@ -82,13 +82,6 @@ private:
 
 extern "C" void __customStackSetupAndRunFunc(void* newStackTop, CustomStackProcessorFunc funcToCall, void* dataToPass);
 
-static void __customStackSetupAndRunFuncC(void* newStackTop, CustomStackProcessorFunc funcToCall, void* dataToPass)
-{
-    void* p = newStackTop;
-    funcToCall(dataToPass);
-    newStackTop = p;
-}
-
 void CustomStack::runFunction(void* data)
 {
     ASSERT(data != nullptr);
