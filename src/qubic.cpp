@@ -85,6 +85,8 @@ static volatile bool forceSwitchEpoch = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
 
+static int misalignedState = 0;
+
 static volatile unsigned char epochTransitionState = 0;
 static volatile long epochTransitionWaitingRequestProcessors = 0;
 
@@ -258,7 +260,11 @@ static void logToConsole(const CHAR16* message)
 #ifdef NDEBUG
     outputStringToConsole(timestampedMessage);
 #else
-    bool logAsDebugMessage = epochTransitionState || system.tick - system.initialTick < 3;
+    bool logAsDebugMessage = epochTransitionState
+                                || system.tick - system.initialTick < 3
+                                || system.tick % 10 == 0
+                                || misalignedState == 1
+        ;
     if (logAsDebugMessage)
         addDebugMessage(timestampedMessage);
     else
@@ -4552,6 +4558,112 @@ static void logInfo()
     logToConsole(message);
 }
 
+static void logHealthStatus()
+{
+    setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+    appendText(message, L"&");
+    appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+    logToConsole(message);
+
+    // print statuses of thread
+    // this accepts a small error when switching day to first day of the next month
+    bool allThreadsAreGood = true;
+    setText(message, L"Thread status: ");
+    for (int i = 0; i < nTickProcessorIDs; i++)
+    {
+        unsigned long long tid = tickProcessorIDs[i];
+        long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
+            + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+        if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
+        {
+            allThreadsAreGood = false;
+            appendText(message, L"Tick Processor #");
+            appendNumber(message, tid, false);
+            appendText(message, L" is not responsive | ");
+        }
+    }
+
+    for (int i = 0; i < nRequestProcessorIDs; i++)
+    {
+        unsigned long long tid = requestProcessorIDs[i];
+        long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
+            + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+        if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
+        {
+            allThreadsAreGood = false;
+            appendText(message, L"Request Processor #");
+            appendNumber(message, tid, false);
+            appendText(message, L" is not responsive | ");
+        }
+    }
+    if (allThreadsAreGood)
+    {
+        appendText(message, L"All threads are healthy.");
+    }
+    logToConsole(message);
+
+    // Print used function call stack size
+    setText(message, L"Function call stack usage: ");
+    unsigned int maxStackUsageTick = 0;
+    unsigned int maxStackUsageContract = 0;
+    unsigned int maxStackUsageRequest = 0;
+    for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+    {
+        const Processor& processor = processors[i];
+        unsigned int used = processor.maxStackUsed();
+        switch (processor.type)
+        {
+        case Processor::TickProcessor:
+            if (maxStackUsageTick < used)
+                maxStackUsageTick = used;
+            break;
+        case Processor::ContractProcessor:
+            if (maxStackUsageContract < used)
+                maxStackUsageContract = used;
+            break;
+        case Processor::RequestProcessor:
+            if (maxStackUsageRequest < used)
+                maxStackUsageRequest = used;
+            break;
+        }
+    }
+    appendText(message, L"Contract Processor ");
+    appendNumber(message, maxStackUsageContract, TRUE);
+    appendText(message, L" | Tick Processor ");
+    appendNumber(message, maxStackUsageTick, TRUE);
+    appendText(message, L" | Request Processor ");
+    appendNumber(message, maxStackUsageRequest, TRUE);
+    appendText(message, L" | Capacity ");
+    appendNumber(message, STACK_SIZE, TRUE);
+    logToConsole(message);
+    if (maxStackUsageContract > STACK_SIZE / 2 || maxStackUsageTick > STACK_SIZE / 2 || maxStackUsageRequest > STACK_SIZE / 2)
+    {
+        logToConsole(L"WARNING: Developers should increase stack size!");
+    }
+
+    // Print info about stack buffers used to run contracts
+    setText(message, L"Contract stack buffer usage: ");
+    for (int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS; ++i)
+    {
+        appendText(message, L"buf ");
+        appendNumber(message, i, FALSE);
+        if (contractLocalsStackLock[i])
+            appendText(message, L" (locked)");
+        appendText(message, L" current ");
+        appendNumber(message, contractLocalsStack[i].size(), TRUE);
+#ifdef TRACK_MAX_STACK_BUFFER_SIZE
+        appendText(message, L", max ");
+        appendNumber(message, contractLocalsStack[i].maxSizeObserved(), TRUE);
+        appendText(message, L", failed alloc ");
+        appendNumber(message, contractLocalsStack[i].failedAllocAttempts(), TRUE);
+#endif
+        appendText(message, L" | ");
+    }
+    appendText(message, L"capacity per buf ");
+    appendNumber(message, contractLocalsStack[0].capacity(), TRUE);
+    logToConsole(message);
+}
+
 static void processKeyPresses()
 {
     EFI_INPUT_KEY key;
@@ -4684,108 +4796,7 @@ static void processKeyPresses()
             appendText(message, L" solutions.");
             logToConsole(message);
 
-            setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
-            appendText(message, L"&");
-            appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
-            logToConsole(message);
-
-            // print statuses of thread
-            // this accepts a small error when switching day to first day of the next month
-            bool allThreadsAreGood = true;
-            setText(message, L"Thread status: ");
-            for (int i = 0; i < nTickProcessorIDs; i++)
-            {
-                unsigned long long tid = tickProcessorIDs[i];
-                long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
-                    + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
-                if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
-                {
-                    allThreadsAreGood = false;
-                    appendText(message, L"Tick Processor #");
-                    appendNumber(message, tid, false);
-                    appendText(message, L" is not responsive | ");
-                }
-            }
-
-            for (int i = 0; i < nRequestProcessorIDs; i++)
-            {
-                unsigned long long tid = requestProcessorIDs[i];
-                long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
-                    + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
-                if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
-                {
-                    allThreadsAreGood = false;
-                    appendText(message, L"Request Processor #");
-                    appendNumber(message, tid, false);
-                    appendText(message, L" is not responsive | ");
-                }
-            }
-            if (allThreadsAreGood)
-            {
-                appendText(message, L"All threads are healthy.");
-            }
-            logToConsole(message);
-
-            // Print used function call stack size
-            setText(message, L"Function call stack usage: ");
-            unsigned int maxStackUsageTick = 0;
-            unsigned int maxStackUsageContract = 0;
-            unsigned int maxStackUsageRequest = 0;
-            for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
-            {
-                const Processor& processor = processors[i];
-                unsigned int used = processor.maxStackUsed();
-                switch (processor.type)
-                {
-                case Processor::TickProcessor:
-                    if (maxStackUsageTick < used)
-                        maxStackUsageTick = used;
-                    break;
-                case Processor::ContractProcessor:
-                    if (maxStackUsageContract < used)
-                        maxStackUsageContract = used;
-                    break;
-                case Processor::RequestProcessor:
-                    if (maxStackUsageRequest < used)
-                        maxStackUsageRequest = used;
-                    break;
-                }
-            }
-            appendText(message, L"Contract Processor ");
-            appendNumber(message, maxStackUsageContract, TRUE);
-            appendText(message, L" | Tick Processor ");
-            appendNumber(message, maxStackUsageTick, TRUE);
-            appendText(message, L" | Request Processor ");
-            appendNumber(message, maxStackUsageRequest, TRUE);
-            appendText(message, L" | Capacity ");
-            appendNumber(message, STACK_SIZE, TRUE);
-            logToConsole(message);
-            if (maxStackUsageContract > STACK_SIZE / 2 || maxStackUsageTick > STACK_SIZE / 2 || maxStackUsageRequest > STACK_SIZE / 2)
-            {
-                logToConsole(L"WARNING: Developers should increase stack size!");
-            }
-
-            // Print info about stack buffers used to run contracts
-            setText(message, L"Contract stack buffer usage: ");
-            for (int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS; ++i)
-            {
-                appendText(message, L"buf ");
-                appendNumber(message, i, FALSE);
-                if (contractLocalsStackLock[i])
-                    appendText(message, L" (locked)");
-                appendText(message, L" current ");
-                appendNumber(message, contractLocalsStack[i].size(), TRUE);
-#ifdef TRACK_MAX_STACK_BUFFER_SIZE
-                appendText(message, L", max ");
-                appendNumber(message, contractLocalsStack[i].maxSizeObserved(), TRUE);
-                appendText(message, L", failed alloc ");
-                appendNumber(message, contractLocalsStack[i].failedAllocAttempts(), TRUE);
-#endif
-                appendText(message, L" | ");
-            }
-            appendText(message, L"capacity per buf ");
-            appendNumber(message, contractLocalsStack[0].capacity(), TRUE);
-            logToConsole(message);
+            logHealthStatus();
         }
         break;
 
@@ -5391,7 +5402,32 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     mainLoopDenominator++;
                 }
 
+                // output if misalignment happened
+                if (tickTotalNumberOfComputors - tickNumberOfComputors > QUORUM)
+                {
+                    if (misalignedState == 0)
+                    {
+                        // also log to debug.log
+                        misalignedState = 1;
+                    }
+                    logToConsole(L"MISALIGNED STATE DETECTED");
+                    if (misalignedState == 1)
+                    {
+                        // print health status and stop repeated logging to debug.log
+                        logHealthStatus();
+                        misalignedState = 2;
+                    }
+                }
+                else
+                {
+                    misalignedState = 0;
+                }
+
 #if !defined(NDEBUG)
+                if (system.tick % 1000 == 0)
+                {
+                    logHealthStatus();
+                }
                 printDebugMessages();
 #endif
             }
