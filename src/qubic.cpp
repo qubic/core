@@ -6021,7 +6021,32 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     mainLoopDenominator++;
                 }
 
+                // output if misalignment happened
+                if (tickTotalNumberOfComputors - tickNumberOfComputors > QUORUM)
+                {
+                    if (misalignedState == 0)
+                    {
+                        // also log to debug.log
+                        misalignedState = 1;
+                    }
+                    logToConsole(L"MISALIGNED STATE DETECTED");
+                    if (misalignedState == 1)
+                    {
+                        // print health status and stop repeated logging to debug.log
+                        logHealthStatus();
+                        misalignedState = 2;
+                    }
+                }
+                else
+                {
+                    misalignedState = 0;
+                }
+
 #if !defined(NDEBUG)
+                if (system.tick % 1000 == 0)
+                {
+                    logHealthStatus();
+                }
                 printDebugMessages();
 #endif
             }
