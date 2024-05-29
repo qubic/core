@@ -26,6 +26,8 @@ static char volatile debugLogLock = 0;
 // CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
 static void printDebugMessages()
 {
+    if (!debugMessageCount)
+        return;
 #if WRITE_DEBUG_MESSAGES_TO_FILE
     // Open debug log file and seek to the end of file for appending
     EFI_STATUS status;
