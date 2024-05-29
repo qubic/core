@@ -14,7 +14,7 @@ struct QPOOL
 private:
 	struct PoolInfo {
 		uint32 NumberOfToken;     //  Number(maximum 5) of token in a pool
-		id_8 Token;               //  Address of Tokens in a Pool
+		uint64_8 Token;               //  Address of Tokens in a Pool
 		uint32_8 Weight;          //  Weight of each Token in a Pool
 		uint64_8 totalLiquidity;  //  TotalLiquidity of each token in a Pool
 		uint64 swapFee;           //  Swap fee in a Pool
@@ -42,7 +42,7 @@ public:
 
 	struct CreateLiquidityPool_input {
 		uint32 NumberOfToken;        // Number(maximum 5) of token in a pool
-		id_8 Token;                  // Token addresses
+		uint64_8 Token;                  // Token addresses
 		uint64_8 initialAmount;      // Initial amount of Tokens
 		uint32_8 Weight;             // Weight of Tokens in Pool
 		uint64 swapFee;              // Swap fee in a Pool
@@ -119,7 +119,7 @@ public:
 
 	struct PoolList_output {
 		uint32 NumberOfToken;
-		id_8 Token;
+		uint64_8 Token;
 		uint32_8 Weight;
 		uint64_8 totalLiquidity;
 		uint64 swapFee;
