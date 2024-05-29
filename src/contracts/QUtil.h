@@ -65,6 +65,15 @@ public:
         sint64 fee;
     };
 
+    struct BurnQubic_input
+    {
+        sint64 amount;
+    };
+    struct BurnQubic_output
+    {
+        sint64 amount;
+    };
+
     /**************************************/
     /************CORE FUNCTIONS************/
     /**************************************/
@@ -270,10 +279,43 @@ public:
         qpi.burn(STM1_INVOCATION_FEE);
     _
 
+    /**
+    * Practicing burning qubic in the QChurch
+    * @param the amount of qubic to burn
+    * @return the amount of qubic has burned, < 0 if failed to burn
+    */
+    PUBLIC_PROCEDURE(BurnQubic)
+        // lack of fund => return the coins
+        if (input.amount < 0) // invalid input amount
+        {
+            output.amount = -1;
+            return;
+        }
+        if (input.amount == 0)
+        {
+            output.amount = 0;
+            return;            
+        }
+        if (qpi.invocationReward() < input.amount) // not sending enough qu to burn
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.amount = -1;
+            return;
+        }
+        if (qpi.invocationReward() > input.amount) // send more than qu to burn
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount); // return the changes
+        }
+        qpi.burn(input.amount);
+        output.amount = input.amount;
+        return;
+    _
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
+        REGISTER_USER_PROCEDURE(BurnQubic, 2);
     _
 
     INITIALIZE

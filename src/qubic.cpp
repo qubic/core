@@ -23,6 +23,8 @@
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
 
+#include "platform/custom_stack.h"
+
 #include "text_output.h"
 
 #include "kangaroo_twelve.h"
@@ -61,12 +63,14 @@
 #define TIME_ACCURACY 5000
 
 
-typedef struct
+struct Processor : public CustomStack
 {
+    enum Type { Unused = 0, RequestProcessor, TickProcessor, ContractProcessor };
+    Type type;
     EFI_EVENT event;
     Peer* peer;
     void* buffer;
-} Processor;
+};
 
 
 
@@ -154,6 +158,8 @@ static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
 static int nSolutionProcessorIDs = 0;
+
+
 
 static ScoreFunction<
     DATA_LENGTH, INFO_LENGTH,
@@ -995,6 +1001,7 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
 
     RequestedEntity* request = header->getPayload<RequestedEntity>();
     respondedEntity.entity.publicKey = request->publicKey;
+    // Inside spectrumIndex already have acquire/release lock
     respondedEntity.spectrumIndex = spectrumIndex(respondedEntity.entity.publicKey);
     respondedEntity.tick = system.tick;
     if (respondedEntity.spectrumIndex < 0)
@@ -1011,16 +1018,11 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
     else
     {
         bs->CopyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
-
-        int sibling = respondedEntity.spectrumIndex;
-        unsigned int spectrumDigestInputOffset = 0;
-        for (unsigned int j = 0; j < SPECTRUM_DEPTH; j++)
-        {
-            respondedEntity.siblings[j] = spectrumDigests[spectrumDigestInputOffset + (sibling ^ 1)];
-            spectrumDigestInputOffset += (SPECTRUM_CAPACITY >> j);
-            sibling >>= 1;
-        }
+        ACQUIRE(spectrumLock);
+        getSiblings<SPECTRUM_DEPTH>(respondedEntity.spectrumIndex, spectrumDigests, respondedEntity.siblings);
+        RELEASE(spectrumLock);
     }
+
 
     enqueueResponse(peer, sizeof(respondedEntity), RESPOND_ENTITY, header->dejavu(), &respondedEntity);
 }
@@ -1079,7 +1081,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.epoch = system.epoch;
     respondedSystemInfo.tick = system.tick;
     respondedSystemInfo.initialTick = system.initialTick;
-    respondedSystemInfo.latestCreatedTick = system.latestLedTick;
+    respondedSystemInfo.latestCreatedTick = system.latestCreatedTick;
 
     respondedSystemInfo.initialMillisecond = system.initialMillisecond;
     respondedSystemInfo.initialSecond = system.initialSecond;
@@ -2532,6 +2534,7 @@ static void processTick(unsigned long long processorNumber)
     }
 
     unsigned int digestIndex;
+    ACQUIRE(spectrumLock);
     for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
     {
         if (spectrum[digestIndex].latestIncomingTransferTick == system.tick || spectrum[digestIndex].latestOutgoingTransferTick == system.tick)
@@ -2560,6 +2563,8 @@ static void processTick(unsigned long long processorNumber)
     spectrumChangeFlags[0] = 0;
 
     etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+    RELEASE(spectrumLock);
+
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
 
@@ -3909,6 +3914,12 @@ static bool initialize()
     bs->SetMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
     bs->SetMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
     bs->SetMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
+    bs->SetMem(contractUserFunctionInputSizes, sizeof(contractUserFunctionInputSizes), 0);
+    bs->SetMem(contractUserFunctionOutputSizes, sizeof(contractUserFunctionOutputSizes), 0);
+    bs->SetMem(contractUserFunctionLocalsSizes, sizeof(contractUserFunctionLocalsSizes), 0);
+    bs->SetMem(contractUserProcedureInputSizes, sizeof(contractUserProcedureInputSizes), 0);
+    bs->SetMem(contractUserProcedureOutputSizes, sizeof(contractUserProcedureOutputSizes), 0);
+    bs->SetMem(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), 0);
 
     getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
     if (isZero(operatorPublicKey))
@@ -4714,6 +4725,67 @@ static void processKeyPresses()
                 appendText(message, L"All threads are healthy.");
             }
             logToConsole(message);
+
+            // Print used function call stack size
+            setText(message, L"Function call stack usage: ");
+            unsigned int maxStackUsageTick = 0;
+            unsigned int maxStackUsageContract = 0;
+            unsigned int maxStackUsageRequest = 0;
+            for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+            {
+                const Processor& processor = processors[i];
+                unsigned int used = processor.maxStackUsed();
+                switch (processor.type)
+                {
+                case Processor::TickProcessor:
+                    if (maxStackUsageTick < used)
+                        maxStackUsageTick = used;
+                    break;
+                case Processor::ContractProcessor:
+                    if (maxStackUsageContract < used)
+                        maxStackUsageContract = used;
+                    break;
+                case Processor::RequestProcessor:
+                    if (maxStackUsageRequest < used)
+                        maxStackUsageRequest = used;
+                    break;
+                }
+            }
+            appendText(message, L"Contract Processor ");
+            appendNumber(message, maxStackUsageContract, TRUE);
+            appendText(message, L" | Tick Processor ");
+            appendNumber(message, maxStackUsageTick, TRUE);
+            appendText(message, L" | Request Processor ");
+            appendNumber(message, maxStackUsageRequest, TRUE);
+            appendText(message, L" | Capacity ");
+            appendNumber(message, STACK_SIZE, TRUE);
+            logToConsole(message);
+            if (maxStackUsageContract > STACK_SIZE / 2 || maxStackUsageTick > STACK_SIZE / 2 || maxStackUsageRequest > STACK_SIZE / 2)
+            {
+                logToConsole(L"WARNING: Developers should increase stack size!");
+            }
+
+            // Print info about stack buffers used to run contracts
+            setText(message, L"Contract stack buffer usage: ");
+            for (int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS; ++i)
+            {
+                appendText(message, L"buf ");
+                appendNumber(message, i, FALSE);
+                if (contractLocalsStackLock[i])
+                    appendText(message, L" (locked)");
+                appendText(message, L" current ");
+                appendNumber(message, contractLocalsStack[i].size(), TRUE);
+#ifdef TRACK_MAX_STACK_BUFFER_SIZE
+                appendText(message, L", max ");
+                appendNumber(message, contractLocalsStack[i].maxSizeObserved(), TRUE);
+                appendText(message, L", failed alloc ");
+                appendNumber(message, contractLocalsStack[i].failedAllocAttempts(), TRUE);
+#endif
+                appendText(message, L" | ");
+            }
+            appendText(message, L"capacity per buf ");
+            appendNumber(message, contractLocalsStack[0].capacity(), TRUE);
+            logToConsole(message);
         }
         break;
 
@@ -4931,25 +5003,37 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     break;
                 }
+                if (!processors[numberOfProcessors].alloc(STACK_SIZE))
+                {
+                    logToConsole(L"Failed to allocate stack for processor!");
+                    numberOfProcessors = 0;
+                    break;
+                }
 
                 if (numberOfProcessors == 2)
                 {
-                    computingProcessorNumber = i;
+                    processors[numberOfProcessors].type = Processor::ContractProcessor;
+                    processors[numberOfProcessors].setupFunction(contractProcessor, 0);
+                    computingProcessorNumber = numberOfProcessors;
                     contractProcessorIDs[nContractProcessorIDs++] = i;
                 }
                 else
                 {
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
-                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, numberOfProcessors == 1 ? tickProcessor : requestProcessor, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
-
                     if (numberOfProcessors == 1)
                     {
+                        processors[numberOfProcessors].type = Processor::TickProcessor;
+                        processors[numberOfProcessors].setupFunction(tickProcessor, &processors[numberOfProcessors]);
                         tickProcessorIDs[nTickProcessorIDs++] = i;
                     }
                     else
                     {
+                        processors[numberOfProcessors].type = Processor::RequestProcessor;
+                        processors[numberOfProcessors].setupFunction(requestProcessor, &processors[numberOfProcessors]);
                         requestProcessorIDs[nRequestProcessorIDs++] = i;
                     }
+
+                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
+                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
 
                     if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
                         && !solutionProcessorFlags[i])
@@ -5011,6 +5095,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             unsigned int salt;
             _rdrand32_step(&salt);
 
+            // TODO: remove later
+            unsigned long long debugDigestOriginal = 0, debugDigestCurrent = 0;
+            unsigned int debugTick = 0;
+            KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
+
+
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
             logToConsole(L"Init complete! Entering main loop ...");
@@ -5019,6 +5109,19 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (criticalSituation == 1)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
+                }
+
+                {
+                    // TODO: remove later
+                    KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestCurrent, sizeof(debugDigestCurrent));
+                    if (debugDigestOriginal != debugDigestCurrent)
+                    {
+                        if (debugTick == 0)
+                            debugTick = system.tick;
+                        setText(message, L"REPORT TO DEVS: contractUserProcedureLocalsSizes changed in tick ");
+                        appendNumber(message, debugTick, FALSE);
+                        logToConsole(message);
+                    }
                 }
 
                 const unsigned long long curTimeTick = __rdtsc();
@@ -5034,7 +5137,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     contractProcessorState = 2;
                     bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
-                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, contractProcessor, computingProcessorNumber, contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL);
+                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, contractProcessorIDs[0], contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, &processors[computingProcessorNumber], NULL);
                 }
                 /*if (!computationProcessorState && (computation || __computation))
                 {
@@ -5174,7 +5277,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
 
                     if (ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
-                        || targetNextTickDataDigestIsKnown)
+                        || !targetNextTickDataDigestIsKnown)
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;

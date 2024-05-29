@@ -7,6 +7,9 @@
 #define NUMBER_OF_EXCHANGED_PEERS 4
 #define SPECTRUM_DEPTH 24 // Defines SPECTRUM_CAPACITY (1 << SPECTRUM_DEPTH)
 
+#define ASSETS_CAPACITY 0x1000000ULL // Must be 2^N
+#define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
+
 #define MAX_INPUT_SIZE 1024ULL
 #define ISSUANCE_RATE 1000000000000LL
 #define MAX_AMOUNT (ISSUANCE_RATE * 1000ULL)
@@ -53,4 +56,20 @@ static inline bool operator==(const IPv4Address& a, const IPv4Address& b)
 static inline bool operator!=(const IPv4Address& a, const IPv4Address& b)
 {
     return a.u32 != b.u32;
+}
+
+// Compute the siblings array of each level of tree. This function is not thread safe
+// make sure resource protection is handled outside
+template <unsigned int depth>
+static void getSiblings(int digestIndex, const m256i* digests, m256i siblings[depth])
+{
+    const unsigned int capacity = (1ULL << depth);
+    int siblingIndex = digestIndex;
+    unsigned int digestOffset = 0;
+    for (unsigned int j = 0; j < depth; j++)
+    {
+        siblings[j] = digests[digestOffset + (siblingIndex ^ 1)];
+        digestOffset += (capacity >> j);
+        siblingIndex >>= 1;
+    }
 }

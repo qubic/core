@@ -24,7 +24,7 @@ typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state,
 
 // Maximum size of local variables that may be used by a contract function or procedure
 // If increased, the size of contractLocalsStack should be increased as well.
-constexpr unsigned int MAX_SIZE_OF_CONTRACT_LOCALS = 128 * 1024;
+constexpr unsigned int MAX_SIZE_OF_CONTRACT_LOCALS = 32 * 1024;
 
 // TODO: make sure the limit of nested calls is not violated
 constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
@@ -115,6 +115,7 @@ constexpr struct ContractDescription
     {"QTRY", 72, 10000, sizeof(IPO)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
     {"QUTIL", 99, 10000, sizeof(IPO)},
+    {"MLM", 112, 10000, sizeof(IPO)},
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -126,11 +127,19 @@ static EXPAND_PROCEDURE contractExpandProcedures[contractCount];
 static USER_FUNCTION contractUserFunctions[contractCount][65536];
 static unsigned short contractUserFunctionInputSizes[contractCount][65536];
 static unsigned short contractUserFunctionOutputSizes[contractCount][65536];
-static unsigned int contractUserFunctionLocalsSizes[contractCount][65536];
+// This has been changed to unsigned short to avoid the misalignment issue happening in epochs 109 and 110,
+// probably due to too high numbers in contractUserProcedureLocalsSizes causing stack buffer alloc to fail
+// probably due to buffer overflow that is difficult to reproduce in test net
+// TODO: change back to unsigned int
+static unsigned short contractUserFunctionLocalsSizes[contractCount][65536];
 static USER_PROCEDURE contractUserProcedures[contractCount][65536];
 static unsigned short contractUserProcedureInputSizes[contractCount][65536];
 static unsigned short contractUserProcedureOutputSizes[contractCount][65536];
-static unsigned int contractUserProcedureLocalsSizes[contractCount][65536];
+// This has been changed to unsigned short to avoid the misalignment issue happening in epochs 109 and 110,
+// probably due to too high numbers in contractUserProcedureLocalsSizes causing stack buffer alloc to fail
+// probably due to buffer overflow that is difficult to reproduce in test net
+// TODO: change back to unsigned int
+static unsigned short contractUserProcedureLocalsSizes[contractCount][65536];
 
 enum SystemProcedureID
 {
