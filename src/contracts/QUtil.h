@@ -306,7 +306,8 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount); // return the changes
         }
-        output.amount = qpi.burn(input.amount);
+        qpi.burn(input.amount);
+        output.amount = input.amount;
         return;
     _
 
