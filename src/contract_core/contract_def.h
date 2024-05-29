@@ -115,6 +115,7 @@ constexpr struct ContractDescription
     {"QTRY", 72, 10000, sizeof(IPO)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
     {"QUTIL", 99, 10000, sizeof(IPO)},
+    {"MLM", 112, 10000, sizeof(IPO)},
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
