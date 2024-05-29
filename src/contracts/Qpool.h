@@ -157,7 +157,7 @@ public:
 			}
 			return;
 		}
-		uint32 totalWeight = 0;
+		uint32 totalWeight = input.QWALLETWeight;
 		for(uint32 i = 0 ; i < input.NumberOfToken; i++) {
 			totalWeight += input.Weight.get(i);
 		}
