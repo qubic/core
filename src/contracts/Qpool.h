@@ -21,7 +21,7 @@ private:
 	};
 	array<PoolInfo, MAX_NUMBER_OF_POOL> pools;
 	array<uint64*, MAX_NUMBER_OF_POOL> QPTAmountOfUser;   // Amount of LP token that provider reserved in a pool
-	array<id_16384, MAX_NUMBER_OF_POOL> pool_userlist;			  // The Order of user
+	array<id*, MAX_NUMBER_OF_POOL> pool_userlist;			  // The Order of user
 	uint64_128 totalSupply;   // value of total tokens in a pool
 	uint64_128 TotalAmountOfQPT;   //  Amount of total LP in a pool
 	uint32 NumberOfPool;						// Number of Pool
@@ -42,9 +42,11 @@ public:
 
 	struct CreateLiquidityPool_input {
 		uint32 NumberOfToken;        // Number(maximum 5) of token in a pool
-		uint64_8 Token;                  // Token addresses
-		uint64_8 initialAmount;      // Initial amount of Tokens
-		uint32_8 Weight;             // Weight of Tokens in Pool
+		uint64_4 Token;                  // Token addresses
+		uint64_4 initialAmount;      // Initial amount of Tokens
+		uint32_4 Weight;             // Weight of Tokens in Pool
+		uint64 QWALLETInitialAmount; // QWALLET initial amount
+		uint32 QWALLETWeight;		 // Weight of QWALLET
 		uint64 swapFee;              // Swap fee in a Pool
 	};
 
@@ -160,7 +162,7 @@ public:
 			totalWeight += input.Weight.get(i);
 		}
 
-		if(totalWeight != 100) 
+		if(totalWeight != 100 || input.QWALLETWeight < 10) 
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -178,11 +180,14 @@ public:
 			newPool.Weight.set(i, input.Weight.get(i));
 			newPool.totalLiquidity.set(i, input.initialAmount.get(i));
 		}
+		newPool.Token.set(input.NumberOfToken, 1279350609);
+		newPool.Weight.set(input.NumberOfToken, input.QWALLETWeight);
+		newPool.totalLiquidity.set(input.NumberOfToken, input.QWALLETInitialAmount);
 		state.pools.set(state.NumberOfPool, newPool);								//   setting the pool
 
 //		setting the list of users in a new pool
-		id_16384 listOfPool;
-		listOfPool.set(0, qpi.invocator());
+		id* listOfPool;
+		listOfPool[0] = qpi.invocator();
 		state.pool_userlist.set(state.NumberOfPool, listOfPool);
 //
 //		setting the QPT amount of first user(pool creator) in a new pool
