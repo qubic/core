@@ -158,7 +158,7 @@ public:
 			return;
 		}
 		uint32 totalWeight = input.QWALLETWeight;
-		for(uint32 i = 0 ; i < input.NumberOfToken; i++) {
+		for(uint32 i = 0 ; i < input.NumberOfToken - 1; i++) {
 			totalWeight += input.Weight.get(i);
 		}
 
@@ -175,7 +175,7 @@ public:
 		newPool.NumberOfToken = input.NumberOfToken;
 		newPool.swapFee = input.swapFee;
 		
-		for(uint32 i = 0 ; i < input.NumberOfToken; i++) {
+		for(uint32 i = 0 ; i < input.NumberOfToken - 1; i++) {
 			newPool.Token.set(i, input.Token.get(i));
 			newPool.Weight.set(i, input.Weight.get(i));
 			newPool.totalLiquidity.set(i, input.initialAmount.get(i));
