@@ -281,7 +281,7 @@ private:
             return false;
         }
 #ifndef NO_UEFI
-        if (metaData.epoch != system.epoch) {
+        if (metaData.epoch != EPOCH) {
             return false;
         }
 #endif
