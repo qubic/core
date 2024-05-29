@@ -14,9 +14,11 @@ struct QPOOL
 private:
 	struct PoolInfo {
 		uint32 NumberOfToken;     //  Number(maximum 5) of token in a pool
-		uint64_8 Token;               //  Address of Tokens in a Pool
-		uint32_8 Weight;          //  Weight of each Token in a Pool
-		uint64_8 totalLiquidity;  //  TotalLiquidity of each token in a Pool
+		
+		uint64 Token1, Token2, Token3, Token4, Token5;              // Token name
+		uint64 totalLiquidity1, totalLiquidity2, totalLiquidity3, totalLiquidity4, totalLiquidity5;      // Initial amount of Token1
+		uint32 Weight1, Weight2, Weight3, Weight4, Weight5;             // Weight of Token1 in Pool
+
 		uint64 swapFee;           //  Swap fee in a Pool
 	};
 	array<PoolInfo, MAX_NUMBER_OF_POOL> pools;
@@ -42,11 +44,9 @@ public:
 
 	struct CreateLiquidityPool_input {
 		uint32 NumberOfToken;        // Number(maximum 5) of token in a pool
-		uint64_4 Token;                  // Token addresses
-		uint64_4 initialAmount;      // Initial amount of Tokens
-		uint32_4 Weight;             // Weight of Tokens in Pool
-		uint64 QWALLETInitialAmount; // QWALLET initial amount
-		uint32 QWALLETWeight;		 // Weight of QWALLET
+		uint64 Token1, Token2, Token3, Token4, Token5;              // Token name
+		uint64 initialAmount1, initialAmount2, initialAmount3, initialAmount4, initialAmount5;      // Initial amount of Token1
+		uint32 Weight1, Weight2, Weight3, Weight4, Weight5;             // Weight of Token1 in Pool
 		uint64 swapFee;              // Swap fee in a Pool
 	};
 
@@ -120,13 +120,15 @@ public:
 	};
 
 	struct PoolList_output {
-		uint32 NumberOfToken;
-		uint64_8 Token;
-		uint32_8 Weight;
-		uint64_8 totalLiquidity;
-		uint64 swapFee;
-		uint64 totalAmountOfQPT;
-		uint64 totalSupplyByQU;
+		uint32 NumberOfToken;     //  Number(maximum 5) of token in a pool
+		
+		uint64 Token1, Token2, Token3, Token4, Token5;              // Token name
+		uint64 totalLiquidity1, totalLiquidity2, totalLiquidity3, totalLiquidity4, totalLiquidity5;      // Initial amount of Token1
+		uint32 Weight1, Weight2, Weight3, Weight4, Weight5;             // Weight of Token1 in Pool
+
+		uint64 swapFee;           //  Swap fee in a Pool
+		uint64 totalAmountOfQPT;   // Amount of all QPT
+		uint64 totalSupplyByQU;		// total supply by qu
 	};
 
 	struct IssueAsset_input
@@ -157,12 +159,9 @@ public:
 			}
 			return;
 		}
-		uint32 totalWeight = input.QWALLETWeight;
-		for(uint32 i = 0 ; i < input.NumberOfToken - 1; i++) {
-			totalWeight += input.Weight.get(i);
-		}
+		uint32 totalWeight = input.Weight1 +  input.Weight2 +  input.Weight3 +  input.Weight4 +  input.Weight5;
 
-		if(totalWeight != 100 || input.QWALLETWeight < 10) 
+		if(totalWeight != 100 || input.Weight1 < 10 || input.Token1 != 1279350609) 
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -174,15 +173,27 @@ public:
 		PoolInfo newPool;
 		newPool.NumberOfToken = input.NumberOfToken;
 		newPool.swapFee = input.swapFee;
-		
-		for(uint32 i = 0 ; i < input.NumberOfToken - 1; i++) {
-			newPool.Token.set(i, input.Token.get(i));
-			newPool.Weight.set(i, input.Weight.get(i));
-			newPool.totalLiquidity.set(i, input.initialAmount.get(i));
-		}
-		newPool.Token.set(input.NumberOfToken, 1279350609);
-		newPool.Weight.set(input.NumberOfToken, input.QWALLETWeight);
-		newPool.totalLiquidity.set(input.NumberOfToken, input.QWALLETInitialAmount);
+
+		newPool.Token1 = input.Token1;
+		newPool.Weight1 = input.Weight1;
+		newPool.totalLiquidity1 = input.initialAmount1;
+
+		newPool.Token2 = input.Token2;
+		newPool.Weight2 = input.Weight2;
+		newPool.totalLiquidity2 = input.initialAmount2;
+
+		newPool.Token3 = input.Token3;
+		newPool.Weight3 = input.Weight3;
+		newPool.totalLiquidity3 = input.initialAmount3;
+
+		newPool.Token4 = input.Token4;
+		newPool.Weight4 = input.Weight4;
+		newPool.totalLiquidity4 = input.initialAmount4;
+
+		newPool.Token5 = input.Token5;
+		newPool.Weight5 = input.Weight5;
+		newPool.totalLiquidity5 = input.initialAmount5;
+
 		state.pools.set(state.NumberOfPool, newPool);								//   setting the pool
 
 //		setting the list of users in a new pool
@@ -227,11 +238,27 @@ public:
 		pool = state.pools.get(input.NumberOfPool);
 		output.NumberOfToken = pool.NumberOfToken;
 		output.swapFee = pool.swapFee;
-		for(uint32 i = 0 ; i < pool.NumberOfToken; i++) {
-			output.Token.set(i, pool.Token.get(i));
-			output.totalLiquidity.set(i, pool.totalLiquidity.get(i));
-			output.Weight.set(i, pool.Weight.get(i));
-		}
+
+		output.Token1 = pool.Token1;
+		output.totalLiquidity1 = pool.totalLiquidity1;
+		output.Weight1 = pool.Weight1;
+
+		output.Token1 = pool.Token2;
+		output.totalLiquidity1 = pool.totalLiquidity2;
+		output.Weight1 = pool.Weight2;
+
+		output.Token1 = pool.Token3;
+		output.totalLiquidity1 = pool.totalLiquidity3;
+		output.Weight1 = pool.Weight3;
+
+		output.Token1 = pool.Token4;
+		output.totalLiquidity1 = pool.totalLiquidity4;
+		output.Weight1 = pool.Weight4;
+
+		output.Token1 = pool.Token5;
+		output.totalLiquidity1 = pool.totalLiquidity5;
+		output.Weight1 = pool.Weight5;
+		
 		output.totalAmountOfQPT = state.TotalAmountOfQPT.get(input.NumberOfPool);
 		output.totalSupplyByQU = state.totalSupply.get(input.NumberOfPool);
 	_
