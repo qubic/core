@@ -9,6 +9,9 @@
 #include "contract_core/contract_def.h"
 #include "contract_core/stack_buffer.h"
 
+// TODO: remove, only for debug output
+#include "system.h"
+
 // Used to store: locals and for first invocation level also input and output
 typedef StackBuffer<unsigned int, 32 * 1024 * 1024> ContractLocalsStack;
 ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS];
@@ -57,6 +60,7 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
     }
 
     stackIdx = i;
+    ASSERT(stackIdx >= 0);
 }
 
 // Release locked stack (and reset stackIdx)
@@ -74,8 +78,34 @@ void* QPI::QpiContextFunctionCall::__qpiAllocLocals(unsigned int sizeOfLocals) c
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
     if (_stackIndex < 0 || _stackIndex >= NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS)
+    {
+#ifndef NDEBUG
+        CHAR16 dbgMsgBuf[100];
+        setText(dbgMsgBuf, L"__qpiAllocLocals in ");
+        appendNumber(dbgMsgBuf, system.tick, FALSE);
+        appendText(dbgMsgBuf, L" called with stackIndex ");
+        appendNumber(dbgMsgBuf, _stackIndex, FALSE);
+        addDebugMessage(dbgMsgBuf);
+#endif
         return 0; // TODO: log problem / restart processor here instead of returning
+    }
     void* p = contractLocalsStack[_stackIndex].allocate(sizeOfLocals);
+#ifndef NDEBUG
+    if (!p)
+    {
+        CHAR16 dbgMsgBuf[400];
+        setText(dbgMsgBuf, L"__qpiAllocLocals stack buffer alloc failed in tick ");
+        appendNumber(dbgMsgBuf, system.tick, FALSE);
+        addDebugMessage(dbgMsgBuf);
+        setText(dbgMsgBuf, L"allocSize ");
+        appendNumber(dbgMsgBuf, sizeOfLocals, FALSE);
+        appendText(dbgMsgBuf, L", contractIndex ");
+        appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+        appendText(dbgMsgBuf, L", stackIndex ");
+        appendNumber(dbgMsgBuf, _stackIndex, FALSE);
+        addDebugMessage(dbgMsgBuf);
+    }
+#endif
     if (p)
         setMem(p, sizeOfLocals, 0);
     return p;
@@ -95,6 +125,22 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
     char * buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextFunctionCall));
+#ifndef NDEBUG
+    if (!buffer)
+    {
+        CHAR16 dbgMsgBuf[400];
+        setText(dbgMsgBuf, L"__qpiConstructContextOtherContractFunctionCall stack buffer alloc failed in tick ");
+        appendNumber(dbgMsgBuf, system.tick, FALSE);
+        addDebugMessage(dbgMsgBuf);
+        setText(dbgMsgBuf, L"allocSize ");
+        appendNumber(dbgMsgBuf, sizeof(QpiContextFunctionCall), FALSE);
+        appendText(dbgMsgBuf, L", contractIndex ");
+        appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+        appendText(dbgMsgBuf, L", stackIndex ");
+        appendNumber(dbgMsgBuf, _stackIndex, FALSE);
+        addDebugMessage(dbgMsgBuf);
+    }
+#endif
     QpiContextFunctionCall& newContext = *reinterpret_cast<QpiContextFunctionCall*>(buffer);
     newContext.init(otherContractIndex, _originator, _currentContractId, _invocationReward);
     return newContext;
@@ -105,6 +151,22 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructConte
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
+#ifndef NDEBUG
+    if (!buffer)
+    {
+        CHAR16 dbgMsgBuf[400];
+        setText(dbgMsgBuf, L"__qpiConstructContextOtherContractProcedureCall stack buffer alloc failed in tick ");
+        appendNumber(dbgMsgBuf, system.tick, FALSE);
+        addDebugMessage(dbgMsgBuf);
+        setText(dbgMsgBuf, L"allocSize ");
+        appendNumber(dbgMsgBuf, sizeof(QpiContextProcedureCall), FALSE);
+        appendText(dbgMsgBuf, L", contractIndex ");
+        appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+        appendText(dbgMsgBuf, L", stackIndex ");
+        appendNumber(dbgMsgBuf, _stackIndex, FALSE);
+        addDebugMessage(dbgMsgBuf);
+    }
+#endif
     QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
     if (transfer(QPI::id(otherContractIndex, 0, 0, 0), invocationReward) < 0)
         invocationReward = 0;
@@ -197,6 +259,29 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         unsigned int localsSize = contractUserProcedureLocalsSizes[_currentContractIndex][inputType];
         char* inputBuffer = contractLocalsStack[_stackIndex].allocate(fullInputSize + outputSize + localsSize);
         ASSERT(inputBuffer); // TODO: error handling
+#ifndef NDEBUG
+        if (!inputBuffer)
+        {
+            CHAR16 dbgMsgBuf[400];
+            setText(dbgMsgBuf, L"QpiContextUserProcedureCall stack buffer alloc failed in tick ");
+            appendNumber(dbgMsgBuf, system.tick, FALSE);
+            addDebugMessage(dbgMsgBuf);
+            setText(dbgMsgBuf, L"fullInputSize ");
+            appendNumber(dbgMsgBuf, fullInputSize, FALSE);
+            appendText(dbgMsgBuf, L", outputSize ");
+            appendNumber(dbgMsgBuf, outputSize, FALSE);
+            appendText(dbgMsgBuf, L", localsSize ");
+            appendNumber(dbgMsgBuf, localsSize, FALSE);
+            appendText(dbgMsgBuf, L", contractIndex ");
+            appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+            appendText(dbgMsgBuf, L", inputType ");
+            appendNumber(dbgMsgBuf, inputType, FALSE);
+            appendText(dbgMsgBuf, L", stackIndex ");
+            appendNumber(dbgMsgBuf, _stackIndex, FALSE);
+            addDebugMessage(dbgMsgBuf);
+        }
+#endif
+
         char* outputBuffer = inputBuffer + fullInputSize;
         char* localsBuffer = outputBuffer + outputSize;
         if (fullInputSize > inputSize)
@@ -259,6 +344,28 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         unsigned int localsSize = contractUserFunctionLocalsSizes[_currentContractIndex][inputType];
         char* inputBuffer = contractLocalsStack[_stackIndex].allocate(fullInputSize + outputSize + localsSize);
         ASSERT(inputBuffer); // TODO: error handling
+#ifndef NDEBUG
+        if (!inputBuffer)
+        {
+            CHAR16 dbgMsgBuf[400];
+            setText(dbgMsgBuf, L"QpiContextUserFunctionCall stack buffer alloc failed in tick ");
+            appendNumber(dbgMsgBuf, system.tick, FALSE);
+            addDebugMessage(dbgMsgBuf);
+            setText(dbgMsgBuf, L"fullInputSize ");
+            appendNumber(dbgMsgBuf, fullInputSize, FALSE);
+            appendText(dbgMsgBuf, L", outputSize ");
+            appendNumber(dbgMsgBuf, outputSize, FALSE);
+            appendText(dbgMsgBuf, L", localsSize ");
+            appendNumber(dbgMsgBuf, localsSize, FALSE);
+            appendText(dbgMsgBuf, L", contractIndex ");
+            appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+            appendText(dbgMsgBuf, L", inputType ");
+            appendNumber(dbgMsgBuf, inputType, FALSE);
+            appendText(dbgMsgBuf, L", stackIndex ");
+            appendNumber(dbgMsgBuf, _stackIndex, FALSE);
+            addDebugMessage(dbgMsgBuf);
+        }
+#endif
         outputBuffer = inputBuffer + fullInputSize;
         char* localsBuffer = outputBuffer + outputSize;
         if (fullInputSize > inputSize)

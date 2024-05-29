@@ -3914,6 +3914,12 @@ static bool initialize()
     bs->SetMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
     bs->SetMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
     bs->SetMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
+    bs->SetMem(contractUserFunctionInputSizes, sizeof(contractUserFunctionInputSizes), 0);
+    bs->SetMem(contractUserFunctionOutputSizes, sizeof(contractUserFunctionOutputSizes), 0);
+    bs->SetMem(contractUserFunctionLocalsSizes, sizeof(contractUserFunctionLocalsSizes), 0);
+    bs->SetMem(contractUserProcedureInputSizes, sizeof(contractUserProcedureInputSizes), 0);
+    bs->SetMem(contractUserProcedureOutputSizes, sizeof(contractUserProcedureOutputSizes), 0);
+    bs->SetMem(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), 0);
 
     getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
     if (isZero(operatorPublicKey))
@@ -5089,6 +5095,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             unsigned int salt;
             _rdrand32_step(&salt);
 
+            // TODO: remove later
+            unsigned long long debugDigestOriginal = 0, debugDigestCurrent = 0;
+            unsigned int debugTick = 0;
+            KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
+
+
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
             logToConsole(L"Init complete! Entering main loop ...");
@@ -5097,6 +5109,19 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (criticalSituation == 1)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
+                }
+
+                {
+                    // TODO: remove later
+                    KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestCurrent, sizeof(debugDigestCurrent));
+                    if (debugDigestOriginal != debugDigestCurrent)
+                    {
+                        if (debugTick == 0)
+                            debugTick = system.tick;
+                        setText(message, L"REPORT TO DEVS: contractUserProcedureLocalsSizes changed in tick ");
+                        appendNumber(message, debugTick, FALSE);
+                        logToConsole(message);
+                    }
                 }
 
                 const unsigned long long curTimeTick = __rdtsc();
