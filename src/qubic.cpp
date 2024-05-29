@@ -205,6 +205,7 @@ struct
     unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
     BroadcastComputors broadcastedComputors;
     unsigned long long resourceTestingDigest;
+    unsigned int numberOfMiners;
 } nodeStateBuffer;
 #endif
 static bool saveSpectrum();
@@ -3214,6 +3215,7 @@ static bool saveAllNodeStates()
     copyMem(&nodeStateBuffer.broadcastedComputors, (void*)&broadcastedComputors, sizeof(broadcastedComputors));
     copyMem(&nodeStateBuffer.resourceTestingDigest, &resourceTestingDigest, sizeof(resourceTestingDigest));
     nodeStateBuffer.initialRandomSeed = score->initialRandomSeed;
+    nodeStateBuffer.numberOfMiners = numberOfMiners;
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer);
@@ -3322,6 +3324,7 @@ static bool loadAllNodeStates()
     copyMem((void*)faultyComputorFlags, nodeStateBuffer.faultyComputorFlags, sizeof(faultyComputorFlags));
     copyMem((void*)&broadcastedComputors, &nodeStateBuffer.broadcastedComputors, sizeof(broadcastedComputors));
     copyMem(&resourceTestingDigest, &nodeStateBuffer.resourceTestingDigest, sizeof(resourceTestingDigest));
+    numberOfMiners = nodeStateBuffer.numberOfMiners;
     initialRandomSeedFromPersistingState = nodeStateBuffer.initialRandomSeed;
     loadMiningSeedFromFile = true;
 
