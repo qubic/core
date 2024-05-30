@@ -281,21 +281,21 @@ public:
 		output.totalLiquidity1 = pool.totalLiquidity1;
 		output.Weight1 = pool.Weight1;
 
-		output.Token1 = pool.Token2;
-		output.totalLiquidity1 = pool.totalLiquidity2;
-		output.Weight1 = pool.Weight2;
+		output.Token2 = pool.Token2;
+		output.totalLiquidity2 = pool.totalLiquidity2;
+		output.Weight2 = pool.Weight2;
 
-		output.Token1 = pool.Token3;
-		output.totalLiquidity1 = pool.totalLiquidity3;
-		output.Weight1 = pool.Weight3;
+		output.Token3 = pool.Token3;
+		output.totalLiquidity3 = pool.totalLiquidity3;
+		output.Weight3 = pool.Weight3;
 
-		output.Token1 = pool.Token4;
-		output.totalLiquidity1 = pool.totalLiquidity4;
-		output.Weight1 = pool.Weight4;
+		output.Token4 = pool.Token4;
+		output.totalLiquidity4 = pool.totalLiquidity4;
+		output.Weight4 = pool.Weight4;
 
-		output.Token1 = pool.Token5;
-		output.totalLiquidity1 = pool.totalLiquidity5;
-		output.Weight1 = pool.Weight5;
+		output.Token5 = pool.Token5;
+		output.totalLiquidity5 = pool.totalLiquidity5;
+		output.Weight5 = pool.Weight5;
 		
 		output.totalAmountOfQPT = state.TotalAmountOfQPT.get(input.NumberOfPool);
 		output.totalSupplyByQU = state.totalSupply.get(input.NumberOfPool);
