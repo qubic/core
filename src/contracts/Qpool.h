@@ -15,9 +15,21 @@ private:
 	struct PoolInfo {
 		uint32 NumberOfToken;     //  Number(maximum 5) of token in a pool
 		
-		uint64 Token1, Token2, Token3, Token4, Token5;              // Token name
-		uint64 totalLiquidity1, totalLiquidity2, totalLiquidity3, totalLiquidity4, totalLiquidity5;      // Initial amount of Token1
-		uint32 Weight1, Weight2, Weight3, Weight4, Weight5;             // Weight of Token1 in Pool
+		uint64 Token1;
+		uint64 Token2;
+		uint64 Token3;
+		uint64 Token4;
+		uint64 Token5;              // Token name
+		uint64 totalLiquidity1;
+		uint64 totalLiquidity2;
+		uint64 totalLiquidity3;
+		uint64 totalLiquidity4;
+		uint64 totalLiquidity5;      // Initial amount of Token1
+		uint32 Weight1;
+		uint32 Weight2;
+		uint32 Weight3;
+		uint32 Weight4;
+		uint32 Weight5;             // Weight of Token1 in Pool
 
 		uint64 swapFee;           //  Swap fee in a Pool
 	};
@@ -44,9 +56,23 @@ public:
 
 	struct CreateLiquidityPool_input {
 		uint32 NumberOfToken;        // Number(maximum 5) of token in a pool
-		uint64 Token1, Token2, Token3, Token4, Token5;              // Token name
-		uint64 initialAmount1, initialAmount2, initialAmount3, initialAmount4, initialAmount5;      // Initial amount of Token1
-		uint32 Weight1, Weight2, Weight3, Weight4, Weight5;             // Weight of Token1 in Pool
+
+		uint64 Token1;
+		uint64 Token2;
+		uint64 Token3;
+		uint64 Token4;
+		uint64 Token5;              // Token name
+		uint64 initialAmount1;
+		uint64 initialAmount2;
+		uint64 initialAmount3;
+		uint64 initialAmount4;
+		uint64 initialAmount5;      // Initial amount of Token1
+		uint32 Weight1;
+		uint32 Weight2;
+		uint32 Weight3;
+		uint32 Weight4;
+		uint32 Weight5;             // Weight of Token1 in Pool
+
 		uint64 swapFee;              // Swap fee in a Pool
 	};
 
@@ -122,9 +148,21 @@ public:
 	struct PoolList_output {
 		uint32 NumberOfToken;     //  Number(maximum 5) of token in a pool
 		
-		uint64 Token1, Token2, Token3, Token4, Token5;              // Token name
-		uint64 totalLiquidity1, totalLiquidity2, totalLiquidity3, totalLiquidity4, totalLiquidity5;      // Initial amount of Token1
-		uint32 Weight1, Weight2, Weight3, Weight4, Weight5;             // Weight of Token1 in Pool
+		uint64 Token1;
+		uint64 Token2;
+		uint64 Token3;
+		uint64 Token4;
+		uint64 Token5;              // Token name
+		uint64 totalLiquidity1;
+		uint64 totalLiquidity2;
+		uint64 totalLiquidity3;
+		uint64 totalLiquidity4;
+		uint64 totalLiquidity5;      // Initial amount of Token1
+		uint32 Weight1;
+		uint32 Weight2;
+		uint32 Weight3;
+		uint32 Weight4;
+		uint32 Weight5;             // Weight of Token1 in Pool
 
 		uint64 swapFee;           //  Swap fee in a Pool
 		uint64 totalAmountOfQPT;   // Amount of all QPT
