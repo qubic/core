@@ -145,30 +145,30 @@ public:
 	};
 
 	PUBLIC(CreateLiquidityPool)
-		if(qpi.invocationReward() < FEE_CREATE_POOL) {
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-		if(input.NumberOfToken > 5) {
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
-		uint32 totalWeight = input.Weight1 +  input.Weight2 +  input.Weight3 +  input.Weight4 +  input.Weight5;
+		// if(qpi.invocationReward() < FEE_CREATE_POOL) {
+		// 	if (qpi.invocationReward() > 0)
+		// 	{
+		// 		qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		// 	}
+		// 	return ;
+		// }
+		// if(input.NumberOfToken > 5) {
+		// 	if (qpi.invocationReward() > 0)
+		// 	{
+		// 		qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		// 	}
+		// 	return;
+		// }
+		// uint32 totalWeight = input.Weight1 +  input.Weight2 +  input.Weight3 +  input.Weight4 +  input.Weight5;
 
-		if(totalWeight != 100 || input.Weight1 < 10 || input.Token1 != 1279350609) 
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
+		// if(totalWeight != 100 || input.Weight1 < 10 || input.Token1 != 1279350609) 
+		// {
+		// 	if (qpi.invocationReward() > 0)
+		// 	{
+		// 		qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		// 	}
+		// 	return;
+		// }
 
 		PoolInfo newPool;
 		newPool.NumberOfToken = input.NumberOfToken;
