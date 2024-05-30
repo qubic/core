@@ -4,6 +4,7 @@ using namespace QPI;
 #define MAX_NUMBER_OF_POOL 128
 #define FEE_CREATE_POOL 100000000LL
 #define FEE_ISSUE_ASSET 1000000000LL
+#define TOKEN_TRANSER_FEE 1000000LL // Amount of qus
 
 struct QPOOL2
 {
@@ -20,6 +21,11 @@ private:
 		uint64 Token3;
 		uint64 Token4;
 		uint64 Token5;              // Token name
+		id issuer1;                 // issuer of token1
+		id issuer2;                 // issuer of token2
+		id issuer3;                 // issuer of token3
+		id issuer4;                 // issuer of token4
+		id issuer5;                 // issuer of token5
 		uint64 totalLiquidity1;
 		uint64 totalLiquidity2;
 		uint64 totalLiquidity3;
@@ -30,6 +36,8 @@ private:
 		uint32 Weight3;
 		uint32 Weight4;
 		uint32 Weight5;             // Weight of Token1 in Pool
+		uint64 totalLiquidityOfQU;  // liquidity of QU in the pool
+		uint32 WeightOfQU;			// Weight of QU in the pool
 
 		uint64 swapFee;           //  Swap fee in a Pool
 	};
@@ -62,6 +70,11 @@ public:
 		uint64 Token3;
 		uint64 Token4;
 		uint64 Token5;              // Token name
+		id issuer1;                 // issuer of token1
+		id issuer2;                 // issuer of token2
+		id issuer3;                 // issuer of token3
+		id issuer4;                 // issuer of token4
+		id issuer5;                 // issuer of token5
 		uint64 initialAmount1;
 		uint64 initialAmount2;
 		uint64 initialAmount3;
@@ -72,8 +85,11 @@ public:
 		uint32 Weight3;
 		uint32 Weight4;
 		uint32 Weight5;             // Weight of Token1 in Pool
+		uint64 initialAmountOfQU;  // liquidity of QU in the pool
+		uint32 WeightOfQU;			// Weight of QU in the pool
 
 		uint64 swapFee;              // Swap fee in a Pool
+
 	};
 
 	struct CreateLiquidityPool_output {
@@ -153,6 +169,11 @@ public:
 		uint64 Token3;
 		uint64 Token4;
 		uint64 Token5;              // Token name
+		id issuer1;                 // issuer of token1
+		id issuer2;                 // issuer of token2
+		id issuer3;                 // issuer of token3
+		id issuer4;                 // issuer of token4
+		id issuer5;                 // issuer of token5
 		uint64 totalLiquidity1;
 		uint64 totalLiquidity2;
 		uint64 totalLiquidity3;
@@ -163,6 +184,8 @@ public:
 		uint32 Weight3;
 		uint32 Weight4;
 		uint32 Weight5;             // Weight of Token1 in Pool
+		uint64 totalLiquidityOfQU;  // liquidity of QU in the pool
+		uint32 WeightOfQU;			// Weight of QU in the pool
 
 		uint64 swapFee;           //  Swap fee in a Pool
 		uint64 totalAmountOfQPT;   // Amount of all QPT
@@ -183,54 +206,107 @@ public:
 	};
 
 	PUBLIC(CreateLiquidityPool)
-		// if(qpi.invocationReward() < FEE_CREATE_POOL) {
-		// 	if (qpi.invocationReward() > 0)
-		// 	{
-		// 		qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		// 	}
-		// 	return ;
-		// }
-		// if(input.NumberOfToken > 5) {
-		// 	if (qpi.invocationReward() > 0)
-		// 	{
-		// 		qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		// 	}
-		// 	return;
-		// }
-		// uint32 totalWeight = input.Weight1 +  input.Weight2 +  input.Weight3 +  input.Weight4 +  input.Weight5;
+		if(qpi.invocationReward() < FEE_CREATE_POOL + TOKEN_TRANSER_FEE * input.NumberOfToken + input.initialAmountOfQU) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+		if(input.NumberOfToken > 5) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		uint32 totalWeight = input.Weight1 +  input.Weight2 +  input.Weight3 +  input.Weight4 +  input.Weight5 + input.WeightOfQU;
 
-		// if(totalWeight != 100 || input.Weight1 < 10 || input.Token1 != 1279350609) 
-		// {
-		// 	if (qpi.invocationReward() > 0)
-		// 	{
-		// 		qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		// 	}
-		// 	return;
-		// }
+		if(totalWeight != 100 || input.Weight1 < 10 || input.Token1 != 1279350609) 
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
 
+		if(input.NumberOfToken > 0 && qpi.numberOfPossessedShares(input.Token1, input.issuer1, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.initialAmount1) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		if(input.NumberOfToken > 1 && qpi.numberOfPossessedShares(input.Token2, input.issuer2, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.initialAmount2) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		if(input.NumberOfToken > 2 && qpi.numberOfPossessedShares(input.Token3, input.issuer3, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.initialAmount3) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		if(input.NumberOfToken > 3 && qpi.numberOfPossessedShares(input.Token4, input.issuer4, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.initialAmount4) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		if(input.NumberOfToken > 4 && qpi.numberOfPossessedShares(input.Token5, input.issuer5, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.initialAmount5) {
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		id contractID = (6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+		if(input.NumberOfToken > 0) qpi.transferShareOwnershipAndPossession(input.Token1, input.issuer1, qpi.invocator(), qpi.invocator(), input.initialAmount1, contractID);
+		if(input.NumberOfToken > 1) qpi.transferShareOwnershipAndPossession(input.Token2, input.issuer2, qpi.invocator(), qpi.invocator(), input.initialAmount2, contractID);
+		if(input.NumberOfToken > 2) qpi.transferShareOwnershipAndPossession(input.Token3, input.issuer3, qpi.invocator(), qpi.invocator(), input.initialAmount3, contractID);
+		if(input.NumberOfToken > 3) qpi.transferShareOwnershipAndPossession(input.Token4, input.issuer4, qpi.invocator(), qpi.invocator(), input.initialAmount4, contractID);
+		if(input.NumberOfToken > 4) qpi.transferShareOwnershipAndPossession(input.Token5, input.issuer5, qpi.invocator(), qpi.invocator(), input.initialAmount5, contractID);
+		
+		if(qpi.invocationReward() > FEE_CREATE_POOL + TOKEN_TRANSER_FEE * input.NumberOfToken + input.initialAmountOfQU) {
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - (FEE_CREATE_POOL + TOKEN_TRANSER_FEE * input.NumberOfToken + input.initialAmountOfQU));
+		}
 		PoolInfo newPool;
 		newPool.NumberOfToken = input.NumberOfToken;
 		newPool.swapFee = input.swapFee;
 
 		newPool.Token1 = input.Token1;
+		newPool.issuer1 = input.issuer1;
 		newPool.Weight1 = input.Weight1;
 		newPool.totalLiquidity1 = input.initialAmount1;
 
 		newPool.Token2 = input.Token2;
+		newPool.issuer2 = input.issuer2;
 		newPool.Weight2 = input.Weight2;
 		newPool.totalLiquidity2 = input.initialAmount2;
 
 		newPool.Token3 = input.Token3;
+		newPool.issuer3 = input.issuer3;
 		newPool.Weight3 = input.Weight3;
 		newPool.totalLiquidity3 = input.initialAmount3;
 
 		newPool.Token4 = input.Token4;
+		newPool.issuer4 = input.issuer4;
 		newPool.Weight4 = input.Weight4;
 		newPool.totalLiquidity4 = input.initialAmount4;
 
 		newPool.Token5 = input.Token5;
+		newPool.issuer5 = input.issuer5;
 		newPool.Weight5 = input.Weight5;
 		newPool.totalLiquidity5 = input.initialAmount5;
+
+		newPool.totalLiquidityOfQU = input.initialAmountOfQU;
+		newPool.WeightOfQU = input.WeightOfQU;
 
 		state.pools.set(state.NumberOfPool, newPool);								//   setting the pool
 
@@ -247,7 +323,7 @@ public:
 //		setting the total QPT amount in a new pool
 		state.TotalAmountOfQPT.set(state.NumberOfPool, INITIAL_QPT);
 //		setting the total value of a new pool by QU
-		state.totalSupply.set(state.NumberOfPool, qpi.invocationReward() - FEE_CREATE_POOL);
+		state.totalSupply.set(state.NumberOfPool, 100 * input.initialAmountOfQU / input.WeightOfQU);
 //		add the number of pool
 		state.NumberOfPool++;
 	_
@@ -278,24 +354,32 @@ public:
 		output.swapFee = pool.swapFee;
 
 		output.Token1 = pool.Token1;
+		output.issuer1 = pool.issuer1;
 		output.totalLiquidity1 = pool.totalLiquidity1;
 		output.Weight1 = pool.Weight1;
 
 		output.Token2 = pool.Token2;
+		output.issuer2 = pool.issuer2;
 		output.totalLiquidity2 = pool.totalLiquidity2;
 		output.Weight2 = pool.Weight2;
 
 		output.Token3 = pool.Token3;
+		output.issuer3 = pool.issuer3;
 		output.totalLiquidity3 = pool.totalLiquidity3;
 		output.Weight3 = pool.Weight3;
 
 		output.Token4 = pool.Token4;
+		output.issuer4 = pool.issuer4;
 		output.totalLiquidity4 = pool.totalLiquidity4;
 		output.Weight4 = pool.Weight4;
 
 		output.Token5 = pool.Token5;
+		output.issuer5 = pool.issuer5;
 		output.totalLiquidity5 = pool.totalLiquidity5;
 		output.Weight5 = pool.Weight5;
+		
+		output.totalLiquidityOfQU = pool.totalLiquidityOfQU;
+		output.WeightOfQU = pool.WeightOfQU;
 		
 		output.totalAmountOfQPT = state.TotalAmountOfQPT.get(input.NumberOfPool);
 		output.totalSupplyByQU = state.totalSupply.get(input.NumberOfPool);
