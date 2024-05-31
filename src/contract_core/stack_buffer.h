@@ -91,7 +91,14 @@ struct StackBuffer
 
         // reduce current size down to size before last alloc
         ASSERT(sizeBeforeLastAlloc < _allocatedSize);
+        ASSERT(sizeBeforeLastAlloc < _maxAllocatedSize);
         _allocatedSize = sizeBeforeLastAlloc;
+    }
+
+    // Free all storage allocated before.
+    void freeAll()
+    {
+        _allocatedSize = 0;
     }
 
 protected:
