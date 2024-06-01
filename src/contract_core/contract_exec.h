@@ -246,6 +246,18 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 
     void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
     {
+#ifndef NDEBUG
+        CHAR16 dbgMsgBuf[400];
+        setText(dbgMsgBuf, L"QpiContextUserProcedureCall in tick ");
+        appendNumber(dbgMsgBuf, system.tick, FALSE);
+        appendText(dbgMsgBuf, L": contract ");
+        appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+        appendText(dbgMsgBuf, L", inputType ");
+        appendNumber(dbgMsgBuf, inputType, FALSE);
+        appendText(dbgMsgBuf, L", inputSize ");
+        appendNumber(dbgMsgBuf, inputSize, FALSE);
+        addDebugMessage(dbgMsgBuf);
+#endif
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(contractUserProcedures[_currentContractIndex][inputType]);
 
@@ -264,7 +276,6 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 #ifndef NDEBUG
         if (!inputBuffer)
         {
-            CHAR16 dbgMsgBuf[400];
             setText(dbgMsgBuf, L"QpiContextUserProcedureCall stack buffer alloc failed in tick ");
             appendNumber(dbgMsgBuf, system.tick, FALSE);
             addDebugMessage(dbgMsgBuf);
@@ -332,6 +343,19 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
     // call function
     void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
     {
+#ifndef NDEBUG
+        CHAR16 dbgMsgBuf[300];
+        setText(dbgMsgBuf, L"QpiContextUserFunctionCall in tick ");
+        appendNumber(dbgMsgBuf, system.tick, FALSE);
+        appendText(dbgMsgBuf, L": contract ");
+        appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+        appendText(dbgMsgBuf, L", inputType ");
+        appendNumber(dbgMsgBuf, inputType, FALSE);
+        appendText(dbgMsgBuf, L", inputSize ");
+        appendNumber(dbgMsgBuf, inputSize, FALSE);
+        addDebugMessage(dbgMsgBuf);
+#endif
+
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(contractUserFunctions[_currentContractIndex][inputType]);
 
