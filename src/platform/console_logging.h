@@ -16,7 +16,7 @@ static CHAR16 message[16384], timestampedMessage[16384];
 #include <cstdio>
 
 // Output to console on no-UEFI platform
-static inline void outputStringToConsole(CHAR16* str)
+static inline void outputStringToConsole(const CHAR16* str)
 {
     wprintf(L"%ls", str);
 }
@@ -33,9 +33,9 @@ static void logToConsole(const CHAR16* message)
 
 // Output to console on UEFI platform
 // CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
-static inline void outputStringToConsole(CHAR16* str)
+static inline void outputStringToConsole(const CHAR16* str)
 {
-    st->ConOut->OutputString(st->ConOut, str);
+    st->ConOut->OutputString(st->ConOut, (CHAR16*)str);
 }
 
 // Log message to console (with line break) on UEFI platform (defined in qubic.cpp due to dependencies on time and qubic status)
