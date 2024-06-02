@@ -1,13 +1,13 @@
 using namespace QPI;
 
-#define INITIAL_QPT 1000
-#define MAX_NUMBER_OF_POOL 128
-#define FEE_CREATE_POOL 100000000LL
-#define FEE_ISSUE_ASSET 1000000000LL
-#define TOKEN_TRANSER_FEE 1000000LL // Amount of qus
-#define ENABLE_TOKEN_FEE 100000000LL
-#define QWALLET_TOKEN 23720092042876753ULL
-#define MAX_TOKEN 35536
+#define QPOOL_INITIAL_QPT 1000
+#define QPOOL_MAX_NUMBER_OF_POOL 128
+#define QPOOL_FEE_CREATE_POOL 100000000LL
+#define QPOOL_FEE_ISSUE_ASSET 1000000000LL
+#define QPOOL_TOKEN_TRANSER_FEE 1000000LL // Amount of qus
+#define QPOOL_ENABLE_TOKEN_FEE 100000000LL
+#define QPOOL_QWALLET_TOKEN 23720092042876753ULL
+#define QPOOL_MAX_TOKEN 35536
 
 struct QPOOL2
 {
@@ -26,6 +26,8 @@ private:
         uint64 liquidity2;
         uint64 liquidity3;
         uint64 liquidity4;
+		uint64 TotalAmountOfQPT;
+		uint64 totalSupply;
 
       	uint16 IndexOfToken1;
         uint16 IndexOfToken2;
@@ -40,12 +42,10 @@ private:
         uint8 Weight4;
 
         uint8 WeightOfQWALLET;
-		uint64 TotalAmountOfQPT;
-		uint64 totalSupply;
 	};
-	array<PoolInfo, MAX_NUMBER_OF_POOL> pools;
-	array<uint64*, MAX_NUMBER_OF_POOL> QPTAmountOfUser;   // Amount of LP token that provider reserved in a pool
-	array<id*, MAX_NUMBER_OF_POOL> pool_userlist;			  // The Order of user
+	array<PoolInfo, QPOOL_MAX_NUMBER_OF_POOL> pools;
+	array<uint64*, QPOOL_MAX_NUMBER_OF_POOL> QPTAmountOfUser;   // Amount of LP token that provider reserved in a pool
+	array<id*, QPOOL_MAX_NUMBER_OF_POOL> pool_userlist;			  // The Order of user
 	uint32 NumberOfPool;						// Number of Pool
 
 	struct tokenInfor {
@@ -53,7 +53,7 @@ private:
 		id issuer;
 	};
 
-	array<tokenInfor, MAX_TOKEN> TokenList;
+	array<tokenInfor, QPOOL_MAX_TOKEN> TokenList;
 	uint16 NumberOfEnableToken;
 
 public:
@@ -226,7 +226,7 @@ public:
 	};
 
 	PUBLIC(EnableToken)
-		if(qpi.invocationReward() < ENABLE_TOKEN_FEE) {
+		if(qpi.invocationReward() < QPOOL_ENABLE_TOKEN_FEE) {
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -253,7 +253,7 @@ public:
 	_
 
 	PUBLIC(CreateLiquidityPool)
-		if(qpi.invocationReward() < FEE_CREATE_POOL + TOKEN_TRANSER_FEE * (input.NumberOfToken - 1) + input.initialAmountOfQU) {
+		if(qpi.invocationReward() < QPOOL_FEE_CREATE_POOL + QPOOL_TOKEN_TRANSER_FEE * (input.NumberOfToken - 1) + input.initialAmountOfQU) {
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -320,7 +320,7 @@ public:
 			}
 			return;
 		}
-		if(qpi.numberOfPossessedShares(QWALLET_TOKEN, IssuerQWALLET, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.initialAmountOfQWALLET) {
+		if(qpi.numberOfPossessedShares(QPOOL_QWALLET_TOKEN, IssuerQWALLET, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.initialAmountOfQWALLET) {
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -331,10 +331,10 @@ public:
 		if(input.NumberOfToken > 2) qpi.transferShareOwnershipAndPossession(assetnameOftoken1, issuerOfToken1, qpi.invocator(), qpi.invocator(), input.initialAmount1, contractID);
 		if(input.NumberOfToken > 3) qpi.transferShareOwnershipAndPossession(assetnameOftoken2, issuerOfToken2, qpi.invocator(), qpi.invocator(), input.initialAmount2, contractID);
 		if(input.NumberOfToken > 4) qpi.transferShareOwnershipAndPossession(assetnameOftoken3, issuerOfToken3, qpi.invocator(), qpi.invocator(), input.initialAmount3, contractID);
-		qpi.transferShareOwnershipAndPossession(QWALLET_TOKEN, IssuerQWALLET, qpi.invocator(), qpi.invocator(), input.initialAmountOfQWALLET, contractID);
+		qpi.transferShareOwnershipAndPossession(QPOOL_QWALLET_TOKEN, IssuerQWALLET, qpi.invocator(), qpi.invocator(), input.initialAmountOfQWALLET, contractID);
 		
-		if(qpi.invocationReward() > FEE_CREATE_POOL + TOKEN_TRANSER_FEE * (input.NumberOfToken - 1) + input.initialAmountOfQU) {
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - (FEE_CREATE_POOL + TOKEN_TRANSER_FEE * (input.NumberOfToken - 1) + input.initialAmountOfQU));
+		if(qpi.invocationReward() > QPOOL_FEE_CREATE_POOL + QPOOL_TOKEN_TRANSER_FEE * (input.NumberOfToken - 1) + input.initialAmountOfQU) {
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - (QPOOL_FEE_CREATE_POOL + QPOOL_TOKEN_TRANSER_FEE * (input.NumberOfToken - 1) + input.initialAmountOfQU));
 		}
 		PoolInfo newPool;
 		newPool.NameOfLPToken = input.NameOfLPToken;
@@ -359,7 +359,7 @@ public:
 		newPool.Weight4 = input.Weight4;
 		newPool.WeightOfQWALLET = input.WeightOfQWALLET;
 
-		newPool.TotalAmountOfQPT = INITIAL_QPT;
+		newPool.TotalAmountOfQPT = QPOOL_INITIAL_QPT;
 		newPool.totalSupply = 100 * input.initialAmountOfQU / QuWeight;
 
 		state.pools.set(state.NumberOfPool, newPool);
@@ -371,7 +371,7 @@ public:
 //
 //		setting the QPT amount of first user(pool creator) in a new pool
 		uint64* QPTAmountOfUser;
-		QPTAmountOfUser[0] = INITIAL_QPT;
+		QPTAmountOfUser[0] = QPOOL_INITIAL_QPT;
 		state.QPTAmountOfUser.set(state.NumberOfPool, QPTAmountOfUser);
 
 //		add the number of pool
@@ -379,7 +379,7 @@ public:
 	_
 	
 	PUBLIC(IssueAsset)
-		if(qpi.invocationReward() < FEE_ISSUE_ASSET) {
+		if(qpi.invocationReward() < QPOOL_FEE_ISSUE_ASSET) {
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -388,9 +388,9 @@ public:
 			output.issuedNumberOfShares = 0;
 			return ;
 		}
-		if (qpi.invocationReward() > FEE_ISSUE_ASSET)
+		if (qpi.invocationReward() > QPOOL_FEE_ISSUE_ASSET)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - FEE_ISSUE_ASSET);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - QPOOL_FEE_ISSUE_ASSET);
 		}
 
 		output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
