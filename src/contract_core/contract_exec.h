@@ -252,6 +252,8 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         // reserve stack for this processor (may block)
         acquireContractLocalsStack(_stackIndex);
         ASSERT(contractLocalsStack[_stackIndex].size() == 0);
+        if (contractLocalsStack[_stackIndex].size())
+            contractLocalsStack[_stackIndex].freeAll();
 
         // allocate input, output, and locals buffer from stack and init them
         unsigned short fullInputSize = contractUserProcedureInputSizes[_currentContractIndex][inputType];
@@ -337,6 +339,8 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         constexpr unsigned int stacksNotUsedToReserveThemForStateWriter = 1;
         acquireContractLocalsStack(_stackIndex, stacksNotUsedToReserveThemForStateWriter);
         ASSERT(contractLocalsStack[_stackIndex].size() == 0);
+        if (contractLocalsStack[_stackIndex].size())
+            contractLocalsStack[_stackIndex].freeAll();
 
         // allocate input, output, and locals buffer from stack and init them
         unsigned short fullInputSize = contractUserFunctionInputSizes[_currentContractIndex][inputType];
