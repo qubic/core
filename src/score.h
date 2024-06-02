@@ -36,11 +36,11 @@ struct ScoreFunction
     static constexpr unsigned int maxAllNeuronLength = dataLength + numberOfNeuronsMaxInputOutput + infoLength;
     long long miningData[dataLength];
 
-    struct
+    struct synapseStruct
     {
         char inputLength[(numberOfInputNeurons + infoLength) * (dataLength + numberOfInputNeurons + infoLength)];
         char outputLength[(numberOfOutputNeurons + dataLength) * (infoLength + numberOfOutputNeurons + dataLength)];
-    } _synapses[solutionBufferCount];
+    } * _synapses;
 
     struct queueItem {
         short tick;
@@ -74,7 +74,7 @@ struct ScoreFunction
         unsigned char _maxIndexBuffer[allParamsCount * 2][32];
         static_assert(maxInputDuration <= 256 && maxOutputDuration <= 256, "Need to increase size of _maxIndexBuffer");
         short buffer[256];
-    } _computeBuffer[solutionBufferCount];
+    } * _computeBuffer;
     static_assert(maxInputDuration <= 256 && maxOutputDuration <= 256, "Need to regenerate mod num table");
     // _totalModNum[i]: total of divisible numbers of i
     unsigned char _totalModNum[257];
@@ -84,9 +84,9 @@ struct ScoreFunction
     m256i initialRandomSeed;
 
     volatile char solutionEngineLock[solutionBufferCount];
-    volatile char scoreCacheLock;
 
 #if USE_SCORE_CACHE
+    volatile char scoreCacheLock;
     ScoreCache<SCORE_CACHE_SIZE, SCORE_CACHE_COLLISION_RETRIES> scoreCache;
 #endif
 
@@ -109,6 +109,35 @@ struct ScoreFunction
                 }
             }
         }
+    }
+
+    bool initMemory()
+    {
+        // TODO: call freePool() for buffers allocated below
+        if (_synapses == nullptr) {
+            if (!allocatePool(sizeof(synapseStruct) * solutionBufferCount, (void**)&_synapses))
+            {
+                logToConsole(L"Failed to allocate memory for score solution buffer!");
+                return false;
+            }
+        }
+        if (_computeBuffer == nullptr) {
+            if (!allocatePool(sizeof(computeBuffer) * solutionBufferCount, (void**)&_computeBuffer))
+            {
+                logToConsole(L"Failed to allocate memory for score solution buffer!");
+                return false;
+            }
+        }
+        for (int i = 0; i < solutionBufferCount; i++) {
+            setMem(&_synapses[i], sizeof(synapseStruct), 0);
+            setMem(&_computeBuffer[i], sizeof(computeBuffer), 0);
+            solutionEngineLock[i] = 0;
+        }
+#if USE_SCORE_CACHE
+        scoreCacheLock = 0;
+        setMem(&scoreCache, sizeof(scoreCache), 0);
+#endif
+        return true;
     }
 
     // Save score cache to SCORE_CACHE_FILE_NAME

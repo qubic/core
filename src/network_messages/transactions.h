@@ -22,7 +22,7 @@ struct Transaction
     unsigned short inputType;
     unsigned short inputSize;
 
-    // Return total transaction datat size with payload data and signature
+    // Return total transaction data size with payload data and signature
     unsigned int totalSize() const
     {
         return sizeof(Transaction) + inputSize + SIGNATURE_SIZE;

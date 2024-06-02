@@ -65,13 +65,22 @@ public:
         sint64 fee;
     };
 
+    struct BurnQubic_input
+    {
+        sint64 amount;
+    };
+    struct BurnQubic_output
+    {
+        sint64 amount;
+    };
+
     /**************************************/
     /************CORE FUNCTIONS************/
     /**************************************/
     /*
     * @return return SendToManyV1 fee per invocation
     */
-    PUBLIC(GetSendToManyV1Fee)
+    PUBLIC_FUNCTION(GetSendToManyV1Fee)
         output.fee = STM1_INVOCATION_FEE;
     _
 
@@ -81,7 +90,7 @@ public:
     * @param list of 25 amounts (200 bytes): 8 bytes(long long) for each amount, leave empty(zeroes) for unused memory space
     * @return returnCode (0 means success)
     */
-    PUBLIC(SendToManyV1)
+    PUBLIC_PROCEDURE(SendToManyV1)
         state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), STM1_TRIGGERED };
         LOG_INFO(state.logger);
         state.total = input.amt0 + input.amt1 + input.amt2 + input.amt3 + input.amt4 + input.amt5 + input.amt6 + input.amt7 + input.amt8 + input.amt9 + input.amt10 + input.amt11 + input.amt12 + input.amt13 + input.amt14 + input.amt15 + input.amt16 + input.amt17 + input.amt18 + input.amt19 + input.amt20 + input.amt21 + input.amt22 + input.amt23 + input.amt24 + STM1_INVOCATION_FEE;
@@ -270,10 +279,43 @@ public:
         qpi.burn(STM1_INVOCATION_FEE);
     _
 
+    /**
+    * Practicing burning qubic in the QChurch
+    * @param the amount of qubic to burn
+    * @return the amount of qubic has burned, < 0 if failed to burn
+    */
+    PUBLIC_PROCEDURE(BurnQubic)
+        // lack of fund => return the coins
+        if (input.amount < 0) // invalid input amount
+        {
+            output.amount = -1;
+            return;
+        }
+        if (input.amount == 0)
+        {
+            output.amount = 0;
+            return;            
+        }
+        if (qpi.invocationReward() < input.amount) // not sending enough qu to burn
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.amount = -1;
+            return;
+        }
+        if (qpi.invocationReward() > input.amount) // send more than qu to burn
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount); // return the changes
+        }
+        qpi.burn(input.amount);
+        output.amount = input.amount;
+        return;
+    _
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
+        REGISTER_USER_PROCEDURE(BurnQubic, 2);
     _
 
     INITIALIZE
