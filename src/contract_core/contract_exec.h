@@ -286,8 +286,16 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 
         char* outputBuffer = inputBuffer + fullInputSize;
         char* localsBuffer = outputBuffer + outputSize;
-        if (fullInputSize > inputSize)
+        if (inputSize < fullInputSize)
+        {
+            // less input data than expected by contract -> fill with 0
             setMem(inputBuffer + inputSize, fullInputSize - inputSize, 0);
+        }
+        else if (inputSize > fullInputSize)
+        {
+            // more input data than expected by contract -> discard additional bytes
+            inputSize = fullInputSize;
+        }
         copyMem(inputBuffer, inputPtr, inputSize);
         setMem(outputBuffer, outputSize + localsSize, 0);
 
@@ -372,8 +380,16 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
 #endif
         outputBuffer = inputBuffer + fullInputSize;
         char* localsBuffer = outputBuffer + outputSize;
-        if (fullInputSize > inputSize)
+        if (inputSize < fullInputSize)
+        {
+            // less input data than expected by contract -> fill with 0
             setMem(inputBuffer + inputSize, fullInputSize - inputSize, 0);
+        }
+        else if (inputSize > fullInputSize)
+        {
+            // more input data than expected by contract -> discard additional bytes
+            inputSize = fullInputSize;
+        }
         copyMem(inputBuffer, inputPtr, inputSize);
         setMem(outputBuffer, outputSize + localsSize, 0);
 
