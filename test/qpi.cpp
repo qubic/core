@@ -626,6 +626,8 @@ void testCollectionOnePovMultiElements(int prioAmpFactor, int prioFreqDiv)
         checkPriorityQueue(coll, pov);
 
         EXPECT_TRUE(elementIndex != QPI::NULL_INDEX);
+        EXPECT_EQ(coll.priority(elementIndex), prio);
+        EXPECT_EQ(coll.element(elementIndex), value);
         EXPECT_EQ(coll.population(pov), i + 1);
         EXPECT_EQ(coll.population(), i + 1);
     }
@@ -745,10 +747,11 @@ void testCollectionOnePovMultiElements(int prioAmpFactor, int prioFreqDiv)
         EXPECT_EQ(followingRemovedPrio, coll.priority(followingRemovedIndex));
         checkPriorityQueue(coll, pov);
 
-        // remove another
-        followingRemovedValue = coll.element(coll.nextElementIndex(1));
-        followingRemovedPrio = coll.priority(coll.nextElementIndex(1));
-        followingRemovedIndex = coll.remove(1);
+        // remove another (not head or tail!)
+        QPI::sint64 removeIdx = followingRemovedIndex;
+        followingRemovedValue = coll.element(coll.nextElementIndex(removeIdx));
+        followingRemovedPrio = coll.priority(coll.nextElementIndex(removeIdx));
+        followingRemovedIndex = coll.remove(removeIdx);
         EXPECT_EQ(followingRemovedValue, coll.element(followingRemovedIndex));
         EXPECT_EQ(followingRemovedPrio, coll.priority(followingRemovedIndex));
         checkPriorityQueue(coll, pov);
@@ -809,10 +812,58 @@ void testCollectionOnePovMultiElements(int prioAmpFactor, int prioFreqDiv)
 
 TEST(TestCoreQPI, CollectionOnePovMultiElements)
 {
+    testCollectionOnePovMultiElements<16>(10, 3);
     testCollectionOnePovMultiElements<128>(10, 3);
     testCollectionOnePovMultiElements<128>(10, 10);
     testCollectionOnePovMultiElements<128>(1, 10);
     testCollectionOnePovMultiElements<128>(1, 1);
+}
+
+TEST(TestCoreQPI, CollectionOnePovMultiElementsSamePrioOrder)
+{
+    constexpr unsigned long long capacity = 16;
+
+    // for valid init you either need to call reset or load the data from a file (in SC, state is zeroed before INITIALIZE is called)
+    QPI::collection<int, capacity> coll;
+    coll.reset();
+
+    // these tests support changing the implementation of the element array filling to non-sequential
+    // by saving element indices in order
+    std::vector<QPI::sint64> elementIndices;
+
+    // fill completely with same priority
+    QPI::id pov(1, 2, 3, 4);
+    constexpr QPI::sint64 prio = 100;
+    for (int i = 0; i < capacity; ++i)
+    {
+        int value = i * 3;
+
+        EXPECT_EQ(coll.capacity(), capacity);
+        EXPECT_EQ(coll.population(), i);
+        EXPECT_EQ(coll.population(pov), i);
+
+        QPI::sint64 elementIndex = coll.add(pov, value, prio);
+        elementIndices.push_back(elementIndex);
+        checkPriorityQueue(coll, pov);
+
+        EXPECT_TRUE(elementIndex != QPI::NULL_INDEX);
+        EXPECT_EQ(coll.element(elementIndex), value);
+        EXPECT_EQ(coll.priority(elementIndex), prio);
+        EXPECT_EQ(coll.population(pov), i + 1);
+        EXPECT_EQ(coll.population(), i + 1);
+    }
+
+    // check that priority queue order of same priorty items matches the order of insertion
+    QPI::sint64 elementIndex = coll.headIndex(pov);
+    for (int i = 0; i < capacity; ++i)
+    {
+        int value = i * 3;
+        EXPECT_NE(elementIndex, QPI::NULL_INDEX);
+        EXPECT_EQ(coll.element(elementIndex), value);
+        EXPECT_EQ(coll.priority(elementIndex), prio);
+        elementIndex = coll.nextElementIndex(elementIndex);
+    }
+    EXPECT_EQ(elementIndex, QPI::NULL_INDEX);
 }
 
 template <unsigned long long capacity>

@@ -13,8 +13,6 @@
 #include "kangaroo_twelve.h"
 #include "four_q.h"
 
-#define ASSETS_CAPACITY 0x1000000ULL // Must be 2^N
-#define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
 
 
 
@@ -306,6 +304,8 @@ iteration:
         {
             bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(Asset));
             response.tick = system.tick;
+            response.universeIndex = universeIndex;
+            getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
 
             enqueueResponse(peer, sizeof(response), RespondIssuedAssets::type, header->dejavu(), &response);
         }
@@ -342,6 +342,8 @@ iteration:
             bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(Asset));
             bs->CopyMem(&response.issuanceAsset, &assets[assets[universeIndex].varStruct.ownership.issuanceIndex], sizeof(Asset));
             response.tick = system.tick;
+            response.universeIndex = universeIndex;
+            getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
 
             enqueueResponse(peer, sizeof(response), RespondOwnedAssets::type, header->dejavu(), &response);
         }
@@ -379,6 +381,8 @@ iteration:
             bs->CopyMem(&response.ownershipAsset, &assets[assets[universeIndex].varStruct.possession.ownershipIndex], sizeof(Asset));
             bs->CopyMem(&response.issuanceAsset, &assets[assets[assets[universeIndex].varStruct.possession.ownershipIndex].varStruct.ownership.issuanceIndex], sizeof(Asset));
             response.tick = system.tick;
+            response.universeIndex = universeIndex;
+            getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
 
             enqueueResponse(peer, sizeof(response), RespondPossessedAssets::type, header->dejavu(), &response);
         }

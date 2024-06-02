@@ -128,6 +128,7 @@ static void closePeer(Peer* peer)
     }
 }
 
+// Add message to sending buffer of specific peer, can only called from main thread (not thread-safe).
 static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 {
     // The sending buffer may queue multiple messages, each of which may need to transmitted in many small packets.
@@ -149,6 +150,7 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
     }
 }
 
+// Add message to sending buffer of random peer, can only called from main thread (not thread-safe).
 static void pushToAny(RequestResponseHeader* requestResponseHeader)
 {
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
@@ -166,6 +168,7 @@ static void pushToAny(RequestResponseHeader* requestResponseHeader)
     }
 }
 
+// Add message to sending buffer of some random peers, can only called from main thread (not thread-safe).
 static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
 {
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
@@ -186,6 +189,7 @@ static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
     }
 }
 
+// Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
 {
     ACQUIRE(responseQueueHeadLock);
@@ -207,6 +211,7 @@ static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
     RELEASE(responseQueueHeadLock);
 }
 
+// Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
 {
     ACQUIRE(responseQueueHeadLock);
@@ -245,7 +250,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 
 /**
 * checks if a given address is a bogon address
-* a bogon address is an ip address which should not be used pubicly (e.g. private networks)
+* a bogon address is an ip address which should not be used publicly (e.g. private networks)
 *
 * @param address the ip address to be checked
 * @return true if address is bogon or false if not
@@ -512,6 +517,10 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                                         && (unsigned short)(requestQueueElementHead + 1) != requestQueueElementTail)
                                     {
                                         dejavu0[saltedId >> 6] |= (1ULL << (saltedId & 63));
+
+                                        ASSERT(requestQueueElementHead < REQUEST_QUEUE_LENGTH);
+                                        ASSERT(requestQueueBufferHead < REQUEST_QUEUE_BUFFER_SIZE);
+                                        ASSERT(requestQueueBufferHead + requestResponseHeader->size() < REQUEST_QUEUE_BUFFER_SIZE);
 
                                         requestQueueElements[requestQueueElementHead].offset = requestQueueBufferHead;
                                         bs->CopyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());

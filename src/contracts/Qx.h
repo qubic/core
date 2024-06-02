@@ -185,6 +185,7 @@ private:
 	};
 	collection<_EntityOrder, 2097152 * X_MULTIPLIER> _entityOrders;
 
+	// TODO: change to "locals" variables and remove from state? -> every func/proc can define struct of "locals" that is passed as an argument (stored on stack structure per processor)
 	sint64 _elementIndex, _elementIndex2;
 	id _issuerAndAssetName;
 	_AssetOrder _assetOrder;
@@ -219,40 +220,56 @@ private:
 		sint64 numberOfShares;
 	} _numberOfReservedShares_output;
 
-	PRIVATE(_NumberOfReservedShares)
+	struct _NumberOfReservedShares_locals
+	{
+		sint64 _elementIndex;
+		_EntityOrder _entityOrder;
+	};
+
+	PRIVATE_FUNCTION_WITH_LOCALS(_NumberOfReservedShares)
 
 		output.numberOfShares = 0;
 
-		state._elementIndex = state._entityOrders.headIndex(qpi.invocator(), 0);
-		while (state._elementIndex != NULL_INDEX)
+		locals._elementIndex = state._entityOrders.headIndex(qpi.invocator(), 0);
+		while (locals._elementIndex != NULL_INDEX)
 		{
-			state._entityOrder = state._entityOrders.element(state._elementIndex);
-			if (state._entityOrder.assetName == input.assetName
-				&& state._entityOrder.issuer == input.issuer)
+			locals._entityOrder = state._entityOrders.element(locals._elementIndex);
+			if (locals._entityOrder.assetName == input.assetName
+				&& locals._entityOrder.issuer == input.issuer)
 			{
-				output.numberOfShares += state._entityOrder.numberOfShares;
+				output.numberOfShares += locals._entityOrder.numberOfShares;
 			}
 
-			state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+			locals._elementIndex = state._entityOrders.nextElementIndex(locals._elementIndex);
 		}
 	_
 
-	PUBLIC(Fees)
+
+	PUBLIC_FUNCTION(Fees)
 
 		output.assetIssuanceFee = state._assetIssuanceFee;
 		output.transferFee = state._transferFee;
 		output.tradeFee = state._tradeFee;
-		_
+	_
 
-	PUBLIC(AssetAskOrders)
 
-		state._issuerAndAssetName = input.issuer;
-		state._issuerAndAssetName.u64._3 = input.assetName;
+	struct AssetAskOrders_locals
+	{
+		sint64 _elementIndex, _elementIndex2;
+		id _issuerAndAssetName;
+		_AssetOrder _assetOrder;
+		AssetAskOrders_output::Order _assetAskOrder;
+	};
 
-		state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, 0);
-		state._elementIndex2 = 0;
-		while (state._elementIndex != NULL_INDEX
-			&& state._elementIndex2 < 256)
+	PUBLIC_FUNCTION_WITH_LOCALS(AssetAskOrders)
+
+		locals._issuerAndAssetName = input.issuer;
+		locals._issuerAndAssetName.u64._3 = input.assetName;
+
+		locals._elementIndex = state._assetOrders.headIndex(locals._issuerAndAssetName, 0);
+		locals._elementIndex2 = 0;
+		while (locals._elementIndex != NULL_INDEX
+			&& locals._elementIndex2 < 256)
 		{
 			if (input.offset > 0)
 			{
@@ -260,43 +277,52 @@ private:
 			}
 			else
 			{
-				state._assetAskOrder.price = -state._assetOrders.priority(state._elementIndex);
-				state._assetOrder = state._assetOrders.element(state._elementIndex);
-				state._assetAskOrder.entity = state._assetOrder.entity;
-				state._assetAskOrder.numberOfShares = state._assetOrder.numberOfShares;
-				output.orders.set(state._elementIndex2, state._assetAskOrder);
-				state._elementIndex2++;
+				locals._assetAskOrder.price = -state._assetOrders.priority(locals._elementIndex);
+				locals._assetOrder = state._assetOrders.element(locals._elementIndex);
+				locals._assetAskOrder.entity = locals._assetOrder.entity;
+				locals._assetAskOrder.numberOfShares = locals._assetOrder.numberOfShares;
+				output.orders.set(locals._elementIndex2, locals._assetAskOrder);
+				locals._elementIndex2++;
 			}
 
-			state._elementIndex = state._assetOrders.nextElementIndex(state._elementIndex);
+			locals._elementIndex = state._assetOrders.nextElementIndex(locals._elementIndex);
 		}
 
-		if (state._elementIndex2 < 256)
+		if (locals._elementIndex2 < 256)
 		{
-			state._assetAskOrder.entity = NULL_ID;
-			state._assetAskOrder.price = 0;
-			state._assetAskOrder.numberOfShares = 0;
-			while (state._elementIndex2 < 256)
+			locals._assetAskOrder.entity = NULL_ID;
+			locals._assetAskOrder.price = 0;
+			locals._assetAskOrder.numberOfShares = 0;
+			while (locals._elementIndex2 < 256)
 			{
-				output.orders.set(state._elementIndex2, state._assetAskOrder);
-				state._elementIndex2++;
+				output.orders.set(locals._elementIndex2, locals._assetAskOrder);
+				locals._elementIndex2++;
 			}
 		}
 	_
 
-	PUBLIC(AssetBidOrders)
 
-		state._issuerAndAssetName = input.issuer;
-		state._issuerAndAssetName.u64._3 = input.assetName;
+	struct AssetBidOrders_locals
+	{
+		sint64 _elementIndex, _elementIndex2;
+		id _issuerAndAssetName;
+		_AssetOrder _assetOrder;
+		AssetBidOrders_output::Order _assetBidOrder;
+	};
 
-		state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName);
-		state._elementIndex2 = 0;
-		while (state._elementIndex != NULL_INDEX
-			&& state._elementIndex2 < 256)
+	PUBLIC_FUNCTION_WITH_LOCALS(AssetBidOrders)
+
+		locals._issuerAndAssetName = input.issuer;
+		locals._issuerAndAssetName.u64._3 = input.assetName;
+
+		locals._elementIndex = state._assetOrders.headIndex(locals._issuerAndAssetName);
+		locals._elementIndex2 = 0;
+		while (locals._elementIndex != NULL_INDEX
+			&& locals._elementIndex2 < 256)
 		{
-			state._assetBidOrder.price = state._assetOrders.priority(state._elementIndex);
+			locals._assetBidOrder.price = state._assetOrders.priority(locals._elementIndex);
 
-			if (state._assetBidOrder.price <= 0)
+			if (locals._assetBidOrder.price <= 0)
 			{
 				break;
 			}
@@ -307,35 +333,43 @@ private:
 			}
 			else
 			{
-				state._assetOrder = state._assetOrders.element(state._elementIndex);
-				state._assetBidOrder.entity = state._assetOrder.entity;
-				state._assetBidOrder.numberOfShares = state._assetOrder.numberOfShares;
-				output.orders.set(state._elementIndex2, state._assetBidOrder);
-				state._elementIndex2++;
+				locals._assetOrder = state._assetOrders.element(locals._elementIndex);
+				locals._assetBidOrder.entity = locals._assetOrder.entity;
+				locals._assetBidOrder.numberOfShares = locals._assetOrder.numberOfShares;
+				output.orders.set(locals._elementIndex2, locals._assetBidOrder);
+				locals._elementIndex2++;
 			}
 
-			state._elementIndex = state._assetOrders.nextElementIndex(state._elementIndex);
+			locals._elementIndex = state._assetOrders.nextElementIndex(locals._elementIndex);
 		}
 
-		if (state._elementIndex2 < 256)
+		if (locals._elementIndex2 < 256)
 		{
-			state._assetBidOrder.entity = NULL_ID;
-			state._assetBidOrder.price = 0;
-			state._assetBidOrder.numberOfShares = 0;
-			while (state._elementIndex2 < 256)
+			locals._assetBidOrder.entity = NULL_ID;
+			locals._assetBidOrder.price = 0;
+			locals._assetBidOrder.numberOfShares = 0;
+			while (locals._elementIndex2 < 256)
 			{
-				output.orders.set(state._elementIndex2, state._assetBidOrder);
-				state._elementIndex2++;
+				output.orders.set(locals._elementIndex2, locals._assetBidOrder);
+				locals._elementIndex2++;
 			}
 		}
 	_
 
-	PUBLIC(EntityAskOrders)
 
-		state._elementIndex = state._entityOrders.headIndex(input.entity, 0);
-		state._elementIndex2 = 0;
-		while (state._elementIndex != NULL_INDEX
-			&& state._elementIndex2 < 256)
+	struct EntityAskOrders_locals
+	{
+		sint64 _elementIndex, _elementIndex2;
+		_EntityOrder _entityOrder;
+		EntityAskOrders_output::Order _entityAskOrder;
+	};
+
+	PUBLIC_FUNCTION_WITH_LOCALS(EntityAskOrders)
+
+		locals._elementIndex = state._entityOrders.headIndex(input.entity, 0);
+		locals._elementIndex2 = 0;
+		while (locals._elementIndex != NULL_INDEX
+			&& locals._elementIndex2 < 256)
 		{
 			if (input.offset > 0)
 			{
@@ -343,42 +377,50 @@ private:
 			}
 			else
 			{
-				state._entityAskOrder.price = -state._entityOrders.priority(state._elementIndex);
-				state._entityOrder = state._entityOrders.element(state._elementIndex);
-				state._entityAskOrder.issuer = state._entityOrder.issuer;
-				state._entityAskOrder.assetName = state._entityOrder.assetName;
-				state._entityAskOrder.numberOfShares = state._entityOrder.numberOfShares;
-				output.orders.set(state._elementIndex2, state._entityAskOrder);
-				state._elementIndex2++;
+				locals._entityAskOrder.price = -state._entityOrders.priority(locals._elementIndex);
+				locals._entityOrder = state._entityOrders.element(locals._elementIndex);
+				locals._entityAskOrder.issuer = locals._entityOrder.issuer;
+				locals._entityAskOrder.assetName = locals._entityOrder.assetName;
+				locals._entityAskOrder.numberOfShares = locals._entityOrder.numberOfShares;
+				output.orders.set(locals._elementIndex2, locals._entityAskOrder);
+				locals._elementIndex2++;
 			}
 
-			state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+			locals._elementIndex = state._entityOrders.nextElementIndex(locals._elementIndex);
 		}
 
-		if (state._elementIndex2 < 256)
+		if (locals._elementIndex2 < 256)
 		{
-			state._entityAskOrder.issuer = NULL_ID;
-			state._entityAskOrder.assetName = 0;
-			state._entityAskOrder.price = 0;
-			state._entityAskOrder.numberOfShares = 0;
-			while (state._elementIndex2 < 256)
+			locals._entityAskOrder.issuer = NULL_ID;
+			locals._entityAskOrder.assetName = 0;
+			locals._entityAskOrder.price = 0;
+			locals._entityAskOrder.numberOfShares = 0;
+			while (locals._elementIndex2 < 256)
 			{
-				output.orders.set(state._elementIndex2, state._entityAskOrder);
-				state._elementIndex2++;
+				output.orders.set(locals._elementIndex2, locals._entityAskOrder);
+				locals._elementIndex2++;
 			}
 		}
 	_
 
-	PUBLIC(EntityBidOrders)
+	
+	struct EntityBidOrders_locals
+	{
+		sint64 _elementIndex, _elementIndex2;
+		_EntityOrder _entityOrder;
+		EntityBidOrders_output::Order _entityBidOrder;
+	};
 
-		state._elementIndex = state._entityOrders.headIndex(input.entity);
-		state._elementIndex2 = 0;
-		while (state._elementIndex != NULL_INDEX
-			&& state._elementIndex2 < 256)
+	PUBLIC_FUNCTION_WITH_LOCALS(EntityBidOrders)
+
+		locals._elementIndex = state._entityOrders.headIndex(input.entity);
+		locals._elementIndex2 = 0;
+		while (locals._elementIndex != NULL_INDEX
+			&& locals._elementIndex2 < 256)
 		{
-			state._entityBidOrder.price = state._entityOrders.priority(state._elementIndex);
+			locals._entityBidOrder.price = state._entityOrders.priority(locals._elementIndex);
 
-			if (state._entityBidOrder.price <= 0)
+			if (locals._entityBidOrder.price <= 0)
 			{
 				break;
 			}
@@ -389,32 +431,33 @@ private:
 			}
 			else
 			{
-				state._entityOrder = state._entityOrders.element(state._elementIndex);
-				state._entityBidOrder.issuer = state._entityOrder.issuer;
-				state._entityBidOrder.assetName = state._entityOrder.assetName;
-				state._entityBidOrder.numberOfShares = state._entityOrder.numberOfShares;
-				output.orders.set(state._elementIndex2, state._entityBidOrder);
-				state._elementIndex2++;
+				locals._entityOrder = state._entityOrders.element(locals._elementIndex);
+				locals._entityBidOrder.issuer = locals._entityOrder.issuer;
+				locals._entityBidOrder.assetName = locals._entityOrder.assetName;
+				locals._entityBidOrder.numberOfShares = locals._entityOrder.numberOfShares;
+				output.orders.set(locals._elementIndex2, locals._entityBidOrder);
+				locals._elementIndex2++;
 			}
 
-			state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+			locals._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
 		}
 
-		if (state._elementIndex2 < 256)
+		if (locals._elementIndex2 < 256)
 		{
-			state._entityBidOrder.issuer = NULL_ID;
-			state._entityBidOrder.assetName = 0;
-			state._entityBidOrder.price = 0;
-			state._entityBidOrder.numberOfShares = 0;
-			while (state._elementIndex2 < 256)
+			locals._entityBidOrder.issuer = NULL_ID;
+			locals._entityBidOrder.assetName = 0;
+			locals._entityBidOrder.price = 0;
+			locals._entityBidOrder.numberOfShares = 0;
+			while (locals._elementIndex2 < 256)
 			{
-				output.orders.set(state._elementIndex2, state._entityBidOrder);
-				state._elementIndex2++;
+				output.orders.set(locals._elementIndex2, locals._entityBidOrder);
+				locals._elementIndex2++;
 			}
 		}
 	_
 
-	PUBLIC(IssueAsset)
+
+	PUBLIC_PROCEDURE(IssueAsset)
 
 		if (qpi.invocationReward() < state._assetIssuanceFee)
 		{
@@ -437,7 +480,7 @@ private:
 		}
 	_
 
-	PUBLIC(TransferShareOwnershipAndPossession)
+	PUBLIC_PROCEDURE(TransferShareOwnershipAndPossession)
 
 		if (qpi.invocationReward() < state._transferFee)
 		{
@@ -458,7 +501,7 @@ private:
 
 			state._numberOfReservedShares_input.issuer = input.issuer;
 			state._numberOfReservedShares_input.assetName = input.assetName;
-			qpi.call(_NumberOfReservedShares, state, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
+			CALL(_NumberOfReservedShares, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
 			if (qpi.numberOfPossessedShares(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
 			{
 				output.transferredNumberOfShares = 0;
@@ -470,7 +513,7 @@ private:
 		}
 	_
 
-	PUBLIC(AddToAskOrder)
+	PUBLIC_PROCEDURE(AddToAskOrder)
 
 		if (qpi.invocationReward() > 0)
 		{
@@ -486,7 +529,7 @@ private:
 		{
 			state._numberOfReservedShares_input.issuer = input.issuer;
 			state._numberOfReservedShares_input.assetName = input.assetName;
-			qpi.call(_NumberOfReservedShares, state, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
+			CALL(_NumberOfReservedShares, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
 			if (qpi.numberOfPossessedShares(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
 			{
 				output.addedNumberOfShares = 0;
@@ -636,7 +679,7 @@ private:
 		}
 	_
 
-	PUBLIC(AddToBidOrder)
+	PUBLIC_PROCEDURE(AddToBidOrder)
 
 		if (input.price <= 0
 			|| input.numberOfShares <= 0
@@ -806,7 +849,7 @@ private:
 		}
 	_
 
-	PUBLIC(RemoveFromAskOrder)
+	PUBLIC_PROCEDURE(RemoveFromAskOrder)
 
 		if (qpi.invocationReward() > 0)
 		{
@@ -893,7 +936,7 @@ private:
 		}
 	_
 
-	PUBLIC(RemoveFromBidOrder)
+	PUBLIC_PROCEDURE(RemoveFromBidOrder)
 
 		if (qpi.invocationReward() > 0)
 		{
