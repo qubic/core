@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="contract_core.cpp" />
+    <ClCompile Include="m256.cpp" />
+    <ClCompile Include="math_lib.cpp" />
+    <ClCompile Include="network_messages.cpp" />
+    <ClCompile Include="platform.cpp" />
+    <ClCompile Include="qpi.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="score_reference.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="core">
+      <UniqueIdentifier>{b544a744-99a4-4a9d-b445-211aabef63f2}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="..\src\platform\custom_stack.asm">
+      <Filter>core</Filter>
+    </MASM>
+  </ItemGroup>
+</Project>

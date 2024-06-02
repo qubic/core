@@ -12,12 +12,19 @@ struct StackBuffer
     typedef StackBufferSizeType SizeType;
     static_assert(SizeType(-1) > 0, "Signed StackBufferSizeType is not supported!");
 
-    // Initialize as empty stack (momory not zeroed)
+    // Constructor (disabled because not called without MS CRT, you need to call init() to init)
+    //StackBuffer()
+    //{
+    //    init();
+    //}
+
+    // Initialize as empty stack (memory not zeroed)
     void init()
     {
         _allocatedSize = 0;
 #ifdef TRACK_MAX_STACK_BUFFER_SIZE
         _maxAllocatedSize = 0;
+        _failedAllocAttempts = 0;
 #endif
     }
 
@@ -38,15 +45,25 @@ struct StackBuffer
     {
         return _maxAllocatedSize;
     }
+
+    unsigned int failedAllocAttempts() const
+    {
+        return _failedAllocAttempts;
+    }
 #endif
 
     // Allocate storage in buffer.
-    void* allocate(SizeType size)
+    char* allocate(SizeType size)
     {
         // allocate fails of size after allocating overflows buffer size or the used size type
         StackBufferSizeType newSize = _allocatedSize + size + sizeof(SizeType);
         if (newSize > bufferSize || newSize <= _allocatedSize)
+        {
+#ifdef TRACK_MAX_STACK_BUFFER_SIZE
+            ++_failedAllocAttempts;
+#endif
             return nullptr;
+        }
 
         // get pointer to return
         char* allocatedBuffer = _buffer + _allocatedSize;
@@ -74,7 +91,14 @@ struct StackBuffer
 
         // reduce current size down to size before last alloc
         ASSERT(sizeBeforeLastAlloc < _allocatedSize);
+        ASSERT(sizeBeforeLastAlloc < _maxAllocatedSize);
         _allocatedSize = sizeBeforeLastAlloc;
+    }
+
+    // Free all storage allocated before.
+    void freeAll()
+    {
+        _allocatedSize = 0;
     }
 
 protected:
@@ -86,5 +110,6 @@ protected:
 
 #ifdef TRACK_MAX_STACK_BUFFER_SIZE
     SizeType _maxAllocatedSize;
+    unsigned int _failedAllocAttempts;
 #endif
 };

@@ -6,7 +6,10 @@ struct Entity
 {
     m256i publicKey;
     long long incomingAmount, outgoingAmount;
+
+    // Numbers of transfers. These may overflow for entities with high traffic, such as Qx.
     unsigned int numberOfIncomingTransfers, numberOfOutgoingTransfers;
+
     unsigned int latestIncomingTransferTick, latestOutgoingTransferTick;
 };
 

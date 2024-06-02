@@ -89,10 +89,10 @@ public:
 	};
 
 	struct AddLiquidity_input {
-		id poolAddress;           // The address of pool for addition the liquidity 
-		uint32 NumberOfToken;      // Number of tokens to be deposited
-		id_8 AddressesOfToken;     // Address of tokens
 		uint64_8 AmountOfTokens;            // Amount of tokens
+		uint32 NumberOfToken;      // Number of tokens to be deposited
+		id poolAddress;           // The address of pool for addition the liquidity 
+		id_8 AddressesOfToken;     // Address of tokens
 	};
 
 	struct AddLiquidity_output {
@@ -100,8 +100,8 @@ public:
 	};
 
 	struct RemoveLiquidity_input {
-		id poolAddress;              // The address of pool to remove the liquidity
 		uint64 LPTokenAmount;        // The amount of QPT(LP in a pool)
+		id poolAddress;              // The address of pool to remove the liquidity
 	};
 
 	struct RemoveLiquidity_output {
@@ -109,9 +109,9 @@ public:
 	};
 
 	struct RemoveLiquidityForOneToken_input {
+		uint64 LPTokenAmount;        // The amount of QPT(LP in a pool)
 		id poolAddress;              // The address of pool to remove the liquidity
 		id NeededToken;              // The address of needed token
-		uint64 LPTokenAmount;        // The amount of QPT(LP in a pool)
 	};
 
 	struct RemoveLiquidityForOneToken_output {
@@ -119,8 +119,8 @@ public:
 	};
 
 	struct MintLPTokens_input {
-		id poolAddress; 
 		uint64 ValueOfdeposited;   // Address of tokens to be deposited
+		id poolAddress; 
 	};
 
 	struct MintLPTokens_output {
@@ -128,10 +128,10 @@ public:
 	};
 
 	struct BurnLPTokens_input {
-		id poolAddress;
-		bit type;                    // Type of burning LP token(one token, all token)
-		id tokenAddress;             //  Address of token for one token type
 		uint64 LPTokenAmount;        // Amount of QPT tokens which should be burned
+		id poolAddress;
+		id tokenAddress;             //  Address of token for one token type
+		bit type;                    // Type of burning LP token(one token, all token)
 	};
 
 	struct BurnLPTokens_output {
@@ -139,10 +139,10 @@ public:
 	};
 
 	struct SwapToken_input {
+		uint64 inputAmount;  //  Amount of input token
 		id poolAddress;
 		id inputToken;       //  The address of token to be input for swapping
 		id outputToken;      //  The address of token to be output after swapping
-		uint64 inputAmount;  //  Amount of input token
 	};
 
 	struct SwapToken_output {
@@ -163,6 +163,8 @@ public:
         uint64 liquidity2;
         uint64 liquidity3;
         uint64 liquidity4;
+		uint64 totalAmountOfQPT;
+		uint64 totalSupplyByQU;
 
       	uint16 IndexOfToken1;
         uint16 IndexOfToken2;
@@ -176,17 +178,14 @@ public:
         uint8 Weight3;
         uint8 Weight4;
         uint8 WeightOfQWALLET;
-
-		uint64 totalAmountOfQPT;
-		uint64 totalSupplyByQU;
 	};
 
 	struct IssueAsset_input
 	{
 		uint64 assetName;
 		sint64 numberOfShares;
-		sint8 numberOfDecimalPlaces;
 		uint64 unitOfMeasurement;
+		sint8 numberOfDecimalPlaces;
 	};
 	
 	struct IssueAsset_output

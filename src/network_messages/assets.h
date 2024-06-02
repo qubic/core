@@ -74,7 +74,8 @@ struct RespondIssuedAssets
 {
     Asset asset;
     unsigned int tick;
-    // TODO: Add siblings
+    unsigned int universeIndex;
+    m256i siblings[ASSETS_DEPTH];
 
     enum {
         type = 37,
@@ -99,7 +100,8 @@ struct RespondOwnedAssets
     Asset asset;
     Asset issuanceAsset;
     unsigned int tick;
-    // TODO: Add siblings
+    unsigned int universeIndex;
+    m256i siblings[ASSETS_DEPTH];
 
     enum {
         type = 39,
@@ -125,7 +127,8 @@ struct RespondPossessedAssets
     Asset ownershipAsset;
     Asset issuanceAsset;
     unsigned int tick;
-    // TODO: Add siblings
+    unsigned int universeIndex;
+    m256i siblings[ASSETS_DEPTH];
 
     enum {
         type = 41,

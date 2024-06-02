@@ -12,6 +12,7 @@ TEST(TestCoreContractCore, StackBuffer)
     EXPECT_EQ(s1.capacity(), 120);
     EXPECT_EQ(s1.size(), 0);
     EXPECT_EQ(s1.maxSizeObserved(), 0);
+    EXPECT_EQ(s1.failedAllocAttempts(), 0);
 
     EXPECT_NE(s1.allocate(70), nullptr);    // success
     EXPECT_EQ(s1.allocate(50), nullptr);    // fail
@@ -21,6 +22,7 @@ TEST(TestCoreContractCore, StackBuffer)
     s1.free();
     EXPECT_EQ(s1.size(), 0);
     EXPECT_EQ(s1.maxSizeObserved(), 71);
+    EXPECT_EQ(s1.failedAllocAttempts(), 3);
 
     EXPECT_NE(s1.allocate(10), nullptr);    // success
         EXPECT_NE(s1.allocate(20), nullptr);    // success
@@ -42,6 +44,11 @@ TEST(TestCoreContractCore, StackBuffer)
         EXPECT_EQ(s1.size(), 11);
     s1.free();
     EXPECT_EQ(s1.size(), 0);
+    EXPECT_EQ(s1.maxSizeObserved(), 104);
+    EXPECT_EQ(s1.failedAllocAttempts(), 6);
 
-    
+    char* p = s1.allocate(70);
+    *p = 100;
+    EXPECT_EQ(*p, 100);
+    s1.free();
 }

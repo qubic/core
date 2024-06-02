@@ -29,6 +29,7 @@
     <ClInclude Include="contracts\Qx.h" />
     <ClInclude Include="contracts\Random.h" />
     <ClInclude Include="contract_core\contract_def.h" />
+    <ClInclude Include="contract_core\contract_exec.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
     <ClInclude Include="logging.h" />
     <ClInclude Include="network_core\peers.h" />
@@ -50,11 +51,14 @@
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
+    <ClInclude Include="platform\custom_stack.h" />
     <ClInclude Include="platform\debugging.h" />
     <ClInclude Include="platform\file_io.h" />
     <ClInclude Include="platform\console_logging.h" />
     <ClInclude Include="platform\common_types.h" />
     <ClInclude Include="platform\random.h" />
+    <ClInclude Include="platform\read_write_lock.h" />
+    <ClInclude Include="platform\stack_size_tracker.h" />
     <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />
@@ -67,6 +71,14 @@
     <ClInclude Include="platform\time.h" />
     <ClInclude Include="platform\uefi.h" />
     <ClInclude Include="tick_storage.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="platform\custom_stack.asm">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='LinuxRelease|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+    </MASM>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -99,6 +111,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
   </ImportGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
@@ -258,5 +271,6 @@
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
   </ImportGroup>
 </Project>

@@ -100,8 +100,26 @@ struct UtcTime
 
 #define SPECIAL_COMMAND_QUERY_TIME 12ULL    // send this to node to query time, responds with time read from clock
 #define SPECIAL_COMMAND_SEND_TIME 13ULL     // send this to node to set time, responds with time read from clock after setting
+
 struct SpecialCommandSendTime
 {
     unsigned long long everIncreasingNonceAndCommandType;
     UtcTime utcTime;
 };
+
+#define SPECIAL_COMMAND_GET_MINING_SCORE_RANKING 14ULL
+#pragma pack( push, 1)
+template<unsigned int maxNumberOfMiners>
+struct SpecialCommandGetMiningScoreRanking
+{
+    struct ScoreRankingEntry {
+        m256i minerPublicKey;
+        unsigned int minerScore;
+    };
+
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned int numberOfRankings;
+    ScoreRankingEntry rankings[maxNumberOfMiners];
+};
+
+#pragma pack(pop)
