@@ -8,6 +8,7 @@
 
 #include "contract_core/contract_def.h"
 #include "contract_core/stack_buffer.h"
+#include "contract_core/contract_action_tracker.h"
 
 // TODO: remove, only for debug output
 #include "system.h"
@@ -38,6 +39,8 @@ static unsigned int contractError[contractCount];
 // TODO: If we ever have parallel procedure calls (of different contracts), we need to make
 // access to contractStateChangeFlags thread-safe
 static unsigned long long* contractStateChangeFlags = NULL;
+
+static ContractActionTracker<1024> contractActionTracker;
 
 
 bool initContractExec()
@@ -273,6 +276,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
 {
     QpiContextSystemProcedureCall(unsigned int contractIndex) : QPI::QpiContextProcedureCall(contractIndex, NULL_ID, 0)
     {
+        contractActionTracker.init();
     }
 
     void call(SystemProcedureID systemProcId)
@@ -300,6 +304,9 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 {
     QpiContextUserProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QPI::QpiContextProcedureCall(contractIndex, originator, invocationReward)
     {
+        contractActionTracker.init();
+        if (!contractActionTracker.addQuTransfer(_originator, _currentContractId, _invocationReward))
+            __qpiAbort(ContractErrorTooManyActions);
     }
 
     void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)

@@ -133,6 +133,7 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static Transaction* contractProcessorTransaction = 0;
+static int contractProcessorTransactionCanceled = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 
@@ -1833,6 +1834,9 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
     {
         increaseEnergy(destination, amount);
 
+        if (!contractActionTracker.addQuTransfer(_currentContractId, destination, amount))
+            __qpiAbort(ContractErrorTooManyActions);
+
         const QuTransfer quTransfer = { _currentContractId , destination , amount };
         logQuTransfer(quTransfer);
     }
@@ -2050,6 +2054,10 @@ static void contractProcessor(void*)
         QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
         qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
 
+        if (contractActionTracker.getOverallQuTransferBalance(transaction->sourcePublicKey) == 0)
+            contractProcessorTransactionCanceled = 1;
+        else
+            contractProcessorTransactionCanceled = 0;
         contractProcessorTransaction = 0;
     }
     break;
@@ -2331,6 +2339,13 @@ static void processTick(unsigned long long processorNumber)
                                             {
                                                 _mm_pause();
                                             }
+
+#if ADDON_TX_STATUS_REQUEST
+                                            if (contractProcessorTransactionCanceled)
+                                            {
+                                                saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
+                                            }
+#endif
                                         }
                                     }
                                 }
