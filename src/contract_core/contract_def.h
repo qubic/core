@@ -80,6 +80,16 @@ static void* __scratchpad();    // TODO: concurrency support (n buffers for n al
 #define CONTRACT_STATE2_TYPE QUTIL2
 #include "contracts/QUtil.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define MLM_CONTRACT_INDEX 5
+#define CONTRACT_INDEX MLM_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE MLM
+#define CONTRACT_STATE2_TYPE MLM2
+#include "contracts/MyLastMatch.h"
+
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to diable timeout, because a rollback mechanism needs to be implmented to properly handle timeout
 
 #undef INITIALIZE
@@ -191,6 +201,12 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
     case QUTIL_CONTRACT_INDEX:
     {
         REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUTIL);
+    }
+    break;
+
+    case MLM_CONTRACT_INDEX:
+    {
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MLM);
     }
     break;
     }

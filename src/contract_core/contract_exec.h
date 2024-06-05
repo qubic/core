@@ -224,6 +224,9 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
     {
         ASSERT(_currentContractIndex < contractCount);
 
+        if (!contractSystemProcedures[_currentContractIndex][systemProcId])
+            return;
+
         // reserve resources for this processor (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 

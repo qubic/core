@@ -995,9 +995,21 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
                 if (tickTransactionOffset)
                 {
                     const Transaction* transaction = ts.tickTransactions(tickTransactionOffset);
-                    ASSERT(transaction->tick == request->tick);
-                    ASSERT(transaction->checkValidity());
-                    enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+                    if (transaction->tick == request->tick && transaction->checkValidity())
+                    {
+                        enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+                    }
+                    else
+                    {
+                        // tick storage messed up -> indicates bug such as buffer overflow
+#if !defined(NDEBUG)
+                        CHAR16 dbgMsg[200];
+                        setText(dbgMsg, L"Invalid transaction found in processRequestTickTransactions(), tick ");
+                        appendNumber(dbgMsg, request->tick, FALSE);
+                        addDebugMessage(dbgMsg);
+                        ts.checkStateConsistencyWithAssert();
+#endif
+                    }
                 }
             }
 
@@ -2845,22 +2857,7 @@ static void beginEpoch2of2()
     }
     else
     {
-        // temporary fix to keep solution results for ep 111
-        // todo: remove for next epoch
-        if (system.epoch == 111)
-        {
-            unsigned char ep111RandomSeed[] = {
-                0xfc, 0x6f, 0xb9, 0x66, 0x54, 0xd7, 0x6c, 0x66,
-                0x9a, 0x8c, 0xfc, 0x6c, 0x4a, 0xa5, 0x7e, 0x94,
-                0x10, 0x34, 0xeb, 0x9d, 0x27, 0xe4, 0x7b, 0x3d,
-                0x29, 0x03, 0xd4, 0x46, 0x4b, 0x04, 0x45, 0xff
-            };
-            score->initMiningData(ep111RandomSeed);
-        }
-        else
-        {
-            score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
-        }
+        score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
     }
 }
 
@@ -5791,6 +5788,35 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                     tickerLoopNumerator = 0;
                     tickerLoopDenominator = 0;
+
+                    // output if misalignment happened
+                    if (tickTotalNumberOfComputors - tickNumberOfComputors >= QUORUM)
+                    {
+                        if (misalignedState == 0)
+                        {
+                            // also log to debug.log
+                            misalignedState = 1;
+                        }
+                        logToConsole(L"MISALIGNED STATE DETECTED");
+                        if (misalignedState == 1)
+                        {
+                            // print health status and stop repeated logging to debug.log
+                            logHealthStatus();
+                            misalignedState = 2;
+                        }
+                    }
+                    else
+                    {
+                        misalignedState = 0;
+                    }
+
+#if !defined(NDEBUG)
+                    if (system.tick % 1000 == 0)
+                    {
+                        logHealthStatus();
+                    }
+                    printDebugMessages();
+#endif
                 }
                 else
                 {

@@ -19,8 +19,8 @@
 // Number of ticks to from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
-#define TARGET_TICK_DURATION 2500
-#define TRANSACTION_SPARSENESS 4
+#define TARGET_TICK_DURATION 2000
+#define TRANSACTION_SPARSENESS 3
 
 // Set START_NETWORK_FROM_SCRATCH to 0 if you start the node for syncing with the already ticking network.
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
@@ -35,12 +35,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 205
-#define VERSION_C 1
+#define VERSION_B 206
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 111
-#define TICK 14150500
+#define EPOCH 112
+#define TICK 14240000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
