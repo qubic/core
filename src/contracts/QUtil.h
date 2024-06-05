@@ -12,7 +12,7 @@ using namespace QPI;
 // Return code for logger and return struct
 #define STM1_SUCCESS 0
 #define STM1_INVALID_AMOUNT_NUMBER 1
-#define STM1_INSUFFICIENT_FUND 2
+#define STM1_WRONG_FUND 2
 #define STM1_TRIGGERED 3
 #define STM1_SEND_FUND 4
 #define STM1_INVOCATION_FEE 10LL // fee to be burned and make the SC running
@@ -105,12 +105,12 @@ public:
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
         }
-        // insufficient fund, return fund and exit
-        if (qpi.invocationReward() < state.total)
+        // insufficient or too many qubic transferred, return fund and exit (we don't want to return change)
+        if (qpi.invocationReward() != state.total)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), STM1_INSUFFICIENT_FUND };
+            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), STM1_WRONG_FUND };
             LOG_INFO(state.logger);
-            output.returnCode = STM1_INSUFFICIENT_FUND;
+            output.returnCode = STM1_WRONG_FUND;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -267,11 +267,6 @@ public:
             state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst24, input.amt24, STM1_SEND_FUND };
             LOG_INFO(state.logger);
             qpi.transfer(input.dst24, input.amt24);
-        }
-        // return changes
-        if (qpi.invocationReward() > state.total)
-        {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.total);
         }
         state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, state.total, STM1_SUCCESS };
         LOG_INFO(state.logger);
