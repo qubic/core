@@ -5815,7 +5815,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         logHealthStatus();
                     }
-                    printDebugMessages();
 #endif
                 }
                 else
@@ -5846,10 +5845,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
 #if !defined(NDEBUG)
-                if (system.tick % 1000 == 0)
-                {
-                    logHealthStatus();
-                }
                 printDebugMessages();
 #endif
             }
