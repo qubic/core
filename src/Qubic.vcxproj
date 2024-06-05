@@ -26,6 +26,7 @@
     <ClInclude Include="contracts\QUtil.h" />
     <ClInclude Include="contracts\Qx.h" />
     <ClInclude Include="contracts\Random.h" />
+    <ClInclude Include="contract_core\contract_action_tracker.h" />
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />

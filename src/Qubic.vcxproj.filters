@@ -135,6 +135,9 @@
     <ClInclude Include="platform\custom_stack.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="contract_core\contract_action_tracker.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
