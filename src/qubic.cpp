@@ -5411,7 +5411,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     tickerLoopDenominator = 0;
 
                     // output if misalignment happened
-                    if (tickTotalNumberOfComputors - tickNumberOfComputors > QUORUM)
+                    if (tickTotalNumberOfComputors - tickNumberOfComputors >= QUORUM)
                     {
                         if (misalignedState == 0)
                         {
