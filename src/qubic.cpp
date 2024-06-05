@@ -4655,6 +4655,35 @@ static void logHealthStatus()
         logToConsole(L"WARNING: Developers should increase stack size!");
     }
 
+    setText(message, L"Contract status: ");
+    bool anyContractError = false;
+    for (int i = 0; i < contractCount; i++)
+    {
+        if (contractError[i])
+        {
+            if (anyContractError)
+                appendText(message, L" | ");
+            anyContractError = true;
+            appendText(message, L"Contract #");
+            appendNumber(message, i, FALSE);
+            appendText(message, L": ");
+            const CHAR16* errorMsg = L"Unknown error";
+            switch (contractError[i])
+            {
+            // The alloc failures can be fixed by increasing the size of ContractLocalsStack
+            case ContractErrorAllocInputOutputFailed: errorMsg = L"AllocInputOutputFailed"; break;
+            case ContractErrorAllocLocalsFailed: errorMsg = L"AllocLocalsFailed"; break;
+            case ContractErrorAllocContextOtherFunctionCallFailed: errorMsg = L"AllocContextOtherFunctionCallFailed"; break;
+            case ContractErrorAllocContextOtherProcedureCallFailed: errorMsg = L"AllocContextOtherProcedureCallFailed"; break;
+            // TooManyActions can be fixed by calling less actions or increasing the size of ContractActionTracker
+            case ContractErrorTooManyActions: errorMsg = L"TooManyActions"; break;
+            // Timeout requires to remove endless loop, speed-up code, or change the timeout
+            case ContractErrorTimeout: errorMsg = L"Timeout"; break;
+            }
+            appendText(message, errorMsg);
+        }
+    }
+
     // Print info about stack buffers used to run contracts
     setText(message, L"Contract stack buffer usage: ");
     for (int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS; ++i)
