@@ -962,9 +962,21 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
                 if (tickTransactionOffset)
                 {
                     const Transaction* transaction = ts.tickTransactions(tickTransactionOffset);
-                    ASSERT(transaction->tick == request->tick);
-                    ASSERT(transaction->checkValidity());
-                    enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+                    if (transaction->tick == request->tick && transaction->checkValidity())
+                    {
+                        enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+                    }
+                    else
+                    {
+                        // tick storage messed up -> indicates bug such as buffer overflow
+#if !defined(NDEBUG)
+                        CHAR16 dbgMsg[200];
+                        setText(dbgMsg, L"Invalid transaction found in processRequestTickTransactions(), tick ");
+                        appendNumber(dbgMsg, request->tick, FALSE);
+                        addDebugMessage(dbgMsg);
+                        ts.checkStateConsistencyWithAssert();
+#endif
+                    }
                 }
             }
 
