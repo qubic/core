@@ -15,6 +15,9 @@ static unsigned char computorSeeds[][55 + 1] = {
 static const unsigned char knownPublicPeers[][4] = {
     {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
 };
+static const unsigned char whiteListPeers[][4] = {
+     {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
+};
 
 #define LOG_BUFFER_SIZE 16777200 // Must be less or equal to 16777200
 #define LOG_QU_TRANSFERS 0 // "0" disables logging, "1" enables it

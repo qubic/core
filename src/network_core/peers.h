@@ -24,6 +24,8 @@
 #define RESPONSE_QUEUE_BUFFER_SIZE 1073741824
 #define RESPONSE_QUEUE_LENGTH 65536 // Must be 65536
 #define NUMBER_OF_PUBLIC_PEERS_TO_KEEP 10
+#define NUMBER_OF_WHITE_LIST_PEERS sizeof(whiteListPeers) / sizeof(whiteListPeers[0])
+#define NUMBER_OF_PRESERVE_SLOTS_WHITE_LIST_IPS 16
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
 static volatile bool listOfPeersIsStatic = false;
@@ -57,6 +59,7 @@ typedef struct
 static Peer peers[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
 static volatile long long numberOfReceivedBytes = 0, prevNumberOfReceivedBytes = 0;
 static volatile long long numberOfTransmittedBytes = 0, prevNumberOfTransmittedBytes = 0;
+static int numberOfAccepted = 0;
 
 static volatile char publicPeersLock = 0;
 static unsigned int numberOfPublicPeers = 0;
@@ -95,6 +98,21 @@ static volatile char responseQueueHeadLock = 0;
 static volatile unsigned long long queueProcessingNumerator = 0, queueProcessingDenominator = 0;
 static volatile unsigned long long tickerLoopNumerator = 0, tickerLoopDenominator = 0;
 
+static bool isWhiteListPeer(unsigned char address[4])
+{
+    for (unsigned int i = 0; i < NUMBER_OF_WHITE_LIST_PEERS; i++)
+    {
+        const auto& whiteListIp = whiteListPeers[i];
+        if (address[0] == whiteListIp[0]
+            && address[1] == whiteListIp[1]
+            && address[2] == whiteListIp[2]
+            && address[3] == whiteListIp[3])
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 static void closePeer(Peer* peer)
 {
@@ -124,6 +142,7 @@ static void closePeer(Peer* peer)
             peer->exchangedPublicPeers = FALSE;
             peer->isClosing = FALSE;
             peer->tcp4Protocol = NULL;
+            numberOfAccepted--;
         }
     }
 }
@@ -404,6 +423,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 else
                 {
                     peers[i].isConnectedAccepted = TRUE;
+                    numberOfAccepted++;
                 }
             }
         }
@@ -435,12 +455,39 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     }
                     else
                     {
-                        peers[i].isConnectedAccepted = TRUE;
+                        // Out of slot for preserse IPs. Only accept white list IPs
+                        if (NUMBER_OF_INCOMING_CONNECTIONS + NUMBER_OF_OUTGOING_CONNECTIONS - numberOfAccepted < NUMBER_OF_PRESERVE_SLOTS_WHITE_LIST_IPS)
+                        {
+                            EFI_TCP4_CONFIG_DATA tcp4ConfigData;
+                            if (peers[i].tcp4Protocol 
+                                && !peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, NULL, &tcp4ConfigData, NULL, NULL, NULL))
+                            {
+                                if (!isWhiteListPeer(tcp4ConfigData.AccessPoint.RemoteAddress.Addr))
+                                {
+                                    closePeer(&peers[i]);
+                                    return false;
+                                }
+                                else
+                                {
+                                    peers[i].isConnectedAccepted = TRUE;
+                                    numberOfAccepted++;
+                                }
+                            }
+                            else
+                            {
+                                closePeer(&peers[i]);
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            peers[i].isConnectedAccepted = TRUE;
+                            numberOfAccepted++;
+                        }
                     }
                 }
             }
         }
-
         // new connection has been established
         if (peers[i].isConnectedAccepted)
         {
