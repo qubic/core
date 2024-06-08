@@ -48,6 +48,8 @@ typedef struct
     BOOLEAN isReceiving, isTransmitting;
     BOOLEAN exchangedPublicPeers;
     BOOLEAN isClosing;
+    // Indicate the peer is incomming connection type
+    BOOLEAN isIncommingConnection;
 } Peer;
 
 typedef struct
@@ -59,7 +61,7 @@ typedef struct
 static Peer peers[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
 static volatile long long numberOfReceivedBytes = 0, prevNumberOfReceivedBytes = 0;
 static volatile long long numberOfTransmittedBytes = 0, prevNumberOfTransmittedBytes = 0;
-static int numberOfAccepted = 0;
+static int numberOfAcceptedIncommingConnection = 0;
 
 static volatile char publicPeersLock = 0;
 static unsigned int numberOfPublicPeers = 0;
@@ -118,6 +120,13 @@ static void closePeer(Peer* peer)
 {
     if (((unsigned long long)peer->tcp4Protocol) > 1)
     {
+        // Decrease the accepted counter
+        if (peer->isConnectedAccepted && peer->isIncommingConnection)
+        {
+            numberOfAcceptedIncommingConnection--;
+            ASSERT(numberOfAcceptedIncommingConnection >= 0);
+        }
+
         if (!peer->isClosing)
         {
             EFI_STATUS status;
@@ -142,7 +151,6 @@ static void closePeer(Peer* peer)
             peer->exchangedPublicPeers = FALSE;
             peer->isClosing = FALSE;
             peer->tcp4Protocol = NULL;
-            numberOfAccepted--;
         }
     }
 }
@@ -406,6 +414,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
         if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
         {
             // outgoing connection
+            peers[i].isIncommingConnection = FALSE;
             if (peers[i].connectAcceptToken.CompletionToken.Status)
             {
                 // connection rejected
@@ -423,13 +432,13 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 else
                 {
                     peers[i].isConnectedAccepted = TRUE;
-                    numberOfAccepted++;
                 }
             }
         }
         else
         {
             // incoming connection
+            peers[i].isIncommingConnection = TRUE;
             if (peers[i].connectAcceptToken.CompletionToken.Status)
             {
                 // connection error
@@ -456,7 +465,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     else
                     {
                         // Out of slot for preserse IPs. Only accept white list IPs
-                        if (NUMBER_OF_INCOMING_CONNECTIONS + NUMBER_OF_OUTGOING_CONNECTIONS - numberOfAccepted < NUMBER_OF_PRESERVE_SLOTS_WHITE_LIST_IPS)
+                        if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_PRESERVE_SLOTS_WHITE_LIST_IPS)
                         {
                             EFI_TCP4_CONFIG_DATA tcp4ConfigData;
                             if (peers[i].tcp4Protocol 
@@ -470,7 +479,6 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                                 else
                                 {
                                     peers[i].isConnectedAccepted = TRUE;
-                                    numberOfAccepted++;
                                 }
                             }
                             else
@@ -482,7 +490,6 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                         else
                         {
                             peers[i].isConnectedAccepted = TRUE;
-                            numberOfAccepted++;
                         }
                     }
                 }
@@ -491,6 +498,11 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
         // new connection has been established
         if (peers[i].isConnectedAccepted)
         {
+            if (peers[i].isIncommingConnection)
+            {
+                numberOfAcceptedIncommingConnection++;
+                ASSERT(numberOfAcceptedIncommingConnection <= NUMBER_OF_INCOMING_CONNECTIONS);
+            }
             return true;
         }
     }
@@ -711,6 +723,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             // yet have an outgoing connection to it
 
             peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
+            peers[i].isIncommingConnection = FALSE;
 
             unsigned int j;
             for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
@@ -756,6 +769,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             // accept connections if peer list is not static
             if (!listOfPeersIsStatic)
             {
+                peers[i].isIncommingConnection = TRUE;
                 peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
                 peers[i].dataToTransmitSize = 0;
                 peers[i].isReceiving = FALSE;
