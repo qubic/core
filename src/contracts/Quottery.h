@@ -1,5 +1,5 @@
-// adjustable with type changes
-constexpr unsigned long long QUOTTERY_MAX_BET = 1024; //tmp, will delete
+// FIXED CONSTANTS
+constexpr unsigned long long QUOTTERY_INITIAL_MAX_BET = 1024;
 constexpr unsigned long long QUOTTERY_MAX_OPTION = 8;
 constexpr unsigned long long QUOTTERY_MAX_ORACLE_PROVIDER = 8;
 constexpr unsigned long long QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET = 2048;
@@ -131,66 +131,81 @@ public:
     };
     struct publishResult_output {
     };
-    struct tryFinalizeBet_input {
+    
+    struct cleanMemorySlot_input
+    {
+        sint64 slotId;
+    };
+    struct cleanMemorySlot_output {};
+    struct cleanMemorySlot_locals
+    {
+        uint32 i0, i1;
+        uint64 baseId0, baseId1;
+    };
+
+    struct tryFinalizeBet_input
+    {
         uint32 betId;
         sint64 slotId;
     };
-    struct tryFinalizeBet_output {
+    struct tryFinalizeBet_output
+    {
     };
-    tryFinalizeBet_input _tryFinalizeBet_input;
-    tryFinalizeBet_output _tryFinalizeBet_output;
-    struct cleanMemorySlot_input {
-        sint64 slotId;
+
+    struct tryFinalizeBet_locals
+    {
+        sint32 i0, i1;
+        uint64 baseId0, baseId1;
+        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
+        uint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
+        cleanMemorySlot_locals cms;
+        cleanMemorySlot_input _cleanMemorySlot_input;
+        cleanMemorySlot_output _cleanMemorySlot_output;
     };
-    struct cleanMemorySlot_output {
-    };
-    cleanMemorySlot_input _cleanMemorySlot_input;
-    cleanMemorySlot_output _cleanMemorySlot_output;
 
     /**************************************/
     /************CONTRACT STATES***********/
     /**************************************/
-
-    uint32_1024x mBetID;
-    static_assert(sizeof(mBetID) == (sizeof(uint32) * QUOTTERY_MAX_BET), "bet id array");
-    id_1024x  mCreator;
-    static_assert(sizeof(mCreator) == (sizeof(id) * QUOTTERY_MAX_BET), "creator array");
-    id_1024x mBetDesc;
-    static_assert(sizeof(mBetDesc) == (sizeof(id) * QUOTTERY_MAX_BET), "desc array");
-    id_8192x mOptionDesc;
-    static_assert(sizeof(mOptionDesc) == (sizeof(id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_OPTION), "option desc array");
-    uint64_1024x mBetAmountPerSlot;
-    static_assert(sizeof(mBetAmountPerSlot) == (sizeof(uint64) * QUOTTERY_MAX_BET), "bet amount per slot array");
-    uint64_1024x mMaxNumberOfBetSlotPerOption;
-    static_assert(sizeof(mMaxNumberOfBetSlotPerOption) == (sizeof(uint64) * QUOTTERY_MAX_BET), "number of bet slot per option array");
-    id_8192x mOracleProvider; // 1024x8=8192, access by stride8
-    static_assert(sizeof(mOracleProvider) == (sizeof(QPI::id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers");
-    uint32_8192x mOracleFees;
-    static_assert(sizeof(mOracleFees) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers fees");
-    uint32_8192x mCurrentBetState; // 8xuint32 per bet, each represent number of bettor for according option
-    static_assert(sizeof(mCurrentBetState) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "bet states");
-    uint8_1024x mNumberOption;
-    static_assert(sizeof(mNumberOption) == (sizeof(uint8) * QUOTTERY_MAX_BET), "number of options");
-    uint8_4096x mOpenDate; // take 00:00 UTC | 4xuint8 per bet
-    static_assert(sizeof(mOpenDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), "open date");
-    uint8_4096x mCloseDate; // take 23:59 UTC
-    static_assert(sizeof(mCloseDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), "close date");
-    uint8_4096x mEndDate; // take 23:59 UTC
-    static_assert(sizeof(mEndDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), "end date");
-    bit_1024x mIsOccupied;
-    static_assert(sizeof(mIsOccupied) == (QUOTTERY_MAX_BET/ ( sizeof(uint8_64) / sizeof(bit_64)) ), "occupy array");
-
+    array<uint32, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mBetID;
+    array<id, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mCreator;
+    array<id, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mBetDesc;
+    array<id, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mOptionDesc;
+    array<uint64, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mBetAmountPerSlot;
+    array<uint32, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mMaxNumberOfBetSlotPerOption;
+    array<id, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_ORACLE_PROVIDER* X_MULTIPLIER> mOracleProvider;
+    array<uint32, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mOracleFees;
+    array<uint32, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mCurrentBetState;
+    array<uint8, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mNumberOption;
+    array<uint8, QUOTTERY_INITIAL_MAX_BET * 4 * X_MULTIPLIER> mOpenDate;
+    array<uint8, QUOTTERY_INITIAL_MAX_BET * 4 * X_MULTIPLIER> mCloseDate;
+    array<uint8, QUOTTERY_INITIAL_MAX_BET * 4 * X_MULTIPLIER> mEndDate;
+    array<bit, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mIsOccupied;
+    //bettor info:
+    array<id, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mBettorID;
+    array<uint8, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mBettorBetOption;
     // bet result:
-    sint8_8192x mBetResultWonOption; // 8xuint8 per bet
-    static_assert(sizeof(mBetResultWonOption) == (QUOTTERY_MAX_BET * 8), "won option array");
-    sint8_8192x mBetResultOPId; // 8xuint8 per bet
-    static_assert(sizeof(mBetResultOPId) == (QUOTTERY_MAX_BET * 8), "op id array");
+    array<sint8, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mBetResultWonOption;
+    array<sint8, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mBetResultOPId;
 
-    //bettor struct:
-    id_16777216x mBettorID;
-    static_assert(sizeof(mBettorID) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(id)), "bettor array");
-    uint8_16777216x mBettorBetOption;
-    static_assert(sizeof(mBettorBetOption) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(uint8)), "bet option");
+    //static assert for developing:
+    static_assert(sizeof(mBetID) == (sizeof(uint32) * QUOTTERY_INITIAL_MAX_BET), "bet id array");
+    static_assert(sizeof(mCreator) == (sizeof(id) * QUOTTERY_INITIAL_MAX_BET), "creator array");
+    static_assert(sizeof(mBetDesc) == (sizeof(id) * QUOTTERY_INITIAL_MAX_BET), "desc array");
+    static_assert(sizeof(mOptionDesc) == (sizeof(id) * QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_OPTION), "option desc array");
+    static_assert(sizeof(mBetAmountPerSlot) == (sizeof(uint64) * QUOTTERY_INITIAL_MAX_BET), "bet amount per slot array");
+    static_assert(sizeof(mMaxNumberOfBetSlotPerOption) == (sizeof(uint32) * QUOTTERY_INITIAL_MAX_BET), "number of bet slot per option array");
+    static_assert(sizeof(mOracleProvider) == (sizeof(QPI::id) * QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers");
+    static_assert(sizeof(mOracleFees) == (sizeof(uint32) * QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers fees");
+    static_assert(sizeof(mCurrentBetState) == (sizeof(uint32) * QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "bet states");
+    static_assert(sizeof(mNumberOption) == (sizeof(uint8) * QUOTTERY_INITIAL_MAX_BET), "number of options");
+    static_assert(sizeof(mOpenDate) == (sizeof(uint8) * 4 * QUOTTERY_INITIAL_MAX_BET), "open date");
+    static_assert(sizeof(mCloseDate) == (sizeof(uint8) * 4 * QUOTTERY_INITIAL_MAX_BET), "close date");
+    static_assert(sizeof(mEndDate) == (sizeof(uint8) * 4 * QUOTTERY_INITIAL_MAX_BET), "end date");
+    static_assert(sizeof(mBetResultWonOption) == (QUOTTERY_INITIAL_MAX_BET * 8), "won option array");
+    static_assert(sizeof(mBetResultOPId) == (QUOTTERY_INITIAL_MAX_BET * 8), "op id array");
+    static_assert(sizeof(mBettorID) == (QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(id)), "bettor array");
+    static_assert(sizeof(mBettorBetOption) == (QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(uint8)), "bet option");
+
     // other stats
     uint32 mCurrentBetID;
     uint64 mRevenue;
@@ -206,28 +221,7 @@ public:
     uint64 mMinAmountPerBetSlot;
     uint64 mShareHolderFee;
     uint64 mGameOperatorFee;
-    id mGameOperatorId;
-
-    // temp registers and buffer will be used for computation
-    struct {
-        sint32 i0, i1, i2, i3;
-        uint32 u0, u1, u2, u3;
-        sint64 i64_0, i64_1, i64_2, i64_3;
-        uint64 u64_0, u64_1, u64_2, u64_3;
-        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
-        sint64 slotId;
-        sint32 opId, writeId;
-        uint64 baseId0, baseId1, nOption;
-        uint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
-        uint64 duration, numberOfOption, maxBetSlotPerOption;
-        uint32 betId, availableSlotForBet;
-        id_256 buffer;
-        uint8_4 curDate;
-        uint8_4 closeDate;
-        uint8_4 endDate;
-        QuotteryLogger log;
-    } r;
-    
+    id mGameOperatorId;   
 
 
     /**************************************/
@@ -240,12 +234,6 @@ public:
     static sint32 min(sint32 a, sint32 b)
     {
         return (a < b) ? a : b;
-    }
-    /**
-     * Return all sent amount to invocator
-     */
-    static inline void returnAllFund() {
-        transfer(QPI::invocator(), QPI::invocationReward());
     }
 
     /**
@@ -268,10 +256,10 @@ public:
     /**
      * @return Current date from core node system
      */
-    static void getCurrentDate(uint8_4& res) {
-        res.set(0, year());
-        res.set(1, month());
-        res.set(2, day());
+    static void getCurrentDate(const QPI::QpiContextProcedureCall& qpi, uint8_4& res) {
+        res.set(0, qpi.year());
+        res.set(1, qpi.month());
+        res.set(2, qpi.day());
         res.set(3, 0);
     }
 
@@ -327,138 +315,136 @@ public:
         if (mod(sint32(B.get(0)), 4) == 0 && B.get(1) > 2) dayB++;
         res = dayB - dayA;
     }
-
     /**
      * Clean all memory of a slot Id, set the flag IsOccupied to zero
      * @param slotId
      */
-    PRIVATE(cleanMemorySlot)
+    PRIVATE_PROCEDURE_WITH_LOCALS(cleanMemorySlot)
         state.mBetID.set(input.slotId, NULL_INDEX);
         state.mCreator.set(input.slotId, NULL_ID);
         state.mBetDesc.set(input.slotId, NULL_ID);
         {
-            state.r.baseId0 = input.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                state.mOptionDesc.set(state.r.baseId0 + state.r.i0, NULL_ID);
+            locals.baseId0 = input.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                state.mOptionDesc.set(locals.baseId0 + locals.i0, NULL_ID);
             }
         }
         state.mBetAmountPerSlot.set(input.slotId, 0);
         state.mMaxNumberOfBetSlotPerOption.set(input.slotId, 0);
         {
-            state.r.baseId0 = input.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                state.mOracleProvider.set(state.r.baseId0 + state.r.i0, NULL_ID);
-                state.mOracleFees.set(state.r.baseId0 + state.r.i0, 0);
-                state.mCurrentBetState.set(state.r.baseId0 + state.r.i0, 0);
+            locals.baseId0 = input.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                state.mOracleProvider.set(locals.baseId0 + locals.i0, NULL_ID);
+                state.mOracleFees.set(locals.baseId0 + locals.i0, 0);
+                state.mCurrentBetState.set(locals.baseId0 + locals.i0, 0);
             }
         }
         state.mNumberOption.set(input.slotId, 0);
         {
-            state.r.baseId0 = input.slotId * 4;
-            for (state.r.i0 = 0; state.r.i0 < 4; state.r.i0++) {
-                state.mOpenDate.set(state.r.baseId0 + state.r.i0, 0);
-                state.mCloseDate.set(state.r.baseId0 + state.r.i0, 0);
-                state.mEndDate.set(state.r.baseId0 + state.r.i0, 0);
+            locals.baseId0 = input.slotId * 4;
+            for (locals.i0 = 0; locals.i0 < 4; locals.i0++) {
+                state.mOpenDate.set(locals.baseId0 + locals.i0, 0);
+                state.mCloseDate.set(locals.baseId0 + locals.i0, 0);
+                state.mEndDate.set(locals.baseId0 + locals.i0, 0);
             }
         }
         state.mIsOccupied.set(input.slotId, 0); // close the bet
         {
-            state.r.baseId0 = input.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
-            for (state.r.i0 = 0; state.r.i0 < QUOTTERY_MAX_OPTION; state.r.i0++) {
-                state.r.baseId1 = state.r.baseId0 + state.r.i0 * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
-                for (state.r.i1 = 0; state.r.i1 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; state.r.i1++) {
-                    state.mBettorID.set(state.r.baseId1 + state.r.i1, NULL_ID);
-                    state.mBettorBetOption.set(state.r.baseId1 + state.r.i1, NULL_INDEX);
+            locals.baseId0 = input.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
+            for (locals.i0 = 0; locals.i0 < QUOTTERY_MAX_OPTION; locals.i0++) {
+                locals.baseId1 = locals.baseId0 + locals.i0 * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
+                for (locals.i1 = 0; locals.i1 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; locals.i1++) {
+                    state.mBettorID.set(locals.baseId1 + locals.i1, NULL_ID);
+                    state.mBettorBetOption.set(locals.baseId1 + locals.i1, NULL_INDEX);
                 }
             }
         }
     _
-
     /**
     * Try to finalize a bet when the system receive a result publication from a oracle provider
     * If there are 2/3 votes agree with the same result, the bet is finalized.
     * @param betId, slotId
     */
-    PRIVATE(tryFinalizeBet)
-        state.r.numberOP = 0;
+    PRIVATE_PROCEDURE_WITH_LOCALS(tryFinalizeBet)
+        locals.numberOP = 0;
         {
-            state.r.baseId0 = input.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                if (state.mOracleProvider.get(state.r.baseId0 + state.r.i0) != NULL_ID) {
-                    state.r.numberOP++;
+            locals.baseId0 = input.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                if (state.mOracleProvider.get(locals.baseId0 + locals.i0) != NULL_ID) {
+                    locals.numberOP++;
                 }
             }
         }
-        state.r.requiredVote = divUp(uint32(state.r.numberOP * 2), 3U);
-        state.r.winOption = -1;
-        state.r.totalOption = state.mNumberOption.get(input.slotId);
-        for (state.r.i0 = 0; state.r.i0 < state.r.totalOption; state.r.i0++) {
-            state.r.voteCounter = 0;
-            state.r.baseId0 = input.slotId * 8;
-            for (state.r.i1 = 0; state.r.i1 < state.r.numberOP; state.r.i1++) {
-                if (state.mBetResultWonOption.get(state.r.baseId0 + state.r.i1) == state.r.i0) {
-                    state.r.voteCounter++;
+        locals.requiredVote = divUp(uint32(locals.numberOP * 2), 3U);
+        locals.winOption = -1;
+        locals.totalOption = state.mNumberOption.get(input.slotId);
+        for (locals.i0 = 0; locals.i0 < locals.totalOption; locals.i0++) {
+            locals.voteCounter = 0;
+            locals.baseId0 = input.slotId * 8;
+            for (locals.i1 = 0; locals.i1 < locals.numberOP; locals.i1++) {
+                if (state.mBetResultWonOption.get(locals.baseId0 + locals.i1) == locals.i0) {
+                    locals.voteCounter++;
                 }
             }
-            if (state.r.voteCounter >= state.r.requiredVote) {
-                state.r.winOption = state.r.i0;
+            if (locals.voteCounter >= locals.requiredVote) {
+                locals.winOption = locals.i0;
                 break;
             }
         }
-        if (state.r.winOption != -1)
+        if (locals.winOption != -1)
         {
             //distribute coins
-            state.r.amountPerSlot = state.mBetAmountPerSlot.get(input.slotId);
-            state.r.totalBetSlot = 0;
-            state.r.baseId0 = input.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < state.r.totalOption; state.r.i0++) {
-                state.r.totalBetSlot += state.mCurrentBetState.get(state.r.baseId0 + state.r.i0);
+            locals.amountPerSlot = state.mBetAmountPerSlot.get(input.slotId);
+            locals.totalBetSlot = 0;
+            locals.baseId0 = input.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < locals.totalOption; locals.i0++) {
+                locals.totalBetSlot += state.mCurrentBetState.get(locals.baseId0 + locals.i0);
             }
-            state.r.nWinBet = state.mCurrentBetState.get(state.r.baseId0 + state.r.winOption);
+            locals.nWinBet = state.mCurrentBetState.get(locals.baseId0 + locals.winOption);
 
-            state.r.potAmountTotal = state.r.totalBetSlot * state.r.amountPerSlot;
-            state.r.feeChargedAmount = state.r.potAmountTotal - state.r.nWinBet * state.r.amountPerSlot; // only charge winning amount
-            state.r.transferredAmount = 0;
+            locals.potAmountTotal = locals.totalBetSlot * locals.amountPerSlot;
+            locals.feeChargedAmount = locals.potAmountTotal - locals.nWinBet * locals.amountPerSlot; // only charge winning amount
+            locals.transferredAmount = 0;
             // fee to OP
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                if (state.mOracleProvider.get(state.r.baseId0 + state.r.i0) != NULL_ID) {
-                    state.r.fee = QPI::div(state.r.feeChargedAmount * state.mOracleFees.get(state.r.baseId0 + state.r.i0), 10000ULL);
-                    if (state.r.fee != 0) {
-                        transfer(state.mOracleProvider.get(state.r.baseId0 + state.r.i0), state.r.fee);
-                        state.r.transferredAmount += state.r.fee;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                if (state.mOracleProvider.get(locals.baseId0 + locals.i0) != NULL_ID) {
+                    locals.fee = QPI::div(locals.feeChargedAmount * state.mOracleFees.get(locals.baseId0 + locals.i0), 10000ULL);
+                    if (locals.fee != 0) {
+                        qpi.transfer(state.mOracleProvider.get(locals.baseId0 + locals.i0), locals.fee);
+                        locals.transferredAmount += locals.fee;
                     }
                 }
             }
             // fee to share holders
             {
-                state.r.fee = QPI::div(state.r.feeChargedAmount * state.mShareHolderFee, 10000ULL);
-                state.r.transferredAmount += state.r.fee;//self transfer
-                state.mEarnedAmountForShareHolder += state.r.fee;
+                locals.fee = QPI::div(locals.feeChargedAmount * state.mShareHolderFee, 10000ULL);
+                locals.transferredAmount += locals.fee;//self transfer
+                state.mEarnedAmountForShareHolder += locals.fee;
             }
             // fee to game operator
             {
-                state.r.fee = QPI::div(state.r.feeChargedAmount * state.mGameOperatorFee, 10000ULL);
-                transfer(state.mGameOperatorId, state.r.fee);
-                state.r.transferredAmount += state.r.fee;
+                locals.fee = QPI::div(locals.feeChargedAmount * state.mGameOperatorFee, 10000ULL);
+                qpi.transfer(state.mGameOperatorId, locals.fee);
+                locals.transferredAmount += locals.fee;
             }
             // profit to winners
             {
-                state.r.feeChargedAmount -= state.r.transferredAmount; // left over go to winners
-                state.r.profitPerBetSlot = QPI::div(state.r.feeChargedAmount, state.r.nWinBet);
-                state.r.baseId0 = input.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
-                state.r.baseId1 = state.r.baseId0 + state.r.winOption * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
-                for (state.r.i1 = 0; state.r.i1 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; state.r.i1++) {
-                    if (state.mBettorID.get(state.r.baseId1 + state.r.i1) != NULL_ID) {
-                        transfer(state.mBettorID.get(state.r.baseId1 + state.r.i1), state.r.amountPerSlot + state.r.profitPerBetSlot);
-                        state.mEarnedAmountForBetWinner += (state.r.amountPerSlot + state.r.profitPerBetSlot);
+                locals.feeChargedAmount -= locals.transferredAmount; // left over go to winners
+                locals.profitPerBetSlot = QPI::div(locals.feeChargedAmount, locals.nWinBet);
+                locals.baseId0 = input.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
+                locals.baseId1 = locals.baseId0 + locals.winOption * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
+                for (locals.i1 = 0; locals.i1 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; locals.i1++) {
+                    if (state.mBettorID.get(locals.baseId1 + locals.i1) != NULL_ID) {
+                        qpi.transfer(state.mBettorID.get(locals.baseId1 + locals.i1), locals.amountPerSlot + locals.profitPerBetSlot);
+                        state.mEarnedAmountForBetWinner += (locals.amountPerSlot + locals.profitPerBetSlot);
                     }
                 }
             }
             // done splitting profit
             {
                 // cleaning bet storage
-                state._cleanMemorySlot_input.slotId = input.slotId;
-                cleanMemorySlot(state, state._cleanMemorySlot_input, state._cleanMemorySlot_output);
+                locals._cleanMemorySlot_input.slotId = input.slotId;
+                cleanMemorySlot(qpi, state, locals._cleanMemorySlot_input, locals._cleanMemorySlot_output, locals.cms);
             }
         }
         else {
@@ -472,131 +458,153 @@ public:
     /**
      * @return feePerSlotPerDay, gameOperatorFee, shareholderFee, minBetSlotAmount, gameOperator
      */
-    PUBLIC(basicInfo)
+    PUBLIC_FUNCTION(basicInfo)
         output.feePerSlotPerDay = state.mFeePerSlotPerDay;
         output.gameOperatorFee = state.mGameOperatorFee;
         output.shareholderFee = state.mShareHolderFee;
         output.minBetSlotAmount = state.mMinAmountPerBetSlot;
         output.gameOperator = state.mGameOperatorId;
     _
+
+    struct getBetInfo_locals
+    {
+        sint64 slotId;
+        uint64 baseId0, baseId1, u64Tmp;
+        uint32 i0, i1;
+    };
     /**
      * @param betId
      * @return meta data of a bet and its current state
      */
-    PUBLIC(getBetInfo)
+    PUBLIC_FUNCTION_WITH_LOCALS(getBetInfo)
         output.betId = NULL_INDEX;
-        state.r.slotId = -1;
-        for (state.r.i0 = 0; state.r.i0 < QUOTTERY_MAX_BET; state.r.i0++) {
-            if (state.mBetID.get(state.r.i0) == input.betId) {
-                state.r.slotId = state.r.i0;
+        locals.slotId = NULL_INDEX;
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+            if (state.mBetID.get(locals.i0) == input.betId) {
+                locals.slotId = locals.i0;
                 break;
             }
         }
-        if (state.r.slotId == -1) {
+        if (locals.slotId == NULL_INDEX) {
             // can't find betId
             return;
         }
         // check if the bet is occupied
-        if (state.mIsOccupied.get(state.r.slotId) == 0) {
+        if (state.mIsOccupied.get(locals.slotId) == 0) {
             // the bet is over
             return;
         }
         output.betId = input.betId;
-        output.nOption = state.mNumberOption.get(state.r.slotId);
-        output.creator = state.mCreator.get(state.r.slotId);
-        output.betDesc = state.mBetDesc.get(state.r.slotId);
+        output.nOption = state.mNumberOption.get(locals.slotId);
+        output.creator = state.mCreator.get(locals.slotId);
+        output.betDesc = state.mBetDesc.get(locals.slotId);
         {
             // option desc
-            state.r.baseId0 = state.r.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                output.optionDesc.set(state.r.i0, state.mOptionDesc.get(state.r.baseId0 + state.r.i0));
+            locals.baseId0 = locals.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                output.optionDesc.set(locals.i0, state.mOptionDesc.get(locals.baseId0 + locals.i0));
             }
         }
         {
             // oracle
-            state.r.baseId0 = state.r.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                output.oracleProviderId.set(state.r.i0, state.mOracleProvider.get(state.r.baseId0 + state.r.i0));
-                output.oracleFees.set(state.r.i0, state.mOracleFees.get(state.r.baseId0 + state.r.i0));
+            locals.baseId0 = locals.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                output.oracleProviderId.set(locals.i0, state.mOracleProvider.get(locals.baseId0 + locals.i0));
+                output.oracleFees.set(locals.i0, state.mOracleFees.get(locals.baseId0 + locals.i0));
             }
         }
         {
-            state.r.baseId0 = state.r.slotId * 4;
-            makeQuotteryDate(state.mOpenDate.get(state.r.baseId0), state.mOpenDate.get(state.r.baseId0+1), state.mOpenDate.get(state.r.baseId0+2), output.openDate);
-            makeQuotteryDate(state.mCloseDate.get(state.r.baseId0), state.mCloseDate.get(state.r.baseId0 + 1), state.mCloseDate.get(state.r.baseId0 + 2), output.closeDate);
-            makeQuotteryDate(state.mEndDate.get(state.r.baseId0), state.mEndDate.get(state.r.baseId0 + 1), state.mEndDate.get(state.r.baseId0 + 2), output.endDate);
+            locals.baseId0 = locals.slotId * 4;
+            makeQuotteryDate(state.mOpenDate.get(locals.baseId0), state.mOpenDate.get(locals.baseId0+1), state.mOpenDate.get(locals.baseId0+2), output.openDate);
+            makeQuotteryDate(state.mCloseDate.get(locals.baseId0), state.mCloseDate.get(locals.baseId0 + 1), state.mCloseDate.get(locals.baseId0 + 2), output.closeDate);
+            makeQuotteryDate(state.mEndDate.get(locals.baseId0), state.mEndDate.get(locals.baseId0 + 1), state.mEndDate.get(locals.baseId0 + 2), output.endDate);
         }
-        output.minBetAmount = state.mBetAmountPerSlot.get(state.r.slotId);
-        output.maxBetSlotPerOption = state.mMaxNumberOfBetSlotPerOption.get(state.r.slotId);
+        locals.u64Tmp = (uint64)(locals.slotId); // just reduce warnings
+        output.minBetAmount = state.mBetAmountPerSlot.get(locals.u64Tmp);
+        output.maxBetSlotPerOption = state.mMaxNumberOfBetSlotPerOption.get(locals.u64Tmp);
         {
-            state.r.baseId0 = state.r.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++){
-                output.currentBetState.set(state.r.i0, state.mCurrentBetState.get(state.r.baseId0+ state.r.i0));
+            locals.baseId0 = locals.u64Tmp * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++){
+                output.currentBetState.set(locals.i0, state.mCurrentBetState.get(locals.baseId0+ locals.i0));
             }
         }
     _
 
+    struct getBetOptionDetail_locals
+    {
+        sint64 slotId;
+        uint64 baseId0, baseId1;
+        uint32 i0, i1;
+    };
     /**
      * @param betID, optionID
      * @return a list of ID that bet on optionID of bet betID
      */
-    PUBLIC(getBetOptionDetail)
-        for (state.r.i0 = 0; state.r.i0 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; state.r.i0++) {
-            output.bettor.set(state.r.i0, NULL_ID);
+    PUBLIC_FUNCTION_WITH_LOCALS(getBetOptionDetail)
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; locals.i0++) {
+            output.bettor.set(locals.i0, NULL_ID);
         }
-        state.r.slotId = -1;
-        for (state.r.i0 = 0; state.r.i0 < QUOTTERY_MAX_BET; state.r.i0++) {
-            if (state.mBetID.get(state.r.i0) == input.betId) {
-                state.r.slotId = state.r.i0;
+        locals.slotId = -1;
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+            if (state.mBetID.get(locals.i0) == input.betId) {
+                locals.slotId = locals.i0;
                 break;
             }
         }
-        if (state.r.slotId == -1) {
+        if (locals.slotId == -1) {
             // can't find betId
             return;
         }
         // check if the bet is occupied
-        if (state.mIsOccupied.get(state.r.slotId) == 0) {
+        if (state.mIsOccupied.get(locals.slotId) == 0) {
             // the bet is over
             return;
         }
-        if (input.betOption >= state.mNumberOption.get(state.r.slotId)){
+        if (input.betOption >= state.mNumberOption.get(locals.slotId)){
             // invalid betOption
             return;
         }
-        state.r.baseId0 = state.r.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
-        state.r.baseId1 = state.r.baseId0 + input.betOption * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
-        for (state.r.i0 = 0; state.r.i0 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; state.r.i0++){
-            output.bettor.set(state.r.i0, state.mBettorID.get(state.r.baseId1 + state.r.i0));
+        locals.baseId0 = locals.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
+        locals.baseId1 = locals.baseId0 + input.betOption * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; locals.i0++){
+            output.bettor.set(locals.i0, state.mBettorID.get(locals.baseId1 + locals.i0));
         }
     _
 
+    struct getActiveBet_locals
+    {
+        sint64 slotId;
+    };
     /**
      * @return a list of active betID
      */
-    PUBLIC(getActiveBet)
+    PUBLIC_FUNCTION_WITH_LOCALS(getActiveBet)
         output.count = 0;
-        for (state.r.slotId = 0; state.r.slotId < QUOTTERY_MAX_BET; state.r.slotId++) {
-            if (state.mBetID.get(state.r.slotId) != NULL_INDEX) {
-                if (state.mIsOccupied.get(state.r.slotId) == 1) { //not available == active
-                    output.activeBetId.set(output.count, state.mBetID.get(state.r.slotId));
+        for (locals.slotId = 0; locals.slotId < QUOTTERY_INITIAL_MAX_BET; locals.slotId++) {
+            if (state.mBetID.get(locals.slotId) != NULL_INDEX) {
+                if (state.mIsOccupied.get(locals.slotId) == 1) { //not available == active
+                    output.activeBetId.set(output.count, state.mBetID.get(locals.slotId));
                     output.count++;
                 }
             }
         }
     _
 
+    struct getBetByCreator_locals
+    {
+        sint64 slotId;
+    };
     /**
     * @param creatorID
     * @return a list of active betID that created by creatorID
     */
-    PUBLIC(getBetByCreator)
+    PUBLIC_FUNCTION_WITH_LOCALS(getBetByCreator)
         output.count = 0;
-        for (state.r.slotId = 0; state.r.slotId < QUOTTERY_MAX_BET; state.r.slotId++) {
-            if (state.mBetID.get(state.r.slotId) != NULL_INDEX) {
-                if (state.mIsOccupied.get(state.r.slotId) == 1) { //not available == active
-                    if (state.mCreator.get(state.r.slotId) == input.creator) {
-                        output.betId.set(output.count, state.mBetID.get(state.r.slotId));
+        for (locals.slotId = 0; locals.slotId < QUOTTERY_INITIAL_MAX_BET; locals.slotId++) {
+            if (state.mBetID.get(locals.slotId) != NULL_INDEX) {
+                if (state.mIsOccupied.get(locals.slotId) == 1) { //not available == active
+                    if (state.mCreator.get(locals.slotId) == input.creator) {
+                        output.betId.set(output.count, state.mBetID.get(locals.slotId));
                         output.count++;
                     }
                 }
@@ -621,135 +629,160 @@ public:
     * @param maxBetSlotPerOption (4 bytes): maximum bet slot per option
     * @param numberOfOption (4 bytes): number of options(outcomes) of the bet
     */
-    PUBLIC(issueBet)
+    struct issueBet_locals
+    {
+        uint8_4 curDate;
+        sint32 i0, i1;
+        uint64 baseId0, baseId1;
+        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
+        sint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
+        uint64 maxBetSlotPerOption, duration, u64_0, u64_1;
+        uint8 numberOfOption;
+        uint32 betId;
+        sint64 slotId;
+        QuotteryLogger log;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(issueBet)
         // only allow users to create bet
-        if (QPI::invocator() != QPI::originator())
+        if (qpi.invocator() != qpi.originator())
         {
-            returnAllFund();
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        getCurrentDate(state.r.curDate);
+        getCurrentDate(qpi, locals.curDate);
         // check valid date: closeDate <= endDate
-        if (dateCompare(input.closeDate, input.endDate, state.r.i0) == 1 ||
-            dateCompare(state.r.curDate, input.closeDate, state.r.i0) == 1) {
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidDate,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+        if (dateCompare(input.closeDate, input.endDate, locals.i0) == 1 ||
+            dateCompare(locals.curDate, input.closeDate, locals.i0) == 1) {
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidDate,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         if (input.amountPerSlot < state.mMinAmountPerBetSlot) {
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetAmount,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetAmount,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         if (input.numberOfOption > QUOTTERY_MAX_OPTION || input.numberOfOption < 2) {
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidOption,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidOption,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         if (input.maxBetSlotPerOption == 0 || input.maxBetSlotPerOption > QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET)
         {
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidMaxBetSlotPerOption,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidMaxBetSlotPerOption,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        state.r.maxBetSlotPerOption = input.maxBetSlotPerOption;
-        state.r.numberOfOption = input.numberOfOption;
-        diffDate(state.r.curDate, input.endDate, state.r.i0, state.r.i1, state.r.u64_0, state.r.u64_1, state.r.duration);
-        state.r.duration += 1;
-        state.r.fee = state.r.duration * state.r.maxBetSlotPerOption * state.r.numberOfOption * state.mFeePerSlotPerDay;
+        locals.maxBetSlotPerOption = input.maxBetSlotPerOption;
+        locals.numberOfOption = input.numberOfOption;
+        diffDate(locals.curDate, input.endDate, locals.i0, locals.i1, locals.u64_0, locals.u64_1, locals.duration);
+        locals.duration += 1;
+        locals.fee = locals.duration * locals.maxBetSlotPerOption * locals.numberOfOption * state.mFeePerSlotPerDay;
 
         // fee is higher than sent amount, exit
-        if (state.r.fee > QPI::invocationReward()) {
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::insufficientFund,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+        if (locals.fee > qpi.invocationReward()) {
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::insufficientFund,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        state.r.betId = state.mCurrentBetID++;
-        state.r.slotId = -1;
+        locals.betId = state.mCurrentBetID++;
+        locals.slotId = -1;
         // find an empty slot
         {
-            state.r.i0 = 0;
-            state.r.i1 = state.r.betId & (QUOTTERY_MAX_BET - 1);
-            while (state.r.i0++ < QUOTTERY_MAX_BET) {
-                if (state.mIsOccupied.get(state.r.i1) == 0) {
-                    state.r.slotId = state.r.i1;
+            locals.i0 = 0;
+            locals.i1 = locals.betId & (QUOTTERY_INITIAL_MAX_BET - 1);
+            while (locals.i0++ < QUOTTERY_INITIAL_MAX_BET) {
+                if (state.mIsOccupied.get(locals.i1) == 0) {
+                    locals.slotId = locals.i1;
                     break;
                 }
-                state.r.i1 = (state.r.i1 + 1) & (QUOTTERY_MAX_BET - 1);
+                locals.i1 = (locals.i1 + 1) & (QUOTTERY_INITIAL_MAX_BET - 1);
             }
         }
         //out of bet storage, exit
-        if (state.r.slotId == -1) {
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::outOfStorage,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+        if (locals.slotId == -1) {
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::outOfStorage,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         // return the fee changes
-        if (QPI::invocationReward() > state.r.fee)
+        if (qpi.invocationReward() > locals.fee)
         {
-            transfer(QPI::invocator(), QPI::invocationReward() - state.r.fee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.fee);
         }
-        state.mRevenue += state.r.fee;
-        state.mRevenueFromIssue += state.r.fee;
+        state.mRevenue += locals.fee;
+        state.mRevenueFromIssue += locals.fee;
         // write data to slotId
-        state.mBetID.set(state.r.slotId, state.r.betId); // 1
-        state.mNumberOption.set(state.r.slotId, state.r.numberOfOption); // 2
-        state.mCreator.set(state.r.slotId, QPI::invocator()); // 3
-        state.mBetDesc.set(state.r.slotId, input.betDesc); // 4
-        state.mBetAmountPerSlot.set(state.r.slotId, input.amountPerSlot); // 5
-        state.mMaxNumberOfBetSlotPerOption.set(state.r.slotId, input.maxBetSlotPerOption); //6
-        state.r.numberOP = 0;
+        state.mBetID.set(locals.slotId, locals.betId); // 1
+        state.mNumberOption.set(locals.slotId, locals.numberOfOption); // 2
+        state.mCreator.set(locals.slotId, qpi.invocator()); // 3
+        state.mBetDesc.set(locals.slotId, input.betDesc); // 4
+        state.mBetAmountPerSlot.set(locals.slotId, input.amountPerSlot); // 5
+        state.mMaxNumberOfBetSlotPerOption.set(locals.slotId, input.maxBetSlotPerOption); //6
+        locals.numberOP = 0;
         {
             // write option desc, oracle provider, oracle fee, bet state
-            state.r.baseId0 = state.r.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                state.mOptionDesc.set(state.r.baseId0 + state.r.i0, input.optionDesc.get(state.r.i0)); // 7
-                state.mOracleProvider.set(state.r.baseId0 + state.r.i0, input.oracleProviderId.get(state.r.i0)); // 8
-                if (input.oracleProviderId.get(state.r.i0) != NULL_ID) {
-                    state.r.numberOP++;
+            locals.baseId0 = locals.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                state.mOptionDesc.set(locals.baseId0 + locals.i0, input.optionDesc.get(locals.i0)); // 7
+                state.mOracleProvider.set(locals.baseId0 + locals.i0, input.oracleProviderId.get(locals.i0)); // 8
+                if (input.oracleProviderId.get(locals.i0) != NULL_ID) {
+                    locals.numberOP++;
                 }
-                state.mOracleFees.set(state.r.baseId0 + state.r.i0, input.oracleFees.get(state.r.i0)); // 9
-                state.mCurrentBetState.set(state.r.baseId0 + state.r.i0, 0); //10
-                state.mBetResultWonOption.set(state.r.baseId0 + state.r.i0, -1);
-                state.mBetResultOPId.set(state.r.baseId0 + state.r.i0, -1);
+                state.mOracleFees.set(locals.baseId0 + locals.i0, input.oracleFees.get(locals.i0)); // 9
+                state.mCurrentBetState.set(locals.baseId0 + locals.i0, 0); //10
+                state.mBetResultWonOption.set(locals.baseId0 + locals.i0, -1);
+                state.mBetResultOPId.set(locals.baseId0 + locals.i0, -1);
             }
         }
-        if (state.r.numberOP == 0) {
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidNumberOfOracleProvider,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+        if (locals.numberOP == 0) {
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidNumberOfOracleProvider,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         {
             // write date and time
-            state.r.baseId0 = state.r.slotId * 4;
-            for (state.r.i0 = 0; state.r.i0 < 4; state.r.i0++) {
-                state.mOpenDate.set(state.r.baseId0 + state.r.i0, state.r.curDate.get(state.r.i0)); // 11
-                state.mCloseDate.set(state.r.baseId0 + state.r.i0, input.closeDate.get(state.r.i0)); // 12
-                state.mEndDate.set(state.r.baseId0 + state.r.i0, input.endDate.get(state.r.i0)); // 13
+            locals.baseId0 = locals.slotId * 4;
+            for (locals.i0 = 0; locals.i0 < 4; locals.i0++) {
+                state.mOpenDate.set(locals.baseId0 + locals.i0, locals.curDate.get(locals.i0)); // 11
+                state.mCloseDate.set(locals.baseId0 + locals.i0, input.closeDate.get(locals.i0)); // 12
+                state.mEndDate.set(locals.baseId0 + locals.i0, input.endDate.get(locals.i0)); // 13
             }
         }
-        state.mIsOccupied.set(state.r.betId, 1); // 14
+        state.mIsOccupied.set(locals.betId, 1); // 14
         // done write, 14 fields
         // set zero to bettor info
         {
-            state.r.baseId0 = state.r.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
-            for (state.r.i0 = 0; state.r.i0 < state.r.numberOfOption; state.r.i0++) {
-                state.r.baseId1 = state.r.baseId0 + state.r.i0 * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
-                for (state.r.i1 = 0; state.r.i1 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; state.r.i1++) {
-                    state.mBettorID.set(state.r.baseId1 + state.r.i1, NULL_ID);
-                    state.mBettorBetOption.set(state.r.baseId1 + state.r.i1, NULL_INDEX);
+            locals.baseId0 = locals.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
+            for (locals.i0 = 0; locals.i0 < locals.numberOfOption; locals.i0++) {
+                locals.baseId1 = locals.baseId0 + locals.i0 * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
+                for (locals.i1 = 0; locals.i1 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; locals.i1++) {
+                    state.mBettorID.set(locals.baseId1 + locals.i1, NULL_ID);
+                    state.mBettorBetOption.set(locals.baseId1 + locals.i1, NULL_INDEX);
                 }
             }
         }
     _
 
+    struct joinBet_locals
+    {
+        uint8_4 curDate, closeDate;
+        sint32 i0, i1, i2, i3;
+        uint64 baseId0, baseId1;
+        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
+        sint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
+        uint64 maxBetSlotPerOption, numberOfOption, duration, u64_0, u64_1;
+        uint32 betId, availableSlotForBet;
+        sint64 slotId;
+        QuotteryLogger log;
+    };
     /**
     * Join a bet
     * if the provided info is failed to join a bet, fund will be returned to invocator.
@@ -758,317 +791,346 @@ public:
     * @param option (4 bytes): the option Id that invocator wants to bet
     * @param _placeHolder (4 bytes): for padding
     */
-    PUBLIC(joinBet)
+    PUBLIC_PROCEDURE_WITH_LOCALS(joinBet)
         // only allow users to join bet
-        if (QPI::invocator() != QPI::originator())
+        if (qpi.invocator() != qpi.originator())
         {
-            returnAllFund();
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        state.r.slotId = -1;
-        for (state.r.i0 = 0; state.r.i0 < QUOTTERY_MAX_BET; state.r.i0++) {
-            if (state.mBetID.get(state.r.i0) == input.betId) {
-                state.r.slotId = state.r.i0;
+        locals.slotId = -1;
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+            if (state.mBetID.get(locals.i0) == input.betId) {
+                locals.slotId = locals.i0;
                 break;
             }
         }
-        if (state.r.slotId == -1) {
+        if (locals.slotId == -1) {
             // can't find betId
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetId,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetId,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         // check if the bet is occupied
-        if (state.mIsOccupied.get(state.r.slotId) == 0) {
+        if (state.mIsOccupied.get(locals.slotId) == 0) {
             // the bet is over
-            returnAllFund();
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        getCurrentDate(state.r.curDate);
+        getCurrentDate(qpi, locals.curDate);
         {
-            state.r.baseId0 = state.r.slotId*4;
-            makeQuotteryDate(state.mCloseDate.get(state.r.baseId0),
-            state.mCloseDate.get(state.r.baseId0 + 1), state.mCloseDate.get(state.r.baseId0 + 2), state.r.closeDate);
+            locals.baseId0 = locals.slotId*4;
+            makeQuotteryDate(state.mCloseDate.get(locals.baseId0),
+            state.mCloseDate.get(locals.baseId0 + 1), state.mCloseDate.get(locals.baseId0 + 2), locals.closeDate);
         }
 
         // closedate is counted as 23:59 of that day
-        if (dateCompare(state.r.curDate, state.r.closeDate, state.r.i0) > 0) {
+        if (dateCompare(locals.curDate, locals.closeDate, locals.i0) > 0) {
             // bet is closed for betting
             QuotteryLogger log{ 0,QuotteryLogInfo::expiredBet,0 };
             LOG_INFO(log);
-            returnAllFund();
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
         // check invalid option
-        if (input.option >= state.mNumberOption.get(state.r.slotId)) {
+        if (input.option >= state.mNumberOption.get(locals.slotId)) {
             // bet is closed for betting
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidOption,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidOption,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
         // compute available number of options
-        state.r.availableSlotForBet = 0;
+        locals.availableSlotForBet = 0;
         {
-            state.r.baseId0 = state.r.slotId*8;
-            state.r.availableSlotForBet = state.mMaxNumberOfBetSlotPerOption.get(state.r.slotId) -
-                state.mCurrentBetState.get(state.r.baseId0 + input.option);
+            locals.baseId0 = locals.slotId*8;
+            locals.availableSlotForBet = state.mMaxNumberOfBetSlotPerOption.get(locals.slotId) -
+                state.mCurrentBetState.get(locals.baseId0 + input.option);
         }
-        state.r.numberOfSlot = min(state.r.availableSlotForBet, input.numberOfSlot);
-        if (state.r.numberOfSlot == 0) {
+        locals.numberOfSlot = min(locals.availableSlotForBet, input.numberOfSlot);
+        if (locals.numberOfSlot == 0) {
             // out of slot
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::outOfSlot,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::outOfSlot,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        state.r.amountPerSlot = state.mBetAmountPerSlot.get(state.r.slotId);
-        state.r.fee = state.r.amountPerSlot * state.r.numberOfSlot;
-        if (state.r.fee > QPI::invocationReward()) {
+        locals.amountPerSlot = state.mBetAmountPerSlot.get(locals.slotId);
+        locals.fee = locals.amountPerSlot * locals.numberOfSlot;
+        if (locals.fee > qpi.invocationReward()) {
             // not send enough amount
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::insufficientFund,0 };
-            LOG_INFO(state.r.log);
-            returnAllFund();
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::insufficientFund,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        if (state.r.fee < QPI::invocationReward()) {
+        if (locals.fee < qpi.invocationReward()) {
             // return changes
-            transfer(QPI::invocator(), QPI::invocationReward() - state.r.fee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.fee);
         }
 
-        state.mRevenue += state.r.fee;
-        state.mRevenueFromBet += state.r.fee;
+        state.mRevenue += locals.fee;
+        state.mRevenueFromBet += locals.fee;
         // write bet info to memory
         {
-            state.r.i2 = QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET - state.r.availableSlotForBet;
-            state.r.i3 = state.r.i2 + state.r.numberOfSlot;
-            state.r.baseId0 = state.r.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET + QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * input.option;
-            for (state.r.i0 = state.r.i2; state.r.i0 < state.r.i3; state.r.i0++) {
-                state.mBettorID.set(state.r.baseId0+ state.r.i0, QPI::invocator());
-                state.mBettorBetOption.set(state.r.baseId0 + state.r.i0, input.option);
+            locals.i2 = QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET - locals.availableSlotForBet;
+            locals.i3 = locals.i2 + locals.numberOfSlot;
+            locals.baseId0 = locals.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET + QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * input.option;
+            for (locals.i0 = locals.i2; locals.i0 < locals.i3; locals.i0++) {
+                state.mBettorID.set(locals.baseId0+ locals.i0, qpi.invocator());
+                state.mBettorBetOption.set(locals.baseId0 + locals.i0, input.option);
             }
         }
         //update stats
         {
-            state.r.baseId0 = state.r.slotId * 8;
-            state.r.currentState = state.mCurrentBetState.get(state.r.baseId0 + input.option);
-            state.mCurrentBetState.set(state.r.baseId0 + input.option, state.r.currentState + state.r.numberOfSlot);
+            locals.baseId0 = locals.slotId * 8;
+            locals.currentState = state.mCurrentBetState.get(locals.baseId0 + input.option);
+            state.mCurrentBetState.set(locals.baseId0 + input.option, locals.currentState + locals.numberOfSlot);
         }        
         // done
     _    
     
+    struct publishResult_locals
+    {
+        uint8_4 curDate, closeDate, endDate;
+        sint32 i0, i1, i2, i3;
+        uint64 baseId0, baseId1;
+        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
+        uint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
+        uint64 maxBetSlotPerOption, numberOfOption, duration, u64_0, u64_1;
+        uint32 betId, availableSlotForBet;
+        sint64 slotId, writeId;
+        sint8 opId;
+        QuotteryLogger log;
+        tryFinalizeBet_locals tfb;
+        tryFinalizeBet_input _tryFinalizeBet_input;
+        tryFinalizeBet_output _tryFinalizeBet_output;
+    };
     /**
     * Publish result of a bet (Oracle Provider only)
     * After the vote is updated, it will try to finalize the bet, see tryFinalizeBet
     * @param betId (4 bytes)
     * @param option (4 bytes): winning option
     */
-    PUBLIC(publishResult)
+    PUBLIC_PROCEDURE_WITH_LOCALS(publishResult)
         // only allow users to publish result
-        if (QPI::invocator() != QPI::originator())
+        if (qpi.invocator() != qpi.originator())
         {
             return;
         }
-        state.r.slotId = -1;
-        for (state.r.i0 = 0; state.r.i0 < QUOTTERY_MAX_BET; state.r.i0++) {
-            if (state.mBetID.get(state.r.i0) == input.betId) {
-                state.r.slotId = state.r.i0;
+        locals.slotId = -1;
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+            if (state.mBetID.get(locals.i0) == input.betId) {
+                locals.slotId = locals.i0;
                 break;
             }
         }
-        if (state.r.slotId == -1) {
+        if (locals.slotId == -1) {
             // can't find betId
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetId,0 };
-            LOG_INFO(state.r.log);
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetId,0 };
+            LOG_INFO(locals.log);
             return;
         }
         // check if the bet is occupied
-        if (state.mIsOccupied.get(state.r.slotId) == 0) {
+        if (state.mIsOccupied.get(locals.slotId) == 0) {
             // the bet is over
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::expiredBet,0 };
-            LOG_INFO(state.r.log);
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::expiredBet,0 };
+            LOG_INFO(locals.log);
             return;
         }
-        getCurrentDate(state.r.curDate);
+        getCurrentDate(qpi, locals.curDate);
         
         {
-            state.r.baseId0 = state.r.slotId * 4;
-            makeQuotteryDate(state.mEndDate.get(state.r.baseId0),
-            state.mEndDate.get(state.r.baseId0 + 1), state.mEndDate.get(state.r.baseId0 + 2), state.r.endDate);
+            locals.baseId0 = locals.slotId * 4;
+            makeQuotteryDate(state.mEndDate.get(locals.baseId0),
+            state.mEndDate.get(locals.baseId0 + 1), state.mEndDate.get(locals.baseId0 + 2), locals.endDate);
         }
         // endDate is counted as 23:59 of that day
-        if (dateCompare(state.r.curDate, state.r.endDate, state.r.i0) <= 0) {
+        if (dateCompare(locals.curDate, locals.endDate, locals.i0) <= 0) {
             // bet is not end yet
             return;
         }
 
-        state.r.opId = -1;
+        locals.opId = -1;
         {            
-            state.r.baseId0 = state.r.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                if (state.mOracleProvider.get(state.r.baseId0 + state.r.i0) == QPI::invocator()) {
-                    state.r.opId = state.r.i0;
+            locals.baseId0 = locals.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                if (state.mOracleProvider.get(locals.baseId0 + locals.i0) == qpi.invocator()) {
+                    locals.opId = locals.i0;
                     break;
                 }
             }
-            if (state.r.opId == -1) {
+            if (locals.opId == -1) {
                 // is not oracle provider
-                state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidOPId,0 };
-                LOG_INFO(state.r.log);
+                locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidOPId,0 };
+                LOG_INFO(locals.log);
                 return;
             }
         }
         // check if this OP already published result
-        state.r.writeId = -1;
+        locals.writeId = -1;
         {
-            state.r.baseId0 = state.r.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                if (state.mBetResultOPId.get(state.r.baseId0 + state.r.i0) == state.r.opId) {
-                    state.r.writeId = state.r.i0;
+            locals.baseId0 = locals.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                if (state.mBetResultOPId.get(locals.baseId0 + locals.i0) == locals.opId) {
+                    locals.writeId = locals.i0;
                     break;
                 }
             }
         }
 
         // OP already published result, now they want to change
-        if (state.r.writeId != -1) {
-            state.r.baseId0 = state.r.slotId * 8;
-            state.mBetResultOPId.set(state.r.baseId0 + state.r.writeId, state.r.opId);
-            state.mBetResultWonOption.set(state.r.baseId0 + state.r.writeId, input.option);
+        if (locals.writeId != -1) {
+            locals.baseId0 = locals.slotId * 8;
+            state.mBetResultOPId.set(locals.baseId0 + locals.writeId, locals.opId);
+            state.mBetResultWonOption.set(locals.baseId0 + locals.writeId, input.option);
         }
         else {
-            state.r.baseId0 = state.r.slotId * 8;
-            for (state.r.i0 = 0; state.r.i0 < 8; state.r.i0++) {
-                if (state.mBetResultOPId.get(state.r.baseId0 + state.r.i0) == -1 && state.mBetResultWonOption.get(state.r.baseId0 + state.r.i0) == -1) {
-                    state.r.writeId = state.r.i0;
+            locals.baseId0 = locals.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                if (state.mBetResultOPId.get(locals.baseId0 + locals.i0) == -1 && state.mBetResultWonOption.get(locals.baseId0 + locals.i0) == -1) {
+                    locals.writeId = locals.i0;
                     break;
                 }
             }
-            state.mBetResultOPId.set(state.r.baseId0 + state.r.writeId, state.r.opId);
-            state.mBetResultWonOption.set(state.r.baseId0 + state.r.writeId, input.option);
+            state.mBetResultOPId.set(locals.baseId0 + locals.writeId, locals.opId);
+            state.mBetResultWonOption.set(locals.baseId0 + locals.writeId, input.option);
         }
 
         // try to finalize the bet
         {
-            state._tryFinalizeBet_input.betId = input.betId;
-            state._tryFinalizeBet_input.slotId = state.r.slotId;
-            tryFinalizeBet(state, state._tryFinalizeBet_input, state._tryFinalizeBet_output);
+            locals._tryFinalizeBet_input.betId = input.betId;
+            locals._tryFinalizeBet_input.slotId = locals.slotId;
+            tryFinalizeBet(qpi, state, locals._tryFinalizeBet_input, locals._tryFinalizeBet_output, locals.tfb);
         }
         
     _
 
+    struct cancelBet_locals
+    {
+        uint8_4 curDate, closeDate, endDate;
+        sint32 i0, i1, i2, i3;
+        uint64 baseId0, baseId1, nOption;
+        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
+        uint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
+        uint64 maxBetSlotPerOption, numberOfOption, duration, u64_0, u64_1;
+        uint32 betId, availableSlotForBet;
+        sint64 slotId, opId, writeId;
+        QuotteryLogger log;
+        cleanMemorySlot_locals cms;
+        cleanMemorySlot_input _cleanMemorySlot_input;
+        cleanMemorySlot_output _cleanMemorySlot_output;
+    };
     /**
     * Publish cancel a bet (Game Operator only)
     * In ermergency case, this function removes a bet from system and return all funds back to original invocators (except issueing fee)
     * @param betId (4 bytes)
     */
-    PUBLIC(cancelBet)
+    PUBLIC_PROCEDURE_WITH_LOCALS(cancelBet)
         // game operator invocation only. In any case that oracle providers can't reach consensus or unable to broadcast result after a long period,         
         // all funds will be returned
-        if (QPI::invocator() != state.mGameOperatorId) {
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::notGameOperator,0 };
-            LOG_INFO(state.r.log);
+        if (qpi.invocator() != state.mGameOperatorId) {
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::notGameOperator,0 };
+            LOG_INFO(locals.log);
             return;
         }
-        state.r.slotId = -1;
-        for (state.r.i0 = 0; state.r.i0 < QUOTTERY_MAX_BET; state.r.i0++) {
-            if (state.mBetID.get(state.r.i0) == input.betId) {
-                state.r.slotId = state.r.i0;
+        locals.slotId = -1;
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+            if (state.mBetID.get(locals.i0) == input.betId) {
+                locals.slotId = locals.i0;
                 break;
             }
         }
-        if (state.r.slotId == -1) {
+        if (locals.slotId == -1) {
             // can't find betId
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetId,0 };
-            LOG_INFO(state.r.log);
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetId,0 };
+            LOG_INFO(locals.log);
             return;
         }
         // check if the bet is occupied
-        if (state.mIsOccupied.get(state.r.slotId) == 0) {
+        if (state.mIsOccupied.get(locals.slotId) == 0) {
             // the bet is over
-            state.r.log = QuotteryLogger{ 0,QuotteryLogInfo::expiredBet,0 };
-            LOG_INFO(state.r.log);
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::expiredBet,0 };
+            LOG_INFO(locals.log);
             return;
         }
-        getCurrentDate(state.r.curDate);
+        getCurrentDate(qpi, locals.curDate);
         {
-            state.r.baseId0 = state.r.slotId * 4;
-            makeQuotteryDate(state.mEndDate.get(state.r.baseId0),
-            state.mEndDate.get(state.r.baseId0 + 1), state.mEndDate.get(state.r.baseId0 + 2), state.r.endDate);
+            locals.baseId0 = locals.slotId * 4;
+            makeQuotteryDate(state.mEndDate.get(locals.baseId0),
+            state.mEndDate.get(locals.baseId0 + 1), state.mEndDate.get(locals.baseId0 + 2), locals.endDate);
         }
 
         // endDate is counted as 23:59 of that day
-        if (dateCompare(state.r.curDate, state.r.endDate, state.r.i0) <= 0) {
+        if (dateCompare(locals.curDate, locals.endDate, locals.i0) <= 0) {
             // bet is not end yet
             return;
         }
         //static void diffDate(uint8_4& A, uint8_4& B, sint32& i, sint32& baseYear, uint64& dayA, uint64& dayB, uint64& res)
-        diffDate(state.r.curDate, state.r.endDate, state.r.i0, state.r.i1, state.r.u64_0, state.r.u64_1, state.r.duration);
-        if (state.r.duration < 2){
+        diffDate(locals.curDate, locals.endDate, locals.i0, locals.i1, locals.u64_0, locals.u64_1, locals.duration);
+        if (locals.duration < 2){
             // need 2+ days to do this
             return;
         }
 
         {
-            state.r.nOption = state.mNumberOption.get(state.r.slotId);
-            state.r.amountPerSlot = state.mBetAmountPerSlot.get(state.r.slotId);
-            state.r.baseId0 = state.r.slotId * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION;
-            for (state.r.i0 = 0; state.r.i0 < state.r.nOption; state.r.i0++){
-                state.r.baseId1 = state.r.baseId0 + state.r.i0 * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
-                for (state.r.i1 = 0; state.r.i1 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; state.r.i1++){
-                    if (state.mBettorID.get(state.r.baseId1 + state.r.i1) != NULL_ID){
-                        transfer(state.mBettorID.get(state.r.baseId1 + state.r.i1), state.r.amountPerSlot);
+            locals.nOption = state.mNumberOption.get(locals.slotId);
+            locals.amountPerSlot = state.mBetAmountPerSlot.get(locals.slotId);
+            locals.baseId0 = locals.slotId * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION;
+            for (locals.i0 = 0; locals.i0 < locals.nOption; locals.i0++){
+                locals.baseId1 = locals.baseId0 + locals.i0 * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
+                for (locals.i1 = 0; locals.i1 < QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET; locals.i1++){
+                    if (state.mBettorID.get(locals.baseId1 + locals.i1) != NULL_ID){
+                        qpi.transfer(state.mBettorID.get(locals.baseId1 + locals.i1), locals.amountPerSlot);
                     }
                 }
             }
         }
         {
             // cleaning bet storage
-            state._cleanMemorySlot_input.slotId = state.r.slotId;
-            cleanMemorySlot(state, state._cleanMemorySlot_input, state._cleanMemorySlot_output);
+            locals._cleanMemorySlot_input.slotId = locals.slotId;
+            cleanMemorySlot(qpi, state, locals._cleanMemorySlot_input, locals._cleanMemorySlot_output, locals.cms);
         }
     _
 
-        //views function
-        REGISTER_USER_FUNCTIONS
+        
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_FUNCTION(basicInfo, 1);
         REGISTER_USER_FUNCTION(getBetInfo, 2);
         REGISTER_USER_FUNCTION(getBetOptionDetail, 3);
         REGISTER_USER_FUNCTION(getActiveBet, 4);
         REGISTER_USER_FUNCTION(getBetByCreator, 5);
-        _
 
-        REGISTER_USER_PROCEDURES
         REGISTER_USER_PROCEDURE(issueBet, 1);
         REGISTER_USER_PROCEDURE(joinBet, 2);
         REGISTER_USER_PROCEDURE(cancelBet, 3);
         REGISTER_USER_PROCEDURE(publishResult, 4);
-        _
+    _
 
-        INITIALIZE
-        _
+    INITIALIZE
+    _
 
-        BEGIN_EPOCH
-            state.mFeePerSlotPerDay = QUOTTERY_FEE_PER_SLOT_PER_DAY_;
-            state.mMinAmountPerBetSlot = QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_;
-            state.mShareHolderFee = QUOTTERY_SHAREHOLDER_FEE_;
-            state.mGameOperatorFee = QUOTTERY_GAME_OPERATOR_FEE_;
+    BEGIN_EPOCH
+        state.mFeePerSlotPerDay = QUOTTERY_FEE_PER_SLOT_PER_DAY_;
+        state.mMinAmountPerBetSlot = QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_;
+        state.mShareHolderFee = QUOTTERY_SHAREHOLDER_FEE_;
+        state.mGameOperatorFee = QUOTTERY_GAME_OPERATOR_FEE_;
 
-            state.mGameOperatorId = id(0x63a7317950fa8886ULL, 0x4dbdf78085364aa7ULL, 0x21c6ca41e95bfa65ULL, 0xcbc1886b3ea8e647ULL);
-        _
+        state.mGameOperatorId = id(0x63a7317950fa8886ULL, 0x4dbdf78085364aa7ULL, 0x21c6ca41e95bfa65ULL, 0xcbc1886b3ea8e647ULL);
+    _
 
-        END_EPOCH
-        _
+    END_EPOCH
+    _
 
-        BEGIN_TICK
-        _
+    BEGIN_TICK
+    _
 
-        END_TICK
-        _
+    END_TICK
+    _
 
-        EXPAND
-        _
+    EXPAND
+    _
 };
