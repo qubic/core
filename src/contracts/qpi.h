@@ -4980,7 +4980,7 @@ namespace QPI
 		T _values[L];
 
 	public:
-		inline T get(uint64 index)
+		inline T get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
