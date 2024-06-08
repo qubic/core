@@ -211,6 +211,7 @@ struct
     BroadcastComputors broadcastedComputors;
     unsigned long long resourceTestingDigest;
     unsigned int numberOfMiners;
+    unsigned int numberOfTransactions;
 } nodeStateBuffer;
 #endif
 static bool saveSpectrum();
@@ -3361,6 +3362,7 @@ static bool saveAllNodeStates()
     copyMem(&nodeStateBuffer.resourceTestingDigest, &resourceTestingDigest, sizeof(resourceTestingDigest));
     nodeStateBuffer.initialRandomSeed = score->initialRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
+    nodeStateBuffer.numberOfTransactions = numberOfTransactions;
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer);
@@ -3471,6 +3473,7 @@ static bool loadAllNodeStates()
     copyMem(&resourceTestingDigest, &nodeStateBuffer.resourceTestingDigest, sizeof(resourceTestingDigest));
     numberOfMiners = nodeStateBuffer.numberOfMiners;
     initialRandomSeedFromPersistingState = nodeStateBuffer.initialRandomSeed;
+    numberOfTransactions = nodeStateBuffer.numberOfTransactions;
     loadMiningSeedFromFile = true;
 
     // update own computor indices
