@@ -25,7 +25,7 @@
 #define RESPONSE_QUEUE_LENGTH 65536 // Must be 65536
 #define NUMBER_OF_PUBLIC_PEERS_TO_KEEP 10
 #define NUMBER_OF_WHITE_LIST_PEERS sizeof(whiteListPeers) / sizeof(whiteListPeers[0])
-#define NUMBER_OF_PRESERVE_SLOTS_WHITE_LIST_IPS 16
+#define NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS 16
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
 static volatile bool listOfPeersIsStatic = false;
@@ -466,7 +466,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     else
                     {
                         // Out of slot for preserse IPs. Only accept white list IPs
-                        if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_PRESERVE_SLOTS_WHITE_LIST_IPS)
+                        if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS)
                         {
                             EFI_TCP4_CONFIG_DATA tcp4ConfigData;
                             if (peers[i].tcp4Protocol 

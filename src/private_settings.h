@@ -15,6 +15,9 @@ static unsigned char computorSeeds[][55 + 1] = {
 static const unsigned char knownPublicPeers[][4] = {
     {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
 };
+
+// Enter static IPs that shall be prioritized in incoming connection
+// There are a connection slots reserved for those whitelist IPs
 static const unsigned char whiteListPeers[][4] = {
      {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
 };
