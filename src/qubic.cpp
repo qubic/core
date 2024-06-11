@@ -4675,6 +4675,8 @@ static void logHealthStatus()
     }
     appendText(message, L"capacity per buf ");
     appendNumber(message, contractLocalsStack[0].capacity(), TRUE);
+    appendText(message, L" | max processors waiting ");
+    appendNumber(message, contractLocalsStackLockWaitingCountMax, TRUE);
     logToConsole(message);
 }
 
