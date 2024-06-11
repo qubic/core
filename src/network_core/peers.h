@@ -120,13 +120,6 @@ static void closePeer(Peer* peer)
 {
     if (((unsigned long long)peer->tcp4Protocol) > 1)
     {
-        // Decrease the accepted counter
-        if (peer->isConnectedAccepted && peer->isIncommingConnection)
-        {
-            numberOfAcceptedIncommingConnection--;
-            ASSERT(numberOfAcceptedIncommingConnection >= 0);
-        }
-
         if (!peer->isClosing)
         {
             EFI_STATUS status;
@@ -147,10 +140,18 @@ static void closePeer(Peer* peer)
                 logStatusToConsole(L"EFI_TCP4_SERVICE_BINDING_PROTOCOL.DestroyChild() fails", status, __LINE__);
             }
 
+            // Decrease the accepted counter
+            if (peer->isConnectedAccepted && peer->isIncommingConnection)
+            {
+                numberOfAcceptedIncommingConnection--;
+                ASSERT(numberOfAcceptedIncommingConnection >= 0);
+            }
+
             peer->isConnectedAccepted = FALSE;
             peer->exchangedPublicPeers = FALSE;
             peer->isClosing = FALSE;
             peer->tcp4Protocol = NULL;
+
         }
     }
 }
