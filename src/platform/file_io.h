@@ -114,6 +114,37 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
 #endif
 }
 
+static bool createDir(CHAR16* dirName)
+{
+#ifdef NO_UEFI
+    logToConsole(L"NO_UEFI implementation of createDir() is missing! No directory created!");
+    return false;
+#else
+    EFI_STATUS status;
+    EFI_FILE_PROTOCOL* file;
+
+    // Check if the directory exist or not
+    if (EFI_SUCCESS == root->Open(root, (void**)&file, dirName, EFI_FILE_MODE_READ, 0))
+    {
+        // Directory already existed. No need to create
+        file->Close(file);
+        return true;
+    }
+
+    // Create a directory
+    if (status = root->Open(root, (void**)&file, dirName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, EFI_FILE_DIRECTORY))
+    {
+        logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+        return false;
+    }
+
+    // Close the directory
+    file->Close(file);
+
+    return true;
+#endif
+}
+
 static bool initFilesystem()
 {
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* simpleFileSystemProtocol = NULL;
