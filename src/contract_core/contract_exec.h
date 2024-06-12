@@ -16,6 +16,8 @@
 typedef StackBuffer<unsigned int, 32 * 1024 * 1024> ContractLocalsStack;
 ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS];
 static volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS];
+static volatile long contractLocalsStackLockWaitingCount = 0;
+static long contractLocalsStackLockWaitingCountMax = 0;
 
 
 static ReadWriteLock contractStateLock[contractCount];
@@ -50,6 +52,10 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
     ASSERT(stackIdx < 0);
     ASSERT(stacksToIgnore < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
 
+    long waitingCount = _InterlockedIncrement(&contractLocalsStackLockWaitingCount);
+    if (contractLocalsStackLockWaitingCountMax < waitingCount)
+        contractLocalsStackLockWaitingCountMax = waitingCount;
+
     int i = stacksToIgnore;
     while (TRY_ACQUIRE(contractLocalsStackLock[i]) == false)
     {
@@ -58,6 +64,8 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
         if (i == NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS)
             i = stacksToIgnore;
     }
+
+    _InterlockedDecrement(&contractLocalsStackLockWaitingCount);
 
     stackIdx = i;
     ASSERT(stackIdx >= 0);

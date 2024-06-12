@@ -139,6 +139,8 @@ static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
 
+// targetNextTickDataDigestIsKnown == true signals that we need to fetch TickData (update the version in this node)
+// targetNextTickDataDigestIsKnown == false means there is no consensus on next tick data yet
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
 static unsigned long long tickTicks[11];
@@ -5031,6 +5033,8 @@ static void logHealthStatus()
     }
     appendText(message, L"capacity per buf ");
     appendNumber(message, contractLocalsStack[0].capacity(), TRUE);
+    appendText(message, L" | max processors waiting ");
+    appendNumber(message, contractLocalsStackLockWaitingCountMax, TRUE);
     logToConsole(message);
 }
 
@@ -5672,9 +5676,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
 
                     if ((ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
-                        || !targetNextTickDataDigestIsKnown)// is this correct?
+                        || targetNextTickDataDigestIsKnown)
                         && (system.tick + 1 >= ts.getPreloadTick())) 
                     {
+                        // Request tick data of next tick when it is not stored yet or should be updated,
+                        // for example because next tick data digest of the quorum from the one of this node.
+                        // targetNextTickDataDigestIsKnown == true signals that we need to fetch TickData
+                        // targetNextTickDataDigestIsKnown == false means there is no consensus on next tick data yet
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
                         pushToAny(&requestedTickData.header);
