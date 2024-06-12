@@ -10,7 +10,7 @@ Qubic Node Source Code - this repository contains the source code of a full qubi
 ## Prerequisites
 To run a qubic node, you need the following spec:
 - Bare Metal Server/Computer with at least 8 Cores (high CPU frequency with AVX2 support). AVX-512 support is recommended; check supported CPUs [here](https://www.epey.co.uk/cpu/e/YTozOntpOjUwOTc7YToxOntpOjA7czo2OiI0Mjg1NzUiO31pOjUwOTk7YToyOntpOjA7czoxOiI4IjtpOjE7czoyOiIzMiI7fWk6NTA4ODthOjY6e2k6MDtzOjY6IjQ1NjE1MCI7aToxO3M6NzoiMjM4Nzg2MSI7aToyO3M6NzoiMTkzOTE5OSI7aTozO3M6NzoiMTUwMjg4MyI7aTo0O3M6NzoiMjA2Nzk5MyI7aTo1O3M6NzoiMjE5OTc1OSI7fX1fYjowOw==/)
-- At least 256GB of RAM
+- At least 500GB of RAM
 - 1Gb/s synchronous internet connection
 - A USB Stick or SSD/HD attached to the Computer (via NVMe M.2 or USB)
 - UEFI Bios 
@@ -120,6 +120,10 @@ static const unsigned char knownPublicPeers[][4] = {
   {12,13,14,12}
 };
 ```
+
+The clock of the node needs to be in sync.
+We recommend to synchronize a Linux / Windows / MacOS machine with NTP permanently and run [`qubic-cli -synctime`](https://github.com/qubic/qubic-cli) from that machine regularly, for example once a day with a cronjob.
+
 
 ## License
 The Anti-Military License. See [LICENSE.md](LICENSE.md).
