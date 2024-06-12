@@ -42,6 +42,23 @@ static void* __scratchpad();    // TODO: concurrency support (n buffers for n al
 // static void* __tryAcquireScratchpad(unsigned int size);  // Thread-safe, may return nullptr if no appropriate buffer is available
 // static void __ReleaseScratchpad(void*);
 
+template <unsigned int functionOrProcedureId>
+struct __FunctionOrProcedureBeginEndGuard
+{
+    // Constructor calling __beginFunctionOrProcedure()
+    __FunctionOrProcedureBeginEndGuard()
+    {
+        __beginFunctionOrProcedure(functionOrProcedureId);
+    }
+
+    // Destructor making sure __endFunctionOrProcedure() is called for every return path
+    ~__FunctionOrProcedureBeginEndGuard()
+    {
+        __endFunctionOrProcedure(functionOrProcedureId);
+    }
+};
+
+
 #include "contracts/qpi.h"
 
 #define QX_CONTRACT_INDEX 1

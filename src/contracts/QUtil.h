@@ -10,6 +10,7 @@ using namespace QPI;
 */
 
 // Return code for logger and return struct
+// TODO: Replace by constexpr, because any "#" is forbidden in contracts
 #define STM1_SUCCESS 0
 #define STM1_INVALID_AMOUNT_NUMBER 1
 #define STM1_INSUFFICIENT_FUND 2

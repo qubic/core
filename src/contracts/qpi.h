@@ -24,15 +24,12 @@ namespace QPI
 	__
 	double
 	float
-	return
 	typedef
 	union
 
 	const_cast
 	QpiContext
-	__qpi
 	TODO: prevent other casts trying to cast const away from state
-	TODO: #undef and other methods trying to redefine QPI (maybe completely disallow #define?)
 
 	*/
 
@@ -6164,17 +6161,17 @@ namespace QPI
 	//////////
 
 	// TODO: make sure these cannot be called from contract body
-	#define INITIALIZE public: static void __initialize(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define INITIALIZE public: static void __initialize(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define BEGIN_EPOCH public: static void __beginEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define BEGIN_EPOCH public: static void __beginEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define END_EPOCH public: static void __endEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define END_EPOCH public: static void __endEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define BEGIN_TICK public: static void __beginTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define BEGIN_TICK public: static void __beginTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define END_TICK public: static void __endTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define END_TICK public: static void __endTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define EXPAND public: static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+	#define EXPAND public: static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 	// TODO: move to QPI to prevent from spamming log of other contract (by calling local function)
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
@@ -6193,7 +6190,7 @@ namespace QPI
 	#define PRIVATE_FUNCTION_WITH_LOCALS(function) \
 		private: \
 			enum { __is_function_##function = true }; \
-			static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+			static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 	#define PRIVATE_PROCEDURE(procedure) \
 		private: \
@@ -6203,7 +6200,7 @@ namespace QPI
 	#define PRIVATE_PROCEDURE_WITH_LOCALS(procedure) \
 		private: \
 			enum { __is_function_##procedure = false }; \
-			static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+			static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 	#define PUBLIC_FUNCTION(function) \
 		public: \
@@ -6213,7 +6210,7 @@ namespace QPI
 	#define PUBLIC_FUNCTION_WITH_LOCALS(function) \
 		public: \
 			enum { __is_function_##function = true }; \
-			static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+			static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 	#define PUBLIC_PROCEDURE(procedure) \
 		public: \
@@ -6223,14 +6220,14 @@ namespace QPI
 	#define PUBLIC_PROCEDURE_WITH_LOCALS(procedure) \
 		public: \
 			enum { __is_function_##procedure = false }; \
-			static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+			static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 	#define REGISTER_USER_FUNCTIONS_AND_PROCEDURES \
 		public: \
 			enum { __contract_index = CONTRACT_INDEX }; \
-			static void __registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi) { constexpr unsigned int __functionOrProcedureId = (CONTRACT_INDEX << 22) | __LINE__; ::__beginFunctionOrProcedure(__functionOrProcedureId);
+			static void __registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define _ ::__endFunctionOrProcedure(__functionOrProcedureId); }
+	#define _ }
 
 	#define REGISTER_USER_FUNCTION(userFunction, inputType) \
 		static_assert(__is_function_##userFunction, #userFunction " is procedure"); \
