@@ -121,6 +121,10 @@ static const unsigned char knownPublicPeers[][4] = {
 };
 ```
 
+The clock of the node needs to be in sync.
+We recommend to synchronize a Linux / Windows / MacOS machine with NTP permanently and run [`qubic-cli -synctime`](https://github.com/qubic/qubic-cli) from that machine regularly, for example once a day with a cronjob.
+
+
 ## License
 The Anti-Military License. See [LICENSE.md](LICENSE.md).
 
