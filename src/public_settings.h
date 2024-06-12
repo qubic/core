@@ -9,14 +9,14 @@
 // random seed is now obtained from spectrumDigests
 
 #define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this for this epoch, because there may be issues due too fast ticking
-#define NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS 2  // number of processors that can execute contract functions in parallel
+#define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this for this epoch, because there may be issues due to too fast ticking
+#define NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS 10 // number of buffers available for executing contract functions in parallel
 
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 2000000 // the larger the better
 #define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
 
-// Number of ticks to from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
+// Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
 #define TARGET_TICK_DURATION 2000
@@ -26,7 +26,7 @@
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 1
+#define START_NETWORK_FROM_SCRATCH 0
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -35,12 +35,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 206
+#define VERSION_B 207
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 112
-#define TICK 14240000
+#define EPOCH 113
+#define TICK 14329030
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
