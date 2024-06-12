@@ -70,7 +70,8 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
-#define PROBABILITY_TO_FORCE_EMPTY_TICK 850 // 8.5% - about 50% of current nodes will press F5 after 60 seconds if the case is triggered
+#define AUTO_FORCE_NEXT_TICK_THRESHOLD 10ULL // multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
+#define PROBABILITY_TO_FORCE_EMPTY_TICK 800 // 8%
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE

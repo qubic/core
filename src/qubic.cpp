@@ -221,8 +221,8 @@ static struct {
 static struct {
     unsigned int tick;
     unsigned long long clock;
+    unsigned long long lastTryClock; // last time it rolling the dice
 } emptyTickResolver;
-
 
 static void logToConsole(const CHAR16* message)
 {
@@ -3673,12 +3673,16 @@ static void tickProcessor(void*)
                         {
                             if (!targetNextTickDataDigestIsKnown)
                             {
-                                if (forceNextTick)
-                                {
-                                    targetNextTickDataDigest = _mm256_setzero_si256();
-                                    targetNextTickDataDigestIsKnown = true;
-                                }
-                                if (tickTotalNumberOfComputors >= QUORUM && mainAuxStatus & 1)
+                                // auto f5 logic:
+                                // if these conditions are met:
+                                // - this node is on MAIN mode
+                                // - not reach consensus for next tick digest => (!targetNextTickDataDigestIsKnown)
+                                // - 451+ votes agree on the current tick (prev digests, tick data) | aka: tickNumberOfComputors >= QUORUM
+                                // - the network was stuck for a certain time, (10x of target tick duration by default)
+                                // then:
+                                // - randomly (8% chance) force next tick to be empty every sec
+                                // - refresh the network (try to resolve bad topology)
+                                if (mainAuxStatus & 1 && AUTO_FORCE_NEXT_TICK_THRESHOLD != 0)
                                 {
                                     if (emptyTickResolver.tick != system.tick)
                                     {
@@ -3687,17 +3691,26 @@ static void tickProcessor(void*)
                                     }
                                     else
                                     {
-                                        if (__rdtsc() - emptyTickResolver.clock > frequency * TARGET_TICK_DURATION/1000)
+                                        if (__rdtsc() - emptyTickResolver.clock > frequency * TARGET_TICK_DURATION * AUTO_FORCE_NEXT_TICK_THRESHOLD / 1000)
                                         {
-                                            emptyTickResolver.clock = __rdtsc();
-                                            unsigned int randNumber = random(10000);
-                                            if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
+                                            if (__rdtsc() - emptyTickResolver.lastTryClock > frequency)
                                             {
-                                                targetNextTickDataDigest = _mm256_setzero_si256();
-                                                targetNextTickDataDigestIsKnown = true;   
+                                                unsigned int randNumber = random(10000);
+                                                if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
+                                                {
+                                                    forceNextTick = true; // auto-F5
+                                                    forceRefreshPeerList = true; // refresh the network
+                                                }
+                                                emptyTickResolver.lastTryClock = __rdtsc();
                                             }
                                         }
                                     }
+                                }
+
+                                if (forceNextTick)
+                                {
+                                    targetNextTickDataDigest = _mm256_setzero_si256();
+                                    targetNextTickDataDigestIsKnown = true;
                                 }
                             }
                             forceNextTick = false;
@@ -4351,6 +4364,9 @@ static bool initialize()
 
     beginEpoch2of2();
 
+    emptyTickResolver.clock = 0;
+    emptyTickResolver.tick = 0;
+    emptyTickResolver.lastTryClock = 0;
     return true;
 }
 
