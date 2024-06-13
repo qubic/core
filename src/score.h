@@ -131,14 +131,14 @@ struct ScoreFunction
     }
 
     // Save score cache to SCORE_CACHE_FILE_NAME
-    void saveScoreCache(int epoch)
+    void saveScoreCache(int epoch, CHAR16* directory = NULL)
     {
 #if USE_SCORE_CACHE
         ACQUIRE(scoreCacheLock);
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
-        scoreCache.save(SCORE_CACHE_FILE_NAME);
+        scoreCache.save(SCORE_CACHE_FILE_NAME, directory);
         RELEASE(scoreCacheLock);
 #endif
     }
