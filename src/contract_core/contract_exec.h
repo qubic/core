@@ -220,6 +220,40 @@ void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int cont
     contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
 }
 
+// Used to call a special system procedure of another contract from within a contract /for example in asset management rights transfer
+template <unsigned int sysProcId, typename InputType, typename OutputType>
+void QPI::QpiContextProcedureCall::__qpiCallSystemProcOfOtherContract(unsigned int otherContractIndex, InputType& input, OutputType& output, QPI::sint64 invocationReward) const
+{
+    // Make sure this function is used with an expected combination of sysProcId, input,
+    // and output
+    static_assert(
+        (sysProcId == PRE_RELEASE_SHARES && sizeof(InputType) == sizeof(QPI::PreManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::PreManagementRightsTransfer_output))
+        || (sysProcId == PRE_ACQUIRE_SHARES && sizeof(InputType) == sizeof(QPI::PreManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::PreManagementRightsTransfer_output))
+        || (sysProcId == POST_RELEASE_SHARES && sizeof(InputType) == sizeof(QPI::PostManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
+        || (sysProcId == POST_ACQUIRE_SHARES && sizeof(InputType) == sizeof(QPI::PostManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
+        , "Unsupported __qpiCallSystemProcOfOtherContract() call"
+    );
+
+    // Check that contract index to be called is valid and not different from the caller contract (if compiled in Debug mode)
+    ASSERT(otherContractIndex < contractCount);
+    ASSERT(otherContractIndex != _currentContractIndex);
+
+    // Initialize output with 0
+    setMem(&output, sizeof(output), 0);
+
+    // Create context for other contract and lock state for writing
+    const QpiContextProcedureCall& otherContractContext = __qpiConstructContextOtherContractProcedureCall(otherContractIndex, invocationReward);
+    void* otherContractState = __qpiAcquireStateForWriting(otherContractIndex);
+
+    // Run procedure
+    contractSystemProcedures[otherContractIndex][sysProcId](otherContractContext, otherContractState, &input, &output);
+
+    // Release lock and free context
+    __qpiReleaseStateForWriting(otherContractIndex);
+    __qpiFreeContextOtherContract();
+}
+
+
 
 // QPI context used to call contract system procedure from qubic core (contract processor)
 struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall

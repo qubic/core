@@ -31,7 +31,7 @@ constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
 
 
 // TODO: rename these to __qpiX (forbidding to call them outside macros)
-static void __beginFunctionOrProcedure(const unsigned int);
+static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);
 template <typename T> static m256i __K12(T);
 template <typename T> static void __logContractDebugMessage(unsigned int, T&);
@@ -107,13 +107,17 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE MLM2
 #include "contracts/MyLastMatch.h"
 
-#define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to diable timeout, because a rollback mechanism needs to be implmented to properly handle timeout
+#define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
 
 #undef INITIALIZE
 #undef BEGIN_EPOCH
 #undef END_EPOCH
 #undef BEGIN_TICK
 #undef END_TICK
+#undef PRE_RELEASE_SHARES
+#undef PRE_ACQUIRE_SHARES
+#undef POST_RELEASE_SHARES
+#undef POST_ACQUIRE_SHARES
 
 
 struct Contract0State
@@ -174,6 +178,10 @@ enum SystemProcedureID
     END_EPOCH,
     BEGIN_TICK,
     END_TICK,
+    PRE_RELEASE_SHARES,
+    PRE_ACQUIRE_SHARES,
+    POST_RELEASE_SHARES,
+    POST_ACQUIRE_SHARES,
     contractSystemProcedureCount,
 };
 
@@ -192,6 +200,10 @@ contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (SYSTEM_PROCEDURE)contrac
 contractSystemProcedures[contractIndex][END_EPOCH] = (SYSTEM_PROCEDURE)contractName::__endEpoch;\
 contractSystemProcedures[contractIndex][BEGIN_TICK] = (SYSTEM_PROCEDURE)contractName::__beginTick;\
 contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
+contractSystemProcedures[contractIndex][PRE_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preReleaseShares;\
+contractSystemProcedures[contractIndex][PRE_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preAcquireShares;\
+contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
+contractSystemProcedures[contractIndex][POST_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postAcquireShares;\
 contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 ((contractName*)contractState)->__registerUserFunctionsAndProcedures(qpi);
 

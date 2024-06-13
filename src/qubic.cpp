@@ -1519,6 +1519,42 @@ QPI::id QPI::QpiContextFunctionCall::arbitrator() const
     return arbitratorPublicKey;
 }
 
+bool QPI::QpiContextProcedureCall::acquireShares(/* TODO */) const
+{
+    // Just examples, to make it compile, move these to parameter list
+    unsigned int contractIndex = QX_CONTRACT_INDEX;
+    QPI::sint64 invocationReward = 10;
+
+    if (contractIndex >= contractCount)
+        return false;
+    if (invocationReward < 0)
+        return false;
+    // ...
+
+    // TODO: Init input
+    QPI::PreManagementRightsTransfer_input pre_input;
+    // output is zeroed in __qpiCallSystemProcOfOtherContract
+    QPI::PreManagementRightsTransfer_output pre_output;
+
+    // Call PRE_ACQUIRE_SHARES in other contract after transferring invocationReward
+    __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(contractIndex, pre_input, pre_output, invocationReward);
+
+    if (pre_output.agreeWithTransfer)
+    {
+        // TODO: transfer
+
+        // TODO: init input
+        QPI::PostManagementRightsTransfer_input post_input;
+        // Output is unused, but needed for generalized interface
+        QPI::NoData post_output;
+
+        // Call POST_ACQUIRE_SHARES in other contract without transferring an invocationReward
+        __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(contractIndex, post_input, post_output, 0);
+    }
+
+    return pre_output.agreeWithTransfer;
+}
+
 long long QPI::QpiContextProcedureCall::burn(long long amount) const
 {
     if (amount < 0 || amount > MAX_AMOUNT)
