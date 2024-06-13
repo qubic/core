@@ -396,14 +396,14 @@ iteration:
     RELEASE(universeLock);
 }
 
-static bool saveUniverse()
+static bool saveUniverse(CHAR16* directory = NULL)
 {
     logToConsole(L"Saving universe file...");
 
     const unsigned long long beginningTick = __rdtsc();
 
     ACQUIRE(universeLock);
-    long long savedSize = save(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets);
+    long long savedSize = save(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets, directory);
     RELEASE(universeLock);
 
     if (savedSize == ASSETS_CAPACITY * sizeof(Asset))
@@ -418,9 +418,9 @@ static bool saveUniverse()
     return false;
 }
 
-static bool loadUniverse()
+static bool loadUniverse(CHAR16* directory = NULL)
 {
-    long long loadedSize = load(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets);
+    long long loadedSize = load(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets, directory);
     if (loadedSize != ASSETS_CAPACITY * sizeof(Asset))
     {
         logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);

@@ -214,11 +214,11 @@ struct
     unsigned int numberOfTransactions;
 } nodeStateBuffer;
 #endif
-static bool saveSpectrum();
-static bool saveComputer();
-static bool saveSystem();
-static bool loadSpectrum();
-static bool loadComputer();
+static bool saveSpectrum(CHAR16* directory = NULL);
+static bool saveComputer(CHAR16* directory = NULL);
+static bool saveSystem(CHAR16* directory = NULL);
+static bool loadSpectrum(CHAR16* directory = NULL);
+static bool loadComputer(CHAR16* directory = NULL);
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -3302,14 +3302,19 @@ static void initializeFirstTick()
 // can only called from main thread
 static bool saveAllNodeStates()
 {
+    CHAR16 directory[16];
+    setText(directory, L"ep");
+    appendNumber(directory, system.epoch, false);
+
     logToConsole(L"Start saving node states from main thread");
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
     setText(message, L"Saving spectrum to ");
+    appendText(message, directory); appendText(message, L"/");
     appendText(message, SPECTRUM_FILE_NAME);
     logToConsole(message);
-    if (!saveSpectrum())
+    if (!saveSpectrum(directory))
     {
         logToConsole(L"Failed to save spectrum");
         return false;
@@ -3319,9 +3324,10 @@ static bool saveAllNodeStates()
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
     setText(message, L"Saving universe to ");
+    appendText(message, directory); appendText(message, L"/");
     appendText(message, UNIVERSE_FILE_NAME);
     logToConsole(message);
-    if (!saveUniverse())
+    if (!saveUniverse(directory))
     {
         logToConsole(L"Failed to save universe");
         return false;
@@ -3332,7 +3338,7 @@ static bool saveAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
     setText(message, L"Saving computer files");
     logToConsole(message);
-    if (!saveComputer())
+    if (!saveComputer(directory))
     {
         logToConsole(L"Failed to save computer");
         return false;
@@ -3341,14 +3347,14 @@ static bool saveAllNodeStates()
     logToConsole(message);
 
     static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
-    long long savedSize = save(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system);
+    long long savedSize = save(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
     if (savedSize != sizeof(system))
     {
         logToConsole(L"Failed to save system");
         return false;
     }
     
-    score->saveScoreCache(system.epoch);
+    score->saveScoreCache(system.epoch, directory);
     
     copyMem(&nodeStateBuffer.etalonTick, &etalonTick, sizeof(etalonTick));
     copyMem(nodeStateBuffer.minerPublicKeys, (void*)minerPublicKeys, sizeof(minerPublicKeys));
@@ -3365,7 +3371,7 @@ static bool saveAllNodeStates()
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
-    savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer);
+    savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
     logToConsole(L"Saving mining states");
     if (savedSize != sizeof(nodeStateBuffer))
     {
@@ -3374,7 +3380,7 @@ static bool saveAllNodeStates()
     }
     
     CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
-    savedSize = save(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests);
+    savedSize = save(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);
     logToConsole(L"Saving spectrum digests");
     if (savedSize != spectrumDigestsSizeInByte)
     {
@@ -3383,7 +3389,7 @@ static bool saveAllNodeStates()
     }
 
     CHAR16 UNIVERSE_DIGEST_FILE_NAME[] = L"snapshotUniverseDigest";
-    savedSize = save(UNIVERSE_DIGEST_FILE_NAME, assetDigestsSizeInBytes, (unsigned char*)assetDigests);
+    savedSize = save(UNIVERSE_DIGEST_FILE_NAME, assetDigestsSizeInBytes, (unsigned char*)assetDigests, directory);
     logToConsole(L"Saving universe digests");
     if (savedSize != assetDigestsSizeInBytes)
     {
@@ -3392,7 +3398,7 @@ static bool saveAllNodeStates()
     }
 
     CHAR16 COMPUTER_DIGEST_FILE_NAME[] = L"snapshotComputerDigest";
-    savedSize = save(COMPUTER_DIGEST_FILE_NAME, contractStateDigestsSizeInBytes, (unsigned char*)contractStateDigests);
+    savedSize = save(COMPUTER_DIGEST_FILE_NAME, contractStateDigestsSizeInBytes, (unsigned char*)contractStateDigests, directory);
     logToConsole(L"Saving computer digests");
     if (savedSize != contractStateDigestsSizeInBytes)
     {
@@ -3402,7 +3408,7 @@ static bool saveAllNodeStates()
 
     CHAR16 MINER_SOL_FLAG_FILE_NAME[] = L"snapshotMinerSolutionFlag";
     logToConsole(L"Saving miner solution flags");
-    savedSize = save(MINER_SOL_FLAG_FILE_NAME, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (unsigned char*)minerSolutionFlags);    
+    savedSize = save(MINER_SOL_FLAG_FILE_NAME, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (unsigned char*)minerSolutionFlags, directory);
     if (savedSize != NUMBER_OF_MINER_SOLUTION_FLAGS / 8)
     {
         logToConsole(L"Failed to save miner solution flag");
@@ -3411,7 +3417,7 @@ static bool saveAllNodeStates()
 
     setText(message, L"Saving tick storage ");
     logToConsole(message);
-    if (ts.trySaveToFile(system.epoch, system.tick) != 0)
+    if (ts.trySaveToFile(system.epoch, system.tick, directory) != 0)
     {
         logToConsole(L"Failed to save tick storage");
         return false;
@@ -3422,7 +3428,22 @@ static bool saveAllNodeStates()
 
 static bool loadAllNodeStates()
 {
-    if (ts.tryLoadFromFile(system.epoch) != 0)
+    CHAR16 directory[16];
+    setText(directory, L"ep");
+    appendNumber(directory, system.epoch, false);
+
+    // No directory of all saved states. Start from scratch
+    if (!checkDir(directory))
+    {
+        logToConsole(L"Not find epoch snapshot directory. Skip using node states snapshot.");
+        return false;
+    }
+    else
+    {
+        logToConsole(L"Found epoch snapshot directory. Using node states snapshot.");
+    }
+
+    if (ts.tryLoadFromFile(system.epoch, directory) != 0)
     {
         logToConsole(L"Failed to load tick storage");
         return false;
@@ -3430,7 +3451,7 @@ static bool loadAllNodeStates()
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
-    if (!loadSpectrum())
+    if (!loadSpectrum(directory))
     {
         logToConsole(L"Failed to load spectrum");
         return false;
@@ -3439,7 +3460,7 @@ static bool loadAllNodeStates()
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
-    if (!loadUniverse())
+    if (!loadUniverse(directory))
     {
         logToConsole(L"Failed to load universe");
         return false;
@@ -3448,14 +3469,14 @@ static bool loadAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-    if (!loadComputer())
+    if (!loadComputer(directory))
     {
         logToConsole(L"Failed to load computer");
         return false;
     }
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
-    long long loadedSize = load(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer);
+    long long loadedSize = load(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
     if (loadedSize != sizeof(nodeStateBuffer))
     {
         logToConsole(L"Failed to load mining state");
@@ -3492,7 +3513,7 @@ static bool loadAllNodeStates()
     }
 
     static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
-    loadedSize = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system);
+    loadedSize = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
     if (loadedSize != sizeof(system))
     {
         logToConsole(L"Failed to load system");
@@ -3502,7 +3523,7 @@ static bool loadAllNodeStates()
     setMem(assetChangeFlags, sizeof(assetChangeFlags), 0);
     setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
     CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
-    loadedSize = load(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests);
+    loadedSize = load(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);
     logToConsole(L"Loading spectrum digests");
     if (loadedSize != spectrumDigestsSizeInByte)
     {
@@ -3511,7 +3532,7 @@ static bool loadAllNodeStates()
     }
 
     CHAR16 UNIVERSE_DIGEST_FILE_NAME[] = L"snapshotUniverseDigest";
-    loadedSize = load(UNIVERSE_DIGEST_FILE_NAME, assetDigestsSizeInBytes, (unsigned char*)assetDigests);
+    loadedSize = load(UNIVERSE_DIGEST_FILE_NAME, assetDigestsSizeInBytes, (unsigned char*)assetDigests, directory);
     logToConsole(L"Loading universe digests");
     if (loadedSize != assetDigestsSizeInBytes)
     {
@@ -3520,7 +3541,7 @@ static bool loadAllNodeStates()
     }
 
     CHAR16 COMPUTER_DIGEST_FILE_NAME[] = L"snapshotComputerDigest";
-    loadedSize = load(COMPUTER_DIGEST_FILE_NAME, contractStateDigestsSizeInBytes, (unsigned char*)contractStateDigests);
+    loadedSize = load(COMPUTER_DIGEST_FILE_NAME, contractStateDigestsSizeInBytes, (unsigned char*)contractStateDigests, directory);
     logToConsole(L"Loading computer digests");
     if (loadedSize != contractStateDigestsSizeInBytes)
     {
@@ -3530,7 +3551,7 @@ static bool loadAllNodeStates()
 
     CHAR16 MINER_SOL_FLAG_FILE_NAME[] = L"snapshotMinerSolutionFlag";
     logToConsole(L"Loading miner solution flags");
-    loadedSize = load(MINER_SOL_FLAG_FILE_NAME, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (unsigned char*)minerSolutionFlags);
+    loadedSize = load(MINER_SOL_FLAG_FILE_NAME, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (unsigned char*)minerSolutionFlags, directory);
     if (loadedSize != NUMBER_OF_MINER_SOLUTION_FLAGS / 8)
     {
         logToConsole(L"Failed to load miner solution flag");
@@ -3539,6 +3560,7 @@ static bool loadAllNodeStates()
 
     return true;
 }
+
 #endif
 
 static void tickProcessor(void*)
@@ -4316,10 +4338,10 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
     contractProcessorState = 0;
 }
 
-static bool loadSpectrum()
+static bool loadSpectrum(CHAR16* directory)
 {
     logToConsole(L"Loading spectrum file ...");
-    long long loadedSize = load(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum);
+    long long loadedSize = load(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
     if (loadedSize != SPECTRUM_CAPACITY * sizeof(::Entity))
     {
         logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
@@ -4329,14 +4351,14 @@ static bool loadSpectrum()
     return true;
 }
 
-static bool saveSpectrum()
+static bool saveSpectrum(CHAR16* directory)
 {
     logToConsole(L"Saving spectrum file...");
 
     const unsigned long long beginningTick = __rdtsc();
 
     ACQUIRE(spectrumLock);
-    long long savedSize = save(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum);
+    long long savedSize = save(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
     RELEASE(spectrumLock);
 
     if (savedSize == SPECTRUM_CAPACITY * sizeof(::Entity))
@@ -4352,7 +4374,7 @@ static bool saveSpectrum()
 }
 
 
-static bool loadComputer()
+static bool loadComputer(CHAR16* directory)
 {
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
@@ -4367,7 +4389,7 @@ static bool loadComputer()
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
-            long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex]);
+            long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
             if (loadedSize != contractDescriptions[contractIndex].stateSize)
             {
                 logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
@@ -4379,7 +4401,7 @@ static bool loadComputer()
     return true;
 }
 
-static bool saveComputer()
+static bool saveComputer(CHAR16* directory)
 {
     logToConsole(L"Saving contract files...");
 
@@ -4395,7 +4417,7 @@ static bool saveComputer()
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
         contractStateLock[contractIndex].acquireRead();
-        long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex]);
+        long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
         contractStateLock[contractIndex].releaseRead();
         totalSize += savedSize;
         if (savedSize != contractDescriptions[contractIndex].stateSize)
@@ -4418,13 +4440,13 @@ static bool saveComputer()
     return false;
 }
 
-static bool saveSystem()
+static bool saveSystem(CHAR16* directory)
 {
     logToConsole(L"Saving system file...");
 
     const unsigned long long beginningTick = __rdtsc();
     CHAR16* fn = (epochTransitionState == 1) ? SYSTEM_END_OF_EPOCH_FILE_NAME : SYSTEM_FILE_NAME;
-    long long savedSize = save(fn, sizeof(system), (unsigned char*)&system);
+    long long savedSize = save(fn, sizeof(system), (unsigned char*)&system, directory);
     if (savedSize == sizeof(system))
     {
         setNumber(message, savedSize, TRUE);
