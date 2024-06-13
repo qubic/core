@@ -231,15 +231,29 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
     void call(SystemProcedureID systemProcId)
     {
         ASSERT(_currentContractIndex < contractCount);
+        ASSERT(systemProcId < contractSystemProcedureCount);
 
         if (!contractSystemProcedures[_currentContractIndex][systemProcId])
             return;
+
+        // At the moment, all contract called from without a QpiContext are without input, output, and invocation reward.
+        // If this changes in the future, we should add a template overload function call() with passing
+        // the input and output types and instance references as additional parameters. Also, the invocation reward should
+        // be passed as an argument to the constructor.
+        ASSERT(
+            systemProcId == INITIALIZE
+            || systemProcId == BEGIN_EPOCH
+            || systemProcId == END_EPOCH
+            || systemProcId == BEGIN_TICK
+            || systemProcId == END_TICK
+        );
+        QPI::NoData noInOutData;
 
         // reserve resources for this processor (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
         const unsigned long long startTick = __rdtsc();
-        contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex]);
+        contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], &noInOutData, &noInOutData);
         _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
 
         // release lock of contract state and set state to changed

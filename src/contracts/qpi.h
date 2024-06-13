@@ -6154,24 +6154,24 @@ namespace QPI
 		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
 	};
 
-	struct NoLocalVariables {};
+	struct NoData {};
 
 #endif
 
 	//////////
 
 	// TODO: make sure these cannot be called from contract body
-	#define INITIALIZE public: static void __initialize(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	#define INITIALIZE public: static void __initialize(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define BEGIN_EPOCH public: static void __beginEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	#define BEGIN_EPOCH public: static void __beginEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define END_EPOCH public: static void __endEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	#define END_EPOCH public: static void __endEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define BEGIN_TICK public: static void __beginTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	#define BEGIN_TICK public: static void __beginTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define END_TICK public: static void __endTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	#define END_TICK public: static void __endTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define EXPAND public: static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	#define EXPAND public: static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 	// TODO: move to QPI to prevent from spamming log of other contract (by calling local function)
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
@@ -6184,7 +6184,7 @@ namespace QPI
 
 	#define PRIVATE_FUNCTION(function) \
 		private: \
-			typedef QPI::NoLocalVariables function##_locals; \
+			typedef QPI::NoData function##_locals; \
 			PRIVATE_FUNCTION_WITH_LOCALS(function)
 
 	#define PRIVATE_FUNCTION_WITH_LOCALS(function) \
@@ -6194,7 +6194,7 @@ namespace QPI
 
 	#define PRIVATE_PROCEDURE(procedure) \
 		private: \
-			typedef QPI::NoLocalVariables procedure##_locals; \
+			typedef QPI::NoData procedure##_locals; \
 			PRIVATE_PROCEDURE_WITH_LOCALS(procedure);
 
 	#define PRIVATE_PROCEDURE_WITH_LOCALS(procedure) \
@@ -6204,7 +6204,7 @@ namespace QPI
 
 	#define PUBLIC_FUNCTION(function) \
 		public: \
-			typedef QPI::NoLocalVariables function##_locals; \
+			typedef QPI::NoData function##_locals; \
 			PUBLIC_FUNCTION_WITH_LOCALS(function);
 
 	#define PUBLIC_FUNCTION_WITH_LOCALS(function) \
@@ -6214,7 +6214,7 @@ namespace QPI
 
 	#define PUBLIC_PROCEDURE(procedure) \
 		public: \
-			typedef QPI::NoLocalVariables procedure##_locals; \
+			typedef QPI::NoData procedure##_locals; \
 			PUBLIC_PROCEDURE_WITH_LOCALS(procedure);
 
 	#define PUBLIC_PROCEDURE_WITH_LOCALS(procedure) \

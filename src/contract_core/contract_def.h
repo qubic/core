@@ -17,7 +17,7 @@ namespace QPI
 }
 
 // TODO: add option for having locals to SYSTEM and EXPAND procedures
-typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void*);
+typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output);
 typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContextProcedureCall&, void*, void*);
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
@@ -147,7 +147,6 @@ constexpr struct ContractDescription
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
 
-static SYSTEM_PROCEDURE contractSystemProcedures[contractCount][5];
 static EXPAND_PROCEDURE contractExpandProcedures[contractCount];
 
 // TODO: all below are filled very sparsely, so a better data structure could save almost all the memory
@@ -171,16 +170,21 @@ static unsigned short contractUserProcedureLocalsSizes[contractCount][65536];
 enum SystemProcedureID
 {
     INITIALIZE = 0,
-    BEGIN_EPOCH = 1,
-    END_EPOCH = 2,
-    BEGIN_TICK = 3,
-    END_TICK = 4,
+    BEGIN_EPOCH,
+    END_EPOCH,
+    BEGIN_TICK,
+    END_TICK,
+    contractSystemProcedureCount,
 };
 
 enum MoreProcedureIDs
 {
-    USER_PROCEDURE_CALL = 5,
+    // Used together with SystemProcedureID values, so there must be not overlap!
+    USER_PROCEDURE_CALL = contractSystemProcedureCount + 1,
 };
+
+static SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
+
 
 #define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName)\
 contractSystemProcedures[contractIndex][INITIALIZE] = (SYSTEM_PROCEDURE)contractName::__initialize;\
