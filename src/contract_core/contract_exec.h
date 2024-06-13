@@ -8,9 +8,22 @@
 
 #include "contract_core/contract_def.h"
 #include "contract_core/stack_buffer.h"
+#include "contract_core/contract_action_tracker.h"
 
 // TODO: remove, only for debug output
 #include "system.h"
+
+
+enum ContractError
+{
+    NoContractError = 0,
+    ContractErrorAllocInputOutputFailed,
+    ContractErrorAllocLocalsFailed,
+    ContractErrorAllocContextOtherFunctionCallFailed,
+    ContractErrorAllocContextOtherProcedureCallFailed,
+    ContractErrorTooManyActions,
+    ContractErrorTimeout,
+};
 
 // Used to store: locals and for first invocation level also input and output
 typedef StackBuffer<unsigned int, 32 * 1024 * 1024> ContractLocalsStack;
@@ -23,10 +36,13 @@ static long contractLocalsStackLockWaitingCountMax = 0;
 static ReadWriteLock contractStateLock[contractCount];
 static unsigned char* contractStates[contractCount];
 static volatile long long contractTotalExecutionTicks[contractCount];
+static unsigned int contractError[contractCount];
 
 // TODO: If we ever have parallel procedure calls (of different contracts), we need to make
 // access to contractStateChangeFlags thread-safe
 static unsigned long long* contractStateChangeFlags = NULL;
+
+static ContractActionTracker<1024> contractActionTracker;
 
 
 bool initContractExec()
@@ -36,6 +52,7 @@ bool initContractExec()
     setMem((void*)contractLocalsStackLock, sizeof(contractLocalsStackLock), 0);
 
     setMem((void*)contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
+    setMem((void*)contractError, sizeof(contractError), 0);
     for (int i = 0; i < contractCount; ++i)
     {
         contractStateLock[i].reset();
@@ -95,12 +112,13 @@ void* QPI::QpiContextFunctionCall::__qpiAllocLocals(unsigned int sizeOfLocals) c
         appendNumber(dbgMsgBuf, _stackIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
-        return 0; // TODO: log problem / restart processor here instead of returning
+        // abort execution of contract here
+        __qpiAbort(ContractErrorAllocLocalsFailed);
     }
     void* p = contractLocalsStack[_stackIndex].allocate(sizeOfLocals);
-#ifndef NDEBUG
     if (!p)
     {
+#ifndef NDEBUG
         CHAR16 dbgMsgBuf[400];
         setText(dbgMsgBuf, L"__qpiAllocLocals stack buffer alloc failed in tick ");
         appendNumber(dbgMsgBuf, system.tick, FALSE);
@@ -112,10 +130,11 @@ void* QPI::QpiContextFunctionCall::__qpiAllocLocals(unsigned int sizeOfLocals) c
         appendText(dbgMsgBuf, L", stackIndex ");
         appendNumber(dbgMsgBuf, _stackIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
-    }
 #endif
-    if (p)
-        setMem(p, sizeOfLocals, 0);
+        // abort execution of contract here
+        __qpiAbort(ContractErrorAllocLocalsFailed);
+    }
+    setMem(p, sizeOfLocals, 0);
     return p;
 }
 
@@ -133,9 +152,9 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     char * buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextFunctionCall));
-#ifndef NDEBUG
     if (!buffer)
     {
+#ifndef NDEBUG
         CHAR16 dbgMsgBuf[400];
         setText(dbgMsgBuf, L"__qpiConstructContextOtherContractFunctionCall stack buffer alloc failed in tick ");
         appendNumber(dbgMsgBuf, system.tick, FALSE);
@@ -147,8 +166,10 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
         appendText(dbgMsgBuf, L", stackIndex ");
         appendNumber(dbgMsgBuf, _stackIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
-    }
 #endif
+        // abort execution of contract here
+        __qpiAbort(ContractErrorAllocContextOtherFunctionCallFailed);
+    }
     QpiContextFunctionCall& newContext = *reinterpret_cast<QpiContextFunctionCall*>(buffer);
     newContext.init(otherContractIndex, _originator, _currentContractId, _invocationReward);
     return newContext;
@@ -159,9 +180,9 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructConte
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
-#ifndef NDEBUG
     if (!buffer)
     {
+#ifndef NDEBUG
         CHAR16 dbgMsgBuf[400];
         setText(dbgMsgBuf, L"__qpiConstructContextOtherContractProcedureCall stack buffer alloc failed in tick ");
         appendNumber(dbgMsgBuf, system.tick, FALSE);
@@ -173,8 +194,10 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructConte
         appendText(dbgMsgBuf, L", stackIndex ");
         appendNumber(dbgMsgBuf, _stackIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
-    }
 #endif
+        // abort execution of contract here
+        __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);
+    }
     QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
     if (transfer(QPI::id(otherContractIndex, 0, 0, 0), invocationReward) < 0)
         invocationReward = 0;
@@ -253,6 +276,40 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProcOfOtherContract(unsigned i
     __qpiFreeContextOtherContract();
 }
 
+// Enter endless loop leading to timeout of contractProcessor() and rollback
+void QPI::QpiContextFunctionCall::__qpiAbort(unsigned int errorCode) const
+{
+    ASSERT(_currentContractIndex < contractCount);
+    contractError[_currentContractIndex] = errorCode;
+
+#ifndef NDEBUG
+    CHAR16 dbgMsgBuf[200];
+    setText(dbgMsgBuf, L"__qpiAbort() called in tick ");
+    appendNumber(dbgMsgBuf, system.tick, FALSE);
+    addDebugMessage(dbgMsgBuf);
+    setText(dbgMsgBuf, L"contractIndex ");
+    appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+    appendText(dbgMsgBuf, L", errorCode ");
+    appendNumber(dbgMsgBuf, errorCode, FALSE);
+    addDebugMessage(dbgMsgBuf);
+#endif
+    // TODO: How to do error handing in user functions? (request processor has no timeout / respawn)
+    //       Caller need to be distinguished here (function may be called from procedure)
+
+    // we have to wait for the timeout, because there seems to be no function to stop the processor
+    // TODO: we may add a function to CustomStack for directly returning from the runFunction()
+    while (1)
+        _mm_pause();
+}
+
+// TODO: don't call faulty contracts
+
+//void QpiContextProcedureCall::__qpiRollbackContractTransaction()
+// Undo whole transaction of contract, unlock/free all resources
+// rollback should mark contract as faulty, state may be inconsistent, so exclude it from contractDigest?
+
+
+
 
 
 // QPI context used to call contract system procedure from qubic core (contract processor)
@@ -260,6 +317,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
 {
     QpiContextSystemProcedureCall(unsigned int contractIndex) : QPI::QpiContextProcedureCall(contractIndex, NULL_ID, 0)
     {
+        contractActionTracker.init();
     }
 
     void call(SystemProcedureID systemProcId)
@@ -301,6 +359,9 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 {
     QpiContextUserProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QPI::QpiContextProcedureCall(contractIndex, originator, invocationReward)
     {
+        contractActionTracker.init();
+        if (!contractActionTracker.addQuTransfer(_originator, _currentContractId, _invocationReward))
+            __qpiAbort(ContractErrorTooManyActions);
     }
 
     void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
@@ -319,10 +380,9 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         unsigned short outputSize = contractUserProcedureOutputSizes[_currentContractIndex][inputType];
         unsigned int localsSize = contractUserProcedureLocalsSizes[_currentContractIndex][inputType];
         char* inputBuffer = contractLocalsStack[_stackIndex].allocate(fullInputSize + outputSize + localsSize);
-        ASSERT(inputBuffer); // TODO: error handling
-#ifndef NDEBUG
         if (!inputBuffer)
         {
+#ifndef NDEBUG
             CHAR16 dbgMsgBuf[400];
             setText(dbgMsgBuf, L"QpiContextUserProcedureCall stack buffer alloc failed in tick ");
             appendNumber(dbgMsgBuf, system.tick, FALSE);
@@ -340,8 +400,10 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
             appendText(dbgMsgBuf, L", stackIndex ");
             appendNumber(dbgMsgBuf, _stackIndex, FALSE);
             addDebugMessage(dbgMsgBuf);
-        }
 #endif
+            // abort execution of contract here
+            __qpiAbort(ContractErrorAllocInputOutputFailed);
+        }
 
         char* outputBuffer = inputBuffer + fullInputSize;
         char* localsBuffer = outputBuffer + outputSize;
@@ -414,10 +476,9 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         outputSize = contractUserFunctionOutputSizes[_currentContractIndex][inputType];
         unsigned int localsSize = contractUserFunctionLocalsSizes[_currentContractIndex][inputType];
         char* inputBuffer = contractLocalsStack[_stackIndex].allocate(fullInputSize + outputSize + localsSize);
-        ASSERT(inputBuffer); // TODO: error handling
-#ifndef NDEBUG
         if (!inputBuffer)
         {
+#ifndef NDEBUG
             CHAR16 dbgMsgBuf[400];
             setText(dbgMsgBuf, L"QpiContextUserFunctionCall stack buffer alloc failed in tick ");
             appendNumber(dbgMsgBuf, system.tick, FALSE);
@@ -435,8 +496,10 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
             appendText(dbgMsgBuf, L", stackIndex ");
             appendNumber(dbgMsgBuf, _stackIndex, FALSE);
             addDebugMessage(dbgMsgBuf);
-        }
 #endif
+            // abort execution of contract here
+            __qpiAbort(ContractErrorAllocInputOutputFailed);
+        }
         outputBuffer = inputBuffer + fullInputSize;
         char* localsBuffer = outputBuffer + outputSize;
         if (inputSize < fullInputSize)
@@ -478,6 +541,3 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         releaseContractLocalsStack(_stackIndex);
     }
 };
-
-
-

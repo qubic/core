@@ -6098,6 +6098,7 @@ namespace QPI
 		void __qpiFreeContextOtherContract() const;
 		void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
 		void __qpiReleaseStateForReading(unsigned int contractIndex) const;
+		void __qpiAbort(unsigned int errorCode) const;
 
 	protected:
 		// Construction is done in core, not allowed in contracts
