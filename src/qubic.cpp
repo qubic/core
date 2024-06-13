@@ -3682,7 +3682,7 @@ static void tickProcessor(void*)
                                 // then:
                                 // - randomly (8% chance) force next tick to be empty every sec
                                 // - refresh the network (try to resolve bad topology)
-                                if (mainAuxStatus & 1 && AUTO_FORCE_NEXT_TICK_THRESHOLD != 0)
+                                if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
                                 {
                                     if (emptyTickResolver.tick != system.tick)
                                     {
@@ -3699,7 +3699,6 @@ static void tickProcessor(void*)
                                                 if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
                                                 {
                                                     forceNextTick = true; // auto-F5
-                                                    forceRefreshPeerList = true; // refresh the network
                                                 }
                                                 emptyTickResolver.lastTryClock = __rdtsc();
                                             }
