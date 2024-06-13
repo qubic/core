@@ -4669,7 +4669,7 @@ static void logHealthStatus()
 
     // Print info about stack buffers used to run contracts
     setText(message, L"Contract stack buffer usage: ");
-    for (int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS; ++i)
+    for (int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS; ++i)
     {
         appendText(message, L"buf ");
         appendNumber(message, i, FALSE);

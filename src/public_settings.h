@@ -10,7 +10,11 @@
 
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this for this epoch, because there may be issues due to too fast ticking
-#define NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS 10 // number of buffers available for executing contract functions in parallel
+
+// Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
+// and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
+// is MAX_NUMBER_OF_PROCESSORS - 1.
+#define NUMBER_OF_CONTRACT_EXECUTION_BUFFERS 10
 
 #define USE_SCORE_CACHE 1
 #define SCORE_CACHE_SIZE 2000000 // the larger the better

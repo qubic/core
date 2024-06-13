@@ -14,8 +14,8 @@
 
 // Used to store: locals and for first invocation level also input and output
 typedef StackBuffer<unsigned int, 32 * 1024 * 1024> ContractLocalsStack;
-ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS];
-static volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS];
+ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
+static volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
 static volatile long contractLocalsStackLockWaitingCount = 0;
 static long contractLocalsStackLockWaitingCountMax = 0;
 
@@ -31,7 +31,7 @@ static unsigned long long* contractStateChangeFlags = NULL;
 
 bool initContractExec()
 {
-    for (ContractLocalsStack::SizeType i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS; ++i)
+    for (ContractLocalsStack::SizeType i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS; ++i)
         contractLocalsStack[i].init();
     setMem((void*)contractLocalsStackLock, sizeof(contractLocalsStackLock), 0);
 
@@ -48,9 +48,9 @@ bool initContractExec()
 // stacksToIgnore > 0 can be passed by low priority tasks to keep some stacks reserved for high prio purposes.
 void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
 {
-    static_assert(NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS >= 2, "NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS should be at least 2.");
+    static_assert(NUMBER_OF_CONTRACT_EXECUTION_BUFFERS >= 2, "NUMBER_OF_CONTRACT_EXECUTION_BUFFERS should be at least 2.");
     ASSERT(stackIdx < 0);
-    ASSERT(stacksToIgnore < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
+    ASSERT(stacksToIgnore < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
 
     long waitingCount = _InterlockedIncrement(&contractLocalsStackLockWaitingCount);
     if (contractLocalsStackLockWaitingCountMax < waitingCount)
@@ -61,7 +61,7 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
     {
         _mm_pause();
         ++i;
-        if (i == NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS)
+        if (i == NUMBER_OF_CONTRACT_EXECUTION_BUFFERS)
             i = stacksToIgnore;
     }
 
@@ -75,7 +75,7 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
 void releaseContractLocalsStack(int& stackIdx)
 {
     ASSERT(stackIdx >= 0);
-    ASSERT(stackIdx < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
+    ASSERT(stackIdx < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     ASSERT(contractLocalsStackLock[stackIdx]);
     RELEASE(contractLocalsStackLock[stackIdx]);
     stackIdx = -1;
@@ -84,8 +84,8 @@ void releaseContractLocalsStack(int& stackIdx)
 // Allocate storage on ContractLocalsStack of QPI execution context
 void* QPI::QpiContextFunctionCall::__qpiAllocLocals(unsigned int sizeOfLocals) const
 {
-    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
-    if (_stackIndex < 0 || _stackIndex >= NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS)
+    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
+    if (_stackIndex < 0 || _stackIndex >= NUMBER_OF_CONTRACT_EXECUTION_BUFFERS)
     {
 #ifndef NDEBUG
         CHAR16 dbgMsgBuf[100];
@@ -122,8 +122,8 @@ void* QPI::QpiContextFunctionCall::__qpiAllocLocals(unsigned int sizeOfLocals) c
 // Free last allocated storage on ContractLocalsStack of QPI execution context
 void QPI::QpiContextFunctionCall::__qpiFreeLocals() const
 {
-    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
-    if (_stackIndex < 0 || _stackIndex >= NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS)
+    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
+    if (_stackIndex < 0 || _stackIndex >= NUMBER_OF_CONTRACT_EXECUTION_BUFFERS)
         return;
     contractLocalsStack[_stackIndex].free();
 }
@@ -131,7 +131,7 @@ void QPI::QpiContextFunctionCall::__qpiFreeLocals() const
 // Called before one contract calls a function of a different contract
 const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const
 {
-    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
+    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     char * buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextFunctionCall));
 #ifndef NDEBUG
     if (!buffer)
@@ -157,7 +157,7 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
 // Called before one contract calls a procedure of a different contract
 const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, QPI::sint64 invocationReward) const
 {
-    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
+    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
 #ifndef NDEBUG
     if (!buffer)
@@ -185,7 +185,7 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructConte
 // Called before one contract calls a function or procedure of a different contract
 void QPI::QpiContextFunctionCall::__qpiFreeContextOtherContract() const
 {
-    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS);
+    ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     contractLocalsStack[_stackIndex].free();
 }
 
