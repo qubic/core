@@ -94,7 +94,7 @@ private:
 
     inline static unsigned long long fileChunkSize = 209715200ULL; //200MB
 
-    struct {
+    struct MetaData {
         unsigned int epoch;
         unsigned int tickBegin;
         unsigned int tickEnd;
@@ -453,6 +453,24 @@ public:
         }
         return 0;
     }
+
+    // Save a dummy metadata that invalidate the current snapshot
+    bool saveInvalidateData(CHAR16* directory = NULL)
+    {
+        MetaData invalidMetaData;
+        invalidMetaData.epoch = 0;
+        invalidMetaData.tickBegin = 0;
+        invalidMetaData.tickEnd = 0;
+        invalidMetaData.outTotalTransactionSize = 0;
+        invalidMetaData.outNextTickTransactionOffset = 0;
+        auto sz = saveLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(invalidMetaData), (unsigned char*)&invalidMetaData, directory);
+        if (sz != sizeof(invalidMetaData))
+        {
+            return false;
+        }
+        return true;
+    }
+
 
     bool initMetaData()
     {

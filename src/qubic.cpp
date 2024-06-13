@@ -3299,6 +3299,13 @@ static void initializeFirstTick()
 #endif
 
 #if TICK_STORAGE_AUTOSAVE_MODE
+
+// Invalid snapshot data
+static void invalidateNodeStates(CHAR16* directory)
+{
+    ts.saveInvalidateData(directory);
+}
+
 // can only called from main thread
 static bool saveAllNodeStates()
 {
@@ -3307,6 +3314,10 @@ static bool saveAllNodeStates()
     appendNumber(directory, system.epoch, false);
 
     logToConsole(L"Start saving node states from main thread");
+
+    // Mark current snapshot metadata as invalid. Any failed step will keep this metadata and invalidate all other snapshots
+    invalidateNodeStates(directory);
+
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
