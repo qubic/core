@@ -70,8 +70,14 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
-#define AUTO_FORCE_NEXT_TICK_THRESHOLD 10ULL // multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
-#define PROBABILITY_TO_FORCE_EMPTY_TICK 800 // 8%
+
+// Below are 2 variables that are used for auto-F5 feature:
+#define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
+                                            // to prevent bad actor causing misalignment, operators should set this number randomly in this range [7, 15]
+                                            // eg: If AUTO_FORCE_NEXT_TICK_THRESHOLD is 8 and TARGET_TICK_DURATION is 2, then the system will start "auto F5 procedure" after 16 seconds after receveing 451+ votes
+
+#define PROBABILITY_TO_FORCE_EMPTY_TICK 800 // after (AUTO_FORCE_NEXT_TICK_THRESHOLD x TARGET_TICK_DURATION) seconds, the node will start casting F5 randomly every second with this probability
+                                            // to prevent bad actor causing misalignment, operators should set this number in this range [700, 900] (aka [7%, 9%])
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
