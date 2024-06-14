@@ -10,6 +10,7 @@
 // cluster size, try 32768.
 #define READING_CHUNK_SIZE 1048576
 #define WRITING_CHUNK_SIZE 1048576
+#define FILE_CHUNK_SIZE (209715200ULL) // for large file saving
 #define VOLUME_LABEL L"Qubic"
 
 static EFI_FILE_PROTOCOL* root = NULL;
@@ -374,4 +375,60 @@ static unsigned int getTextSize(CHAR16* text, int maximumSize)
     int result = 0;
     while (result < maximumSize && text[result]) result++;
     return result;
+}
+
+static long long saveLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
+{
+    
+    const unsigned long long maxWriteSizePerChunk = FILE_CHUNK_SIZE;
+    if (totalSize < maxWriteSizePerChunk) {
+        return save(fileName, totalSize, buffer, directory);
+    }
+    int chunkId = 0;
+    unsigned long long totalWriteSize = 0;
+    while (totalSize) {
+        CHAR16 fileNameWithChunkId[64];
+        setText(fileNameWithChunkId, fileName);
+        appendText(fileNameWithChunkId, L".XXX");
+        addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
+        const unsigned long long writeSize = maxWriteSizePerChunk < totalSize ? maxWriteSizePerChunk : totalSize;
+        long long existFileSize = getFileSize(fileNameWithChunkId);
+        if (existFileSize != writeSize) {
+            unsigned long long res = save(fileNameWithChunkId, writeSize, buffer, directory);
+            if (res != writeSize) {
+                return totalWriteSize;
+            }
+        }
+        buffer += writeSize;
+        totalWriteSize += writeSize;
+        totalSize -= writeSize;
+        chunkId++;
+    }
+    return totalWriteSize;
+}
+
+static long long loadLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
+{
+    const unsigned long long maxReadSizePerChunk = FILE_CHUNK_SIZE;
+    if (totalSize < maxReadSizePerChunk) {
+        return load(fileName, totalSize, buffer, directory);
+    }
+    int chunkId = 0;
+    unsigned long long totalReadSize = 0;
+    while (totalSize) {
+        CHAR16 fileNameWithChunkId[64];
+        setText(fileNameWithChunkId, fileName);
+        appendText(fileNameWithChunkId, L".XXX");
+        addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
+        const unsigned long long readSize = maxReadSizePerChunk < totalSize ? maxReadSizePerChunk : totalSize;
+        unsigned long long res = load(fileNameWithChunkId, readSize, buffer, directory);
+        if (res != readSize) {
+            return totalReadSize;
+        }
+        buffer += readSize;
+        totalReadSize += readSize;
+        totalSize -= readSize;
+        chunkId++;
+    }
+    return totalReadSize;
 }

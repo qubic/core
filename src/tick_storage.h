@@ -92,8 +92,6 @@ private:
     // Lock for securing tickTransactions and tickTransactionOffsets
     inline static volatile char tickTransactionsLock = 0;
 
-    inline static unsigned long long fileChunkSize = 209715200ULL; //200MB
-
     struct MetaData {
         unsigned int epoch;
         unsigned int tickBegin;
@@ -102,61 +100,6 @@ private:
         unsigned long long outNextTickTransactionOffset;
         // may need to store more meta data here to verify consistency when loading (ie: some nodes have different configs and can't use the saved files)
     } metaData;
-
-    static long long saveLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
-    {
-        const unsigned long long maxWriteSizePerChunk = fileChunkSize;
-        if (totalSize < maxWriteSizePerChunk) {
-            return save(fileName, totalSize, buffer, directory);
-        }
-        int chunkId = 0;
-        unsigned long long totalWriteSize = 0;
-        while (totalSize) {
-            CHAR16 fileNameWithChunkId[64];
-            setText(fileNameWithChunkId, fileName);
-            appendText(fileNameWithChunkId, L".XXX");
-            addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
-            const unsigned long long writeSize = maxWriteSizePerChunk < totalSize ? maxWriteSizePerChunk : totalSize;
-            long long existFileSize = getFileSize(fileNameWithChunkId);
-            if (existFileSize != writeSize) {
-                unsigned long long res = save(fileNameWithChunkId, writeSize, buffer, directory);
-                if (res != writeSize) {
-                    return totalWriteSize;
-                }
-            }
-            buffer += writeSize;
-            totalWriteSize += writeSize;
-            totalSize -= writeSize;
-            chunkId++;
-        }
-        return totalWriteSize;
-    }
-
-    static long long loadLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
-    {
-        const unsigned long long maxReadSizePerChunk = fileChunkSize;
-        if (totalSize < maxReadSizePerChunk) {
-            return load(fileName, totalSize, buffer, directory);
-        }
-        int chunkId = 0;
-        unsigned long long totalReadSize = 0;
-        while (totalSize) {
-            CHAR16 fileNameWithChunkId[64];
-            setText(fileNameWithChunkId, fileName);
-            appendText(fileNameWithChunkId, L".XXX");
-            addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
-            const unsigned long long readSize = maxReadSizePerChunk < totalSize ? maxReadSizePerChunk : totalSize;
-            unsigned long long res = load(fileNameWithChunkId, readSize, buffer, directory);
-            if (res != readSize) {
-                return totalReadSize;
-            }
-            buffer += readSize;
-            totalReadSize += readSize;
-            totalSize -= readSize;
-            chunkId++;
-        }
-        return totalReadSize;
-    }
 
     void prepareMetaDataFilename(short epoch)
     {
