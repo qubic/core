@@ -1059,11 +1059,11 @@ public:
         }
         getCurrentDate(qpi, locals.curDate);
         locals.endDate = state.mEndDate.get(locals.slotId);
-        // endDate is counted as 23:59 of that day
-        if (dateCompare(locals.curDate, locals.endDate, locals.i0) <= 0) {
-            // bet is not end yet
-            return;
-        }
+        // TODO: Temporary disable for testing full pipelineblish result)
+        //if (dateCompare(locals.curDate, locals.endDate, locals.i0) <= 0) {
+        //    // bet is not end yet
+        //    return;
+        //}
 
         locals.opId = -1;
         {            
