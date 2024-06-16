@@ -10,6 +10,7 @@ constexpr unsigned long long QUOTTERY_FEE_PER_SLOT_PER_DAY_ = 10000ULL;
 constexpr unsigned long long QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_ = 10000ULL;
 constexpr unsigned long long QUOTTERY_SHAREHOLDER_FEE_ = 1000;
 constexpr unsigned long long QUOTTERY_GAME_OPERATOR_FEE_ = 50;
+constexpr unsigned long long QUOTTERY_TICK_TO_KEEP_AFTER_END = 100ULL;
 
 
 
@@ -159,9 +160,6 @@ public:
         uint64 baseId0, baseId1;
         sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
         uint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
-        cleanMemorySlot_locals cms;
-        cleanMemorySlot_input _cleanMemorySlot_input;
-        cleanMemorySlot_output _cleanMemorySlot_output;
     };
 
     /**************************************/
@@ -181,6 +179,7 @@ public:
     array<uint8, QUOTTERY_MAX_BET * 4> mCloseDate;
     array<uint8, QUOTTERY_MAX_BET * 4> mEndDate;
     array<bit, QUOTTERY_MAX_BET> mIsOccupied;
+    array<uint32, QUOTTERY_MAX_BET> mBetEndTick;
     //bettor info:
     array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION> mBettorID;
     array<uint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION> mBettorBetOption;
@@ -350,6 +349,7 @@ public:
             }
         }
         state.mIsOccupied.set(input.slotId, 0); // close the bet
+        state.mBetEndTick.set(input.slotId, 0); // set end tick to null
         {
             locals.baseId0 = input.slotId * QUOTTERY_MAX_OPTION * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET;
             for (locals.i0 = 0; locals.i0 < QUOTTERY_MAX_OPTION; locals.i0++) {
@@ -361,6 +361,37 @@ public:
             }
         }
     _
+
+    struct checkAndCleanMemorySlots_input
+    {
+    };
+    struct checkAndCleanMemorySlots_output
+    {
+    };
+    struct checkAndCleanMemorySlots_locals
+    {
+        int i;
+        cleanMemorySlot_locals cms;
+        cleanMemorySlot_input _cleanMemorySlot_input;
+        cleanMemorySlot_output _cleanMemorySlot_output;
+    };
+    /**
+    * Scan through all memory slots and clean any expired bet (>100 ticks)
+    */
+    PRIVATE_PROCEDURE_WITH_LOCALS(checkAndCleanMemorySlots)
+        for (locals.i = 0; locals.i < QUOTTERY_MAX_BET; locals.i++)
+        {
+            if ((state.mIsOccupied.get(locals.i) == 1) // if the bet is currently occupied
+                && (state.mBetEndTick.get(locals.i) > qpi.tick() + QUOTTERY_TICK_TO_KEEP_AFTER_END) // the bet is already ended more than 100 ticks
+                ) 
+            {
+                // cleaning bet storage
+                locals._cleanMemorySlot_input.slotId = locals.i;
+                cleanMemorySlot(qpi, state, locals._cleanMemorySlot_input, locals._cleanMemorySlot_output, locals.cms);
+            }            
+        }
+    _
+
     /**
     * Try to finalize a bet when the system receive a result publication from a oracle provider
     * If there are 2/3 votes agree with the same result, the bet is finalized.
@@ -441,12 +472,7 @@ public:
                     }
                 }
             }
-            // done splitting profit
-            {
-                // cleaning bet storage
-                locals._cleanMemorySlot_input.slotId = input.slotId;
-                cleanMemorySlot(qpi, state, locals._cleanMemorySlot_input, locals._cleanMemorySlot_output, locals.cms);
-            }
+            state.mBetEndTick.set(input.slotId, qpi.tick());
         }
         else {
             QuotteryLogger log{ 0,QuotteryLogInfo::notEnoughVote,0 };
@@ -613,7 +639,6 @@ public:
         }
     _
 
-
     /**************************************/
     /************CORE FUNCTIONS************/
     /**************************************/
@@ -641,8 +666,12 @@ public:
         uint8 numberOfOption;
         uint32 betId;
         sint64 slotId;
+        checkAndCleanMemorySlots_input _checkAndCleanMemorySlots_input;
+        checkAndCleanMemorySlots_output _checkAndCleanMemorySlots_output;
+        checkAndCleanMemorySlots_locals _checkAndCleanMemorySlots_locals;
         QuotteryLogger log;
     };
+
     PUBLIC_PROCEDURE_WITH_LOCALS(issueBet)
         // only allow users to create bet
         if (qpi.invocator() != qpi.originator())
@@ -691,6 +720,9 @@ public:
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
+        // clean any expired bet slot
+        checkAndCleanMemorySlots(qpi, state, locals._checkAndCleanMemorySlots_input, locals._checkAndCleanMemorySlots_output, locals._checkAndCleanMemorySlots_locals);
+
         locals.betId = state.mCurrentBetID++;
         locals.slotId = -1;
         // find an empty slot
