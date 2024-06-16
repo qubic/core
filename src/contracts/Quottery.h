@@ -1,5 +1,6 @@
 // FIXED CONSTANTS
 constexpr unsigned long long QUOTTERY_INITIAL_MAX_BET = 1024;
+constexpr unsigned long long QUOTTERY_MAX_BET = QUOTTERY_INITIAL_MAX_BET * X_MULTIPLIER;
 constexpr unsigned long long QUOTTERY_MAX_OPTION = 8;
 constexpr unsigned long long QUOTTERY_MAX_ORACLE_PROVIDER = 8;
 constexpr unsigned long long QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET = 2048;
@@ -166,45 +167,45 @@ public:
     /**************************************/
     /************CONTRACT STATES***********/
     /**************************************/
-    array<uint32, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mBetID;
-    array<id, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mCreator;
-    array<id, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mBetDesc;
-    array<id, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mOptionDesc;
-    array<uint64, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mBetAmountPerSlot;
-    array<uint32, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mMaxNumberOfBetSlotPerOption;
-    array<id, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_ORACLE_PROVIDER* X_MULTIPLIER> mOracleProvider;
-    array<uint32, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mOracleFees;
-    array<uint32, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mCurrentBetState;
-    array<uint8, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mNumberOption;
-    array<uint8, QUOTTERY_INITIAL_MAX_BET * 4 * X_MULTIPLIER> mOpenDate;
-    array<uint8, QUOTTERY_INITIAL_MAX_BET * 4 * X_MULTIPLIER> mCloseDate;
-    array<uint8, QUOTTERY_INITIAL_MAX_BET * 4 * X_MULTIPLIER> mEndDate;
-    array<bit, QUOTTERY_INITIAL_MAX_BET* X_MULTIPLIER> mIsOccupied;
+    array<uint32, QUOTTERY_MAX_BET> mBetID;
+    array<id, QUOTTERY_MAX_BET> mCreator;
+    array<id, QUOTTERY_MAX_BET> mBetDesc;
+    array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mOptionDesc;
+    array<uint64, QUOTTERY_MAX_BET> mBetAmountPerSlot;
+    array<uint32, QUOTTERY_MAX_BET> mMaxNumberOfBetSlotPerOption;
+    array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_ORACLE_PROVIDER> mOracleProvider;
+    array<uint32, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mOracleFees;
+    array<uint32, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mCurrentBetState;
+    array<uint8, QUOTTERY_MAX_BET> mNumberOption;
+    array<uint8, QUOTTERY_MAX_BET * 4> mOpenDate;
+    array<uint8, QUOTTERY_MAX_BET * 4> mCloseDate;
+    array<uint8, QUOTTERY_MAX_BET * 4> mEndDate;
+    array<bit, QUOTTERY_MAX_BET> mIsOccupied;
     //bettor info:
-    array<id, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mBettorID;
-    array<uint8, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mBettorBetOption;
+    array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION> mBettorID;
+    array<uint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION> mBettorBetOption;
     // bet result:
-    array<sint8, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mBetResultWonOption;
-    array<sint8, QUOTTERY_INITIAL_MAX_BET* QUOTTERY_MAX_OPTION* X_MULTIPLIER> mBetResultOPId;
+    array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultWonOption;
+    array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultOPId;
 
     //static assert for developing:
-    static_assert(sizeof(mBetID) == (sizeof(uint32) * QUOTTERY_INITIAL_MAX_BET), "bet id array");
-    static_assert(sizeof(mCreator) == (sizeof(id) * QUOTTERY_INITIAL_MAX_BET), "creator array");
-    static_assert(sizeof(mBetDesc) == (sizeof(id) * QUOTTERY_INITIAL_MAX_BET), "desc array");
-    static_assert(sizeof(mOptionDesc) == (sizeof(id) * QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_OPTION), "option desc array");
-    static_assert(sizeof(mBetAmountPerSlot) == (sizeof(uint64) * QUOTTERY_INITIAL_MAX_BET), "bet amount per slot array");
-    static_assert(sizeof(mMaxNumberOfBetSlotPerOption) == (sizeof(uint32) * QUOTTERY_INITIAL_MAX_BET), "number of bet slot per option array");
-    static_assert(sizeof(mOracleProvider) == (sizeof(QPI::id) * QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers");
-    static_assert(sizeof(mOracleFees) == (sizeof(uint32) * QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers fees");
-    static_assert(sizeof(mCurrentBetState) == (sizeof(uint32) * QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "bet states");
-    static_assert(sizeof(mNumberOption) == (sizeof(uint8) * QUOTTERY_INITIAL_MAX_BET), "number of options");
-    static_assert(sizeof(mOpenDate) == (sizeof(uint8) * 4 * QUOTTERY_INITIAL_MAX_BET), "open date");
-    static_assert(sizeof(mCloseDate) == (sizeof(uint8) * 4 * QUOTTERY_INITIAL_MAX_BET), "close date");
-    static_assert(sizeof(mEndDate) == (sizeof(uint8) * 4 * QUOTTERY_INITIAL_MAX_BET), "end date");
-    static_assert(sizeof(mBetResultWonOption) == (QUOTTERY_INITIAL_MAX_BET * 8), "won option array");
-    static_assert(sizeof(mBetResultOPId) == (QUOTTERY_INITIAL_MAX_BET * 8), "op id array");
-    static_assert(sizeof(mBettorID) == (QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(id)), "bettor array");
-    static_assert(sizeof(mBettorBetOption) == (QUOTTERY_INITIAL_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(uint8)), "bet option");
+    static_assert(sizeof(mBetID) == (sizeof(uint32) * QUOTTERY_MAX_BET), "bet id array");
+    static_assert(sizeof(mCreator) == (sizeof(id) * QUOTTERY_MAX_BET), "creator array");
+    static_assert(sizeof(mBetDesc) == (sizeof(id) * QUOTTERY_MAX_BET), "desc array");
+    static_assert(sizeof(mOptionDesc) == (sizeof(id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_OPTION), "option desc array");
+    static_assert(sizeof(mBetAmountPerSlot) == (sizeof(uint64) * QUOTTERY_MAX_BET), "bet amount per slot array");
+    static_assert(sizeof(mMaxNumberOfBetSlotPerOption) == (sizeof(uint32) * QUOTTERY_MAX_BET), "number of bet slot per option array");
+    static_assert(sizeof(mOracleProvider) == (sizeof(QPI::id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers");
+    static_assert(sizeof(mOracleFees) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers fees");
+    static_assert(sizeof(mCurrentBetState) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "bet states");
+    static_assert(sizeof(mNumberOption) == (sizeof(uint8) * QUOTTERY_MAX_BET), "number of options");
+    static_assert(sizeof(mOpenDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), "open date");
+    static_assert(sizeof(mCloseDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), "close date");
+    static_assert(sizeof(mEndDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), "end date");
+    static_assert(sizeof(mBetResultWonOption) == (QUOTTERY_MAX_BET * 8), "won option array");
+    static_assert(sizeof(mBetResultOPId) == (QUOTTERY_MAX_BET * 8), "op id array");
+    static_assert(sizeof(mBettorID) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(id)), "bettor array");
+    static_assert(sizeof(mBettorBetOption) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(uint8)), "bet option");
 
     // other stats
     uint32 mCurrentBetID;
@@ -479,7 +480,7 @@ public:
     PUBLIC_FUNCTION_WITH_LOCALS(getBetInfo)
         output.betId = NULL_INDEX;
         locals.slotId = NULL_INDEX;
-        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_MAX_BET; locals.i0++) {
             if (state.mBetID.get(locals.i0) == input.betId) {
                 locals.slotId = locals.i0;
                 break;
@@ -545,7 +546,7 @@ public:
             output.bettor.set(locals.i0, NULL_ID);
         }
         locals.slotId = -1;
-        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_MAX_BET; locals.i0++) {
             if (state.mBetID.get(locals.i0) == input.betId) {
                 locals.slotId = locals.i0;
                 break;
@@ -580,7 +581,7 @@ public:
      */
     PUBLIC_FUNCTION_WITH_LOCALS(getActiveBet)
         output.count = 0;
-        for (locals.slotId = 0; locals.slotId < QUOTTERY_INITIAL_MAX_BET; locals.slotId++) {
+        for (locals.slotId = 0; locals.slotId < QUOTTERY_MAX_BET; locals.slotId++) {
             if (state.mBetID.get(locals.slotId) != NULL_INDEX) {
                 if (state.mIsOccupied.get(locals.slotId) == 1) { //not available == active
                     output.activeBetId.set(output.count, state.mBetID.get(locals.slotId));
@@ -600,7 +601,7 @@ public:
     */
     PUBLIC_FUNCTION_WITH_LOCALS(getBetByCreator)
         output.count = 0;
-        for (locals.slotId = 0; locals.slotId < QUOTTERY_INITIAL_MAX_BET; locals.slotId++) {
+        for (locals.slotId = 0; locals.slotId < QUOTTERY_MAX_BET; locals.slotId++) {
             if (state.mBetID.get(locals.slotId) != NULL_INDEX) {
                 if (state.mIsOccupied.get(locals.slotId) == 1) { //not available == active
                     if (state.mCreator.get(locals.slotId) == input.creator) {
@@ -695,13 +696,13 @@ public:
         // find an empty slot
         {
             locals.i0 = 0;
-            locals.i1 = locals.betId & (QUOTTERY_INITIAL_MAX_BET - 1);
-            while (locals.i0++ < QUOTTERY_INITIAL_MAX_BET) {
+            locals.i1 = locals.betId & (QUOTTERY_MAX_BET - 1);
+            while (locals.i0++ < QUOTTERY_MAX_BET) {
                 if (state.mIsOccupied.get(locals.i1) == 0) {
                     locals.slotId = locals.i1;
                     break;
                 }
-                locals.i1 = (locals.i1 + 1) & (QUOTTERY_INITIAL_MAX_BET - 1);
+                locals.i1 = (locals.i1 + 1) & (QUOTTERY_MAX_BET - 1);
             }
         }
         //out of bet storage, exit
@@ -799,7 +800,7 @@ public:
             return;
         }
         locals.slotId = -1;
-        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_MAX_BET; locals.i0++) {
             if (state.mBetID.get(locals.i0) == input.betId) {
                 locals.slotId = locals.i0;
                 break;
@@ -922,7 +923,7 @@ public:
             return;
         }
         locals.slotId = -1;
-        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_MAX_BET; locals.i0++) {
             if (state.mBetID.get(locals.i0) == input.betId) {
                 locals.slotId = locals.i0;
                 break;
@@ -1038,7 +1039,7 @@ public:
             return;
         }
         locals.slotId = -1;
-        for (locals.i0 = 0; locals.i0 < QUOTTERY_INITIAL_MAX_BET; locals.i0++) {
+        for (locals.i0 = 0; locals.i0 < QUOTTERY_MAX_BET; locals.i0++) {
             if (state.mBetID.get(locals.i0) == input.betId) {
                 locals.slotId = locals.i0;
                 break;
