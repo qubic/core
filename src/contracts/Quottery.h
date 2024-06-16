@@ -95,6 +95,8 @@ public:
         uint64 minBetAmount;
         uint32 maxBetSlotPerOption;
         uint32_8 currentBetState; // how many bet slots have been filled on each option
+        sint8_8 betResultWonOption;
+        sint8_8 betResultOPId;
     };
     struct issueBet_input {
         id betDesc;
@@ -377,6 +379,16 @@ public:
                 }
             }
         }
+
+        {
+            // clean OP votes
+            locals.baseId0 = input.slotId * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++)
+            {
+                state.mBetResultWonOption.set(locals.baseId0 + locals.i0, (sint8)(NULL_INDEX));
+                state.mBetResultOPId.set(locals.baseId0 + locals.i0, (sint8)(NULL_INDEX));
+            }
+        }
     _
 
     struct checkAndCleanMemorySlots_input
@@ -590,6 +602,16 @@ public:
             locals.baseId0 = locals.u64Tmp * 8;
             for (locals.i0 = 0; locals.i0 < 8; locals.i0++){
                 output.currentBetState.set(locals.i0, state.mCurrentBetState.get(locals.baseId0+ locals.i0));
+            }
+        }
+
+        // get OP votes if possible
+        {
+            locals.u64Tmp = (uint64)(locals.slotId); // just reduce warnings
+            locals.baseId0 = locals.u64Tmp * 8;
+            for (locals.i0 = 0; locals.i0 < 8; locals.i0++) {
+                output.betResultWonOption.set(locals.i0, state.mBetResultWonOption.get(locals.baseId0 + locals.i0));
+                output.betResultOPId.set(locals.i0, state.mBetResultOPId.get(locals.baseId0 + locals.i0));
             }
         }
     _
