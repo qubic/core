@@ -8,8 +8,12 @@ constexpr unsigned long long QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET = 2048;
 // adjustable with no change:
 constexpr unsigned long long QUOTTERY_FEE_PER_SLOT_PER_DAY_ = 10000ULL;
 constexpr unsigned long long QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_ = 10000ULL;
-constexpr unsigned long long QUOTTERY_SHAREHOLDER_FEE_ = 1000;
-constexpr unsigned long long QUOTTERY_GAME_OPERATOR_FEE_ = 50;
+
+constexpr unsigned long long QUOTTERY_SHAREHOLDER_FEE_ = 1000; // 10%
+constexpr unsigned long long QUOTTERY_GAME_OPERATOR_FEE_ = 50; // 0.5%
+constexpr unsigned long long QUOTTERY_BURN_FEE_ = 200; // 2%
+static_assert(QUOTTERY_BURN_FEE_ > 0, "SC requires burning qu to operate, the burn fee must be higher than 0!");
+
 constexpr unsigned long long QUOTTERY_TICK_TO_KEEP_AFTER_END = 100ULL;
 
 
@@ -55,9 +59,20 @@ public:
     struct basicInfo_output
     {
         uint64 feePerSlotPerDay; // Amount of qus
-        uint64 gameOperatorFee; // Amount of qus
+        uint64 gameOperatorFee; // 4 digit number ABCD means AB.CD% | 1234 is 12.34%
         uint64 shareholderFee; // 4 digit number ABCD means AB.CD% | 1234 is 12.34%
-        uint64 minBetSlotAmount; // 4 digit number ABCD means AB.CD% | 1234 is 12.34%
+        uint64 minBetSlotAmount; // amount of qus
+        uint64 burnFee; // percentage
+        uint32 nIssuedBet; // number of issued bet
+        uint64 moneyFlow;
+        uint64 moneyFlowThroughIssueBet;
+        uint64 moneyFlowThroughJoinBet;
+        uint64 moneyFlowThroughFinalizeBet;
+        uint64 earnedAmountForShareHolder;
+        uint64 paidAmountForShareHolder;
+        uint64 earnedAmountForBetWinner;
+        uint64 distributedAmount;
+        uint64 burnedAmount;
         id gameOperator;
     };
     struct getBetInfo_input {
@@ -208,9 +223,10 @@ public:
 
     // other stats
     uint32 mCurrentBetID;
-    uint64 mRevenue;
-    uint64 mRevenueFromIssue;
-    uint64 mRevenueFromBet;
+    uint64 mMoneyFlow;
+    uint64 mMoneyFlowThroughIssueBet;
+    uint64 mMoneyFlowThroughJoinBet;
+    uint64 mMoneyFlowThroughFinalizeBet;
     uint64 mEarnedAmountForShareHolder;
     uint64 mPaidAmountForShareHolder;
     uint64 mEarnedAmountForBetWinner;
@@ -220,7 +236,8 @@ public:
     uint64 mFeePerSlotPerDay;
     uint64 mMinAmountPerBetSlot;
     uint64 mShareHolderFee;
-    uint64 mGameOperatorFee;
+    uint64 mBurnFee;
+    uint64 mGameOperatorFee;    
     id mGameOperatorId;   
 
 
@@ -452,12 +469,21 @@ public:
                 locals.fee = QPI::div(locals.feeChargedAmount * state.mShareHolderFee, 10000ULL);
                 locals.transferredAmount += locals.fee;//self transfer
                 state.mEarnedAmountForShareHolder += locals.fee;
+                state.mMoneyFlow += locals.fee;
+                state.mMoneyFlowThroughFinalizeBet += locals.fee;
             }
             // fee to game operator
             {
                 locals.fee = QPI::div(locals.feeChargedAmount * state.mGameOperatorFee, 10000ULL);
                 qpi.transfer(state.mGameOperatorId, locals.fee);
                 locals.transferredAmount += locals.fee;
+            }
+            // burn qu
+            {
+                locals.fee = QPI::div(locals.feeChargedAmount * state.mBurnFee, 10000ULL);
+                qpi.burn(locals.fee);
+                locals.transferredAmount += locals.fee;
+                state.mBurnedAmount += locals.fee;
             }
             // profit to winners
             {
@@ -469,6 +495,7 @@ public:
                     if (state.mBettorID.get(locals.baseId1 + locals.i1) != NULL_ID) {
                         qpi.transfer(state.mBettorID.get(locals.baseId1 + locals.i1), locals.amountPerSlot + locals.profitPerBetSlot);
                         state.mEarnedAmountForBetWinner += (locals.amountPerSlot + locals.profitPerBetSlot);
+                        state.mDistributedAmount += (locals.amountPerSlot + locals.profitPerBetSlot);
                     }
                 }
             }
@@ -490,6 +517,16 @@ public:
         output.gameOperatorFee = state.mGameOperatorFee;
         output.shareholderFee = state.mShareHolderFee;
         output.minBetSlotAmount = state.mMinAmountPerBetSlot;
+        output.burnFee = state.mBurnFee;
+        output.nIssuedBet = state.mCurrentBetID;
+        output.moneyFlow = state.mMoneyFlow;
+        output.moneyFlowThroughJoinBet = state.mMoneyFlowThroughJoinBet;
+        output.moneyFlowThroughIssueBet = state.mMoneyFlowThroughIssueBet;
+        output.moneyFlowThroughFinalizeBet = state.mMoneyFlowThroughFinalizeBet;
+        output.earnedAmountForBetWinner = state.mEarnedAmountForBetWinner;
+        output.earnedAmountForShareHolder = state.mEarnedAmountForShareHolder;
+        output.distributedAmount = state.mDistributedAmount;
+        output.burnedAmount = state.mBurnedAmount;
         output.gameOperator = state.mGameOperatorId;
     _
 
@@ -660,8 +697,8 @@ public:
         uint8_4 curDate;
         sint32 i0, i1;
         uint64 baseId0, baseId1;
-        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
-        sint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
+        sint32 numberOP;
+        sint64 fee;
         uint64 maxBetSlotPerOption, duration, u64_0, u64_1;
         uint8 numberOfOption;
         uint32 betId;
@@ -749,8 +786,9 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.fee);
         }
-        state.mRevenue += locals.fee;
-        state.mRevenueFromIssue += locals.fee;
+        state.mMoneyFlow += locals.fee;
+        state.mMoneyFlowThroughIssueBet += locals.fee;
+        state.mEarnedAmountForShareHolder += locals.fee;
         // write data to slotId
         state.mBetID.set(locals.slotId, locals.betId); // 1
         state.mNumberOption.set(locals.slotId, locals.numberOfOption); // 2
@@ -809,9 +847,8 @@ public:
         uint8_4 curDate, closeDate;
         sint32 i0, i1, i2, i3;
         uint64 baseId0, baseId1;
-        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
-        sint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
-        uint64 maxBetSlotPerOption, numberOfOption, duration, u64_0, u64_1;
+        sint32 numberOfSlot, currentState;
+        sint64 amountPerSlot, fee;
         uint32 betId, availableSlotForBet;
         sint64 slotId;
         QuotteryLogger log;
@@ -905,8 +942,8 @@ public:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.fee);
         }
 
-        state.mRevenue += locals.fee;
-        state.mRevenueFromBet += locals.fee;
+        state.mMoneyFlow += locals.fee;
+        state.mMoneyFlowThroughJoinBet += locals.fee;
         // write bet info to memory
         {
             locals.i2 = QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET - locals.availableSlotForBet;
@@ -928,13 +965,9 @@ public:
     
     struct publishResult_locals
     {
-        uint8_4 curDate, closeDate, endDate;
-        sint32 i0, i1, i2, i3;
+        uint8_4 curDate, endDate;
+        sint32 i0, i1;
         uint64 baseId0, baseId1;
-        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
-        uint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
-        uint64 maxBetSlotPerOption, numberOfOption, duration, u64_0, u64_1;
-        uint32 betId, availableSlotForBet;
         sint64 slotId, writeId;
         sint8 opId;
         QuotteryLogger log;
@@ -1044,13 +1077,12 @@ public:
 
     struct cancelBet_locals
     {
-        uint8_4 curDate, closeDate, endDate;
-        sint32 i0, i1, i2, i3;
+        uint8_4 curDate, endDate;
+        sint32 i0, i1;
         uint64 baseId0, baseId1, nOption;
-        sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
-        uint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
-        uint64 maxBetSlotPerOption, numberOfOption, duration, u64_0, u64_1;
-        uint32 betId, availableSlotForBet;
+        uint64 amountPerSlot;
+        uint64 duration, u64_0, u64_1;
+        uint32 betId;
         sint64 slotId, opId, writeId;
         QuotteryLogger log;
         cleanMemorySlot_locals cms;
@@ -1151,7 +1183,7 @@ public:
         state.mMinAmountPerBetSlot = QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_;
         state.mShareHolderFee = QUOTTERY_SHAREHOLDER_FEE_;
         state.mGameOperatorFee = QUOTTERY_GAME_OPERATOR_FEE_;
-
+        state.mBurnFee = QUOTTERY_BURN_FEE_;
         state.mGameOperatorId = id(0x63a7317950fa8886ULL, 0x4dbdf78085364aa7ULL, 0x21c6ca41e95bfa65ULL, 0xcbc1886b3ea8e647ULL);
     _
 
