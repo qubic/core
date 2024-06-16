@@ -33,7 +33,8 @@ enum QuotteryLogInfo {
     invalidOPId = 10,
     notEnoughVote = 11,
     notGameOperator = 12,
-    totalError = 13
+    betIsAlreadyFinalized = 13,
+    totalError = 14
 };
 struct QuotteryLogger
 {
@@ -1058,6 +1059,18 @@ public:
                 return;
             }
         }
+
+        // check if bet is already finalized
+        {
+            if (state.mBetEndTick.get(locals.slotId) != 0)
+            {
+                // is already finalized
+                locals.log = QuotteryLogger{ 0,QuotteryLogInfo::betIsAlreadyFinalized,0 };
+                LOG_INFO(locals.log);
+                return;
+            }
+        }
+
         // check if this OP already published result
         locals.writeId = -1;
         {
