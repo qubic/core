@@ -3303,7 +3303,7 @@ static void initializeFirstTick()
 // Invalid snapshot data
 static bool invalidateNodeStates(CHAR16* directory)
 {
-    return ts.saveInvalidateData(directory);
+    return ts.saveInvalidateData(system.epoch, directory);
 }
 
 // can only called from main thread

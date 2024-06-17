@@ -398,7 +398,7 @@ public:
     }
 
     // Save a dummy metadata that invalidate the current snapshot
-    bool saveInvalidateData(CHAR16* directory = NULL)
+    bool saveInvalidateData(unsigned int epoch, CHAR16* directory = NULL)
     {
         MetaData invalidMetaData;
         invalidMetaData.epoch = 0;
@@ -406,6 +406,7 @@ public:
         invalidMetaData.tickEnd = 0;
         invalidMetaData.outTotalTransactionSize = 0;
         invalidMetaData.outNextTickTransactionOffset = 0;
+        prepareMetaDataFilename(epoch);
         auto sz = saveLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(invalidMetaData), (unsigned char*)&invalidMetaData, directory);
         if (sz != sizeof(invalidMetaData))
         {
