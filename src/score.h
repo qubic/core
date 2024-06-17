@@ -43,7 +43,7 @@ struct ScoreFunction
     };
 
     struct synapseCheckpoint {
-        uint64_t ckp[25];
+        unsigned long long ckp[25];
         int ignoreByteInState;
     };
 
@@ -53,7 +53,7 @@ struct ScoreFunction
         unsigned long long Aka, Ake, Aki, Ako, Aku;
         unsigned long long Ama, Ame, Ami, Amo, Amu;
         unsigned long long Asa, Ase, Asi, Aso, Asu;
-        uint64_t scatteredStates[25];
+        unsigned long long scatteredStates[25];
         int leftByteInCurrentState;
     private:
         void _scatterFromVector() {
@@ -70,7 +70,7 @@ struct ScoreFunction
         }
     public:
         K12EngineX1() {}
-        void initState(const uint64_t* comp_u64, const uint64_t* nonce_u64) {
+        void initState(const unsigned long long* comp_u64, const unsigned long long* nonce_u64) {
             Aba = comp_u64[0];
             Abe = comp_u64[1];
             Abi = comp_u64[2];
@@ -82,11 +82,11 @@ struct ScoreFunction
             Ago = Agu = Aka = Ake = Aki = Ako = Aku = Ama = Ame = Ami = Amo = Amu = Asa = Ase = Asi = Aso = Asu = 0;
             leftByteInCurrentState = 0;
         }
-        void write(uint8_t* out0, int size) {
-            uint8_t* s0 = (uint8_t*)scatteredStates;
+        void write(unsigned char* out0, int size) {
+            unsigned char* s0 = (unsigned char*)scatteredStates;
             if (leftByteInCurrentState) {
-                int copySize = std::min(size, leftByteInCurrentState);
-                memcpy(out0, s0 + 200 - leftByteInCurrentState, copySize);
+                int copySize = size < leftByteInCurrentState ? size : leftByteInCurrentState;
+                copyMem(out0, s0 + 200 - leftByteInCurrentState, copySize);
                 size -= copySize;
                 leftByteInCurrentState -= copySize;
                 out0 += copySize;
@@ -95,8 +95,8 @@ struct ScoreFunction
                 if (!leftByteInCurrentState) {
                     hashNewChunkAndSaveToState();
                 }
-                int copySize = std::min(size, leftByteInCurrentState);
-                memcpy(out0, s0 + 200 - leftByteInCurrentState, copySize);
+                int copySize = size < leftByteInCurrentState ? size : leftByteInCurrentState;
+                copyMem(out0, s0 + 200 - leftByteInCurrentState, copySize);
                 size -= copySize;
                 leftByteInCurrentState -= copySize;
                 out0 += copySize;
@@ -105,7 +105,7 @@ struct ScoreFunction
 
         void saveCheckpoint(synapseCheckpoint** p_sckp) {
             synapseCheckpoint& sckp_0 = *(p_sckp[0]);
-            uint64_t* output0 = sckp_0.ckp;
+            unsigned long long* output0 = sckp_0.ckp;
             copyToStateScalar(output0)
             sckp_0.ignoreByteInState = 200 - leftByteInCurrentState;
         }
@@ -115,7 +115,7 @@ struct ScoreFunction
         }
         void hashWithoutWrite(int size) {
             if (leftByteInCurrentState) {
-                int copySize = std::min(size, leftByteInCurrentState);
+                int copySize = size < leftByteInCurrentState ? size : leftByteInCurrentState;
                 size -= copySize;
                 leftByteInCurrentState -= copySize;
             }
@@ -124,7 +124,7 @@ struct ScoreFunction
                     hashNewChunk();
                     leftByteInCurrentState = 200;
                 }
-                int copySize = std::min(size, leftByteInCurrentState);
+                int copySize = size < leftByteInCurrentState ? size : leftByteInCurrentState;
                 size -= copySize;
                 leftByteInCurrentState -= copySize;
             }
@@ -282,18 +282,18 @@ struct ScoreFunction
         synapses[idx + dataLength] = 0;
     }
 
-    void continueGeneratingSynapseFromCkp(synapseCheckpoint& ckp, uint8_t* out, int size) {
-        uint64_t buffer[25];
-        uint8_t* buffer_u8 = (uint8_t*)buffer;
-        uint64_t* state = ckp.ckp;
-        uint8_t* state_u8 = (uint8_t*)state;
+    void continueGeneratingSynapseFromCkp(synapseCheckpoint& ckp, unsigned char* out, int size) {
+        unsigned long long buffer[25];
+        unsigned char* buffer_u8 = (unsigned char*)buffer;
+        unsigned long long* state = ckp.ckp;
+        unsigned char* state_u8 = (unsigned char*)state;
 
         declareABCDEScalar
             copyFromStateScalar(state)
             int leftByte = 200 - ckp.ignoreByteInState;
         if (leftByte) {
-            int copySize = std::min(leftByte, size);
-            memcpy(out, state_u8 + 200 - leftByte, copySize);
+            int copySize = leftByte < size ? leftByte : size;
+            copyMem(out, state_u8 + 200 - leftByte, copySize);
             out += copySize;
             size -= copySize;
             leftByte -= copySize;
@@ -304,8 +304,8 @@ struct ScoreFunction
                     copyToStateScalar(buffer)
                     leftByte = 200;
             }
-            int copySize = std::min(size, leftByte);
-            memcpy(out, buffer_u8 + 200 - leftByte, copySize);
+            int copySize = leftByte < size ? leftByte : size;
+            copyMem(out, buffer_u8 + 200 - leftByte, copySize);
             size -= copySize;
             leftByte -= copySize;
             out += copySize;
@@ -324,7 +324,7 @@ struct ScoreFunction
         };
         cb.k12.scatterFromVector();
         for (unsigned long long i = numberOfInputNeurons; i < inNeuronsCount; i++) {
-            cb.k12.write((uint8_t*)(&synapses.inputLength[0] + i * allParamsCount), allParamsCount);
+            cb.k12.write((unsigned char*)(&synapses.inputLength[0] + i * allParamsCount), allParamsCount);
             cb.isGeneratedSynapse[i] = true;
         }
         for (unsigned long long i = numberOfInputNeurons; i < inNeuronsCount; i++) {
@@ -473,7 +473,7 @@ struct ScoreFunction
             }
             if (!cb.isGeneratedSynapse[idx])
             {
-                continueGeneratingSynapseFromCkp(cb.sckpInput[idx][0], (uint8_t*)cb.inputLength + idx * allParamsCount, allParamsCount);
+                continueGeneratingSynapseFromCkp(cb.sckpInput[idx][0], (unsigned char*)cb.inputLength + idx * allParamsCount, allParamsCount);
                 zeroOutSynapses(cb.inputLength + idx * allParamsCount, idx);
                 cb.isGeneratedSynapse[idx] = true;
             }
