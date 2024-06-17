@@ -65,7 +65,6 @@ static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";
 static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 
 #define DATA_LENGTH 256
-#define INFO_LENGTH 128
 #define NUMBER_OF_INPUT_NEURONS 16384
 #define NUMBER_OF_OUTPUT_NEURONS 16384
 #define MAX_INPUT_DURATION 256

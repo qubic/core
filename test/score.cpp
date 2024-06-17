@@ -15,7 +15,6 @@
 
 template<
     unsigned int dataLength,
-    unsigned int infoLength,
     unsigned int numberOfInputNeurons,
     unsigned int numberOfOutputNeurons,
     unsigned int maxInputDuration,
@@ -25,13 +24,13 @@ template<
 struct ScoreTester
 {
     typedef ScoreFunction<
-        dataLength, infoLength,
+        dataLength,
         numberOfInputNeurons, numberOfOutputNeurons,
         maxInputDuration, maxOutputDuration,
         solutionBufferCount
     > ScoreFuncOpt;
     typedef ScoreReferenceImplementation<
-        dataLength, infoLength,
+        dataLength,
         numberOfInputNeurons, numberOfOutputNeurons,
         maxInputDuration, maxOutputDuration,
         solutionBufferCount
@@ -121,7 +120,7 @@ void runCommonTests(ScoreTester& test_score)
 
 TEST(TestQubicScoreFunction, CurrentLengthNeuronsDurationSettings) {
     ScoreTester<
-        DATA_LENGTH, INFO_LENGTH,
+        DATA_LENGTH,
         NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
         MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
         1
@@ -131,7 +130,7 @@ TEST(TestQubicScoreFunction, CurrentLengthNeuronsDurationSettings) {
 
 TEST(TestQubicScoreFunction, HalfOfCurrentLengthNeuronsDurationSettings) {
     ScoreTester<
-        DATA_LENGTH/2, INFO_LENGTH/2,
+        DATA_LENGTH/2,
         NUMBER_OF_INPUT_NEURONS/2, NUMBER_OF_OUTPUT_NEURONS/2,
         MAX_INPUT_DURATION/2, MAX_OUTPUT_DURATION/2,
         1

@@ -7,7 +7,6 @@
 
 template<
     unsigned int dataLength,
-    unsigned int _infoLength,
     unsigned int numberOfInputNeurons,
     unsigned int _numberOfOutputNeurons,
     unsigned int maxInputDuration,
