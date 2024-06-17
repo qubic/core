@@ -188,8 +188,8 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
     return 0;
 #else
     EFI_STATUS status;
-    EFI_FILE_PROTOCOL* file;
-    EFI_FILE_PROTOCOL* directoryProtocol;
+    EFI_FILE_PROTOCOL* file = NULL;
+    EFI_FILE_PROTOCOL* directoryProtocol = NULL;
 
     // Check if there is a directory provided
     if (NULL != directory)
@@ -201,6 +201,12 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
         if (status = root->Open(root, (void**)&directoryProtocol, directory, EFI_FILE_MODE_READ, 0))
         {
             logStatusToConsole(L"FileIOSave:OpenDir EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            return -1;
+        }
+
+        if (NULL == directoryProtocol)
+        {
+            logStatusToConsole(L"FileIOSave:OpenDir directory protocols is NULL", status, __LINE__);
             return -1;
         }
 
