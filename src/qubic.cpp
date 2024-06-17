@@ -4788,6 +4788,11 @@ static void logHealthStatus()
             appendText(message, errorMsg);
         }
     }
+    if (!anyContractError)
+    {
+        appendText(message, L"no errors");
+    }
+    logToConsole(message);
 
     // Print info about stack buffers used to run contracts
     setText(message, L"Contract stack buffer usage: ");
