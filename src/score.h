@@ -203,20 +203,12 @@ struct ScoreFunction
                 logToConsole(L"Failed to allocate memory for score solution buffer!");
                 return false;
             }
-        }
-        
-        for (int i = 0; i < solutionBufferCount; i++) {
-            setMem(&_synapses[i], sizeof(synapseStruct), 0);
-            setMem(&_computeBuffer[i], sizeof(computeBuffer), 0);
-            solutionEngineLock[i] = 0;
-        }
-        // TODO: allocate big array and distribute
-        for (int bufId = 0; bufId < solutionBufferCount; bufId++)
-        {
-            auto& cb = _computeBuffer[bufId];
-            for (int i = 0; i < maxNeuronsCount; i++)
+
+            // TODO: allocate big array and distribute
+            for (int bufId = 0; bufId < solutionBufferCount; bufId++)
             {
-                if (cb.indicePos[i] == nullptr)
+                auto& cb = _computeBuffer[bufId];
+                for (int i = 0; i < maxNeuronsCount; i++)
                 {
                     if (!allocatePool(sizeof(unsigned int) * allParamsCount, (void**)&cb.indicePos[i]))
                     {
@@ -226,6 +218,28 @@ struct ScoreFunction
                 }
             }
         }
+
+        for (int i = 0; i < solutionBufferCount; i++) {
+            setMem(&_synapses[i], sizeof(synapseStruct), 0);
+            setMem(&_computeBuffer[i].neurons, sizeof(_computeBuffer[i].neurons), 0);
+            _computeBuffer[i].inputLength = nullptr;
+            for (int j = 0; j < maxNeuronsCount; j++)
+            {
+                setMem(_computeBuffer[i].indicePos[j], sizeof(unsigned int) * allParamsCount, 0);
+            }
+            setMem(_computeBuffer[i].bucketPos, sizeof(_computeBuffer[i].bucketPos), 0);
+            setMem(_computeBuffer[i].isGeneratedBucket, sizeof(_computeBuffer[i].isGeneratedBucket), 0);
+            setMem(_computeBuffer[i].queue, sizeof(_computeBuffer[i].queue), 0);
+            setMem(_computeBuffer[i].isProcessing, sizeof(_computeBuffer[i].isProcessing), 0);
+            setMem(_computeBuffer[i].state, sizeof(_computeBuffer[i].state), 0);
+            setMem(_computeBuffer[i]._maxIndexBuffer, sizeof(_computeBuffer[i]._maxIndexBuffer), 0);
+            setMem(_computeBuffer[i].buffer, sizeof(_computeBuffer[i].buffer), 0);
+            setMem(&_computeBuffer[i].k12, sizeof(_computeBuffer[i].k12), 0);
+            setMem(_computeBuffer[i].sckpInput, sizeof(_computeBuffer[i].sckpInput), 0);
+            setMem(_computeBuffer[i].isGeneratedSynapse, sizeof(_computeBuffer[i].isGeneratedSynapse), 0);
+            solutionEngineLock[i] = 0;
+        }
+        
 #if USE_SCORE_CACHE
         scoreCacheLock = 0;
         setMem(&scoreCache, sizeof(scoreCache), 0);
