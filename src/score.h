@@ -16,7 +16,6 @@ unsigned long long top_of_stack;
 
 template<
     unsigned int dataLength,
-    unsigned int _infoLength,
     unsigned int numberOfInputNeurons,
     unsigned int _numberOfOutputNeurons,
     unsigned int maxInputDuration,
