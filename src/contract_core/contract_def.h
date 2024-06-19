@@ -17,7 +17,7 @@ namespace QPI
 }
 
 // TODO: add option for having locals to SYSTEM and EXPAND procedures
-typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void*);
+typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output);
 typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContextProcedureCall&, void*, void*);
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
@@ -31,7 +31,7 @@ constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
 
 
 // TODO: rename these to __qpiX (forbidding to call them outside macros)
-static void __beginFunctionOrProcedure(const unsigned int);
+static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);
 template <typename T> static m256i __K12(T);
 template <typename T> static void __logContractDebugMessage(unsigned int, T&);
@@ -41,6 +41,23 @@ template <typename T> static void __logContractWarningMessage(unsigned int, T&);
 static void* __scratchpad();    // TODO: concurrency support (n buffers for n allowed concurrent contract executions)
 // static void* __tryAcquireScratchpad(unsigned int size);  // Thread-safe, may return nullptr if no appropriate buffer is available
 // static void __ReleaseScratchpad(void*);
+
+template <unsigned int functionOrProcedureId>
+struct __FunctionOrProcedureBeginEndGuard
+{
+    // Constructor calling __beginFunctionOrProcedure()
+    __FunctionOrProcedureBeginEndGuard()
+    {
+        __beginFunctionOrProcedure(functionOrProcedureId);
+    }
+
+    // Destructor making sure __endFunctionOrProcedure() is called for every return path
+    ~__FunctionOrProcedureBeginEndGuard()
+    {
+        __endFunctionOrProcedure(functionOrProcedureId);
+    }
+};
+
 
 #include "contracts/qpi.h"
 
@@ -90,13 +107,17 @@ static void* __scratchpad();    // TODO: concurrency support (n buffers for n al
 #define CONTRACT_STATE2_TYPE MLM2
 #include "contracts/MyLastMatch.h"
 
-#define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to diable timeout, because a rollback mechanism needs to be implmented to properly handle timeout
+#define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
 
 #undef INITIALIZE
 #undef BEGIN_EPOCH
 #undef END_EPOCH
 #undef BEGIN_TICK
 #undef END_TICK
+#undef PRE_RELEASE_SHARES
+#undef PRE_ACQUIRE_SHARES
+#undef POST_RELEASE_SHARES
+#undef POST_ACQUIRE_SHARES
 
 
 struct Contract0State
@@ -130,7 +151,6 @@ constexpr struct ContractDescription
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
 
-static SYSTEM_PROCEDURE contractSystemProcedures[contractCount][5];
 static EXPAND_PROCEDURE contractExpandProcedures[contractCount];
 
 // TODO: all below are filled very sparsely, so a better data structure could save almost all the memory
@@ -154,16 +174,25 @@ static unsigned short contractUserProcedureLocalsSizes[contractCount][65536];
 enum SystemProcedureID
 {
     INITIALIZE = 0,
-    BEGIN_EPOCH = 1,
-    END_EPOCH = 2,
-    BEGIN_TICK = 3,
-    END_TICK = 4,
+    BEGIN_EPOCH,
+    END_EPOCH,
+    BEGIN_TICK,
+    END_TICK,
+    PRE_RELEASE_SHARES,
+    PRE_ACQUIRE_SHARES,
+    POST_RELEASE_SHARES,
+    POST_ACQUIRE_SHARES,
+    contractSystemProcedureCount,
 };
 
 enum MoreProcedureIDs
 {
-    USER_PROCEDURE_CALL = 5,
+    // Used together with SystemProcedureID values, so there must be not overlap!
+    USER_PROCEDURE_CALL = contractSystemProcedureCount + 1,
 };
+
+static SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
+
 
 #define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName)\
 contractSystemProcedures[contractIndex][INITIALIZE] = (SYSTEM_PROCEDURE)contractName::__initialize;\
@@ -171,6 +200,10 @@ contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (SYSTEM_PROCEDURE)contrac
 contractSystemProcedures[contractIndex][END_EPOCH] = (SYSTEM_PROCEDURE)contractName::__endEpoch;\
 contractSystemProcedures[contractIndex][BEGIN_TICK] = (SYSTEM_PROCEDURE)contractName::__beginTick;\
 contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
+contractSystemProcedures[contractIndex][PRE_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preReleaseShares;\
+contractSystemProcedures[contractIndex][PRE_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preAcquireShares;\
+contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
+contractSystemProcedures[contractIndex][POST_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postAcquireShares;\
 contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 ((contractName*)contractState)->__registerUserFunctionsAndProcedures(qpi);
 

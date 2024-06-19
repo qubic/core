@@ -133,6 +133,7 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static Transaction* contractProcessorTransaction = 0;
+static int contractProcessorTransactionCanceled = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 
@@ -166,7 +167,7 @@ static int nSolutionProcessorIDs = 0;
 
 
 static ScoreFunction<
-    DATA_LENGTH, INFO_LENGTH,
+    DATA_LENGTH,
     NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
     MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
     NUMBER_OF_SOLUTION_PROCESSORS
@@ -216,6 +217,12 @@ static struct {
     unsigned char minute;
     unsigned char second;
 } threadTimeCheckin[MAX_NUMBER_OF_PROCESSORS];
+
+static struct {
+    unsigned int tick;
+    unsigned long long clock;
+    unsigned long long lastTryClock; // last time it rolling the dice
+} emptyTickResolver;
 
 static void logToConsole(const CHAR16* message)
 {
@@ -1519,6 +1526,42 @@ QPI::id QPI::QpiContextFunctionCall::arbitrator() const
     return arbitratorPublicKey;
 }
 
+bool QPI::QpiContextProcedureCall::acquireShares(/* TODO */) const
+{
+    // Just examples, to make it compile, move these to parameter list
+    unsigned int contractIndex = QX_CONTRACT_INDEX;
+    QPI::sint64 invocationReward = 10;
+
+    if (contractIndex >= contractCount)
+        return false;
+    if (invocationReward < 0)
+        return false;
+    // ...
+
+    // TODO: Init input
+    QPI::PreManagementRightsTransfer_input pre_input;
+    // output is zeroed in __qpiCallSystemProcOfOtherContract
+    QPI::PreManagementRightsTransfer_output pre_output;
+
+    // Call PRE_ACQUIRE_SHARES in other contract after transferring invocationReward
+    __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(contractIndex, pre_input, pre_output, invocationReward);
+
+    if (pre_output.agreeWithTransfer)
+    {
+        // TODO: transfer
+
+        // TODO: init input
+        QPI::PostManagementRightsTransfer_input post_input;
+        // Output is unused, but needed for generalized interface
+        QPI::NoData post_output;
+
+        // Call POST_ACQUIRE_SHARES in other contract without transferring an invocationReward
+        __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(contractIndex, post_input, post_output, 0);
+    }
+
+    return pre_output.agreeWithTransfer;
+}
+
 long long QPI::QpiContextProcedureCall::burn(long long amount) const
 {
     if (amount < 0 || amount > MAX_AMOUNT)
@@ -1835,6 +1878,9 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
     {
         increaseEnergy(destination, amount);
 
+        if (!contractActionTracker.addQuTransfer(_currentContractId, destination, amount))
+            __qpiAbort(ContractErrorTooManyActions);
+
         const QuTransfer quTransfer = { _currentContractId , destination , amount };
         logQuTransfer(quTransfer);
     }
@@ -2052,6 +2098,10 @@ static void contractProcessor(void*)
         QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
         qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
 
+        if (contractActionTracker.getOverallQuTransferBalance(transaction->sourcePublicKey) == 0)
+            contractProcessorTransactionCanceled = 1;
+        else
+            contractProcessorTransactionCanceled = 0;
         contractProcessorTransaction = 0;
     }
     break;
@@ -2333,6 +2383,13 @@ static void processTick(unsigned long long processorNumber)
                                             {
                                                 _mm_pause();
                                             }
+
+#if ADDON_TX_STATUS_REQUEST
+                                            if (contractProcessorTransactionCanceled)
+                                            {
+                                                saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
+                                            }
+#endif
                                         }
                                     }
                                 }
@@ -3616,6 +3673,39 @@ static void tickProcessor(void*)
                         {
                             if (!targetNextTickDataDigestIsKnown)
                             {
+                                // auto f5 logic:
+                                // if these conditions are met:
+                                // - this node is on MAIN mode
+                                // - not reach consensus for next tick digest => (!targetNextTickDataDigestIsKnown)
+                                // - 451+ votes agree on the current tick (prev digests, tick data) | aka: tickNumberOfComputors >= QUORUM
+                                // - the network was stuck for a certain time, (10x of target tick duration by default)
+                                // then:
+                                // - randomly (8% chance) force next tick to be empty every sec
+                                // - refresh the network (try to resolve bad topology)
+                                if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
+                                {
+                                    if (emptyTickResolver.tick != system.tick)
+                                    {
+                                        emptyTickResolver.tick = system.tick;
+                                        emptyTickResolver.clock = __rdtsc();
+                                    }
+                                    else
+                                    {
+                                        if (__rdtsc() - emptyTickResolver.clock > frequency * TARGET_TICK_DURATION * AUTO_FORCE_NEXT_TICK_THRESHOLD / 1000)
+                                        {
+                                            if (__rdtsc() - emptyTickResolver.lastTryClock > frequency)
+                                            {
+                                                unsigned int randNumber = random(10000);
+                                                if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
+                                                {
+                                                    forceNextTick = true; // auto-F5
+                                                }
+                                                emptyTickResolver.lastTryClock = __rdtsc();
+                                            }
+                                        }
+                                    }
+                                }
+
                                 if (forceNextTick)
                                 {
                                     targetNextTickDataDigest = _mm256_setzero_si256();
@@ -4273,6 +4363,9 @@ static bool initialize()
 
     beginEpoch2of2();
 
+    emptyTickResolver.clock = 0;
+    emptyTickResolver.tick = 0;
+    emptyTickResolver.lastTryClock = 0;
     return true;
 }
 
@@ -4667,9 +4760,43 @@ static void logHealthStatus()
         logToConsole(L"WARNING: Developers should increase stack size!");
     }
 
+    setText(message, L"Contract status: ");
+    bool anyContractError = false;
+    for (int i = 0; i < contractCount; i++)
+    {
+        if (contractError[i])
+        {
+            if (anyContractError)
+                appendText(message, L" | ");
+            anyContractError = true;
+            appendText(message, L"Contract #");
+            appendNumber(message, i, FALSE);
+            appendText(message, L": ");
+            const CHAR16* errorMsg = L"Unknown error";
+            switch (contractError[i])
+            {
+            // The alloc failures can be fixed by increasing the size of ContractLocalsStack
+            case ContractErrorAllocInputOutputFailed: errorMsg = L"AllocInputOutputFailed"; break;
+            case ContractErrorAllocLocalsFailed: errorMsg = L"AllocLocalsFailed"; break;
+            case ContractErrorAllocContextOtherFunctionCallFailed: errorMsg = L"AllocContextOtherFunctionCallFailed"; break;
+            case ContractErrorAllocContextOtherProcedureCallFailed: errorMsg = L"AllocContextOtherProcedureCallFailed"; break;
+            // TooManyActions can be fixed by calling less actions or increasing the size of ContractActionTracker
+            case ContractErrorTooManyActions: errorMsg = L"TooManyActions"; break;
+            // Timeout requires to remove endless loop, speed-up code, or change the timeout
+            case ContractErrorTimeout: errorMsg = L"Timeout"; break;
+            }
+            appendText(message, errorMsg);
+        }
+    }
+    if (!anyContractError)
+    {
+        appendText(message, L"no errors");
+    }
+    logToConsole(message);
+
     // Print info about stack buffers used to run contracts
     setText(message, L"Contract stack buffer usage: ");
-    for (int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_PROCESSORS; ++i)
+    for (int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS; ++i)
     {
         appendText(message, L"buf ");
         appendNumber(message, i, FALSE);
