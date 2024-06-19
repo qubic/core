@@ -398,7 +398,7 @@ static long long saveLargeFile(CHAR16* fileName, unsigned long long totalSize, u
         appendText(fileNameWithChunkId, L".XXX");
         addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
         const unsigned long long writeSize = maxWriteSizePerChunk < totalSize ? maxWriteSizePerChunk : totalSize;
-        long long existFileSize = getFileSize(fileNameWithChunkId);
+        long long existFileSize = getFileSize(fileNameWithChunkId, directory);
         if (existFileSize != writeSize) {
             unsigned long long res = save(fileNameWithChunkId, writeSize, buffer, directory);
             if (res != writeSize) {
