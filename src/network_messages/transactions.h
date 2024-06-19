@@ -40,6 +40,12 @@ struct Transaction
         return (((unsigned char*)this) + sizeof(Transaction));
     }
 
+    // Return pointer to transaction's payload (CAUTION: This is behind the memory reserved for this struct!)
+    const unsigned char* inputPtr() const
+    {
+        return (((const unsigned char*)this) + sizeof(Transaction));
+    }
+
     // Return pointer to signature (CAUTION: This is behind the memory reserved for this struct!)
     unsigned char* signaturePtr()
     {

@@ -132,7 +132,7 @@ static m256i* spectrumDigests = NULL;
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
-static Transaction* contractProcessorTransaction = 0;
+static const Transaction* contractProcessorTransaction = 0;
 static int contractProcessorTransactionCanceled = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
@@ -2087,7 +2087,7 @@ static void contractProcessor(void*)
 
     case USER_PROCEDURE_CALL:
     {
-        Transaction* transaction = contractProcessorTransaction;
+        const Transaction* transaction = contractProcessorTransaction;
         ASSERT(transaction && transaction->checkValidity());
 
         unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
@@ -2105,6 +2105,419 @@ static void contractProcessor(void*)
         contractProcessorTransaction = 0;
     }
     break;
+    }
+}
+
+static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(transaction->tick == system.tick);
+    ASSERT(!transaction->amount && transaction->inputSize == sizeof(ContractIPOBid));
+    ASSERT(spectrumIndex >= 0);
+    ASSERT(contractIndex < contractCount);
+    ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
+
+    ContractIPOBid* contractIPOBid = (ContractIPOBid*)transaction->inputPtr();
+    if (contractIPOBid->price > 0 && contractIPOBid->price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
+        && contractIPOBid->quantity > 0 && contractIPOBid->quantity <= NUMBER_OF_COMPUTORS)
+    {
+        const long long amount = contractIPOBid->price * contractIPOBid->quantity;
+        if (decreaseEnergy(spectrumIndex, amount))
+        {
+            const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
+            logQuTransfer(quTransfer);
+
+            numberOfReleasedEntities = 0;
+            contractStateLock[contractIndex].acquireWrite();
+            IPO* ipo = (IPO*)contractStates[contractIndex];
+            for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
+            {
+                if (contractIPOBid->price <= ipo->prices[NUMBER_OF_COMPUTORS - 1])
+                {
+                    unsigned int j;
+                    for (j = 0; j < numberOfReleasedEntities; j++)
+                    {
+                        if (transaction->sourcePublicKey == releasedPublicKeys[j])
+                        {
+                            break;
+                        }
+                    }
+                    if (j == numberOfReleasedEntities)
+                    {
+                        releasedPublicKeys[numberOfReleasedEntities] = transaction->sourcePublicKey;
+                        releasedAmounts[numberOfReleasedEntities++] = contractIPOBid->price;
+                    }
+                    else
+                    {
+                        releasedAmounts[j] += contractIPOBid->price;
+                    }
+                }
+                else
+                {
+                    unsigned int j;
+                    for (j = 0; j < numberOfReleasedEntities; j++)
+                    {
+                        if (ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] == releasedPublicKeys[j])
+                        {
+                            break;
+                        }
+                    }
+                    if (j == numberOfReleasedEntities)
+                    {
+                        releasedPublicKeys[numberOfReleasedEntities] = ipo->publicKeys[NUMBER_OF_COMPUTORS - 1];
+                        releasedAmounts[numberOfReleasedEntities++] = ipo->prices[NUMBER_OF_COMPUTORS - 1];
+                    }
+                    else
+                    {
+                        releasedAmounts[j] += ipo->prices[NUMBER_OF_COMPUTORS - 1];
+                    }
+
+                    ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] = transaction->sourcePublicKey;
+                    ipo->prices[NUMBER_OF_COMPUTORS - 1] = contractIPOBid->price;
+                    j = NUMBER_OF_COMPUTORS - 1;
+                    while (j
+                        && ipo->prices[j - 1] < ipo->prices[j])
+                    {
+                        const m256i tmpPublicKey = ipo->publicKeys[j - 1];
+                        const long long tmpPrice = ipo->prices[j - 1];
+                        ipo->publicKeys[j - 1] = ipo->publicKeys[j];
+                        ipo->prices[j - 1] = ipo->prices[j];
+                        ipo->publicKeys[j] = tmpPublicKey;
+                        ipo->prices[j--] = tmpPrice;
+                    }
+
+                    contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
+                }
+            }
+            contractStateLock[contractIndex].releaseWrite();
+
+            for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
+            {
+                increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
+                const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                logQuTransfer(quTransfer);
+            }
+        }
+    }
+}
+
+// Return if money flew
+static bool processTickTransactionContractProcedure(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(transaction->tick == system.tick);
+    ASSERT(spectrumIndex >= 0);
+    ASSERT(contractIndex < contractCount);
+    ASSERT(system.epoch >= contractDescriptions[contractIndex].constructionEpoch);
+    ASSERT(system.epoch < contractDescriptions[contractIndex].destructionEpoch);
+
+    if (contractUserProcedures[contractIndex][transaction->inputType])
+    {
+        // Run user procedure call of transaction in contract processor
+        // and wait for completion
+        contractProcessorTransaction = transaction;
+        contractProcessorPhase = USER_PROCEDURE_CALL;
+        contractProcessorState = 1;
+        while (contractProcessorState)
+        {
+            _mm_pause();
+        }
+
+        return !contractProcessorTransactionCanceled;
+    }
+
+    // if transaction tries to invoke non-registered procedure, transaction amount is not reimbursed
+    return true;
+}
+
+static void processTickTransactionSolution(const Transaction* transaction, const unsigned long long processorNumber)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(transaction->tick == system.tick);
+    ASSERT(transaction->destinationPublicKey == arbitratorPublicKey);
+    ASSERT(!transaction->amount && transaction->inputSize == 32 && !transaction->inputType);
+
+    const m256i& solution_nonce = *(m256i*)transaction->inputPtr();
+    m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
+    static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
+    unsigned int flagIndex;
+    KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
+    if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
+    {
+        minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
+
+        unsigned long long solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_nonce);
+
+        resourceTestingDigest ^= solutionScore;
+        KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
+
+        const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+        if ((solutionScore >= (DATA_LENGTH / 3) + threshold) || (solutionScore <= (DATA_LENGTH / 3) - threshold))
+        {
+            for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+            {
+                if (transaction->sourcePublicKey == computorPublicKeys[i])
+                {
+                    ACQUIRE(solutionsLock);
+
+                    unsigned int j;
+                    for (j = 0; j < system.numberOfSolutions; j++)
+                    {
+                        if (solution_nonce == system.solutions[j].nonce
+                            && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
+                        {
+                            solutionPublicationTicks[j] = -1;
+
+                            break;
+                        }
+                    }
+                    if (j == system.numberOfSolutions
+                        && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
+                    {
+                        system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
+                        system.solutions[system.numberOfSolutions].nonce = solution_nonce;
+                        solutionPublicationTicks[system.numberOfSolutions++] = -1;
+                    }
+
+                    RELEASE(solutionsLock);
+
+                    break;
+                }
+            }
+
+            ACQUIRE(minerScoreArrayLock);
+            unsigned int minerIndex;
+            for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
+            {
+                if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
+                {
+                    minerScores[minerIndex]++;
+
+                    break;
+                }
+            }
+            if (minerIndex == numberOfMiners
+                && numberOfMiners < MAX_NUMBER_OF_MINERS)
+            {
+                minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
+                minerScores[numberOfMiners++] = 1;
+            }
+
+            const m256i tmpPublicKey = minerPublicKeys[minerIndex];
+            const unsigned int tmpScore = minerScores[minerIndex];
+            while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
+                && minerScores[minerIndex - 1] < minerScores[minerIndex])
+            {
+                minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
+                minerScores[minerIndex] = minerScores[minerIndex - 1];
+                minerPublicKeys[--minerIndex] = tmpPublicKey;
+                minerScores[minerIndex] = tmpScore;
+            }
+
+            // combine 225 worst current computors with 225 best candidates
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS - QUORUM; i++)
+            {
+                competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
+                competitorScores[i] = minerScores[QUORUM + i];
+                competitorComputorStatuses[i] = true;
+
+                if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
+                {
+                    competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
+                    competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
+                }
+                else
+                {
+                    competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
+                }
+                competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
+            }
+            RELEASE(minerScoreArrayLock);
+
+            // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
+            for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
+            {
+                int j = i;
+                const m256i tmpPublicKey = competitorPublicKeys[j];
+                const unsigned int tmpScore = competitorScores[j];
+                const bool tmpComputorStatus = false;
+                while (j
+                    && competitorScores[j - 1] < competitorScores[j])
+                {
+                    competitorPublicKeys[j] = competitorPublicKeys[j - 1];
+                    competitorScores[j] = competitorScores[j - 1];
+                    competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
+                    competitorPublicKeys[--j] = tmpPublicKey;
+                    competitorScores[j] = tmpScore;
+                    competitorComputorStatuses[j] = tmpComputorStatus;
+                }
+            }
+
+            minimumComputorScore = competitorScores[NUMBER_OF_COMPUTORS - QUORUM - 1];
+
+            unsigned char candidateCounter = 0;
+            for (unsigned int i = 0; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
+            {
+                if (!competitorComputorStatuses[i])
+                {
+                    minimumCandidateScore = competitorScores[i];
+                    candidateCounter++;
+                }
+            }
+            if (candidateCounter < NUMBER_OF_COMPUTORS - QUORUM)
+            {
+                minimumCandidateScore = minimumComputorScore;
+            }
+
+            ACQUIRE(minerScoreArrayLock);
+            for (unsigned int i = 0; i < QUORUM; i++)
+            {
+                system.futureComputors[i] = minerPublicKeys[i];
+            }
+            RELEASE(minerScoreArrayLock);
+
+            for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
+            }
+        }
+    }
+    else
+    {
+        for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+        {
+            if (transaction->sourcePublicKey == computorPublicKeys[i])
+            {
+                ACQUIRE(solutionsLock);
+
+                unsigned int j;
+                for (j = 0; j < system.numberOfSolutions; j++)
+                {
+                    if (solution_nonce == system.solutions[j].nonce
+                        && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
+                    {
+                        solutionPublicationTicks[j] = -1;
+
+                        break;
+                    }
+                }
+                if (j == system.numberOfSolutions
+                    && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
+                {
+                    system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
+                    system.solutions[system.numberOfSolutions].nonce = solution_nonce;
+                    solutionPublicationTicks[system.numberOfSolutions++] = -1;
+                }
+
+                RELEASE(solutionsLock);
+
+                break;
+            }
+        }
+    }
+}
+
+
+static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, unsigned long long processorNumber)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(transaction->tick == system.tick);
+
+    const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
+    if (spectrumIndex >= 0
+        && !entityPendingTransactionIndices[spectrumIndex])
+    {
+        entityPendingTransactionIndices[spectrumIndex] = 1;
+
+        numberOfTransactions++;
+#if ADDON_TX_STATUS_REQUEST
+        tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
+#endif
+        if (decreaseEnergy(spectrumIndex, transaction->amount))
+        {
+            increaseEnergy(transaction->destinationPublicKey, transaction->amount);
+
+            if (transaction->amount)
+            {
+#if ADDON_TX_STATUS_REQUEST
+                saveConfirmedTx(numberOfTransactions - 1, 1, system.tick, transactionDigest); // qli: save tx
+#endif
+                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
+                logQuTransfer(quTransfer);
+            }
+            else
+            {
+#if ADDON_TX_STATUS_REQUEST
+                saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, transactionDigest); // qli: save tx
+#endif
+            }
+
+            if (isZero(transaction->destinationPublicKey))
+            {
+                // Nothing to do
+            }
+            else
+            {
+                // Contracts are identified by their index stored in the first 64 bits of the id, all
+                // other bits are zeroed. However, the max number of contracts is limited to 2^32 - 1,
+                // only 32 bits are used for the contract index.
+                m256i maskedDestinationPublicKey = transaction->destinationPublicKey;
+                maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
+                unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
+                if (isZero(maskedDestinationPublicKey)
+                    && contractIndex < contractCount)
+                {
+                    // Contract transactions
+                    if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
+                    {
+                        // IPO
+                        if (!transaction->amount
+                            && transaction->inputSize == sizeof(ContractIPOBid))
+                        {
+                            processTickTransactionContractIPO(transaction, spectrumIndex, contractIndex);
+                        }
+                    }
+                    else if (system.epoch < contractDescriptions[contractIndex].destructionEpoch)
+                    {
+                        // Regular contract procedure invocation
+                        bool moneyflew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
+                        if (!moneyflew)
+                        {
+#if ADDON_TX_STATUS_REQUEST
+                            saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, transactionDigest); // qli: save tx
+#endif
+                        }
+                    }
+                }
+                else
+                {
+                    // Other transactions
+                    if (transaction->destinationPublicKey == arbitratorPublicKey)
+                    {
+                        if (!transaction->amount
+                            && transaction->inputSize == 32
+                            && !transaction->inputType)
+                        {
+                            processTickTransactionSolution(transaction, processorNumber);
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+#if ADDON_TX_STATUS_REQUEST
+            saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, transactionDigest); // qli: save tx
+#endif
+        }
     }
 }
 
@@ -2228,6 +2641,7 @@ static void processTick(unsigned long long processorNumber)
         }
         solutionTotalExecutionTicks = __rdtsc() - solutionProcessStartTick; // for tracking the time processing solutions
 
+        // Process all transaction of the tick
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
             if (!isZero(nextTickData.transactionDigests[transactionIndex]))
@@ -2235,362 +2649,7 @@ static void processTick(unsigned long long processorNumber)
                 if (tsCurrentTickTransactionOffsets[transactionIndex])
                 {
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
-                    ASSERT(transaction->checkValidity());
-                    ASSERT(transaction->tick == system.tick);
-                    const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
-                    if (spectrumIndex >= 0
-                        && !entityPendingTransactionIndices[spectrumIndex])
-                    {
-                        entityPendingTransactionIndices[spectrumIndex] = 1;
-
-                        numberOfTransactions++;
-#if ADDON_TX_STATUS_REQUEST
-                        tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
-#endif
-                        if (decreaseEnergy(spectrumIndex, transaction->amount))
-                        {
-                            increaseEnergy(transaction->destinationPublicKey, transaction->amount);
-                            
-                            if (transaction->amount)
-                            {
-#if ADDON_TX_STATUS_REQUEST
-                                saveConfirmedTx(numberOfTransactions - 1, 1, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
-#endif
-                                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
-                                logQuTransfer(quTransfer);
-                            }
-                            else
-                            {
-#if ADDON_TX_STATUS_REQUEST
-                                saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
-#endif
-                            }
-
-                            if (isZero(transaction->destinationPublicKey))
-                            {
-                                // Nothing to do
-                            }
-                            else
-                            {
-                                // Contracts are identified by their index stored in the first 64 bits of the id, all
-                                // other bits are zeroed. However, the max number of contracts is limited to 2^32 - 1,
-                                // only 32 bits are used for the contract index.
-                                m256i maskedDestinationPublicKey = transaction->destinationPublicKey;
-                                maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
-                                unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
-                                if (isZero(maskedDestinationPublicKey)
-                                    && contractIndex < contractCount)
-                                {
-                                    if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
-                                    {
-                                        if (!transaction->amount
-                                            && transaction->inputSize == sizeof(ContractIPOBid))
-                                        {
-                                            ContractIPOBid* contractIPOBid = (ContractIPOBid*)transaction->inputPtr();
-                                            if (contractIPOBid->price > 0 && contractIPOBid->price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
-                                                && contractIPOBid->quantity > 0 && contractIPOBid->quantity <= NUMBER_OF_COMPUTORS)
-                                            {
-                                                const long long amount = contractIPOBid->price * contractIPOBid->quantity;
-                                                if (decreaseEnergy(spectrumIndex, amount))
-                                                {
-                                                    const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
-                                                    logQuTransfer(quTransfer);
-
-                                                    numberOfReleasedEntities = 0;
-                                                    contractStateLock[contractIndex].acquireWrite();
-                                                    IPO* ipo = (IPO*)contractStates[contractIndex];
-                                                    for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
-                                                    {
-                                                        if (contractIPOBid->price <= ipo->prices[NUMBER_OF_COMPUTORS - 1])
-                                                        {
-                                                            unsigned int j;
-                                                            for (j = 0; j < numberOfReleasedEntities; j++)
-                                                            {
-                                                                if (transaction->sourcePublicKey == releasedPublicKeys[j])
-                                                                {
-                                                                    break;
-                                                                }
-                                                            }
-                                                            if (j == numberOfReleasedEntities)
-                                                            {
-                                                                releasedPublicKeys[numberOfReleasedEntities] = transaction->sourcePublicKey;
-                                                                releasedAmounts[numberOfReleasedEntities++] = contractIPOBid->price;
-                                                            }
-                                                            else
-                                                            {
-                                                                releasedAmounts[j] += contractIPOBid->price;
-                                                            }
-                                                        }
-                                                        else
-                                                        {
-                                                            unsigned int j;
-                                                            for (j = 0; j < numberOfReleasedEntities; j++)
-                                                            {
-                                                                if (ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] == releasedPublicKeys[j])
-                                                                {
-                                                                    break;
-                                                                }
-                                                            }
-                                                            if (j == numberOfReleasedEntities)
-                                                            {
-                                                                releasedPublicKeys[numberOfReleasedEntities] = ipo->publicKeys[NUMBER_OF_COMPUTORS - 1];
-                                                                releasedAmounts[numberOfReleasedEntities++] = ipo->prices[NUMBER_OF_COMPUTORS - 1];
-                                                            }
-                                                            else
-                                                            {
-                                                                releasedAmounts[j] += ipo->prices[NUMBER_OF_COMPUTORS - 1];
-                                                            }
-
-                                                            ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] = transaction->sourcePublicKey;
-                                                            ipo->prices[NUMBER_OF_COMPUTORS - 1] = contractIPOBid->price;
-                                                            j = NUMBER_OF_COMPUTORS - 1;
-                                                            while (j
-                                                                && ipo->prices[j - 1] < ipo->prices[j])
-                                                            {
-                                                                const m256i tmpPublicKey = ipo->publicKeys[j - 1];
-                                                                const long long tmpPrice = ipo->prices[j - 1];
-                                                                ipo->publicKeys[j - 1] = ipo->publicKeys[j];
-                                                                ipo->prices[j - 1] = ipo->prices[j];
-                                                                ipo->publicKeys[j] = tmpPublicKey;
-                                                                ipo->prices[j--] = tmpPrice;
-                                                            }
-
-                                                            contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
-                                                        }
-                                                    }
-                                                    contractStateLock[contractIndex].releaseWrite();
-
-                                                    for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
-                                                    {
-                                                        increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                                                        const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
-                                                        logQuTransfer(quTransfer);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    else if (system.epoch < contractDescriptions[contractIndex].destructionEpoch)
-                                    {
-                                        if (contractUserProcedures[contractIndex][transaction->inputType])
-                                        {
-                                            // Run user procedure call of transaction in contract processor
-                                            // and wait for completion
-                                            contractProcessorTransaction = transaction;
-                                            contractProcessorPhase = USER_PROCEDURE_CALL;
-                                            contractProcessorState = 1;
-                                            while (contractProcessorState)
-                                            {
-                                                _mm_pause();
-                                            }
-
-#if ADDON_TX_STATUS_REQUEST
-                                            if (contractProcessorTransactionCanceled)
-                                            {
-                                                saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
-                                            }
-#endif
-                                        }
-                                    }
-                                }
-                                else
-                                {
-                                    if (transaction->destinationPublicKey == arbitratorPublicKey)
-                                    {
-                                        if (!transaction->amount
-                                            && transaction->inputSize == 32
-                                            && !transaction->inputType)
-                                        {
-                                            const m256i & solution_nonce = *(m256i*)transaction->inputPtr();
-                                            m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
-                                            static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
-                                            unsigned int flagIndex;
-                                            KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
-                                            if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
-                                            {
-                                                minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
-
-                                                unsigned long long solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_nonce);
-
-                                                resourceTestingDigest ^= solutionScore;
-                                                KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
-
-                                                const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
-                                                if ((solutionScore >= (DATA_LENGTH / 3) + threshold) || (solutionScore <= (DATA_LENGTH / 3) - threshold))
-                                                {
-                                                    for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
-                                                    {
-                                                        if (transaction->sourcePublicKey == computorPublicKeys[i])
-                                                        {
-                                                            ACQUIRE(solutionsLock);
-
-                                                            unsigned int j;
-                                                            for (j = 0; j < system.numberOfSolutions; j++)
-                                                            {
-                                                                if (solution_nonce == system.solutions[j].nonce
-                                                                    && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
-                                                                {
-                                                                    solutionPublicationTicks[j] = -1;
-
-                                                                    break;
-                                                                }
-                                                            }
-                                                            if (j == system.numberOfSolutions
-                                                                && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
-                                                            {
-                                                                system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
-                                                                system.solutions[system.numberOfSolutions].nonce = solution_nonce;
-                                                                solutionPublicationTicks[system.numberOfSolutions++] = -1;
-                                                            }
-
-                                                            RELEASE(solutionsLock);
-
-                                                            break;
-                                                        }
-                                                    }
-
-                                                    ACQUIRE(minerScoreArrayLock);
-                                                    unsigned int minerIndex;
-                                                    for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
-                                                    {
-                                                        if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
-                                                        {
-                                                            minerScores[minerIndex]++;
-
-                                                            break;
-                                                        }
-                                                    }
-                                                    if (minerIndex == numberOfMiners
-                                                        && numberOfMiners < MAX_NUMBER_OF_MINERS)
-                                                    {
-                                                        minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
-                                                        minerScores[numberOfMiners++] = 1;
-                                                    }
-
-                                                    const m256i tmpPublicKey = minerPublicKeys[minerIndex];
-                                                    const unsigned int tmpScore = minerScores[minerIndex];
-                                                    while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
-                                                        && minerScores[minerIndex - 1] < minerScores[minerIndex])
-                                                    {
-                                                        minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
-                                                        minerScores[minerIndex] = minerScores[minerIndex - 1];
-                                                        minerPublicKeys[--minerIndex] = tmpPublicKey;
-                                                        minerScores[minerIndex] = tmpScore;
-                                                    }
-
-                                                    // combine 225 worst current computors with 225 best candidates
-                                                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS - QUORUM; i++)
-                                                    {
-                                                        competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
-                                                        competitorScores[i] = minerScores[QUORUM + i];
-                                                        competitorComputorStatuses[i] = true;
-
-                                                        if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
-                                                        {
-                                                            competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
-                                                            competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
-                                                        }
-                                                        else
-                                                        {
-                                                            competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
-                                                        }
-                                                        competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
-                                                    }
-                                                    RELEASE(minerScoreArrayLock);
-
-                                                    // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
-                                                    for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
-                                                    {
-                                                        int j = i;
-                                                        const m256i tmpPublicKey = competitorPublicKeys[j];
-                                                        const unsigned int tmpScore = competitorScores[j];
-                                                        const bool tmpComputorStatus = false;
-                                                        while (j
-                                                            && competitorScores[j - 1] < competitorScores[j])
-                                                        {
-                                                            competitorPublicKeys[j] = competitorPublicKeys[j - 1];
-                                                            competitorScores[j] = competitorScores[j - 1];
-                                                            competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
-                                                            competitorPublicKeys[--j] = tmpPublicKey;
-                                                            competitorScores[j] = tmpScore;
-                                                            competitorComputorStatuses[j] = tmpComputorStatus;
-                                                        }
-                                                    }
-
-                                                    minimumComputorScore = competitorScores[NUMBER_OF_COMPUTORS - QUORUM - 1];
-
-                                                    unsigned char candidateCounter = 0;
-                                                    for (unsigned int i = 0; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
-                                                    {
-                                                        if (!competitorComputorStatuses[i])
-                                                        {
-                                                            minimumCandidateScore = competitorScores[i];
-                                                            candidateCounter++;
-                                                        }
-                                                    }
-                                                    if (candidateCounter < NUMBER_OF_COMPUTORS - QUORUM)
-                                                    {
-                                                        minimumCandidateScore = minimumComputorScore;
-                                                    }
-
-                                                    ACQUIRE(minerScoreArrayLock);
-                                                    for (unsigned int i = 0; i < QUORUM; i++)
-                                                    {
-                                                        system.futureComputors[i] = minerPublicKeys[i];
-                                                    }
-                                                    RELEASE(minerScoreArrayLock);
-
-                                                    for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
-                                                    {
-                                                        system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
-                                                    }
-                                                }
-                                            }
-                                            else
-                                            {
-                                                for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
-                                                {
-                                                    if (transaction->sourcePublicKey == computorPublicKeys[i])
-                                                    {
-                                                        ACQUIRE(solutionsLock);
-
-                                                        unsigned int j;
-                                                        for (j = 0; j < system.numberOfSolutions; j++)
-                                                        {
-                                                            if (solution_nonce == system.solutions[j].nonce
-                                                                && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
-                                                            {
-                                                                solutionPublicationTicks[j] = -1;
-
-                                                                break;
-                                                            }
-                                                        }
-                                                        if (j == system.numberOfSolutions
-                                                            && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
-                                                        {
-                                                            system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
-                                                            system.solutions[system.numberOfSolutions].nonce = solution_nonce;
-                                                            solutionPublicationTicks[system.numberOfSolutions++] = -1;
-                                                        }
-
-                                                        RELEASE(solutionsLock);
-
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-#if ADDON_TX_STATUS_REQUEST
-                            saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, nextTickData.transactionDigests[transactionIndex]); // qli: save tx
-#endif
-                        }
-                    }
+                    processTickTransaction(transaction, nextTickData.transactionDigests[transactionIndex], processorNumber);
                 }
                 else
                 {
