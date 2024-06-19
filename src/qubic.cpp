@@ -2438,6 +2438,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
         entityPendingTransactionIndices[spectrumIndex] = 1;
 
         numberOfTransactions++;
+        bool moneyFlew = false;
 #if ADDON_TX_STATUS_REQUEST
         tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
@@ -2447,17 +2448,9 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
             if (transaction->amount)
             {
-#if ADDON_TX_STATUS_REQUEST
-                saveConfirmedTx(numberOfTransactions - 1, 1, system.tick, transactionDigest); // qli: save tx
-#endif
+                moneyFlew = true;
                 const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
                 logQuTransfer(quTransfer);
-            }
-            else
-            {
-#if ADDON_TX_STATUS_REQUEST
-                saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, transactionDigest); // qli: save tx
-#endif
             }
 
             if (isZero(transaction->destinationPublicKey))
@@ -2488,13 +2481,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     else if (system.epoch < contractDescriptions[contractIndex].destructionEpoch)
                     {
                         // Regular contract procedure invocation
-                        bool moneyflew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
-                        if (!moneyflew)
-                        {
-#if ADDON_TX_STATUS_REQUEST
-                            saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, transactionDigest); // qli: save tx
-#endif
-                        }
+                        moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
                     }
                 }
                 else
@@ -2512,12 +2499,10 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
             }
         }
-        else
-        {
+
 #if ADDON_TX_STATUS_REQUEST
-            saveConfirmedTx(numberOfTransactions - 1, 0, system.tick, transactionDigest); // qli: save tx
+        saveConfirmedTx(numberOfTransactions - 1, moneyFlew, system.tick, transactionDigest); // qli: save tx
 #endif
-        }
     }
 }
 
