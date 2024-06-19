@@ -383,9 +383,10 @@ static unsigned int getTextSize(CHAR16* text, int maximumSize)
     return result;
 }
 
-static long long saveLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
+// Break the large file to many chunks to write if the size is greater or equal FILE_CHUNK_SIZE
+// - skipWriteEqualChunkSize: skip write the chunk file if the size of existed file match with buffer data. Set false if need the write always happens
+static long long saveLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL, bool skipWriteEqualChunkSize = true)
 {
-    
     const unsigned long long maxWriteSizePerChunk = FILE_CHUNK_SIZE;
     if (totalSize < maxWriteSizePerChunk) {
         return save(fileName, totalSize, buffer, directory);
@@ -399,7 +400,7 @@ static long long saveLargeFile(CHAR16* fileName, unsigned long long totalSize, u
         addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
         const unsigned long long writeSize = maxWriteSizePerChunk < totalSize ? maxWriteSizePerChunk : totalSize;
         long long existFileSize = getFileSize(fileNameWithChunkId, directory);
-        if (existFileSize != writeSize) {
+        if (!skipWriteEqualChunkSize || (existFileSize != writeSize)) {
             unsigned long long res = save(fileNameWithChunkId, writeSize, buffer, directory);
             if (res != writeSize) {
                 return totalWriteSize;
