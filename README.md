@@ -135,7 +135,7 @@ We recommend to synchronize a Linux / Windows / MacOS machine with NTP permanent
 The Anti-Military License. See [LICENSE.md](LICENSE.md).
 
 ## Installation and Configuration
-Please refer to https://docs.qubic.world
+Please refer to https://docs.qubic.org
 
 ## Limited Support
 We cannot support you in any case. You are welcome to provide updates, bug fixes, or other code changes by pull requests, see [here](doc/contributing.md).
