@@ -3743,7 +3743,7 @@ static void tickProcessor(void*)
                                     const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
                                     // if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
                                     //     || dayIndex > 738570 + system.epoch * 7)
-                                    if (system.tick - system.initialTick >= 10000)
+                                    if (system.tick - system.initialTick >= 2000)
                                     {
                                         // start seamless epoch transition
                                         epochTransitionState = 1;
