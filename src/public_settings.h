@@ -71,7 +71,7 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_INPUT_DURATION 256
 #define MAX_OUTPUT_DURATION 256
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 44
+#define SOLUTION_THRESHOLD_DEFAULT 1
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
