@@ -412,7 +412,8 @@ public:
         for (locals.i = 0; locals.i < QUOTTERY_MAX_BET; locals.i++)
         {
             if ((state.mIsOccupied.get(locals.i) == 1) // if the bet is currently occupied
-                && (state.mBetEndTick.get(locals.i) > qpi.tick() + QUOTTERY_TICK_TO_KEEP_AFTER_END) // the bet is already ended more than 100 ticks
+                && (state.mBetEndTick.get(locals.i) != 0) // bet end tick marker is not null
+                && (state.mBetEndTick.get(locals.i) < qpi.tick() + QUOTTERY_TICK_TO_KEEP_AFTER_END) // the bet is already ended more than 100 ticks
                 ) 
             {
                 // cleaning bet storage
