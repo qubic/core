@@ -1231,6 +1231,18 @@ public:
     END_TICK
     _
 
+    PRE_ACQUIRE_SHARES
+    _
+
+    POST_ACQUIRE_SHARES
+    _
+
+    PRE_RELEASE_SHARES
+    _
+
+    POST_RELEASE_SHARES
+    _
+
     EXPAND
     _
 };
