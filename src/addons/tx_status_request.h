@@ -159,7 +159,7 @@ static void beginEpochTxStatusRequestAddOn(unsigned int newInitialTick)
 // moneyFlew: if money has been flow
 // tick: tick of tx (needs to be in range of current epoch)
 // digest: digest of tx
-static bool saveConfirmedTx(unsigned int txNumberMinusOne, unsigned char moneyFlew, unsigned int tick, const m256i& digest)
+static bool saveConfirmedTx(unsigned int txNumberMinusOne, bool moneyFlew, unsigned int tick, const m256i& digest)
 {
     ASSERT(confirmedTxCurrentEpochBeginTick == system.initialTick);
     ASSERT(tick >= system.initialTick && tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH);

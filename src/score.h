@@ -151,6 +151,8 @@ struct ScoreFunction
         synapseCheckpoint sckpInput[(numberOfInputNeurons + dataLength)][1];
         bool isGeneratedSynapse[numberOfInputNeurons + dataLength];
     } *_computeBuffer;
+    unsigned int* _indiceBigBuffer;
+
     static_assert(maxInputDuration <= 256, "Need to regenerate mod num table");
     // _totalModNum[i]: total of divisible numbers of i
     unsigned char _totalModNum[257];
@@ -204,29 +206,29 @@ struct ScoreFunction
                 return false;
             }
 
-            // TODO: allocate big array and distribute
+            if (!allocatePool(sizeof(unsigned int) * allParamsCount * maxNeuronsCount * solutionBufferCount, (void**)&_indiceBigBuffer))
+            {
+                logToConsole(L"Failed to allocate memory for score indice pos!");
+                return false;
+            }
+
+            unsigned int* bigBuffer = _indiceBigBuffer;
             for (int bufId = 0; bufId < solutionBufferCount; bufId++)
             {
                 auto& cb = _computeBuffer[bufId];
                 for (int i = 0; i < maxNeuronsCount; i++)
                 {
-                    if (!allocatePool(sizeof(unsigned int) * allParamsCount, (void**)&cb.indicePos[i]))
-                    {
-                        logToConsole(L"Failed to allocate memory for score indice pos!");
-                        return false;
-                    }
+                    cb.indicePos[i] = bigBuffer;
+                    bigBuffer += allParamsCount;
                 }
             }
         }
 
         for (int i = 0; i < solutionBufferCount; i++) {
             setMem(&_synapses[i], sizeof(synapseStruct), 0);
-            setMem(&_computeBuffer[i].neurons, sizeof(_computeBuffer[i].neurons), 0);
+            setMem(&_computeBuffer[i].neurons, sizeof(_computeBuffer[i].neurons), 0);            
             _computeBuffer[i].inputLength = nullptr;
-            for (int j = 0; j < maxNeuronsCount; j++)
-            {
-                setMem(_computeBuffer[i].indicePos[j], sizeof(unsigned int) * allParamsCount, 0);
-            }
+            setMem(_computeBuffer[i].indicePos[0], sizeof(unsigned int) * allParamsCount * maxNeuronsCount, 0); // it's continuous memory region
             setMem(_computeBuffer[i].bucketPos, sizeof(_computeBuffer[i].bucketPos), 0);
             setMem(_computeBuffer[i].isGeneratedBucket, sizeof(_computeBuffer[i].isGeneratedBucket), 0);
             setMem(_computeBuffer[i].queue, sizeof(_computeBuffer[i].queue), 0);
@@ -239,7 +241,7 @@ struct ScoreFunction
             setMem(_computeBuffer[i].isGeneratedSynapse, sizeof(_computeBuffer[i].isGeneratedSynapse), 0);
             solutionEngineLock[i] = 0;
         }
-        
+
 #if USE_SCORE_CACHE
         scoreCacheLock = 0;
         setMem(&scoreCache, sizeof(scoreCache), 0);
