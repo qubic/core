@@ -6,7 +6,7 @@ constexpr unsigned long long QUOTTERY_MAX_ORACLE_PROVIDER = 8;
 constexpr unsigned long long QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET = 2048;
 
 // adjustable with no change:
-constexpr unsigned long long QUOTTERY_FEE_PER_SLOT_PER_DAY_ = 10000ULL;
+constexpr unsigned long long QUOTTERY_FEE_PER_SLOT_PER_HOUR = 420ULL;
 constexpr unsigned long long QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_ = 10000ULL;
 
 constexpr unsigned long long QUOTTERY_SHAREHOLDER_FEE_ = 1000; // 10%
@@ -59,7 +59,7 @@ public:
     };
     struct basicInfo_output
     {
-        uint64 feePerSlotPerDay; // Amount of qus
+        uint64 feePerSlotPerHour; // Amount of qus
         uint64 gameOperatorFee; // 4 digit number ABCD means AB.CD% | 1234 is 12.34%
         uint64 shareholderFee; // 4 digit number ABCD means AB.CD% | 1234 is 12.34%
         uint64 minBetSlotAmount; // amount of qus
@@ -236,7 +236,7 @@ public:
     uint64 mDistributedAmount;
     uint64 mBurnedAmount;
     // adjustable variables
-    uint64 mFeePerSlotPerDay;
+    uint64 mFeePerSlotPerHour;
     uint64 mMinAmountPerBetSlot;
     uint64 mShareHolderFee;
     uint64 mBurnFee;
@@ -249,11 +249,11 @@ public:
     /**************************************/
     static uint32 divUp(uint32 a, uint32 b)
     {
-        return b ? ((a + b - 1) / b) : 0;
+        return div((a + b - 1), b);
     }
     static uint64 divUp(uint64 a, uint64 b)
     {
-        return b ? ((a + b - 1) / b) : 0;
+        return div((a + b - 1), b);
     }
     static sint32 min(sint32 a, sint32 b)
     {
@@ -539,7 +539,7 @@ public:
      * @return feePerSlotPerDay, gameOperatorFee, shareholderFee, minBetSlotAmount, gameOperator
      */
     PUBLIC_FUNCTION(basicInfo)
-        output.feePerSlotPerDay = state.mFeePerSlotPerDay;
+        output.feePerSlotPerHour = state.mFeePerSlotPerHour;
         output.gameOperatorFee = state.mGameOperatorFee;
         output.shareholderFee = state.mShareHolderFee;
         output.minBetSlotAmount = state.mMinAmountPerBetSlot;
@@ -782,8 +782,8 @@ public:
         locals.maxBetSlotPerOption = input.maxBetSlotPerOption;
         locals.numberOfOption = input.numberOfOption;
         diffDateInSecond(locals.curDate, input.endDate, locals.i0, locals.u64_0, locals.u64_1, locals.duration);
-        locals.duration = divUp(locals.duration, 3600ULL * 24);
-        locals.fee = locals.duration * locals.maxBetSlotPerOption * locals.numberOfOption * state.mFeePerSlotPerDay;
+        locals.duration = divUp(locals.duration, 3600ULL);
+        locals.fee = locals.duration * locals.maxBetSlotPerOption * locals.numberOfOption * state.mFeePerSlotPerHour;
 
         // fee is higher than sent amount, exit
         if (locals.fee > qpi.invocationReward()) {
@@ -1166,7 +1166,7 @@ public:
         }
 
         diffDateInSecond(locals.curDate, locals.endDate, locals.i0, locals.u64_0, locals.u64_1, locals.duration);
-        locals.duration = divUp(locals.duration, 3600ULL * 24);
+        locals.duration = div(locals.duration, 3600ULL * 24);
         if (locals.duration < 2){
             // need 2+ days to do this
             return;
@@ -1210,7 +1210,7 @@ public:
     _
 
     BEGIN_EPOCH
-        state.mFeePerSlotPerDay = QUOTTERY_FEE_PER_SLOT_PER_DAY_;
+        state.mFeePerSlotPerHour = QUOTTERY_FEE_PER_SLOT_PER_HOUR;
         state.mMinAmountPerBetSlot = QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_;
         state.mShareHolderFee = QUOTTERY_SHAREHOLDER_FEE_;
         state.mGameOperatorFee = QUOTTERY_GAME_OPERATOR_FEE_;
