@@ -327,7 +327,8 @@ public:
     /**
      * @return difference in number of second, A must be smaller than or equal B to have valid value
      */
-    static void diffDateInSecond(uint32& A, uint32& B, sint32& i, uint64& dayA, uint64& dayB, uint64& res) {
+    static void diffDateInSecond(uint32& A, uint32& B, sint32& i, uint64& dayA, uint64& dayB, uint64& res)
+    {
         if (dateCompare(A, B, i) >= 0) {
             res = 0;
             return;
@@ -349,6 +350,17 @@ public:
         res = (dayB - dayA) * 3600ULL * 24;
         res += (QTRY_GET_HOUR(B) * 3600 + QTRY_GET_MINUTE(B) * 60 + QTRY_GET_SECOND(B));
         res -= (QTRY_GET_HOUR(A) * 3600 + QTRY_GET_MINUTE(A) * 60 + QTRY_GET_SECOND(A));
+    }
+
+    static bool checkValidQtryDateTime(uint32& A)
+    {
+        if (QTRY_GET_MONTH(A) > 12) return false;
+        if (QTRY_GET_DAY(A) > 31) return false;
+        //TODO: check day in month here
+        if (QTRY_GET_HOUR(A) > 24) return false;
+        if (QTRY_GET_MINUTE(A) > 60) return false;
+        if (QTRY_GET_SECOND(A) > 60) return false;
+        return true;
     }
     /**
      * Clean all memory of a slot Id, set the flag IsOccupied to zero
@@ -752,6 +764,13 @@ public:
             return;
         }
         getCurrentDate(qpi, locals.curDate);
+        if (!checkValidQtryDateTime(input.closeDate) || !checkValidQtryDateTime(input.endDate))
+        {
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidDate,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
         // check valid date: closeDate <= endDate
         if (dateCompare(input.closeDate, input.endDate, locals.i0) == 1 ||
             dateCompare(locals.curDate, input.closeDate, locals.i0) == 1) {
