@@ -356,10 +356,14 @@ public:
     {
         if (QTRY_GET_MONTH(A) > 12) return false;
         if (QTRY_GET_DAY(A) > 31) return false;
-        //TODO: check day in month here
-        if (QTRY_GET_HOUR(A) > 24) return false;
-        if (QTRY_GET_MINUTE(A) > 60) return false;
-        if (QTRY_GET_SECOND(A) > 60) return false;
+        if ((QTRY_GET_DAY(A) == 31) &&
+            (QTRY_GET_MONTH(A) != 1) && (QTRY_GET_MONTH(A) != 3) && (QTRY_GET_MONTH(A) != 5) &&
+            (QTRY_GET_MONTH(A) != 7) && (QTRY_GET_MONTH(A) != 8) && (QTRY_GET_MONTH(A) != 10) && (QTRY_GET_MONTH(A) != 12)) return false;
+        if ((QTRY_GET_DAY(A) == 30) && (QTRY_GET_MONTH(A) == 2)) return false;
+        if ((QTRY_GET_DAY(A) == 29) && (QTRY_GET_MONTH(A) == 2) && (mod(QTRY_GET_YEAR(A), 4u) != 0)) return false;
+        if (QTRY_GET_HOUR(A) >= 24) return false;
+        if (QTRY_GET_MINUTE(A) >= 60) return false;
+        if (QTRY_GET_SECOND(A) >= 60) return false;
         return true;
     }
     /**
