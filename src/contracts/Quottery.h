@@ -333,7 +333,6 @@ public:
             res = 0;
             return;
         }
-        //TODO: convert local variables to locals struct when finalizing
         accumulatedDay(QTRY_GET_MONTH(A), dayA);
         dayA += QTRY_GET_DAY(A);
         accumulatedDay(QTRY_GET_MONTH(B), dayB);
