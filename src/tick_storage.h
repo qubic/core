@@ -100,6 +100,7 @@ private:
         unsigned long long outNextTickTransactionOffset;
         // may need to store more meta data here to verify consistency when loading (ie: some nodes have different configs and can't use the saved files)
     } metaData;
+    inline static unsigned long long lastCheckTransactionOffset = 0; // use for save/load transaction state
 
     void prepareMetaDataFilename(short epoch)
     {
@@ -170,8 +171,9 @@ private:
         outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
         // find the offset
         {
-            unsigned long long maxOffset = 0;
-            for (unsigned int tick = toTick; tick >= tickBegin && tick >= toTick - 200; tick--)
+            unsigned long long maxOffset = FIRST_TICK_TRANSACTION_OFFSET;
+            unsigned int tick = 0;
+            for (tick = toTick; tick >= lastCheckTransactionOffset; tick--)
             {
                 for (int idx = NUMBER_OF_TRANSACTIONS_PER_TICK - 1; idx >= 0; idx--)
                 {
@@ -184,6 +186,7 @@ private:
                     }
                 }
             }
+            lastCheckTransactionOffset = tick;
             toPtr = maxOffset;
             outNextTickTransactionOffset = maxOffset;
         }
@@ -351,12 +354,12 @@ public:
         logToConsole(L"Loading checkpoint meta data...");
         if (!loadMetaData(directory)) {
             logToConsole(L"Cannot load meta data file, Computor will not load tickStorage data from files");
-            initMetaData();
+            initMetaData(epoch);
             return 1;
         }
         if (!checkMetaData()) {
             logToConsole(L"Invalid meta data file for tick storage");
-            initMetaData();
+            initMetaData(epoch);
             return 2;
         }
         nextTickTransactionOffset = metaData.outNextTickTransactionOffset;
@@ -367,7 +370,7 @@ public:
         if (!loadTickData(nTick, directory))
         {
             logToConsole(L"Failed to load loadTickData");
-            initMetaData();
+            initMetaData(epoch);
             return 5;
         }
 
@@ -375,7 +378,7 @@ public:
         if (!loadTicks(nTick, directory))
         {
             logToConsole(L"Failed to load loadTicks");
-            initMetaData();
+            initMetaData(epoch);
             return 4;
         }
 
@@ -383,7 +386,7 @@ public:
         if (!loadTickTransactionOffsets(nTick, directory))
         {
             logToConsole(L"Failed to load loadTickTransactionOffsets");
-            initMetaData();
+            initMetaData(epoch);
             return 3;
         }
 
@@ -391,7 +394,7 @@ public:
         if (!loadTransactions(nTick, metaData.outTotalTransactionSize, directory))
         {
             logToConsole(L"Failed to load loadTransactions");
-            initMetaData();
+            initMetaData(epoch);
             return 2;
         }
         return 0;
@@ -416,13 +419,12 @@ public:
     }
 
 
-    bool initMetaData()
+    bool initMetaData(short epoch)
     {
         metaData.tickBegin = tickBegin;
         metaData.tickEnd = tickBegin;
-#ifndef NO_UEFI
-        metaData.epoch = system.epoch;
-#endif
+        metaData.epoch = epoch;
+        lastCheckTransactionOffset = tickBegin;
         return true;
     }
 

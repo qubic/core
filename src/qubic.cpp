@@ -2900,6 +2900,7 @@ static void beginEpoch1of2()
     ts.checkStateConsistencyWithAssert();
 #endif
     ts.beginEpoch(system.initialTick);
+    ts.initMetaData(system.epoch); // for save/load state
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
 #endif
@@ -4835,6 +4836,7 @@ static bool initialize()
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
+    
     return true;
 }
 
