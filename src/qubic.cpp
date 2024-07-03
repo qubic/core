@@ -2900,7 +2900,6 @@ static void beginEpoch1of2()
     ts.checkStateConsistencyWithAssert();
 #endif
     ts.beginEpoch(system.initialTick);
-    ts.initMetaData(system.epoch); // for save/load state
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
 #endif
@@ -4649,6 +4648,7 @@ static bool initialize()
         beginEpoch1of2();
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
+        ts.initMetaData(system.epoch); // for save/load state
 #else
         bool canLoadFromFile = false;
 #endif
@@ -5890,9 +5890,17 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     // Request ticks
                     tickRequestingTick = curTimeTick;
-
+#if TICK_STORAGE_AUTOSAVE_MODE
+                    const bool isNewTick = system.tick >= ts.getPreloadTick();
+                    const bool isNewTickPlus1 = system.tick + 1 >= ts.getPreloadTick();
+                    const bool isNewTickPlus2 = system.tick + 2 >= ts.getPreloadTick();
+#else
+                    const bool isNewTick = true;
+                    const bool isNewTickPlus1 = true;
+                    const bool isNewTickPlus2 = true;
+#endif
                     if (tickRequestingIndicator == tickTotalNumberOfComputors
-                        &&system.tick >= ts.getPreloadTick())
+                        && isNewTick)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
@@ -5909,8 +5917,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                     tickRequestingIndicator = tickTotalNumberOfComputors;
                     if (futureTickRequestingIndicator == futureTickTotalNumberOfComputors
-                        && system.tick + 1 >= ts.getPreloadTick()
-                        )
+                        && isNewTickPlus1)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
@@ -5929,7 +5936,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     if ((ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
                         || !targetNextTickDataDigestIsKnown)
-                        && (system.tick + 1 >= ts.getPreloadTick())) 
+                        && isNewTickPlus1)
                     {
                         // Request tick data of next tick when it is not stored yet or should be updated,
                         // for example because next tick data digest of the quorum from the one of this node.
@@ -5939,7 +5946,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
                         pushToAny(&requestedTickData.header);
                     }
-                    if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch && system.tick+2 >= ts.getPreloadTick())
+                    if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch && isNewTickPlus2)
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 2;

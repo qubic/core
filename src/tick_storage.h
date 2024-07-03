@@ -10,12 +10,13 @@
 
 #include "public_settings.h"
 
+#if TICK_STORAGE_AUTOSAVE_MODE
 static unsigned short SNAPSHOT_METADATA_FILE_NAME[] = L"snapshotMetadata.???";
 static unsigned short SNAPSHOT_TICK_DATA_FILE_NAME[] = L"snapshotTickdata.???";
 static unsigned short SNAPSHOT_TICKS_FILE_NAME[] = L"snapshotTicks.???";
 static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
 static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
-
+#endif
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
 // The number of ticks to keep from the previous epoch is TICKS_TO_KEEP_FROM_PRIOR_EPOCH (defined in public_settings.h).
 //
@@ -92,6 +93,7 @@ private:
     // Lock for securing tickTransactions and tickTransactionOffsets
     inline static volatile char tickTransactionsLock = 0;
 
+#if TICK_STORAGE_AUTOSAVE_MODE
     struct MetaData {
         unsigned int epoch;
         unsigned int tickBegin;
@@ -101,12 +103,10 @@ private:
         // may need to store more meta data here to verify consistency when loading (ie: some nodes have different configs and can't use the saved files)
     } metaData;
     inline static unsigned long long lastCheckTransactionOffset = 0; // use for save/load transaction state
-
     void prepareMetaDataFilename(short epoch)
     {
         addEpochToFileName(SNAPSHOT_METADATA_FILE_NAME, sizeof(SNAPSHOT_METADATA_FILE_NAME) / sizeof(SNAPSHOT_METADATA_FILE_NAME[0]), epoch);
     }
-
     void prepareFilenames(short epoch)
     {
         prepareMetaDataFilename(epoch);
@@ -115,7 +115,6 @@ private:
         addEpochToFileName(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, sizeof(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME) / sizeof(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[0]), epoch);
         addEpochToFileName(SNAPSHOT_TRANSACTIONS_FILE_NAME, sizeof(SNAPSHOT_TRANSACTIONS_FILE_NAME) / sizeof(SNAPSHOT_TRANSACTIONS_FILE_NAME[0]), epoch);
     }
-
     bool saveMetaData(short epoch, unsigned int tickEnd, long long outTotalTransactionSize, unsigned long long outNextTickTransactionOffset, CHAR16* directory = NULL)
     {
         metaData.epoch = epoch;
@@ -130,7 +129,6 @@ private:
         }
         return true;
     }
-
     bool saveTickData(unsigned long long nTick, CHAR16* directory = NULL)
     {
         long long totalWriteSize = nTick * sizeof(TickData);
@@ -141,7 +139,6 @@ private:
         }
         return true;
     }
-
     bool saveTicks(unsigned long long nTick, CHAR16* directory = NULL)
     {
         long long totalWriteSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
@@ -152,7 +149,6 @@ private:
         }
         return true;
     }
-
     bool saveTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
     {
         long long totalWriteSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
@@ -163,7 +159,6 @@ private:
         }
         return true;
     }
-
     bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
     {
         unsigned int toTick = tickBegin + (unsigned int)(nTick);
@@ -204,7 +199,6 @@ private:
 
         return true;
     }
-
     bool loadMetaData(CHAR16* directory = NULL)
     {
         auto sz = loadLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(metaData), (unsigned char*)&metaData, directory);
@@ -214,7 +208,6 @@ private:
         }
         return true;
     }
-
     bool checkMetaData()
     {
         if (metaData.tickBegin > metaData.tickEnd) {
@@ -233,7 +226,6 @@ private:
 #endif
         return true;
     }
-
     bool loadTickData(unsigned long long nTick, CHAR16* directory = NULL)
     {
         long long totalLoadSize = nTick * sizeof(TickData);
@@ -274,15 +266,15 @@ private:
         }
         return true;
     }
-
+#endif
     
 
 public:
+#if TICK_STORAGE_AUTOSAVE_MODE
     unsigned int getPreloadTick() const
     {
         return metaData.tickEnd;
     }
-
 
     // Here we only save all data from tickStorage, which will save ~70-80% of syncing time since it's mostly networking (fetching tick data)
     // with scoreCache feature, nodes can get synced to the network in a few hours instead of days.
@@ -427,7 +419,7 @@ public:
         lastCheckTransactionOffset = tickBegin;
         return true;
     }
-
+#endif
     // Init at node startup
     static bool init()
     {
