@@ -6,7 +6,7 @@ constexpr unsigned long long QUOTTERY_MAX_ORACLE_PROVIDER = 8;
 constexpr unsigned long long QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET = 2048;
 
 // adjustable with no change:
-constexpr unsigned long long QUOTTERY_FEE_PER_SLOT_PER_DAY_ = 10000ULL;
+constexpr unsigned long long QUOTTERY_FEE_PER_SLOT_PER_HOUR = 420ULL;
 constexpr unsigned long long QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_ = 10000ULL;
 
 constexpr unsigned long long QUOTTERY_SHAREHOLDER_FEE_ = 1000; // 10%
@@ -59,7 +59,7 @@ public:
     };
     struct basicInfo_output
     {
-        uint64 feePerSlotPerDay; // Amount of qus
+        uint64 feePerSlotPerHour; // Amount of qus
         uint64 gameOperatorFee; // 4 digit number ABCD means AB.CD% | 1234 is 12.34%
         uint64 shareholderFee; // 4 digit number ABCD means AB.CD% | 1234 is 12.34%
         uint64 minBetSlotAmount; // amount of qus
@@ -89,9 +89,9 @@ public:
         id_8 oracleProviderId; // 256x8=2048bytes
         uint32_8 oracleFees;   // 4x8 = 32 bytes
 
-        uint8_4 openDate;     // creation date, start to receive bet
-        uint8_4 closeDate;    // stop receiving bet date
-        uint8_4 endDate;       // result date
+        uint32 openDate;     // creation date, start to receive bet
+        uint32 closeDate;    // stop receiving bet date
+        uint32 endDate;       // result date
         // Amounts and numbers
         uint64 minBetAmount;
         uint32 maxBetSlotPerOption;
@@ -104,8 +104,8 @@ public:
         id_8 optionDesc;
         id_8 oracleProviderId; // 256x8=2048bytes
         uint32_8 oracleFees;   // 4x8 = 32 bytes
-        uint8_4 closeDate;
-        uint8_4 endDate;
+        uint32 closeDate;
+        uint32 endDate;
         uint64 amountPerSlot;
         uint32 maxBetSlotPerOption;
         uint32 numberOfOption;
@@ -193,9 +193,9 @@ public:
     array<uint32, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mOracleFees;
     array<uint32, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mCurrentBetState;
     array<uint8, QUOTTERY_MAX_BET> mNumberOption;
-    array<uint8, QUOTTERY_MAX_BET * 4> mOpenDate;
-    array<uint8, QUOTTERY_MAX_BET * 4> mCloseDate;
-    array<uint8, QUOTTERY_MAX_BET * 4> mEndDate;
+    array<uint32, QUOTTERY_MAX_BET> mOpenDate;
+    array<uint32, QUOTTERY_MAX_BET> mCloseDate;
+    array<uint32, QUOTTERY_MAX_BET> mEndDate;
     array<bit, QUOTTERY_MAX_BET> mIsOccupied;
     array<uint32, QUOTTERY_MAX_BET> mBetEndTick;
     //bettor info:
@@ -236,7 +236,7 @@ public:
     uint64 mDistributedAmount;
     uint64 mBurnedAmount;
     // adjustable variables
-    uint64 mFeePerSlotPerDay;
+    uint64 mFeePerSlotPerHour;
     uint64 mMinAmountPerBetSlot;
     uint64 mShareHolderFee;
     uint64 mBurnFee;
@@ -249,7 +249,11 @@ public:
     /**************************************/
     static uint32 divUp(uint32 a, uint32 b)
     {
-        return b ? ((a + b - 1) / b) : 0;
+        return div((a + b - 1), b);
+    }
+    static uint64 divUp(uint64 a, uint64 b)
+    {
+        return div((a + b - 1), b);
     }
     static sint32 min(sint32 a, sint32 b)
     {
@@ -257,42 +261,50 @@ public:
     }
 
     /**
-     * Compare 2 date in uint8_4 format
+     * Compare 2 date in uint32 format
      * @return -1 lesser(ealier) A<B, 0 equal A=B, 1 greater(later) A>B
      */
-    static sint32 dateCompare(uint8_4& A, uint8_4& B, sint32& i) {
-        if (A.get(0) == B.get(0) && A.get(1) == B.get(1) && A.get(2) == B.get(2)) {
-            return 0;
-        }
-        for (i = 0; i < 3; i++) {
-            if (A.get(i) != B.get(i)) {
-                if (A.get(i) < B.get(i)) return -1;
-                else return 1;
-            }
-        }
-        return 0;
+    static sint32 dateCompare(uint32& A, uint32& B, sint32& i)
+    {
+        if (A == B) return 0;
+        if (A < B) return -1;
+        return 1;
+    }
+
+    /**
+     * @return pack qtry datetime data from year, month, day, hour, minute, second to a uint32
+     * year is counted from 24 (2024)
+     */
+    static void packQuotteryDate(uint32 _year, uint32 _month, uint32 _day, uint32 _hour, uint32 _minute, uint32 _second, uint32& res)
+    {
+        res = ((_year - 24) << 26) | (_month << 22) | (_day << 17) | (_hour << 12) | (_minute << 6) | (_second);
+    }
+
+#define QTRY_GET_YEAR(data) ((data >> 26)+24)
+#define QTRY_GET_MONTH(data) ((data >> 22) & 0b1111)
+#define QTRY_GET_DAY(data) ((data >> 17) & 0b11111)
+#define QTRY_GET_HOUR(data) ((data >> 12) & 0b11111)
+#define QTRY_GET_MINUTE(data) ((data >> 6) & 0b111111)
+#define QTRY_GET_SECOND(data) ((data) & 0b111111)
+    /*
+    * @return unpack qtry datetime from uin32 to year, month, day, hour, minute, secon
+    */
+    static void unpackQuotteryDate(uint8& _year, uint8& _month, uint8& _day, uint8& _hour, uint8& _minute, uint8& _second, uint32 data)
+    {
+        _year = QTRY_GET_YEAR(data); // 6 bits
+        _month = QTRY_GET_MONTH(data); //4bits
+        _day = QTRY_GET_DAY(data); //5bits
+        _hour = QTRY_GET_HOUR(data); //5bits
+        _minute = QTRY_GET_MINUTE(data); //6bits
+        _second = QTRY_GET_SECOND(data); //6bits
     }
 
     /**
      * @return Current date from core node system
      */
-    static void getCurrentDate(const QPI::QpiContextProcedureCall& qpi, uint8_4& res) {
-        res.set(0, qpi.year());
-        res.set(1, qpi.month());
-        res.set(2, qpi.day());
-        res.set(3, 0);
+    static void getCurrentDate(const QPI::QpiContextProcedureCall& qpi, uint32& res) {
+        packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
     }
-
-    /**
-     * @return uint8_4 variable from year, month, day
-     */
-    static void makeQuotteryDate(uint8 _year, uint8 _month, uint8 _day, uint8_4& res) {
-        res.set(0, _year);
-        res.set(1, _month);
-        res.set(2, _day);
-        res.set(3, 0);
-    }
-
 
     static void accumulatedDay(sint32 month, uint64& res)
     {
@@ -313,27 +325,45 @@ public:
         }
     }
     /**
-     * @return difference in number of day, A must be smaller than or equal B to have valid value
+     * @return difference in number of second, A must be smaller than or equal B to have valid value
      */
-    static void diffDate(uint8_4& A, uint8_4& B, sint32& i, sint32& baseYear, uint64& dayA, uint64& dayB, uint64& res) {
+    static void diffDateInSecond(uint32& A, uint32& B, sint32& i, uint64& dayA, uint64& dayB, uint64& res)
+    {
         if (dateCompare(A, B, i) >= 0) {
             res = 0;
             return;
         }
-        baseYear = A.get(0);
-        accumulatedDay(A.get(1), dayA);
-        dayA += A.get(2);
-        accumulatedDay(B.get(1), dayB);
-        dayB += (B.get(0) - baseYear) * 365ULL + B.get(2);
+        accumulatedDay(QTRY_GET_MONTH(A), dayA);
+        dayA += QTRY_GET_DAY(A);
+        accumulatedDay(QTRY_GET_MONTH(B), dayB);
+        dayB += (QTRY_GET_YEAR(B) - QTRY_GET_YEAR(A)) * 365ULL + QTRY_GET_DAY(B);
 
         // handling leap-year: only store last 2 digits of year here, don't care about mod 100 & mod 400 case
-        for (i = baseYear; i < B.get(0); i++) {
+        for (i = QTRY_GET_YEAR(A); i < QTRY_GET_YEAR(B); i++) {
             if (mod(i,4) == 0) {
                 dayB++;
             }
         }
-        if (mod(sint32(B.get(0)), 4) == 0 && B.get(1) > 2) dayB++;
-        res = dayB - dayA;
+        if (mod(sint32(QTRY_GET_YEAR(A)), 4) == 0 && (QTRY_GET_MONTH(A) > 2)) dayA++;
+        if (mod(sint32(QTRY_GET_YEAR(B)), 4) == 0 && (QTRY_GET_MONTH(B) > 2)) dayB++;
+        res = (dayB - dayA) * 3600ULL * 24;
+        res += (QTRY_GET_HOUR(B) * 3600 + QTRY_GET_MINUTE(B) * 60 + QTRY_GET_SECOND(B));
+        res -= (QTRY_GET_HOUR(A) * 3600 + QTRY_GET_MINUTE(A) * 60 + QTRY_GET_SECOND(A));
+    }
+
+    static bool checkValidQtryDateTime(uint32& A)
+    {
+        if (QTRY_GET_MONTH(A) > 12) return false;
+        if (QTRY_GET_DAY(A) > 31) return false;
+        if ((QTRY_GET_DAY(A) == 31) &&
+            (QTRY_GET_MONTH(A) != 1) && (QTRY_GET_MONTH(A) != 3) && (QTRY_GET_MONTH(A) != 5) &&
+            (QTRY_GET_MONTH(A) != 7) && (QTRY_GET_MONTH(A) != 8) && (QTRY_GET_MONTH(A) != 10) && (QTRY_GET_MONTH(A) != 12)) return false;
+        if ((QTRY_GET_DAY(A) == 30) && (QTRY_GET_MONTH(A) == 2)) return false;
+        if ((QTRY_GET_DAY(A) == 29) && (QTRY_GET_MONTH(A) == 2) && (mod(QTRY_GET_YEAR(A), 4u) != 0)) return false;
+        if (QTRY_GET_HOUR(A) >= 24) return false;
+        if (QTRY_GET_MINUTE(A) >= 60) return false;
+        if (QTRY_GET_SECOND(A) >= 60) return false;
+        return true;
     }
     /**
      * Clean all memory of a slot Id, set the flag IsOccupied to zero
@@ -361,12 +391,9 @@ public:
         }
         state.mNumberOption.set(input.slotId, 0);
         {
-            locals.baseId0 = input.slotId * 4;
-            for (locals.i0 = 0; locals.i0 < 4; locals.i0++) {
-                state.mOpenDate.set(locals.baseId0 + locals.i0, 0);
-                state.mCloseDate.set(locals.baseId0 + locals.i0, 0);
-                state.mEndDate.set(locals.baseId0 + locals.i0, 0);
-            }
+            state.mOpenDate.set(input.slotId, 0);
+            state.mCloseDate.set(input.slotId, 0);
+            state.mEndDate.set(input.slotId, 0);
         }
         state.mIsOccupied.set(input.slotId, 0); // close the bet
         state.mBetEndTick.set(input.slotId, 0); // set end tick to null
@@ -527,7 +554,7 @@ public:
      * @return feePerSlotPerDay, gameOperatorFee, shareholderFee, minBetSlotAmount, gameOperator
      */
     PUBLIC_FUNCTION(basicInfo)
-        output.feePerSlotPerDay = state.mFeePerSlotPerDay;
+        output.feePerSlotPerHour = state.mFeePerSlotPerHour;
         output.gameOperatorFee = state.mGameOperatorFee;
         output.shareholderFee = state.mShareHolderFee;
         output.minBetSlotAmount = state.mMinAmountPerBetSlot;
@@ -592,10 +619,9 @@ public:
             }
         }
         {
-            locals.baseId0 = locals.slotId * 4;
-            makeQuotteryDate(state.mOpenDate.get(locals.baseId0), state.mOpenDate.get(locals.baseId0+1), state.mOpenDate.get(locals.baseId0+2), output.openDate);
-            makeQuotteryDate(state.mCloseDate.get(locals.baseId0), state.mCloseDate.get(locals.baseId0 + 1), state.mCloseDate.get(locals.baseId0 + 2), output.closeDate);
-            makeQuotteryDate(state.mEndDate.get(locals.baseId0), state.mEndDate.get(locals.baseId0 + 1), state.mEndDate.get(locals.baseId0 + 2), output.endDate);
+            output.openDate = state.mOpenDate.get(locals.slotId);
+            output.closeDate = state.mCloseDate.get(locals.slotId);
+            output.endDate = state.mEndDate.get(locals.slotId);
         }
         locals.u64Tmp = (uint64)(locals.slotId); // just reduce warnings
         output.minBetAmount = state.mBetAmountPerSlot.get(locals.u64Tmp);
@@ -718,7 +744,7 @@ public:
     */
     struct issueBet_locals
     {
-        uint8_4 curDate;
+        uint32 curDate;
         sint32 i0, i1;
         uint64 baseId0, baseId1;
         sint32 numberOP;
@@ -741,6 +767,13 @@ public:
             return;
         }
         getCurrentDate(qpi, locals.curDate);
+        if (!checkValidQtryDateTime(input.closeDate) || !checkValidQtryDateTime(input.endDate))
+        {
+            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidDate,0 };
+            LOG_INFO(locals.log);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
         // check valid date: closeDate <= endDate
         if (dateCompare(input.closeDate, input.endDate, locals.i0) == 1 ||
             dateCompare(locals.curDate, input.closeDate, locals.i0) == 1) {
@@ -770,9 +803,9 @@ public:
         }
         locals.maxBetSlotPerOption = input.maxBetSlotPerOption;
         locals.numberOfOption = input.numberOfOption;
-        diffDate(locals.curDate, input.endDate, locals.i0, locals.i1, locals.u64_0, locals.u64_1, locals.duration);
-        locals.duration += 1;
-        locals.fee = locals.duration * locals.maxBetSlotPerOption * locals.numberOfOption * state.mFeePerSlotPerDay;
+        diffDateInSecond(locals.curDate, input.endDate, locals.i0, locals.u64_0, locals.u64_1, locals.duration);
+        locals.duration = divUp(locals.duration, 3600ULL);
+        locals.fee = locals.duration * locals.maxBetSlotPerOption * locals.numberOfOption * state.mFeePerSlotPerHour;
 
         // fee is higher than sent amount, exit
         if (locals.fee > qpi.invocationReward()) {
@@ -844,12 +877,9 @@ public:
         }
         {
             // write date and time
-            locals.baseId0 = locals.slotId * 4;
-            for (locals.i0 = 0; locals.i0 < 4; locals.i0++) {
-                state.mOpenDate.set(locals.baseId0 + locals.i0, locals.curDate.get(locals.i0)); // 11
-                state.mCloseDate.set(locals.baseId0 + locals.i0, input.closeDate.get(locals.i0)); // 12
-                state.mEndDate.set(locals.baseId0 + locals.i0, input.endDate.get(locals.i0)); // 13
-            }
+            state.mOpenDate.set(locals.slotId, locals.curDate);
+            state.mCloseDate.set(locals.slotId, input.closeDate);
+            state.mEndDate.set(locals.slotId, input.endDate);
         }
         state.mIsOccupied.set(locals.betId, 1); // 14
         // done write, 14 fields
@@ -868,7 +898,7 @@ public:
 
     struct joinBet_locals
     {
-        uint8_4 curDate, closeDate;
+        uint32 curDate, closeDate;
         sint32 i0, i1, i2, i3;
         uint64 baseId0, baseId1;
         sint32 numberOfSlot, currentState;
@@ -913,13 +943,8 @@ public:
             return;
         }
         getCurrentDate(qpi, locals.curDate);
-        {
-            locals.baseId0 = locals.slotId*4;
-            makeQuotteryDate(state.mCloseDate.get(locals.baseId0),
-            state.mCloseDate.get(locals.baseId0 + 1), state.mCloseDate.get(locals.baseId0 + 2), locals.closeDate);
-        }
+        locals.closeDate = state.mCloseDate.get(locals.slotId);
 
-        // closedate is counted as 23:59 of that day
         if (dateCompare(locals.curDate, locals.closeDate, locals.i0) > 0) {
             // bet is closed for betting
             QuotteryLogger log{ 0,QuotteryLogInfo::expiredBet,0 };
@@ -989,7 +1014,7 @@ public:
     
     struct publishResult_locals
     {
-        uint8_4 curDate, endDate;
+        uint32 curDate, endDate;
         sint32 i0, i1;
         uint64 baseId0, baseId1;
         sint64 slotId, writeId;
@@ -1032,12 +1057,7 @@ public:
             return;
         }
         getCurrentDate(qpi, locals.curDate);
-        
-        {
-            locals.baseId0 = locals.slotId * 4;
-            makeQuotteryDate(state.mEndDate.get(locals.baseId0),
-            state.mEndDate.get(locals.baseId0 + 1), state.mEndDate.get(locals.baseId0 + 2), locals.endDate);
-        }
+        locals.endDate = state.mEndDate.get(locals.slotId);
         // endDate is counted as 23:59 of that day
         if (dateCompare(locals.curDate, locals.endDate, locals.i0) <= 0) {
             // bet is not end yet
@@ -1113,7 +1133,7 @@ public:
 
     struct cancelBet_locals
     {
-        uint8_4 curDate, endDate;
+        uint32 curDate, endDate;
         sint32 i0, i1;
         uint64 baseId0, baseId1, nOption;
         uint64 amountPerSlot;
@@ -1159,19 +1179,16 @@ public:
             return;
         }
         getCurrentDate(qpi, locals.curDate);
-        {
-            locals.baseId0 = locals.slotId * 4;
-            makeQuotteryDate(state.mEndDate.get(locals.baseId0),
-            state.mEndDate.get(locals.baseId0 + 1), state.mEndDate.get(locals.baseId0 + 2), locals.endDate);
-        }
+        locals.endDate = state.mEndDate.get(locals.slotId);
 
         // endDate is counted as 23:59 of that day
         if (dateCompare(locals.curDate, locals.endDate, locals.i0) <= 0) {
             // bet is not end yet
             return;
         }
-        //static void diffDate(uint8_4& A, uint8_4& B, sint32& i, sint32& baseYear, uint64& dayA, uint64& dayB, uint64& res)
-        diffDate(locals.curDate, locals.endDate, locals.i0, locals.i1, locals.u64_0, locals.u64_1, locals.duration);
+
+        diffDateInSecond(locals.curDate, locals.endDate, locals.i0, locals.u64_0, locals.u64_1, locals.duration);
+        locals.duration = div(locals.duration, 3600ULL * 24);
         if (locals.duration < 2){
             // need 2+ days to do this
             return;
@@ -1215,7 +1232,7 @@ public:
     _
 
     BEGIN_EPOCH
-        state.mFeePerSlotPerDay = QUOTTERY_FEE_PER_SLOT_PER_DAY_;
+        state.mFeePerSlotPerHour = QUOTTERY_FEE_PER_SLOT_PER_HOUR;
         state.mMinAmountPerBetSlot = QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_;
         state.mShareHolderFee = QUOTTERY_SHAREHOLDER_FEE_;
         state.mGameOperatorFee = QUOTTERY_GAME_OPERATOR_FEE_;
