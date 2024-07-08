@@ -164,6 +164,7 @@ private:
         unsigned int toTick = tickBegin + (unsigned int)(nTick);
         unsigned long long toPtr = 0;
         outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
+        lastCheckTransactionOffset = tickBegin > lastCheckTransactionOffset ? tickBegin : lastCheckTransactionOffset;
         // find the offset
         {
             unsigned long long maxOffset = FIRST_TICK_TRANSACTION_OFFSET;
@@ -177,11 +178,13 @@ private:
                         unsigned long long offset = this->tickTransactionOffsets(tick, idx);
                         Transaction* tx = (Transaction*)(tickTransactionsPtr + offset);
                         unsigned long long tmp = offset + tx->totalSize();
-                        if (tmp > maxOffset) maxOffset = tmp;
+                        if (tmp > maxOffset){
+                            maxOffset = tmp;
+                            lastCheckTransactionOffset = tick;
+                        }
                     }
                 }
             }
-            lastCheckTransactionOffset = tick;
             toPtr = maxOffset;
             outNextTickTransactionOffset = maxOffset;
         }
