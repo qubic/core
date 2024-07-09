@@ -2959,6 +2959,9 @@ static void beginEpoch1of2()
 #if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
     CurrentTransferId = 0;
 #endif
+#if TICK_STORAGE_AUTOSAVE_MODE
+    ts.initMetaData(system.epoch); // for save/load state
+#endif
 }
 
 static void beginEpoch2of2()
@@ -4648,7 +4651,6 @@ static bool initialize()
         beginEpoch1of2();
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
-        ts.initMetaData(system.epoch); // for save/load state
 #else
         bool canLoadFromFile = false;
 #endif
