@@ -781,6 +781,22 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 if (status = peerTcp4Protocol->Accept(peerTcp4Protocol, &peers[i].connectAcceptToken))
                 {
                     logStatusToConsole(L"EFI_TCP4_PROTOCOL.Accept() fails", status, __LINE__);
+                    // NOTE: although these debug log tries to know what's going on here
+                    // but it changes the memory order somehow, and this error wasn't triggered again.
+                    // In short, we have some sort of overflow here when nodes suffer from heavy spamming
+                    // But these debug logging mitigates it
+                    if (peerTcp4Protocol == NULL)
+                    {
+                        logToConsole(L"[CRITICAL-Report to dev] peerTcp4Protocol is NULL. Please report!");
+                    }
+                    else
+                    {
+                        logStatusToConsole(L"[CRITICAL-Report to dev] peers[i].connectAcceptToken.CompletionToken.Status", peers[i].connectAcceptToken.CompletionToken.Status, __LINE__);                        
+                    }
+                    unsigned long long ptr = (unsigned long long)(&peers[i].connectAcceptToken);
+                    setText(message, L"[CRITICAL-Report to dev] &peers[i].connectAcceptToken: ");
+                    appendNumber(message, ptr, false);
+                    logToConsole(message);
                 }
                 else
                 {

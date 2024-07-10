@@ -1526,7 +1526,7 @@ QPI::id QPI::QpiContextFunctionCall::arbitrator() const
     return arbitratorPublicKey;
 }
 
-bool QPI::QpiContextProcedureCall::acquireShares(/* TODO */) const
+bool QPI::QpiContextProcedureCall::acquireShares(uint64 assetName, const id& issuer, const id& owner, const id& possessor, sint64 numberOfShares, uint16 sourceOwnershipManagingContractIndex, uint16 sourcePossessionManagingContractIndex) const
 {
     // Just examples, to make it compile, move these to parameter list
     unsigned int contractIndex = QX_CONTRACT_INDEX;
@@ -1546,7 +1546,7 @@ bool QPI::QpiContextProcedureCall::acquireShares(/* TODO */) const
     // Call PRE_ACQUIRE_SHARES in other contract after transferring invocationReward
     __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(contractIndex, pre_input, pre_output, invocationReward);
 
-    if (pre_output.agreeWithTransfer)
+    if (pre_output.ok)
     {
         // TODO: transfer
 
@@ -1559,7 +1559,7 @@ bool QPI::QpiContextProcedureCall::acquireShares(/* TODO */) const
         __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(contractIndex, post_input, post_output, 0);
     }
 
-    return pre_output.agreeWithTransfer;
+    return pre_output.ok;
 }
 
 long long QPI::QpiContextProcedureCall::burn(long long amount) const
@@ -1831,6 +1831,13 @@ iteration:
 m256i QPI::QpiContextFunctionCall::originator() const
 {
     return _originator;
+}
+
+bool QPI::QpiContextProcedureCall::releaseShares(uint64 assetName, const id& issuer, const id& owner, const id& possessor, sint64 numberOfShares, uint16 destinationOwnershipManagingContractIndex, uint16 destinationPossessionManagingContractIndex) const
+{
+    // TODO
+
+    return false;
 }
 
 unsigned char QPI::QpiContextFunctionCall::second() const

@@ -6109,7 +6109,13 @@ namespace QPI
 	struct QpiContextProcedureCall : public QPI::QpiContextFunctionCall
 	{
 		bool acquireShares(
-			// TODO
+			uint64 assetName,
+			const id& issuer,
+			const id& owner,
+			const id& possessor,
+			sint64 numberOfShares,
+			uint16 sourceOwnershipManagingContractIndex,
+			uint16 sourcePossessionManagingContractIndex
 		) const;
 
 		sint64 burn(
@@ -6125,7 +6131,13 @@ namespace QPI
 		) const; // Returns number of shares or 0 on error
 
 		bool releaseShares(
-			// TODO
+			uint64 assetName,
+			const id& issuer,
+			const id& owner,
+			const id& possessor,
+			sint64 numberOfShares,
+			uint16 destinationOwnershipManagingContractIndex,
+			uint16 destinationPossessionManagingContractIndex
 		) const;
 
 		sint64 transfer( // Attempts to transfer energy from this qubic
@@ -6171,20 +6183,27 @@ namespace QPI
 	// Management rights transfer: pre-transfer input
 	struct PreManagementRightsTransfer_input
 	{
-		// TODO: fill this
+		uint64 assetName;
+		id issuer;
+		id owner;
+		id possessor;
+		sint64 numberOfShares;
 	};
 
 	// Management rights transfer: pre-transfer output
 	struct PreManagementRightsTransfer_output
 	{
-		// TODO: maybe rename variable? Or remove this comment.
-		bool agreeWithTransfer;
+		bool ok;
 	};
 
 	// Management rights transfer: post-transfer input
 	struct PostManagementRightsTransfer_input
 	{
-		// TODO: fill this
+		uint64 assetName;
+		id issuer;
+		id owner;
+		id possessor;
+		sint64 numberOfShares;
 	};
 
 #endif
@@ -6204,13 +6223,13 @@ namespace QPI
 
 	#define EXPAND public: static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define PRE_RELEASE_SHARES public: static void __preReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PreManagementRightsTransfer_input& input, PreManagementRightsTransfer_output& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
 	#define PRE_ACQUIRE_SHARES public: static void __preAcquireShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PreManagementRightsTransfer_input& input, PreManagementRightsTransfer_output& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define POST_RELEASE_SHARES public: static void __postReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PostManagementRightsTransfer_input& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	#define PRE_RELEASE_SHARES public: static void __preReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PreManagementRightsTransfer_input& input, PreManagementRightsTransfer_output& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 	#define POST_ACQUIRE_SHARES public: static void __postAcquireShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PostManagementRightsTransfer_input& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+
+	#define POST_RELEASE_SHARES public: static void __postReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PostManagementRightsTransfer_input& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 
 	// TODO: move to QPI to prevent from spamming log of other contract (by calling local function)
