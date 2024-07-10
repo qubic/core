@@ -2481,7 +2481,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
         numberOfTransactions++;
         bool moneyFlew = false;
 #if ADDON_TX_STATUS_REQUEST
-        tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
+        txStatusData.tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
         if (decreaseEnergy(spectrumIndex, transaction->amount))
         {
