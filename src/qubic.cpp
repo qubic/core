@@ -3469,7 +3469,25 @@ static void tickProcessor(void*)
 
                 // operator opt to force this node to switch to new epoch
                 // this can fix the problem of weak nodes getting stuck and can't automatically switch to new epoch
-                // due to lack of data (for detail, need to investigate deeper)
+                // due to lack of TRANSACTION data. Below is the explanation:
+                // Assume the network is on transition state, usually we would have 2 set, set A: nodes that successfully
+                // switched the epoch. And set B: nodes that stuck at the last tick of epoch, cannot switch to new epoch.
+                // Let say set A is at (epoch E, tick N) and set B is at (epoch E-1, tick N-1)
+                // Problem with current logic & implementation: set B would never switch to new epoch if operators not pressing F7.
+                // (1) Because of the protocol design, when both set A & B are at epoch E-1, they receive tickData for tickN that is still marked at epoch E-1 (ie: tickData[N].epoch == E-1)
+                // (2) All transactions on tickData[N] are also marked as epoch E-1 (ie: tickData[N].transaction[i].epoch == E-1)
+                // (3) When set A successfully switch to epoch E, they clear that tick data of tick N and all relevant transactions, because they are invalid (wrong epoch number). Tick N and tick N+1 will be empty on new epoch.
+                // (4) set B either can't get tickData of tick N or can't get all transactions of tick N, thus they will get stuck
+                // (*) a node needs to know data and transactions of next tick to continue processing
+                // From (1) (2) (3) (4) => operators of "stuck" nodes must press F7 on this case.
+                // In other words, here is the explanation in timeline:
+                //  - at (epoch E-1, tick N-2), tick leader issues tick data for tick N that's still on epoch E-1
+                //  - at (epoch E-1, tick N-1), network decides to switch epoch. Thus, tickData for (epoch E-1, tick N) is invalid, because tick N is on epoch E.
+                //  - Fast (internet) nodes that get all the data before tick N-1 can switch the epoch, then invalidate and clear tick N data
+                //  - Slow (internet) nodes failed to get the data. Thus, they get stuck and constantly querying other nodes around.
+                // [TODO] possible solutions:
+                // Since we know the first and second ticks of new epoch are always empty, we can pre-check tickData here if it reaches the transition point,
+                // then we can ignore the checking of next tick data/txs and go directly to epoch transition procedure.
                 if (forceSwitchEpoch)
                 {
                     nextTickData.epoch = 0;
