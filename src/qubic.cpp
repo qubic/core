@@ -1828,6 +1828,11 @@ iteration:
     }
 }
 
+int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
+{
+    return -1; // TODO: Return -1 if the current tick is empty, return the number of the transactions in the tick otherwise, including 0
+}
+
 m256i QPI::QpiContextFunctionCall::originator() const
 {
     return _originator;

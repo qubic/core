@@ -6072,6 +6072,9 @@ namespace QPI
 			uint16 possessionManagingContractIndex
 		) const;
 
+		sint32 numberOfTickTransactions(
+		) const;
+
 		id originator(
 		) const; // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
 
