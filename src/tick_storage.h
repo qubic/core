@@ -10,8 +10,13 @@
 
 #include "public_settings.h"
 
-
-
+#if TICK_STORAGE_AUTOSAVE_MODE
+static unsigned short SNAPSHOT_METADATA_FILE_NAME[] = L"snapshotMetadata.???";
+static unsigned short SNAPSHOT_TICK_DATA_FILE_NAME[] = L"snapshotTickdata.???";
+static unsigned short SNAPSHOT_TICKS_FILE_NAME[] = L"snapshotTicks.???";
+static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
+static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
+#endif
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
 // The number of ticks to keep from the previous epoch is TICKS_TO_KEEP_FROM_PRIOR_EPOCH (defined in public_settings.h).
 //
@@ -88,8 +93,336 @@ private:
     // Lock for securing tickTransactions and tickTransactionOffsets
     inline static volatile char tickTransactionsLock = 0;
 
-public:
+#if TICK_STORAGE_AUTOSAVE_MODE
+    struct MetaData {
+        unsigned int epoch;
+        unsigned int tickBegin;
+        unsigned int tickEnd;
+        long long outTotalTransactionSize;
+        unsigned long long outNextTickTransactionOffset;
+        // may need to store more meta data here to verify consistency when loading (ie: some nodes have different configs and can't use the saved files)
+    } metaData;
+    inline static unsigned long long lastCheckTransactionOffset = 0; // use for save/load transaction state
+    void prepareMetaDataFilename(short epoch)
+    {
+        addEpochToFileName(SNAPSHOT_METADATA_FILE_NAME, sizeof(SNAPSHOT_METADATA_FILE_NAME) / sizeof(SNAPSHOT_METADATA_FILE_NAME[0]), epoch);
+    }
+    void prepareFilenames(short epoch)
+    {
+        prepareMetaDataFilename(epoch);
+        addEpochToFileName(SNAPSHOT_TICK_DATA_FILE_NAME, sizeof(SNAPSHOT_TICK_DATA_FILE_NAME) / sizeof(SNAPSHOT_TICK_DATA_FILE_NAME[0]), epoch);
+        addEpochToFileName(SNAPSHOT_TICKS_FILE_NAME, sizeof(SNAPSHOT_TICKS_FILE_NAME) / sizeof(SNAPSHOT_TICKS_FILE_NAME[0]), epoch);
+        addEpochToFileName(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, sizeof(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME) / sizeof(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[0]), epoch);
+        addEpochToFileName(SNAPSHOT_TRANSACTIONS_FILE_NAME, sizeof(SNAPSHOT_TRANSACTIONS_FILE_NAME) / sizeof(SNAPSHOT_TRANSACTIONS_FILE_NAME[0]), epoch);
+    }
+    bool saveMetaData(short epoch, unsigned int tickEnd, long long outTotalTransactionSize, unsigned long long outNextTickTransactionOffset, CHAR16* directory = NULL)
+    {
+        metaData.epoch = epoch;
+        metaData.tickBegin = tickBegin;
+        metaData.tickEnd = tickEnd;
+        metaData.outTotalTransactionSize = outTotalTransactionSize;
+        metaData.outNextTickTransactionOffset = outNextTickTransactionOffset;
+        auto sz = saveLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(metaData), (unsigned char*) & metaData, directory);
+        if (sz != sizeof(metaData))
+        {
+            return false;
+        }
+        return true;
+    }
+    bool saveTickData(unsigned long long nTick, CHAR16* directory = NULL)
+    {
+        long long totalWriteSize = nTick * sizeof(TickData);
+        auto sz = saveLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalWriteSize, (unsigned char*)tickDataPtr, directory);
+        if (sz != totalWriteSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool saveTicks(unsigned long long nTick, CHAR16* directory = NULL)
+    {
+        long long totalWriteSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
+        auto sz = saveLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalWriteSize, (unsigned char*)ticksPtr, directory);
+        if (sz != totalWriteSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool saveTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
+    {
+        long long totalWriteSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+        auto sz = saveLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalWriteSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
+        if (sz != totalWriteSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
+    {
+        unsigned int toTick = tickBegin + (unsigned int)(nTick);
+        unsigned long long toPtr = 0;
+        outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
+        lastCheckTransactionOffset = tickBegin > lastCheckTransactionOffset ? tickBegin : lastCheckTransactionOffset;
+        // find the offset
+        {
+            unsigned long long maxOffset = FIRST_TICK_TRANSACTION_OFFSET;
+            unsigned int tick = 0;
+            for (tick = toTick; tick >= lastCheckTransactionOffset; tick--)
+            {
+                for (int idx = NUMBER_OF_TRANSACTIONS_PER_TICK - 1; idx >= 0; idx--)
+                {
+                    if (this->tickTransactionOffsets(tick, idx))
+                    {
+                        unsigned long long offset = this->tickTransactionOffsets(tick, idx);
+                        Transaction* tx = (Transaction*)(tickTransactionsPtr + offset);
+                        unsigned long long tmp = offset + tx->totalSize();
+                        if (tmp > maxOffset){
+                            maxOffset = tmp;
+                            lastCheckTransactionOffset = tick;
+                        }
+                    }
+                }
+            }
+            toPtr = maxOffset;
+            outNextTickTransactionOffset = maxOffset;
+        }
+        
+        // saving from the first tx of from tick to the last tx of (totick)
+        long long totalWriteSize = toPtr;
+        unsigned char* ptr = tickTransactionsPtr;
+        auto sz = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalWriteSize, (unsigned char*)ptr, directory);
+        if (sz != totalWriteSize)
+        {
+            outTotalTransactionSize = -1;
+            return false;
+        }
+        outTotalTransactionSize = totalWriteSize;
 
+        return true;
+    }
+    bool loadMetaData(CHAR16* directory = NULL)
+    {
+        auto sz = loadLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(metaData), (unsigned char*)&metaData, directory);
+        if (sz != sizeof(metaData))
+        {
+            return false;
+        }
+        return true;
+    }
+    bool checkMetaData()
+    {
+        if (metaData.tickBegin > metaData.tickEnd) {
+            return false;
+        }
+        if (metaData.tickBegin != tickBegin) {
+            return false;
+        }
+        if (metaData.tickBegin + MAX_NUMBER_OF_TICKS_PER_EPOCH < metaData.tickEnd) {
+            return false;
+        }
+#ifndef NO_UEFI
+        if (metaData.epoch != EPOCH) {
+            return false;
+        }
+#endif
+        return true;
+    }
+    bool loadTickData(unsigned long long nTick, CHAR16* directory = NULL)
+    {
+        long long totalLoadSize = nTick * sizeof(TickData);
+        auto sz = loadLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalLoadSize, (unsigned char*)tickDataPtr, directory);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool loadTicks(unsigned long long nTick, CHAR16* directory = NULL)
+    {
+        long long totalLoadSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
+        auto sz = loadLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalLoadSize, (unsigned char*)ticksPtr, directory);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool loadTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
+    {
+        long long totalLoadSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+        auto sz = loadLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalLoadSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool loadTransactions(unsigned long long nTick, unsigned long long totalLoadSize, CHAR16* directory = NULL)
+    {
+        unsigned char* ptr = tickTransactionsPtr;
+        auto sz = loadLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalLoadSize, (unsigned char*)ptr, directory);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+#endif
+    
+
+public:
+#if TICK_STORAGE_AUTOSAVE_MODE
+    unsigned int getPreloadTick() const
+    {
+        return metaData.tickEnd;
+    }
+
+    // Here we only save all data from tickStorage, which will save ~70-80% of syncing time since it's mostly networking (fetching tick data)
+    // with scoreCache feature, nodes can get synced to the network in a few hours instead of days.
+    // We can actually save all states (ie: etalonTick, minerScore, contract states...) of the node beside tickStorage and resume the node without any computation.
+    // But that will need extra effort to maintain this feature when we add something new to the protocol.
+    // And probably cause critical bugs if we forget to do update this feature.
+    // 
+    // Save procedure:
+    // (1) check current meta data state
+    // (2) write all missing chunks to disk
+    // (3) update metadata state
+    int trySaveToFile(unsigned int epoch, unsigned int tick, CHAR16* directory = NULL)
+    {   
+        if (tick <= tickBegin) {
+            return 6;
+        }
+        unsigned long long nTick = tick - tickBegin + 1; // inclusive [tickBegin, tick]
+        prepareFilenames(epoch);
+        logToConsole(L"Saving tick data...");
+
+        if (!saveTickData(nTick, directory))
+        {
+            logToConsole(L"Failed to save tickData");
+            return 5;
+        }
+
+        logToConsole(L"Saving quorum ticks");
+        if (!saveTicks(nTick, directory))
+        {
+            logToConsole(L"Failed to save Ticks");
+            return 4;
+        }
+
+        logToConsole(L"Saving tick transaction offset");
+        if (!saveTickTransactionOffsets(nTick, directory))
+        {
+            logToConsole(L"Failed to save transactionOffset");
+            return 3;
+        }
+
+        logToConsole(L"Saving transactions");
+        long long outTotalTransactionSize = 0;
+        unsigned long long outNextTickTransactionOffset = 0;
+        if (!saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
+        {
+            logToConsole(L"Failed to save transactions");
+            return 2;
+        }
+
+        logToConsole(L"Saving meta data");
+        if (!saveMetaData(epoch, tick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
+        {
+            logToConsole(L"Failed to save metaData");
+            return 1;
+        }
+
+        return 0;
+    }
+
+    // Load procedure:
+    // (1) try to load metadata file
+    // (2) sanity check meta data file
+    // (3) load these in order: tickData -> Ticks -> tx offset -> tx 
+    // only load once at start up
+    int tryLoadFromFile(unsigned short epoch, CHAR16* directory)
+    {
+        prepareMetaDataFilename(epoch);
+
+        logToConsole(L"Loading checkpoint meta data...");
+        if (!loadMetaData(directory)) {
+            logToConsole(L"Cannot load meta data file, Computor will not load tickStorage data from files");
+            initMetaData(epoch);
+            return 1;
+        }
+        if (!checkMetaData()) {
+            logToConsole(L"Invalid meta data file for tick storage");
+            initMetaData(epoch);
+            return 2;
+        }
+        nextTickTransactionOffset = metaData.outNextTickTransactionOffset;
+        unsigned long long nTick = metaData.tickEnd - metaData.tickBegin + 1;
+        prepareFilenames(epoch);
+
+        logToConsole(L"Loading tick data...");
+        if (!loadTickData(nTick, directory))
+        {
+            logToConsole(L"Failed to load loadTickData");
+            initMetaData(epoch);
+            return 5;
+        }
+
+        logToConsole(L"Loading ticks...");
+        if (!loadTicks(nTick, directory))
+        {
+            logToConsole(L"Failed to load loadTicks");
+            initMetaData(epoch);
+            return 4;
+        }
+
+        logToConsole(L"Loading transaction offset...");
+        if (!loadTickTransactionOffsets(nTick, directory))
+        {
+            logToConsole(L"Failed to load loadTickTransactionOffsets");
+            initMetaData(epoch);
+            return 3;
+        }
+
+        logToConsole(L"Loading transactions...");
+        if (!loadTransactions(nTick, metaData.outTotalTransactionSize, directory))
+        {
+            logToConsole(L"Failed to load loadTransactions");
+            initMetaData(epoch);
+            return 2;
+        }
+        return 0;
+    }
+
+    // Save a dummy metadata that invalidate the current snapshot
+    bool saveInvalidateData(unsigned int epoch, CHAR16* directory = NULL)
+    {
+        MetaData invalidMetaData;
+        invalidMetaData.epoch = 0;
+        invalidMetaData.tickBegin = 0;
+        invalidMetaData.tickEnd = 0;
+        invalidMetaData.outTotalTransactionSize = 0;
+        invalidMetaData.outNextTickTransactionOffset = 0;
+        prepareMetaDataFilename(epoch);
+        auto sz = saveLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(invalidMetaData), (unsigned char*)&invalidMetaData, directory);
+        if (sz != sizeof(invalidMetaData))
+        {
+            return false;
+        }
+        return true;
+    }
+
+
+    bool initMetaData(short epoch)
+    {
+        metaData.tickBegin = tickBegin;
+        metaData.tickEnd = tickBegin;
+        metaData.epoch = epoch;
+        lastCheckTransactionOffset = tickBegin;
+        return true;
+    }
+#endif
     // Init at node startup
     static bool init()
     {
@@ -243,7 +576,7 @@ public:
             oldTickBegin = 0;
             oldTickEnd = 0;
         }
-        
+
         tickBegin = newInitialTick;
         tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
 

@@ -35,6 +35,7 @@
 #include "network_core/peers.h"
 
 #include "system.h"
+
 #include "assets.h"
 #include "logging.h"
 
@@ -128,6 +129,7 @@ static unsigned char* entityPendingTransactionDigests = NULL;
 static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY];
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
 static m256i* spectrumDigests = NULL;
+const unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
 
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
@@ -136,6 +138,7 @@ static const Transaction* contractProcessorTransaction = 0;
 static int contractProcessorTransactionCanceled = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
+const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
 
 // targetNextTickDataDigestIsKnown == true signals that we need to fetch TickData (update the version in this node)
 // targetNextTickDataDigestIsKnown == false means there is no consensus on next tick data yet
@@ -185,6 +188,37 @@ static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 static unsigned long long solutionTotalExecutionTicks = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
+
+
+// variables and declare for persisting state
+static volatile int requestPersistingNodeState = 0;
+static volatile int persistingNodeStateTickProcWaiting = 0;
+static m256i initialRandomSeedFromPersistingState;
+static bool loadMiningSeedFromFile = false;
+static bool loadAllNodeStateFromFile = false;
+#if TICK_STORAGE_AUTOSAVE_MODE
+struct
+{
+    Tick etalonTick;
+    m256i minerPublicKeys[MAX_NUMBER_OF_MINERS + 1];
+    unsigned int minerScores[MAX_NUMBER_OF_MINERS + 1];
+    m256i competitorPublicKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
+    unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
+    bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
+    m256i initialRandomSeed;    
+    int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
+    unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
+    BroadcastComputors broadcastedComputors;
+    unsigned long long resourceTestingDigest;
+    unsigned int numberOfMiners;
+    unsigned int numberOfTransactions;
+} nodeStateBuffer;
+#endif
+static bool saveSpectrum(CHAR16* directory = NULL);
+static bool saveComputer(CHAR16* directory = NULL);
+static bool saveSystem(CHAR16* directory = NULL);
+static bool loadSpectrum(CHAR16* directory = NULL);
+static bool loadComputer(CHAR16* directory = NULL);
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -2452,7 +2486,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
         numberOfTransactions++;
         bool moneyFlew = false;
 #if ADDON_TX_STATUS_REQUEST
-        tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
+        txStatusData.tickTxIndexStart[system.tick - system.initialTick + 1] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
         if (decreaseEnergy(spectrumIndex, transaction->amount))
         {
@@ -2585,7 +2619,7 @@ static void processTick(unsigned long long processorNumber)
     {
         auto* tsCurrentTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
 #if ADDON_TX_STATUS_REQUEST
-        tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
+        txStatusData.tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
         bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
         // reset solution task queue
@@ -2930,10 +2964,19 @@ static void beginEpoch1of2()
 #if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
     CurrentTransferId = 0;
 #endif
+#if TICK_STORAGE_AUTOSAVE_MODE
+    ts.initMetaData(system.epoch); // for save/load state
+#endif
 }
 
 static void beginEpoch2of2()
 {
+    if (loadMiningSeedFromFile)
+    {
+        score->initMiningData(initialRandomSeedFromPersistingState);
+        loadMiningSeedFromFile = false;
+    }
+    else
     {
         score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
     }
@@ -3248,20 +3291,323 @@ static void initializeFirstTick()
 }
 #endif
 
+#if TICK_STORAGE_AUTOSAVE_MODE
+
+// Invalid snapshot data
+static bool invalidateNodeStates(CHAR16* directory)
+{
+    return ts.saveInvalidateData(system.epoch, directory);
+}
+
+// can only called from main thread
+static bool saveAllNodeStates()
+{
+    CHAR16 directory[16];
+    setText(directory, L"ep");
+    appendNumber(directory, system.epoch, false);
+
+    logToConsole(L"Start saving node states from main thread");
+
+    // Mark current snapshot metadata as invalid at the beginning.
+    // Any reasons make the valid metadata can not be overwritten at the final step will keep this invalid file
+    // and make the loadAllNodeStates see this saving as an invalid save.
+    if (!invalidateNodeStates(directory))
+    {
+        logToConsole(L"Failed to init snapshot metadata");
+        return false;
+    }
+
+    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
+    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
+    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
+    setText(message, L"Saving spectrum to ");
+    appendText(message, directory); appendText(message, L"/");
+    appendText(message, SPECTRUM_FILE_NAME);
+    logToConsole(message);
+    if (!saveSpectrum(directory))
+    {
+        logToConsole(L"Failed to save spectrum");
+        return false;
+    }
+
+    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
+    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
+    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
+    setText(message, L"Saving universe to ");
+    appendText(message, directory); appendText(message, L"/");
+    appendText(message, UNIVERSE_FILE_NAME);
+    logToConsole(message);
+    if (!saveUniverse(directory))
+    {
+        logToConsole(L"Failed to save universe");
+        return false;
+    }
+
+    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
+    setText(message, L"Saving computer files");
+    logToConsole(message);
+    if (!saveComputer(directory))
+    {
+        logToConsole(L"Failed to save computer");
+        return false;
+    }
+    setText(message, L"Saving system to system.snp");
+    logToConsole(message);
+
+    static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
+    long long savedSize = save(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
+    if (savedSize != sizeof(system))
+    {
+        logToConsole(L"Failed to save system");
+        return false;
+    }
+    
+    score->saveScoreCache(system.epoch, directory);
+    
+    copyMem(&nodeStateBuffer.etalonTick, &etalonTick, sizeof(etalonTick));
+    copyMem(nodeStateBuffer.minerPublicKeys, (void*)minerPublicKeys, sizeof(minerPublicKeys));
+    copyMem(nodeStateBuffer.minerScores, (void*)minerScores, sizeof(minerScores));
+    copyMem(nodeStateBuffer.competitorPublicKeys, (void*)competitorPublicKeys, sizeof(competitorPublicKeys));
+    copyMem(nodeStateBuffer.competitorScores, (void*)competitorScores, sizeof(competitorScores));
+    copyMem(nodeStateBuffer.competitorComputorStatuses, (void*)competitorComputorStatuses, sizeof(competitorComputorStatuses));
+    copyMem(nodeStateBuffer.solutionPublicationTicks, (void*)solutionPublicationTicks, sizeof(solutionPublicationTicks));
+    copyMem(nodeStateBuffer.faultyComputorFlags, (void*)faultyComputorFlags, sizeof(faultyComputorFlags));
+    copyMem(&nodeStateBuffer.broadcastedComputors, (void*)&broadcastedComputors, sizeof(broadcastedComputors));
+    copyMem(&nodeStateBuffer.resourceTestingDigest, &resourceTestingDigest, sizeof(resourceTestingDigest));
+    nodeStateBuffer.initialRandomSeed = score->initialRandomSeed;
+    nodeStateBuffer.numberOfMiners = numberOfMiners;
+    nodeStateBuffer.numberOfTransactions = numberOfTransactions;
+
+    CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
+    savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
+    logToConsole(L"Saving mining states");
+    if (savedSize != sizeof(nodeStateBuffer))
+    {
+        logToConsole(L"Failed to save etalon tick and other states");
+        return false;
+    }
+    
+    CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
+    savedSize = save(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);
+    logToConsole(L"Saving spectrum digests");
+    if (savedSize != spectrumDigestsSizeInByte)
+    {
+        logToConsole(L"Failed to save spectrum digest");
+        return false;
+    }
+
+    CHAR16 UNIVERSE_DIGEST_FILE_NAME[] = L"snapshotUniverseDigest";
+    savedSize = save(UNIVERSE_DIGEST_FILE_NAME, assetDigestsSizeInBytes, (unsigned char*)assetDigests, directory);
+    logToConsole(L"Saving universe digests");
+    if (savedSize != assetDigestsSizeInBytes)
+    {
+        logToConsole(L"Failed to save universe digest");
+        return false;
+    }
+
+    CHAR16 COMPUTER_DIGEST_FILE_NAME[] = L"snapshotComputerDigest";
+    savedSize = save(COMPUTER_DIGEST_FILE_NAME, contractStateDigestsSizeInBytes, (unsigned char*)contractStateDigests, directory);
+    logToConsole(L"Saving computer digests");
+    if (savedSize != contractStateDigestsSizeInBytes)
+    {
+        logToConsole(L"Failed to save computer digest");
+        return false;
+    }
+
+    CHAR16 MINER_SOL_FLAG_FILE_NAME[] = L"snapshotMinerSolutionFlag";
+    logToConsole(L"Saving miner solution flags");
+    savedSize = save(MINER_SOL_FLAG_FILE_NAME, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (unsigned char*)minerSolutionFlags, directory);
+    if (savedSize != NUMBER_OF_MINER_SOLUTION_FLAGS / 8)
+    {
+        logToConsole(L"Failed to save miner solution flag");
+        return false;
+    }
+
+    setText(message, L"Saving tick storage ");
+    logToConsole(message);
+    if (ts.trySaveToFile(system.epoch, system.tick, directory) != 0)
+    {
+        logToConsole(L"Failed to save tick storage");
+        return false;
+    }
+
+#if ADDON_TX_STATUS_REQUEST
+    if (!saveStateTxStatus(numberOfTransactions, directory))
+    {
+        logToConsole(L"Failed to save tx status");
+        return false;
+    }
+#endif
+
+    return true;
+}
+
+static bool loadAllNodeStates()
+{
+    CHAR16 directory[16];
+    setText(directory, L"ep");
+    appendNumber(directory, system.epoch, false);
+
+    // No directory of all saved states. Start from scratch
+    if (!checkDir(directory))
+    {
+        logToConsole(L"Not find epoch snapshot directory. Skip using node states snapshot.");
+        return false;
+    }
+    else
+    {
+        logToConsole(L"Found epoch snapshot directory. Using node states snapshot.");
+    }
+
+    if (ts.tryLoadFromFile(system.epoch, directory) != 0)
+    {
+        logToConsole(L"Failed to load tick storage");
+        return false;
+    }
+    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
+    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
+    SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
+    if (!loadSpectrum(directory))
+    {
+        logToConsole(L"Failed to load spectrum");
+        return false;
+    }
+
+    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
+    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
+    UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
+    if (!loadUniverse(directory))
+    {
+        logToConsole(L"Failed to load universe");
+        return false;
+    }
+
+    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
+    if (!loadComputer(directory))
+    {
+        logToConsole(L"Failed to load computer");
+        return false;
+    }
+
+    CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
+    long long loadedSize = load(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
+    if (loadedSize != sizeof(nodeStateBuffer))
+    {
+        logToConsole(L"Failed to load mining state");
+        return false;
+    }
+    copyMem(&etalonTick, &nodeStateBuffer.etalonTick, sizeof(etalonTick));
+    copyMem((void*)minerPublicKeys, nodeStateBuffer.minerPublicKeys, sizeof(minerPublicKeys));
+    copyMem((void*)minerScores, nodeStateBuffer.minerScores, sizeof(minerScores));
+    copyMem((void*)competitorPublicKeys, nodeStateBuffer.competitorPublicKeys, sizeof(competitorPublicKeys));
+    copyMem((void*)competitorScores, nodeStateBuffer.competitorScores, sizeof(competitorScores));
+    copyMem((void*)competitorComputorStatuses, nodeStateBuffer.competitorComputorStatuses, sizeof(competitorComputorStatuses));
+    copyMem((void*)solutionPublicationTicks, nodeStateBuffer.solutionPublicationTicks, sizeof(solutionPublicationTicks));
+    copyMem((void*)faultyComputorFlags, nodeStateBuffer.faultyComputorFlags, sizeof(faultyComputorFlags));
+    copyMem((void*)&broadcastedComputors, &nodeStateBuffer.broadcastedComputors, sizeof(broadcastedComputors));
+    copyMem(&resourceTestingDigest, &nodeStateBuffer.resourceTestingDigest, sizeof(resourceTestingDigest));
+    numberOfMiners = nodeStateBuffer.numberOfMiners;
+    initialRandomSeedFromPersistingState = nodeStateBuffer.initialRandomSeed;
+    numberOfTransactions = nodeStateBuffer.numberOfTransactions;
+    loadMiningSeedFromFile = true;
+
+    // update own computor indices
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+        {
+            if (broadcastedComputors.computors.publicKeys[i] == computorPublicKeys[j])
+            {
+                ownComputorIndices[numberOfOwnComputorIndices] = i;
+                ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
+
+                break;
+            }
+        }
+    }
+
+    static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
+    loadedSize = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
+    if (loadedSize != sizeof(system))
+    {
+        logToConsole(L"Failed to load system");
+        return false;
+    }
+
+    setMem(assetChangeFlags, sizeof(assetChangeFlags), 0);
+    setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
+    CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
+    loadedSize = load(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);
+    logToConsole(L"Loading spectrum digests");
+    if (loadedSize != spectrumDigestsSizeInByte)
+    {
+        logToConsole(L"Failed to load spectrum digest");
+        return false;
+    }
+
+    CHAR16 UNIVERSE_DIGEST_FILE_NAME[] = L"snapshotUniverseDigest";
+    loadedSize = load(UNIVERSE_DIGEST_FILE_NAME, assetDigestsSizeInBytes, (unsigned char*)assetDigests, directory);
+    logToConsole(L"Loading universe digests");
+    if (loadedSize != assetDigestsSizeInBytes)
+    {
+        logToConsole(L"Failed to load universe digest");
+        return false;
+    }
+
+    CHAR16 COMPUTER_DIGEST_FILE_NAME[] = L"snapshotComputerDigest";
+    loadedSize = load(COMPUTER_DIGEST_FILE_NAME, contractStateDigestsSizeInBytes, (unsigned char*)contractStateDigests, directory);
+    logToConsole(L"Loading computer digests");
+    if (loadedSize != contractStateDigestsSizeInBytes)
+    {
+        logToConsole(L"Failed to load computer digest");
+        return false;
+    }
+
+    CHAR16 MINER_SOL_FLAG_FILE_NAME[] = L"snapshotMinerSolutionFlag";
+    logToConsole(L"Loading miner solution flags");
+    loadedSize = load(MINER_SOL_FLAG_FILE_NAME, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (unsigned char*)minerSolutionFlags, directory);
+    if (loadedSize != NUMBER_OF_MINER_SOLUTION_FLAGS / 8)
+    {
+        logToConsole(L"Failed to load miner solution flag");
+        return false;
+    }
+
+#if ADDON_TX_STATUS_REQUEST
+    if (!loadStateTxStatus(numberOfTransactions, directory))
+    {
+        logToConsole(L"Failed to load tx status");
+        return false;
+    }
+#endif
+
+    return true;
+}
+
+#endif
+
 static void tickProcessor(void*)
 {
     enableAVX();
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
-#if !START_NETWORK_FROM_SCRATCH    
-    initializeFirstTick();
+#if !START_NETWORK_FROM_SCRATCH
+    // only init first tick if it doesn't load all node states from file
+    if (!loadAllNodeStateFromFile)
+    {
+        initializeFirstTick();
+    }
 #endif
 
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
         checkinTime(processorNumber);
+
         const unsigned long long curTimeTick = __rdtsc();
         const unsigned int nextTick = system.tick + 1;
 
@@ -3287,8 +3633,15 @@ static void tickProcessor(void*)
             {
                 if (system.tick > latestProcessedTick)
                 {
+                    // LOGIC: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
+                    // thus, pausing here and doing the state persisting is the best choice.
+                    if (requestPersistingNodeState)
+                    {
+                        persistingNodeStateTickProcWaiting = 1;
+                        while (requestPersistingNodeState) _mm_pause();
+                        persistingNodeStateTickProcWaiting = 0;
+                    }
                     processTick(processorNumber);
-
                     latestProcessedTick = system.tick;
                 }
 
@@ -3988,7 +4341,6 @@ static void tickProcessor(void*)
                 }
             }
         }
-
         tickerLoopNumerator += __rdtsc() - curTimeTick;
         tickerLoopDenominator++;
     }
@@ -4010,14 +4362,27 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
     contractProcessorState = 0;
 }
 
-static void saveSpectrum()
+static bool loadSpectrum(CHAR16* directory)
+{
+    logToConsole(L"Loading spectrum file ...");
+    long long loadedSize = load(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
+    if (loadedSize != SPECTRUM_CAPACITY * sizeof(::Entity))
+    {
+        logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+
+        return false;
+    }
+    return true;
+}
+
+static bool saveSpectrum(CHAR16* directory)
 {
     logToConsole(L"Saving spectrum file...");
 
     const unsigned long long beginningTick = __rdtsc();
 
     ACQUIRE(spectrumLock);
-    long long savedSize = save(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum);
+    long long savedSize = save(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
     RELEASE(spectrumLock);
 
     if (savedSize == SPECTRUM_CAPACITY * sizeof(::Entity))
@@ -4027,10 +4392,40 @@ static void saveSpectrum()
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
         logToConsole(message);
+        return true;
     }
+    return false;
 }
 
-static void saveComputer()
+
+static bool loadComputer(CHAR16* directory)
+{
+    logToConsole(L"Loading contract files ...");
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+    {
+        if (contractDescriptions[contractIndex].constructionEpoch == system.epoch)
+        {
+            bs->SetMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+        }
+        else
+        {
+            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 9] = contractIndex / 1000 + L'0';
+            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
+            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
+            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
+            long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
+            if (loadedSize != contractDescriptions[contractIndex].stateSize)
+            {
+                logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool saveComputer(CHAR16* directory)
 {
     logToConsole(L"Saving contract files...");
 
@@ -4046,7 +4441,7 @@ static void saveComputer()
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
         contractStateLock[contractIndex].acquireRead();
-        long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex]);
+        long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
         contractStateLock[contractIndex].releaseRead();
         totalSize += savedSize;
         if (savedSize != contractDescriptions[contractIndex].stateSize)
@@ -4064,16 +4459,18 @@ static void saveComputer()
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
         logToConsole(message);
+        return true;
     }
+    return false;
 }
 
-static void saveSystem()
+static bool saveSystem(CHAR16* directory)
 {
     logToConsole(L"Saving system file...");
 
     const unsigned long long beginningTick = __rdtsc();
     CHAR16* fn = (epochTransitionState == 1) ? SYSTEM_END_OF_EPOCH_FILE_NAME : SYSTEM_FILE_NAME;
-    long long savedSize = save(fn, sizeof(system), (unsigned char*)&system);
+    long long savedSize = save(fn, sizeof(system), (unsigned char*)&system, directory);
     if (savedSize == sizeof(system))
     {
         setNumber(message, savedSize, TRUE);
@@ -4081,7 +4478,9 @@ static void saveSystem()
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
         logToConsole(message);
+        return true;
     }
+    return false;
 }
 
 static bool initialize()
@@ -4238,129 +4637,116 @@ static bool initialize()
         system.tick = system.initialTick;
 
         beginEpoch1of2();
+#if TICK_STORAGE_AUTOSAVE_MODE
+        bool canLoadFromFile = loadAllNodeStates();
+#else
+        bool canLoadFromFile = false;
+#endif
 
-        etalonTick.epoch = system.epoch;
-        etalonTick.tick = system.initialTick;
-        etalonTick.millisecond = system.initialMillisecond;
-        etalonTick.second = system.initialSecond;
-        etalonTick.minute = system.initialMinute;
-        etalonTick.hour = system.initialHour;
-        etalonTick.day = system.initialDay;
-        etalonTick.month = system.initialMonth;
-        etalonTick.year = system.initialYear;
-
-        logToConsole(L"Loading spectrum file ...");
-        long long loadedSize = load(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum);
-        if (loadedSize != SPECTRUM_CAPACITY * sizeof(::Entity))
+        // if failed to load snapshot, load all data and init variables from scratch
+        if (!canLoadFromFile)
         {
-            logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+            etalonTick.epoch = system.epoch;
+            etalonTick.tick = system.initialTick;
+            etalonTick.millisecond = system.initialMillisecond;
+            etalonTick.second = system.initialSecond;
+            etalonTick.minute = system.initialMinute;
+            etalonTick.hour = system.initialHour;
+            etalonTick.day = system.initialDay;
+            etalonTick.month = system.initialMonth;
+            etalonTick.year = system.initialYear;
 
-            return false;
-        }
-        {
-            const unsigned long long beginningTick = __rdtsc();
+            loadSpectrum();
+            {
+                const unsigned long long beginningTick = __rdtsc();
 
-            unsigned int digestIndex;
-            for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
-            {
-                KangarooTwelve64To32(&spectrum[digestIndex], &spectrumDigests[digestIndex]);
-            }
-            unsigned int previousLevelBeginning = 0;
-            unsigned int numberOfLeafs = SPECTRUM_CAPACITY;
-            while (numberOfLeafs > 1)
-            {
-                for (unsigned int i = 0; i < numberOfLeafs; i += 2)
+                unsigned int digestIndex;
+                for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
                 {
-                    KangarooTwelve64To32(&spectrumDigests[previousLevelBeginning + i], &spectrumDigests[digestIndex++]);
+                    KangarooTwelve64To32(&spectrum[digestIndex], &spectrumDigests[digestIndex]);
+                }
+                unsigned int previousLevelBeginning = 0;
+                unsigned int numberOfLeafs = SPECTRUM_CAPACITY;
+                while (numberOfLeafs > 1)
+                {
+                    for (unsigned int i = 0; i < numberOfLeafs; i += 2)
+                    {
+                        KangarooTwelve64To32(&spectrumDigests[previousLevelBeginning + i], &spectrumDigests[digestIndex++]);
+                    }
+
+                    previousLevelBeginning += numberOfLeafs;
+                    numberOfLeafs >>= 1;
                 }
 
-                previousLevelBeginning += numberOfLeafs;
-                numberOfLeafs >>= 1;
-            }
+                setNumber(message, SPECTRUM_CAPACITY * sizeof(::Entity), TRUE);
+                appendText(message, L" bytes of the spectrum data are hashed (");
+                appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+                appendText(message, L" microseconds).");
+                logToConsole(message);
 
-            setNumber(message, SPECTRUM_CAPACITY * sizeof(::Entity), TRUE);
-            appendText(message, L" bytes of the spectrum data are hashed (");
-            appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-            appendText(message, L" microseconds).");
-            logToConsole(message);
+                CHAR16 digestChars[60 + 1];
+                unsigned long long totalAmount = 0;
 
-            CHAR16 digestChars[60 + 1];
-            unsigned long long totalAmount = 0;
+                getIdentity((unsigned char*)&spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1], digestChars, true);
 
-            getIdentity((unsigned char*)&spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1], digestChars, true);
-
-            for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-            {
-                if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
+                for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                 {
-                    numberOfEntities++;
-                    totalAmount += spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+                    if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
+                    {
+                        numberOfEntities++;
+                        totalAmount += spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+                    }
                 }
+
+                setNumber(message, totalAmount, TRUE);
+                appendText(message, L" qus in ");
+                appendNumber(message, numberOfEntities, TRUE);
+                appendText(message, L" entities (digest = ");
+                appendText(message, digestChars);
+                appendText(message, L").");
+                logToConsole(message);
             }
-
-            setNumber(message, totalAmount, TRUE);
-            appendText(message, L" qus in ");
-            appendNumber(message, numberOfEntities, TRUE);
-            appendText(message, L" entities (digest = ");
-            appendText(message, digestChars);
-            appendText(message, L").");
-            logToConsole(message);
-        }
-
-        logToConsole(L"Loading universe file ...");
-        if (!loadUniverse())
-            return false;
-        m256i universeDigest;
-        {
-            setText(message, L"Universe digest = ");
-            getUniverseDigest(universeDigest);
-            CHAR16 digestChars[60 + 1];
-            getIdentity(universeDigest.m256i_u8, digestChars, true);
-            appendText(message, digestChars);
-            appendText(message, L".");
-            logToConsole(message);
-        }
-
-        logToConsole(L"Loading contract files ...");
-        for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
-        {
-            if (contractDescriptions[contractIndex].constructionEpoch == system.epoch)
+            logToConsole(L"Loading universe file ...");
+            if (!loadUniverse())
+                return false;
+            m256i universeDigest;
             {
-                bs->SetMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+                setText(message, L"Universe digest = ");
+                getUniverseDigest(universeDigest);
+                CHAR16 digestChars[60 + 1];
+                getIdentity(universeDigest.m256i_u8, digestChars, true);
+                appendText(message, digestChars);
+                appendText(message, L".");
+                logToConsole(message);
             }
-            else
+            loadComputer();
+            m256i computerDigest;
             {
-                CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 9] = contractIndex / 1000 + L'0';
-                CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
-                CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
-                CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
-                loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex]);
-                if (loadedSize != contractDescriptions[contractIndex].stateSize)
-                {
-                    logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
-
-                    return false;
-                }
+                setText(message, L"Computer digest = ");
+                getComputerDigest(computerDigest);
+                CHAR16 digestChars[60 + 1];
+                getIdentity(computerDigest.m256i_u8, digestChars, true);
+                appendText(message, digestChars);
+                appendText(message, L".");
+                logToConsole(message);
             }
 
-            initializeContract(contractIndex, contractStates[contractIndex]);
+            // initialize salted digests of etalonTick, otherwise F2 key would output invalid digests
+            // before ticking begins
+            etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+            etalonTick.saltedUniverseDigest = universeDigest;
+            etalonTick.saltedComputerDigest = computerDigest;
         }
-        m256i computerDigest;
+        else
         {
-            setText(message, L"Computer digest = ");
-            getComputerDigest(computerDigest);
-            CHAR16 digestChars[60 + 1];
-            getIdentity(computerDigest.m256i_u8, digestChars, true);
-            appendText(message, digestChars);
-            appendText(message, L".");
-            logToConsole(message);
+            loadAllNodeStateFromFile = true;
+            logToConsole(L"Loaded node state from snapshot, if you want to start from scratch please delete all snapshot files.");
         }
+    }
 
-        // initialize salted digests of etalonTick, otherwise F2 key would output invalid digests
-        // before ticking begins
-        etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
-        etalonTick.saltedUniverseDigest = universeDigest;
-        etalonTick.saltedComputerDigest = computerDigest;
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+    {
+        initializeContract(contractIndex, contractStates[contractIndex]);
     }
 
     score->loadScoreCache(system.epoch);
@@ -4440,6 +4826,7 @@ static bool initialize()
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
+    
     return true;
 }
 
@@ -5120,6 +5507,17 @@ static void processKeyPresses()
         break;
 
         /*
+        * F8 Key
+        * Takes a snapshot of tick storage and save it to disk
+        */
+        case 0x12:
+        {
+            logToConsole(L"Pressed F8 key");
+            requestPersistingNodeState = 1;
+        }
+        break;
+
+        /*
         * F9 Key
         * By Pressing the F9 Key the latestCreatedTick got's decreased by one.
         * By decreasing this by one, the Node will resend the issued votes for its Computors.
@@ -5343,6 +5741,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
+            unsigned int lastSavedTick = system.tick;
             logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
@@ -5390,7 +5789,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         logStatusToConsole(L"EFI_MP_SERVICES_PROTOCOL.StartupThisAP() fails", status, __LINE__);
                     }
                 }*/
-
                 peerTcp4Protocol->Poll(peerTcp4Protocol);
 
                 for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
@@ -5482,8 +5880,17 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     // Request ticks
                     tickRequestingTick = curTimeTick;
-
-                    if (tickRequestingIndicator == tickTotalNumberOfComputors)
+#if TICK_STORAGE_AUTOSAVE_MODE
+                    const bool isNewTick = system.tick >= ts.getPreloadTick();
+                    const bool isNewTickPlus1 = system.tick + 1 >= ts.getPreloadTick();
+                    const bool isNewTickPlus2 = system.tick + 2 >= ts.getPreloadTick();
+#else
+                    const bool isNewTick = true;
+                    const bool isNewTickPlus1 = true;
+                    const bool isNewTickPlus2 = true;
+#endif
+                    if (tickRequestingIndicator == tickTotalNumberOfComputors
+                        && isNewTick)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
@@ -5499,7 +5906,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAny(&requestedQuorumTick.header);
                     }
                     tickRequestingIndicator = tickTotalNumberOfComputors;
-                    if (futureTickRequestingIndicator == futureTickTotalNumberOfComputors)
+                    if (futureTickRequestingIndicator == futureTickTotalNumberOfComputors
+                        && isNewTickPlus1)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
@@ -5516,8 +5924,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                     futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
 
-                    if (ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
-                        || targetNextTickDataDigestIsKnown)
+                    if ((ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
+                        || !targetNextTickDataDigestIsKnown)
+                        && isNewTickPlus1)
                     {
                         // Request tick data of next tick when it is not stored yet or should be updated,
                         // for example because next tick data digest of the quorum from the one of this node.
@@ -5527,7 +5936,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
                         pushToAny(&requestedTickData.header);
                     }
-                    if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch)
+                    if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch && isNewTickPlus2)
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 2;
@@ -5600,6 +6009,27 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
                 processKeyPresses();
+#if TICK_STORAGE_AUTOSAVE_MODE
+                if ((TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1)) // autosave in aux mode
+                    || TICK_STORAGE_AUTOSAVE_MODE == 2) // autosave in any mode
+                {
+                    if (system.tick > ts.getPreloadTick()) // check the last saved tick
+                    {
+                        unsigned int deltaTick = system.tick - lastSavedTick;
+                        if (deltaTick >= TICK_STORAGE_AUTOSAVE_TICK_PERIOD) {
+                            requestPersistingNodeState = 1;
+                            lastSavedTick = system.tick;
+                        }
+                    }
+                }
+                if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 1)
+                {
+                    logToConsole(L"Saving node state...");
+                    saveAllNodeStates();
+                    requestPersistingNodeState = 0;
+                    logToConsole(L"Complete saving all node states");
+                }
+#endif
 
                 if (curTimeTick - loggingTick >= frequency)
                 {
@@ -5661,6 +6091,27 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     mainLoopNumerator += __rdtsc() - curTimeTick;
                     mainLoopDenominator++;
+                }
+
+                // output if misalignment happened
+                if (tickTotalNumberOfComputors - tickNumberOfComputors > QUORUM)
+                {
+                    if (misalignedState == 0)
+                    {
+                        // also log to debug.log
+                        misalignedState = 1;
+                    }
+                    logToConsole(L"MISALIGNED STATE DETECTED");
+                    if (misalignedState == 1)
+                    {
+                        // print health status and stop repeated logging to debug.log
+                        logHealthStatus();
+                        misalignedState = 2;
+                    }
+                }
+                else
+                {
+                    misalignedState = 0;
                 }
 
 #if !defined(NDEBUG)

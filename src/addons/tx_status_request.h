@@ -28,11 +28,16 @@ constexpr unsigned long long confirmedTxLength = confirmedTxCurrentEpochLength +
 
 // Memory to store confirmed TX's (arrays store data of current epoch, followed by last ticks of previous epoch)
 static ConfirmedTx *confirmedTx = NULL;
-static unsigned int tickTxCounter[MAX_NUMBER_OF_TICKS_PER_EPOCH + TICKS_TO_KEEP_FROM_PRIOR_EPOCH];    // store the amount of tx per tick
-static unsigned int tickTxIndexStart[MAX_NUMBER_OF_TICKS_PER_EPOCH + TICKS_TO_KEEP_FROM_PRIOR_EPOCH]; // store the index position per tick
 static volatile char confirmedTxLock = 0;
-static unsigned int confirmedTxPreviousEpochBeginTick = 0;  // first tick kept from previous epoch (or 0 if no tick from prev. epoch available)
-static unsigned int confirmedTxCurrentEpochBeginTick = 0;   // first tick of current epoch stored
+
+static struct
+{
+    unsigned int tickTxCounter[MAX_NUMBER_OF_TICKS_PER_EPOCH + TICKS_TO_KEEP_FROM_PRIOR_EPOCH];    // store the amount of tx per tick
+    unsigned int tickTxIndexStart[MAX_NUMBER_OF_TICKS_PER_EPOCH + TICKS_TO_KEEP_FROM_PRIOR_EPOCH]; // store the index position per tick
+    unsigned int confirmedTxPreviousEpochBeginTick;  // first tick kept from previous epoch (or 0 if no tick from prev. epoch available)
+    unsigned int confirmedTxCurrentEpochBeginTick;   // first tick of current epoch stored
+} txStatusData;
+
 
 #define REQUEST_TX_STATUS 201
 
@@ -74,8 +79,8 @@ static bool initTxStatusRequestAddOn()
     // allocate tickTxStatus responses storage
     if (!allocatePool(MAX_NUMBER_OF_PROCESSORS * sizeof(RespondTxStatus), (void**)&tickTxStatusStorage))
         return false;
-    confirmedTxPreviousEpochBeginTick = 0;
-    confirmedTxCurrentEpochBeginTick = 0;
+    txStatusData.confirmedTxPreviousEpochBeginTick = 0;
+    txStatusData.confirmedTxCurrentEpochBeginTick = 0;
     return true;
 }
 
@@ -92,8 +97,8 @@ static void deinitTxStatusRequestAddOn()
 // are ticks in [newInitialTick-TICKS_TO_KEEP_FROM_PRIOR_EPOCH, newInitialTick-1].
 static void beginEpochTxStatusRequestAddOn(unsigned int newInitialTick)
 {
-    unsigned int& tickBegin = confirmedTxCurrentEpochBeginTick;
-    unsigned int& oldTickBegin = confirmedTxPreviousEpochBeginTick;
+    unsigned int& tickBegin = txStatusData.confirmedTxCurrentEpochBeginTick;
+    unsigned int& oldTickBegin = txStatusData.confirmedTxPreviousEpochBeginTick;
 
     bool keepTicks = tickBegin && newInitialTick > tickBegin && newInitialTick <= tickBegin + MAX_NUMBER_OF_TICKS_PER_EPOCH;
     if (keepTicks)
@@ -107,7 +112,7 @@ static void beginEpochTxStatusRequestAddOn(unsigned int newInitialTick)
         unsigned int txCount = 0;
         for (int tickIndex = (newInitialTick - 1) - tickBegin; tickIndex >= 0; --tickIndex)
         {
-            unsigned int newTxCount = txCount + tickTxCounter[tickIndex];
+            unsigned int newTxCount = txCount + txStatusData.tickTxCounter[tickIndex];
             if (newTxCount <= confirmedTxPreviousEpochLength && tickCount < TICKS_TO_KEEP_FROM_PRIOR_EPOCH)
             {
                 txCount = newTxCount;
@@ -124,20 +129,20 @@ static void beginEpochTxStatusRequestAddOn(unsigned int newInitialTick)
         const unsigned int tickIndex = oldTickBegin - tickBegin;
 
         // copy confirmedTx and tickTxCounter from recently ended epoch into storage of previous epoch
-        copyMem(tickTxCounter + MAX_NUMBER_OF_TICKS_PER_EPOCH, tickTxCounter + tickIndex, tickCount * sizeof(tickTxCounter[0]));
-        copyMem(confirmedTx + confirmedTxCurrentEpochLength, confirmedTx + tickTxIndexStart[tickIndex], txCount * sizeof(confirmedTx[0]));
+        copyMem(txStatusData.tickTxCounter + MAX_NUMBER_OF_TICKS_PER_EPOCH, txStatusData.tickTxCounter + tickIndex, tickCount * sizeof(txStatusData.tickTxCounter[0]));
+        copyMem(confirmedTx + confirmedTxCurrentEpochLength, confirmedTx + txStatusData.tickTxIndexStart[tickIndex], txCount * sizeof(confirmedTx[0]));
 
         // copy adjusted tickTxIndexStart
-        const unsigned int indexStartDelta = confirmedTxCurrentEpochLength - tickTxIndexStart[tickIndex];
+        const unsigned int indexStartDelta = confirmedTxCurrentEpochLength - txStatusData.tickTxIndexStart[tickIndex];
         for (unsigned int tickOffset = 0; tickOffset < tickCount; ++tickOffset)
         {
-            tickTxIndexStart[MAX_NUMBER_OF_TICKS_PER_EPOCH + tickOffset] = tickTxIndexStart[tickIndex + tickOffset] + indexStartDelta;
+            txStatusData.tickTxIndexStart[MAX_NUMBER_OF_TICKS_PER_EPOCH + tickOffset] = txStatusData.tickTxIndexStart[tickIndex + tickOffset] + indexStartDelta;
         }
 
         // init pool of current epoch with 0
         setMem(confirmedTx, confirmedTxCurrentEpochLength * sizeof(ConfirmedTx), 0);
-        setMem(tickTxCounter, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(tickTxCounter[0]), 0);
-        setMem(tickTxIndexStart, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(tickTxIndexStart[0]), 0);
+        setMem(txStatusData.tickTxCounter, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(txStatusData.tickTxCounter[0]), 0);
+        setMem(txStatusData.tickTxIndexStart, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(txStatusData.tickTxIndexStart[0]), 0);
     }
     else
     {
@@ -146,8 +151,8 @@ static void beginEpochTxStatusRequestAddOn(unsigned int newInitialTick)
 
         // init pool with 0
         setMem(confirmedTx, confirmedTxLength * sizeof(ConfirmedTx), 0);
-        setMem(tickTxCounter, sizeof(tickTxCounter), 0);
-        setMem(tickTxIndexStart, sizeof(tickTxIndexStart), 0);
+        setMem(txStatusData.tickTxCounter, sizeof(txStatusData.tickTxCounter), 0);
+        setMem(txStatusData.tickTxIndexStart, sizeof(txStatusData.tickTxIndexStart), 0);
     }
 
     tickBegin = newInitialTick;
@@ -161,7 +166,7 @@ static void beginEpochTxStatusRequestAddOn(unsigned int newInitialTick)
 // digest: digest of tx
 static bool saveConfirmedTx(unsigned int txNumberMinusOne, bool moneyFlew, unsigned int tick, const m256i& digest)
 {
-    ASSERT(confirmedTxCurrentEpochBeginTick == system.initialTick);
+    ASSERT(txStatusData.confirmedTxCurrentEpochBeginTick == system.initialTick);
     ASSERT(tick >= system.initialTick && tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH);
 
     // skip if confirmedTx storage is full
@@ -179,7 +184,7 @@ static bool saveConfirmedTx(unsigned int txNumberMinusOne, bool moneyFlew, unsig
     // get current tick number in epoch
     int tickIndex = tick - system.initialTick;
     // keep track of tx number in tick to find it later easier
-    tickTxCounter[tickIndex]++;
+    txStatusData.tickTxCounter[tickIndex]++;
 
     RELEASE(confirmedTxLock);
 
@@ -189,7 +194,7 @@ static bool saveConfirmedTx(unsigned int txNumberMinusOne, bool moneyFlew, unsig
 
 static void processRequestConfirmedTx(long long processorNumber, Peer *peer, RequestResponseHeader *header)
 {
-    ASSERT(confirmedTxCurrentEpochBeginTick == system.initialTick);
+    ASSERT(txStatusData.confirmedTxCurrentEpochBeginTick == system.initialTick);
     ASSERT(system.tick >= system.initialTick);
 
     RequestTxStatus *request = header->getPayload<RequestTxStatus>();
@@ -199,15 +204,15 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
         return;
 
     int tickIndex;
-    if (request->tick >= confirmedTxCurrentEpochBeginTick && request->tick < confirmedTxCurrentEpochBeginTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
+    if (request->tick >= txStatusData.confirmedTxCurrentEpochBeginTick && request->tick < txStatusData.confirmedTxCurrentEpochBeginTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
     {
         // current epoch
-        tickIndex = request->tick - confirmedTxCurrentEpochBeginTick;
+        tickIndex = request->tick - txStatusData.confirmedTxCurrentEpochBeginTick;
     }
-    else if (confirmedTxPreviousEpochBeginTick != 0 && request->tick >= confirmedTxPreviousEpochBeginTick && request->tick < confirmedTxCurrentEpochBeginTick)
+    else if (txStatusData.confirmedTxPreviousEpochBeginTick != 0 && request->tick >= txStatusData.confirmedTxPreviousEpochBeginTick && request->tick < txStatusData.confirmedTxCurrentEpochBeginTick)
     {
         // available tick of previous epoch (stored behind current epoch data)
-        tickIndex = request->tick - confirmedTxPreviousEpochBeginTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
+        tickIndex = request->tick - txStatusData.confirmedTxPreviousEpochBeginTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
     }
     else
     {
@@ -216,13 +221,13 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
     }
 
     // get index where confirmedTx are starting to be stored in memory
-    int index = tickTxIndexStart[tickIndex];
+    int index = txStatusData.tickTxIndexStart[tickIndex];
 
     // init response message data, get it from the storage to avoid increasing stack mem
     RespondTxStatus& tickTxStatus = tickTxStatusStorage[processorNumber];
     tickTxStatus.currentTickOfNode = system.tick;
     tickTxStatus.tick = request->tick;
-    tickTxStatus.txCount = tickTxCounter[tickIndex];
+    tickTxStatus.txCount = txStatusData.tickTxCounter[tickIndex];
     setMem(&tickTxStatus.moneyFlew, sizeof(tickTxStatus.moneyFlew), 0);
 
     // loop over the number of tx which were stored for the given tick
@@ -243,4 +248,51 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
     enqueueResponse(peer, tickTxStatus.size(), RESPOND_TX_STATUS, header->dejavu(), &tickTxStatus);
 }
 
-#endif
+#if TICK_STORAGE_AUTOSAVE_MODE
+// can only be called from main thread
+static bool saveStateTxStatus(const unsigned int numberOfTransactions, CHAR16* directory)
+{
+    static unsigned short TX_STATUS_SNAPSHOT_FILE_NAME[] = L"snapshotTxStatusData";
+    long long savedSize = save(TX_STATUS_SNAPSHOT_FILE_NAME, sizeof(txStatusData), (unsigned char*)&txStatusData, directory);
+    if (savedSize != sizeof(txStatusData))
+    {
+        logToConsole(L"Failed to save txStatusData");
+        return false;
+    }
+
+    static unsigned short CONFIRMED_TX_SNAPSHOT_FILE_NAME[] = L"snapshotConfirmedTx";
+    savedSize = saveLargeFile(CONFIRMED_TX_SNAPSHOT_FILE_NAME, numberOfTransactions*sizeof(ConfirmedTx), (unsigned char*)confirmedTx, directory);
+    if (savedSize != numberOfTransactions * sizeof(ConfirmedTx))
+    {
+        logToConsole(L"Failed to save ConfirmedTx");
+        return false;
+    }
+    return true;
+}
+
+// can only be called from main thread
+// numberOfTransactions must be known before calling this
+static bool loadStateTxStatus(const unsigned int numberOfTransactions, CHAR16* directory)
+{
+    static unsigned short TX_STATUS_SNAPSHOT_FILE_NAME[] = L"snapshotTxStatusData";
+    long long loadedSize = load(TX_STATUS_SNAPSHOT_FILE_NAME, sizeof(txStatusData), (unsigned char*)&txStatusData, directory);
+    if (loadedSize != sizeof(txStatusData))
+    {
+        logToConsole(L"Failed to load txStatusData");
+        return false;
+    }
+
+    if (numberOfTransactions)
+    {
+        static unsigned short CONFIRMED_TX_SNAPSHOT_FILE_NAME[] = L"snapshotConfirmedTx";
+        loadedSize = loadLargeFile(CONFIRMED_TX_SNAPSHOT_FILE_NAME, numberOfTransactions * sizeof(ConfirmedTx), (unsigned char*)confirmedTx, directory);
+        if (loadedSize != numberOfTransactions * sizeof(ConfirmedTx))
+        {
+            logToConsole(L"Failed to load ConfirmedTx");
+            return false;
+        }
+    }
+    return true;
+}
+#endif // TICK_STORAGE_AUTOSAVE_MODE
+#endif // ADDON_TX_STATUS_REQUEST

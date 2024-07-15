@@ -110,13 +110,13 @@ public:
     }
 
     /// Save score cache to file
-    void save(CHAR16* filename)
+    void save(CHAR16* filename, CHAR16* directory = NULL)
     {
         logToConsole(L"Saving score cache file...");
 
         const unsigned long long beginningTick = __rdtsc();
         ACQUIRE(lock);
-        long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)&cache);
+        long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)&cache, directory);
         RELEASE(lock);
         if (savedSize == sizeof(cache))
         {
@@ -129,13 +129,13 @@ public:
     }
 
     /// Try to load score cache file
-    bool load(CHAR16* filename)
+    bool load(CHAR16* filename, CHAR16* directory = NULL)
     {
         bool success = true;
         logToConsole(L"Loading score cache...");
         reset();
         ACQUIRE(lock);
-        long long loadedSize = ::load(filename, sizeof(cache), (unsigned char*)cache);
+        long long loadedSize = ::load(filename, sizeof(cache), (unsigned char*)cache, directory);
         RELEASE(lock);
         if (loadedSize != sizeof(cache))
         {
