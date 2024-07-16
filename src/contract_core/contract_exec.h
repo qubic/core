@@ -340,7 +340,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
             || systemProcId == END_TICK
         );
         QPI::NoData noInOutData;
-
+        noInOutData.isEmpty = false;
         // reserve resources for this processor (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
@@ -350,7 +350,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
-        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
+        if (!noInOutData.isEmpty) contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
     }
 };
 

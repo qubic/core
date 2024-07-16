@@ -1240,13 +1240,13 @@ public:
         state.mGameOperatorId = id(0x63a7317950fa8886ULL, 0x4dbdf78085364aa7ULL, 0x21c6ca41e95bfa65ULL, 0xcbc1886b3ea8e647ULL);
     _
 
-    END_EPOCH
+    EMPTY_END_EPOCH
     _
 
-    BEGIN_TICK
+    EMPTY_BEGIN_TICK
     _
 
-    END_TICK
+    EMPTY_END_TICK
     _
 
     PRE_ACQUIRE_SHARES
