@@ -339,7 +339,7 @@ public:
         dayB += (QTRY_GET_YEAR(B) - QTRY_GET_YEAR(A)) * 365ULL + QTRY_GET_DAY(B);
 
         // handling leap-year: only store last 2 digits of year here, don't care about mod 100 & mod 400 case
-        for (i = QTRY_GET_YEAR(A); i < QTRY_GET_YEAR(B); i++) {
+        for (i = QTRY_GET_YEAR(A); (uint32)(i) < QTRY_GET_YEAR(B); i++) {
             if (mod(i,4) == 0) {
                 dayB++;
             }
@@ -1240,13 +1240,13 @@ public:
         state.mGameOperatorId = id(0x63a7317950fa8886ULL, 0x4dbdf78085364aa7ULL, 0x21c6ca41e95bfa65ULL, 0xcbc1886b3ea8e647ULL);
     _
 
-    END_EPOCH
+    EMPTY_END_EPOCH
     _
 
-    BEGIN_TICK
+    EMPTY_BEGIN_TICK
     _
 
-    END_TICK
+    EMPTY_END_TICK
     _
 
     PRE_ACQUIRE_SHARES
