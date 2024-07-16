@@ -26,12 +26,14 @@ struct ScoreFunction
 {
     static constexpr const int inNeuronsCount = numberOfInputNeurons + dataLength;
     static constexpr const int maxNeuronsCount = inNeuronsCount;
-    static constexpr const int allParamsCount = dataLength + numberOfInputNeurons + dataLength;
+    static constexpr const unsigned long long allParamsCount = dataLength + numberOfInputNeurons + dataLength;
+    static constexpr unsigned long long synapseInputSize =inNeuronsCount * allParamsCount;
     long long miningData[dataLength];
     struct synapseStruct
     {
-        char inputLength[inNeuronsCount * allParamsCount];
-    } *_synapses;
+        char* inputLength = nullptr;
+    };
+    synapseStruct *_synapses;
 
     struct queueItem {
         unsigned int tick;
@@ -189,6 +191,26 @@ struct ScoreFunction
         }
     }
 
+    ~ScoreFunction()
+    {
+        freeMemory();
+    }
+
+    void freeMemory()
+    {
+        if (_synapses)
+        {
+            for (unsigned int i = 0; i < solutionBufferCount; i++)
+            {
+                if (_synapses[i].inputLength)
+                {
+                    freePool(_synapses[i].inputLength);
+                }
+            }
+            freePool(_synapses);
+        }
+    }
+
     bool initMemory()
     {
         // TODO: call freePool() for buffers allocated below
@@ -197,6 +219,15 @@ struct ScoreFunction
             {
                 logToConsole(L"Failed to allocate memory for score solution buffer!");
                 return false;
+            }
+
+            for (unsigned int i = 0; i < solutionBufferCount; i++)
+            {
+                if (!allocatePool(synapseInputSize, (void**)&(_synapses[i].inputLength)))
+                {
+                    logToConsole(L"Failed to allocate memory for synapses input length!");
+                    return false;
+                }
             }
         }
         if (_computeBuffer == nullptr) {
@@ -225,7 +256,8 @@ struct ScoreFunction
         }
 
         for (int i = 0; i < solutionBufferCount; i++) {
-            setMem(&_synapses[i], sizeof(synapseStruct), 0);
+            //setMem(&_synapses[i], sizeof(synapseStruct), 0);
+            setMem(_synapses[i].inputLength, synapseInputSize, 0);
             setMem(&_computeBuffer[i].neurons, sizeof(_computeBuffer[i].neurons), 0);            
             _computeBuffer[i].inputLength = nullptr;
             setMem(_computeBuffer[i].indicePos[0], sizeof(unsigned int) * allParamsCount * maxNeuronsCount, 0); // it's continuous memory region
@@ -439,7 +471,7 @@ struct ScoreFunction
         const int outNrIdx) {
         char v = 0;
         for (int i = 0; i < neurBefore; i++) {
-            int idx = neuronIdx * allParamsCount + i;
+            unsigned long long idx = neuronIdx * allParamsCount + i;
             const char s = sy[idx];
             if (s == 1 || s == -1 && pNr[i])
             {
@@ -489,7 +521,7 @@ struct ScoreFunction
             }
             if (!cb.isGeneratedSynapse[idx])
             {
-                continueGeneratingSynapseFromCkp(cb.sckpInput[idx][0], (unsigned char*)cb.inputLength + idx * allParamsCount, allParamsCount);
+                continueGeneratingSynapseFromCkp(cb.sckpInput[idx][0], (unsigned char*)cb.inputLength + idx * (unsigned long long)allParamsCount, allParamsCount);
                 zeroOutSynapses(cb.inputLength + idx * allParamsCount, idx);
                 cb.isGeneratedSynapse[idx] = true;
             }
