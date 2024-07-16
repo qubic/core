@@ -4077,29 +4077,9 @@ static void tickProcessor(void*)
                                                 {
                                                     tickNumberOfComputors++;
                                                 }
-                                                else
-                                                {
-                                                    addDebugMessage(L"Mismatched computer digest");
-                                                }
-                                            }
-                                            else
-                                            {
-                                                addDebugMessage(L"Mismatched universe digest");
                                             }
                                         }
-                                        else
-                                        {
-                                            addDebugMessage(L"Mismatched spectrum digest");
-                                        }
                                     }
-                                    else
-                                    {
-                                        addDebugMessage(L"Mismatched resource digest");
-                                    }
-                                }
-                                else
-                                {
-                                    addDebugMessage(L"Mismatched prev digests and timestamp");
                                 }
                             }
 

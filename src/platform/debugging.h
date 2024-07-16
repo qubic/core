@@ -15,7 +15,7 @@ static void addDebugMessage(const CHAR16* msg)
 }
 
 #elif defined(NDEBUG)
-static void addDebugMessage(const CHAR16* msg){} // empty impl
+// static void addDebugMessage(const CHAR16* msg){} // empty impl
 // with NDEBUG, make ASSERT disappear
 #define ASSERT(expression) ((void)0)
 
