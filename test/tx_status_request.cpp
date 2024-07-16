@@ -26,7 +26,7 @@ static bool addTick(unsigned int tick, unsigned long long seed, unsigned short m
     system.tick = tick;
 
     // set start index of tick transactions
-    tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions;
+    txStatusData.tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions;
 
     // use pseudo-random sequence for generating test data
     std::mt19937_64 gen64(seed);
@@ -73,9 +73,9 @@ static void checkTick(unsigned int tick, unsigned long long seed, unsigned short
     // check tick number dependent on if it is previous epoch
     if (previousEpoch)
     {
-        ASSERT(confirmedTxPreviousEpochBeginTick != 0);
-        EXPECT_LT(tick, confirmedTxCurrentEpochBeginTick);
-        if (tick < confirmedTxPreviousEpochBeginTick)
+        ASSERT(txStatusData.confirmedTxPreviousEpochBeginTick != 0);
+        EXPECT_LT(tick, txStatusData.confirmedTxCurrentEpochBeginTick);
+        if (tick < txStatusData.confirmedTxPreviousEpochBeginTick)
         {
             // tick not available -> okay
             return;
@@ -83,7 +83,7 @@ static void checkTick(unsigned int tick, unsigned long long seed, unsigned short
     }
     else
     {
-        ASSERT(tick >= confirmedTxCurrentEpochBeginTick && tick < confirmedTxCurrentEpochBeginTick + MAX_NUMBER_OF_TICKS_PER_EPOCH);
+        ASSERT(tick >= txStatusData.confirmedTxCurrentEpochBeginTick && tick < txStatusData.confirmedTxCurrentEpochBeginTick + MAX_NUMBER_OF_TICKS_PER_EPOCH);
     }
 
     // prepare request message

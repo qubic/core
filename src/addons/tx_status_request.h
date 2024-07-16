@@ -166,7 +166,7 @@ static void beginEpochTxStatusRequestAddOn(unsigned int newInitialTick)
 // digest: digest of tx
 static bool saveConfirmedTx(unsigned int txNumberMinusOne, bool moneyFlew, unsigned int tick, const m256i& digest)
 {
-    ASSERT(confirmedTxCurrentEpochBeginTick == system.initialTick);
+    ASSERT(txStatusData.confirmedTxCurrentEpochBeginTick == system.initialTick);
     ASSERT(tick >= system.initialTick && tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH);
 
     // skip if confirmedTx storage is full
@@ -194,7 +194,7 @@ static bool saveConfirmedTx(unsigned int txNumberMinusOne, bool moneyFlew, unsig
 
 static void processRequestConfirmedTx(long long processorNumber, Peer *peer, RequestResponseHeader *header)
 {
-    ASSERT(confirmedTxCurrentEpochBeginTick == system.initialTick);
+    ASSERT(txStatusData.confirmedTxCurrentEpochBeginTick == system.initialTick);
     ASSERT(system.tick >= system.initialTick);
 
     RequestTxStatus *request = header->getPayload<RequestTxStatus>();
