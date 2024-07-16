@@ -4037,6 +4037,10 @@ static void tickProcessor(void*)
                                     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
 
                                     enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);
+                                    // NOTE: here we don't copy these votes to memory, instead we wait other nodes echoing these votes back because:
+                                    // - if own votes don't get echoed back, that indicates this node has internet/topo issue, and need to reissue vote (F9)
+                                    // - all votes need to be processed in a single place of code (for further handling)
+                                    // - all votes are treated equally (own votes and their votes)
                                 }
                             }
 
