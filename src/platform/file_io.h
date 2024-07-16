@@ -26,14 +26,12 @@ static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
         // Open the directory
         if (status = root->Open(root, (void**)&directoryProtocol, directory, EFI_FILE_MODE_READ, 0))
         {
-            logStatusToConsole(L"FileIOgetFileSize:OpenDir EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             return -1;
         }
 
         // Open the file from the directory.
         if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
         {
-            logStatusToConsole(L"FileIOgetFileSize:OpenDir:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             directoryProtocol->Close(directoryProtocol);
             return -1;
         }
@@ -43,7 +41,6 @@ static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
     {
         if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
         {
-            logStatusToConsole(L"FileIOgetFileSize:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             return -1;
         }
     }
