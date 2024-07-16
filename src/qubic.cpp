@@ -2973,22 +2973,7 @@ static void beginEpoch2of2()
     }
     else
     {
-        // temporary fix to keep solution results for ep 111
-        // todo: remove for next epoch
-        if (system.epoch == 111)
-        {
-            unsigned char ep111RandomSeed[] = {
-                0xfc, 0x6f, 0xb9, 0x66, 0x54, 0xd7, 0x6c, 0x66,
-                0x9a, 0x8c, 0xfc, 0x6c, 0x4a, 0xa5, 0x7e, 0x94,
-                0x10, 0x34, 0xeb, 0x9d, 0x27, 0xe4, 0x7b, 0x3d,
-                0x29, 0x03, 0xd4, 0x46, 0x4b, 0x04, 0x45, 0xff
-            };
-            score->initMiningData(ep111RandomSeed);
-        }
-        else
-        {
-            score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
-        }
+        score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
     }
 }
 
