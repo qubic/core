@@ -339,7 +339,7 @@ public:
         dayB += (QTRY_GET_YEAR(B) - QTRY_GET_YEAR(A)) * 365ULL + QTRY_GET_DAY(B);
 
         // handling leap-year: only store last 2 digits of year here, don't care about mod 100 & mod 400 case
-        for (i = QTRY_GET_YEAR(A); i < QTRY_GET_YEAR(B); i++) {
+        for (i = QTRY_GET_YEAR(A); (uint32)(i) < QTRY_GET_YEAR(B); i++) {
             if (mod(i,4) == 0) {
                 dayB++;
             }
