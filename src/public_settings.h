@@ -40,7 +40,7 @@
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 0
+#define START_NETWORK_FROM_SCRATCH 1
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -49,12 +49,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 210
-#define VERSION_C 1
+#define VERSION_B 211
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 117
-#define TICK 14777842
+#define EPOCH 118
+#define TICK 14900000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 

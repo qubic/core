@@ -55,12 +55,30 @@ struct StackBuffer
     // Allocate storage in buffer.
     char* allocate(SizeType size)
     {
+        ASSERT(_allocatedSize <= bufferSize);
+
         // allocate fails of size after allocating overflows buffer size or the used size type
         StackBufferSizeType newSize = _allocatedSize + size + sizeof(SizeType);
         if (newSize > bufferSize || newSize <= _allocatedSize)
         {
 #ifdef TRACK_MAX_STACK_BUFFER_SIZE
             ++_failedAllocAttempts;
+#endif
+#ifndef NDEBUG
+            CHAR16 dbgMsg[200];
+            setText(dbgMsg, L"StackBuffer.allocate() failed! old size ");
+            appendNumber(dbgMsg, _allocatedSize, TRUE);
+            appendText(dbgMsg, L", failed new size ");
+            appendNumber(dbgMsg, newSize, TRUE);
+            appendText(dbgMsg, L", capacity ");
+            appendNumber(dbgMsg, bufferSize, TRUE);
+#ifdef TRACK_MAX_STACK_BUFFER_SIZE
+            appendText(dbgMsg, L", max alloc ");
+            appendNumber(dbgMsg, _maxAllocatedSize, TRUE);
+            appendText(dbgMsg, L", failed alloc ");
+            appendNumber(dbgMsg, _failedAllocAttempts, TRUE);
+#endif
+            addDebugMessage(dbgMsg);
 #endif
             return nullptr;
         }
@@ -75,6 +93,7 @@ struct StackBuffer
         // update size
         _allocatedSize = newSize;
 #ifdef TRACK_MAX_STACK_BUFFER_SIZE
+        ASSERT(_maxAllocatedSize <= bufferSize);
         if (_allocatedSize > _maxAllocatedSize)
             _maxAllocatedSize = _allocatedSize;
 #endif
@@ -83,16 +102,43 @@ struct StackBuffer
     }
 
     // Free storage allocated by last call to allocate().
-    void free()
+    bool free()
     {
+        bool okay = (_allocatedSize <= bufferSize) && (_allocatedSize >= sizeof(SizeType));
         // get size before last alloc
+        ASSERT(_allocatedSize <= bufferSize);
         ASSERT(_allocatedSize >= sizeof(SizeType));
         SizeType sizeBeforeLastAlloc = *reinterpret_cast<SizeType*>(_buffer + _allocatedSize - sizeof(SizeType));
 
         // reduce current size down to size before last alloc
         ASSERT(sizeBeforeLastAlloc < _allocatedSize);
+        okay = okay && (sizeBeforeLastAlloc < _allocatedSize);
+#ifdef TRACK_MAX_STACK_BUFFER_SIZE
+        ASSERT(_maxAllocatedSize <= bufferSize);
         ASSERT(sizeBeforeLastAlloc < _maxAllocatedSize);
+        okay = okay && (_maxAllocatedSize <= bufferSize) && (sizeBeforeLastAlloc < _maxAllocatedSize);
+#endif
+#ifndef NDEBUG
+        CHAR16 dbgMsg[200];
+        if (!okay)
+        {
+            setText(dbgMsg, L"StackBuffer.free() failed! Sizes: before free() ");
+            appendNumber(dbgMsg, _allocatedSize, TRUE);
+            appendText(dbgMsg, L", after free() ");
+            appendNumber(dbgMsg, sizeBeforeLastAlloc, TRUE);
+            appendText(dbgMsg, L", capacity ");
+            appendNumber(dbgMsg, bufferSize, TRUE);
+#ifdef TRACK_MAX_STACK_BUFFER_SIZE
+            appendText(dbgMsg, L", max alloc ");
+            appendNumber(dbgMsg, _maxAllocatedSize, TRUE);
+            appendText(dbgMsg, L", failed alloc ");
+            appendNumber(dbgMsg, _failedAllocAttempts, TRUE);
+#endif
+            addDebugMessage(dbgMsg);
+        }
+#endif
         _allocatedSize = sizeBeforeLastAlloc;
+        return okay;
     }
 
     // Free all storage allocated before.

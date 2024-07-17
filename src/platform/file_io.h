@@ -10,12 +10,107 @@
 // cluster size, try 32768.
 #define READING_CHUNK_SIZE 1048576
 #define WRITING_CHUNK_SIZE 1048576
+#define FILE_CHUNK_SIZE (209715200ULL) // for large file saving
 #define VOLUME_LABEL L"Qubic"
 
 static EFI_FILE_PROTOCOL* root = NULL;
 
+static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
+{
+    EFI_STATUS status;
+    EFI_FILE_PROTOCOL* file;
+    EFI_FILE_PROTOCOL* directoryProtocol;
+    // Check if there is a directory provided
+    if (NULL != directory)
+    {
+        // Open the directory
+        if (status = root->Open(root, (void**)&directoryProtocol, directory, EFI_FILE_MODE_READ, 0))
+        {
+            return -1;
+        }
 
-static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
+        // Open the file from the directory.
+        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
+        {
+            directoryProtocol->Close(directoryProtocol);
+            return -1;
+        }
+        directoryProtocol->Close(directoryProtocol);
+    }
+    else
+    {
+        if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
+        {
+            return -1;
+        }
+    }
+
+    if (EFI_SUCCESS != status)
+    {
+        // file doesnt exist
+        return -1;
+    }
+    EFI_GUID fileSystemInfoId = EFI_FILE_INFO_ID;
+    unsigned long long bufferSize = 1024;
+    unsigned char buffer[1024];
+    status = file->GetInfo(file, &fileSystemInfoId, &bufferSize, buffer);
+    unsigned long long fileSize = 0;
+#ifndef NO_UEFI
+    copyMem(&fileSize, buffer+8, 8);
+#endif
+    return fileSize;
+}
+
+static bool checkDir(CHAR16* dirName)
+{
+#ifdef NO_UEFI
+    logToConsole(L"NO_UEFI implementation of checkDir() is missing! No directory checked!");
+    return false;
+#else
+    EFI_FILE_PROTOCOL* file;
+
+    // Check if the directory exist or not
+    if (EFI_SUCCESS == root->Open(root, (void**)&file, dirName, EFI_FILE_MODE_READ, 0))
+    {
+        // Directory already existed. No need to create
+        file->Close(file);
+        return true;
+    }
+    return false;
+#endif
+}
+
+static bool createDir(CHAR16* dirName)
+{
+#ifdef NO_UEFI
+    logToConsole(L"NO_UEFI implementation of createDir() is missing! No directory created!");
+    return false;
+#else
+    EFI_STATUS status;
+    EFI_FILE_PROTOCOL* file;
+
+    // Check if the directory exist or not
+    if (checkDir(dirName))
+    {
+        // Directory already existed. No need to create
+        return true;
+    }
+
+    // Create a directory
+    if (status = root->Open(root, (void**)&file, dirName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, EFI_FILE_DIRECTORY))
+    {
+        logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+        return false;
+    }
+
+    // Close the directory
+    file->Close(file);
+
+    return true;
+#endif
+}
+
+static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
     logToConsole(L"NO_UEFI implementation of load() is missing! No file loaded!");
@@ -23,13 +118,40 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
 #else
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
-    if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
-    {
-        logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+    EFI_FILE_PROTOCOL* directoryProtocol;
 
-        return -1;
+    // Check if there is a directory provided
+    if (NULL != directory)
+    {
+        // Open the directory
+        if (status = root->Open(root, (void**)&directoryProtocol, directory, EFI_FILE_MODE_READ, 0))
+        {
+            logStatusToConsole(L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            return -1;
+        }
+
+        // Open the file from the directory.
+        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
+         {
+            logStatusToConsole(L"FileIOLoad:OpenDir:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            directoryProtocol->Close(directoryProtocol);
+            return -1;
+        }
+
+        // No need the directory handle. Close it
+        directoryProtocol->Close(directoryProtocol);
     }
     else
+    {
+        if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
+        {
+            logStatusToConsole(L"FileIOLoad:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            return -1;
+        }
+    }
+
+    
+    if (EFI_SUCCESS == status)
     {
         unsigned long long readSize = 0;
         while (readSize < totalSize)
@@ -52,24 +174,58 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
 
         return readSize;
     }
+    return -1;
 #endif
 }
 
-static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer)
+static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
     logToConsole(L"NO_UEFI implementation of save() is missing! No file saved!");
     return 0;
 #else
     EFI_STATUS status;
-    EFI_FILE_PROTOCOL* file;
-    if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
-    {
-        logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+    EFI_FILE_PROTOCOL* file = NULL;
+    EFI_FILE_PROTOCOL* directoryProtocol = NULL;
 
-        return -1;
+    // Check if there is a directory provided
+    if (NULL != directory)
+    {
+        // Create the directory
+        createDir(directory);
+
+        // Open the directory
+        if (status = root->Open(root, (void**)&directoryProtocol, directory, EFI_FILE_MODE_READ, 0))
+        {
+            logStatusToConsole(L"FileIOSave:OpenDir EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            return -1;
+        }
+
+        if (NULL == directoryProtocol)
+        {
+            logStatusToConsole(L"FileIOSave:OpenDir directory protocols is NULL", status, __LINE__);
+            return -1;
+        }
+
+        // Open the file from the directory.
+        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        {
+            logStatusToConsole(L"FileIOSave:OpenDir::OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            directoryProtocol->Close(directoryProtocol);
+            return -1;
+        }
+        directoryProtocol->Close(directoryProtocol);
     }
     else
+    {
+        if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        {
+            logStatusToConsole(L"FileIOSave:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            return -1;
+        }
+    }
+    
+    if (EFI_SUCCESS == status)
     {
         unsigned long long writtenSize = 0;
         while (writtenSize < totalSize)
@@ -92,8 +248,10 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
 
         return writtenSize;
     }
+    return -1;
 #endif
 }
+
 
 static bool initFilesystem()
 {
@@ -204,4 +362,77 @@ static bool initFilesystem()
     }
 
     return true;
+}
+
+// add epoch number as an extension to a filename
+static void addEpochToFileName(unsigned short* filename, int nameSize, short epoch)
+{
+    filename[nameSize - 4] = epoch / 100 + L'0';
+    filename[nameSize - 3] = (epoch % 100) / 10 + L'0';
+    filename[nameSize - 2] = epoch % 10 + L'0';
+}
+
+// note: remember to plus 1 for end of string symbol if you going to use this returned value for addEpochToFileName
+static unsigned int getTextSize(CHAR16* text, int maximumSize)
+{
+    int result = 0;
+    while (result < maximumSize && text[result]) result++;
+    return result;
+}
+
+// Break the large file to many chunks to write if the size is greater or equal FILE_CHUNK_SIZE
+// - skipWriteEqualChunkSize: skip write the chunk file if the size of existed file match with buffer data. Set false if need the write always happens
+static long long saveLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL, bool skipWriteEqualChunkSize = true)
+{
+    const unsigned long long maxWriteSizePerChunk = FILE_CHUNK_SIZE;
+    if (totalSize < maxWriteSizePerChunk) {
+        return save(fileName, totalSize, buffer, directory);
+    }
+    int chunkId = 0;
+    unsigned long long totalWriteSize = 0;
+    while (totalSize) {
+        CHAR16 fileNameWithChunkId[64];
+        setText(fileNameWithChunkId, fileName);
+        appendText(fileNameWithChunkId, L".XXX");
+        addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
+        const unsigned long long writeSize = maxWriteSizePerChunk < totalSize ? maxWriteSizePerChunk : totalSize;
+        long long existFileSize = getFileSize(fileNameWithChunkId, directory);
+        if (!skipWriteEqualChunkSize || (existFileSize != writeSize)) {
+            unsigned long long res = save(fileNameWithChunkId, writeSize, buffer, directory);
+            if (res != writeSize) {
+                return totalWriteSize;
+            }
+        }
+        buffer += writeSize;
+        totalWriteSize += writeSize;
+        totalSize -= writeSize;
+        chunkId++;
+    }
+    return totalWriteSize;
+}
+
+static long long loadLargeFile(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
+{
+    const unsigned long long maxReadSizePerChunk = FILE_CHUNK_SIZE;
+    if (totalSize < maxReadSizePerChunk) {
+        return load(fileName, totalSize, buffer, directory);
+    }
+    int chunkId = 0;
+    unsigned long long totalReadSize = 0;
+    while (totalSize) {
+        CHAR16 fileNameWithChunkId[64];
+        setText(fileNameWithChunkId, fileName);
+        appendText(fileNameWithChunkId, L".XXX");
+        addEpochToFileName(fileNameWithChunkId, getTextSize(fileNameWithChunkId, 64) + 1, chunkId);
+        const unsigned long long readSize = maxReadSizePerChunk < totalSize ? maxReadSizePerChunk : totalSize;
+        unsigned long long res = load(fileNameWithChunkId, readSize, buffer, directory);
+        if (res != readSize) {
+            return totalReadSize;
+        }
+        buffer += readSize;
+        totalReadSize += readSize;
+        totalSize -= readSize;
+        chunkId++;
+    }
+    return totalReadSize;
 }

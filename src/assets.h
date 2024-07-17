@@ -20,6 +20,7 @@
 static volatile char universeLock = 0;
 static Asset* assets = NULL;
 static m256i* assetDigests = NULL;
+const unsigned long long assetDigestsSizeInBytes = (ASSETS_CAPACITY * 2 - 1) * 32ULL;
 static unsigned long long* assetChangeFlags = NULL;
 static char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
@@ -27,7 +28,7 @@ static bool initAssets()
 {
     EFI_STATUS status;
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, ASSETS_CAPACITY * sizeof(Asset), (void**)&assets))
-        || (status = bs->AllocatePool(EfiRuntimeServicesData, (ASSETS_CAPACITY * 2 - 1) * 32ULL, (void**)&assetDigests))
+        || (status = bs->AllocatePool(EfiRuntimeServicesData, assetDigestsSizeInBytes, (void**)&assetDigests))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, ASSETS_CAPACITY / 8, (void**)&assetChangeFlags)))
     {
         logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
@@ -395,14 +396,14 @@ iteration:
     RELEASE(universeLock);
 }
 
-static void saveUniverse()
+static bool saveUniverse(CHAR16* directory = NULL)
 {
     logToConsole(L"Saving universe file...");
 
     const unsigned long long beginningTick = __rdtsc();
 
     ACQUIRE(universeLock);
-    long long savedSize = save(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets);
+    long long savedSize = save(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets, directory);
     RELEASE(universeLock);
 
     if (savedSize == ASSETS_CAPACITY * sizeof(Asset))
@@ -412,12 +413,14 @@ static void saveUniverse()
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
         logToConsole(message);
+        return true;
     }
+    return false;
 }
 
-static bool loadUniverse()
+static bool loadUniverse(CHAR16* directory = NULL)
 {
-    long long loadedSize = load(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets);
+    long long loadedSize = load(UNIVERSE_FILE_NAME, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets, directory);
     if (loadedSize != ASSETS_CAPACITY * sizeof(Asset))
     {
         logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
