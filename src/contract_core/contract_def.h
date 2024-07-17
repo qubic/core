@@ -107,6 +107,16 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE MLM2
 #include "contracts/MyLastMatch.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QEARN_CONTRACT_INDEX 6
+#define CONTRACT_INDEX QEARN_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QEARN
+#define CONTRACT_STATE2_TYPE QEARN2
+#include "contracts/Qearn.h"
+
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
 
 #undef INITIALIZE
@@ -147,6 +157,7 @@ constexpr struct ContractDescription
     {"RANDOM", 88, 10000, sizeof(IPO)},
     {"QUTIL", 99, 10000, sizeof(IPO)},
     {"MLM", 112, 10000, sizeof(IPO)},
+    {"QEARN", 112, 10000, sizeof(IPO)},
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -240,6 +251,12 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
     case MLM_CONTRACT_INDEX:
     {
         REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MLM);
+    }
+    break;
+
+    case QEARN_CONTRACT_INDEX:
+    {
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QEARN);
     }
     break;
     }
