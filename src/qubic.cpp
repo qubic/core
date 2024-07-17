@@ -40,6 +40,7 @@
 #include "logging.h"
 
 #include "tick_storage.h"
+#include "vote_counter.h"
 
 #include "addons/tx_status_request.h"
 
