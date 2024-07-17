@@ -340,7 +340,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
             || systemProcId == END_TICK
         );
         QPI::NoData noInOutData;
-
+        noInOutData.isEmpty = false;
         // reserve resources for this processor (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
@@ -350,7 +350,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
-        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
+        if (!noInOutData.isEmpty) contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
     }
 };
 
@@ -366,6 +366,18 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 
     void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
     {
+#ifndef NDEBUG
+        CHAR16 dbgMsgBuf[400];
+        setText(dbgMsgBuf, L"QpiContextUserProcedureCall in tick ");
+        appendNumber(dbgMsgBuf, system.tick, FALSE);
+        appendText(dbgMsgBuf, L": contract ");
+        appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+        appendText(dbgMsgBuf, L", inputType ");
+        appendNumber(dbgMsgBuf, inputType, FALSE);
+        appendText(dbgMsgBuf, L", inputSize ");
+        appendNumber(dbgMsgBuf, inputSize, FALSE);
+        addDebugMessage(dbgMsgBuf);
+#endif
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(contractUserProcedures[_currentContractIndex][inputType]);
 
@@ -461,6 +473,19 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
     // call function
     void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
     {
+#ifndef NDEBUG
+        CHAR16 dbgMsgBuf[300];
+        setText(dbgMsgBuf, L"QpiContextUserFunctionCall in tick ");
+        appendNumber(dbgMsgBuf, system.tick, FALSE);
+        appendText(dbgMsgBuf, L": contract ");
+        appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+        appendText(dbgMsgBuf, L", inputType ");
+        appendNumber(dbgMsgBuf, inputType, FALSE);
+        appendText(dbgMsgBuf, L", inputSize ");
+        appendNumber(dbgMsgBuf, inputSize, FALSE);
+        addDebugMessage(dbgMsgBuf);
+#endif
+
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(contractUserFunctions[_currentContractIndex][inputType]);
 
