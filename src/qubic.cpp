@@ -3103,8 +3103,8 @@ static void endEpoch()
 
     long long arbitratorRevenue = ISSUANCE_RATE;
 
-    unsigned long long transactionCounters[NUMBER_OF_COMPUTORS];
-    bs->SetMem(transactionCounters, sizeof(transactionCounters), 0);
+    unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
+    bs->SetMem(revenueScore, sizeof(revenueScore), 0);
     for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
     {
         ts.tickData.acquireLock();
@@ -3119,31 +3119,31 @@ static void endEpoch()
                     numberOfTransactions++;
                 }
             }
-            transactionCounters[tick % NUMBER_OF_COMPUTORS] += revenuePoints[numberOfTransactions];
+            revenueScore[tick % NUMBER_OF_COMPUTORS] += revenuePoints[numberOfTransactions];
         }
         ts.tickData.releaseLock();
     }
-    unsigned long long sortedTransactionCounters[QUORUM + 1];
-    bs->SetMem(sortedTransactionCounters, sizeof(sortedTransactionCounters), 0);
+    unsigned long long sortedRevenueScore[QUORUM + 1];
+    bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
     for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
-        sortedTransactionCounters[QUORUM] = transactionCounters[computorIndex];
+        sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
         unsigned int i = QUORUM;
         while (i
-            && sortedTransactionCounters[i - 1] < sortedTransactionCounters[i])
+            && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
         {
-            const unsigned long long tmp = sortedTransactionCounters[i - 1];
-            sortedTransactionCounters[i - 1] = sortedTransactionCounters[i];
-            sortedTransactionCounters[i--] = tmp;
+            const unsigned long long tmp = sortedRevenueScore[i - 1];
+            sortedRevenueScore[i - 1] = sortedRevenueScore[i];
+            sortedRevenueScore[i--] = tmp;
         }
     }
-    if (!sortedTransactionCounters[QUORUM - 1])
+    if (!sortedRevenueScore[QUORUM - 1])
     {
-        sortedTransactionCounters[QUORUM - 1] = 1;
+        sortedRevenueScore[QUORUM - 1] = 1;
     }
     for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
-        const long long revenue = (transactionCounters[computorIndex] >= sortedTransactionCounters[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)transactionCounters[computorIndex])) / sortedTransactionCounters[QUORUM - 1]);
+        const long long revenue = (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
         increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
         if (revenue)
         {
