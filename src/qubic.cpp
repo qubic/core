@@ -2510,10 +2510,14 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
             if (isZero(transaction->destinationPublicKey))
             {
-                if (!transaction->amount
-                    && transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
+                if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
                 {
-                    voteCounter.addVotes(transaction->inputPtr(), transaction->tick % NUMBER_OF_COMPUTORS);
+                    if (!transaction->amount
+                        && transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                    {
+                        voteCounter.addVotes(transaction->inputPtr(), computorIndex);
+                    }
                 }
             }
             else
