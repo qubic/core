@@ -82,14 +82,6 @@ public:
 		}
 	}
 
-	void decompressVotePacket(unsigned char votePacket[VOTE_COUNTER_DATA_SIZE_IN_BYTES], unsigned int votePacketU32[NUMBER_OF_COMPUTORS])
-	{
-		for (int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-		{
-			votePacketU32[i] = extract10Bit(votePacket, i);
-		}
-	}
-
 	bool validateNewVotesPacket(const unsigned char* votePacket, unsigned int computorIdx)
 	{
 		unsigned long long sum = 0;
