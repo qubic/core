@@ -57,10 +57,10 @@
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define PEER_REFRESHING_PERIOD 120000ULL
 #define PORT 21841
-#define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
 #define SPECTRUM_CAPACITY (1ULL << SPECTRUM_DEPTH) // Must be 2^N
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
+#define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 3 // Must be at least 3+: 1+ for tx propagration + 1 for tickData propagration + 1 for vote propagration
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
 
@@ -110,6 +110,7 @@ static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computor
 static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 
 static TickStorage ts;
+static VoteCounter voteCounter;
 static Tick etalonTick;
 static TickData nextTickData;
 
@@ -222,6 +223,13 @@ static bool loadSpectrum(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL);
 
 BroadcastFutureTickData broadcastedFutureTickData;
+
+static struct
+{
+	Transaction transaction;
+	unsigned char data[VOTE_COUNTER_DATA_SIZE_IN_BYTES];
+	unsigned char signature[SIGNATURE_SIZE];
+} voteCounterPayload;
 
 static struct
 {
@@ -2502,7 +2510,11 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
             if (isZero(transaction->destinationPublicKey))
             {
-                // Nothing to do
+                if (!transaction->amount
+                    && transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                {
+                    voteCounter.addVotes(transaction->inputPtr(), transaction->tick % NUMBER_OF_COMPUTORS);
+                }
             }
             else
             {
@@ -2824,6 +2836,27 @@ static void processTick(unsigned long long processorNumber)
 
             break;
         }
+        if ((system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
+        {
+            if (system.tick > system.latestLedTick)
+            {
+                if (mainAuxStatus & 1)
+                {
+                    auto& payload = voteCounterPayload; // note: not thread-safe
+                    payload.transaction.sourcePublicKey = computorPublicKeys[i];
+                    payload.transaction.destinationPublicKey = _mm256_setzero_si256();
+                    payload.transaction.amount = 0;
+                    payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
+                    payload.transaction.inputType = 0;
+                    payload.transaction.inputSize = sizeof(payload.data);
+                    voteCounter.compressNewVotesPacket(system.tick - 675, system.tick+1, ownComputorIndices[i], payload.data);
+                    unsigned char digest[32];
+                    KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.data), digest, sizeof(digest));
+                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, payload.signature);
+                    enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
+                }
+            }
+        }
     }
 
     if (mainAuxStatus & 1)
@@ -2906,6 +2939,7 @@ static void beginEpoch1of2()
     ts.checkStateConsistencyWithAssert();
 #endif
     ts.beginEpoch(system.initialTick);
+    voteCounter.init();
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
 #endif
@@ -4089,6 +4123,9 @@ static void tickProcessor(void*)
                                                 if (tick->saltedComputerDigest == saltedDigest)
                                                 {
                                                     tickNumberOfComputors++;
+                                                    // to avoid submitting invalid votes (eg: all zeroes with valid signature)
+                                                    // only count votes that matched etalonTick
+                                                    voteCounter.registerNewVote(tick->tick, tick->computorIndex);
                                                 }
                                             }
                                         }
