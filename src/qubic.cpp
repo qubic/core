@@ -3123,6 +3123,19 @@ static void endEpoch()
         }
         ts.tickData.releaseLock();
     }
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        unsigned long long vote_count = voteCounter.getVoteCount(i);
+        unsigned long long final_score = vote_count * revenueScore[i];
+        if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+        {
+            revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+        }
+        else
+        {
+            revenueScore[i] = final_score;
+        }
+    }
     unsigned long long sortedRevenueScore[QUORUM + 1];
     bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
     for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
