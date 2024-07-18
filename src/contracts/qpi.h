@@ -628,7 +628,7 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values >> (index & 1)) & 1;
 		}
@@ -645,7 +645,7 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values >> (index & 3)) & 1;
 		}
@@ -662,7 +662,7 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values >> (index & 7)) & 1;
 		}
@@ -679,7 +679,7 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values >> (index & 15)) & 1;
 		}
@@ -696,7 +696,7 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values >> (index & 31)) & 1;
 		}
@@ -713,7 +713,7 @@ namespace QPI
 		uint64 _values;
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values >> (index & 63)) & 1;
 		}
@@ -730,7 +730,7 @@ namespace QPI
 		uint64 _values[2];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -747,7 +747,7 @@ namespace QPI
 		uint64 _values[4];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -764,7 +764,7 @@ namespace QPI
 		uint64 _values[8];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -781,7 +781,7 @@ namespace QPI
 		uint64 _values[16];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -798,7 +798,7 @@ namespace QPI
 		uint64 _values[32];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -815,7 +815,7 @@ namespace QPI
 		uint64 _values[64];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -832,7 +832,7 @@ namespace QPI
 		uint64 _values[128];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -849,7 +849,7 @@ namespace QPI
 		uint64 _values[256];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -866,7 +866,7 @@ namespace QPI
 		uint64 _values[512];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -883,7 +883,7 @@ namespace QPI
 		uint64 _values[1024];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -900,7 +900,7 @@ namespace QPI
 		uint64 _values[2048];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -917,7 +917,7 @@ namespace QPI
 		uint64 _values[4096];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -934,7 +934,7 @@ namespace QPI
 		uint64 _values[8192];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -951,7 +951,7 @@ namespace QPI
 		uint64 _values[16384];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -968,7 +968,7 @@ namespace QPI
 		uint64 _values[32768];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -985,7 +985,7 @@ namespace QPI
 		uint64 _values[65536];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -1002,7 +1002,7 @@ namespace QPI
 		uint64 _values[131072];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -1019,7 +1019,7 @@ namespace QPI
 		uint64 _values[262144];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -1036,7 +1036,7 @@ namespace QPI
 		uint64 _values[524288];
 
 	public:
-		inline bit get(uint64 index)
+		inline bit get(uint64 index) const
 		{
 			return (_values[(index >> 6) & (sizeof(_values) / sizeof(_values[0]) - 1)] >> (index & 63)) & 1;
 		}
@@ -1053,7 +1053,7 @@ namespace QPI
 		sint8 _values[2];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1070,7 +1070,7 @@ namespace QPI
 		sint8 _values[4];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1087,7 +1087,7 @@ namespace QPI
 		sint8 _values[8];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1104,7 +1104,7 @@ namespace QPI
 		sint8 _values[16];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1121,7 +1121,7 @@ namespace QPI
 		sint8 _values[32];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1143,7 +1143,7 @@ namespace QPI
 		sint8 _values[64];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1160,7 +1160,7 @@ namespace QPI
 		sint8 _values[128];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1177,7 +1177,7 @@ namespace QPI
 		sint8 _values[256];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1194,7 +1194,7 @@ namespace QPI
 		sint8 _values[512];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1211,7 +1211,7 @@ namespace QPI
 		sint8 _values[1024];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1228,7 +1228,7 @@ namespace QPI
 		sint8 _values[2048];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1245,7 +1245,7 @@ namespace QPI
 		sint8 _values[4096];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1262,7 +1262,7 @@ namespace QPI
 		sint8 _values[8192];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1279,7 +1279,7 @@ namespace QPI
 		sint8 _values[16384];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1296,7 +1296,7 @@ namespace QPI
 		sint8 _values[32768];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1313,7 +1313,7 @@ namespace QPI
 		sint8 _values[65536];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1330,7 +1330,7 @@ namespace QPI
 		sint8 _values[131072];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1347,7 +1347,7 @@ namespace QPI
 		sint8 _values[262144];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1364,7 +1364,7 @@ namespace QPI
 		sint8 _values[524288];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1381,7 +1381,7 @@ namespace QPI
 		sint8 _values[1048576];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1398,7 +1398,7 @@ namespace QPI
 		sint8 _values[2097152];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1415,7 +1415,7 @@ namespace QPI
 		sint8 _values[4194304];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1432,7 +1432,7 @@ namespace QPI
 		sint8 _values[8388608];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1449,7 +1449,7 @@ namespace QPI
 		sint8 _values[16777216];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1466,7 +1466,7 @@ namespace QPI
 		sint8 _values[33554432];
 
 	public:
-		inline sint8 get(uint64 index)
+		inline sint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1483,7 +1483,7 @@ namespace QPI
 		uint8 _values[2];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1500,7 +1500,7 @@ namespace QPI
 		uint8 _values[4];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1517,7 +1517,7 @@ namespace QPI
 		uint8 _values[8];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1534,7 +1534,7 @@ namespace QPI
 		uint8 _values[16];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1551,7 +1551,7 @@ namespace QPI
 		uint8 _values[32];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1573,7 +1573,7 @@ namespace QPI
 		uint8 _values[64];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1590,7 +1590,7 @@ namespace QPI
 		uint8 _values[128];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1607,7 +1607,7 @@ namespace QPI
 		uint8 _values[256];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1624,7 +1624,7 @@ namespace QPI
 		uint8 _values[512];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1641,7 +1641,7 @@ namespace QPI
 		uint8 _values[1024];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1658,7 +1658,7 @@ namespace QPI
 		uint8 _values[2048];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1675,7 +1675,7 @@ namespace QPI
 		uint8 _values[4096];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1692,7 +1692,7 @@ namespace QPI
 		uint8 _values[8192];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1709,7 +1709,7 @@ namespace QPI
 		uint8 _values[16384];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1726,7 +1726,7 @@ namespace QPI
 		uint8 _values[32768];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1743,7 +1743,7 @@ namespace QPI
 		uint8 _values[65536];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1760,7 +1760,7 @@ namespace QPI
 		uint8 _values[131072];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1777,7 +1777,7 @@ namespace QPI
 		uint8 _values[262144];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1794,7 +1794,7 @@ namespace QPI
 		uint8 _values[524288];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1811,7 +1811,7 @@ namespace QPI
 		uint8 _values[1048576];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1828,7 +1828,7 @@ namespace QPI
 		uint8 _values[2097152];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1845,7 +1845,7 @@ namespace QPI
 		uint8 _values[4194304];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1862,7 +1862,7 @@ namespace QPI
 		uint8 _values[8388608];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1879,7 +1879,7 @@ namespace QPI
 		uint8 _values[16777216];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1896,7 +1896,7 @@ namespace QPI
 		uint8 _values[33554432];
 
 	public:
-		inline uint8 get(uint64 index)
+		inline uint8 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1913,7 +1913,7 @@ namespace QPI
 		sint16 _values[2];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1930,7 +1930,7 @@ namespace QPI
 		sint16 _values[4];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1947,7 +1947,7 @@ namespace QPI
 		sint16 _values[8];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1964,7 +1964,7 @@ namespace QPI
 		sint16 _values[16];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -1986,7 +1986,7 @@ namespace QPI
 		sint16 _values[32];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2003,7 +2003,7 @@ namespace QPI
 		sint16 _values[64];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2020,7 +2020,7 @@ namespace QPI
 		sint16 _values[128];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2037,7 +2037,7 @@ namespace QPI
 		sint16 _values[256];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2054,7 +2054,7 @@ namespace QPI
 		sint16 _values[512];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2071,7 +2071,7 @@ namespace QPI
 		sint16 _values[1024];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2088,7 +2088,7 @@ namespace QPI
 		sint16 _values[2048];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2105,7 +2105,7 @@ namespace QPI
 		sint16 _values[4096];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2122,7 +2122,7 @@ namespace QPI
 		sint16 _values[8192];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2139,7 +2139,7 @@ namespace QPI
 		sint16 _values[16384];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2156,7 +2156,7 @@ namespace QPI
 		sint16 _values[32768];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2173,7 +2173,7 @@ namespace QPI
 		sint16 _values[65536];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2190,7 +2190,7 @@ namespace QPI
 		sint16 _values[131072];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2207,7 +2207,7 @@ namespace QPI
 		sint16 _values[262144];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2224,7 +2224,7 @@ namespace QPI
 		sint16 _values[524288];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2241,7 +2241,7 @@ namespace QPI
 		sint16 _values[1048576];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2258,7 +2258,7 @@ namespace QPI
 		sint16 _values[2097152];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2275,7 +2275,7 @@ namespace QPI
 		sint16 _values[4194304];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2292,7 +2292,7 @@ namespace QPI
 		sint16 _values[8388608];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2309,7 +2309,7 @@ namespace QPI
 		sint16 _values[16777216];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2326,7 +2326,7 @@ namespace QPI
 		sint16 _values[33554432];
 
 	public:
-		inline sint16 get(uint64 index)
+		inline sint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2343,7 +2343,7 @@ namespace QPI
 		uint16 _values[2];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2360,7 +2360,7 @@ namespace QPI
 		uint16 _values[4];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2377,7 +2377,7 @@ namespace QPI
 		uint16 _values[8];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2394,7 +2394,7 @@ namespace QPI
 		uint16 _values[16];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2416,7 +2416,7 @@ namespace QPI
 		uint16 _values[32];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2433,7 +2433,7 @@ namespace QPI
 		uint16 _values[64];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2450,7 +2450,7 @@ namespace QPI
 		uint16 _values[128];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2467,7 +2467,7 @@ namespace QPI
 		uint16 _values[256];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2484,7 +2484,7 @@ namespace QPI
 		uint16 _values[512];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2501,7 +2501,7 @@ namespace QPI
 		uint16 _values[1024];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2518,7 +2518,7 @@ namespace QPI
 		uint16 _values[2048];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2535,7 +2535,7 @@ namespace QPI
 		uint16 _values[4096];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2552,7 +2552,7 @@ namespace QPI
 		uint16 _values[8192];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2569,7 +2569,7 @@ namespace QPI
 		uint16 _values[16384];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2586,7 +2586,7 @@ namespace QPI
 		uint16 _values[32768];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2603,7 +2603,7 @@ namespace QPI
 		uint16 _values[65536];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2620,7 +2620,7 @@ namespace QPI
 		uint16 _values[131072];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2637,7 +2637,7 @@ namespace QPI
 		uint16 _values[262144];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2654,7 +2654,7 @@ namespace QPI
 		uint16 _values[524288];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2671,7 +2671,7 @@ namespace QPI
 		uint16 _values[1048576];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2688,7 +2688,7 @@ namespace QPI
 		uint16 _values[2097152];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2705,7 +2705,7 @@ namespace QPI
 		uint16 _values[4194304];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2722,7 +2722,7 @@ namespace QPI
 		uint16 _values[8388608];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2739,7 +2739,7 @@ namespace QPI
 		uint16 _values[16777216];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2756,7 +2756,7 @@ namespace QPI
 		uint16 _values[33554432];
 
 	public:
-		inline uint16 get(uint64 index)
+		inline uint16 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2773,7 +2773,7 @@ namespace QPI
 		sint32 _values[2];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2790,7 +2790,7 @@ namespace QPI
 		sint32 _values[4];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2807,7 +2807,7 @@ namespace QPI
 		sint32 _values[8];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2829,7 +2829,7 @@ namespace QPI
 		sint32 _values[16];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2846,7 +2846,7 @@ namespace QPI
 		sint32 _values[32];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2863,7 +2863,7 @@ namespace QPI
 		sint32 _values[64];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2880,7 +2880,7 @@ namespace QPI
 		sint32 _values[128];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2897,7 +2897,7 @@ namespace QPI
 		sint32 _values[256];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2914,7 +2914,7 @@ namespace QPI
 		sint32 _values[512];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2931,7 +2931,7 @@ namespace QPI
 		sint32 _values[1024];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2948,7 +2948,7 @@ namespace QPI
 		sint32 _values[2048];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2965,7 +2965,7 @@ namespace QPI
 		sint32 _values[4096];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2982,7 +2982,7 @@ namespace QPI
 		sint32 _values[8192];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -2999,7 +2999,7 @@ namespace QPI
 		sint32 _values[16384];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3016,7 +3016,7 @@ namespace QPI
 		sint32 _values[32768];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3033,7 +3033,7 @@ namespace QPI
 		sint32 _values[65536];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3050,7 +3050,7 @@ namespace QPI
 		sint32 _values[131072];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3067,7 +3067,7 @@ namespace QPI
 		sint32 _values[262144];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3084,7 +3084,7 @@ namespace QPI
 		sint32 _values[524288];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3101,7 +3101,7 @@ namespace QPI
 		sint32 _values[1048576];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3118,7 +3118,7 @@ namespace QPI
 		sint32 _values[2097152];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3135,7 +3135,7 @@ namespace QPI
 		sint32 _values[4194304];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3152,7 +3152,7 @@ namespace QPI
 		sint32 _values[8388608];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3169,7 +3169,7 @@ namespace QPI
 		sint32 _values[16777216];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3186,7 +3186,7 @@ namespace QPI
 		sint32 _values[33554432];
 
 	public:
-		inline sint32 get(uint64 index)
+		inline sint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3203,7 +3203,7 @@ namespace QPI
 		uint32 _values[2];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3220,7 +3220,7 @@ namespace QPI
 		uint32 _values[4];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3237,7 +3237,7 @@ namespace QPI
 		uint32 _values[8];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3259,7 +3259,7 @@ namespace QPI
 		uint32 _values[16];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3276,7 +3276,7 @@ namespace QPI
 		uint32 _values[32];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3293,7 +3293,7 @@ namespace QPI
 		uint32 _values[64];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3310,7 +3310,7 @@ namespace QPI
 		uint32 _values[128];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3327,7 +3327,7 @@ namespace QPI
 		uint32 _values[256];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3344,7 +3344,7 @@ namespace QPI
 		uint32 _values[512];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3361,7 +3361,7 @@ namespace QPI
 		uint32 _values[1024];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3378,7 +3378,7 @@ namespace QPI
 		uint32 _values[2048];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3395,7 +3395,7 @@ namespace QPI
 		uint32 _values[4096];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3412,7 +3412,7 @@ namespace QPI
 		uint32 _values[8192];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3429,7 +3429,7 @@ namespace QPI
 		uint32 _values[16384];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3446,7 +3446,7 @@ namespace QPI
 		uint32 _values[32768];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3463,7 +3463,7 @@ namespace QPI
 		uint32 _values[65536];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3480,7 +3480,7 @@ namespace QPI
 		uint32 _values[131072];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3497,7 +3497,7 @@ namespace QPI
 		uint32 _values[262144];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3514,7 +3514,7 @@ namespace QPI
 		uint32 _values[524288];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3531,7 +3531,7 @@ namespace QPI
 		uint32 _values[1048576];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3548,7 +3548,7 @@ namespace QPI
 		uint32 _values[2097152];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3565,7 +3565,7 @@ namespace QPI
 		uint32 _values[4194304];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3582,7 +3582,7 @@ namespace QPI
 		uint32 _values[8388608];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3599,7 +3599,7 @@ namespace QPI
 		uint32 _values[16777216];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3616,7 +3616,7 @@ namespace QPI
 		uint32 _values[33554432];
 
 	public:
-		inline uint32 get(uint64 index)
+		inline uint32 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3633,7 +3633,7 @@ namespace QPI
 		sint64 _values[2];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3650,7 +3650,7 @@ namespace QPI
 		sint64 _values[4];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3672,7 +3672,7 @@ namespace QPI
 		sint64 _values[8];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3689,7 +3689,7 @@ namespace QPI
 		sint64 _values[16];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3706,7 +3706,7 @@ namespace QPI
 		sint64 _values[32];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3723,7 +3723,7 @@ namespace QPI
 		sint64 _values[64];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3740,7 +3740,7 @@ namespace QPI
 		sint64 _values[128];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3757,7 +3757,7 @@ namespace QPI
 		sint64 _values[256];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3774,7 +3774,7 @@ namespace QPI
 		sint64 _values[512];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3791,7 +3791,7 @@ namespace QPI
 		sint64 _values[1024];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3808,7 +3808,7 @@ namespace QPI
 		sint64 _values[2048];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3825,7 +3825,7 @@ namespace QPI
 		sint64 _values[4096];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3842,7 +3842,7 @@ namespace QPI
 		sint64 _values[8192];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3859,7 +3859,7 @@ namespace QPI
 		sint64 _values[16384];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3876,7 +3876,7 @@ namespace QPI
 		sint64 _values[32768];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3893,7 +3893,7 @@ namespace QPI
 		sint64 _values[65536];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3910,7 +3910,7 @@ namespace QPI
 		sint64 _values[131072];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3927,7 +3927,7 @@ namespace QPI
 		sint64 _values[262144];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3944,7 +3944,7 @@ namespace QPI
 		sint64 _values[524288];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3961,7 +3961,7 @@ namespace QPI
 		sint64 _values[1048576];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3978,7 +3978,7 @@ namespace QPI
 		sint64 _values[2097152];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -3995,7 +3995,7 @@ namespace QPI
 		sint64 _values[4194304];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4012,7 +4012,7 @@ namespace QPI
 		sint64 _values[8388608];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4029,7 +4029,7 @@ namespace QPI
 		sint64 _values[16777216];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4046,7 +4046,7 @@ namespace QPI
 		sint64 _values[33554432];
 
 	public:
-		inline sint64 get(uint64 index)
+		inline sint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4063,7 +4063,7 @@ namespace QPI
 		uint64 _values[2];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4080,7 +4080,7 @@ namespace QPI
 		uint64 _values[4];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4102,7 +4102,7 @@ namespace QPI
 		uint64 _values[8];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4119,7 +4119,7 @@ namespace QPI
 		uint64 _values[16];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4136,7 +4136,7 @@ namespace QPI
 		uint64 _values[32];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4153,7 +4153,7 @@ namespace QPI
 		uint64 _values[64];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4170,7 +4170,7 @@ namespace QPI
 		uint64 _values[128];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4187,7 +4187,7 @@ namespace QPI
 		uint64 _values[256];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4204,7 +4204,7 @@ namespace QPI
 		uint64 _values[512];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4221,7 +4221,7 @@ namespace QPI
 		uint64 _values[1024];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4238,7 +4238,7 @@ namespace QPI
 		uint64 _values[2048];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4255,7 +4255,7 @@ namespace QPI
 		uint64 _values[4096];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4272,7 +4272,7 @@ namespace QPI
 		uint64 _values[8192];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4289,7 +4289,7 @@ namespace QPI
 		uint64 _values[16384];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4306,7 +4306,7 @@ namespace QPI
 		uint64 _values[32768];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4323,7 +4323,7 @@ namespace QPI
 		uint64 _values[65536];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4340,7 +4340,7 @@ namespace QPI
 		uint64 _values[131072];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4357,7 +4357,7 @@ namespace QPI
 		uint64 _values[262144];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4374,7 +4374,7 @@ namespace QPI
 		uint64 _values[524288];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4391,7 +4391,7 @@ namespace QPI
 		uint64 _values[1048576];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4408,7 +4408,7 @@ namespace QPI
 		uint64 _values[2097152];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4425,7 +4425,7 @@ namespace QPI
 		uint64 _values[4194304];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4442,7 +4442,7 @@ namespace QPI
 		uint64 _values[8388608];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4459,7 +4459,7 @@ namespace QPI
 		uint64 _values[16777216];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4476,7 +4476,7 @@ namespace QPI
 		uint64 _values[33554432];
 
 	public:
-		inline uint64 get(uint64 index)
+		inline uint64 get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4493,7 +4493,7 @@ namespace QPI
 		id _value;
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _value;
 		}
@@ -4550,7 +4550,7 @@ namespace QPI
 		id _values[2];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4567,7 +4567,7 @@ namespace QPI
 		id _values[4];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4584,7 +4584,7 @@ namespace QPI
 		id _values[8];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4601,7 +4601,7 @@ namespace QPI
 		id _values[16];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4618,7 +4618,7 @@ namespace QPI
 		id _values[32];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4635,7 +4635,7 @@ namespace QPI
 		id _values[64];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4652,7 +4652,7 @@ namespace QPI
 		id _values[128];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4669,7 +4669,7 @@ namespace QPI
 		id _values[256];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4686,7 +4686,7 @@ namespace QPI
 		id _values[512];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4703,7 +4703,7 @@ namespace QPI
 		id _values[1024];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4720,7 +4720,7 @@ namespace QPI
 		id _values[2048];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4737,7 +4737,7 @@ namespace QPI
 		id _values[4096];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4754,7 +4754,7 @@ namespace QPI
 		id _values[8192];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4771,7 +4771,7 @@ namespace QPI
 		id _values[16384];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4788,7 +4788,7 @@ namespace QPI
 		id _values[32768];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4805,7 +4805,7 @@ namespace QPI
 		id _values[65536];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4822,7 +4822,7 @@ namespace QPI
 		id _values[131072];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4839,7 +4839,7 @@ namespace QPI
 		id _values[262144];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4856,7 +4856,7 @@ namespace QPI
 		id _values[524288];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4873,7 +4873,7 @@ namespace QPI
 		id _values[1048576];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4890,7 +4890,7 @@ namespace QPI
 		id _values[2097152];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4907,7 +4907,7 @@ namespace QPI
 		id _values[4194304];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4924,7 +4924,7 @@ namespace QPI
 		id _values[8388608];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4941,7 +4941,7 @@ namespace QPI
 		id _values[16777216];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4958,7 +4958,7 @@ namespace QPI
 		id _values[33554432];
 
 	public:
-		inline id get(uint64 index)
+		inline id get(uint64 index) const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
@@ -4980,7 +4980,7 @@ namespace QPI
 		T _values[L];
 
 	public:
-		inline T get(uint64 index) const
+		inline T get(uint64 index) const const
 		{
 			return _values[index & (sizeof(_values) / sizeof(_values[0]) - 1)];
 		}
