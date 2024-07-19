@@ -1116,7 +1116,6 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
 static void processRequestContractFunction(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
 {
     // TODO: Invoked function may enter endless loop, so a timeout (and restart) is required for request processing threads
-    // TODO: Enable parallel execution of contract functions
 
     RequestContractFunction* request = header->getPayload<RequestContractFunction>();
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
@@ -1529,11 +1528,19 @@ static long long & contractFeeReserve(unsigned int contractIndex)
     return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
 }
 
+// Prologue of contract functions / procedures
 static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
     // TODO
+    // called by all non-empty system procedures, user procedures, and user functions
+    // purpose:
+    // - make sure the limit of nested calls is not violated
+    // - measure execution time
+    // - construction of execution graph
+    // - debugging
 }
 
+// Epilogue of contract functions / procedures
 static void __endFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
     // TODO
@@ -5933,7 +5940,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         && isNewTickPlus1)
                     {
                         // Request tick data of next tick when it is not stored yet or should be updated,
-                        // for example because next tick data digest of the quorum from the one of this node.
+                        // for example because next tick data digest of the quorum differs from the one of this node.
                         // targetNextTickDataDigestIsKnown == true signals that we need to fetch TickData
                         // targetNextTickDataDigestIsKnown == false means there is no consensus on next tick data yet
                         requestedTickData.header.randomizeDejavu();
