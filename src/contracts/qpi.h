@@ -285,31 +285,6 @@ namespace QPI
 #define id_4194304x id_4194304
 #define id_8388608x id_8388608
 #define id_16777216x id_16777216
-#define index_2x index_<2>
-#define index_4x index_<4>
-#define index_8x index_<8>
-#define index_16x index_<16>
-#define index_32x index_<32>
-#define index_64x index_<64>
-#define index_128x index_<128>
-#define index_256x index_<256>
-#define index_512x index_<512>
-#define index_1024x index_<1024>
-#define index_2048x index_<2048>
-#define index_4096x index_<4096>
-#define index_8192x index_<8192>
-#define index_16384x index_<16384>
-#define index_32768x index_<32768>
-#define index_65536x index_<65536>
-#define index_131072x index_<131072>
-#define index_262144x index_<262144>
-#define index_524288x index_<524288>
-#define index_1048576x index_<1048576>
-#define index_2097152x index_<2097152>
-#define index_4194304x index_<4194304>
-#define index_8388608x index_<8388608>
-#define index_16777216x index_<16777216>
-#define index_33554432x index_<33554432>
 
 #define bit_2x2 bit_4
 #define bit_4x2 bit_8
@@ -541,30 +516,6 @@ namespace QPI
 #define id_2097152x2 id_4194304
 #define id_4194304x2 id_8388608
 #define id_8388608x2 id_16777216
-#define index_2x2 index_<4>
-#define index_4x2 index_<8>
-#define index_8x2 index_<16>
-#define index_16x2 index_<32>
-#define index_32x2 index_<64>
-#define index_64x2 index_<128>
-#define index_128x2 index_<256>
-#define index_256x2 index_<512>
-#define index_512x2 index_<1024>
-#define index_1024x2 index_<2048>
-#define index_2048x2 index_<4096>
-#define index_4096x2 index_<8192>
-#define index_8192x2 index_<16384>
-#define index_16384x2 index_<32768>
-#define index_32768x2 index_<65536>
-#define index_65536x2 index_<131072>
-#define index_131072x2 index_<262144>
-#define index_262144x2 index_<524288>
-#define index_524288x2 index_<1048576>
-#define index_1048576x2 index_<2097152>
-#define index_2097152x2 index_<4194304>
-#define index_4194304x2 index_<8388608>
-#define index_8388608x2 index_<16777216>
-#define index_16777216x2 index_<33554432>
 
 #define NULL_ID id(0, 0, 0, 0)
 	constexpr sint64 NULL_INDEX = -1;
