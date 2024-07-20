@@ -3130,14 +3130,21 @@ static void endEpoch()
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
         unsigned long long vote_count = voteCounter.getVoteCount(i);
-        unsigned long long final_score = vote_count * revenueScore[i];
-        if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+        if (vote_count != 0)
         {
-            revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+            unsigned long long final_score = vote_count * revenueScore[i];
+            if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+            {
+                revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+            }
+            else
+            {
+                revenueScore[i] = final_score;
+            }            
         }
         else
         {
-            revenueScore[i] = final_score;
+            revenueScore[i] = 0;
         }
     }
     unsigned long long sortedRevenueScore[QUORUM + 1];
