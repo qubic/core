@@ -101,7 +101,7 @@ unsigned long long GetFreeRAMSize() {
 
     unsigned long long freeRAM = 0;
 
-    unsigned int count = MemoryMapSize / DescriptorSize;
+    unsigned long long count = MemoryMapSize / DescriptorSize;
     for (unsigned int i = 0; i < count; ++i)
     {
         EFI_MEMORY_DESCRIPTOR* desc = (EFI_MEMORY_DESCRIPTOR*)((char*)MemoryMap + (i * DescriptorSize));

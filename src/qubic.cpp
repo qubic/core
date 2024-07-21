@@ -4556,7 +4556,6 @@ static bool initialize()
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * 32ULL, (void**)&entityPendingTransactionDigests)))
         {
-            logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
             logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, status == EFI_BUFFER_TOO_SMALL ? SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE : SPECTRUM_CAPACITY * 32ULL);
 
             return false;
