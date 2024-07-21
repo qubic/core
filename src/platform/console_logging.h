@@ -162,6 +162,21 @@ static void logStatusToConsole(const CHAR16* message, const EFI_STATUS status, c
     logToConsole(::message);
 }
 
+static void logStatusToConsoleMem(const CHAR16* message, const EFI_STATUS status, const unsigned int lineNumber, const unsigned long long requestedSize)
+{
+    setText(::message, message);
+    appendText(::message, L" (");
+    appendErrorStatus(::message, status);
+    appendText(::message, L") near line ");
+    appendNumber(::message, lineNumber, FALSE);
+    appendText(::message, L"! Requested size: ");
+    appendNumber(::message, requestedSize, FALSE);
+    appendText(::message, L" bytes. Free RAM: ");
+    appendNumber(::message, GetFreeRAMSize(), FALSE);
+    appendText(::message, L" bytes.");
+    logToConsole(::message);
+}
+
 // Count characters before terminating NULL
 static unsigned int stringLength(const CHAR16* str)
 {

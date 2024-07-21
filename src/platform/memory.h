@@ -68,3 +68,50 @@ static inline bool isZero(const void* ptr, unsigned long long size)
     }
     return true;
 }
+
+
+// Function to get the current free RAM size
+unsigned long long GetFreeRAMSize() {
+    unsigned long long MemoryMapSize = 0;
+    EFI_MEMORY_DESCRIPTOR* MemoryMap = nullptr;
+    unsigned long long MapKey = 0;
+    unsigned long long DescriptorSize = 0;
+    unsigned int DescriptorVersion = 0;
+
+    // First call to get the size of the memory map
+    EFI_STATUS status = bs->GetMemoryMap(&MemoryMapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+    if (status == EFI_BUFFER_TOO_SMALL)
+    {
+        if (!allocatePool(MemoryMapSize, (void**)&MemoryMap))
+        {
+            return 0;
+        }
+
+        status = bs->GetMemoryMap(&MemoryMapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+    }
+
+    if (status != EFI_SUCCESS)
+    {
+        if (NULL != MemoryMap)
+        {
+            freePool(MemoryMap);
+        }
+        return 0;
+    }
+
+    unsigned long long freeRAM = 0;
+
+    unsigned int count = MemoryMapSize / DescriptorSize;
+    for (unsigned int i = 0; i < count; ++i)
+    {
+        EFI_MEMORY_DESCRIPTOR* desc = (EFI_MEMORY_DESCRIPTOR*)((char*)MemoryMap + (i * DescriptorSize));
+
+        if (desc->Type == EfiConventionalMemory)
+        {
+            freeRAM += desc->NumberOfPages * 4096; // Each page is 4KB
+        }
+    }
+
+    freePool(MemoryMap);
+    return freeRAM;
+}
