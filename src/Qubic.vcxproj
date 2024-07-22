@@ -71,6 +71,7 @@
     <ClInclude Include="platform\time.h" />
     <ClInclude Include="platform\uefi.h" />
     <ClInclude Include="tick_storage.h" />
+    <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="platform\custom_stack.asm">
