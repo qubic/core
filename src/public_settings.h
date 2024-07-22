@@ -65,6 +65,8 @@ static unsigned short UNIVERSE_FILE_NAME[] = L"universe.???";
 static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";
 static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 
+static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testing purpose, will delete at epoch 111
+
 #define DATA_LENGTH 256
 #define NUMBER_OF_INPUT_NEURONS 32768
 #define NUMBER_OF_OUTPUT_NEURONS 32768
