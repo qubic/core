@@ -110,7 +110,7 @@ TEST(TestCoreVoteCounter, AddGetVotes) {
         if (tvc.getVoteCount(i) != data_u32[i])
         {
             isMatched = false;
-            printf("[FAILED] comp %d: %lu vs %lu\n", i, tvc.getVoteCount(i), data_u32[i]);
+            printf("[FAILED] comp %d: %llu vs %lu\n", i, tvc.getVoteCount(i), data_u32[i]);
             break;
         }
     }
