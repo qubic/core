@@ -49,12 +49,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 211
+#define VERSION_B 212
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 118
-#define TICK 14900000
+#define EPOCH 119
+#define TICK 15030000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
