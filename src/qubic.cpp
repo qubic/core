@@ -40,6 +40,7 @@
 #include "logging.h"
 
 #include "tick_storage.h"
+#include "vote_counter.h"
 
 #include "addons/tx_status_request.h"
 
@@ -56,10 +57,10 @@
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define PEER_REFRESHING_PERIOD 120000ULL
 #define PORT 21841
-#define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
 #define SPECTRUM_CAPACITY (1ULL << SPECTRUM_DEPTH) // Must be 2^N
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
+#define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 3 // Must be at least 3+: 1+ for tx propagration + 1 for tickData propagration + 1 for vote propagration
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
 
@@ -86,6 +87,8 @@ static volatile bool forceSwitchEpoch = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
 
+static volatile bool revenueScoreFileMustBeSaved = false;
+
 static int misalignedState = 0;
 
 static volatile unsigned char epochTransitionState = 0;
@@ -109,6 +112,7 @@ static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computor
 static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 
 static TickStorage ts;
+static VoteCounter voteCounter;
 static Tick etalonTick;
 static TickData nextTickData;
 
@@ -221,6 +225,13 @@ static bool loadSpectrum(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL);
 
 BroadcastFutureTickData broadcastedFutureTickData;
+
+static struct
+{
+	Transaction transaction;
+	unsigned char data[VOTE_COUNTER_DATA_SIZE_IN_BYTES];
+	unsigned char signature[SIGNATURE_SIZE];
+} voteCounterPayload;
 
 static struct
 {
@@ -1116,7 +1127,6 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
 static void processRequestContractFunction(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
 {
     // TODO: Invoked function may enter endless loop, so a timeout (and restart) is required for request processing threads
-    // TODO: Enable parallel execution of contract functions
 
     RequestContractFunction* request = header->getPayload<RequestContractFunction>();
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
@@ -1529,11 +1539,19 @@ static long long & contractFeeReserve(unsigned int contractIndex)
     return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
 }
 
+// Prologue of contract functions / procedures
 static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
     // TODO
+    // called by all non-empty system procedures, user procedures, and user functions
+    // purpose:
+    // - make sure the limit of nested calls is not violated
+    // - measure execution time
+    // - construction of execution graph
+    // - debugging
 }
 
+// Epilogue of contract functions / procedures
 static void __endFunctionOrProcedure(const unsigned int functionOrProcedureId)
 {
     // TODO
@@ -2501,7 +2519,15 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
             if (isZero(transaction->destinationPublicKey))
             {
-                // Nothing to do
+                int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
+                if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
+                {
+                    if (!transaction->amount
+                        && transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                    {
+                        voteCounter.addVotes(transaction->inputPtr(), computorIndex);
+                    }
+                }
             }
             else
             {
@@ -2823,6 +2849,27 @@ static void processTick(unsigned long long processorNumber)
 
             break;
         }
+        if ((system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
+        {
+            if (system.tick > system.latestLedTick)
+            {
+                if (mainAuxStatus & 1)
+                {
+                    auto& payload = voteCounterPayload; // note: not thread-safe
+                    payload.transaction.sourcePublicKey = computorPublicKeys[i];
+                    payload.transaction.destinationPublicKey = _mm256_setzero_si256();
+                    payload.transaction.amount = 0;
+                    payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
+                    payload.transaction.inputType = 0;
+                    payload.transaction.inputSize = sizeof(payload.data);
+                    voteCounter.compressNewVotesPacket(system.tick - 675, system.tick+1, ownComputorIndices[i], payload.data);
+                    unsigned char digest[32];
+                    KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.data), digest, sizeof(digest));
+                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, payload.signature);
+                    enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
+                }
+            }
+        }
     }
 
     if (mainAuxStatus & 1)
@@ -2905,6 +2952,7 @@ static void beginEpoch1of2()
     ts.checkStateConsistencyWithAssert();
 #endif
     ts.beginEpoch(system.initialTick);
+    voteCounter.init();
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
 #endif
@@ -2981,6 +3029,34 @@ static void beginEpoch2of2()
         score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
     }
 }
+
+static struct
+{
+    unsigned long long logTxScore[676];
+    unsigned long long voteCountScore[676];
+} revenueScoreFile;
+// TODO: for testing purpose, will delete at epoch 111
+static bool saveRevenueScoreFile(CHAR16* directory = NULL)
+{
+    logToConsole(L"Saving revenue score file...");
+
+    const unsigned long long beginningTick = __rdtsc();
+
+    long long savedSize = save(REVENUE_FILE_NAME, sizeof(revenueScoreFile), (unsigned char*)(&revenueScoreFile), directory);
+
+    if (savedSize == sizeof(revenueScoreFile))
+    {
+        setNumber(message, savedSize, TRUE);
+        appendText(message, L" bytes of the revenue file are saved (");
+        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+        appendText(message, L" microseconds).");
+        logToConsole(message);
+        return true;
+    }
+    return false;
+}
+
+
 
 // called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
@@ -3068,8 +3144,8 @@ static void endEpoch()
 
     long long arbitratorRevenue = ISSUANCE_RATE;
 
-    unsigned long long transactionCounters[NUMBER_OF_COMPUTORS];
-    bs->SetMem(transactionCounters, sizeof(transactionCounters), 0);
+    unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
+    bs->SetMem(revenueScore, sizeof(revenueScore), 0);
     for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
     {
         ts.tickData.acquireLock();
@@ -3084,31 +3160,68 @@ static void endEpoch()
                     numberOfTransactions++;
                 }
             }
-            transactionCounters[tick % NUMBER_OF_COMPUTORS] += revenuePoints[numberOfTransactions];
+            revenueScore[tick % NUMBER_OF_COMPUTORS] += revenuePoints[numberOfTransactions];
         }
         ts.tickData.releaseLock();
     }
-    unsigned long long sortedTransactionCounters[QUORUM + 1];
-    bs->SetMem(sortedTransactionCounters, sizeof(sortedTransactionCounters), 0);
-    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+
+#if 0
+    //TODO: temporarily disable this, will merge votecount to final rev score
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        sortedTransactionCounters[QUORUM] = transactionCounters[computorIndex];
-        unsigned int i = QUORUM;
-        while (i
-            && sortedTransactionCounters[i - 1] < sortedTransactionCounters[i])
+        unsigned long long vote_count = voteCounter.getVoteCount(i);
+        if (vote_count != 0)
         {
-            const unsigned long long tmp = sortedTransactionCounters[i - 1];
-            sortedTransactionCounters[i - 1] = sortedTransactionCounters[i];
-            sortedTransactionCounters[i--] = tmp;
+            unsigned long long final_score = vote_count * revenueScore[i];
+            if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+            {
+                revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+            }
+            else
+            {
+                revenueScore[i] = final_score;
+            }            
+        }
+        else
+        {
+            revenueScore[i] = 0;
         }
     }
-    if (!sortedTransactionCounters[QUORUM - 1])
+#else
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        sortedTransactionCounters[QUORUM - 1] = 1;
+        revenueScoreFile.logTxScore[i] = revenueScore[i]; // log tx score
+        revenueScoreFile.voteCountScore[i] = voteCounter.getVoteCount(i); // vote count score
+    }
+    revenueScoreFileMustBeSaved = true;
+    while (revenueScoreFileMustBeSaved)
+    {
+        _mm_pause();
+    }
+#endif
+    
+
+    unsigned long long sortedRevenueScore[QUORUM + 1];
+    bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    {
+        sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
+        unsigned int i = QUORUM;
+        while (i
+            && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
+        {
+            const unsigned long long tmp = sortedRevenueScore[i - 1];
+            sortedRevenueScore[i - 1] = sortedRevenueScore[i];
+            sortedRevenueScore[i--] = tmp;
+        }
+    }
+    if (!sortedRevenueScore[QUORUM - 1])
+    {
+        sortedRevenueScore[QUORUM - 1] = 1;
     }
     for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
-        const long long revenue = (transactionCounters[computorIndex] >= sortedTransactionCounters[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)transactionCounters[computorIndex])) / sortedTransactionCounters[QUORUM - 1]);
+        const long long revenue = (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
         increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
         if (revenue)
         {
@@ -4088,6 +4201,9 @@ static void tickProcessor(void*)
                                                 if (tick->saltedComputerDigest == saltedDigest)
                                                 {
                                                     tickNumberOfComputors++;
+                                                    // to avoid submitting invalid votes (eg: all zeroes with valid signature)
+                                                    // only count votes that matched etalonTick
+                                                    voteCounter.registerNewVote(tick->tick, tick->computorIndex);
                                                 }
                                             }
                                         }
@@ -5933,7 +6049,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         && isNewTickPlus1)
                     {
                         // Request tick data of next tick when it is not stored yet or should be updated,
-                        // for example because next tick data digest of the quorum from the one of this node.
+                        // for example because next tick data digest of the quorum differs from the one of this node.
                         // targetNextTickDataDigestIsKnown == true signals that we need to fetch TickData
                         // targetNextTickDataDigestIsKnown == false means there is no consensus on next tick data yet
                         requestedTickData.header.randomizeDejavu();
@@ -6001,6 +6117,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     saveComputer();
                     computerMustBeSaved = false;
+                }
+
+                // TODO: for testing purpose, will delete at epoch 111
+                if (revenueScoreFileMustBeSaved)
+                {
+                    saveRevenueScoreFile();
+                    revenueScoreFileMustBeSaved = false;
                 }
 
                 if (forceRefreshPeerList)

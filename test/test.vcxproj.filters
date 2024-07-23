@@ -7,6 +7,11 @@
     <ClCompile Include="network_messages.cpp" />
     <ClCompile Include="platform.cpp" />
     <ClCompile Include="qpi.cpp" />
+    <ClCompile Include="tx_status_request.cpp" />
+    <ClCompile Include="score.cpp" />
+    <ClCompile Include="score_cache.cpp" />
+    <ClCompile Include="tick_storage.cpp" />
+    <ClCompile Include="vote_counter.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
