@@ -428,6 +428,7 @@ static bool decreaseEnergy(const int index, long long amount)
     return false;
 }
 
+// NOTE: this function doesn't work well on a few CPUs, some bits will be flipped after calling this. It's probably microcode bug.
 static void enableAVX()
 {
     __writecr4(__readcr4() | 0x40000);
