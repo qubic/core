@@ -162,9 +162,9 @@ static void logStatusToConsole(const CHAR16* message, const EFI_STATUS status, c
     logToConsole(::message);
 }
 
-static void logStatusToConsoleMem(const CHAR16* message, const EFI_STATUS status, const unsigned int lineNumber, const unsigned long long requestedSize)
+static void logStatusAndMemInfoToConsole(const CHAR16* newMessage, const EFI_STATUS status, const unsigned int lineNumber, const unsigned long long requestedSize)
 {
-    setText(::message, message);
+    setText(::message, newMessage);
     appendText(::message, L" (");
     appendErrorStatus(::message, status);
     appendText(::message, L") near line ");

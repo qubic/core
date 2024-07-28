@@ -4556,14 +4556,14 @@ static bool initialize()
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * 32ULL, (void**)&entityPendingTransactionDigests)))
         {
-            logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__,status == EFI_BUFFER_TOO_SMALL ? SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE : SPECTRUM_CAPACITY * 32ULL);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__,status == EFI_BUFFER_TOO_SMALL ? SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE : SPECTRUM_CAPACITY * 32ULL);
 
             return false;
         }
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset), (void**)&reorgBuffer))
         {
-            logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset));
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset));
 
             return false;
         }
@@ -4571,7 +4571,7 @@ static bool initialize()
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity), (void**)&spectrum))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL, (void**)&spectrumDigests)))
         {
-            logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, status == EFI_BUFFER_TOO_SMALL ? SPECTRUM_CAPACITY * sizeof(::Entity) : (SPECTRUM_CAPACITY * 2 - 1) * 32ULL);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, status == EFI_BUFFER_TOO_SMALL ? SPECTRUM_CAPACITY * sizeof(::Entity) : (SPECTRUM_CAPACITY * 2 - 1) * 32ULL);
 
             return false;
         }
@@ -4586,14 +4586,14 @@ static bool initialize()
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
             if (status = bs->AllocatePool(EfiRuntimeServicesData, size, (void**)&contractStates[contractIndex]))
             {
-                logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, size);
+                logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, size);
 
                 return false;
             }
         }
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags)))
         {
-            logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, MAX_NUMBER_OF_CONTRACTS / 8);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, MAX_NUMBER_OF_CONTRACTS / 8);
 
             return false;
         }
@@ -4601,7 +4601,7 @@ static bool initialize()
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(*score), (void**)&score))
         {
-            logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, sizeof(*score));
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, sizeof(*score));
             return false;
         }
         setMem(score, sizeof(*score), 0);
@@ -4609,7 +4609,7 @@ static bool initialize()
         bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
-            logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_MINER_SOLUTION_FLAGS / 8);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_MINER_SOLUTION_FLAGS / 8);
 
             return false;
         }
@@ -4759,7 +4759,7 @@ static bool initialize()
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu0))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu1)))
     {
-        logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, 536870912);
+        logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, 536870912);
 
         return false;
     }
@@ -4769,7 +4769,7 @@ static bool initialize()
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer)))
     {
-        logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, status == EFI_BUFFER_TOO_SMALL ? REQUEST_QUEUE_BUFFER_SIZE : RESPONSE_QUEUE_BUFFER_SIZE);
+        logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, status == EFI_BUFFER_TOO_SMALL ? REQUEST_QUEUE_BUFFER_SIZE : RESPONSE_QUEUE_BUFFER_SIZE);
 
         return false;
     }
@@ -4782,7 +4782,7 @@ static bool initialize()
             || (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer))
             || (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, (void**)&peers[i].dataToTransmit)))
         {
-            logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
 
             return false;
         }
@@ -5639,7 +5639,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             {
                 if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &processors[numberOfProcessors].buffer))
                 {
-                    logStatusToConsoleMem(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
+                    logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
 
                     numberOfProcessors = 0;
 
