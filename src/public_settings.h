@@ -23,11 +23,11 @@
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
-#define TARGET_TICK_DURATION 2000
-#define TRANSACTION_SPARSENESS 3
+#define TARGET_TICK_DURATION 7000
+#define TRANSACTION_SPARSENESS 4
 
 // Below are 2 variables that are used for auto-F5 feature:
-#define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
+#define AUTO_FORCE_NEXT_TICK_THRESHOLD 3ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
                                             // to prevent bad actor causing misalignment.
 											// depends on actual tick time of the network, operators should set this number randomly in this range [12, 26]
                                             // eg: If AUTO_FORCE_NEXT_TICK_THRESHOLD is 8 and TARGET_TICK_DURATION is 2, then the system will start "auto F5 procedure" after 16 seconds after receveing 451+ votes
@@ -56,7 +56,7 @@
 #define EPOCH 118
 #define TICK 14900000
 
-#define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
+#define ARBITRATOR "MEFKYFCDXDUILCAJKOIKWQAPENJDUHSSYPBRWFOTLALILAYWQFDSITJELLHG"
 
 static unsigned short SYSTEM_FILE_NAME[] = L"system";
 static unsigned short SYSTEM_END_OF_EPOCH_FILE_NAME[] = L"system.eoe";
@@ -71,7 +71,7 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_INPUT_DURATION 256
 #define MAX_OUTPUT_DURATION 256
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 44
+#define SOLUTION_THRESHOLD_DEFAULT 2
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
@@ -82,3 +82,5 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
+
+#define TESTNET_EPOCH_DURATION 3000
