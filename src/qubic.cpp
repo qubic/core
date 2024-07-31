@@ -60,7 +60,7 @@
 #define SPECTRUM_CAPACITY (1ULL << SPECTRUM_DEPTH) // Must be 2^N
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
-#define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 3 // Must be at least 3+: 1+ for tx propagration + 1 for tickData propagration + 1 for vote propagration
+#define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 4 // Must be at least 3+: 1+ for tx propagration + 1 for tickData propagration + 1 for vote propagration
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
 
@@ -428,6 +428,7 @@ static bool decreaseEnergy(const int index, long long amount)
     return false;
 }
 
+// NOTE: this function doesn't work well on a few CPUs, some bits will be flipped after calling this. It's probably microcode bug.
 static void enableAVX()
 {
     __writecr4(__readcr4() | 0x40000);
@@ -4133,6 +4134,7 @@ static void tickProcessor(void*)
                                 for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
                                 {
                                     broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
+                                    broadcastTick.tick.epoch = system.epoch;
                                     m256i saltedData[2];
                                     saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
                                     saltedData[1].m256i_u64[0] = resourceTestingDigest;
