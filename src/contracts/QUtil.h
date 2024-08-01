@@ -1,3 +1,6 @@
+
+#include "platform/read_write_lock.h"
+
 using namespace QPI;
 /**************************************/
 /**************SC UTILS****************/
@@ -33,6 +36,10 @@ struct QUTIL2
 {
 };
 
+
+static unsigned long long qutilsTotalTransfer = 0;
+static char qutilsTotalTransferLock = 0;
+
 struct QUTIL
 {
 private:
@@ -54,6 +61,15 @@ public:
             amt13, amt14, amt15, amt16, amt17, amt18, amt19, amt20, amt21, amt22, amt23, amt24;
     };
     struct SendToManyV1_output
+    {
+        sint32 returnCode;
+    };
+
+    struct SendToManyBenchmark_input
+    {
+        sint64 dstCount;
+    };
+    struct SendToManyBenchmark_output
     {
         sint32 returnCode;
     };
@@ -273,7 +289,46 @@ public:
         LOG_INFO(state.logger);
         output.returnCode = STM1_SUCCESS;
         qpi.burn(STM1_INVOCATION_FEE);
-    _
+        _
+
+            /**
+        * Send qu from a single address to multiple addresses
+        * @param number of addresses will be send a random qubics
+        * @return returnCode (0 means success)
+        */
+        PUBLIC_PROCEDURE(SendToManyBenchmark)
+            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, input.dstCount, STM1_TRIGGERED };
+            LOG_INFO(state.logger);
+            state.total = 0;
+            // insufficient number of addresses)
+            if (input.dstCount <=0 )
+            {
+                state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, input.dstCount, STM1_INVALID_AMOUNT_NUMBER };
+                LOG_INFO(state.logger);
+                output.returnCode = STM1_INVALID_AMOUNT_NUMBER;
+                return;
+            }
+
+            // Loop though the number of addresses and do the transfer
+            id currentId = qpi.invocator();
+            for (sint64 i = 0; i < input.dstCount; i++)
+            {
+                // Next IDs
+                currentId = qpi.nextId(currentId);
+
+                // Get first byte as a random money
+                sint64 money = currentId.m256i_u8[0] + 10;
+                qpi.transfer(currentId, money);
+                state.total = state.total + money;
+            }
+
+            ACQUIRE(qutilsTotalTransferLock);
+            qutilsTotalTransfer += input.dstCount;
+            RELEASE(qutilsTotalTransferLock);
+
+            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, state.total, STM1_SUCCESS };
+            LOG_INFO(state.logger);
+        _
 
     /**
     * Practicing burning qubic in the QChurch
@@ -312,6 +367,7 @@ public:
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
+        REGISTER_USER_PROCEDURE(SendToManyBenchmark, 3);
     _
 
     INITIALIZE
