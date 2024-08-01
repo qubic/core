@@ -171,8 +171,8 @@ static void logStatusAndMemInfoToConsole(const CHAR16* newMessage, const EFI_STA
     appendNumber(::message, lineNumber, FALSE);
     appendText(::message, L"! Requested size: ");
     appendNumber(::message, requestedSize, FALSE);
-    appendText(::message, L" bytes. Free RAM: ");
-    appendNumber(::message, GetFreeRAMSize(), FALSE);
+    appendText(::message, L" bytes. Free consecutive block of RAM: ");
+    appendNumber(::message, GetLargestFreeConsecutiveMemory(), FALSE);
     appendText(::message, L" bytes.");
     logToConsole(::message);
 }
