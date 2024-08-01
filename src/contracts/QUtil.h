@@ -1,3 +1,6 @@
+
+#include "platform/read_write_lock.h"
+
 using namespace QPI;
 /**************************************/
 /**************SC UTILS****************/
@@ -17,6 +20,11 @@ using namespace QPI;
 #define STM1_TRIGGERED 3
 #define STM1_SEND_FUND 4
 #define STM1_INVOCATION_FEE 10LL // fee to be burned and make the SC running
+
+constexpr unsigned long long QUTIL_SEND_TO_MANY_BENCHMARK_MAX_ADDRESSES = (1 << 18);
+static id AVAILABLE_ADDRESSES[QUTIL_SEND_TO_MANY_BENCHMARK_MAX_ADDRESSES];
+static uint64 AVAILABLE_ADDRESSES_MONEY[QUTIL_SEND_TO_MANY_BENCHMARK_MAX_ADDRESSES];
+
 struct QUtilLogger
 {
     uint32 contractId; // to distinguish bw SCs
@@ -32,6 +40,14 @@ struct QUtilLogger
 struct QUTIL2
 {
 };
+
+// For tracking status of qutils benchmarking
+static unsigned long long qutilsBenchmarkTransfer = 0;
+static unsigned long long qutilsBenchmarkTime = 0;
+static unsigned long long qutilsBenchmarkMoneyTransfer = 0;
+static id qutilLastReceivedAddress;
+static unsigned long long qutilLastReceivedMoney = 0;
+static char qutilsBenchmarkLock = 0;
 
 struct QUTIL
 {
@@ -56,6 +72,27 @@ public:
     struct SendToManyV1_output
     {
         sint32 returnCode;
+    };
+
+    struct SendToManyBenchmark_input
+    {
+        sint64 dstCount;
+    };
+    struct SendToManyBenchmark_output
+    {
+        sint64 dstCount;
+        sint32 returnCode;
+        uint64 total;
+        id lastReceivedID;
+        uint64 lastReceivedMoney;
+    };
+
+    struct SendToManyBenchmark_locals
+    {
+        id currentId;
+        uint64 i;
+        sint64 amount;
+        uint64 i0;
     };
 
     struct GetSendToManyV1Fee_input
@@ -273,7 +310,73 @@ public:
         LOG_INFO(state.logger);
         output.returnCode = STM1_SUCCESS;
         qpi.burn(STM1_INVOCATION_FEE);
-    _
+        _
+
+            /**
+        * Send qu from a single address to multiple addresses
+        * @param number of addresses will be send a random qubics
+        * @return returnCode (0 means success)
+        */
+        PUBLIC_PROCEDURE_WITH_LOCALS(SendToManyBenchmark)
+            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, input.dstCount, STM1_TRIGGERED };
+            LOG_INFO(state.logger);
+            state.total = 0;
+            output.dstCount = 0;
+
+            // insufficient number of addresses
+            if (input.dstCount <= 0 )
+            {
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, input.dstCount, STM1_INVALID_AMOUNT_NUMBER };
+                LOG_INFO(state.logger);
+                output.returnCode = STM1_INVALID_AMOUNT_NUMBER;
+                return;
+            }
+
+            // Check the fund is enough
+            locals.amount = (256 + 10) * input.dstCount;
+            if (qpi.invocationReward() < locals.amount)
+            {
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, input.dstCount, STM1_INVALID_AMOUNT_NUMBER };
+                LOG_INFO(state.logger);
+                output.returnCode = STM1_INVALID_AMOUNT_NUMBER;
+                return;
+            }
+
+            // Loop though the number of addresses and do the transfer
+            locals.currentId = qpi.invocator();
+            for (locals.i = 0; locals.i < input.dstCount; locals.i++)
+            {
+                // Rotate the index in case of the number of transfer is greater than current addrresses pools.
+                locals.i0 = mod(locals.i, QUTIL_SEND_TO_MANY_BENCHMARK_MAX_ADDRESSES);
+                locals.currentId = AVAILABLE_ADDRESSES[locals.i0];
+                locals.amount = AVAILABLE_ADDRESSES_MONEY[locals.i0] + 10;
+
+                qpi.transfer(locals.currentId, locals.amount);
+                output.total = state.total + locals.amount;
+            }
+
+            // Return the change if there is any
+            if (output.total < qpi.invocationReward())
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.total);
+            }
+
+            // For debugging
+            output.lastReceivedID = locals.currentId;
+            output.lastReceivedMoney = locals.amount;
+
+            output.dstCount = input.dstCount;
+            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, state.total, STM1_SUCCESS };
+            LOG_INFO(state.logger);
+        _
 
     /**
     * Practicing burning qubic in the QChurch
@@ -312,6 +415,7 @@ public:
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
+        REGISTER_USER_PROCEDURE(SendToManyBenchmark, 3);
     _
 
     INITIALIZE

@@ -42,7 +42,7 @@ static unsigned int contractError[contractCount];
 // access to contractStateChangeFlags thread-safe
 static unsigned long long* contractStateChangeFlags = NULL;
 
-static ContractActionTracker<1024> contractActionTracker;
+static ContractActionTracker<1500000> contractActionTracker;
 
 
 bool initContractExec()
@@ -439,11 +439,25 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         // run procedure
         const unsigned long long startTick = __rdtsc();
         contractUserProcedures[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+        unsigned long long processTime = __rdtsc() - startTick;
+        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], processTime);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
         contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
+
+        long long currentTransfer = 0;
+        long long currentMoneyTransfer = 0;
+        long long lastReceivedMoney = 0;
+        QPI::id lastReceivedID;
+        if (_currentContractIndex == QUTIL_CONTRACT_INDEX && inputType == 3)
+        {
+            currentTransfer = ((QUTIL::SendToManyBenchmark_output*)(outputBuffer))->dstCount;
+            currentMoneyTransfer = ((QUTIL::SendToManyBenchmark_output*)(outputBuffer))->total;
+
+            lastReceivedID = ((QUTIL::SendToManyBenchmark_output*)(outputBuffer))->lastReceivedID;
+            lastReceivedMoney = ((QUTIL::SendToManyBenchmark_output*)(outputBuffer))->lastReceivedMoney;
+        }
 
         // free data on stack (output is unused)
         contractLocalsStack[_stackIndex].free();
@@ -451,6 +465,17 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 
         // release stack lock
         releaseContractLocalsStack(_stackIndex);
+
+        if (_currentContractIndex == QUTIL_CONTRACT_INDEX && inputType == 3)
+        {
+            ACQUIRE(qutilsBenchmarkLock);
+            qutilsBenchmarkTransfer = currentTransfer;
+            qutilsBenchmarkTime = processTime;
+            qutilsBenchmarkMoneyTransfer = currentMoneyTransfer;
+            qutilLastReceivedAddress = lastReceivedID;
+            qutilLastReceivedMoney = lastReceivedMoney;
+            RELEASE(qutilsBenchmarkLock);
+        }
     }
 };
 
