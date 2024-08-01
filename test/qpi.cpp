@@ -9,6 +9,7 @@ static void* __scratchpad()
 }
 
 #include "../src/contracts/qpi.h"
+#include "../src/contract_core/qpi_collection_impl.h"
 
 #include <vector>
 #include <map>

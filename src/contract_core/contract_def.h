@@ -121,6 +121,8 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef POST_RELEASE_SHARES
 #undef POST_ACQUIRE_SHARES
 
+#include "qpi_collection_impl.h"
+
 #include "network_messages/common_def.h"
 
 struct Contract0State

@@ -142,6 +142,9 @@
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="vote_counter.h" />
+    <ClInclude Include="contract_core\qpi_collection_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
