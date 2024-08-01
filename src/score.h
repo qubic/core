@@ -161,11 +161,10 @@ struct ScoreFunction
     } *_computeBuffer = nullptr;
     unsigned int* _indiceBigBuffer = nullptr;
 
-    static_assert(maxInputDuration <= 256, "Need to regenerate mod num table");
     // _totalModNum[i]: total of divisible numbers of i
-    unsigned char _totalModNum[257];
+    unsigned char _totalModNum[maxInputDuration + 1];
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
-    unsigned char _modNum[257][129];
+    unsigned char _modNum[maxInputDuration + 1][129];
 
     m256i initialRandomSeed;
 
@@ -188,7 +187,7 @@ struct ScoreFunction
         setMem(_modNum, sizeof(_modNum), 0);
 
         // init the divisible table
-        for (int i = 1; i <= 256; i++) {
+        for (int i = 1; i <= maxInputDuration; i++) {
             for (int j = 1; j <= 127; j++) { // exclude 128
                 if (j && i % j == 0) {
                     _modNum[i][_totalModNum[i]++] = j;
