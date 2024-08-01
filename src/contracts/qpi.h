@@ -5906,7 +5906,7 @@ namespace QPI
 
 	struct Entity
 	{
-		id id;
+		id publicKey;
 		sint64 incomingAmount, outgoingAmount;
 
 		// Numbers of transfers. These may overflow for entities with high traffic, such as Qx.
@@ -5984,17 +5984,23 @@ namespace QPI
 
 		bit getEntity(
 			const id& id,
-			::Entity& entity
+			Entity& entity
 		) const; // Returns "true" if the entity has been found, returns "false" otherwise
 
 		uint8 hour(
 		) const; // [0..23]
 
+		// Return the invocation reward (amount transferred to contract immediately before invoking)
 		sint64 invocationReward(
-		) const;
+		) const {
+			return _invocationReward;
+		}
 
+		// Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
 		id invocator(
-		) const; // Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
+		) const {
+			return _invocator;
+		}
 
 		template <typename T>
 		id K12(
@@ -6026,8 +6032,11 @@ namespace QPI
 		sint32 numberOfTickTransactions(
 		) const;
 
+		// Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
 		id originator(
-		) const; // Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
+		) const {
+			return _originator;
+		}
 
 		uint8 second(
 		) const; // [0..59]

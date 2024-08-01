@@ -1,10 +1,10 @@
+// contract_def.h needs to be included first to make sure that contracts have minimal access
+#include "contract_core/contract_def.h"
+#include "contract_core/contract_exec.h"
+
 #include <intrin.h>
 
 #include "network_messages/all.h"
-
-// needs to be included early to make sure that contracts have minimal access
-#include "contract_core/contract_def.h"
-#include "contract_core/contract_exec.h"
 
 #include "private_settings.h"
 #include "public_settings.h"
@@ -1669,7 +1669,7 @@ unsigned short QPI::QpiContextFunctionCall::epoch() const
     return system.epoch;
 }
 
-bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, ::Entity& entity) const
+bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity) const
 {
     int index = spectrumIndex(id);
     if (index < 0)
@@ -1701,16 +1701,6 @@ bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, ::Entity& entity) c
 unsigned char QPI::QpiContextFunctionCall::hour() const
 {
     return etalonTick.hour;
-}
-
-long long QPI::QpiContextFunctionCall::invocationReward() const
-{
-    return _invocationReward;
-}
-
-QPI::id QPI::QpiContextFunctionCall::invocator() const
-{
-    return _invocator;
 }
 
 long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, const QPI::id& issuer, signed char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement) const
@@ -1884,11 +1874,6 @@ iteration:
 int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
 {
     return -1; // TODO: Return -1 if the current tick is empty, return the number of the transactions in the tick otherwise, including 0
-}
-
-m256i QPI::QpiContextFunctionCall::originator() const
-{
-    return _originator;
 }
 
 bool QPI::QpiContextProcedureCall::releaseShares(uint64 assetName, const id& issuer, const id& owner, const id& possessor, sint64 numberOfShares, uint16 destinationOwnershipManagingContractIndex, uint16 destinationPossessionManagingContractIndex) const
