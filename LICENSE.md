@@ -4,21 +4,21 @@ Permission is hereby granted, perpetual, worldwide, non-exclusive, free of charg
 
 1. The Software cannot be used in any form or in any substantial portions for development, maintenance and for any other purposes, in the military sphere and in relation to military products, including, but not limited to:
 
-a. any kind of armored force vehicles, missile weapons, warships, artillery weapons, air military vehicles (including military aircrafts, combat helicopters, military drones aircrafts), air defense systems, rifle armaments, small arms, firearms and side arms, melee weapons, chemical weapons, weapons of mass destruction;
+   a. any kind of armored force vehicles, missile weapons, warships, artillery weapons, air military vehicles (including military aircrafts, combat helicopters, military drones aircrafts), air defense systems, rifle armaments, small arms, firearms and side arms, melee weapons, chemical weapons, weapons of mass destruction;
 
-b. any special software for development technical documentation for military purposes;
+   b. any special software for development technical documentation for military purposes;
 
-c. any special equipment for tests of prototypes of any subjects with military purpose of use;
+   c. any special equipment for tests of prototypes of any subjects with military purpose of use;
 
-d. any means of protection for conduction of acts of a military nature;
+   d. any means of protection for conduction of acts of a military nature;
 
-e. any software or hardware for determining strategies, reconnaissance, troop positioning, conducting military actions, conducting special operations;
+   e. any software or hardware for determining strategies, reconnaissance, troop positioning, conducting military actions, conducting special operations;
 
-f. any dual-use products with possibility to use the product in military purposes;
+   f. any dual-use products with possibility to use the product in military purposes;
 
-g. any other products, software or services connected to military activities;
+   g. any other products, software or services connected to military activities;
 
-h. any auxiliary means related to abovementioned spheres and products.
+   h. any auxiliary means related to abovementioned spheres and products.
 
 
 

@@ -1,3 +1,5 @@
+using namespace QPI;
+
 // FIXED CONSTANTS
 constexpr unsigned long long QUOTTERY_INITIAL_MAX_BET = 1024;
 constexpr unsigned long long QUOTTERY_MAX_BET = QUOTTERY_INITIAL_MAX_BET * X_MULTIPLIER;

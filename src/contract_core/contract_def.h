@@ -18,7 +18,7 @@ namespace QPI
 
 // TODO: add option for having locals to SYSTEM and EXPAND procedures
 typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output);
-typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContextProcedureCall&, void*, void*);
+typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContextFunctionCall&, void*, void*); // cannot not change anything except state
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 
@@ -30,7 +30,6 @@ constexpr unsigned int MAX_SIZE_OF_CONTRACT_LOCALS = 32 * 1024;
 constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
 
 
-// TODO: rename these to __qpiX (forbidding to call them outside macros)
 static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);
 template <typename T> static m256i __K12(T);

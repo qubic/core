@@ -141,6 +141,7 @@
     <ClInclude Include="contract_core\contract_action_tracker.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

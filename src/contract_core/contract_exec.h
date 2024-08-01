@@ -325,6 +325,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(systemProcId < contractSystemProcedureCount);
 
+        // TODO: facilitate 0-pointer for empty procedures and get rid of NoData::isEmpty workaround
         if (!contractSystemProcedures[_currentContractIndex][systemProcId])
             return;
 
