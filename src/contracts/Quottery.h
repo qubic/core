@@ -127,20 +127,20 @@ public:
         uint32 betOption;
     };
     struct getBetOptionDetail_output {
-        id_1024 bettor;
+        array<id, 1024> bettor;
     };
     struct getActiveBet_input {
     };
     struct getActiveBet_output {
         uint32 count;
-        uint32_1024 activeBetId;
+        array<uint32, 1024> activeBetId;
     };
     struct getBetByCreator_input {
         id creator;
     };
     struct getBetByCreator_output {
         uint32 count;
-        uint32_1024 betId;
+        array<uint32, 1024> betId;
     };
     struct cancelBet_input {
         uint32 betId;

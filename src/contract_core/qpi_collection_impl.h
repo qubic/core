@@ -9,6 +9,15 @@
 
 namespace QPI
 {
+	// TODO: move to qpi_util_impl.h?
+	template <typename T1, typename T2>
+	void copyMemory(T1& dst, const T2& src)
+	{
+		static_assert(sizeof(dst) == sizeof(src), "Size of source and destination must match to run copyMemory().");
+		copyMem(&dst, &src, sizeof(dst));
+	}
+
+
 	template <typename T, uint64 L>
 	void collection<T, L>::_softReset()
 	{
