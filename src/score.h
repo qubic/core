@@ -30,6 +30,7 @@ struct ScoreFunction
     static constexpr unsigned long long priorSynapsesLength = 3200;
     static constexpr unsigned long long priorSynapsesOffset = allParamsCount - priorSynapsesLength;
     static constexpr unsigned int numberOfCheckPoints = 2;
+    static constexpr unsigned int maxNumMods = 48;
 
     long long miningData[dataLength];
     struct synapseStruct
@@ -148,11 +149,12 @@ struct ScoreFunction
         bool isGeneratedBucketOffset[inNeuronsCount];
 
         static_assert((allParamsCount) % 8 == 0, "need to check this packed synapse");
+        static_assert(maxInputDuration <= 4096, "need to check this maxInputDuration and adjust maxNumMods");
 
         queueItem queue[allParamsCount * 2];
         bool isProcessing[allParamsCount * 2];
         queueState state[allParamsCount * 2];
-        unsigned int _maxIndexBuffer[allParamsCount * 2][32];
+        unsigned int _maxIndexBuffer[allParamsCount * 2][maxNumMods];
         int buffer[256];
         K12EngineX1 k12;
         synapseCheckpoint sckpInput[(numberOfInputNeurons + dataLength)][numberOfCheckPoints];
