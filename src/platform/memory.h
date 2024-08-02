@@ -71,7 +71,8 @@ static inline bool isZero(const void* ptr, unsigned long long size)
 
 
 // Function to get the current free RAM size
-unsigned long long GetFreeRAMSize() {
+unsigned long long GetFreeRAMSize() 
+{
     unsigned long long MemoryMapSize = 0;
     EFI_MEMORY_DESCRIPTOR* MemoryMap = nullptr;
     unsigned long long MapKey = 0;
@@ -118,7 +119,8 @@ unsigned long long GetFreeRAMSize() {
 
 
 // Function to get the largest free consecutive memory block size
-unsigned long long GetLargestFreeConsecutiveMemory() {
+unsigned long long GetLargestFreeConsecutiveMemory() 
+{
     unsigned long long MemoryMapSize = 0;
     EFI_MEMORY_DESCRIPTOR* MemoryMap = nullptr;
     unsigned long long MapKey = 0;

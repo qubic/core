@@ -1,6 +1,7 @@
 #pragma once
 
 #include "uefi.h"
+#include "memory.h"
 
 static bool disableConsoleLogging = false;
 
