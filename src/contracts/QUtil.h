@@ -74,6 +74,13 @@ public:
         sint32 returnCode;
     };
 
+    struct SendToManyBenchmark_locals
+    {
+        id currentId;
+        sint32 i;
+        sint64 amount;
+    };
+
     struct GetSendToManyV1Fee_input
     {
     };
@@ -296,7 +303,7 @@ public:
         * @param number of addresses will be send a random qubics
         * @return returnCode (0 means success)
         */
-        PUBLIC_PROCEDURE(SendToManyBenchmark)
+        PUBLIC_PROCEDURE_WITH_LOCALS(SendToManyBenchmark)
             state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, input.dstCount, STM1_TRIGGERED };
             LOG_INFO(state.logger);
             state.total = 0;
@@ -310,16 +317,16 @@ public:
             }
 
             // Loop though the number of addresses and do the transfer
-            id currentId = qpi.invocator();
-            for (sint64 i = 0; i < input.dstCount; i++)
+            locals.currentId = qpi.invocator();
+            for (locals.i = 0; locals.i < input.dstCount; locals.i++)
             {
                 // Next IDs
-                currentId = qpi.nextId(currentId);
+                locals.currentId = qpi.nextId(locals.currentId);
 
                 // Get first byte as a random money
-                sint64 money = currentId.m256i_u8[0] + 10;
-                qpi.transfer(currentId, money);
-                state.total = state.total + money;
+                locals.amount = locals.currentId.m256i_u8[0] + 10;
+                qpi.transfer(locals.currentId, locals.amount);
+                state.total = state.total + locals.amount;
             }
 
             ACQUIRE(qutilsTotalTransferLock);
