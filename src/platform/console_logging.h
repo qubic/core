@@ -43,6 +43,8 @@ static inline void outputStringToConsole(const CHAR16* str)
 // CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
 static void logToConsole(const CHAR16* message);
 
+static void logStatusAndMemInfoToConsole(const CHAR16* newMessage, const EFI_STATUS status, const unsigned int lineNumber, const unsigned long long requestedSize)
+
 #endif
 
 static void appendText(CHAR16* dst, const CHAR16* src)
