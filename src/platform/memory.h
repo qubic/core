@@ -55,23 +55,9 @@ static inline void freePool(void* buffer)
     bs->FreePool(buffer);
 }
 
-#endif
-
-// This should to be optimized if used in non-debugging context (using unsigned long long comparison as much as possible)
-static inline bool isZero(const void* ptr, unsigned long long size)
-{
-    const char* cPtr = (const char*)ptr;
-    for (unsigned long long i = 0; i < size; ++i)
-    {
-        if (cPtr[i] != 0)
-            return false;
-    }
-    return true;
-}
-
 
 // Function to get the current free RAM size
-unsigned long long GetFreeRAMSize() 
+unsigned long long GetFreeRAMSize()
 {
     unsigned long long MemoryMapSize = 0;
     EFI_MEMORY_DESCRIPTOR* MemoryMap = nullptr;
@@ -119,7 +105,7 @@ unsigned long long GetFreeRAMSize()
 
 
 // Function to get the largest free consecutive memory block size
-unsigned long long GetLargestFreeConsecutiveMemory() 
+unsigned long long GetLargestFreeConsecutiveMemory()
 {
     unsigned long long MemoryMapSize = 0;
     EFI_MEMORY_DESCRIPTOR* MemoryMap = nullptr;
@@ -170,4 +156,17 @@ unsigned long long GetLargestFreeConsecutiveMemory()
 
     freePool(MemoryMap);
     return largestFreeBlock;
+}
+#endif
+
+// This should to be optimized if used in non-debugging context (using unsigned long long comparison as much as possible)
+static inline bool isZero(const void* ptr, unsigned long long size)
+{
+    const char* cPtr = (const char*)ptr;
+    for (unsigned long long i = 0; i < size; ++i)
+    {
+        if (cPtr[i] != 0)
+            return false;
+    }
+    return true;
 }
