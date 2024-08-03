@@ -1,7 +1,6 @@
 #pragma once
 
 #include "uefi.h"
-#include "memory.h"
 
 static bool disableConsoleLogging = false;
 
@@ -32,6 +31,8 @@ static void logToConsole(const CHAR16* message)
 
 #else
 
+#include "memory.h"
+
 // Output to console on UEFI platform
 // CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
 static inline void outputStringToConsole(const CHAR16* str)
@@ -42,8 +43,6 @@ static inline void outputStringToConsole(const CHAR16* str)
 // Log message to console (with line break) on UEFI platform (defined in qubic.cpp due to dependencies on time and qubic status)
 // CAUTION: Can only be called from main processor thread. Otherwise there is a high risk of crashing.
 static void logToConsole(const CHAR16* message);
-
-static void logStatusAndMemInfoToConsole(const CHAR16* newMessage, const EFI_STATUS status, const unsigned int lineNumber, const unsigned long long requestedSize)
 
 #endif
 
@@ -165,6 +164,9 @@ static void logStatusToConsole(const CHAR16* message, const EFI_STATUS status, c
     logToConsole(::message);
 }
 
+#ifdef NO_UEFI
+//do nothing
+#else
 static void logStatusAndMemInfoToConsole(const CHAR16* newMessage, const EFI_STATUS status, const unsigned int lineNumber, const unsigned long long requestedSize)
 {
     setText(::message, newMessage);
@@ -179,7 +181,7 @@ static void logStatusAndMemInfoToConsole(const CHAR16* newMessage, const EFI_STA
     appendText(::message, L" bytes.");
     logToConsole(::message);
 }
-
+#endif
 // Count characters before terminating NULL
 static unsigned int stringLength(const CHAR16* str)
 {
