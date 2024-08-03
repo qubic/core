@@ -2490,14 +2490,14 @@ static void KangarooTwelve64To32(const void* input, void* output)
     KangarooTwelve64To32((const unsigned char*)input, (unsigned char*)output);
 }
 
-static void random(const unsigned char* publicKey, const unsigned char* nonce, unsigned char* output, unsigned int outputSize)
+static void random(const unsigned char* publicKey, const unsigned char* nonce, unsigned char* output, unsigned long long outputSize)
 {
     unsigned char state[200];
     *((__m256i*) & state[0]) = *((__m256i*)publicKey);
     *((__m256i*) & state[32]) = *((__m256i*)nonce);
     setMem(&state[64], sizeof(state) - 64, 0);
 
-    for (unsigned int i = 0; i < outputSize / sizeof(state); i++)
+    for (unsigned long long i = 0; i < outputSize / sizeof(state); i++)
     {
         KeccakP1600_Permute_12rounds(state);
         copyMem(output, state, sizeof(state));
