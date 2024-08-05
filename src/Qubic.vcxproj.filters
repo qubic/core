@@ -142,6 +142,9 @@
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="vote_counter.h" />
+    <ClInclude Include="memblob.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

@@ -2955,6 +2955,7 @@ static void beginEpoch1of2()
 #endif
     ts.beginEpoch(system.initialTick);
     voteCounter.init();
+    logger.reset(system.initialTick);
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
 #endif
@@ -4738,7 +4739,10 @@ static bool initialize()
         }
 
         if (!logger.initLogging())
+        {
             return false;
+        }
+            
 
 #if ADDON_TX_STATUS_REQUEST
         if (!initTxStatusRequestAddOn())

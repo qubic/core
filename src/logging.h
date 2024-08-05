@@ -13,12 +13,13 @@
 struct RequestLog
 {
     unsigned long long passcode[4];
+    unsigned long long fromID;
+    unsigned long long toID; // inclusive
 
     enum {
         type = 44,
     };
 };
-
 
 // Returns buffered log; clears the buffer; make sure you fetch log quickly enough, if the buffer is overflown log stops being written into it till the node restart
 struct RespondLog
@@ -30,6 +31,30 @@ struct RespondLog
     };
 };
 
+
+// Request logid ranges from tx hash
+struct RequestLogIdRangeFromTx
+{
+    unsigned long long passcode[4];
+    unsigned int tick;
+    m256i txHash;
+
+    enum {
+        type = 46,
+    };
+};
+
+
+// Response logid ranges from tx hash
+struct ResponseLogIdRangeFromTx
+{
+    long long fromLogId;
+    long long length;
+
+    enum {
+        type = 47,
+    };
+};
 
 
 #define QU_TRANSFER 0
@@ -155,63 +180,248 @@ struct Burning
 /*
  * LOGGING IMPLEMENTATION
  */
-
+#define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
+#define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
+#define LOG_MAX_STORAGE_TICK 20000ULL
+#define LOG_AVG_TX_PER_TICK 64ULL
+#define LOG_TX_INFO_STORAGE (LOG_MAX_STORAGE_TICK*LOG_AVG_TX_PER_TICK)
 class qLogger
 {
 public:
-    unsigned long long logId;
-    volatile char logBufferLocks;
-    char* logBuffers;
-    unsigned long long logBufferTails;
-    bool logBufferOverflownFlags;
-    bool initLogging()
+    struct BlobInfo
+    {
+        long long startIndex;
+        long long length;
+    };
+    struct TxBufferInfo
+    {
+        m256i hash;
+        BlobInfo info;
+    };
+
+    inline static char* logBuffer = NULL;
+    inline static unsigned long long logBufferTail;
+    inline static unsigned long long logId;
+    inline static unsigned int tickBegin;
+    inline static m256i currentTxHash;
+    inline static unsigned int currentTick;
+    inline static BlobInfo currentTxInfo;
+    inline static volatile char logBufferLocks;
+
+    // some utils
+    static bool isProtocolTx(m256i hash)
+    {
+        return (hash.m256i_u64[0] == 0) && (hash.m256i_u64[2] == 0) && (hash.m256i_u64[3] == 0);
+    }
+
+    static unsigned long long getLogId(const char* ptr)
+    {
+        // first 16 bytes are date time and epoch tick info
+        // next 8 bytes are logId
+        return ((unsigned long long*)ptr)[2];
+    }
+
+    // Struct to map log buffer from log id    
+    static struct mapLogIdToBuffer
+    {
+        inline static BlobInfo mapLogIdToBufferIndex[LOG_MAX_STORAGE_ENTRIES]; // x: index on buffer, y: length
+        static void init()
+        {
+            BlobInfo null_blob{ -1,-1 };
+            for (unsigned long long i = 0; i < LOG_MAX_STORAGE_ENTRIES; i++)
+            {
+                mapLogIdToBufferIndex[i] = null_blob;
+            }
+        }
+        static long long getIndex(unsigned long long logId)
+        {
+            BlobInfo res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
+            if (getLogId(logBuffer + res.startIndex) == logId)
+            {
+                return res.startIndex;
+            }
+            return -1;
+        }
+
+        static long long getLength(unsigned long long logId)
+        {
+            BlobInfo res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
+            if (getLogId(logBuffer + res.startIndex) == logId)
+            {
+                return res.length;
+            }
+            return -1;
+        }
+
+        static BlobInfo getBlobInfo(unsigned long long logId)
+        {
+            BlobInfo res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
+            if (getLogId(logBuffer + res.startIndex) == logId)
+            {
+                return res;
+            }
+            return BlobInfo{ -1,-1 };
+        }
+
+        static void set(unsigned long long logId, long long index, long long length)
+        {
+            BlobInfo& res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
+            res.startIndex = index;
+            res.length = length;
+        }
+    } logBuf;
+
+    
+    // Struct to map log id ranges from tx hash
+    static struct mapTxToLogIdAccess
+    {
+        inline static TxBufferInfo mapTxToLogId[LOG_TX_INFO_STORAGE];
+        inline static BlobInfo tickIndex[MAX_NUMBER_OF_TICKS_PER_EPOCH];
+        inline static unsigned long long mapTxToLogIdCounter;
+        static void init()
+        {
+            BlobInfo null_blob{ -1,-1 };
+            for (unsigned long long i = 0; i < MAX_NUMBER_OF_TICKS_PER_EPOCH; i++)
+            {
+                tickIndex[i] = null_blob;
+            }
+            for (unsigned long long i = 0; i < LOG_TX_INFO_STORAGE; i++)
+            {
+                mapTxToLogId[i].hash = _mm256_setzero_si256();
+                mapTxToLogId[i].info = null_blob;
+            }
+            mapTxToLogIdCounter = 0;
+        }
+
+        // return the logID ranges of a tx hash
+        static BlobInfo getLogIdInfo(unsigned int tick, m256i txHash)
+        {
+            unsigned long long start = tickIndex[tick - tickBegin].startIndex;
+            unsigned long long end = start + tickIndex[tick - tickBegin].length;
+            for (unsigned long long i = start; i < end; i++)
+            {
+                if (mapTxToLogId[i].hash == txHash)
+                {
+                    return mapTxToLogId[i].info;
+                }
+            }
+            return BlobInfo{ -1,-1 };
+        }
+
+        static void _registerNewTx(unsigned int tick, m256i txHash)
+        {
+            if (currentTick != tick || currentTxHash != txHash)
+            {
+                currentTick = tick;
+                currentTxHash = txHash;
+            }
+        }
+
+        static void addLogId()
+        {
+            unsigned long long offsetTick = currentTick - tickBegin;
+
+            if (mapTxToLogIdCounter == 0)
+            {
+                auto& txInfo = mapTxToLogId[0];
+                txInfo.hash == currentTxHash;
+                txInfo.info.startIndex = logId;
+                txInfo.info.length = 1;
+                tickIndex[offsetTick].startIndex = mapTxToLogIdCounter;
+                tickIndex[offsetTick].length = 1;
+                mapTxToLogIdCounter++;
+                return;
+            }
+
+            auto& txInfo = mapTxToLogId[(mapTxToLogIdCounter - 1) % LOG_TX_INFO_STORAGE];
+            if (txInfo.hash == currentTxHash)
+            {
+                ASSERT(txInfo.info.startIndex != -1);
+                ASSERT(txInfo.info.length != -1);
+                txInfo.info.length++;
+            }
+            else // new tx is registered and generates log
+            {
+                auto& newTxInfo = mapTxToLogId[mapTxToLogIdCounter % LOG_TX_INFO_STORAGE];
+                newTxInfo.hash == currentTxHash;
+                newTxInfo.info.startIndex = logId;
+                newTxInfo.info.length = 1;
+                if (tickIndex[offsetTick].startIndex == -1) // new tick
+                {
+                    tickIndex[offsetTick].startIndex = mapTxToLogIdCounter;
+                    tickIndex[offsetTick].length = 1;
+                }
+                else
+                {
+                    ASSERT(tickIndex[offsetTick].startIndex != -1);
+                    tickIndex[offsetTick].length++;
+                }
+                mapTxToLogIdCounter++;
+            }
+        }
+    } tx;
+
+    static void registerNewTx(unsigned int tick, m256i txHash)
+    {
+        tx._registerNewTx(tick, txHash);
+    }
+
+
+    static bool initLogging()
     {
 #if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
-        logBufferOverflownFlags = false;
-        logBufferTails = 0;
-        logBuffers = NULL;
-        logBufferLocks = 0;
         EFI_STATUS status;
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers))
+        if (logBuffer == NULL)
         {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffer))
+            {
+                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
-            return false;
+                return false;
+            }
         }
 #endif
         return true;
     }
-    void deinitLogging()
+    static void deinitLogging()
     {
 #if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
-        bs->FreePool(logBuffers);
+        freePool(logBuffer);
 #endif
     }
-    void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
+
+    static void reset(unsigned int _tickBegin)
+    {
+        logBuf.init();
+        tx.init();
+        logBufferTail = 0;
+        logId = 0;
+        logBufferLocks = 0;
+        tickBegin = _tickBegin;
+    }
+
+    static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
         ACQUIRE(logBufferLocks);
-
-        if (!logBufferOverflownFlags && logBufferTails + 16 + messageSize <= LOG_BUFFER_SIZE)
+        if (logBufferTail + 16 + messageSize <= LOG_BUFFER_SIZE)
         {
-            *((unsigned char*)(logBuffers + (logBufferTails + 0))) = (unsigned char)(time.Year - 2000);
-            *((unsigned char*)(logBuffers + (logBufferTails + 1))) = time.Month;
-            *((unsigned char*)(logBuffers + (logBufferTails + 2))) = time.Day;
-            *((unsigned char*)(logBuffers + (logBufferTails + 3))) = time.Hour;
-            *((unsigned char*)(logBuffers + (logBufferTails + 4))) = time.Minute;
-            *((unsigned char*)(logBuffers + (logBufferTails + 5))) = time.Second;
-
-            *((unsigned short*)(logBuffers + (logBufferTails + 6))) = system.epoch;
-            *((unsigned int*)(logBuffers + (logBufferTails + 8))) = system.tick;
-
-            *((unsigned int*)(logBuffers + (logBufferTails + 12))) = messageSize | (messageType << 24);
-            copyMem(logBuffers + (logBufferTails + 16), message, messageSize);
-            logBufferTails += 16 + messageSize;
+            logBufferTail = 0; // reset back to beginning
         }
-        else
-        {
-            logBufferOverflownFlags = true;
-        }
+        *((unsigned char*)(logBuffer + (logBufferTail + 0))) = (unsigned char)(time.Year - 2000);
+        *((unsigned char*)(logBuffer + (logBufferTail + 1))) = time.Month;
+        *((unsigned char*)(logBuffer + (logBufferTail + 2))) = time.Day;
+        *((unsigned char*)(logBuffer + (logBufferTail + 3))) = time.Hour;
+        *((unsigned char*)(logBuffer + (logBufferTail + 4))) = time.Minute;
+        *((unsigned char*)(logBuffer + (logBufferTail + 5))) = time.Second;
 
+        *((unsigned short*)(logBuffer + (logBufferTail + 6))) = system.epoch;
+        *((unsigned int*)(logBuffer + (logBufferTail + 8))) = system.tick;
+
+        *((unsigned int*)(logBuffer + (logBufferTail + 12))) = messageSize | (messageType << 24);
+        // add logId here
+        *((unsigned long long*)(logBuffer + (logBufferTail + 16))) = logId++;
+        copyMem(logBuffer + (logBufferTail + 24), message, messageSize);
+        logBufferTail += 24 + messageSize;
         RELEASE(logBufferLocks);
     }
 
@@ -324,8 +534,8 @@ public:
         logMessage(offsetof(T, _terminator), CUSTOM_MESSAGE, &message);
 #endif
     }
-
-    void processRequestLog(Peer* peer, RequestResponseHeader* header)
+    // Request: ranges of log ID
+    static void processRequestLog(Peer* peer, RequestResponseHeader* header)
     {
         RequestLog* request = header->getPayload<RequestLog>();
         if (request->passcode[0] == logReaderPasscodes[0]
@@ -334,17 +544,82 @@ public:
             && request->passcode[3] == logReaderPasscodes[3])
         {
             ACQUIRE(logBufferLocks);
-
-            if (logBufferOverflownFlags)
+            BlobInfo startIdBufferRange = logBuf.getBlobInfo(request->fromID);
+            BlobInfo endIdBufferRange = logBuf.getBlobInfo(request->toID); // inclusive
+            if (startIdBufferRange.startIndex != -1 && startIdBufferRange.length != -1
+                && endIdBufferRange.startIndex != -1 && endIdBufferRange.length != -1)
             {
-                RELEASE(logBufferLocks);
-                return;
+                if (endIdBufferRange.startIndex < startIdBufferRange.startIndex)
+                {
+                    // round buffer case, response 2 packets
+                    unsigned long long i = 0;
+                    for (i = request->fromID; i <= request->toID; i++)
+                    {
+                        BlobInfo iBufferRange = logBuf.getBlobInfo(i);
+                        if (iBufferRange.startIndex < startIdBufferRange.startIndex)
+                        {
+                            i--;
+                            break;
+                        }
+                    }                    
+                    // first packet: from startID to end of buffer
+                    {
+                        BlobInfo iBufferRange = logBuf.getBlobInfo(i);
+                        unsigned long long startFrom = startIdBufferRange.startIndex;
+                        unsigned long long length = iBufferRange.length + iBufferRange.startIndex - startFrom;
+                        if (length > RequestResponseHeader::max_size)
+                        {
+                            length = RequestResponseHeader::max_size;
+                        }
+                        enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
+                    }
+                    // second packet: from start buffer to endID
+                    {
+                        unsigned long long startFrom = 0;
+                        unsigned long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
+                        if (length > RequestResponseHeader::max_size)
+                        {
+                            length = RequestResponseHeader::max_size;
+                        }
+                        enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
+                    }
+                }
+                else
+                {
+                    unsigned long long startFrom = startIdBufferRange.startIndex;
+                    unsigned long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
+                    if (length > RequestResponseHeader::max_size)
+                    {
+                        length = RequestResponseHeader::max_size;
+                    }
+                    enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
+                }
             }
             else
             {
-                enqueueResponse(peer, logBufferTails, RespondLog::type, header->dejavu(), logBuffers);
-                logBufferTails = 0;
+                enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
             }
+            RELEASE(logBufferLocks);
+            return;
+        }
+
+        enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
+    }
+
+    void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
+    {
+        RequestLogIdRangeFromTx* request = header->getPayload<RequestLogIdRangeFromTx>();
+        if (request->passcode[0] == logReaderPasscodes[0]
+            && request->passcode[1] == logReaderPasscodes[1]
+            && request->passcode[2] == logReaderPasscodes[2]
+            && request->passcode[3] == logReaderPasscodes[3])
+        {
+            ACQUIRE(logBufferLocks);
+            ResponseLogIdRangeFromTx resp;
+            BlobInfo info = tx.getLogIdInfo(request->tick, request->txHash);
+            resp.fromLogId = info.startIndex;
+            resp.length = info.length;
+            enqueueResponse(peer, sizeof(ResponseLogIdRangeFromTx), ResponseLogIdRangeFromTx::type, header->dejavu(), &resp);
             RELEASE(logBufferLocks);
             return;
         }
