@@ -2937,7 +2937,7 @@ static void processTick(unsigned long long processorNumber)
     }
 }
 
-static void beginEpoch1of2()
+static void beginEpoch()
 {
     // This version doesn't support migration from contract IPO to contract operation!
 
@@ -3017,19 +3017,6 @@ static void beginEpoch1of2()
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
 #endif
-}
-
-static void beginEpoch2of2()
-{
-    if (loadMiningSeedFromFile)
-    {
-        score->initMiningData(initialRandomSeedFromPersistingState);
-        loadMiningSeedFromFile = false;
-    }
-    else
-    {
-        score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
-    }
 }
 
 static struct
@@ -4360,6 +4347,21 @@ static void tickProcessor(void*)
 
                                     system.tick++;
 
+                                    {
+                                        const unsigned int r = (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+                                        if (!r)
+                                        {
+                                            score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+                                        }
+                                        else
+                                        {
+                                            if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
+                                            {
+                                                score->initMiningData(_mm256_setzero_si256());
+                                            }
+                                        }
+                                    }
+
                                     if (epochTransitionState == 1)
                                     {
                                         // seamless epoch transistion
@@ -4395,8 +4397,7 @@ static void tickProcessor(void*)
 #ifndef NDEBUG
                                         addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
 #endif
-                                        beginEpoch1of2();
-                                        beginEpoch2of2();
+                                        beginEpoch();
 #ifndef NDEBUG
                                         addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
                                         {
@@ -4767,7 +4768,7 @@ static bool initialize()
         }
         system.tick = system.initialTick;
 
-        beginEpoch1of2();
+        beginEpoch();
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
 #else
@@ -4875,6 +4876,8 @@ static bool initialize()
         }
     }
 
+    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
         initializeContract(contractIndex, contractStates[contractIndex]);
@@ -4965,8 +4968,6 @@ static bool initialize()
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
-
-    beginEpoch2of2();
 
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;

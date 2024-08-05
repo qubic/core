@@ -82,5 +82,8 @@ static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testin
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
+#define INTERNAL_COMPUTATIONS_INTERVAL 676
+#define EXTERNAL_COMPUTATIONS_INTERVAL (676 + 1)
+
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
