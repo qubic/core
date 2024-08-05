@@ -42,10 +42,6 @@ struct RespondLog
 #define CONTRACT_DEBUG_MESSAGE 7
 #define BURNING 8
 #define CUSTOM_MESSAGE 255
-static volatile char logBufferLocks[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
-static char* logBuffers[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { NULL };
-static unsigned int logBufferTails[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { 0 };
-static bool logBufferOverflownFlags[sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0])] = { false };
 
 
 /*
@@ -164,68 +160,63 @@ class qLogger
 {
 public:
     unsigned long long logId;
-
-    static bool initLogging()
+    volatile char logBufferLocks;
+    char* logBuffers;
+    unsigned long long logBufferTails;
+    bool logBufferOverflownFlags;
+    bool initLogging()
     {
 #if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+        logBufferOverflownFlags = false;
+        logBufferTails = 0;
+        logBuffers = NULL;
+        logBufferLocks = 0;
         EFI_STATUS status;
-        for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+        if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers))
         {
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffers[logReaderIndex]))
-            {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
-                return false;
-            }
+            return false;
         }
 #endif
         return true;
     }
-    static void deinitLogging()
+    void deinitLogging()
     {
 #if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
-        for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
-        {
-            if (logBuffers[logReaderIndex])
-            {
-                bs->FreePool(logBuffers[logReaderIndex]);
-            }
-        }
+        bs->FreePool(logBuffers);
 #endif
     }
-    static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
+    void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
-        for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+        ACQUIRE(logBufferLocks);
+
+        if (!logBufferOverflownFlags && logBufferTails + 16 + messageSize <= LOG_BUFFER_SIZE)
         {
-            ACQUIRE(logBufferLocks[logReaderIndex]);
+            *((unsigned char*)(logBuffers + (logBufferTails + 0))) = (unsigned char)(time.Year - 2000);
+            *((unsigned char*)(logBuffers + (logBufferTails + 1))) = time.Month;
+            *((unsigned char*)(logBuffers + (logBufferTails + 2))) = time.Day;
+            *((unsigned char*)(logBuffers + (logBufferTails + 3))) = time.Hour;
+            *((unsigned char*)(logBuffers + (logBufferTails + 4))) = time.Minute;
+            *((unsigned char*)(logBuffers + (logBufferTails + 5))) = time.Second;
 
-            if (!logBufferOverflownFlags[logReaderIndex] && logBufferTails[logReaderIndex] + 16 + messageSize <= LOG_BUFFER_SIZE)
-            {
-                *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 0))) = (unsigned char)(time.Year - 2000);
-                *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 1))) = time.Month;
-                *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 2))) = time.Day;
-                *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 3))) = time.Hour;
-                *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 4))) = time.Minute;
-                *((unsigned char*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 5))) = time.Second;
+            *((unsigned short*)(logBuffers + (logBufferTails + 6))) = system.epoch;
+            *((unsigned int*)(logBuffers + (logBufferTails + 8))) = system.tick;
 
-                *((unsigned short*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 6))) = system.epoch;
-                *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 8))) = system.tick;
-
-                *((unsigned int*)(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 12))) = messageSize | (messageType << 24);
-                copyMem(logBuffers[logReaderIndex] + (logBufferTails[logReaderIndex] + 16), message, messageSize);
-                logBufferTails[logReaderIndex] += 16 + messageSize;
-            }
-            else
-            {
-                logBufferOverflownFlags[logReaderIndex] = true;
-            }
-
-            RELEASE(logBufferLocks[logReaderIndex]);
+            *((unsigned int*)(logBuffers + (logBufferTails + 12))) = messageSize | (messageType << 24);
+            copyMem(logBuffers + (logBufferTails + 16), message, messageSize);
+            logBufferTails += 16 + messageSize;
         }
+        else
+        {
+            logBufferOverflownFlags = true;
+        }
+
+        RELEASE(logBufferLocks);
     }
 
     template <typename T>
-    static void logQuTransfer(T message)
+    void logQuTransfer(T message)
     {
 #if LOG_QU_TRANSFERS
         logMessage(offsetof(T, _terminator), QU_TRANSFER, &message);
@@ -233,7 +224,7 @@ public:
     }
 
     template <typename T>
-    static void logAssetIssuance(T message)
+    void logAssetIssuance(T message)
     {
 #if LOG_ASSET_ISSUANCES
         logMessage(offsetof(T, _terminator), ASSET_ISSUANCE, &message);
@@ -241,7 +232,7 @@ public:
     }
 
     template <typename T>
-    static void logAssetOwnershipChange(T message)
+    void logAssetOwnershipChange(T message)
     {
 #if LOG_ASSET_OWNERSHIP_CHANGES
         logMessage(offsetof(T, _terminator), ASSET_OWNERSHIP_CHANGE, &message);
@@ -249,7 +240,7 @@ public:
     }
 
     template <typename T>
-    static void logAssetPossessionChange(T message)
+    void logAssetPossessionChange(T message)
     {
 #if LOG_ASSET_POSSESSION_CHANGES
         logMessage(offsetof(T, _terminator), ASSET_POSSESSION_CHANGE, &message);
@@ -257,7 +248,7 @@ public:
     }
 
     template <typename T>
-    static void __logContractErrorMessage(unsigned int contractIndex, T& message)
+    void __logContractErrorMessage(unsigned int contractIndex, T& message)
     {
         static_assert(offsetof(T, _terminator) >= 8, "Invalid contract error message structure");
 
@@ -272,7 +263,7 @@ public:
     }
 
     template <typename T>
-    static void __logContractWarningMessage(unsigned int contractIndex, T& message)
+    void __logContractWarningMessage(unsigned int contractIndex, T& message)
     {
         static_assert(offsetof(T, _terminator) >= 8, "Invalid contract warning message structure");
 
@@ -287,7 +278,7 @@ public:
     }
 
     template <typename T>
-    static void __logContractInfoMessage(unsigned int contractIndex, T& message)
+    void __logContractInfoMessage(unsigned int contractIndex, T& message)
     {
         static_assert(offsetof(T, _terminator) >= 8, "Invalid contract info message structure");
 
@@ -302,7 +293,7 @@ public:
     }
 
     template <typename T>
-    static void __logContractDebugMessage(unsigned int contractIndex, T& message)
+    void __logContractDebugMessage(unsigned int contractIndex, T& message)
     {
         static_assert(offsetof(T, _terminator) >= 8, "Invalid contract debug message structure");
 
@@ -317,7 +308,7 @@ public:
     }
 
     template <typename T>
-    static void logBurning(T message)
+    void logBurning(T message)
     {
 #if LOG_BURNINGS
         logMessage(offsetof(T, _terminator), BURNING, &message);
@@ -325,7 +316,7 @@ public:
     }
 
     template <typename T>
-    static void logCustomMessage(T message)
+    void logCustomMessage(T message)
     {
         static_assert(offsetof(T, _terminator) >= 8, "Invalid custom message structure");
 
@@ -334,56 +325,50 @@ public:
 #endif
     }
 
-    static void processRequestLog(Peer* peer, RequestResponseHeader* header)
+    void processRequestLog(Peer* peer, RequestResponseHeader* header)
     {
         RequestLog* request = header->getPayload<RequestLog>();
-        for (unsigned int logReaderIndex = 0; logReaderIndex < sizeof(logReaderPasscodes) / sizeof(logReaderPasscodes[0]); logReaderIndex++)
+        if (request->passcode[0] == logReaderPasscodes[0]
+            && request->passcode[1] == logReaderPasscodes[1]
+            && request->passcode[2] == logReaderPasscodes[2]
+            && request->passcode[3] == logReaderPasscodes[3])
         {
-            if (request->passcode[0] == logReaderPasscodes[logReaderIndex][0]
-                && request->passcode[1] == logReaderPasscodes[logReaderIndex][1]
-                && request->passcode[2] == logReaderPasscodes[logReaderIndex][2]
-                && request->passcode[3] == logReaderPasscodes[logReaderIndex][3])
+            ACQUIRE(logBufferLocks);
+
+            if (logBufferOverflownFlags)
             {
-                ACQUIRE(logBufferLocks[logReaderIndex]);
-
-                if (logBufferOverflownFlags[logReaderIndex])
-                {
-                    RELEASE(logBufferLocks[logReaderIndex]);
-
-                    break;
-                }
-                else
-                {
-                    enqueueResponse(peer, logBufferTails[logReaderIndex], RespondLog::type, header->dejavu(), logBuffers[logReaderIndex]);
-                    logBufferTails[logReaderIndex] = 0;
-                }
-
-                RELEASE(logBufferLocks[logReaderIndex]);
-
+                RELEASE(logBufferLocks);
                 return;
             }
+            else
+            {
+                enqueueResponse(peer, logBufferTails, RespondLog::type, header->dejavu(), logBuffers);
+                logBufferTails = 0;
+            }
+            RELEASE(logBufferLocks);
+            return;
         }
 
         enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
     }
 };
 
-static qLogger logger;
+qLogger logger;
 
 // For smartcontract logging
-template <typename T> static void __logContractDebugMessage(unsigned int size, T& msg)
+template <typename T> void __logContractDebugMessage(unsigned int size, T& msg)
 {
     logger.__logContractDebugMessage(size, msg);
 }
-template <typename T> static void __logContractErrorMessage(unsigned int size, T& msg)
+template <typename T> void __logContractErrorMessage(unsigned int size, T& msg)
 {
     logger.__logContractErrorMessage(size, msg);
 }
-template <typename T> static void __logContractInfoMessage(unsigned int size, T& msg)
+template <typename T> void __logContractInfoMessage(unsigned int size, T& msg)
 {
     logger.__logContractInfoMessage(size, msg);
 }
-template <typename T> static void __logContractWarningMessage(unsigned int size, T& msg)
+template <typename T> void __logContractWarningMessage(unsigned int size, T& msg)
 {
     logger.__logContractWarningMessage(size, msg);
 }

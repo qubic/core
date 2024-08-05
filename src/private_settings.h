@@ -34,8 +34,8 @@ static const unsigned char whiteListPeers[][4] = {
 #define LOG_CONTRACT_DEBUG_MESSAGES 1
 #define LOG_BURNINGS 1
 #define LOG_CUSTOM_MESSAGES 1
-static unsigned long long logReaderPasscodes[][4] = {
-    {0, 0, 0, 0}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN RANDOM NUMBERS IN [0..18446744073709551615] RANGE IF LOGGING IS ENABLED
+static unsigned long long logReaderPasscodes[4] = {
+    0, 0, 0, 0 // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN RANDOM NUMBERS IN [0..18446744073709551615] RANGE IF LOGGING IS ENABLED
 };
 
 // Mode for auto save ticks:
