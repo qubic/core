@@ -1,6 +1,7 @@
 // Implements functions of QPI::collection in order to:
 // 1. keep setMem() and copyMem() unavailable to contracts
 // 2. keep QPI file smaller and easier to read for contract devs
+// CAUTION: Include this AFTER the contract implementations!
 
 #pragma once
 
@@ -9,12 +10,18 @@
 
 namespace QPI
 {
-	// TODO: move to qpi_util_impl.h?
+	// TODO: move to qpi_trivial_impl.h? together with getters of QpiContext member variables
 	template <typename T1, typename T2>
 	void copyMemory(T1& dst, const T2& src)
 	{
 		static_assert(sizeof(dst) == sizeof(src), "Size of source and destination must match to run copyMemory().");
 		copyMem(&dst, &src, sizeof(dst));
+	}
+
+	template <typename T>
+	void setMemory(T& dst, uint8 value)
+	{
+		setMem(&dst, sizeof(dst), value);
 	}
 
 

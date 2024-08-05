@@ -121,6 +121,8 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef POST_RELEASE_SHARES
 #undef POST_ACQUIRE_SHARES
 
+// The following are included after the contracts to keep their definitions and dependencies
+// inaccessible for contracts
 #include "qpi_collection_impl.h"
 
 #include "network_messages/common_def.h"

@@ -5,6 +5,7 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
+
 namespace QPI
 {
 	/*
@@ -104,6 +105,10 @@ namespace QPI
 	// Copy memory of src to dst. Both may have different types, but size of both must match exactly.
 	template <typename T1, typename T2>
 	void copyMemory(T1& dst, const T2& src);
+
+	// Set all memory of dst to byte value.
+	template <typename T>
+	void setMemory(T& dst, uint8 value);
 
 
 	// Array of L bits encoded in array of uint64 (overall size is at least 8 bytes, L must be 2^N)
@@ -467,8 +472,211 @@ namespace QPI
 	};
 
 	//////////
+	
+	constexpr uint16 INVALID_PROPOSAL_INDEX = 0xffff;
+	constexpr uint32 INVALID_VOTER_INDEX = 0xffffffff;
+	constexpr sint64 NO_VOTE_VALUE = 0x8000000000000000;
 
-#if !defined(NO_UEFI)
+	// Input data for contract procedure call
+	struct SingleProposalVoteData
+	{
+		uint16 proposalIndex; // = computorIndex or shareholderIndex etc
+		uint16 proposalType;  // see ProposalData::type
+		sint64 voteValue;	  // NO_VOTE_VALUE means no vote for every type,
+							  // type 0: zero means no, non-zero means yes
+	};
+
+	// Proposal data type for all types of proposals.
+	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
+	struct ProposalData
+	{
+		array<uint8, 256> url;	// zero-terminated string
+		uint16 epoch;			// for setProposal() must be current epoch or 0 (to clear proposal)
+
+		// Type of proposal
+		// 0: Yes/no (no extra data) -> mode if quorum
+		// 1: adjust revenue distribution -> mean (or median?) if quorum
+		// 2: adjust scalar variable value (such as invocation fee) -> mean (or median?) if quorum
+		uint16 type;
+		union
+		{
+			struct RevenueDistribution
+			{
+				id targetAddress;
+				sint64 proposedAmount;
+			} revenueDistribution;
+			struct VariableValue
+			{
+				sint64 minValue;
+				sint64 maxValue;
+				sint64 proposedValue;
+				uint16 variable;
+			} variableValue;
+		};
+
+		bool checkValidity() const
+		{
+			bool okay = false;
+			// TODO: validate URL
+			switch (type)
+			{
+			case 0:
+				okay = true;
+				break;
+			case 1:
+				okay = (revenueDistribution.proposedAmount >= 0) && !isZero(revenueDistribution.targetAddress);
+				break;
+			case 2:
+				okay = variableValue.minValue <= variableValue.proposedValue
+					&& variableValue.proposedValue <= variableValue.maxValue
+					&& variableValue.minValue > NO_VOTE_VALUE;
+				break;
+			}
+			return okay;
+		}
+	};
+
+	// Proposal data type for yes/no proposals only (requires less storage space).
+	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
+	struct ProposalDataYesNo
+	{
+		array<uint8, 256> url;
+		uint16 epoch;
+
+		// Type of proposal
+		// 0: Yes/no (no extra data) -> mode if quorum
+		uint16 type;
+
+		bool checkValidity() const
+		{
+			bool okay = type == 0;
+			// TODO: validate URL
+			return okay;
+		}
+	};
+
+
+	// Used internally by ProposalVoting to store a proposal with all votes
+	template <typename ProposalDataType, uint32 numOfVoters>
+	struct ProposalWithAllVoteData;
+
+	/*
+	// Used internally by ProposalVoting to store a proposal with all votes
+	template <uint32 numOfVoters>
+	struct ProposalWithAllVoteData<ProposalDataYesNo, numOfVoters> : public ProposalDataYesNo
+	{
+		union {
+			uint8 data[(2 * numOfVoters + 7) / 8];
+		} votes;
+	};*/
+
+	template <uint16 proposalSlotCount = NUMBER_OF_COMPUTORS>
+	struct ProposalAndVotingByComputors;
+
+	template <unsigned int maxShareholders>
+	struct ProposalAndVotingByShareholders;
+
+	/*
+	* Voting is running until end of epoch, each proposer/computor can have one proposal at a time (or zero).
+	* ProposerAndVoterHandlingType:
+	*	Class for checking right to propose/vote and getting index in array. May have member data such
+	*   as an array of IDs and may be initialized by accessing the public member proposerAndVoter.
+	*/
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	class ProposalVoting
+	{
+	public:
+		static constexpr uint16 maxProposals = ProposerAndVoterHandlingType::maxProposals;
+		static constexpr uint32 maxVoters = ProposerAndVoterHandlingType::maxVoters;
+
+		static_assert(maxProposals <= INVALID_PROPOSAL_INDEX);
+		static_assert(maxVoters <= INVALID_VOTER_INDEX);
+
+		typedef ProposalWithAllVoteData<
+			ProposalDataType,
+			maxVoters
+		> ProposalAndVotesDataType;
+
+		// Handling of who has the right to propose and to vote + proposal / voter indices
+		ProposerAndVoterHandlingType proposersAndVoters;
+
+		// Proposals and corresponding votes
+		ProposalAndVotesDataType proposals[maxProposals];
+	};
+
+	// Proposal user interface available in contract functions
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	struct QpiContextProposalFunctionCall
+	{
+		const QpiContextFunctionCall& qpi;
+		ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& pv;
+
+		// Get proposal with given index if index is valid and proposal is set (epoch > 0)
+		bool getProposal(uint16 proposalIndex, ProposalDataType& proposal) const;
+
+		// Get data of single vote
+		bool getVote(uint16 proposalIndex, uint32 voterIndex, SingleProposalVoteData& vote) const;
+
+		// Return index of existing proposal or INVALID_PROPOSAL_INDEX if there is no proposal by given proposer
+		uint16 proposalIndex(const id& proposerId) const;
+
+		// Return proposer ID of given proposal index or NULL_ID if there is no proposal at this index
+		id proposerId(uint16 proposalIndex) const;
+
+		// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote
+		uint32 voterIndex(const id& voterId) const;
+
+		// Return ID for given voter index or NULL_ID if index is invalid
+		id voterId(uint32 voterIndex) const;
+
+		// Return next proposal index of active proposal (voting possible this epoch)
+		// or -1 if there are not any more such proposals behind the passed index.
+		// Pass -1 to get first index.
+		sint32 nextActiveProposalIndex(sint32 prevProposalIndex) const;
+
+		// Return next proposal index of finished proposal (voting not possible anymore)
+		// or -1 if there are not any more such proposals behind the passed index.
+		// Pass -1 to get first index.
+		sint32 nextFinishedProposalIndex(sint32 prevProposalIndex) const;
+
+		// TODO:
+		// get current result of voting (number of votes + current overall result)
+
+		// Constructor. Use qpi(proposalVotingObject) to construct instance.
+		QpiContextProposalFunctionCall(
+			const QpiContextFunctionCall& qpi,
+			ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& pv
+		) : qpi(qpi), pv(pv) {}
+	};
+
+	// Proposal user interface available in contract procedures
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	struct QpiContextProposalProcedureCall : public QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>
+	{
+		bool setProposal(
+			const id& proposer,
+			const ProposalDataType& proposal
+		);
+
+		bool clearProposal(
+			uint16 proposalIndex
+		);
+
+		bool vote(
+			const id& voter,
+			const SingleProposalVoteData& vote
+		);
+
+
+
+		// Constructor. Use qpi(proposalVotingObject) to construct instance.
+		QpiContextProposalProcedureCall(
+			const QpiContextFunctionCall& qpi,
+			ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& pv
+		) : QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>(qpi, pv) {}
+	};
+
+	//////////
 
 	// QPI context base class (common data, by default has no stack for locals)
 	struct QpiContext
@@ -604,6 +812,11 @@ namespace QPI
 		uint8 year(
 		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 
+		// Access proposal functions with qpi(proposalVotingObject).func().
+		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+		inline QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
+			const ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& proposalVoting
+		) const;
 
 		// Internal functions, calling not allowed in contracts
 		void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
@@ -668,6 +881,12 @@ namespace QPI
 			const id& newOwnerAndPossessor
 		) const; // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient number
 
+		// Access proposal procedures with qpi(proposalVotingObject).proc().
+		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+		inline QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
+			ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& proposalVoting
+		) const;
+
 
 		// Internal functions, calling not allowed in contracts
 		const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
@@ -722,8 +941,6 @@ namespace QPI
 		id possessor;
 		sint64 numberOfShares;
 	};
-
-#endif
 
 	//////////
 
