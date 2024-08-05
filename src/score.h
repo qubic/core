@@ -195,20 +195,26 @@ struct ScoreFunction
 
     void initMiningData(m256i randomSeed)
     {
-        initialRandomSeed = randomSeed; // persist the initial random seed to be able to sned it back on system info response
-        random((unsigned char*)&randomSeed, (unsigned char*)&randomSeed, (unsigned char*)miningData, sizeof(miningData));
-        for (unsigned int i = 0; i < dataLength; i++)
+        initialRandomSeed = randomSeed; // persist the initial random seed to be able to send it back on system info response
+        if (initialRandomSeed != _mm256_setzero_si256())
         {
-            miningData[i] = (miningData[i] >= 0 ? 1 : -1);
-        }
-        setMem(_totalModNum, sizeof(_totalModNum), 0);
-        setMem(_modNum, sizeof(_modNum), 0);
+            random((unsigned char*)&randomSeed, (unsigned char*)&randomSeed, (unsigned char*)miningData, sizeof(miningData));
+            for (unsigned int i = 0; i < dataLength; i++)
+            {
+                miningData[i] = (miningData[i] >= 0 ? 1 : -1);
+            }
+            setMem(_totalModNum, sizeof(_totalModNum), 0);
+            setMem(_modNum, sizeof(_modNum), 0);
 
-        // init the divisible table
-        for (int i = 1; i <= maxDuration; i++) {
-            for (int j = 1; j <= 127; j++) { // exclude 128
-                if (j && i % j == 0) {
-                    _modNum[i][_totalModNum[i]++] = j;
+            // init the divisible table
+            for (int i = 1; i <= maxDuration; i++) 
+            {
+                for (int j = 1; j <= 127; j++) // exclude 128
+                { 
+                    if (j && i % j == 0) 
+                    {
+                        _modNum[i][_totalModNum[i]++] = j;
+                    }
                 }
             }
         }
@@ -708,6 +714,11 @@ struct ScoreFunction
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& nonce)
     {
+        if (initialRandomSeed == _mm256_setzero_si256())
+        {
+            return 0;
+        }
+
         int score = 0;
 #if USE_SCORE_CACHE
         unsigned int scoreCacheIndex = scoreCache.getCacheIndex(publicKey, nonce);
