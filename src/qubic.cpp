@@ -1497,7 +1497,7 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case RequestLog::type:
                 {
-                    processRequestLog(peer, header);
+                    logger.processRequestLog(peer, header);
                 }
                 break;
 
@@ -1643,7 +1643,7 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
         contractStateLock[0].releaseWrite();
 
         const Burning burning = { _currentContractId , amount };
-        logBurning(burning);
+        logger.logBurning(burning);
     }
 
     return remainingAmount;
@@ -1947,7 +1947,7 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
             __qpiAbort(ContractErrorTooManyActions);
 
         const QuTransfer quTransfer = { _currentContractId , destination , amount };
-        logQuTransfer(quTransfer);
+        logger.logQuTransfer(quTransfer);
     }
 
     return remainingAmount;
@@ -2192,7 +2192,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
         if (decreaseEnergy(spectrumIndex, amount))
         {
             const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
-            logQuTransfer(quTransfer);
+            logger.logQuTransfer(quTransfer);
 
             numberOfReleasedEntities = 0;
             contractStateLock[contractIndex].acquireWrite();
@@ -2262,7 +2262,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
         }
     }
@@ -2515,7 +2515,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
             {
                 moneyFlew = true;
                 const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
 
             if (isZero(transaction->destinationPublicKey))
@@ -3010,10 +3010,6 @@ static void beginEpoch1of2()
     resourceTestingDigest = 0;
 
     numberOfTransactions = 0;
-
-#if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
-    CurrentTransferId = 0;
-#endif
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
 #endif
@@ -3126,7 +3122,7 @@ static void endEpoch()
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
             contractStateLock[contractIndex].releaseRead();
 
@@ -3228,14 +3224,14 @@ static void endEpoch()
         if (revenue)
         {
             const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
-            logQuTransfer(quTransfer);
+            logger.logQuTransfer(quTransfer);
         }
         arbitratorRevenue -= revenue;
     }
 
     increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
     const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
-    logQuTransfer(quTransfer);
+    logger.logQuTransfer(quTransfer);
 
     {
         ACQUIRE(spectrumLock);
@@ -4741,7 +4737,7 @@ static bool initialize()
             return false;
         }
 
-        if (!initLogging())
+        if (!logger.initLogging())
             return false;
 
 #if ADDON_TX_STATUS_REQUEST
@@ -5005,7 +5001,7 @@ static void deinitialize()
         bs->FreePool(reorgBuffer);
     }
 
-    deinitLogging();
+    logger.deinitLogging();
 
 #if ADDON_TX_STATUS_REQUEST
     deinitTxStatusRequestAddOn();
