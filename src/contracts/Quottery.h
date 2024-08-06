@@ -8,7 +8,7 @@ constexpr unsigned long long QUOTTERY_MAX_ORACLE_PROVIDER = 8;
 constexpr unsigned long long QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET = 2048;
 
 // adjustable with no change:
-constexpr unsigned long long QUOTTERY_FEE_PER_SLOT_PER_HOUR = 420ULL;
+constexpr unsigned long long QUOTTERY_FEE_PER_SLOT_PER_HOUR = 10ULL;
 constexpr unsigned long long QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_ = 10000ULL;
 
 constexpr unsigned long long QUOTTERY_SHAREHOLDER_FEE_ = 1000; // 10%
