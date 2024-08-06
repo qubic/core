@@ -33,9 +33,10 @@ static struct System
     struct Solution
     {
         m256i computorPublicKey;
+        m256i miningSeed;
         m256i nonce;
     } solutions[MAX_NUMBER_OF_SOLUTIONS];
 
     m256i futureComputors[NUMBER_OF_COMPUTORS];
 } system;
-static_assert(sizeof(System) == 367792 + 64 * MAX_NUMBER_OF_SOLUTIONS, "Unexpected size");
+static_assert(sizeof(System) == 367792 + 96 * MAX_NUMBER_OF_SOLUTIONS, "Unexpected size");

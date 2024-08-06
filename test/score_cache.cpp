@@ -22,10 +22,11 @@ void expectEmptyCache(ScoreCache<cacheCapacity>& cache)
         unsigned long long b = 0xbca326450256c63eull - i * 759037ull;
         unsigned long long c = 2345932453043560ull << (i & 63);
         m256i publicKey(a ^ b, a ^ c, b ^ c, a ^ b ^ c);
+        m256i miningSeed; // TODO: Initialize
         m256i nonce((a << 2) ^ b, (a << 2) ^ c, (b << 1) ^ c, (b >> 1) ^ c);
 
         unsigned int ioIdx = i;
-        EXPECT_EQ(cache.tryFetching(publicKey, nonce, ioIdx), cache.SCORE_CACHE_MISS);
+        EXPECT_EQ(cache.tryFetching(publicKey, miningSeed, nonce, ioIdx), cache.SCORE_CACHE_MISS);
         EXPECT_TRUE(ioIdx == i || (i >= cache.capacity() && ioIdx == i % cache.capacity()));
     }
 }
@@ -41,18 +42,19 @@ unsigned int pseudoRandomCacheTest(ScoreCache<cacheCapacity> & cache, unsigned l
     for (unsigned int i = 0; i < entryCount; ++i)
     {
         m256i publicKey(gen64(), gen64(), gen64(), gen64());
+        m256i miningSeed(gen64(), gen64(), gen64(), gen64());
         m256i nonce(gen64(), gen64(), gen64(), gen64());
         int score = gen64() % std::numeric_limits<int>::max();
         assert(score >= 0);
-        unsigned int idx = cache.getCacheIndex(publicKey, nonce);
-        int fetchedScore = cache.tryFetching(publicKey, nonce, idx);
+        unsigned int idx = cache.getCacheIndex(publicKey, miningSeed, nonce);
+        int fetchedScore = cache.tryFetching(publicKey, miningSeed, nonce, idx);
 
         // assume that we will not get the same publicKey and nonce twice in random entry generation
         EXPECT_TRUE(fetchedScore == cache.SCORE_CACHE_MISS || fetchedScore == cache.SCORE_CACHE_COLLISION);
 
         if (fetchedScore != cache.SCORE_CACHE_COLLISION || overwrite)
         {
-            cache.addEntry(publicKey, nonce, idx, score);
+            cache.addEntry(publicKey, miningSeed, nonce, idx, score);
         }
     }
     EXPECT_EQ(entryCount, cache.missCount() + cache.collisionCount());
@@ -68,11 +70,12 @@ unsigned int pseudoRandomCacheTest(ScoreCache<cacheCapacity> & cache, unsigned l
     for (unsigned int i = 0; i < entryCount; ++i)
     {
         m256i publicKey(gen64(), gen64(), gen64(), gen64());
+        m256i miningSeed(gen64(), gen64(), gen64(), gen64());
         m256i nonce(gen64(), gen64(), gen64(), gen64());
         int expectedScore = gen64() % std::numeric_limits<int>::max();
         
-        unsigned int idx = cache.getCacheIndex(publicKey, nonce);
-        int fetchedScore = cache.tryFetching(publicKey, nonce, idx);
+        unsigned int idx = cache.getCacheIndex(publicKey, miningSeed, nonce);
+        int fetchedScore = cache.tryFetching(publicKey, miningSeed, nonce, idx);
 
         EXPECT_TRUE(fetchedScore == cache.SCORE_CACHE_COLLISION || fetchedScore > cache.MIN_VALID_SCORE);
         if (fetchedScore > cache.MIN_VALID_SCORE)
