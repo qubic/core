@@ -605,13 +605,15 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             {
                             case MESSAGE_TYPE_SOLUTION:
                             {
-                                if (messagePayloadSize >= 32)
+                                if (messagePayloadSize >= 32 + 32)
                                 {
-                                    const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
+                                    const m256i& solution_miningSeed = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
+                                    const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage) + 32);
                                     unsigned int k;
                                     for (k = 0; k < system.numberOfSolutions; k++)
                                     {
                                         if (solution_nonce == system.solutions[k].nonce
+                                            && solution_miningSeed == system.solutions[k].miningSeed
                                             && request->destinationPublicKey == system.solutions[k].computorPublicKey)
                                         {
                                             break;
@@ -619,7 +621,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     }
                                     if (k == system.numberOfSolutions)
                                     {
-                                        unsigned long long solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_nonce);
+                                        unsigned long long solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                         const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
                                             && (solutionScore >= (DATA_LENGTH / 3) + threshold) || (solutionScore <= (DATA_LENGTH / 3) - threshold))
@@ -629,6 +631,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                             for (k = 0; k < system.numberOfSolutions; k++)
                                             {
                                                 if (solution_nonce == system.solutions[k].nonce
+                                                    && solution_miningSeed == system.solutions[k].miningSeed
                                                     && request->destinationPublicKey == system.solutions[k].computorPublicKey)
                                                 {
                                                     break;
@@ -637,6 +640,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                             if (k == system.numberOfSolutions)
                                             {
                                                 system.solutions[system.numberOfSolutions].computorPublicKey = request->destinationPublicKey;
+                                                system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
                                                 system.solutions[system.numberOfSolutions++].nonce = solution_nonce;
                                             }
 
@@ -2298,16 +2302,17 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     ASSERT(transaction->destinationPublicKey == arbitratorPublicKey);
     ASSERT(!transaction->amount && transaction->inputSize == 32 && !transaction->inputType);
 
-    const m256i& solution_nonce = *(m256i*)transaction->inputPtr();
-    m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
-    static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
+    const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
+    const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
+    m256i data[3] = { transaction->sourcePublicKey, solution_miningSeed, solution_nonce };
+    static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
     unsigned int flagIndex;
     KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
     if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
     {
         minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
 
-        unsigned long long solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_nonce);
+        unsigned long long solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
 
         resourceTestingDigest ^= solutionScore;
         KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
@@ -2325,6 +2330,7 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                     for (j = 0; j < system.numberOfSolutions; j++)
                     {
                         if (solution_nonce == system.solutions[j].nonce
+                            && solution_miningSeed == system.solutions[j].miningSeed
                             && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
                         {
                             solutionPublicationTicks[j] = -1;
@@ -2336,6 +2342,7 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                         && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
                     {
                         system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
+                        system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
                         system.solutions[system.numberOfSolutions].nonce = solution_nonce;
                         solutionPublicationTicks[system.numberOfSolutions++] = -1;
                     }
@@ -2455,6 +2462,7 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                 for (j = 0; j < system.numberOfSolutions; j++)
                 {
                     if (solution_nonce == system.solutions[j].nonce
+                        && solution_miningSeed == system.solutions[j].miningSeed
                         && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
                     {
                         solutionPublicationTicks[j] = -1;
@@ -2466,6 +2474,7 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                     && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
                 {
                     system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
+                    system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
                     system.solutions[system.numberOfSolutions].nonce = solution_nonce;
                     solutionPublicationTicks[system.numberOfSolutions++] = -1;
                 }
@@ -2667,17 +2676,18 @@ static void processTick(unsigned long long processorNumber)
                         if (transaction->destinationPublicKey == arbitratorPublicKey)
                         {
                             if (!transaction->amount
-                                && transaction->inputSize == 32
+                                && transaction->inputSize == 32 + 32
                                 && !transaction->inputType)
                             {
-                                const m256i& solution_nonce = *(m256i*)transaction->inputPtr();
-                                m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
-                                static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
+                                const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
+                                const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
+                                m256i data[3] = { transaction->sourcePublicKey, solution_miningSeed, solution_nonce };
+                                static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
                                 unsigned int flagIndex;
                                 KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
                                 if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
                                 {
-                                    score->addTask(transaction->sourcePublicKey, solution_nonce);
+                                    score->addTask(transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
                                 }
                             }
                         }
@@ -2938,10 +2948,11 @@ static void processTick(unsigned long long processorNumber)
                 struct
                 {
                     Transaction transaction;
+                    m256i miningSeed;
                     m256i nonce;
                     unsigned char signature[SIGNATURE_SIZE];
                 } payload;
-                static_assert(sizeof(payload) == sizeof(Transaction) + 32 + SIGNATURE_SIZE, "Unexpected struct size!");
+                static_assert(sizeof(payload) == sizeof(Transaction) + 32 + 32 + SIGNATURE_SIZE, "Unexpected struct size!");
                 payload.transaction.sourcePublicKey = computorPublicKeys[i];
                 payload.transaction.destinationPublicKey = arbitratorPublicKey;
                 payload.transaction.amount = 0;
@@ -2949,11 +2960,12 @@ static void processTick(unsigned long long processorNumber)
                 _rdrand32_step(&random);
                 solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET + random % MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
                 payload.transaction.inputType = 0;
-                payload.transaction.inputSize = sizeof(payload.nonce);
+                payload.transaction.inputSize = sizeof(payload.miningSeed) + sizeof(payload.nonce);
+                payload.miningSeed = score->initialRandomSeed;
                 payload.nonce = system.solutions[solutionIndexToPublish].nonce;
 
                 unsigned char digest[32];
-                KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.nonce), digest, sizeof(digest));
+                KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.miningSeed) + sizeof(payload.nonce), digest, sizeof(digest));
                 sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, payload.signature);
 
                 enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
