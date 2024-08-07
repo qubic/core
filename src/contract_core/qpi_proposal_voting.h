@@ -111,67 +111,108 @@ namespace QPI
 	{
 	};
 
-	// Used internally by ProposalVoting to store a proposal with all votes
+
+	// Selection of min size type for vote storage
+	template <bool scalarVotesSupported>
+	struct __VoteStorageTypeSelector { typedef uint8 type;  };
+	template <>
+	struct __VoteStorageTypeSelector<true> { typedef sint64 type; };
+
+
+	// Used internally by ProposalVoting to store a proposal with all votes.
+	// Supports all vote types.
 	template <typename ProposalDataType, uint32 numOfVoters>
 	struct ProposalWithAllVoteData : public ProposalDataType
 	{
-		// votes: type 2 uses s64 with NO_VOTE_VALUE, others use u8 with 0xff to encode missing vote
-		union {
-			uint8 u8[numOfVoters];
-			sint64 s64[numOfVoters];
-		} votes;
+		// Select type for storage (sint64 if scalar votes are supported, uint8 otherwise).
+		static constexpr bool supportScalarVotes = ProposalDataType::supportScalarVotes;
+		typedef __VoteStorageTypeSelector<supportScalarVotes>::type VoteStorageType;
 
-		// set proposal and reset all votes
-		void set(const ProposalDataType& proposal)
+		// Vote storage
+		VoteStorageType votes[numOfVoters];
+
+		// Set proposal and reset all votes
+		bool set(const ProposalDataType& proposal)
 		{
+			if (!supportScalarVotes && proposal.type == ProposalTypes::VariableScalarMean)
+				return false;
+				
 			copyMemory(*(ProposalDataType*)this, proposal);
 
-			if (this->type == 0)
+			if (!supportScalarVotes)
 			{
-				// yes/no voting (1 byte per voter)
+				// option voting only (1 byte per voter)
+				// TODO: ASSERT that proposal type does not require sint64 (internal logic error)
 				constexpr uint8 noVoteValue = 0xff;
-				setMemory(votes.u8, noVoteValue);
+				setMemory(votes, noVoteValue);
 			}
 			else
 			{
-				// scalar variable voting
+				// scalar voting supported (sint64 per voter)
+				// (cast should not be needed but is to get rid of warning)
 				for (uint32 i = 0; i < numOfVoters; ++i)
-					votes.s64[i] = NO_VOTE_VALUE;
+					votes[i] = static_cast<VoteStorageType>(NO_VOTE_VALUE);
 			}
+			return true;
 		}
 
-		// Set vote value of given voter as used in SingleProposalVoteData
+		// Set vote value (as used in SingleProposalVoteData) of given voter if voter and value are valid
 		bool setVoteValue(uint32 voterIndex, sint64 voteValue)
 		{
 			bool ok = false;
 			if (voterIndex < numOfVoters)
 			{
-				switch (this->type)
+				if (voteValue == NO_VOTE_VALUE)
 				{
-				case 0:
-					if (voteValue == NO_VOTE_VALUE)
-						votes.u8[voterIndex] = 0xff;
-					else if (voteValue == 0)
-						votes.u8[voterIndex] = 0;
-					else
-						votes.u8[voterIndex] = 1;
+					votes[voterIndex] = (supportScalarVotes) ? NO_VOTE_VALUE : 0xff;
 					ok = true;
-					break;
-				case 1:
-					if (voteValue >= 0 || voteValue == NO_VOTE_VALUE)
+				}
+				else
+				{
+					if (this->type == ProposalTypes::VariableScalarMean)
 					{
-						votes.s64[voterIndex] = voteValue;
-						ok = true;
+						// scalar vote
+						if (supportScalarVotes)
+						{
+							// TODO: add ASSERT checking that storage type is sint64
+							if ((voteValue >= this->variableScalar.minValue && voteValue <= this->variableScalar.maxValue))
+							{
+								// (cast should not be needed but is to get rid of warning)
+								votes[voterIndex] = static_cast<VoteStorageType>(voteValue);
+								ok = true;
+							}
+						}
 					}
-					break;
-				case 2:
-					if ((voteValue >= this->variableValue.minValue && voteValue <= this->variableValue.maxValue) ||
-						voteValue == NO_VOTE_VALUE)
+					else
 					{
-						votes.s64[voterIndex] = voteValue;
-						ok = true;
+						// option vote
+						int numOptions = 0;
+						switch (this->type)
+						{
+						case ProposalTypes::YesNo:
+						case ProposalTypes::TransferYesNo:
+						case ProposalTypes::VariableYesNo:
+							numOptions = 2;
+							break;
+						case ProposalTypes::TransferTwoAmounts:
+						case ProposalTypes::VariableTwoValues:
+							numOptions = 3;
+							break;
+						case ProposalTypes::TransferThreeAmounts:
+						case ProposalTypes::VariableThreeValues:
+							numOptions = 4;
+							break;
+						case ProposalTypes::TransferFourAmounts:
+						case ProposalTypes::VariableFourValues:
+							numOptions = 5;
+							break;
+						}
+						if (voteValue >= 0 && voteValue < numOptions)
+						{
+							votes[voterIndex] = static_cast<VoteStorageType>(voteValue);
+							ok = true;
+						}
 					}
-					break;
 				}
 			}
 			return ok;
@@ -183,22 +224,32 @@ namespace QPI
 			sint64 vv = NO_VOTE_VALUE;
 			if (voterIndex < numOfVoters)
 			{
-				switch (this->type)
+				if (supportScalarVotes)
 				{
-				case 0:
-					vv = votes.u8[voterIndex];
-					if (vv == 0xff)
-						vv = NO_VOTE_VALUE;
-					break;
-				case 1:
-				case 2:
-					vv = votes.s64[voterIndex];
-					break;
+					// enocded in sint64 -> set directly
+					vv = votes[voterIndex];
+				}
+				else
+				{
+					// enocded in uint8 -> set if valid vote (not no-vote value 0xff)
+					if (votes[voterIndex] != 0xff)
+					{
+						vv = votes[voterIndex];
+					}
 				}
 			}
 			return vv;
 		}
 	};
+
+	/*
+	// Used internally by ProposalVoting to store a proposal with all votes
+	// Template specialization if only yes/no is supported (saves storage space in votes)
+	template <uint32 numOfVoters>
+	struct ProposalWithAllVoteData<ProposalDataYesNo, numOfVoters> : public ProposalDataYesNo
+	{
+		uint8 votes[(2 * numOfVoters + 7) / 8];
+	};*/
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	bool QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType>::setProposal(
@@ -252,9 +303,7 @@ namespace QPI
 		}
 
 		// set proposal (and reset previous votes if any)
-		this->pv.proposals[proposalIndex].set(proposal);
-
-		return true;
+		return this->pv.proposals[proposalIndex].set(proposal);
 	}
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>

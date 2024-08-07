@@ -480,63 +480,154 @@ namespace QPI
 	// Input data for contract procedure call
 	struct SingleProposalVoteData
 	{
-		uint16 proposalIndex; // = computorIndex or shareholderIndex etc
-		uint16 proposalType;  // see ProposalData::type
-		sint64 voteValue;	  // NO_VOTE_VALUE means no vote for every type,
-							  // type 0: zero means no, non-zero means yes
+		// Index of proposal the vote is about (can be requested with proposal voting API)
+		uint16 proposalIndex;
+
+		// Type of proposal, see ProposalTypes
+		uint16 proposalType;
+
+		// Value of vote. NO_VOTE_VALUE means no vote for every type.
+		// For proposals types with multiple options, 0 is no, 1 to N are the other options in order of definition in proposal.
+		// For scalar proposal types the value is passed directly.
+		sint64 voteValue;
 	};
 
-	// Proposal data type for all types of proposals.
-	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
-	struct ProposalData
+	// Proposal type constants
+	struct ProposalTypes
 	{
-		array<uint8, 256> url;	// zero-terminated string
-		uint16 epoch;			// for setProposal() must be current epoch or 0 (to clear proposal)
+		// Options yes and no without extra data -> result is histogram of options
+		static constexpr uint16 YesNo = 0;
 
-		// Type of proposal
-		// 0: Yes/no (no extra data) -> mode if quorum
-		// 1: adjust revenue distribution -> mean (or median?) if quorum
-		// 2: adjust scalar variable value (such as invocation fee) -> mean (or median?) if quorum
+		// Transfer given amount to address with options yes/no
+		static constexpr uint16 TransferYesNo = 1;
+
+		// Transfer amount to address with two options of amounts and option "no change"
+		static constexpr uint16 TransferTwoAmounts = 2;
+
+		// Transfer amount to address with three options of amounts and option "no change"
+		static constexpr uint16 TransferThreeAmounts = 3;
+
+		// Transfer amount to address with four options of amounts and option "no change"
+		static constexpr uint16 TransferFourAmounts = 4;
+
+		// Set given variable to proposed value with options yes/no
+		static constexpr uint16 VariableYesNo = 10;
+
+		// Set given variable to proposed value with two options of values and option "no change"
+		static constexpr uint16 VariableTwoValues = 11;
+
+		// Set given variable to proposed value with three options of values and option "no change"
+		static constexpr uint16 VariableThreeValues = 12;
+
+		// Set given variable to proposed value with four options of values and option "no change"
+		static constexpr uint16 VariableFourValues = 13;
+
+		// Set given variable to value, allowing to vote with scalar value, voting result is mean value
+		static constexpr uint16 VariableScalarMean = 20;
+	};
+
+	// Proposal data struct for all types of proposals defined in August 2024.
+	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
+	// You have to choose, whether to support scalar votes next to option votes. Scalar votes require 8x more storage in the state.
+	template <bool SupportScalarVotes>
+	struct ProposalDataV1
+	{
+		// URL explaining proposal, zero-terminated string.
+		array<uint8, 256> url;	
+		
+		// Epoch, when proposal is active. For setProposal(), this must be current epoch or 0 (to clear proposal).
+		uint16 epoch;
+
+		// Type of proposal, see ProposalTypes.
 		uint16 type;
+
+		// Proposal payload data (for all except ProposalTypes::YesNo)
 		union
 		{
-			struct RevenueDistribution
+			struct Transfer
 			{
 				id targetAddress;
-				sint64 proposedAmount;
-			} revenueDistribution;
-			struct VariableValue
+				array<sint64, 4> amounts;
+			} transfer;
+			struct VariableOptions
+			{
+				array<sint64, 4> values;
+				uint16 variable;
+			} variableOptions;
+			struct VariableScalar
 			{
 				sint64 minValue;
 				sint64 maxValue;
 				sint64 proposedValue;
 				uint16 variable;
-			} variableValue;
+			} variableScalar;
 		};
 
+		// Check if content of instance are valid. Epoch is not checked.
+		// Also useful to show requirements of valid proposal.
 		bool checkValidity() const
 		{
 			bool okay = false;
 			// TODO: validate URL
 			switch (type)
 			{
-			case 0:
+			case ProposalTypes::YesNo:
 				okay = true;
 				break;
-			case 1:
-				okay = (revenueDistribution.proposedAmount >= 0) && !isZero(revenueDistribution.targetAddress);
+			case ProposalTypes::TransferYesNo:
+			case ProposalTypes::TransferTwoAmounts:
+			case ProposalTypes::TransferThreeAmounts:
+			case ProposalTypes::TransferFourAmounts:
+				if (!isZero(transfer.targetAddress))
+				{
+					uint16 proposedAmounts = type - ProposalTypes::TransferYesNo + 1;
+					okay = true;
+					for (uint16 i = 0; i < proposedAmounts; ++i)
+					{
+						if (transfer.amounts.get(i) < 0)
+							okay = false;
+					}
+					for (uint16 i = proposedAmounts; i < 4; ++i)
+					{
+						if (transfer.amounts.get(i) != 0)
+							okay = false;
+					}
+				}
 				break;
-			case 2:
-				okay = variableValue.minValue <= variableValue.proposedValue
-					&& variableValue.proposedValue <= variableValue.maxValue
-					&& variableValue.minValue > NO_VOTE_VALUE;
+			case ProposalTypes::VariableYesNo:
+			case ProposalTypes::VariableTwoValues:
+			case ProposalTypes::VariableThreeValues:
+			case ProposalTypes::VariableFourValues:
+				{
+					uint16 proposedValues = type - ProposalTypes::VariableYesNo + 1;
+					okay = true;
+					for (uint16 i = 0; i < proposedValues; ++i)
+					{
+						if (variableOptions.values.get(i) < 0)
+							okay = false;
+					}
+					for (uint16 i = proposedValues; i < 4; ++i)
+					{
+						if (variableOptions.values.get(i) != 0)
+							okay = false;
+					}
+				}
+				break;
+			case ProposalTypes::VariableScalarMean:
+				if (supportScalarVotes)
+					okay = variableScalar.minValue <= variableScalar.proposedValue
+						&& variableScalar.proposedValue <= variableScalar.maxValue
+						&& variableScalar.minValue > NO_VOTE_VALUE;
 				break;
 			}
 			return okay;
 		}
+
+		// Whether to support scalar votes next to option votes.
+		static constexpr bool supportScalarVotes = SupportScalarVotes;
 	};
 
-	// Proposal data type for yes/no proposals only (requires less storage space).
+	// Proposal data struct for yes/no proposal type only (requires less storage space).
 	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
 	struct ProposalDataYesNo
 	{
@@ -544,12 +635,11 @@ namespace QPI
 		uint16 epoch;
 
 		// Type of proposal
-		// 0: Yes/no (no extra data) -> mode if quorum
 		uint16 type;
 
 		bool checkValidity() const
 		{
-			bool okay = type == 0;
+			bool okay = type == ProposalTypes::YesNo;
 			// TODO: validate URL
 			return okay;
 		}
@@ -560,15 +650,6 @@ namespace QPI
 	template <typename ProposalDataType, uint32 numOfVoters>
 	struct ProposalWithAllVoteData;
 
-	/*
-	// Used internally by ProposalVoting to store a proposal with all votes
-	template <uint32 numOfVoters>
-	struct ProposalWithAllVoteData<ProposalDataYesNo, numOfVoters> : public ProposalDataYesNo
-	{
-		union {
-			uint8 data[(2 * numOfVoters + 7) / 8];
-		} votes;
-	};*/
 
 	template <uint16 proposalSlotCount = NUMBER_OF_COMPUTORS>
 	struct ProposalAndVotingByComputors;
@@ -581,21 +662,25 @@ namespace QPI
 	* ProposerAndVoterHandlingType:
 	*	Class for checking right to propose/vote and getting index in array. May have member data such
 	*   as an array of IDs and may be initialized by accessing the public member proposerAndVoter.
+	* ProposalDataT:
+	*   Class defining supported proposals. Also determines storage for proposals and votes.
 	*/
-	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	template <typename ProposerAndVoterHandlingT, typename ProposalDataT>
 	class ProposalVoting
 	{
 	public:
-		static constexpr uint16 maxProposals = ProposerAndVoterHandlingType::maxProposals;
-		static constexpr uint32 maxVoters = ProposerAndVoterHandlingType::maxVoters;
+		static constexpr uint16 maxProposals = ProposerAndVoterHandlingT::maxProposals;
+		static constexpr uint32 maxVoters = ProposerAndVoterHandlingT::maxVoters;
+
+		typedef ProposerAndVoterHandlingT ProposerAndVoterHandlingType;
+		typedef ProposalDataT ProposalDataType;
+		typedef ProposalWithAllVoteData<
+			ProposalDataT,
+			maxVoters
+		> ProposalAndVotesDataType;
 
 		static_assert(maxProposals <= INVALID_PROPOSAL_INDEX);
 		static_assert(maxVoters <= INVALID_VOTER_INDEX);
-
-		typedef ProposalWithAllVoteData<
-			ProposalDataType,
-			maxVoters
-		> ProposalAndVotesDataType;
 
 		// Handling of who has the right to propose and to vote + proposal / voter indices
 		ProposerAndVoterHandlingType proposersAndVoters;
