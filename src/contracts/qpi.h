@@ -477,8 +477,8 @@ namespace QPI
 	constexpr uint32 INVALID_VOTER_INDEX = 0xffffffff;
 	constexpr sint64 NO_VOTE_VALUE = 0x8000000000000000;
 
-	// Input data for contract procedure call
-	struct SingleProposalVoteData
+	// Input data for contract procedure call (should not be persisted in contract state, because it may change)
+	struct ProposalSingleVoteData
 	{
 		// Index of proposal the vote is about (can be requested with proposal voting API)
 		uint16 proposalIndex;
@@ -490,6 +490,32 @@ namespace QPI
 		// For proposals types with multiple options, 0 is no, 1 to N are the other options in order of definition in proposal.
 		// For scalar proposal types the value is passed directly.
 		sint64 voteValue;
+	};
+
+	// Output data for contract function call for getting voting results (should not be persisted in contract state, because it may change)
+	struct ProposalSummarizedVotingData
+	{
+		// Index of proposal the vote is about (can be requested with proposal voting API)
+		uint16 proposalIndex;
+
+		// Count of options in proposal type (number of valid elements in optionVoteCount, 0 for scalar voting)
+		uint16 optionCount;
+
+		// Number of voter who have the right to vote
+		uint32 authorizedVoters;
+
+		// Number of total votes casted
+		uint32 totalVotes;
+
+		// Voting results
+		union
+		{
+			// Number of votes for different options (0 = no change, 1 to N = yes to specific proposed value)
+			array<uint32, 8> optionVoteCount;
+
+			// Scalar voting result (currently only for proposalType VariableScalarMean, mean value of all valid votes)
+			sint64 scalarVotingResult;
+		};
 	};
 
 	// Proposal type constants
@@ -524,10 +550,14 @@ namespace QPI
 
 		// Set given variable to value, allowing to vote with scalar value, voting result is mean value
 		static constexpr uint16 VariableScalarMean = 20;
+
+		// Return option count for a given proposal type (including "no change" option).
+		// Returns 0 for scalar voting or invalid type.
+		static uint16 optionCount(uint16 proposalType);
 	};
 
 	// Proposal data struct for all types of proposals defined in August 2024.
-	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
+	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting (persisted in contract states).
 	// You have to choose, whether to support scalar votes next to option votes. Scalar votes require 8x more storage in the state.
 	template <bool SupportScalarVotes>
 	struct ProposalDataV1
@@ -658,6 +688,7 @@ namespace QPI
 	struct ProposalAndVotingByShareholders;
 
 	/*
+	* Proposal voting state for use in contract state.
 	* Voting is running until end of epoch, each proposer/computor can have one proposal at a time (or zero).
 	* ProposerAndVoterHandlingType:
 	*	Class for checking right to propose/vote and getting index in array. May have member data such
@@ -700,7 +731,10 @@ namespace QPI
 		bool getProposal(uint16 proposalIndex, ProposalDataType& proposal) const;
 
 		// Get data of single vote
-		bool getVote(uint16 proposalIndex, uint32 voterIndex, SingleProposalVoteData& vote) const;
+		bool getVote(uint16 proposalIndex, uint32 voterIndex, ProposalSingleVoteData& vote) const;
+
+		// Get summary of all votes casted
+		bool getVotingSummary(uint16 proposalIndex, ProposalSummarizedVotingData& votingSummary) const;
 
 		// Return index of existing proposal or INVALID_PROPOSAL_INDEX if there is no proposal by given proposer
 		uint16 proposalIndex(const id& proposerId) const;
@@ -724,8 +758,6 @@ namespace QPI
 		// Pass -1 to get first index.
 		sint32 nextFinishedProposalIndex(sint32 prevProposalIndex) const;
 
-		// TODO:
-		// get current result of voting (number of votes + current overall result)
 
 		// Constructor. Use qpi(proposalVotingObject) to construct instance.
 		QpiContextProposalFunctionCall(
@@ -749,10 +781,8 @@ namespace QPI
 
 		bool vote(
 			const id& voter,
-			const SingleProposalVoteData& vote
+			const ProposalSingleVoteData& vote
 		);
-
-
 
 		// Constructor. Use qpi(proposalVotingObject) to construct instance.
 		QpiContextProposalProcedureCall(

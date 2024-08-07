@@ -111,6 +111,28 @@ namespace QPI
 	{
 	};
 
+	// Return option count for a given proposal type (including "no change" option).
+	// Returns 0 for scalar voting or invalid type.
+	uint16 ProposalTypes::optionCount(uint16 proposalType)
+	{
+		switch (proposalType)
+		{
+		case ProposalTypes::YesNo:
+		case ProposalTypes::TransferYesNo:
+		case ProposalTypes::VariableYesNo:
+			return 2;
+		case ProposalTypes::TransferTwoAmounts:
+		case ProposalTypes::VariableTwoValues:
+			return 3;
+		case ProposalTypes::TransferThreeAmounts:
+		case ProposalTypes::VariableThreeValues:
+			return 4;
+		case ProposalTypes::TransferFourAmounts:
+		case ProposalTypes::VariableFourValues:
+			return 5;
+		}
+		return 0;
+	}
 
 	// Selection of min size type for vote storage
 	template <bool scalarVotesSupported>
@@ -156,7 +178,7 @@ namespace QPI
 			return true;
 		}
 
-		// Set vote value (as used in SingleProposalVoteData) of given voter if voter and value are valid
+		// Set vote value (as used in ProposalSingleVoteData) of given voter if voter and value are valid
 		bool setVoteValue(uint32 voterIndex, sint64 voteValue)
 		{
 			bool ok = false;
@@ -186,27 +208,7 @@ namespace QPI
 					else
 					{
 						// option vote
-						int numOptions = 0;
-						switch (this->type)
-						{
-						case ProposalTypes::YesNo:
-						case ProposalTypes::TransferYesNo:
-						case ProposalTypes::VariableYesNo:
-							numOptions = 2;
-							break;
-						case ProposalTypes::TransferTwoAmounts:
-						case ProposalTypes::VariableTwoValues:
-							numOptions = 3;
-							break;
-						case ProposalTypes::TransferThreeAmounts:
-						case ProposalTypes::VariableThreeValues:
-							numOptions = 4;
-							break;
-						case ProposalTypes::TransferFourAmounts:
-						case ProposalTypes::VariableFourValues:
-							numOptions = 5;
-							break;
-						}
+						int numOptions = ProposalTypes::optionCount(this->type);
 						if (voteValue >= 0 && voteValue < numOptions)
 						{
 							votes[voterIndex] = static_cast<VoteStorageType>(voteValue);
@@ -218,7 +220,7 @@ namespace QPI
 			return ok;
 		}
 
-		// Get vote value of given voter as used in SingleProposalVoteData
+		// Get vote value of given voter as used in ProposalSingleVoteData
 		sint64 getVoteValue(uint32 voterIndex) const
 		{
 			sint64 vv = NO_VOTE_VALUE;
@@ -322,7 +324,7 @@ namespace QPI
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	bool QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType>::vote(
 		const id& voter,
-		const SingleProposalVoteData& vote
+		const ProposalSingleVoteData& vote
 	)
 	{
 		if (vote.proposalIndex >= this->pv.maxProposals)
@@ -353,7 +355,7 @@ namespace QPI
 	bool QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::getVote(
 		uint16 proposalIndex,
 		uint32 voterIndex,
-		SingleProposalVoteData& vote
+		ProposalSingleVoteData& vote
 	) const
 	{
 		if (proposalIndex >= pv.maxProposals || voterIndex >= pv.maxVoters || !pv.proposals[proposalIndex].epoch)
@@ -362,6 +364,65 @@ namespace QPI
 		vote.proposalIndex = proposalIndex;
 		vote.proposalType = pv.proposals[proposalIndex].type;
 		vote.voteValue = pv.proposals[proposalIndex].getVoteValue(voterIndex);
+		return true;
+	}
+
+	// Get summary of all votes casted
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	bool QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::getVotingSummary(
+		uint16 proposalIndex,
+		ProposalSummarizedVotingData& votingSummary
+	) const
+	{
+		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
+			return false;
+
+		const auto& p = pv.proposals[proposalIndex];
+		votingSummary.proposalIndex = proposalIndex;
+		votingSummary.optionCount = ProposalTypes::optionCount(p.type);
+		votingSummary.authorizedVoters = pv.maxVoters;
+		votingSummary.totalVotes = 0;
+
+		sint64 value;
+		if (p.type == ProposalTypes::VariableScalarMean)
+		{
+			// scalar voting -> compute mean value of votes (avoid potential overflow by using long double)
+			// TODO: ASSERT(optionCount) == 0
+			long double accumulation = 0;
+			for (uint32 i = 0; i < pv.maxVoters; ++i)
+			{
+				value = p.getVoteValue(i);
+				if (value != NO_VOTE_VALUE)
+				{
+					++votingSummary.totalVotes;
+					accumulation += value;
+				}
+			}
+			if (votingSummary.totalVotes)
+				accumulation /= votingSummary.totalVotes;
+
+			// make sure union is zeroed and set result
+			setMemory(votingSummary.optionVoteCount, 0);
+			votingSummary.scalarVotingResult = static_cast<QPI::sint64>(accumulation);
+		}
+		else
+		{
+			// option voting -> compute histogram
+			// TODO: ASSERT(optionCount) > 0
+			// TODO: assert option count >= array capacity
+			auto& hist = votingSummary.optionVoteCount;
+			hist.setAll(0);
+			for (uint32 i = 0; i < pv.maxVoters; ++i)
+			{
+				value = p.getVoteValue(i);
+				if (value != NO_VOTE_VALUE && value >= 0 && value < votingSummary.optionCount)
+				{
+					++votingSummary.totalVotes;
+					hist.set(value, hist.get(value) + 1);
+				}
+			}
+		}
+
 		return true;
 	}
 
