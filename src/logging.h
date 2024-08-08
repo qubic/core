@@ -302,15 +302,19 @@ public:
         // return the logID ranges of a tx hash
         static BlobInfo getLogIdInfo(unsigned int tick, m256i txHash)
         {
-            unsigned long long start = tickIndex[tick - tickBegin].startIndex;
-            unsigned long long end = start + tickIndex[tick - tickBegin].length;
-            for (unsigned long long i = start; i < end; i++)
+            unsigned int tickOffset = tick - tickBegin;
+            if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH)
             {
-                if (mapTxToLogId[i].hash == txHash)
+                unsigned long long start = tickIndex[tickOffset].startIndex;
+                unsigned long long end = start + tickIndex[tickOffset].length;
+                for (unsigned long long i = start; i < end; i++)
                 {
-                    return mapTxToLogId[i].info;
+                    if (mapTxToLogId[i].hash == txHash)
+                    {
+                        return mapTxToLogId[i].info;
+                    }
                 }
-            }
+            }            
             return BlobInfo{ -1,-1 };
         }
 
@@ -326,6 +330,7 @@ public:
         static void addLogId()
         {
             unsigned long long offsetTick = currentTick - tickBegin;
+            ASSERT(offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH);
 
             if (mapTxToLogIdCounter == 0)
             {
@@ -386,6 +391,7 @@ public:
                 return false;
             }
         }
+        reset(0);
 #endif
         return true;
     }
