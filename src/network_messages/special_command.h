@@ -2,6 +2,9 @@
 
 #include "common_def.h"
 
+// proposal and ballot are replaced by SC
+// TODO: remove completely
+/*
 struct ComputorProposal
 {
     unsigned char uriSize;
@@ -13,6 +16,7 @@ struct ComputorBallot
     unsigned char votes[(NUMBER_OF_COMPUTORS * 3 + 7) / 8];
     unsigned char quasiRandomNumber;
 };
+*/
 
 struct SpecialCommand
 {
@@ -25,6 +29,9 @@ struct SpecialCommand
 
 #define SPECIAL_COMMAND_SHUT_DOWN 0ULL
 
+// ProposalAndBallot are replaced by SC
+// TODO: remove completely
+/*
 #define SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST 1ULL
 struct SpecialCommandGetProposalAndBallotRequest
 {
@@ -62,6 +69,7 @@ struct SpecialCommandSetProposalAndBallotResponse
     unsigned short computorIndex;
     unsigned char padding[6];
 };
+*/
 
 #define SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST 5ULL
 #define SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_RESPONSE 6ULL
