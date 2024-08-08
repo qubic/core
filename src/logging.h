@@ -208,6 +208,12 @@ public:
     inline static BlobInfo currentTxInfo;
     inline static volatile char logBufferLocks;
 
+    // 5 special txs for 5 special events in qubic
+    inline static m256i SC_INITIALIZE_TX = m256i(0, 0, 0, 0);
+    inline static m256i SC_BEGIN_EPOCH_TX = m256i(0, 1, 0, 0);
+    inline static m256i SC_BEGIN_TICK_TX = m256i(0, 2, 0, 0);
+    inline static m256i SC_END_TICK_TX = m256i(0, 3, 0, 0);
+    inline static m256i SC_END_EPOCH_TX = m256i(0, 4, 0, 0);
     // some utils
     static bool isProtocolTx(m256i hash)
     {

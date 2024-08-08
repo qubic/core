@@ -2495,6 +2495,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
+    logger.registerNewTx(transaction->tick, transactionDigest);
 
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
     if (spectrumIndex >= 0
@@ -2615,6 +2616,7 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
+        logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
         while (contractProcessorState)
@@ -2622,6 +2624,7 @@ static void processTick(unsigned long long processorNumber)
             _mm_pause();
         }
 
+        logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
         contractProcessorPhase = BEGIN_EPOCH;
         contractProcessorState = 1;
         while (contractProcessorState)
@@ -2630,6 +2633,7 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
+    logger.registerNewTx(system.tick, logger.SC_BEGIN_TICK_TX);
     contractProcessorPhase = BEGIN_TICK;
     contractProcessorState = 1;
     while (contractProcessorState)
@@ -2720,6 +2724,7 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
+    logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
     contractProcessorState = 1;
     while (contractProcessorState)
@@ -3060,6 +3065,7 @@ static bool saveRevenueScoreFile(CHAR16* directory = NULL)
 // called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
 {
+    logger.registerNewTx(system.tick, logger.SC_END_EPOCH_TX);
     contractProcessorPhase = END_EPOCH;
     contractProcessorState = 1;
     while (contractProcessorState)
