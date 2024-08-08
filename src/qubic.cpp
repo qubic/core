@@ -2616,6 +2616,7 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
+        logger.reset(system.initialTick); // reset here to persist the data when we do seamless transition
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
@@ -2960,7 +2961,6 @@ static void beginEpoch1of2()
 #endif
     ts.beginEpoch(system.initialTick);
     voteCounter.init();
-    logger.reset(system.initialTick);
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
 #endif
