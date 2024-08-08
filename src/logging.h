@@ -37,7 +37,7 @@ struct RequestLogIdRangeFromTx
 {
     unsigned long long passcode[4];
     unsigned int tick;
-    m256i txHash;
+    unsigned int txId;
 
     enum {
         type = 46,
@@ -182,9 +182,10 @@ struct Burning
  */
 #define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
 #define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
-#define LOG_MAX_STORAGE_TICK 20000ULL
-#define LOG_AVG_TX_PER_TICK 64ULL
-#define LOG_TX_INFO_STORAGE (LOG_MAX_STORAGE_TICK*LOG_AVG_TX_PER_TICK)
+#define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
+#define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
+#define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
+
 class qLogger
 {
 public:
@@ -193,32 +194,22 @@ public:
         long long startIndex;
         long long length;
     };
-    struct TxBufferInfo
-    {
-        m256i hash;
-        BlobInfo info;
-    };
-
+    
     inline static char* logBuffer = NULL;
+    inline static BlobInfo* mapTxToLogId = NULL;
     inline static unsigned long long logBufferTail;
     inline static unsigned long long logId;
     inline static unsigned int tickBegin;
-    inline static m256i currentTxHash;
+    inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
     inline static BlobInfo currentTxInfo;
     inline static volatile char logBufferLocks;
-
     // 5 special txs for 5 special events in qubic
-    inline static m256i SC_INITIALIZE_TX = m256i(0, 0, 0, 0);
-    inline static m256i SC_BEGIN_EPOCH_TX = m256i(0, 1, 0, 0);
-    inline static m256i SC_BEGIN_TICK_TX = m256i(0, 2, 0, 0);
-    inline static m256i SC_END_TICK_TX = m256i(0, 3, 0, 0);
-    inline static m256i SC_END_EPOCH_TX = m256i(0, 4, 0, 0);
-    // some utils
-    static bool isProtocolTx(m256i hash)
-    {
-        return (hash.m256i_u64[0] == 0) && (hash.m256i_u64[2] == 0) && (hash.m256i_u64[3] == 0);
-    }
+    inline static unsigned int SC_INITIALIZE_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 0;
+    inline static unsigned int SC_BEGIN_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 1;
+    inline static unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
+    inline static unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
+    inline static unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
 
     static unsigned long long getLogId(const char* ptr)
     {
@@ -281,49 +272,32 @@ public:
     // Struct to map log id ranges from tx hash
     static struct mapTxToLogIdAccess
     {
-        inline static TxBufferInfo mapTxToLogId[LOG_TX_INFO_STORAGE];
-        inline static BlobInfo tickIndex[MAX_NUMBER_OF_TICKS_PER_EPOCH];
-        inline static unsigned long long mapTxToLogIdCounter;
         static void init()
         {
             BlobInfo null_blob{ -1,-1 };
-            for (unsigned long long i = 0; i < MAX_NUMBER_OF_TICKS_PER_EPOCH; i++)
-            {
-                tickIndex[i] = null_blob;
-            }
             for (unsigned long long i = 0; i < LOG_TX_INFO_STORAGE; i++)
             {
-                mapTxToLogId[i].hash = _mm256_setzero_si256();
-                mapTxToLogId[i].info = null_blob;
+                mapTxToLogId[i] = null_blob;
             }
-            mapTxToLogIdCounter = 0;
         }
 
         // return the logID ranges of a tx hash
-        static BlobInfo getLogIdInfo(unsigned int tick, m256i txHash)
+        static BlobInfo getLogIdInfo(unsigned int tick, unsigned int txId)
         {
-            unsigned int tickOffset = tick - tickBegin;
-            if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH)
+            unsigned long long tickOffset = tick - tickBegin;
+            if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH && txId < LOG_TX_PER_TICK)
             {
-                unsigned long long start = tickIndex[tickOffset].startIndex;
-                unsigned long long end = start + tickIndex[tickOffset].length;
-                for (unsigned long long i = start; i < end; i++)
-                {
-                    if (mapTxToLogId[i].hash == txHash)
-                    {
-                        return mapTxToLogId[i].info;
-                    }
-                }
+                return mapTxToLogId[tickOffset * LOG_TX_PER_TICK + txId];
             }            
             return BlobInfo{ -1,-1 };
         }
 
-        static void _registerNewTx(unsigned int tick, m256i txHash)
+        static void _registerNewTx(const unsigned int tick, const unsigned int txId)
         {
-            if (currentTick != tick || currentTxHash != txHash)
+            if (currentTick != tick || currentTxId != txId)
             {
                 currentTick = tick;
-                currentTxHash = txHash;
+                currentTxId = txId;
             }
         }
 
@@ -331,50 +305,23 @@ public:
         {
             unsigned long long offsetTick = currentTick - tickBegin;
             ASSERT(offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH);
-
-            if (mapTxToLogIdCounter == 0)
+            auto& txInfo = mapTxToLogId[offsetTick * LOG_TX_PER_TICK + currentTxId];
+            if (txInfo.startIndex == -1)
             {
-                auto& txInfo = mapTxToLogId[0];
-                txInfo.hash == currentTxHash;
-                txInfo.info.startIndex = logId;
-                txInfo.info.length = 1;
-                tickIndex[offsetTick].startIndex = mapTxToLogIdCounter;
-                tickIndex[offsetTick].length = 1;
-                mapTxToLogIdCounter++;
-                return;
+                txInfo.startIndex = logId;
+                txInfo.length = 1;
             }
-
-            auto& txInfo = mapTxToLogId[(mapTxToLogIdCounter - 1) % LOG_TX_INFO_STORAGE];
-            if (txInfo.hash == currentTxHash)
+            else
             {
-                ASSERT(txInfo.info.startIndex != -1);
-                ASSERT(txInfo.info.length != -1);
-                txInfo.info.length++;
-            }
-            else // new tx is registered and generates log
-            {
-                auto& newTxInfo = mapTxToLogId[mapTxToLogIdCounter % LOG_TX_INFO_STORAGE];
-                newTxInfo.hash == currentTxHash;
-                newTxInfo.info.startIndex = logId;
-                newTxInfo.info.length = 1;
-                if (tickIndex[offsetTick].startIndex == -1) // new tick
-                {
-                    tickIndex[offsetTick].startIndex = mapTxToLogIdCounter;
-                    tickIndex[offsetTick].length = 1;
-                }
-                else
-                {
-                    ASSERT(tickIndex[offsetTick].startIndex != -1);
-                    tickIndex[offsetTick].length++;
-                }
-                mapTxToLogIdCounter++;
+                ASSERT(txInfo.startIndex != -1);
+                txInfo.length++;
             }
         }
     } tx;
 
-    static void registerNewTx(unsigned int tick, m256i txHash)
+    static void registerNewTx(const unsigned int tick, const unsigned int txId)
     {
-        tx._registerNewTx(tick, txHash);
+        tx._registerNewTx(tick, txId);
     }
 
 
@@ -385,6 +332,15 @@ public:
         if (logBuffer == NULL)
         {
             if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffer))
+            {
+                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+
+                return false;
+            }
+        }
+        if (mapTxToLogId == NULL)
+        {
+            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
             {
                 logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
@@ -624,15 +580,16 @@ public:
         if (request->passcode[0] == logReaderPasscodes[0]
             && request->passcode[1] == logReaderPasscodes[1]
             && request->passcode[2] == logReaderPasscodes[2]
-            && request->passcode[3] == logReaderPasscodes[3])
+            && request->passcode[3] == logReaderPasscodes[3]
+            && request->tick < system.tick
+            && request->tick >= system.initialTick
+            )
         {
-            ACQUIRE(logBufferLocks);
-            ResponseLogIdRangeFromTx resp;
-            BlobInfo info = tx.getLogIdInfo(request->tick, request->txHash);
+            ResponseLogIdRangeFromTx resp;            
+            BlobInfo info = tx.getLogIdInfo(request->tick, request->txId);
             resp.fromLogId = info.startIndex;
             resp.length = info.length;
             enqueueResponse(peer, sizeof(ResponseLogIdRangeFromTx), ResponseLogIdRangeFromTx::type, header->dejavu(), &resp);
-            RELEASE(logBufferLocks);
             return;
         }
 
