@@ -203,7 +203,6 @@ public:
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
     inline static BlobInfo currentTxInfo;
-    inline static volatile char logBufferLocks;
     // 5 special txs for 5 special events in qubic
     inline static unsigned int SC_INITIALIZE_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 0;
     inline static unsigned int SC_BEGIN_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 1;
@@ -364,13 +363,12 @@ public:
         tx.init();
         logBufferTail = 0;
         logId = 0;
-        logBufferLocks = 0;
         tickBegin = _tickBegin;
     }
 
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
-        ACQUIRE(logBufferLocks);
+        tx.addLogId();
         if (logBufferTail + 16 + messageSize <= LOG_BUFFER_SIZE)
         {
             logBufferTail = 0; // reset back to beginning
@@ -390,7 +388,6 @@ public:
         *((unsigned long long*)(logBuffer + (logBufferTail + 16))) = logId++;
         copyMem(logBuffer + (logBufferTail + 24), message, messageSize);
         logBufferTail += 24 + messageSize;
-        RELEASE(logBufferLocks);
     }
 
     template <typename T>
@@ -511,7 +508,6 @@ public:
             && request->passcode[2] == logReaderPasscodes[2]
             && request->passcode[3] == logReaderPasscodes[3])
         {
-            ACQUIRE(logBufferLocks);
             BlobInfo startIdBufferRange = logBuf.getBlobInfo(request->fromID);
             BlobInfo endIdBufferRange = logBuf.getBlobInfo(request->toID); // inclusive
             if (startIdBufferRange.startIndex != -1 && startIdBufferRange.length != -1
@@ -567,7 +563,6 @@ public:
             {
                 enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
             }
-            RELEASE(logBufferLocks);
             return;
         }
 
