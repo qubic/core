@@ -398,6 +398,27 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataWithoutScalarVoteSupport)
     testProposalWithAllVoteData<false>();
 }
 
+
+template <typename ProposalVotingType>
+void expectNoVotes(
+    const QPI::QpiContextFunctionCall& qpi,
+    const ProposalVotingType& pv,
+    QPI::uint16 proposalIndex
+)
+{
+    QPI::ProposalSingleVoteDataV1 vote;
+    for (QPI::uint32 i = 0; i < pv->maxVoters; ++i)
+    {
+        EXPECT_TRUE(qpi(*pv).getVote(proposalIndex, i, vote));
+        EXPECT_EQ(vote.voteValue, QPI::NO_VOTE_VALUE);
+    }
+
+    QPI::ProposalSummarizedVotingDataV1 votingSummaryReturned;
+    EXPECT_TRUE(qpi(*pv).getVotingSummary(proposalIndex, votingSummaryReturned));
+    EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotes, 0);
+}
+
 template <bool B>
 bool isReturnedProposalAsExpected(
     const QPI::QpiContextFunctionCall& qpi,
@@ -420,8 +441,9 @@ bool operator==(const QPI::ProposalSingleVoteDataV1& p1, const QPI::ProposalSing
     return memcmp(&p1, &p2, sizeof(p1)) == 0;
 }
 
+
 template <typename ProposalVotingType, typename ProposalDataType>
-void setProposalWithSuccessCheck(const QpiContextUserProcedureCall& qpi, const ProposalVotingType& pv, const QPI::id& proposerId, const ProposalDataType& proposal)
+void setProposalWithSuccessCheck(const QPI::QpiContextProcedureCall& qpi, const ProposalVotingType& pv, const QPI::id& proposerId, const ProposalDataType& proposal)
 {
     ProposalDataType proposalReturned;
     EXPECT_TRUE(qpi(*pv).setProposal(proposerId, proposal));
@@ -435,7 +457,7 @@ void setProposalWithSuccessCheck(const QpiContextUserProcedureCall& qpi, const P
 
 template <bool successExpected, typename ProposalVotingType>
 void voteWithValidVoter(
-    const QpiContextUserProcedureCall& qpi,
+    const QPI::QpiContextProcedureCall& qpi,
     ProposalVotingType& pv,
     const QPI::id& voterId,
     QPI::uint16 proposalIndex,
@@ -479,7 +501,7 @@ void voteWithValidVoter(
 
 template <typename ProposalVotingType>
 void voteWithInvalidVoter(
-    const QpiContextUserProcedureCall& qpi,
+    const QPI::QpiContextProcedureCall& qpi,
     ProposalVotingType& pv,
     const QPI::id& voterId,
     QPI::uint16 proposalIndex,
@@ -496,29 +518,10 @@ void voteWithInvalidVoter(
     EXPECT_FALSE(qpi(pv).vote(voterId, vote));
 }
 
-template <typename ProposalVotingType>
-void expectNoVotes(
-    const QpiContextUserProcedureCall& qpi,
-    const ProposalVotingType& pv,
-    QPI::uint16 proposalIndex
-)
-{
-    QPI::ProposalSingleVoteDataV1 vote;
-    for (QPI::uint32 i = 0; i < pv->maxVoters; ++i)
-    {
-        EXPECT_TRUE(qpi(*pv).getVote(proposalIndex, i, vote));
-        EXPECT_EQ(vote.voteValue, QPI::NO_VOTE_VALUE);
-    }
-
-    QPI::ProposalSummarizedVotingDataV1 votingSummaryReturned;
-    EXPECT_TRUE(qpi(*pv).getVotingSummary(proposalIndex, votingSummaryReturned));
-    EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotes, 0);
-}
 
 template <typename ProposalVotingType>
 int countActiveProposals(
-    const QpiContextUserProcedureCall& qpi,
+    const QPI::QpiContextFunctionCall& qpi,
     const ProposalVotingType& pv
 )
 {
@@ -531,7 +534,7 @@ int countActiveProposals(
 
 template <typename ProposalVotingType>
 int countFinishedProposals(
-    const QpiContextUserProcedureCall& qpi,
+    const QPI::QpiContextFunctionCall& qpi,
     const ProposalVotingType& pv
 )
 {

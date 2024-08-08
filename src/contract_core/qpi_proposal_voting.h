@@ -259,12 +259,15 @@ namespace QPI
 		const ProposalDataType& proposal
 	)
 	{
+		ProposalVotingType& pv = const_cast<ProposalVotingType&>(this->pv);
+		const QpiContextFunctionCall& qpi = this->qpi;
+
 		// epoch must be current epoch or 0 (to clear proposal)
-		uint16 curEpoch = this->qpi.epoch();
+		uint16 curEpoch = qpi.epoch();
 		if (proposal.epoch != curEpoch)
 		{
 			if (proposal.epoch == 0)
-				return clearProposal(this->pv.proposersAndVoters.getExistingProposalIndex(this->qpi, proposer));
+				return clearProposal(pv.proposersAndVoters.getExistingProposalIndex(qpi, proposer));
 			else
 				return false;
 		}
@@ -274,26 +277,26 @@ namespace QPI
 			return false;
 
 		// check if proposer ID has right to propose
-		if (!this->pv.proposersAndVoters.isValidProposer(this->qpi, proposer))
+		if (!pv.proposersAndVoters.isValidProposer(qpi, proposer))
 			return false;
 
 		// get proposal index
-		unsigned int proposalIndex = this->pv.proposersAndVoters.getNewProposalIndex(this->qpi, proposer);
-		if (proposalIndex >= this->pv.maxProposals)
+		unsigned int proposalIndex = pv.proposersAndVoters.getNewProposalIndex(qpi, proposer);
+		if (proposalIndex >= pv.maxProposals)
 		{
 			// no empty slots -> try to free a slot of oldest proposal before current epoch
 			uint16 minEpoch = curEpoch;
-			for (uint16 i = 0; i < this->pv.maxProposals; ++i)
+			for (uint16 i = 0; i < pv.maxProposals; ++i)
 			{
-				if (this->pv.proposals[i].epoch < minEpoch)
+				if (pv.proposals[i].epoch < minEpoch)
 				{
 					proposalIndex = i;
-					minEpoch = this->pv.proposals[i].epoch;
+					minEpoch = pv.proposals[i].epoch;
 				}
 			}
 
 			// all occupied slots are used in current epoch? -> error
-			if (proposalIndex >= this->pv.maxProposals)
+			if (proposalIndex >= pv.maxProposals)
 				return false;
 			
 			// remove oldest proposal
@@ -301,12 +304,12 @@ namespace QPI
 
 			// call voters interface again in case it needs to register the proposer
 			// TODO: add ASSERT, because this should always return the same value if the interface is implemented correctly
-			proposalIndex = this->pv.proposersAndVoters.getNewProposalIndex(this->qpi, proposer);
+			proposalIndex = pv.proposersAndVoters.getNewProposalIndex(qpi, proposer);
 		}
 
 		// set proposal (and reset previous votes if any)
-		bool okay = this->pv.proposals[proposalIndex].set(proposal);
-		this->pv.proposals[proposalIndex].tick = this->qpi.tick();
+		bool okay = pv.proposals[proposalIndex].set(proposal);
+		pv.proposals[proposalIndex].tick = qpi.tick();
 
 		return okay;
 	}
@@ -316,10 +319,14 @@ namespace QPI
 		uint16 proposalIndex
 	)
 	{
-		if (proposalIndex >= this->pv.maxProposals)
+		ProposalVotingType& pv = const_cast<ProposalVotingType&>(this->pv);
+		const QpiContextFunctionCall& qpi = this->qpi;
+
+		if (proposalIndex >= pv.maxProposals)
 			return false;
-		this->pv.proposersAndVoters.freeProposalByIndex(this->qpi, proposalIndex);
-		setMemory(this->pv.proposals[proposalIndex], 0);
+
+		pv.proposersAndVoters.freeProposalByIndex(qpi, proposalIndex);
+		setMemory(pv.proposals[proposalIndex], 0);
 		return true;
 	}
 
@@ -330,20 +337,23 @@ namespace QPI
 		const ProposalSingleVoteDataV1& vote
 	)
 	{
-		if (vote.proposalIndex >= this->pv.maxProposals)
+		ProposalVotingType& pv = const_cast<ProposalVotingType&>(this->pv);
+		const QpiContextFunctionCall& qpi = this->qpi;
+
+		if (vote.proposalIndex >= pv.maxProposals)
 			return false;
 
-		auto& proposal = this->pv.proposals[vote.proposalIndex];
+		auto& proposal = pv.proposals[vote.proposalIndex];
 		if (vote.proposalType != proposal.type)
 			return false;
 
-		if (this->qpi.epoch() != proposal.epoch)
+		if (qpi.epoch() != proposal.epoch)
 			return false;
 
 		if (vote.proposalTick != proposal.tick)
 			return false;
 
-		unsigned int voterIndex = this->pv.proposersAndVoters.getVoterIndex(this->qpi, voter);
+		unsigned int voterIndex = pv.proposersAndVoters.getVoterIndex(qpi, voter);
 		return proposal.setVoteValue(voterIndex, vote.voteValue);
 	}
 
@@ -355,7 +365,7 @@ namespace QPI
 	{
 		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
 			return false;
-		const ProposalDataType& storedProposal = *static_cast<ProposalDataType*>(&pv.proposals[proposalIndex]);
+		const ProposalDataType& storedProposal = *static_cast<const ProposalDataType*>(&pv.proposals[proposalIndex]);
 		copyMemory(proposal, storedProposal);
 		return true;
 	}
@@ -533,7 +543,7 @@ namespace QPI
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	inline QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType> QpiContextProcedureCall::operator()(
 		ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& proposalVoting
-		) const
+	) const
 	{
 		return QpiContextProposalProcedureCall(*this, proposalVoting);
 	}

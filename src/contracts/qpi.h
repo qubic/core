@@ -745,9 +745,6 @@ namespace QPI
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	struct QpiContextProposalFunctionCall
 	{
-		const QpiContextFunctionCall& qpi;
-		ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& pv;
-
 		// Get proposal with given index if index is valid and proposal is set (epoch > 0)
 		bool getProposal(uint16 proposalIndex, ProposalDataType& proposal) const;
 
@@ -779,12 +776,17 @@ namespace QPI
 		// Pass -1 to get first index.
 		sint32 nextFinishedProposalIndex(sint32 prevProposalIndex) const;
 
+		// ProposalVoting type to work with
+		typedef ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType> ProposalVotingType;
 
 		// Constructor. Use qpi(proposalVotingObject) to construct instance.
 		QpiContextProposalFunctionCall(
 			const QpiContextFunctionCall& qpi,
-			ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& pv
+			const ProposalVotingType& pv
 		) : qpi(qpi), pv(pv) {}
+
+		const QpiContextFunctionCall& qpi;
+		const ProposalVotingType& pv;
 	};
 
 	// Proposal user interface available in contract procedures
@@ -818,11 +820,17 @@ namespace QPI
 			const ProposalSingleVoteDataV1& vote
 		);
 
+		// ProposalVoting type to work with
+		typedef ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType> ProposalVotingType;
+
+		// Base class
+		typedef QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> BaseClass;
+
 		// Constructor. Use qpi(proposalVotingObject) to construct instance.
 		QpiContextProposalProcedureCall(
 			const QpiContextFunctionCall& qpi,
-			ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& pv
-		) : QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>(qpi, pv) {}
+			ProposalVotingType& pv
+		) : BaseClass(qpi, pv) {}
 	};
 
 	//////////
