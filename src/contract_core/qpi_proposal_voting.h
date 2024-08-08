@@ -21,7 +21,7 @@ namespace QPI
 			return getVoterIndex(qpi, proposerId) < maxVoters;
 		}
 
-		// Get new proposal slot (each propser may have at most one).
+		// Get new proposal slot (each proposer may have at most one).
 		// Returns proposal index or INVALID_PROPOSAL_INDEX on error.
 		// CAUTION: Only pass valid proposers!
 		uint16 getNewProposalIndex(const QpiContextFunctionCall& qpi, const id& proposerId)
@@ -228,12 +228,12 @@ namespace QPI
 			{
 				if (supportScalarVotes)
 				{
-					// enocded in sint64 -> set directly
+					// stored in sint64 -> set directly
 					vv = votes[voterIndex];
 				}
 				else
 				{
-					// enocded in uint8 -> set if valid vote (not no-vote value 0xff)
+					// stored in uint8 -> set if valid vote (not no-vote value 0xff)
 					if (votes[voterIndex] != 0xff)
 					{
 						vv = votes[voterIndex];
@@ -305,7 +305,10 @@ namespace QPI
 		}
 
 		// set proposal (and reset previous votes if any)
-		return this->pv.proposals[proposalIndex].set(proposal);
+		bool okay = this->pv.proposals[proposalIndex].set(proposal);
+		this->pv.proposals[proposalIndex].tick = this->qpi.tick();
+
+		return okay;
 	}
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
@@ -324,14 +327,20 @@ namespace QPI
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	bool QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType>::vote(
 		const id& voter,
-		const ProposalSingleVoteData& vote
+		const ProposalSingleVoteDataV1& vote
 	)
 	{
 		if (vote.proposalIndex >= this->pv.maxProposals)
 			return false;
 
 		auto& proposal = this->pv.proposals[vote.proposalIndex];
-		if (vote.proposalType != proposal.type || this->qpi.epoch() != proposal.epoch)
+		if (vote.proposalType != proposal.type)
+			return false;
+
+		if (this->qpi.epoch() != proposal.epoch)
+			return false;
+
+		if (vote.proposalTick != proposal.tick)
 			return false;
 
 		unsigned int voterIndex = this->pv.proposersAndVoters.getVoterIndex(this->qpi, voter);
@@ -355,7 +364,7 @@ namespace QPI
 	bool QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::getVote(
 		uint16 proposalIndex,
 		uint32 voterIndex,
-		ProposalSingleVoteData& vote
+		ProposalSingleVoteDataV1& vote
 	) const
 	{
 		if (proposalIndex >= pv.maxProposals || voterIndex >= pv.maxVoters || !pv.proposals[proposalIndex].epoch)
@@ -363,6 +372,7 @@ namespace QPI
 
 		vote.proposalIndex = proposalIndex;
 		vote.proposalType = pv.proposals[proposalIndex].type;
+		vote.proposalTick = pv.proposals[proposalIndex].tick;
 		vote.voteValue = pv.proposals[proposalIndex].getVoteValue(voterIndex);
 		return true;
 	}
@@ -371,7 +381,7 @@ namespace QPI
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	bool QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::getVotingSummary(
 		uint16 proposalIndex,
-		ProposalSummarizedVotingData& votingSummary
+		ProposalSummarizedVotingDataV1& votingSummary
 	) const
 	{
 		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
@@ -380,6 +390,7 @@ namespace QPI
 		const auto& p = pv.proposals[proposalIndex];
 		votingSummary.proposalIndex = proposalIndex;
 		votingSummary.optionCount = ProposalTypes::optionCount(p.type);
+		votingSummary.proposalTick = p.tick;
 		votingSummary.authorizedVoters = pv.maxVoters;
 		votingSummary.totalVotes = 0;
 

@@ -36,6 +36,11 @@ QPI::uint16 QPI::QpiContextFunctionCall::epoch() const
     return currentEpoch;
 }
 
+QPI::uint32 QPI::QpiContextFunctionCall::tick() const
+{
+    return 123456789;
+}
+
 
 
 
@@ -250,7 +255,7 @@ TEST(TestCoreQPI, ProposalAndVotingByComputors)
     QPI::id newId(9, 8, 7, 6);
     EXPECT_EQ((int)pv.getNewProposalIndex(qpi, newId), (int)QPI::INVALID_PROPOSAL_INDEX);
 
-    // reuseing all slots should work
+    // reusing all slots should work
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         int j = NUMBER_OF_COMPUTORS - 1 - i;
@@ -272,6 +277,7 @@ TEST(TestCoreQPI, ProposalAndVotingByComputors)
     }
 }
 
+// Test internal class ProposalWithAllVoteData that stores valid proposals along with its votes
 template <typename ProposalT, QPI::uint32 numVoters>
 void testProposalWithAllVoteDataOptionVotes(
     QPI::ProposalWithAllVoteData<ProposalT, numVoters>& pwav,
@@ -314,7 +320,7 @@ void testProposalWithAllVoteDataOptionVotes(
     EXPECT_EQ(pwav.getVoteValue(0), QPI::NO_VOTE_VALUE);
 }
 
-// Test internal class that stores valid proposals along with its votes
+// Test internal class ProposalWithAllVoteData that stores valid proposals along with its votes
 template <bool supportScalarVotes>
 void testProposalWithAllVoteData()
 {
@@ -370,7 +376,7 @@ void testProposalWithAllVoteData()
     proposal.variableOptions.values.set(3, 9876);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 5);
 
-    //
+    // VariableScalarMean proposal
     proposal.type = QPI::ProposalTypes::VariableScalarMean;
     proposal.variableScalar.variable = 42;
     proposal.variableScalar.minValue = 0;
@@ -393,12 +399,23 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataWithoutScalarVoteSupport)
 }
 
 template <bool B>
-bool operator==(const QPI::ProposalDataV1<B>& p1, const QPI::ProposalDataV1<B>& p2)
+bool isReturnedProposalAsExpected(
+    const QPI::QpiContextFunctionCall& qpi,
+    const QPI::ProposalDataV1<B>& proposalReturnedByGet, const QPI::ProposalDataV1<B>& proposalSet)
 {
-    return memcmp(&p1, &p2, sizeof(p1)) == 0;
+    bool expected =
+        proposalReturnedByGet.tick == qpi.tick()
+        && proposalReturnedByGet.epoch == proposalSet.epoch
+        && proposalReturnedByGet.type == proposalSet.type
+        && proposalReturnedByGet.supportScalarVotes == proposalSet.supportScalarVotes
+        && (memcmp(&proposalReturnedByGet.transfer, &proposalSet.transfer, sizeof(proposalSet.transfer)) == 0)
+        && (memcmp(&proposalReturnedByGet.variableOptions, &proposalSet.variableOptions, sizeof(proposalSet.variableOptions)) == 0)
+        && (memcmp(&proposalReturnedByGet.variableScalar, &proposalSet.variableScalar, sizeof(proposalSet.variableScalar)) == 0)
+        && (memcmp(&proposalReturnedByGet.url, &proposalSet.url, sizeof(proposalSet.url)) == 0);
+    return expected;
 }
 
-bool operator==(const QPI::ProposalSingleVoteData& p1, const QPI::ProposalSingleVoteData& p2)
+bool operator==(const QPI::ProposalSingleVoteDataV1& p1, const QPI::ProposalSingleVoteDataV1& p2)
 {
     return memcmp(&p1, &p2, sizeof(p1)) == 0;
 }
@@ -412,7 +429,7 @@ void setProposalWithSuccessCheck(const QpiContextUserProcedureCall& qpi, const P
     EXPECT_NE((int)proposalIdx, (int)QPI::INVALID_PROPOSAL_INDEX);
     EXPECT_EQ(qpi(*pv).proposerId(proposalIdx), proposerId);
     EXPECT_TRUE(qpi(*pv).getProposal(proposalIdx, proposalReturned));
-    EXPECT_TRUE(proposal == proposalReturned);
+    EXPECT_TRUE(isReturnedProposalAsExpected(qpi, proposalReturned, proposal));
     expectNoVotes(qpi, pv, proposalIdx);
 }
 
@@ -421,8 +438,9 @@ void voteWithValidVoter(
     const QpiContextUserProcedureCall& qpi,
     ProposalVotingType& pv,
     const QPI::id& voterId,
-    QPI::uint16 voteProposalIndex,
-    QPI::uint16 voteProposalType,
+    QPI::uint16 proposalIndex,
+    QPI::uint16 proposalType,
+    QPI::uint32 proposalTick,
     QPI::sint64 voteValue
 )
 {
@@ -431,16 +449,17 @@ void voteWithValidVoter(
     QPI::id voterIdReturned = qpi(pv).voterId(voterIdx);
     EXPECT_EQ(voterIdReturned, voterId);
 
-    QPI::ProposalSingleVoteData voteReturnedBefore;
-    bool oldVoteAvailable = qpi(pv).getVote(voteProposalIndex, voterIdx, voteReturnedBefore);
+    QPI::ProposalSingleVoteDataV1 voteReturnedBefore;
+    bool oldVoteAvailable = qpi(pv).getVote(proposalIndex, voterIdx, voteReturnedBefore);
 
-    QPI::ProposalSingleVoteData vote;
-    vote.proposalIndex = voteProposalIndex;
-    vote.proposalType = voteProposalType;
+    QPI::ProposalSingleVoteDataV1 vote;
+    vote.proposalIndex = proposalIndex;
+    vote.proposalType = proposalType;
+    vote.proposalTick = proposalTick;
     vote.voteValue = voteValue;
     EXPECT_EQ(qpi(pv).vote(voterId, vote), successExpected);
 
-    QPI::ProposalSingleVoteData voteReturned;
+    QPI::ProposalSingleVoteDataV1 voteReturned;
     if (successExpected)
     {
         EXPECT_TRUE(qpi(pv).getVote(vote.proposalIndex, voterIdx, voteReturned));
@@ -449,6 +468,7 @@ void voteWithValidVoter(
         typename ProposalVotingType::ProposalDataType proposalReturned;
         EXPECT_TRUE(qpi(pv).getProposal(vote.proposalIndex, proposalReturned));
         EXPECT_TRUE(proposalReturned.type == voteReturned.proposalType);
+        EXPECT_TRUE(proposalReturned.tick == voteReturned.proposalTick);
     }
     else if (oldVoteAvailable)
     {
@@ -462,14 +482,16 @@ void voteWithInvalidVoter(
     const QpiContextUserProcedureCall& qpi,
     ProposalVotingType& pv,
     const QPI::id& voterId,
-    QPI::uint16 voteProposalIndex,
-    QPI::uint16 voteProposalType,
+    QPI::uint16 proposalIndex,
+    QPI::uint16 proposalType,
+    QPI::uint32 proposalTick,
     QPI::sint64 voteValue
 )
 {
-    QPI::ProposalSingleVoteData vote;
-    vote.proposalIndex = voteProposalIndex;
-    vote.proposalType = voteProposalType;
+    QPI::ProposalSingleVoteDataV1 vote;
+    vote.proposalIndex = proposalIndex;
+    vote.proposalType = proposalType;
+    vote.proposalTick = proposalTick;
     vote.voteValue = voteValue;
     EXPECT_FALSE(qpi(pv).vote(voterId, vote));
 }
@@ -481,14 +503,14 @@ void expectNoVotes(
     QPI::uint16 proposalIndex
 )
 {
-    QPI::ProposalSingleVoteData vote;
+    QPI::ProposalSingleVoteDataV1 vote;
     for (QPI::uint32 i = 0; i < pv->maxVoters; ++i)
     {
         EXPECT_TRUE(qpi(*pv).getVote(proposalIndex, i, vote));
         EXPECT_EQ(vote.voteValue, QPI::NO_VOTE_VALUE);
     }
 
-    QPI::ProposalSummarizedVotingData votingSummaryReturned;
+    QPI::ProposalSummarizedVotingDataV1 votingSummaryReturned;
     EXPECT_TRUE(qpi(*pv).getVotingSummary(proposalIndex, votingSummaryReturned));
     EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
     EXPECT_EQ(votingSummaryReturned.totalVotes, 0);
@@ -531,10 +553,10 @@ void testProposalVotingV1()
     // Memory must be zeroed to work, which is done in contract states on init
     QPI::setMemory(*pv, 0);
 
-    // fail: get before propsals have been set
+    // fail: get before proposals have been set
     QPI::ProposalDataV1<supportScalarVotes> proposalReturned;
-    QPI::ProposalSingleVoteData voteDataReturned;
-    QPI::ProposalSummarizedVotingData votingSummaryReturned;
+    QPI::ProposalSingleVoteDataV1 voteDataReturned;
+    QPI::ProposalSummarizedVotingDataV1 votingSummaryReturned;
     for (int i = 0; i < pv->maxProposals; ++i)
     {
         EXPECT_FALSE(qpi(*pv).getProposal(i, proposalReturned));
@@ -565,14 +587,14 @@ void testProposalVotingV1()
     EXPECT_EQ(qpi(*pv).proposerId(0), QPI::NULL_ID);
     EXPECT_EQ(qpi(*pv).proposerId(1), QPI::NULL_ID);
 
-    // okay: voters are available independently of propsals (= computors)
+    // okay: voters are available independently of proposals (= computors)
     for (int i = 0; i < pv->maxVoters; ++i)
     {
         EXPECT_EQ(qpi(*pv).voterIndex(qpi.computor(i)), i);
         EXPECT_EQ(qpi(*pv).voterId(i), qpi.computor(i));
     }
 
-    // fail: IDs / indcies of non-voters
+    // fail: IDs / indices of non-voters
     EXPECT_EQ(qpi(*pv).voterIndex(qpi.originator()), QPI::INVALID_VOTER_INDEX);
     EXPECT_EQ(qpi(*pv).voterIndex(QPI::NULL_ID), QPI::INVALID_VOTER_INDEX);
     EXPECT_EQ(qpi(*pv).voterId(pv->maxVoters), QPI::NULL_ID);
@@ -590,26 +612,30 @@ void testProposalVotingV1()
     EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
 
     // fail: vote although no proposal is available at proposal index
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 1, QPI::ProposalTypes::YesNo, 0);
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 12345, QPI::ProposalTypes::YesNo, 0);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 1, QPI::ProposalTypes::YesNo, qpi.tick(), 0);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 12345, QPI::ProposalTypes::YesNo, qpi.tick(), 0);
 
     // fail: vote with wrong type
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::TransferYesNo, 0);
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::VariableScalarMean, 0);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::TransferYesNo, qpi.tick(), 0);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::VariableScalarMean, qpi.tick(), 0);
 
     // fail: vote with non-computor
-    voteWithInvalidVoter(qpi, *pv, qpi.originator(), 0, QPI::ProposalTypes::YesNo, 0);
-    voteWithInvalidVoter(qpi, *pv, QPI::NULL_ID, 0, QPI::ProposalTypes::YesNo, 0);
+    voteWithInvalidVoter(qpi, *pv, qpi.originator(), 0, QPI::ProposalTypes::YesNo, qpi.tick(), 0);
+    voteWithInvalidVoter(qpi, *pv, QPI::NULL_ID, 0, QPI::ProposalTypes::YesNo, qpi.tick(), 0);
 
     // fail: vote with invalid value
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, -1);
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, 2);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, qpi.tick(), -1);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, qpi.tick(), 2);
+
+    // fail: vote with wrong tick
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, qpi.tick()-1, 0);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, qpi.tick()+1, 0);
 
     // okay: correct votes in proposalIndex 0
     expectNoVotes(qpi, pv, 0);
     for (int i = 0; i < pv->maxVoters; ++i)
-        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), 0, QPI::ProposalTypes::YesNo, i % 2);
-    voteWithValidVoter<true>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, QPI::NO_VOTE_VALUE); // remove vote
+        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), 0, QPI::ProposalTypes::YesNo, qpi.tick(), i % 2);
+    voteWithValidVoter<true>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, qpi.tick(), QPI::NO_VOTE_VALUE); // remove vote
     EXPECT_TRUE(qpi(*pv).getVotingSummary(0, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 0);
     EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
@@ -642,13 +668,13 @@ void testProposalVotingV1()
     EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
 
     // fail: vote with invalid values (for yes/no only the values 0 and 1 are valid)
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 1, proposal.type, -1);
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(1), 1, proposal.type, 2);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), 1, proposal.type, qpi.tick(), -1);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(1), 1, proposal.type, qpi.tick(), 2);
 
     // okay: correct votes in proposalIndex 1 (first use)
     expectNoVotes(qpi, pv, 1);
     for (int i = 0; i < pv->maxVoters; ++i)
-        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), 1, proposal.type, (i < 100) ? 0 : 1);
+        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), 1, proposal.type, qpi.tick(), (i < 100) ? 0 : 1);
     EXPECT_TRUE(qpi(*pv).getVotingSummary(1, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 1);
     EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
@@ -664,7 +690,7 @@ void testProposalVotingV1()
     EXPECT_FALSE(qpi(*pv).setProposal(qpi.computor(2), proposal));
     // check that overwrite did not work
     EXPECT_TRUE(qpi(*pv).getProposal(qpi(*pv).proposalIndex(qpi.computor(2)), proposalReturned));
-    EXPECT_FALSE(proposalReturned == proposal);
+    EXPECT_FALSE(isReturnedProposalAsExpected(qpi, proposalReturned, proposal));
 
     // fail: proposal of revenue distribution with invalid amount
     proposal.transfer.targetAddress = qpi.originator();
@@ -682,15 +708,15 @@ void testProposalVotingV1()
     EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
 
     // fail: vote with invalid values (for yes/no only the values 0 and 1 are valid)
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, -1);
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(1), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, 2);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, qpi.tick(), -1);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(1), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, qpi.tick(), 2);
 
     // okay: correct votes in proposalIndex 1 (reused)
     expectNoVotes(qpi, pv, 1); // checks that setProposal clears previous votes
     for (int i = 0; i < pv->maxVoters; ++i)
-        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, i % 2);
-    voteWithValidVoter<true>(qpi, *pv, qpi.computor(3), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, QPI::NO_VOTE_VALUE); // remove vote
-    voteWithValidVoter<true>(qpi, *pv, qpi.computor(5), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, QPI::NO_VOTE_VALUE); // remove vote
+        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, qpi.tick(), i % 2);
+    voteWithValidVoter<true>(qpi, *pv, qpi.computor(3), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, qpi.tick(), QPI::NO_VOTE_VALUE); // remove vote
+    voteWithValidVoter<true>(qpi, *pv, qpi.computor(5), qpi(*pv).proposalIndex(qpi.computor(2)), proposal.type, qpi.tick(), QPI::NO_VOTE_VALUE); // remove vote
     EXPECT_TRUE(qpi(*pv).getVotingSummary(1, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 1);
     EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
@@ -748,13 +774,13 @@ void testProposalVotingV1()
         EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
 
         // fail: vote with invalid values
-        voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, -1001);
-        voteWithValidVoter<false>(qpi, *pv, qpi.computor(1), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, 1001);
+        voteWithValidVoter<false>(qpi, *pv, qpi.computor(0), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), -1001);
+        voteWithValidVoter<false>(qpi, *pv, qpi.computor(1), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), 1001);
 
         // okay: correct votes in proposalIndex of computor 10
         expectNoVotes(qpi, pv, qpi(*pv).proposalIndex(qpi.computor(10)));
         for (int i = 0; i < 603; ++i)
-            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, (i % 201) - 100);
+            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), (i % 201) - 100);
         EXPECT_TRUE(qpi(*pv).getVotingSummary(3, votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 3);
         EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
@@ -764,9 +790,9 @@ void testProposalVotingV1()
 
         // another case for scalar voting summary
         for (int i = 0; i < 603; ++i)
-            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, QPI::NO_VOTE_VALUE); // remove vote
+            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), QPI::NO_VOTE_VALUE); // remove vote
         for (int i = 0; i < 200; ++i)
-            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, i + 1);
+            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), i + 1);
         EXPECT_TRUE(qpi(*pv).getVotingSummary(3, votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 3);
         EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
@@ -802,13 +828,13 @@ void testProposalVotingV1()
 
     // cast some votes before epoch change to test querying voting summary afterwards
     for (int i = 0; i < 20; ++i)
-        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, 0);
+        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), 0);
     for (int i = 20; i < 60; ++i)
-        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, 1);
+        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), 1);
     for (int i = 60; i < 160; ++i)
-        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, 2);
+        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), 2);
     for (int i = 160; i < 360; ++i)
-        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, 3);
+        voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), 3);
 
     // simulate epoch change
     ++currentEpoch;
@@ -822,7 +848,7 @@ void testProposalVotingV1()
     EXPECT_EQ(countFinishedProposals(qpi, pv), (int)pv->maxProposals - 1);
 
     // fail: vote in wrong epoch
-    voteWithValidVoter<false>(qpi, *pv, qpi.computor(123), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, 0);
+    voteWithValidVoter<false>(qpi, *pv, qpi.computor(123), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), 0);
 
     // okay: query voting summary of other epoch
     EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(10)), votingSummaryReturned));

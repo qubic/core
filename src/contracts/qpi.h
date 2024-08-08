@@ -477,8 +477,9 @@ namespace QPI
 	constexpr uint32 INVALID_VOTER_INDEX = 0xffffffff;
 	constexpr sint64 NO_VOTE_VALUE = 0x8000000000000000;
 
-	// Input data for contract procedure call (should not be persisted in contract state, because it may change)
-	struct ProposalSingleVoteData
+	// Single vote for all types of proposals defined in August 2024.
+	// Input data for contract procedure call
+	struct ProposalSingleVoteDataV1
 	{
 		// Index of proposal the vote is about (can be requested with proposal voting API)
 		uint16 proposalIndex;
@@ -486,20 +487,28 @@ namespace QPI
 		// Type of proposal, see ProposalTypes
 		uint16 proposalType;
 
+		// Tick when proposal has been set (to make sure that proposal version known by the voter matches the current version).
+		uint32 proposalTick;
+
 		// Value of vote. NO_VOTE_VALUE means no vote for every type.
 		// For proposals types with multiple options, 0 is no, 1 to N are the other options in order of definition in proposal.
 		// For scalar proposal types the value is passed directly.
 		sint64 voteValue;
 	};
+	static_assert(sizeof(ProposalSingleVoteDataV1) == 16, "Unexpected struct size.");
 
-	// Output data for contract function call for getting voting results (should not be persisted in contract state, because it may change)
-	struct ProposalSummarizedVotingData
+	// Voting result summary for all types of proposals defined in August 2024.
+	// Output data for contract function call for getting voting results.
+	struct ProposalSummarizedVotingDataV1
 	{
 		// Index of proposal the vote is about (can be requested with proposal voting API)
 		uint16 proposalIndex;
 
 		// Count of options in proposal type (number of valid elements in optionVoteCount, 0 for scalar voting)
 		uint16 optionCount;
+
+		// Tick when proposal has been set (useful for checking if cached ProposalData is still up to date).
+		uint32 proposalTick;
 
 		// Number of voter who have the right to vote
 		uint32 authorizedVoters;
@@ -517,6 +526,7 @@ namespace QPI
 			sint64 scalarVotingResult;
 		};
 	};
+	static_assert(sizeof(ProposalSummarizedVotingDataV1) == 16 + 8*4, "Unexpected struct size.");
 
 	// Proposal type constants
 	struct ProposalTypes
@@ -570,6 +580,9 @@ namespace QPI
 
 		// Type of proposal, see ProposalTypes.
 		uint16 type;
+
+		// Tick when proposal has been set. Output only, overwritten in setProposal().
+		uint32 tick;
 
 		// Proposal payload data (for all except ProposalTypes::YesNo)
 		union
@@ -656,16 +669,23 @@ namespace QPI
 		// Whether to support scalar votes next to option votes.
 		static constexpr bool supportScalarVotes = SupportScalarVotes;
 	};
+	static_assert(sizeof(ProposalDataV1<true>) == 256 + 8 + 64, "Unexpected struct size.");
 
 	// Proposal data struct for yes/no proposal type only (requires less storage space).
 	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
 	struct ProposalDataYesNo
 	{
+		// URL explaining proposal, zero-terminated string.
 		array<uint8, 256> url;
+
+		// Epoch, when proposal is active. For setProposal(), this must be current epoch or 0 (to clear proposal).
 		uint16 epoch;
 
-		// Type of proposal
+		// Type of proposal, see ProposalTypes.
 		uint16 type;
+
+		// Tick when proposal has been set. Output only, overwritten in setProposal().
+		uint32 tick;
 
 		bool checkValidity() const
 		{
@@ -674,6 +694,7 @@ namespace QPI
 			return okay;
 		}
 	};
+	static_assert(sizeof(ProposalDataYesNo) == 256 + 8, "Unexpected struct size.");
 
 
 	// Used internally by ProposalVoting to store a proposal with all votes
@@ -731,10 +752,10 @@ namespace QPI
 		bool getProposal(uint16 proposalIndex, ProposalDataType& proposal) const;
 
 		// Get data of single vote
-		bool getVote(uint16 proposalIndex, uint32 voterIndex, ProposalSingleVoteData& vote) const;
+		bool getVote(uint16 proposalIndex, uint32 voterIndex, ProposalSingleVoteDataV1& vote) const;
 
 		// Get summary of all votes casted
-		bool getVotingSummary(uint16 proposalIndex, ProposalSummarizedVotingData& votingSummary) const;
+		bool getVotingSummary(uint16 proposalIndex, ProposalSummarizedVotingDataV1& votingSummary) const;
 
 		// Return index of existing proposal or INVALID_PROPOSAL_INDEX if there is no proposal by given proposer
 		uint16 proposalIndex(const id& proposerId) const;
@@ -770,18 +791,31 @@ namespace QPI
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	struct QpiContextProposalProcedureCall : public QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>
 	{
+		// Set proposal if proposer has right to do so, proposal is valid, proposal.epoch is current epoch,
+		// and a proposal slot is available.
+		// If the proposer already has a proposal slot, his previous proposal is overwritten (and all votes
+		// are discarded).
+		// If there is no free slot, one of the oldest proposals from prior epochs is deleted to free a slot.
+		// This may be also used to clear a proposal by setting proposal.epoch = 0.
+		// Return whether proposal has been set.
 		bool setProposal(
 			const id& proposer,
 			const ProposalDataType& proposal
 		);
 
+		// Clear proposal of given index (without checking rights). Returns false if proposalIndex is invalid.
 		bool clearProposal(
 			uint16 proposalIndex
 		);
 
+		// Cast vote for proposal with index vote.proposalIndex if voter has right to vote, the proposal's epoch
+		// is the current epoch, vote.proposalType and vote.proposalTick match the corresponding proposal's values,
+		// and vote.voteValue is valid for the proposal type.
+		// This can be used to remove a previous vote by vote.voteValue = NO_VOTE_VALUE.
+		// Return whether vote has been casted.
 		bool vote(
 			const id& voter,
-			const ProposalSingleVoteData& vote
+			const ProposalSingleVoteDataV1& vote
 		);
 
 		// Constructor. Use qpi(proposalVotingObject) to construct instance.
