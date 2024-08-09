@@ -708,6 +708,12 @@ namespace QPI
 	template <unsigned int maxShareholders>
 	struct ProposalAndVotingByShareholders;
 
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	struct QpiContextProposalFunctionCall;
+
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	struct QpiContextProposalProcedureCall;
+
 	/*
 	* Proposal voting state for use in contract state.
 	* Voting is running until end of epoch, each proposer/computor can have one proposal at a time (or zero).
@@ -737,8 +743,13 @@ namespace QPI
 		// Handling of who has the right to propose and to vote + proposal / voter indices
 		ProposerAndVoterHandlingType proposersAndVoters;
 
-		// Proposals and corresponding votes
+	protected:
+		// Proposals and corresponding votes. No direct access for contracts.
 		ProposalAndVotesDataType proposals[maxProposals];
+
+		// Give user interface access to proposals
+		friend struct QpiContextProposalProcedureCall<ProposerAndVoterHandlingT, ProposalDataT>;
+		friend struct QpiContextProposalFunctionCall<ProposerAndVoterHandlingT, ProposalDataT>;
 	};
 
 	// Proposal user interface available in contract functions
