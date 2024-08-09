@@ -17,7 +17,7 @@ namespace QPI
 }
 
 // TODO: add option for having locals to SYSTEM and EXPAND procedures
-typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output);
+typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContextFunctionCall&, void*, void*); // cannot not change anything except state
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
@@ -191,19 +191,29 @@ enum MoreProcedureIDs
 };
 
 static SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
+static unsigned short contractSystemProcedureLocalsSizes[contractCount][contractSystemProcedureCount];
 
 
 #define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName)\
 if (!contractName::__initializeEmpty) contractSystemProcedures[contractIndex][INITIALIZE] = (SYSTEM_PROCEDURE)contractName::__initialize;\
+contractSystemProcedureLocalsSizes[contractIndex][INITIALIZE] = contractName::__initializeLocalsSize; \
 if (!contractName::__beginEpochEmpty) contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (SYSTEM_PROCEDURE)contractName::__beginEpoch;\
+contractSystemProcedureLocalsSizes[contractIndex][BEGIN_EPOCH] = contractName::__beginEpochLocalsSize; \
 if (!contractName::__endEpochEmpty) contractSystemProcedures[contractIndex][END_EPOCH] = (SYSTEM_PROCEDURE)contractName::__endEpoch;\
+contractSystemProcedureLocalsSizes[contractIndex][END_EPOCH] = contractName::__endEpochLocalsSize; \
 if (!contractName::__beginTickEmpty) contractSystemProcedures[contractIndex][BEGIN_TICK] = (SYSTEM_PROCEDURE)contractName::__beginTick;\
+contractSystemProcedureLocalsSizes[contractIndex][BEGIN_TICK] = contractName::__beginTickLocalsSize; \
 if (!contractName::__endTickEmpty) contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
-if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
+contractSystemProcedureLocalsSizes[contractIndex][END_TICK] = contractName::__endTickLocalsSize; \
 if (!contractName::__preAcquireSharesEmpty) contractSystemProcedures[contractIndex][PRE_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preAcquireShares;\
+contractSystemProcedureLocalsSizes[contractIndex][PRE_ACQUIRE_SHARES] = contractName::__preAcquireSharesSize; \
 if (!contractName::__preReleaseSharesEmpty) contractSystemProcedures[contractIndex][PRE_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preReleaseShares;\
+contractSystemProcedureLocalsSizes[contractIndex][PRE_RELEASE_SHARES] = contractName::__preReleaseSharesSize; \
 if (!contractName::__postAcquireSharesEmpty) contractSystemProcedures[contractIndex][POST_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postAcquireShares;\
+contractSystemProcedureLocalsSizes[contractIndex][POST_ACQUIRE_SHARES] = contractName::__postAcquireSharesSize; \
 if (!contractName::__postReleaseSharesEmpty) contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
+contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesSize; \
+if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 ((contractName*)contractState)->__registerUserFunctionsAndProcedures(qpi);
 
 

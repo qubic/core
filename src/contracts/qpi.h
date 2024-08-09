@@ -5906,7 +5906,7 @@ namespace QPI
 
 	struct Entity
 	{
-		id id;
+		id publicKey;
 		sint64 incomingAmount, outgoingAmount;
 
 		// Numbers of transfers. These may overflow for entities with high traffic, such as Qx.
@@ -5916,8 +5916,6 @@ namespace QPI
 	};
 
 	//////////
-
-#if !defined(NO_UEFI)
 
 	// QPI context base class (common data, by default has no stack for locals)
 	struct QpiContext
@@ -5984,7 +5982,7 @@ namespace QPI
 
 		bit getEntity(
 			const id& id,
-			::Entity& entity
+			Entity& entity
 		) const; // Returns "true" if the entity has been found, returns "false" otherwise
 
 		uint8 hour(
@@ -6160,63 +6158,95 @@ namespace QPI
 		sint64 numberOfShares;
 	};
 
-#endif
-
 	//////////
 	
 	struct ContractBase
 	{
-		enum { __initializeEmpty = 1 };
+		enum { __initializeEmpty = 1, __initializeLocalsSize = sizeof(NoData) };
 		static void __initialize(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __beginEpochEmpty = 1 };
+		enum { __beginEpochEmpty = 1, __beginEpochLocalsSize = sizeof(NoData) };
 		static void __beginEpoch(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __endEpochEmpty = 1 };
+		enum { __endEpochEmpty = 1, __endEpochLocalsSize = sizeof(NoData) };
 		static void __endEpoch(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __beginTickEmpty = 1 };
+		enum { __beginTickEmpty = 1, __beginTickLocalsSize = sizeof(NoData) };
 		static void __beginTick(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __endTickEmpty = 1 };
+		enum { __endTickEmpty = 1, __endTickLocalsSize = sizeof(NoData) };
 		static void __endTick(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __preAcquireSharesEmpty = 1, __preAcquireSharesSize = sizeof(NoData) };
+		static void __preAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __preReleaseSharesEmpty = 1, __preReleaseSharesSize = sizeof(NoData) };
+		static void __preReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __postAcquireSharesEmpty = 1, __postAcquireSharesSize = sizeof(NoData) };
+		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __postReleaseSharesEmpty = 1, __postReleaseSharesSize = sizeof(NoData) };
+		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __expandEmpty = 1 };
 		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
-		enum { __preAcquireSharesEmpty = 1 };
-		static void __preAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __preReleaseSharesEmpty = 1 };
-		static void __preReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __postAcquireSharesEmpty = 1 };
-		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __postReleaseSharesEmpty = 1 };
-		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
 	};
 
-	#define INITIALIZE public: enum { __initializeEmpty = 0 }; \
-		static void __initialize(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	// Internal macro for defining the system procedure macros
+	#define NO_IO_SYSTEM_PROC(CapLetterName, FuncName, InputType, OutputType) \
+		public: \
+			typedef NoData CapLetterName##_locals; \
+			NO_IO_SYSTEM_PROC_WITH_LOCALS(CapLetterName, FuncName, InputType, OutputType)
 
-	#define BEGIN_EPOCH public: enum { __beginEpochEmpty = 0 }; \
-		static void __beginEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	// Internal macro for defining the system procedure macros
+	#define NO_IO_SYSTEM_PROC_WITH_LOCALS(CapLetterName, FuncName, InputType, OutputType) \
+		 public: \
+			enum { FuncName##Empty = 0, FuncName##LocalsSize = sizeof(CapLetterName##_locals) }; \
+			static_assert(sizeof(CapLetterName##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #CapLetterName "_locals size too large"); \
+			static void FuncName(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, InputType& input, OutputType& output, CapLetterName##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define END_EPOCH public: enum { __endEpochEmpty = 0 }; \
-		static void __endEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	// Begin contract system procedure called to initalize contract state after IPO
+	#define INITIALIZE  NO_IO_SYSTEM_PROC(INITIALIZE, __initialize, NoData, NoData)
 
-	#define BEGIN_TICK public: enum { __beginTickEmpty = 0 }; \
-		static void __beginTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	// Begin contract system procedure called to initalize contract state after IPO, provides zeroed instance of INITIALIZE_locals struct
+	#define INITIALIZE_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(INITIALIZE, __initialize, NoData, NoData)
 
-	#define END_TICK public: enum { __endTickEmpty = 0 }; \
-		static void __endTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	// Begin contract system procedure called at beginning of each epoch
+	#define BEGIN_EPOCH  NO_IO_SYSTEM_PROC(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
+
+	// Begin contract system procedure called at beginning of each epoch, provides zeroed instance of BEGIN_EPOCH_locals struct
+	#define BEGIN_EPOCH_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
+
+	// Begin contract system procedure called at end of each epoch
+	#define END_EPOCH  NO_IO_SYSTEM_PROC(END_EPOCH, __endEpoch, NoData, NoData)
+
+	// Begin contract system procedure called at end of each epoch, provides zeroed instance of END_EPOCH_locals struct
+	#define END_EPOCH_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(END_EPOCH, __endEpoch, NoData, NoData)
+
+	// Begin contract system procedure called at beginning of each tick
+	#define BEGIN_TICK  NO_IO_SYSTEM_PROC(BEGIN_TICK, __beginTick, NoData, NoData)
+
+	// Begin contract system procedure called at beginning of each tick, provides zeroed instance of BEGIN_TICK_locals struct
+	#define BEGIN_TICK_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_TICK, __beginTick, NoData, NoData)
+
+	// Begin contract system procedure called at end of each tick
+	#define END_TICK  NO_IO_SYSTEM_PROC(END_TICK, __endTick, NoData, NoData)
+
+	// Begin contract system procedure called at end of each tick, provides zeroed instance of BEGIN_TICK_locals struct
+	#define END_TICK_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(END_TICK, __endTick, NoData, NoData)
+
+
+	#define PRE_ACQUIRE_SHARES  NO_IO_SYSTEM_PROC(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, PreManagementRightsTransfer_output)
+
+	#define PRE_ACQUIRE_SHARES_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, PreManagementRightsTransfer_output)
+
+	#define PRE_RELEASE_SHARES  NO_IO_SYSTEM_PROC(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, PreManagementRightsTransfer_output)
+
+	#define PRE_RELEASE_SHARES_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, PreManagementRightsTransfer_output)
+
+	#define POST_ACQUIRE_SHARES  NO_IO_SYSTEM_PROC(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, NoData)
+
+	#define POST_ACQUIRE_SHARES_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, NoData)
+
+	#define POST_RELEASE_SHARES  NO_IO_SYSTEM_PROC(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, NoData)
+
+	#define POST_RELEASE_SHARES_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, NoData)
+
 
 	#define EXPAND public: enum { __expandEmpty = 0 }; \
 		static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
-	#define PRE_ACQUIRE_SHARES public: enum { __preAcquireSharesEmpty = 0 }; \
-		static void __preAcquireShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PreManagementRightsTransfer_input& input, PreManagementRightsTransfer_output& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
-	#define PRE_RELEASE_SHARES public: enum { __preReleaseSharesEmpty = 0 }; \
-		 static void __preReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PreManagementRightsTransfer_input& input, PreManagementRightsTransfer_output& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
-	#define POST_ACQUIRE_SHARES public: enum { __postAcquireSharesEmpty = 0 }; \
-		 static void __postAcquireShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PostManagementRightsTransfer_input& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
-	#define POST_RELEASE_SHARES public: enum { __postReleaseSharesEmpty = 0 }; \
-		 static void __postReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PostManagementRightsTransfer_input& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
