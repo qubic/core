@@ -8,6 +8,15 @@ static void* __scratchpad()
     return __scratchpadBuffer;
 }
 
+namespace QPI
+{
+    struct QpiContextProcedureCall;
+    struct QpiContextFunctionCall;
+}
+
+typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
+typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
+
 #include "../src/contracts/qpi.h"
 
 #include <vector>

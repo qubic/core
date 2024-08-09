@@ -6132,10 +6132,7 @@ namespace QPI
 	};
 
 	// Used if no locals, input, or output is needed in a procedure or function
-	struct NoData {
-		bool isEmpty; // a flag to mark if the procedure do nothing => no need to mark the SC state change flag => no need to recompute K12 of the whole state, K12 the whole SC state is expensive!
-		// TODO: consider changing NoData to something else meaningful
-	};
+	struct NoData {};
 
 	// Management rights transfer: pre-transfer input
 	struct PreManagementRightsTransfer_input
@@ -6166,36 +6163,60 @@ namespace QPI
 #endif
 
 	//////////
+	
+	struct ContractBase
+	{
+		enum { __initializeEmpty = 1 };
+		static void __initialize(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __beginEpochEmpty = 1 };
+		static void __beginEpoch(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __endEpochEmpty = 1 };
+		static void __endEpoch(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __beginTickEmpty = 1 };
+		static void __beginTick(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __endTickEmpty = 1 };
+		static void __endTick(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __expandEmpty = 1 };
+		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
+		enum { __preAcquireSharesEmpty = 1 };
+		static void __preAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __preReleaseSharesEmpty = 1 };
+		static void __preReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __postAcquireSharesEmpty = 1 };
+		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __postReleaseSharesEmpty = 1 };
+		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+	};
 
-	#define INITIALIZE public: static void __initialize(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; input.isEmpty = false;
+	#define INITIALIZE public: enum { __initializeEmpty = 0 }; \
+		static void __initialize(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define BEGIN_EPOCH public: static void __beginEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; input.isEmpty = false;
+	#define BEGIN_EPOCH public: enum { __beginEpochEmpty = 0 }; \
+		static void __beginEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define END_EPOCH public: static void __endEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; input.isEmpty = false;
+	#define END_EPOCH public: enum { __endEpochEmpty = 0 }; \
+		static void __endEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define BEGIN_TICK public: static void __beginTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; input.isEmpty = false;
+	#define BEGIN_TICK public: enum { __beginTickEmpty = 0 }; \
+		static void __beginTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define END_TICK public: static void __endTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; input.isEmpty = false;
+	#define END_TICK public: enum { __endTickEmpty = 0 }; \
+		static void __endTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define EMPTY_INITIALIZE public: static void __initialize(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { input.isEmpty = true;
+	#define EXPAND public: enum { __expandEmpty = 0 }; \
+		static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define EMPTY_BEGIN_EPOCH public: static void __beginEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { input.isEmpty = true;
+	#define PRE_ACQUIRE_SHARES public: enum { __preAcquireSharesEmpty = 0 }; \
+		static void __preAcquireShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PreManagementRightsTransfer_input& input, PreManagementRightsTransfer_output& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define EMPTY_END_EPOCH public: static void __endEpoch(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { input.isEmpty = true;
+	#define PRE_RELEASE_SHARES public: enum { __preReleaseSharesEmpty = 0 }; \
+		 static void __preReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PreManagementRightsTransfer_input& input, PreManagementRightsTransfer_output& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define EMPTY_BEGIN_TICK public: static void __beginTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { input.isEmpty = true;
+	#define POST_ACQUIRE_SHARES public: enum { __postAcquireSharesEmpty = 0 }; \
+		 static void __postAcquireShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PostManagementRightsTransfer_input& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
-	#define EMPTY_END_TICK public: static void __endTick(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, NoData& input, NoData& output) { input.isEmpty = true;
-
-	#define EXPAND public: static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2, NoData& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
-	#define PRE_ACQUIRE_SHARES public: static void __preAcquireShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PreManagementRightsTransfer_input& input, PreManagementRightsTransfer_output& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
-	#define PRE_RELEASE_SHARES public: static void __preReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PreManagementRightsTransfer_input& input, PreManagementRightsTransfer_output& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
-	#define POST_ACQUIRE_SHARES public: static void __postAcquireShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PostManagementRightsTransfer_input& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
-	#define POST_RELEASE_SHARES public: static void __postReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PostManagementRightsTransfer_input& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+	#define POST_RELEASE_SHARES public: enum { __postReleaseSharesEmpty = 0 }; \
+		 static void __postReleaseShares(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, PostManagementRightsTransfer_input& input, NoData& output) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);

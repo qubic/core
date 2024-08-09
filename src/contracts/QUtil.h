@@ -33,7 +33,7 @@ struct QUTIL2
 {
 };
 
-struct QUTIL
+struct QUTIL : public ContractBase
 {
 private:
     // registers, logger and other buffer
@@ -312,35 +312,5 @@ public:
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
-    _
-
-    INITIALIZE
-    _
-
-    BEGIN_EPOCH
-    _
-
-    END_EPOCH
-    _
-
-    BEGIN_TICK
-    _
-
-    END_TICK
-    _
-
-    PRE_ACQUIRE_SHARES
-    _
-
-    POST_ACQUIRE_SHARES
-    _
-
-    PRE_RELEASE_SHARES
-    _
-
-    POST_RELEASE_SHARES
-    _
-
-    EXPAND
     _
 };

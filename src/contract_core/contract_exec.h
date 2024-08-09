@@ -264,6 +264,10 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProcOfOtherContract(unsigned i
     // Initialize output with 0
     setMem(&output, sizeof(output), 0);
 
+    // Empty procedures lead to null pointer in contractSystemProcedures -> return default output (all zero/false)
+    if (!contractSystemProcedures[otherContractIndex][sysProcId])
+        return;
+
     // Create context for other contract and lock state for writing
     const QpiContextProcedureCall& otherContractContext = __qpiConstructContextOtherContractProcedureCall(otherContractIndex, invocationReward);
     void* otherContractState = __qpiAcquireStateForWriting(otherContractIndex);
@@ -325,7 +329,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(systemProcId < contractSystemProcedureCount);
 
-        // TODO: facilitate 0-pointer for empty procedures and get rid of NoData::isEmpty workaround
+        // Empty procedures lead to null pointer in contractSystemProcedures -> nothing to call
         if (!contractSystemProcedures[_currentContractIndex][systemProcId])
             return;
 
@@ -341,7 +345,6 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
             || systemProcId == END_TICK
         );
         QPI::NoData noInOutData;
-        noInOutData.isEmpty = false;
         // reserve resources for this processor (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
@@ -351,7 +354,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
-        if (!noInOutData.isEmpty) contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
+        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
     }
 };
 
