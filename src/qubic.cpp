@@ -3144,99 +3144,111 @@ static void endEpoch()
     system.initialMonth = etalonTick.month;
     system.initialYear = etalonTick.year;
 
-    long long arbitratorRevenue = ISSUANCE_RATE;
-
-    unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
-    bs->SetMem(revenueScore, sizeof(revenueScore), 0);
-    for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
+    // sanity check for max supply
+    // calculate current supply
+    unsigned long long currentSupply = 0;
+    ACQUIRE(spectrumLock);
+    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
-        ts.tickData.acquireLock();
-        TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
-        if (td.epoch == system.epoch)
-        {
-            unsigned int numberOfTransactions = 0;
-            for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
-            {
-                if (!isZero(td.transactionDigests[transactionIndex]))
-                {
-                    numberOfTransactions++;
-                }
-            }
-            revenueScore[tick % NUMBER_OF_COMPUTORS] += revenuePoints[numberOfTransactions];
-        }
-        ts.tickData.releaseLock();
+        currentSupply += spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
     }
-
-#if 0
-    //TODO: temporarily disable this, will merge votecount to final rev score
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    RELEASE(spectrumLock);
+    if (currentSupply + ISSUANCE_RATE <= MAX_SUPPLY) 
     {
-        unsigned long long vote_count = voteCounter.getVoteCount(i);
-        if (vote_count != 0)
+        // only issue qus if the max supply is not yet reached
+        long long arbitratorRevenue = ISSUANCE_RATE;
+
+        unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
+        bs->SetMem(revenueScore, sizeof(revenueScore), 0);
+        for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
         {
-            unsigned long long final_score = vote_count * revenueScore[i];
-            if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+            ts.tickData.acquireLock();
+            TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
+            if (td.epoch == system.epoch)
             {
-                revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+                unsigned int numberOfTransactions = 0;
+                for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
+                {
+                    if (!isZero(td.transactionDigests[transactionIndex]))
+                    {
+                        numberOfTransactions++;
+                    }
+                }
+                revenueScore[tick % NUMBER_OF_COMPUTORS] += revenuePoints[numberOfTransactions];
+            }
+            ts.tickData.releaseLock();
+        }
+
+    #if 0
+        //TODO: temporarily disable this, will merge votecount to final rev score
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            unsigned long long vote_count = voteCounter.getVoteCount(i);
+            if (vote_count != 0)
+            {
+                unsigned long long final_score = vote_count * revenueScore[i];
+                if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+                {
+                    revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+                }
+                else
+                {
+                    revenueScore[i] = final_score;
+                }            
             }
             else
             {
-                revenueScore[i] = final_score;
-            }            
+                revenueScore[i] = 0;
+            }
         }
-        else
+    #else
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            revenueScore[i] = 0;
+            revenueScoreFile.logTxScore[i] = revenueScore[i]; // log tx score
+            revenueScoreFile.voteCountScore[i] = voteCounter.getVoteCount(i); // vote count score
         }
-    }
-#else
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-    {
-        revenueScoreFile.logTxScore[i] = revenueScore[i]; // log tx score
-        revenueScoreFile.voteCountScore[i] = voteCounter.getVoteCount(i); // vote count score
-    }
-    revenueScoreFileMustBeSaved = true;
-    while (revenueScoreFileMustBeSaved)
-    {
-        _mm_pause();
-    }
-#endif
+        revenueScoreFileMustBeSaved = true;
+        while (revenueScoreFileMustBeSaved)
+        {
+            _mm_pause();
+        }
+    #endif
     
 
-    unsigned long long sortedRevenueScore[QUORUM + 1];
-    bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
-    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
-    {
-        sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
-        unsigned int i = QUORUM;
-        while (i
-            && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
+        unsigned long long sortedRevenueScore[QUORUM + 1];
+        bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+        for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
-            const unsigned long long tmp = sortedRevenueScore[i - 1];
-            sortedRevenueScore[i - 1] = sortedRevenueScore[i];
-            sortedRevenueScore[i--] = tmp;
+            sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
+            unsigned int i = QUORUM;
+            while (i
+                && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
+            {
+                const unsigned long long tmp = sortedRevenueScore[i - 1];
+                sortedRevenueScore[i - 1] = sortedRevenueScore[i];
+                sortedRevenueScore[i--] = tmp;
+            }
         }
-    }
-    if (!sortedRevenueScore[QUORUM - 1])
-    {
-        sortedRevenueScore[QUORUM - 1] = 1;
-    }
-    for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
-    {
-        const long long revenue = (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
-        increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
-        if (revenue)
+        if (!sortedRevenueScore[QUORUM - 1])
         {
-            const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
-            logQuTransfer(quTransfer);
+            sortedRevenueScore[QUORUM - 1] = 1;
         }
-        arbitratorRevenue -= revenue;
+        for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+        {
+            const long long revenue = (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+            increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
+            if (revenue)
+            {
+                const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
+                logQuTransfer(quTransfer);
+            }
+            arbitratorRevenue -= revenue;
+        }
+
+        increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
+        const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
+        logQuTransfer(quTransfer);
     }
-
-    increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
-    const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
-    logQuTransfer(quTransfer);
-
     {
         ACQUIRE(spectrumLock);
 
@@ -3292,6 +3304,8 @@ static void endEpoch()
 
         RELEASE(spectrumLock);
     }
+
+    
 
     assetsEndEpoch(reorgBuffer);
 

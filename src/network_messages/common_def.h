@@ -14,6 +14,7 @@
 #define MAX_INPUT_SIZE 1024ULL
 #define ISSUANCE_RATE 1000000000000LL
 #define MAX_AMOUNT (ISSUANCE_RATE * 1000ULL)
+#define MAX_SUPPLY (ISSUANCE_RATE * 200ULL)
 
 
 // If you want to use the network_meassges directory in your project without dependencies to other code,
