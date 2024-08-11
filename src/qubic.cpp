@@ -1501,6 +1501,12 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestLogIdRangeFromTx::type:
+                {
+                    logger.processRequestTxLogInfo(peer, header);
+                }
+                break;
+
                 case REQUEST_SYSTEM_INFO:
                 {
                     processRequestSystemInfo(peer, header);

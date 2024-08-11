@@ -40,7 +40,7 @@ struct RequestLogIdRangeFromTx
     unsigned int txId;
 
     enum {
-        type = 46,
+        type = 48,
     };
 };
 
@@ -52,7 +52,7 @@ struct ResponseLogIdRangeFromTx
     long long length;
 
     enum {
-        type = 47,
+        type = 49,
     };
 };
 
@@ -194,7 +194,7 @@ public:
         long long startIndex;
         long long length;
     };
-    
+
     inline static char* logBuffer = NULL;
     inline static BlobInfo* mapTxToLogId = NULL;
     inline static unsigned long long logBufferTail;
@@ -267,7 +267,7 @@ public:
         }
     } logBuf;
 
-    
+
     // Struct to map log id ranges from tx hash
     static struct mapTxToLogIdAccess
     {
@@ -287,7 +287,7 @@ public:
             if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH && txId < LOG_TX_PER_TICK)
             {
                 return mapTxToLogId[tickOffset * LOG_TX_PER_TICK + txId];
-            }            
+            }
             return BlobInfo{ -1,-1 };
         }
 
@@ -369,10 +369,11 @@ public:
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
         tx.addLogId();
-        if (logBufferTail + 16 + messageSize <= LOG_BUFFER_SIZE)
+        if (logBufferTail + 24 + messageSize >= LOG_BUFFER_SIZE)
         {
             logBufferTail = 0; // reset back to beginning
         }
+        logBuf.set(logId, logBufferTail, 24 + messageSize);
         *((unsigned char*)(logBuffer + (logBufferTail + 0))) = (unsigned char)(time.Year - 2000);
         *((unsigned char*)(logBuffer + (logBufferTail + 1))) = time.Month;
         *((unsigned char*)(logBuffer + (logBufferTail + 2))) = time.Day;
@@ -510,6 +511,19 @@ public:
         {
             BlobInfo startIdBufferRange = logBuf.getBlobInfo(request->fromID);
             BlobInfo endIdBufferRange = logBuf.getBlobInfo(request->toID); // inclusive
+            {
+                //TODO: remove this log after testnet
+                CHAR16 dbgmsg[256];
+                setText(dbgmsg, L"got request ");
+                appendNumber(dbgmsg, request->fromID, false);
+                appendText(dbgmsg, L" -> ");
+                appendNumber(dbgmsg, request->toID, false);
+                appendText(dbgmsg, L" Result: ");
+                appendNumber(dbgmsg, startIdBufferRange.startIndex, false);
+                appendText(dbgmsg, L" -> ");
+                appendNumber(dbgmsg, endIdBufferRange.length + endIdBufferRange.startIndex, false);
+                addDebugMessage(dbgmsg);
+            }
             if (startIdBufferRange.startIndex != -1 && startIdBufferRange.length != -1
                 && endIdBufferRange.startIndex != -1 && endIdBufferRange.length != -1)
             {
@@ -525,7 +539,7 @@ public:
                             i--;
                             break;
                         }
-                    }                    
+                    }
                     // first packet: from startID to end of buffer
                     {
                         BlobInfo iBufferRange = logBuf.getBlobInfo(i);
@@ -569,7 +583,7 @@ public:
         enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
     }
 
-    void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
+    static void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
     {
         RequestLogIdRangeFromTx* request = header->getPayload<RequestLogIdRangeFromTx>();
         if (request->passcode[0] == logReaderPasscodes[0]
@@ -580,15 +594,29 @@ public:
             && request->tick >= system.initialTick
             )
         {
-            ResponseLogIdRangeFromTx resp;            
+            ResponseLogIdRangeFromTx resp;
             BlobInfo info = tx.getLogIdInfo(request->tick, request->txId);
             resp.fromLogId = info.startIndex;
             resp.length = info.length;
+            {
+                //TODO: remove this log after testnet
+                CHAR16 dbgmsg[256];
+                setText(dbgmsg, L"got request ");
+                appendNumber(dbgmsg, request->tick, false);
+                appendText(dbgmsg, L" -> ");
+                appendNumber(dbgmsg, request->txId, false);
+                appendText(dbgmsg, L" Result: ");
+                appendNumber(dbgmsg, info.startIndex, false);
+                appendText(dbgmsg, L" -> ");
+                appendNumber(dbgmsg, info.length, false);
+                addDebugMessage(dbgmsg);
+            }
+
             enqueueResponse(peer, sizeof(ResponseLogIdRangeFromTx), ResponseLogIdRangeFromTx::type, header->dejavu(), &resp);
             return;
         }
 
-        enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, ResponseLogIdRangeFromTx::type, header->dejavu(), NULL);
     }
 };
 
