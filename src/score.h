@@ -714,9 +714,9 @@ struct ScoreFunction
     {
         return (solutionScore >=0 && solutionScore <= DATA_LENGTH);
     }
-    bool isGoodScore(unsigned int solutionScore)
+    bool isGoodScore(unsigned int solutionScore, int threshold)
     {
-        return (solutionScore >= (DATA_LENGTH / 3) + threshold) || (solutionScore <= (DATA_LENGTH / 3) - threshold);
+        return (threshold <= (DATA_LENGTH / 3)) && (solutionScore >= (unsigned int)((DATA_LENGTH / 3) + threshold)) || (solutionScore <= (unsigned int)((DATA_LENGTH / 3) - threshold));
     }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)

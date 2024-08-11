@@ -624,11 +624,11 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     }
                                     if (k == system.numberOfSolutions)
                                     {
-                                        unsigned long long solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
+                                        unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                         const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
                                             && score->isValidScore(solutionScore)
-                                            && score->isGoodScore(solutionScore))
+                                            && score->isGoodScore(solutionScore, threshold))
                                         {
                                             ACQUIRE(solutionsLock);
 
@@ -2316,14 +2316,14 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     {
         minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
 
-        unsigned long long solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
+        unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
         if (score->isValidScore(solutionScore))
         {
-            resourceTestingDigest ^= solutionScore;
+            resourceTestingDigest ^= (unsigned long long)(solutionScore);
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
             const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
-            if (score->isGoodScore(solutionScore))
+            if (score->isGoodScore(solutionScore, threshold))
             {
                 for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
                 {
