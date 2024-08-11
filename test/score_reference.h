@@ -54,11 +54,9 @@ struct ScoreReferenceImplementation
         freeMemory();
     }
 
-    void initMiningData()
+    void initMiningData(m256i randomSeed)
     {
-        unsigned char randomSeed[32];
-        setMem(randomSeed, 32, 0);
-        random(randomSeed, randomSeed, (unsigned char*)miningData, sizeof(miningData));
+        random(randomSeed.m256i_u8, randomSeed.m256i_u8, (unsigned char*)miningData, sizeof(miningData));
         for (unsigned int i = 0; i < dataLength; i++)
         {
             miningData[i] = (miningData[i] >= 0 ? 1 : -1);

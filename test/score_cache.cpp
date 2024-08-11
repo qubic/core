@@ -22,7 +22,7 @@ void expectEmptyCache(ScoreCache<cacheCapacity>& cache)
         unsigned long long b = 0xbca326450256c63eull - i * 759037ull;
         unsigned long long c = 2345932453043560ull << (i & 63);
         m256i publicKey(a ^ b, a ^ c, b ^ c, a ^ b ^ c);
-        m256i miningSeed; // TODO: Initialize
+        m256i miningSeed = m256i(1, 1, 1, 1);
         m256i nonce((a << 2) ^ b, (a << 2) ^ c, (b << 1) ^ c, (b >> 1) ^ c);
 
         unsigned int ioIdx = i;

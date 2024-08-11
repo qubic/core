@@ -714,7 +714,7 @@ struct ScoreFunction
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {
-        if (isZero(miningSeed) || miningSeed != initialRandomSeed) // TODO: Won't work with caching, refactor the operator into two, one for precomputation, another for verification (precomputed score isn't enough, it can contain an obsolete/incorrect mining seed)
+        if (isZero(miningSeed) || miningSeed != initialRandomSeed)
         {
             return 0;
         }
