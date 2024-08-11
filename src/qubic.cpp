@@ -627,7 +627,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         unsigned long long solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                         const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && (solutionScore >= (DATA_LENGTH / 3) + threshold) || (solutionScore <= (DATA_LENGTH / 3) - threshold))
+                                            && score->isValidScore(solutionScore)
+                                            && score->isGoodScore(solutionScore))
                                         {
                                             ACQUIRE(solutionsLock);
 
@@ -2316,142 +2317,144 @@ static void processTickTransactionSolution(const Transaction* transaction, const
         minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
 
         unsigned long long solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
-
-        resourceTestingDigest ^= solutionScore;
-        KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
-
-        const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
-        if ((solutionScore >= (DATA_LENGTH / 3) + threshold) || (solutionScore <= (DATA_LENGTH / 3) - threshold))
+        if (score->isValidScore(solutionScore))
         {
-            for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
-            {
-                if (transaction->sourcePublicKey == computorPublicKeys[i])
-                {
-                    ACQUIRE(solutionsLock);
+            resourceTestingDigest ^= solutionScore;
+            KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
-                    unsigned int j;
-                    for (j = 0; j < system.numberOfSolutions; j++)
+            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+            if (score->isGoodScore(solutionScore))
+            {
+                for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+                {
+                    if (transaction->sourcePublicKey == computorPublicKeys[i])
                     {
-                        if (solution_nonce == system.solutions[j].nonce
-                            && solution_miningSeed == system.solutions[j].miningSeed
-                            && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
+                        ACQUIRE(solutionsLock);
+
+                        unsigned int j;
+                        for (j = 0; j < system.numberOfSolutions; j++)
                         {
-                            solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
+                            if (solution_nonce == system.solutions[j].nonce
+                                && solution_miningSeed == system.solutions[j].miningSeed
+                                && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
+                            {
+                                solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
 
-                            break;
+                                break;
+                            }
                         }
+                        if (j == system.numberOfSolutions
+                            && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
+                        {
+                            system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
+                            system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
+                            system.solutions[system.numberOfSolutions].nonce = solution_nonce;
+                            solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
+                        }
+
+                        RELEASE(solutionsLock);
+
+                        break;
                     }
-                    if (j == system.numberOfSolutions
-                        && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
+                }
+
+                ACQUIRE(minerScoreArrayLock);
+                unsigned int minerIndex;
+                for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
+                {
+                    if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
                     {
-                        system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
-                        system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
-                        system.solutions[system.numberOfSolutions].nonce = solution_nonce;
-                        solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
+                        minerScores[minerIndex]++;
+
+                        break;
                     }
-
-                    RELEASE(solutionsLock);
-
-                    break;
                 }
-            }
-
-            ACQUIRE(minerScoreArrayLock);
-            unsigned int minerIndex;
-            for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
-            {
-                if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
+                if (minerIndex == numberOfMiners
+                    && numberOfMiners < MAX_NUMBER_OF_MINERS)
                 {
-                    minerScores[minerIndex]++;
-
-                    break;
+                    minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
+                    minerScores[numberOfMiners++] = 1;
                 }
-            }
-            if (minerIndex == numberOfMiners
-                && numberOfMiners < MAX_NUMBER_OF_MINERS)
-            {
-                minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
-                minerScores[numberOfMiners++] = 1;
-            }
 
-            const m256i tmpPublicKey = minerPublicKeys[minerIndex];
-            const unsigned int tmpScore = minerScores[minerIndex];
-            while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
-                && minerScores[minerIndex - 1] < minerScores[minerIndex])
-            {
-                minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
-                minerScores[minerIndex] = minerScores[minerIndex - 1];
-                minerPublicKeys[--minerIndex] = tmpPublicKey;
-                minerScores[minerIndex] = tmpScore;
-            }
-
-            // combine 225 worst current computors with 225 best candidates
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS - QUORUM; i++)
-            {
-                competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
-                competitorScores[i] = minerScores[QUORUM + i];
-                competitorComputorStatuses[i] = true;
-
-                if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
+                const m256i tmpPublicKey = minerPublicKeys[minerIndex];
+                const unsigned int tmpScore = minerScores[minerIndex];
+                while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
+                    && minerScores[minerIndex - 1] < minerScores[minerIndex])
                 {
-                    competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
-                    competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
+                    minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
+                    minerScores[minerIndex] = minerScores[minerIndex - 1];
+                    minerPublicKeys[--minerIndex] = tmpPublicKey;
+                    minerScores[minerIndex] = tmpScore;
                 }
-                else
+
+                // combine 225 worst current computors with 225 best candidates
+                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS - QUORUM; i++)
                 {
-                    competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
-                }
-                competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
-            }
-            RELEASE(minerScoreArrayLock);
+                    competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
+                    competitorScores[i] = minerScores[QUORUM + i];
+                    competitorComputorStatuses[i] = true;
 
-            // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
-            for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
-            {
-                int j = i;
-                const m256i tmpPublicKey = competitorPublicKeys[j];
-                const unsigned int tmpScore = competitorScores[j];
-                const bool tmpComputorStatus = false;
-                while (j
-                    && competitorScores[j - 1] < competitorScores[j])
+                    if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
+                    {
+                        competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
+                        competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
+                    }
+                    else
+                    {
+                        competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
+                    }
+                    competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
+                }
+                RELEASE(minerScoreArrayLock);
+
+                // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
+                for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
                 {
-                    competitorPublicKeys[j] = competitorPublicKeys[j - 1];
-                    competitorScores[j] = competitorScores[j - 1];
-                    competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
-                    competitorPublicKeys[--j] = tmpPublicKey;
-                    competitorScores[j] = tmpScore;
-                    competitorComputorStatuses[j] = tmpComputorStatus;
+                    int j = i;
+                    const m256i tmpPublicKey = competitorPublicKeys[j];
+                    const unsigned int tmpScore = competitorScores[j];
+                    const bool tmpComputorStatus = false;
+                    while (j
+                        && competitorScores[j - 1] < competitorScores[j])
+                    {
+                        competitorPublicKeys[j] = competitorPublicKeys[j - 1];
+                        competitorScores[j] = competitorScores[j - 1];
+                        competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
+                        competitorPublicKeys[--j] = tmpPublicKey;
+                        competitorScores[j] = tmpScore;
+                        competitorComputorStatuses[j] = tmpComputorStatus;
+                    }
                 }
-            }
 
-            minimumComputorScore = competitorScores[NUMBER_OF_COMPUTORS - QUORUM - 1];
+                minimumComputorScore = competitorScores[NUMBER_OF_COMPUTORS - QUORUM - 1];
 
-            unsigned char candidateCounter = 0;
-            for (unsigned int i = 0; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
-            {
-                if (!competitorComputorStatuses[i])
+                unsigned char candidateCounter = 0;
+                for (unsigned int i = 0; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
                 {
-                    minimumCandidateScore = competitorScores[i];
-                    candidateCounter++;
+                    if (!competitorComputorStatuses[i])
+                    {
+                        minimumCandidateScore = competitorScores[i];
+                        candidateCounter++;
+                    }
+                }
+                if (candidateCounter < NUMBER_OF_COMPUTORS - QUORUM)
+                {
+                    minimumCandidateScore = minimumComputorScore;
+                }
+
+                ACQUIRE(minerScoreArrayLock);
+                for (unsigned int i = 0; i < QUORUM; i++)
+                {
+                    system.futureComputors[i] = minerPublicKeys[i];
+                }
+                RELEASE(minerScoreArrayLock);
+
+                for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
+                {
+                    system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
                 }
             }
-            if (candidateCounter < NUMBER_OF_COMPUTORS - QUORUM)
-            {
-                minimumCandidateScore = minimumComputorScore;
-            }
-
-            ACQUIRE(minerScoreArrayLock);
-            for (unsigned int i = 0; i < QUORUM; i++)
-            {
-                system.futureComputors[i] = minerPublicKeys[i];
-            }
-            RELEASE(minerScoreArrayLock);
-
-            for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
-            }
-        }
+        }        
     }
     else
     {

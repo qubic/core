@@ -710,13 +710,20 @@ struct ScoreFunction
 
         return cb.neurons.inputAtTick[targetTick][targetNeuronIdx];
     }
-
+    bool isValidScore(unsigned int solutionScore)
+    {
+        return (solutionScore >=0 && solutionScore <= DATA_LENGTH);
+    }
+    bool isGoodScore(unsigned int solutionScore)
+    {
+        return (solutionScore >= (DATA_LENGTH / 3) + threshold) || (solutionScore <= (DATA_LENGTH / 3) - threshold);
+    }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {
         if (isZero(miningSeed) || miningSeed != initialRandomSeed)
         {
-            return 0;
+            return DATA_LENGTH + 1; // return invalid score
         }
 
         int score = 0;
