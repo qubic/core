@@ -44,7 +44,7 @@ public:
     {
         m256i buffer[3] = { publicKey, miningSeed, nonce };
         unsigned char digest[32];
-        KangarooTwelve64To32(buffer, digest);
+        KangarooTwelve(buffer, 96, digest, 32);
         unsigned int result = *((unsigned long long*)digest) % capacity();
 
         return result;
