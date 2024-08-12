@@ -784,11 +784,11 @@ void testProposalVotingV1()
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.maxSupportedValue - 1);
         for (int i = 0; i < 555; ++i)
-            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.minSupportedValue - 10 + i % 5);
+            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.minSupportedValue + 10 - i % 5);
         EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(1)), votingSummaryReturned));
         EXPECT_EQ(votingSummaryReturned.totalVotes, 555);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
-        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.minSupportedValue - 8);
+        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.minSupportedValue + 8);
 
         // okay: scalar proposal with limited range
         proposal.variableScalar.minValue = -1000;
