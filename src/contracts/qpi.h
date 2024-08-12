@@ -603,6 +603,9 @@ namespace QPI
 				sint64 maxValue;
 				sint64 proposedValue;
 				uint16 variable;
+
+				static constexpr sint64 minSupportedValue = 0x8000000000000001;
+				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
 			} variableScalar;
 		};
 

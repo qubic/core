@@ -397,7 +397,7 @@ namespace QPI
 		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
 			return false;
 
-		const auto& p = pv.proposals[proposalIndex];
+		const ProposalWithAllVoteData<ProposalDataType, pv.maxVoters>& p = pv.proposals[proposalIndex];
 		votingSummary.proposalIndex = proposalIndex;
 		votingSummary.optionCount = ProposalTypes::optionCount(p.type);
 		votingSummary.proposalTick = p.tick;
@@ -407,24 +407,57 @@ namespace QPI
 		sint64 value;
 		if (p.type == ProposalTypes::VariableScalarMean)
 		{
-			// scalar voting -> compute mean value of votes (avoid potential overflow by using long double)
+			// scalar voting -> compute mean value of votes
 			// TODO: ASSERT(optionCount) == 0
-			long double accumulation = 0;
-			for (uint32 i = 0; i < pv.maxVoters; ++i)
+			sint64 accumulation = 0;
+			if (p.variableScalar.maxValue > p.variableScalar.maxSupportedValue / pv.maxVoters
+				|| p.variableScalar.minValue < p.variableScalar.minSupportedValue / pv.maxVoters)
 			{
-				value = p.getVoteValue(i);
-				if (value != NO_VOTE_VALUE)
+				// calculating mean in a way that avoids overflow of sint64
+				// algorithm based on https://stackoverflow.com/questions/56663116/how-to-calculate-average-of-int64-t
+				sint64 acc2 = 0;
+				for (uint32 i = 0; i < pv.maxVoters; ++i)
 				{
-					++votingSummary.totalVotes;
-					accumulation += value;
+					value = p.getVoteValue(i);
+					if (value != NO_VOTE_VALUE)
+					{
+						++votingSummary.totalVotes;
+					}
+				}
+				if (votingSummary.totalVotes)
+				{
+					for (uint32 i = 0; i < pv.maxVoters; ++i)
+					{
+						value = p.getVoteValue(i);
+						if (value != NO_VOTE_VALUE)
+						{
+							accumulation += value / votingSummary.totalVotes;
+							acc2 += value % votingSummary.totalVotes;
+						}
+					}
+					acc2 /= votingSummary.totalVotes;
+					accumulation += acc2;
 				}
 			}
-			if (votingSummary.totalVotes)
-				accumulation /= votingSummary.totalVotes;
+			else
+			{
+				// compute mean the regular way (faster than above)
+				for (uint32 i = 0; i < pv.maxVoters; ++i)
+				{
+					value = p.getVoteValue(i);
+					if (value != NO_VOTE_VALUE)
+					{
+						++votingSummary.totalVotes;
+						accumulation += value;
+					}
+				}
+				if (votingSummary.totalVotes)
+					accumulation /= votingSummary.totalVotes;
+			}
 
 			// make sure union is zeroed and set result
 			setMemory(votingSummary.optionVoteCount, 0);
-			votingSummary.scalarVotingResult = static_cast<QPI::sint64>(accumulation);
+			votingSummary.scalarVotingResult = accumulation;
 		}
 		else
 		{

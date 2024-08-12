@@ -757,13 +757,13 @@ void testProposalVotingV1()
         EXPECT_FALSE(qpi(*pv).setProposal(qpi.computor(1), proposal));
 
         // fail: scalar proposal with full range is invalid, because NO_VOTE_VALUE is reserved for no vote
-        proposal.variableScalar.minValue = 0x8000000000000000;
-        proposal.variableScalar.maxValue = 0x7fffffffffffffff;
+        proposal.variableScalar.minValue = proposal.variableScalar.minSupportedValue - 1;
+        proposal.variableScalar.maxValue = proposal.variableScalar.maxSupportedValue;
         EXPECT_FALSE(qpi(*pv).setProposal(qpi.computor(1), proposal));
 
         // okay: scalar proposal with nearly full range
-        proposal.variableScalar.minValue = 0x8000000000000001;
-        proposal.variableScalar.maxValue = 0x7fffffffffffffff;
+        proposal.variableScalar.minValue = proposal.variableScalar.minSupportedValue;
+        proposal.variableScalar.maxValue = proposal.variableScalar.maxSupportedValue;
         setProposalWithSuccessCheck(qpi, pv, qpi.computor(1), proposal);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(1)), 2);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(2)), 1);
@@ -772,6 +772,23 @@ void testProposalVotingV1()
         EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(1), 2);
         EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(2), -1);
         EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
+
+        // okay: votes in proposalIndex of computor 1 for testing overflow-avoiding summary algorithm for average
+        expectNoVotes(qpi, pv, qpi(*pv).proposalIndex(qpi.computor(1)));
+        for (int i = 0; i < 99; ++i)
+            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.maxSupportedValue - 2 + i % 3);
+        EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(1)), votingSummaryReturned));
+        EXPECT_EQ((int)votingSummaryReturned.proposalIndex, (int)qpi(*pv).proposalIndex(qpi.computor(1)));
+        EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotes, 99);
+        EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
+        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.maxSupportedValue - 1);
+        for (int i = 0; i < 555; ++i)
+            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.minSupportedValue - 10 + i % 5);
+        EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(1)), votingSummaryReturned));
+        EXPECT_EQ(votingSummaryReturned.totalVotes, 555);
+        EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
+        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.minSupportedValue - 8);
 
         // okay: scalar proposal with limited range
         proposal.variableScalar.minValue = -1000;
