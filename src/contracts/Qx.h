@@ -4,7 +4,7 @@ struct QX2
 {
 };
 
-struct QX
+struct QX : public ContractBase
 {
 public:
 	struct Fees_input
@@ -1052,18 +1052,6 @@ private:
 		state._tradeFee = 5000000; // 0.5%
 	_
 
-	EMPTY_BEGIN_EPOCH
-	_
-
-	EMPTY_END_EPOCH
-	_
-
-	EMPTY_BEGIN_TICK
-	_
-
-	EMPTY_END_TICK
-	_
-
 	PRE_ACQUIRE_SHARES
 	_
 
@@ -1074,9 +1062,6 @@ private:
 	_
 
 	POST_RELEASE_SHARES
-	_
-
-	EXPAND
 	_
 };
 

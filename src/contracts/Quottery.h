@@ -50,7 +50,7 @@ struct QUOTTERY2
 {
 };
 
-struct QUOTTERY
+struct QUOTTERY : public ContractBase
 {
 public:
     /**************************************/
@@ -1230,9 +1230,6 @@ public:
         REGISTER_USER_PROCEDURE(publishResult, 4);
     _
 
-    INITIALIZE
-    _
-
     BEGIN_EPOCH
         state.mFeePerSlotPerHour = QUOTTERY_FEE_PER_SLOT_PER_HOUR;
         state.mMinAmountPerBetSlot = QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_;
@@ -1240,29 +1237,5 @@ public:
         state.mGameOperatorFee = QUOTTERY_GAME_OPERATOR_FEE_;
         state.mBurnFee = QUOTTERY_BURN_FEE_;
         state.mGameOperatorId = id(0x63a7317950fa8886ULL, 0x4dbdf78085364aa7ULL, 0x21c6ca41e95bfa65ULL, 0xcbc1886b3ea8e647ULL);
-    _
-
-    EMPTY_END_EPOCH
-    _
-
-    EMPTY_BEGIN_TICK
-    _
-
-    EMPTY_END_TICK
-    _
-
-    PRE_ACQUIRE_SHARES
-    _
-
-    POST_ACQUIRE_SHARES
-    _
-
-    PRE_RELEASE_SHARES
-    _
-
-    POST_RELEASE_SHARES
-    _
-
-    EXPAND
     _
 };
