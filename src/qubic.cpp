@@ -2843,25 +2843,26 @@ static void processTick(unsigned long long processorNumber)
 
             break;
         }
+    }
+
+    for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+    {
         if ((system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
         {
-            if (system.tick > system.latestLedTick)
+            if (mainAuxStatus & 1)
             {
-                if (mainAuxStatus & 1)
-                {
-                    auto& payload = voteCounterPayload; // note: not thread-safe
-                    payload.transaction.sourcePublicKey = computorPublicKeys[i];
-                    payload.transaction.destinationPublicKey = _mm256_setzero_si256();
-                    payload.transaction.amount = 0;
-                    payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
-                    payload.transaction.inputType = 0;
-                    payload.transaction.inputSize = sizeof(payload.data);
-                    voteCounter.compressNewVotesPacket(system.tick - 675, system.tick+1, ownComputorIndices[i], payload.data);
-                    unsigned char digest[32];
-                    KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.data), digest, sizeof(digest));
-                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, payload.signature);
-                    enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
-                }
+                auto& payload = voteCounterPayload; // note: not thread-safe
+                payload.transaction.sourcePublicKey = computorPublicKeys[i];
+                payload.transaction.destinationPublicKey = _mm256_setzero_si256();
+                payload.transaction.amount = 0;
+                payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
+                payload.transaction.inputType = 0;
+                payload.transaction.inputSize = sizeof(payload.data);
+                voteCounter.compressNewVotesPacket(system.tick - 675, system.tick + 1, ownComputorIndices[i], payload.data);
+                unsigned char digest[32];
+                KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.data), digest, sizeof(digest));
+                sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, payload.signature);
+                enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
             }
         }
     }
@@ -4616,6 +4617,7 @@ static bool initialize()
         contractStates[contractIndex] = NULL;
     }
     bs->SetMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
+    bs->SetMem(contractSystemProcedureLocalsSizes, sizeof(contractSystemProcedureLocalsSizes), 0);
     bs->SetMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
     bs->SetMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
     bs->SetMem(contractUserFunctionInputSizes, sizeof(contractUserFunctionInputSizes), 0);
@@ -4668,25 +4670,33 @@ static bool initialize()
     {
         if (!ts.init())
             return false;
-        if ((status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * 32ULL, (void**)&entityPendingTransactionDigests)))
+        if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
         {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE);
+            return false;
+        }
+        else if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * 32ULL, (void**)&entityPendingTransactionDigests))
+        {
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * 32ULL);
 
             return false;
         }
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset), (void**)&reorgBuffer))
         {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset));
 
             return false;
         }
 
-        if ((status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity), (void**)&spectrum))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL, (void**)&spectrumDigests)))
+        if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity), (void**)&spectrum))
         {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * sizeof(::Entity));
+            return false;
+        }
+        else if (status = bs->AllocatePool(EfiRuntimeServicesData, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL, (void**)&spectrumDigests))
+        {
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL);
 
             return false;
         }
@@ -4701,14 +4711,14 @@ static bool initialize()
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
             if (status = bs->AllocatePool(EfiRuntimeServicesData, size, (void**)&contractStates[contractIndex]))
             {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, size);
 
                 return false;
             }
         }
         if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags)))
         {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, MAX_NUMBER_OF_CONTRACTS / 8);
 
             return false;
         }
@@ -4716,7 +4726,7 @@ static bool initialize()
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(*score), (void**)&score))
         {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, sizeof(*score));
             return false;
         }
         setMem(score, sizeof(*score), 0);
@@ -4724,7 +4734,7 @@ static bool initialize()
         bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
         if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_MINER_SOLUTION_FLAGS / 8);
 
             return false;
         }
@@ -4874,17 +4884,21 @@ static bool initialize()
     if ((status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu0))
         || (status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu1)))
     {
-        logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+        logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, 536870912);
 
         return false;
     }
     bs->SetMem((void*)dejavu0, 536870912, 0);
     bs->SetMem((void*)dejavu1, 536870912, 0);
 
-    if ((status = bs->AllocatePool(EfiRuntimeServicesData, REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer))
-        || (status = bs->AllocatePool(EfiRuntimeServicesData, RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer)))
+    if (status = bs->AllocatePool(EfiRuntimeServicesData, REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer))
     {
-        logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+        logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, REQUEST_QUEUE_BUFFER_SIZE);
+        return false;
+    }
+    else if (status = bs->AllocatePool(EfiRuntimeServicesData, RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer))
+    {
+        logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, RESPONSE_QUEUE_BUFFER_SIZE);
 
         return false;
     }
@@ -4893,11 +4907,21 @@ static bool initialize()
     {
         peers[i].receiveData.FragmentCount = 1;
         peers[i].transmitData.FragmentCount = 1;
-        if ((status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &peers[i].receiveBuffer))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer))
-            || (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, (void**)&peers[i].dataToTransmit)))
+        if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &peers[i].receiveBuffer))
         {
-            logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
+
+            return false;
+        }
+        else if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer))
+        {
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
+
+            return false;
+        }
+        else if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, (void**)&peers[i].dataToTransmit))
+        {
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
 
             return false;
         }
@@ -5754,7 +5778,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             {
                 if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &processors[numberOfProcessors].buffer))
                 {
-                    logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                    logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
 
                     numberOfProcessors = 0;
 

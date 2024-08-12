@@ -40,7 +40,7 @@
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 0
+#define START_NETWORK_FROM_SCRATCH 1
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -49,12 +49,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 212
-#define VERSION_C 1
+#define VERSION_B 213
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 120
-#define TICK 15130713
+#define EPOCH 121
+#define TICK 15260000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -68,12 +68,12 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testing purpose, will delete at epoch 111
 
 #define DATA_LENGTH 256
-#define NUMBER_OF_INPUT_NEURONS 32768
-#define NUMBER_OF_OUTPUT_NEURONS 32768
-#define MAX_INPUT_DURATION 256
-#define MAX_OUTPUT_DURATION 256
+#define NUMBER_OF_INPUT_NEURONS 16384
+#define NUMBER_OF_OUTPUT_NEURONS 16384
+#define MAX_INPUT_DURATION 4096
+#define MAX_OUTPUT_DURATION 4096
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 44
+#define SOLUTION_THRESHOLD_DEFAULT 42
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"

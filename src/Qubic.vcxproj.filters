@@ -148,6 +148,9 @@
     <ClInclude Include="contract_core\qpi_proposal_voting.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\EmptyTemplate.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

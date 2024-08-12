@@ -86,6 +86,10 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
 
     stackIdx = i;
     ASSERT(stackIdx >= 0);
+
+    ASSERT(contractLocalsStack[stackIdx].size() == 0);
+    if (contractLocalsStack[stackIdx].size())
+        contractLocalsStack[stackIdx].freeAll();
 }
 
 // Release locked stack (and reset stackIdx)
@@ -264,14 +268,26 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProcOfOtherContract(unsigned i
     // Initialize output with 0
     setMem(&output, sizeof(output), 0);
 
+    // Empty procedures lead to null pointer in contractSystemProcedures -> return default output (all zero/false)
+    if (!contractSystemProcedures[otherContractIndex][sysProcId])
+        return;
+
     // Create context for other contract and lock state for writing
     const QpiContextProcedureCall& otherContractContext = __qpiConstructContextOtherContractProcedureCall(otherContractIndex, invocationReward);
     void* otherContractState = __qpiAcquireStateForWriting(otherContractIndex);
 
-    // Run procedure
-    contractSystemProcedures[otherContractIndex][sysProcId](otherContractContext, otherContractState, &input, &output);
+    // Alloc locals
+    unsigned short localsSize = contractSystemProcedureLocalsSizes[otherContractIndex][sysProcId];
+    char* localsBuffer = contractLocalsStack[_stackIndex].allocate(localsSize);
+    if (!localsBuffer)
+        __qpiAbort(ContractErrorAllocLocalsFailed);
+    setMem(localsBuffer, localsSize, 0);
 
-    // Release lock and free context
+    // Run procedure
+    contractSystemProcedures[otherContractIndex][sysProcId](otherContractContext, otherContractState, &input, &output, localsBuffer);
+
+    // Release lock and free context and locals
+    contractLocalsStack[_stackIndex].free();
     __qpiReleaseStateForWriting(otherContractIndex);
     __qpiFreeContextOtherContract();
 }
@@ -325,7 +341,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(systemProcId < contractSystemProcedureCount);
 
-        // TODO: facilitate 0-pointer for empty procedures and get rid of NoData::isEmpty workaround
+        // Empty procedures lead to null pointer in contractSystemProcedures -> nothing to call
         if (!contractSystemProcedures[_currentContractIndex][systemProcId])
             return;
 
@@ -341,17 +357,38 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
             || systemProcId == END_TICK
         );
         QPI::NoData noInOutData;
-        noInOutData.isEmpty = false;
         // reserve resources for this processor (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
         const unsigned long long startTick = __rdtsc();
-        contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], &noInOutData, &noInOutData);
+        unsigned short localsSize = contractSystemProcedureLocalsSizes[_currentContractIndex][systemProcId];
+        if (localsSize == sizeof(QPI::NoData))
+        {
+            // no locals -> call
+            contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], &noInOutData, &noInOutData, &noInOutData);
+        }
+        else
+        {
+            // locals required: reserve stack and use stack (should not block because stack 0 is reserved for procedures)
+            acquireContractLocalsStack(_stackIndex);
+            char* localsBuffer = contractLocalsStack[_stackIndex].allocate(localsSize);
+            if (!localsBuffer)
+                __qpiAbort(ContractErrorAllocLocalsFailed);
+            setMem(localsBuffer, localsSize, 0);
+
+            // call system proc
+            contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], &noInOutData, &noInOutData, localsBuffer);
+
+            // free data on stack and release stack
+            contractLocalsStack[_stackIndex].free();
+            ASSERT(contractLocalsStack[_stackIndex].size() == 0);
+            releaseContractLocalsStack(_stackIndex);
+        }
         _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
-        if (!noInOutData.isEmpty) contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
+        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
     }
 };
 
@@ -384,9 +421,6 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 
         // reserve stack for this processor (may block)
         acquireContractLocalsStack(_stackIndex);
-        ASSERT(contractLocalsStack[_stackIndex].size() == 0);
-        if (contractLocalsStack[_stackIndex].size())
-            contractLocalsStack[_stackIndex].freeAll();
 
         // allocate input, output, and locals buffer from stack and init them
         unsigned short fullInputSize = contractUserProcedureInputSizes[_currentContractIndex][inputType];
@@ -433,7 +467,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         copyMem(inputBuffer, inputPtr, inputSize);
         setMem(outputBuffer, outputSize + localsSize, 0);
 
-        // acquire lock of contract state for writing (may block)
+        // acquire lock of contract state for writing (shouldn't block because 1 stack is not used by functions and thus kept free for procedures)
         contractStateLock[_currentContractIndex].acquireWrite();
 
         // run procedure
@@ -493,9 +527,6 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         // reserve stack for this processor (may block)
         constexpr unsigned int stacksNotUsedToReserveThemForStateWriter = 1;
         acquireContractLocalsStack(_stackIndex, stacksNotUsedToReserveThemForStateWriter);
-        ASSERT(contractLocalsStack[_stackIndex].size() == 0);
-        if (contractLocalsStack[_stackIndex].size())
-            contractLocalsStack[_stackIndex].freeAll();
 
         // allocate input, output, and locals buffer from stack and init them
         unsigned short fullInputSize = contractUserFunctionInputSizes[_currentContractIndex][inputType];

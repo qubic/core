@@ -10,6 +10,15 @@ namespace QPI
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 
+namespace QPI
+{
+    struct QpiContextProcedureCall;
+    struct QpiContextFunctionCall;
+}
+
+typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
+typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
+
 #include "../src/contracts/qpi.h"
 #include "../src/contract_core/qpi_collection_impl.h"
 #include "../src/contract_core/qpi_proposal_voting.h"
