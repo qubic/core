@@ -435,7 +435,7 @@ bool isReturnedProposalAsExpected(
 {
     bool expected =
         proposalReturnedByGet.tick == qpi.tick()
-        && proposalReturnedByGet.epoch == proposalSet.epoch
+        && proposalReturnedByGet.epoch == qpi.epoch()
         && proposalReturnedByGet.type == proposalSet.type
         && proposalReturnedByGet.supportScalarVotes == proposalSet.supportScalarVotes
         && (memcmp(&proposalReturnedByGet.transfer, &proposalSet.transfer, sizeof(proposalSet.transfer)) == 0)
@@ -663,15 +663,9 @@ void testProposalVotingV1()
     proposal.type = 123;
     EXPECT_FALSE(qpi(*pv).setProposal(qpi.computor(1), proposal));
 
-    // fail: wrong epoch (only current epoch possible)
-    proposal.type = QPI::ProposalTypes::YesNo;
-    proposal.epoch = 1;
-    EXPECT_FALSE(qpi(*pv).setProposal(qpi.computor(2), proposal));
-    proposal.epoch = qpi.epoch() + 1;
-    EXPECT_FALSE(qpi(*pv).setProposal(qpi.computor(2), proposal));
-
     // okay: set proposal for computor 2 (proposal index 1, first use)
-    proposal.epoch = qpi.epoch();
+    proposal.type = QPI::ProposalTypes::YesNo;
+    proposal.epoch = 1; // non-zero means current epoch
     setProposalWithSuccessCheck(qpi, pv, qpi.computor(2), proposal);
     EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(2)), 1);
     EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(-1), 0);

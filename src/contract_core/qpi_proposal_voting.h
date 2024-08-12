@@ -262,15 +262,9 @@ namespace QPI
 		ProposalVotingType& pv = const_cast<ProposalVotingType&>(this->pv);
 		const QpiContextFunctionCall& qpi = this->qpi;
 
-		// epoch must be current epoch or 0 (to clear proposal)
-		uint16 curEpoch = qpi.epoch();
-		if (proposal.epoch != curEpoch)
-		{
-			if (proposal.epoch == 0)
-				return clearProposal(pv.proposersAndVoters.getExistingProposalIndex(qpi, proposer));
-			else
-				return false;
-		}
+		// epoch 0 means to clear proposal
+		if (proposal.epoch == 0)
+			return clearProposal(pv.proposersAndVoters.getExistingProposalIndex(qpi, proposer));
 
 		// check if proposal is valid
 		if (!proposal.checkValidity())
@@ -285,7 +279,7 @@ namespace QPI
 		if (proposalIndex >= pv.maxProposals)
 		{
 			// no empty slots -> try to free a slot of oldest proposal before current epoch
-			uint16 minEpoch = curEpoch;
+			uint16 minEpoch = qpi.epoch();
 			for (uint16 i = 0; i < pv.maxProposals; ++i)
 			{
 				if (pv.proposals[i].epoch < minEpoch)
@@ -310,6 +304,7 @@ namespace QPI
 		// set proposal (and reset previous votes if any)
 		bool okay = pv.proposals[proposalIndex].set(proposal);
 		pv.proposals[proposalIndex].tick = qpi.tick();
+		pv.proposals[proposalIndex].epoch = qpi.epoch();
 
 		return okay;
 	}

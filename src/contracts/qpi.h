@@ -576,7 +576,7 @@ namespace QPI
 		// URL explaining proposal, zero-terminated string.
 		array<uint8, 256> url;	
 		
-		// Epoch, when proposal is active. For setProposal(), this must be current epoch or 0 (to clear proposal).
+		// Epoch, when proposal is active. For setProposal(), 0 means to clear proposal and non-zero means the current epoch.
 		uint16 epoch;
 
 		// Type of proposal, see ProposalTypes.
@@ -682,7 +682,7 @@ namespace QPI
 		// URL explaining proposal, zero-terminated string.
 		array<uint8, 256> url;
 
-		// Epoch, when proposal is active. For setProposal(), this must be current epoch or 0 (to clear proposal).
+		// Epoch, when proposal is active. For setProposal(), 0 means to clear proposal and non-zero means the current epoch.
 		uint16 epoch;
 
 		// Type of proposal, see ProposalTypes.
