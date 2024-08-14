@@ -149,7 +149,7 @@ struct ScoreFunction
         bool isGeneratedBucketOffset[inNeuronsCount];
 
         static_assert((allParamsCount) % 8 == 0, "need to check this packed synapse");
-        static_assert(maxInputDuration <= 4096, "need to check this maxInputDuration and adjust maxNumMods");
+        static_assert(maxInputDuration <= 16384, "need to check this maxInputDuration and adjust maxNumMods");
 
         queueItem queue[allParamsCount * 2];
         bool isProcessing[allParamsCount * 2];
