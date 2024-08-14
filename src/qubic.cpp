@@ -1669,7 +1669,7 @@ unsigned short QPI::QpiContextFunctionCall::epoch() const
     return system.epoch;
 }
 
-bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, ::Entity& entity) const
+bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, Entity& entity) const
 {
     int index = spectrumIndex(id);
     if (index < 0)
@@ -4620,6 +4620,7 @@ static bool initialize()
         contractStates[contractIndex] = NULL;
     }
     bs->SetMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
+    bs->SetMem(contractSystemProcedureLocalsSizes, sizeof(contractSystemProcedureLocalsSizes), 0);
     bs->SetMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
     bs->SetMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
     bs->SetMem(contractUserFunctionInputSizes, sizeof(contractUserFunctionInputSizes), 0);
