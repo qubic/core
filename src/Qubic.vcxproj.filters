@@ -145,6 +145,12 @@
     <ClInclude Include="contracts\EmptyTemplate.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\GeneralQuorumProposal.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\SupplyWatcher.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
