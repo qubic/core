@@ -2945,7 +2945,7 @@ static void processTick(unsigned long long processorNumber)
             if (mainAuxStatus & 1)
             {
                 auto& payload = voteCounterPayload; // note: not thread-safe
-                payload.transaction.sourcePublicKey = computorPublicKeys[i];
+                payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
                 payload.transaction.destinationPublicKey = _mm256_setzero_si256();
                 payload.transaction.amount = 0;
                 payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
@@ -2954,7 +2954,7 @@ static void processTick(unsigned long long processorNumber)
                 voteCounter.compressNewVotesPacket(system.tick - 675, system.tick + 1, ownComputorIndices[i], payload.data);
                 unsigned char digest[32];
                 KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.data), digest, sizeof(digest));
-                sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, payload.signature);
+                sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
                 enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
             }
         }
