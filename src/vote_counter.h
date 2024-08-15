@@ -1,6 +1,7 @@
 #pragma once
 #include "platform/memory.h"
 #include "network_messages/transactions.h"
+#define VOTE_COUNTER_INPUT_TYPE 1
 #define VOTE_COUNTER_DATA_SIZE_IN_BYTES 848
 #define VOTE_COUNTER_NUM_BIT_PER_COMP 10
 static_assert((1<< VOTE_COUNTER_NUM_BIT_PER_COMP) >= NUMBER_OF_COMPUTORS, "Invalid number of bit per datum");

@@ -44,6 +44,8 @@
 
 #include "addons/tx_status_request.h"
 
+#include "oracles/oracle_machines.h"
+
 ////////// Qubic \\\\\\\\\\
 
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
@@ -512,6 +514,19 @@ static bool decreaseEnergy(const int index, long long amount)
     }
 
     return false;
+}
+
+static short computorIndex(m256i computor)
+{
+    for (short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    {
+        if (broadcastedComputors.computors.publicKeys[computorIndex] == computor)
+        {
+            return computorIndex;
+        }
+    }
+
+    return -1;
 }
 
 // NOTE: this function doesn't work well on a few CPUs, some bits will be flipped after calling this. It's probably microcode bug.
@@ -2574,18 +2589,27 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     }
 }
 
-static void processTickTransactionOracleReply(const Transaction* transaction, const unsigned long long processorNumber)
+static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
 {
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(!transaction->amount);
     ASSERT(transaction->tick == system.tick);
 
     // TODO
 }
 
+static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTransactionPrefix* transaction)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(transaction->tick == system.tick);
+
+    // TODO
+}
 
 static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, unsigned long long processorNumber)
 {
@@ -2618,14 +2642,40 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
             if (isZero(transaction->destinationPublicKey))
             {
-                int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
-                if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
+                switch (transaction->inputType)
                 {
-                    if (!transaction->amount
-                        && transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                case VOTE_COUNTER_INPUT_TYPE:
+                {
+                    int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
+                    if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
                     {
-                        voteCounter.addVotes(transaction->inputPtr(), computorIndex);
+                        if (transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                        {
+                            voteCounter.addVotes(transaction->inputPtr(), computorIndex);
+                        }
                     }
+                }
+                break;
+
+                case OracleReplyCommitTransaction::transactionType():
+                {
+                    if (computorIndex(transaction->sourcePublicKey) >= 0
+                        && transaction->inputSize == sizeof(OracleReplyCommitTransaction))
+                    {
+                        processTickTransactionOracleReplyCommit((OracleReplyCommitTransaction*)transaction);
+                    }
+                }
+                break;
+
+                case OracleReplyRevealTransactionPrefix::transactionType():
+                {
+                    if (computorIndex(transaction->sourcePublicKey) >= 0
+                        && transaction->inputSize >= sizeof(OracleReplyRevealTransactionPrefix) + sizeof(OracleReplyRevealTransactionPostfix))
+                    {
+                        processTickTransactionOracleReplyReveal((OracleReplyRevealTransactionPrefix*)transaction);
+                    }
+                }
+                break;
                 }
             }
             else
@@ -2961,7 +3011,7 @@ static void processTick(unsigned long long processorNumber)
                 payload.transaction.destinationPublicKey = _mm256_setzero_si256();
                 payload.transaction.amount = 0;
                 payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
-                payload.transaction.inputType = 0;
+                payload.transaction.inputType = VOTE_COUNTER_INPUT_TYPE;
                 payload.transaction.inputSize = sizeof(payload.data);
                 voteCounter.compressNewVotesPacket(system.tick - 675, system.tick + 1, ownComputorIndices[i], payload.data);
                 unsigned char digest[32];
