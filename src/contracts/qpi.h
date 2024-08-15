@@ -6181,8 +6181,18 @@ namespace QPI
 		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __postReleaseSharesEmpty = 1, __postReleaseSharesSize = sizeof(NoData) };
 		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplySize = sizeof(NoData) };
+		static void __acceptOracleTrueReply(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplySize = sizeof(NoData) };
+		static void __acceptOracleFalseReply(const QpiContextProcedureCall&, void*, void*) {}
+		enum { __acceptOracleUnknownReplyEmpty = 1, __acceptOracleUnknownReplySize = sizeof(NoData) };
+		static void __acceptOracleUnknownReply(const QpiContextProcedureCall&, void*, void*) {}
 		enum { __expandEmpty = 1 };
 		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
+	};
+
+	struct OracleBase
+	{
 	};
 
 	// Internal macro for defining the system procedure macros
@@ -6355,6 +6365,8 @@ namespace QPI
 		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
 		qpi.__qpiFreeContextOtherContract(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
+
+	#define QUERY_ORACLE(oracle, query) // TODO
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 

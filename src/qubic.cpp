@@ -2574,6 +2574,18 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     }
 }
 
+static void processTickTransactionOracleReply(const Transaction* transaction, const unsigned long long processorNumber)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(!transaction->amount);
+    ASSERT(transaction->tick == system.tick);
+
+    // TODO
+}
+
 
 static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, unsigned long long processorNumber)
 {
