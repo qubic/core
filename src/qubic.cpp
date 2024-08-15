@@ -133,7 +133,10 @@ static unsigned int numberOfTransactions = 0;
 static volatile char entityPendingTransactionsLock = 0;
 static unsigned char* entityPendingTransactions = NULL;
 static unsigned char* entityPendingTransactionDigests = NULL;
-static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY];
+static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY]; // [SPECTRUM_CAPACITY] must be >= than [NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR]
+static volatile char computorPendingTransactionsLock = 0;
+static unsigned char* computorPendingTransactions = NULL;
+static unsigned char* computorPendingTransactionDigests = NULL;
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
 static m256i* spectrumDigests = NULL;
 const unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
@@ -516,9 +519,9 @@ static bool decreaseEnergy(const int index, long long amount)
     return false;
 }
 
-static short computorIndex(m256i computor)
+static int computorIndex(m256i computor)
 {
-    for (short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    for (int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
         if (broadcastedComputors.computors.publicKeys[computorIndex] == computor)
         {
@@ -958,23 +961,41 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 enqueueResponse(NULL, header);
             }
 
-            const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
-            if (spectrumIndex >= 0)
+            const int computorIndex = ::computorIndex(request->sourcePublicKey);
+            if (computorIndex >= 0)
             {
-                ACQUIRE(entityPendingTransactionsLock);
+                ACQUIRE(computorPendingTransactionsLock);
 
-                // Pending transactions pool follows the rule: A transaction with a higher tick overwrites previous transaction from the same address.
-                // The second filter is to avoid accident made by users/devs (setting scheduled tick too high) and get locked until end of epoch.
-                // It also makes sense that a node doesn't need to store a transaction that is scheduled on a tick that node will never reach.
-                // Notice: MAX_NUMBER_OF_TICKS_PER_EPOCH is not set globally since every node may have different TARGET_TICK_DURATION time due to memory limitation.
-                if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
+                const unsigned int offset = random(MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR);
+                if (((Transaction*)&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE])->tick < request->tick
                     && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                 {
-                    bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
-                    KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
+                    bs->CopyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
+                    KangarooTwelve(request, transactionSize, &computorPendingTransactionDigests[computorIndex * offset * 32ULL], 32);
                 }
 
-                RELEASE(entityPendingTransactionsLock);
+                RELEASE(computorPendingTransactionsLock);
+            }
+            else
+            {
+                const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
+                if (spectrumIndex >= 0)
+                {
+                    ACQUIRE(entityPendingTransactionsLock);
+
+                    // Pending transactions pool follows the rule: A transaction with a higher tick overwrites previous transaction from the same address.
+                    // The second filter is to avoid accident made by users/devs (setting scheduled tick too high) and get locked until end of epoch.
+                    // It also makes sense that a node doesn't need to store a transaction that is scheduled on a tick that node will never reach.
+                    // Notice: MAX_NUMBER_OF_TICKS_PER_EPOCH is not set globally since every node may have different TARGET_TICK_DURATION time due to memory limitation.
+                    if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
+                        && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
+                    {
+                        bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
+                        KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
+                    }
+
+                    RELEASE(entityPendingTransactionsLock);
+                }
             }
 
             unsigned int tickIndex = ts.tickToIndexCurrentEpoch(request->tick);
@@ -2619,11 +2640,8 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     ASSERT(transaction->tick == system.tick);
 
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
-    if (spectrumIndex >= 0
-        && !entityPendingTransactionIndices[spectrumIndex])
+    if (spectrumIndex >= 0)
     {
-        entityPendingTransactionIndices[spectrumIndex] = 1;
-
         numberOfTransactions++;
         bool moneyFlew = false;
 #if ADDON_TX_STATUS_REQUEST
@@ -2796,7 +2814,6 @@ static void processTick(unsigned long long processorNumber)
 #if ADDON_TX_STATUS_REQUEST
         txStatusData.tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
-        bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
         // reset solution task queue
         score->resetTaskQueue();
         // pre-scan any solution tx and add them to solution task queue
@@ -2810,8 +2827,7 @@ static void processTick(unsigned long long processorNumber)
                     ASSERT(transaction->checkValidity());
                     ASSERT(transaction->tick == system.tick);
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
-                    if (spectrumIndex >= 0
-                        && !entityPendingTransactionIndices[spectrumIndex])
+                    if (spectrumIndex >= 0)
                     {
                         if (transaction->destinationPublicKey == arbitratorPublicKey)
                         {
@@ -2946,12 +2962,44 @@ static void processTick(unsigned long long processorNumber)
                     timelockPreimage[2] = etalonTick.saltedComputerDigest;
                     KangarooTwelve(timelockPreimage, sizeof(timelockPreimage), &broadcastedFutureTickData.tickData.timelock, sizeof(broadcastedFutureTickData.tickData.timelock));
 
+                    unsigned int j = 0;
+
                     unsigned int numberOfEntityPendingTransactionIndices;
+                    for (numberOfEntityPendingTransactionIndices = 0; numberOfEntityPendingTransactionIndices < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; numberOfEntityPendingTransactionIndices++)
+                    {
+                        entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices] = numberOfEntityPendingTransactionIndices;
+                    }
+                    while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
+                    {
+                        const unsigned int index = random(numberOfEntityPendingTransactionIndices);
+
+                        const Transaction* pendingTransaction = ((Transaction*)&computorPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
+                        if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        {
+                            ASSERT(pendingTransaction->checkValidity());
+                            const unsigned int transactionSize = pendingTransaction->totalSize();
+                            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                            {
+                                ts.tickTransactions.acquireLock();
+                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                {
+                                    ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
+                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
+                                    broadcastedFutureTickData.tickData.transactionDigests[j] = &computorPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
+                                    j++;
+                                    ts.nextTickTransactionOffset += transactionSize;
+                                }
+                                ts.tickTransactions.releaseLock();
+                            }
+                        }
+
+                        entityPendingTransactionIndices[index] = entityPendingTransactionIndices[--numberOfEntityPendingTransactionIndices];
+                    }
+
                     for (numberOfEntityPendingTransactionIndices = 0; numberOfEntityPendingTransactionIndices < SPECTRUM_CAPACITY; numberOfEntityPendingTransactionIndices++)
                     {
                         entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices] = numberOfEntityPendingTransactionIndices;
                     }
-                    unsigned int j = 0;
                     while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
                     {
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
@@ -2978,6 +3026,7 @@ static void processTick(unsigned long long processorNumber)
 
                         entityPendingTransactionIndices[index] = entityPendingTransactionIndices[--numberOfEntityPendingTransactionIndices];
                     }
+
                     for (; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                     {
                         broadcastedFutureTickData.tickData.transactionDigests[j] = _mm256_setzero_si256();
@@ -3110,6 +3159,10 @@ static void beginEpoch1of2()
     beginEpochTxStatusRequestAddOn(system.initialTick);
 #endif
 
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
+    {
+        ((Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
+    }
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
         ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
@@ -4130,12 +4183,54 @@ static void tickProcessor(void*)
                         }
                         if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
                         {
+                            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
+                            {
+                                Transaction* pendingTransaction = (Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE];
+                                if (pendingTransaction->tick == nextTick)
+                                {
+                                    ACQUIRE(computorPendingTransactionsLock);
+
+                                    ASSERT(pendingTransaction->checkValidity());
+                                    auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
+                                    for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
+                                    {
+                                        if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
+                                        {
+                                            if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
+                                            {
+                                                unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
+                                                const unsigned int transactionSize = pendingTransaction->totalSize();
+                                                bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
+
+                                                pendingTransaction = (Transaction*)transactionBuffer;
+                                                ts.tickTransactions.acquireLock();
+                                                if (!tsPendingTransactionOffsets[j])
+                                                {
+                                                    if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                                    {
+                                                        tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
+                                                        bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                                        ts.nextTickTransactionOffset += transactionSize;
+                                                    }
+                                                }
+                                                ts.tickTransactions.releaseLock();
+
+                                                numberOfKnownNextTickTransactions++;
+                                                unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+                                            }
+                                        }
+                                    }
+
+                                    RELEASE(computorPendingTransactionsLock);
+                                }
+                            }
                             for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                             {
                                 Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
                                 if (pendingTransaction->tick == nextTick)
                                 {
                                     ACQUIRE(entityPendingTransactionsLock);
+
                                     ASSERT(pendingTransaction->checkValidity());
                                     auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
                                     for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
@@ -4784,6 +4879,17 @@ static bool initialize()
 
             return false;
         }
+        if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE, (void**)&computorPendingTransactions))
+        {
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE);
+            return false;
+        }
+        else if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL, (void**)&computorPendingTransactionDigests))
+        {
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL);
+
+            return false;
+        }
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset), (void**)&reorgBuffer))
         {
@@ -5124,6 +5230,14 @@ static void deinitialize()
         }
     }
 
+    if (computorPendingTransactionDigests)
+    {
+        bs->FreePool(computorPendingTransactionDigests);
+    }
+    if (computorPendingTransactions)
+    {
+        bs->FreePool(computorPendingTransactions);
+    }
     if (entityPendingTransactionDigests)
     {
         bs->FreePool(entityPendingTransactionDigests);
@@ -5300,6 +5414,13 @@ static void logInfo()
     logToConsole(message);
 
     unsigned int numberOfPendingTransactions = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
+    {
+        if (((Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick > system.tick)
+        {
+            numberOfPendingTransactions++;
+        }
+    }
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
         if (((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick > system.tick)
