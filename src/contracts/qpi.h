@@ -557,42 +557,83 @@ namespace QPI
 	};
 	static_assert(sizeof(ProposalSummarizedVotingDataV1) == 16 + 8*4, "Unexpected struct size.");
 
-	// Proposal type constants
+	// Proposal type constants and functions.
+	// Each proposal type is composed of a class and a number of options. As an alternative to having N options (option votes),
+	// some proposal classes (currently the one to set a variable) may allow to vote with a scalar value in a range defined
+	// by the proposal (scalar voting).
 	struct ProposalTypes
 	{
+		// Class of proposal type
+		struct Class
+		{
+			// Options without extra data
+			static constexpr uint16 GeneralOptions = 0;
+
+			// Propose to transfer amount to address
+			static constexpr uint16 Transfer = 0x100;
+
+			// Propose to set variable to a value
+			static constexpr uint16 Variable = 0x200;
+		};
+
 		// Options yes and no without extra data -> result is histogram of options
-		static constexpr uint16 YesNo = 0;
+		static constexpr uint16 YesNo = Class::GeneralOptions | 2;
+
+		// 3 options without extra data -> result is histogram of options
+		static constexpr uint16 ThreeOptions = Class::GeneralOptions | 3;
+
+		// 3 options without extra data -> result is histogram of options
+		static constexpr uint16 FourOptions = Class::GeneralOptions | 4;
 
 		// Transfer given amount to address with options yes/no
-		static constexpr uint16 TransferYesNo = 1;
+		static constexpr uint16 TransferYesNo = Class::Transfer | 2;
 
 		// Transfer amount to address with two options of amounts and option "no change"
-		static constexpr uint16 TransferTwoAmounts = 2;
+		static constexpr uint16 TransferTwoAmounts = Class::Transfer | 3;
 
 		// Transfer amount to address with three options of amounts and option "no change"
-		static constexpr uint16 TransferThreeAmounts = 3;
+		static constexpr uint16 TransferThreeAmounts = Class::Transfer | 4;
 
 		// Transfer amount to address with four options of amounts and option "no change"
-		static constexpr uint16 TransferFourAmounts = 4;
+		static constexpr uint16 TransferFourAmounts = Class::Transfer | 5;
 
 		// Set given variable to proposed value with options yes/no
-		static constexpr uint16 VariableYesNo = 10;
+		static constexpr uint16 VariableYesNo = Class::Variable | 2;
 
 		// Set given variable to proposed value with two options of values and option "no change"
-		static constexpr uint16 VariableTwoValues = 11;
+		static constexpr uint16 VariableTwoValues = Class::Variable | 3;
 
 		// Set given variable to proposed value with three options of values and option "no change"
-		static constexpr uint16 VariableThreeValues = 12;
+		static constexpr uint16 VariableThreeValues = Class::Variable | 4;
 
 		// Set given variable to proposed value with four options of values and option "no change"
-		static constexpr uint16 VariableFourValues = 13;
+		static constexpr uint16 VariableFourValues = Class::Variable | 5;
 
 		// Set given variable to value, allowing to vote with scalar value, voting result is mean value
-		static constexpr uint16 VariableScalarMean = 20;
+		static constexpr uint16 VariableScalarMean = Class::Variable | 0;
 
-		// Return option count for a given proposal type (including "no change" option).
-		// Returns 0 for scalar voting or invalid type.
-		static uint16 optionCount(uint16 proposalType);
+
+		// Contruct type from class + number of options (no checking if type is valid)
+		static constexpr uint16 type(uint16 cls, uint16 options)
+		{
+			return cls | options;
+		}
+
+		// Return option count for a given proposal type (including "no change" option),
+		// 0 for scalar voting (no checking if type is valid).
+		static uint16 optionCount(uint16 proposalType)
+		{
+			return proposalType & 0x00ff;
+		}
+
+		// Return class of proposal type (no checking if type is valid).
+		static uint16 cls(uint16 proposalType)
+		{
+			return proposalType & 0xff00;
+		}
+
+		// Check if given type is valid (supported by most comprehensive ProposalData class).
+		static bool isValid(uint16 proposalType);
 	};
 
 	// Proposal data struct for all types of proposals defined in August 2024.
@@ -613,25 +654,30 @@ namespace QPI
 		// Tick when proposal has been set. Output only, overwritten in setProposal().
 		uint32 tick;
 
-		// Proposal payload data (for all except ProposalTypes::YesNo)
+		// Proposal payload data (for all except types with class GeneralProposal)
 		union
 		{
+			// Used if type class is Transfer
 			struct Transfer
 			{
 				id targetAddress;
-				array<sint64, 4> amounts;
+				array<sint64, 4> amounts;   // N first amounts are the proposed options (non-negative, sorted without duplicates), rest zero
 			} transfer;
+
+			// Used if type class is Variable and type is not VariableScalarMean
 			struct VariableOptions
 			{
-				array<sint64, 4> values;
-				uint16 variable;
+				array<sint64, 4> values;    // N first amounts are proposed options sorted without duplicates, rest zero
+				uint16 variable;            // For identifying variable (interpreted by contract only)
 			} variableOptions;
+
+			// Used if type is VariableScalarMean
 			struct VariableScalar
 			{
-				sint64 minValue;
-				sint64 maxValue;
-				sint64 proposedValue;
-				uint16 variable;
+				sint64 minValue;            // Minimum value allowed in proposedValue and votes, must be > NO_VOTE_VALUE
+				sint64 maxValue;            // Maximum value allowed in proposedValue and votes, must be >= minValue
+				sint64 proposedValue;       // Needs to be in range between minValue and maxValue
+				uint16 variable;            // For identifying variable (interpreted by contract only)
 
 				static constexpr sint64 minSupportedValue = 0x8000000000000001;
 				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
@@ -644,55 +690,48 @@ namespace QPI
 		{
 			bool okay = false;
 			// TODO: validate URL
-			switch (type)
+			uint16 cls = ProposalTypes::cls(type);
+			uint16 options = ProposalTypes::optionCount(type);
+			switch (cls)
 			{
-			case ProposalTypes::YesNo:
-				okay = true;
+			case ProposalTypes::Class::GeneralOptions:
+				okay = options >= 2 && options <= 8;
 				break;
-			case ProposalTypes::TransferYesNo:
-			case ProposalTypes::TransferTwoAmounts:
-			case ProposalTypes::TransferThreeAmounts:
-			case ProposalTypes::TransferFourAmounts:
-				if (!isZero(transfer.targetAddress))
+			case ProposalTypes::Class::Transfer:
+				if (!isZero(transfer.targetAddress) && options >= 2 && options <= 5)
 				{
-					uint16 proposedAmounts = type - ProposalTypes::TransferYesNo + 1;
+					uint16 proposedAmounts = options - 1;
 					okay = true;
 					for (uint16 i = 0; i < proposedAmounts; ++i)
 					{
+						// no negative amounts
 						if (transfer.amounts.get(i) < 0)
+						{
 							okay = false;
+							break;
+						}
 					}
-					for (uint16 i = proposedAmounts; i < 4; ++i)
-					{
-						if (transfer.amounts.get(i) != 0)
-							okay = false;
-					}
+					okay = okay
+						   && isArraySortedWithoutDuplicates(transfer.amounts, 0, proposedAmounts)
+						   && transfer.amounts.rangeEquals(proposedAmounts, transfer.amounts.capacity(), 0);
 				}
 				break;
-			case ProposalTypes::VariableYesNo:
-			case ProposalTypes::VariableTwoValues:
-			case ProposalTypes::VariableThreeValues:
-			case ProposalTypes::VariableFourValues:
+			case ProposalTypes::Class::Variable:
+				if (options >= 2 && options <= 5)
 				{
-					uint16 proposedValues = type - ProposalTypes::VariableYesNo + 1;
-					okay = true;
-					for (uint16 i = 0; i < proposedValues; ++i)
-					{
-						if (variableOptions.values.get(i) < 0)
-							okay = false;
-					}
-					for (uint16 i = proposedValues; i < 4; ++i)
-					{
-						if (variableOptions.values.get(i) != 0)
-							okay = false;
-					}
+					// option voting
+					uint16 proposedValues = options - 1;
+					okay = isArraySortedWithoutDuplicates(variableOptions.values, 0, proposedValues)
+						   && variableOptions.values.rangeEquals(proposedValues, variableOptions.values.capacity(), 0);
 				}
-				break;
-			case ProposalTypes::VariableScalarMean:
-				if (supportScalarVotes)
-					okay = variableScalar.minValue <= variableScalar.proposedValue
-						&& variableScalar.proposedValue <= variableScalar.maxValue
-						&& variableScalar.minValue > NO_VOTE_VALUE;
+				else if (options == 0)
+				{
+					// scalar voting
+					if (supportScalarVotes)
+						okay = variableScalar.minValue <= variableScalar.proposedValue
+							&& variableScalar.proposedValue <= variableScalar.maxValue
+							&& variableScalar.minValue > NO_VOTE_VALUE;
+				}
 				break;
 			}
 			return okay;

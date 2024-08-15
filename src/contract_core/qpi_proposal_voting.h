@@ -111,27 +111,27 @@ namespace QPI
 	{
 	};
 
-	// Return option count for a given proposal type (including "no change" option).
-	// Returns 0 for scalar voting or invalid type.
-	uint16 ProposalTypes::optionCount(uint16 proposalType)
+	// Check if given type is valid (supported by most comprehensive ProposalData class).
+	bool ProposalTypes::isValid(uint16 proposalType)
 	{
-		switch (proposalType)
+		bool valid = false;
+		uint16 cls = ProposalTypes::cls(proposalType);
+		uint16 options = ProposalTypes::optionCount(proposalType);
+		switch (cls)
 		{
-		case ProposalTypes::YesNo:
-		case ProposalTypes::TransferYesNo:
-		case ProposalTypes::VariableYesNo:
-			return 2;
-		case ProposalTypes::TransferTwoAmounts:
-		case ProposalTypes::VariableTwoValues:
-			return 3;
-		case ProposalTypes::TransferThreeAmounts:
-		case ProposalTypes::VariableThreeValues:
-			return 4;
-		case ProposalTypes::TransferFourAmounts:
-		case ProposalTypes::VariableFourValues:
-			return 5;
+		case ProposalTypes::Class::GeneralOptions:
+			valid = (options >= 2 && options <= 8);
+			break;
+		case ProposalTypes::Class::Transfer:
+			valid = (options >= 2 && options <= 5);
+			break;
+		case ProposalTypes::Class::Variable:
+			valid =
+				(options >= 2 && options <= 5) // option voting
+				|| options == 0;               // scalar voting
+			break;
 		}
-		return 0;
+		return valid;
 	}
 
 	// Selection of min size type for vote storage
