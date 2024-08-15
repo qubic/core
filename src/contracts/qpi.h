@@ -566,13 +566,13 @@ namespace QPI
 		// Class of proposal type
 		struct Class
 		{
-			// Options without extra data
+			// Options without extra data. Supported options: 2 <= N <= 8.
 			static constexpr uint16 GeneralOptions = 0;
 
-			// Propose to transfer amount to address
+			// Propose to transfer amount to address. Supported options: 2 <= N <= 5.
 			static constexpr uint16 Transfer = 0x100;
 
-			// Propose to set variable to a value
+			// Propose to set variable to a value. Supported options: 2 <= N <= 5; N == 0 means scalar voting.
 			static constexpr uint16 Variable = 0x200;
 		};
 
@@ -660,7 +660,7 @@ namespace QPI
 			// Used if type class is Transfer
 			struct Transfer
 			{
-				id targetAddress;
+				id destination;
 				array<sint64, 4> amounts;   // N first amounts are the proposed options (non-negative, sorted without duplicates), rest zero
 			} transfer;
 
@@ -698,7 +698,7 @@ namespace QPI
 				okay = options >= 2 && options <= 8;
 				break;
 			case ProposalTypes::Class::Transfer:
-				if (!isZero(transfer.targetAddress) && options >= 2 && options <= 5)
+				if (!isZero(transfer.destination) && options >= 2 && options <= 5)
 				{
 					uint16 proposedAmounts = options - 1;
 					okay = true;

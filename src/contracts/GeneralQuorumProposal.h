@@ -281,7 +281,7 @@ public:
 							if (locals.mostVotedOptionVotes > QUORUM/2)
 							{
 								// Set in revenueDonation table
-								locals.revenueDonationEntry.destinationPublicKey = locals.proposal.transfer.targetAddress;
+								locals.revenueDonationEntry.destinationPublicKey = locals.proposal.transfer.destination;
 								locals.revenueDonationEntry.millionthAmount = locals.proposal.transfer.amounts.get(locals.optionIndex - 1);
 								locals.revenueDonationEntry.firstEpoch = qpi.epoch() + 1;
 								CALL(_SetRevenueDonationEntry, locals.revenueDonationEntry, locals.success);

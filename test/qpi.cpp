@@ -369,7 +369,7 @@ void testProposalWithAllVoteData()
 
     // TransferYesNo proposal
     proposal.type = QPI::ProposalTypes::TransferYesNo;
-    proposal.transfer.targetAddress = QPI::id(1, 2, 3, 4);
+    proposal.transfer.destination = QPI::id(1, 2, 3, 4);
     proposal.transfer.amounts.setAll(0);
     proposal.transfer.amounts.set(0, 1234);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
@@ -744,7 +744,7 @@ void testProposalVotingV1()
 
     // fail: proposal of transfer with wrong address
     proposal.type = QPI::ProposalTypes::TransferYesNo;
-    proposal.transfer.targetAddress = QPI::NULL_ID;
+    proposal.transfer.destination = QPI::NULL_ID;
     proposal.transfer.amounts.setAll(0);
     EXPECT_FALSE(qpi(*pv).setProposal(qpi.computor(2), proposal));
     // check that overwrite did not work
@@ -764,12 +764,12 @@ void testProposalVotingV1()
 
     // fail: proposal of revenue distribution with invalid amount
     proposal.type = QPI::ProposalTypes::TransferYesNo;
-    proposal.transfer.targetAddress = qpi.originator();
+    proposal.transfer.destination = qpi.originator();
     proposal.transfer.amounts.set(0, -123456);
     EXPECT_FALSE(qpi(*pv).setProposal(qpi.computor(2), proposal));
 
     // okay: revenue distribution, overwrite existing proposal of comp 2 (proposal index 1, reused)
-    proposal.transfer.targetAddress = qpi.originator();
+    proposal.transfer.destination = qpi.originator();
     proposal.transfer.amounts.set(0, 1005);
     setProposalWithSuccessCheck(qpi, pv, qpi.computor(2), proposal);
     EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(2)), 1);
@@ -891,7 +891,7 @@ void testProposalVotingV1()
 
     // fail: test multi-option transfer proposal with invalid amounts
     proposal.type = QPI::ProposalTypes::TransferThreeAmounts;
-    proposal.transfer.targetAddress = qpi.originator();
+    proposal.transfer.destination = qpi.originator();
     for (int i = 0; i < 4; ++i)
     {
         proposal.transfer.amounts.setAll(0);
