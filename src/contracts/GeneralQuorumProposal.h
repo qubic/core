@@ -91,12 +91,9 @@ public:
 		// TODO: Fee? Burn fee?
 
 		// Check requirements for proposals in this contract
-		switch (input.type)
+		switch (ProposalTypes::cls(input.type))
 		{
-		case ProposalTypes::TransferYesNo:
-		case ProposalTypes::TransferTwoAmounts:
-		case ProposalTypes::TransferThreeAmounts:
-		case ProposalTypes::TransferFourAmounts:
+		case ProposalTypes::Class::Transfer:
 			// Check that amounts, which are in millionth, are in range of 0 (= 0%) to 1000000 (= 100%)
 			for (locals.i = 0; locals.i < 4; ++locals.i)
 			{
@@ -109,10 +106,7 @@ public:
 			}
 			break;
 
-		case ProposalTypes::VariableYesNo:
-		case ProposalTypes::VariableTwoValues:
-		case ProposalTypes::VariableThreeValues:
-		case ProposalTypes::VariableFourValues:
+		case ProposalTypes::Class::Variable:
 			// Proposals for setting a variable are not allowed at the moment (lack of meaning)
 			output.okay = false;
 			return;
@@ -220,13 +214,10 @@ public:
 
 
 	typedef NoData GetRevenueDonation_input;
-	struct GetRevenueDonation_output
-	{
-		RevenueDonationT revDist;
-	};
+	typedef RevenueDonationT GetRevenueDonation_output;
 
 	PUBLIC_FUNCTION(GetRevenueDonation)
-		output.revDist = state.revenueDonation;
+		output = state.revenueDonation;
 	_
 
 
@@ -248,6 +239,9 @@ public:
 		ProposalDataT proposal;
 		ProposalSummarizedVotingDataV1 results;
 		sint32 optionIndex;
+		uint32 optionVotes;
+		sint32 mostVotedOptionIndex;
+		uint32 mostVotedOptionVotes;
 		RevenueDonationEntry revenueDonationEntry;
 		Success_output success;
 	};
@@ -262,23 +256,33 @@ public:
 			if (qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
 			{
 				// ... and have transfer proposal type
-				switch (locals.proposal.type)
+				if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::Transfer)
 				{
-				case ProposalTypes::TransferYesNo:
-				case ProposalTypes::TransferTwoAmounts:
-				case ProposalTypes::TransferThreeAmounts:
-				case ProposalTypes::TransferFourAmounts:
-					// Get voting results and check if there is a quorum voting for one of "change" options
-					// (option 0 is "no change")
+					// Get voting results and check if conditions for proposal acceptance are met
 					if (qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
 					{
-						for (locals.optionIndex = 1; locals.optionIndex < locals.results.optionCount; ++locals.optionIndex)
+						// The total number of votes needs to be at least the quorum
+						if (locals.results.totalVotes >= QUORUM)
 						{
-							if (locals.results.optionVoteCount.get(locals.optionIndex) >= QUORUM)
+							// Find most voted "change" option (option 0 is "no change")
+							locals.mostVotedOptionIndex = 0;
+							locals.mostVotedOptionVotes = 0;
+							for (locals.optionIndex = 1; locals.optionIndex < locals.results.optionCount; ++locals.optionIndex)
 							{
-								// Option has been accepted by quorum -> set in revenueDonation table
+								locals.optionVotes = locals.results.optionVoteCount.get(locals.optionIndex);
+								if (locals.mostVotedOptionVotes < locals.optionVotes)
+								{
+									locals.mostVotedOptionVotes = locals.optionVotes;
+									locals.mostVotedOptionIndex = locals.optionIndex;
+								}
+							}
+
+							// Option for changing status quo has been accepted?
+							if (locals.mostVotedOptionVotes > QUORUM/2)
+							{
+								// Set in revenueDonation table
 								locals.revenueDonationEntry.destinationPublicKey = locals.proposal.transfer.targetAddress;
-								locals.revenueDonationEntry.millionthAmount = locals.proposal.transfer.amounts.get(locals.optionIndex);
+								locals.revenueDonationEntry.millionthAmount = locals.proposal.transfer.amounts.get(locals.optionIndex - 1);
 								locals.revenueDonationEntry.firstEpoch = qpi.epoch() + 1;
 								CALL(_SetRevenueDonationEntry, locals.revenueDonationEntry, locals.success);
 								break;
