@@ -157,6 +157,9 @@
     <ClInclude Include="contract_core\qpi_trivial_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\SupplyWatcher.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

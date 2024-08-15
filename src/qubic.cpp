@@ -126,6 +126,7 @@ static unsigned long long resourceTestingDigest = 0;
 static volatile char spectrumLock = 0;
 static ::Entity* spectrum = NULL;
 static unsigned int numberOfEntities = 0;
+static unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
 static unsigned int numberOfTransactions = 0;
 static volatile char entityPendingTransactionsLock = 0;
 static unsigned char* entityPendingTransactions = NULL;
@@ -326,6 +327,58 @@ static void logToConsole(const CHAR16* message)
 #endif
 }
 
+static void reorganizeSpectrum()
+{
+    ::Entity* reorgSpectrum = (::Entity*)reorgBuffer;
+    bs->SetMem(reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity), 0);
+    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+    {
+        if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
+        {
+            unsigned int index = spectrum[i].publicKey.m256i_u32[0] & (SPECTRUM_CAPACITY - 1);
+
+        iteration:
+            if (isZero(reorgSpectrum[index].publicKey))
+            {
+                bs->CopyMem(&reorgSpectrum[index], &spectrum[i], sizeof(::Entity));
+            }
+            else
+            {
+                index = (index + 1) & (SPECTRUM_CAPACITY - 1);
+
+                goto iteration;
+            }
+        }
+    }
+    bs->CopyMem(spectrum, reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity));
+
+    unsigned int digestIndex;
+    for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
+    {
+        KangarooTwelve64To32(&spectrum[digestIndex], &spectrumDigests[digestIndex]);
+    }
+    unsigned int previousLevelBeginning = 0;
+    unsigned int numberOfLeafs = SPECTRUM_CAPACITY;
+    while (numberOfLeafs > 1)
+    {
+        for (unsigned int i = 0; i < numberOfLeafs; i += 2)
+        {
+            KangarooTwelve64To32(&spectrumDigests[previousLevelBeginning + i], &spectrumDigests[digestIndex++]);
+        }
+
+        previousLevelBeginning += numberOfLeafs;
+        numberOfLeafs >>= 1;
+    }
+
+    numberOfEntities = 0;
+    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+    {
+        if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
+        {
+            numberOfEntities++;
+        }
+    }
+}
 
 static int spectrumIndex(const m256i& publicKey)
 {
@@ -371,11 +424,42 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 {
     if (!isZero(publicKey) && amount >= 0)
     {
-        // TODO: numberOfEntities!
-
         unsigned int index = publicKey.m256i_u32[0] & (SPECTRUM_CAPACITY - 1);
 
         ACQUIRE(spectrumLock);
+
+        if (numberOfEntities >= (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
+        {
+            setMem(entityCategoryPopulations, sizeof(entityCategoryPopulations), 0);
+
+            for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+            {
+                const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+                if (balance)
+                {
+                    entityCategoryPopulations[63 - __lzcnt64(balance)]++;
+                }
+            }
+
+            unsigned int newNumberOfEntities = 0;
+            for (unsigned int categoryIndex = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]); categoryIndex-- > 0; )
+            {
+                if ((newNumberOfEntities += entityCategoryPopulations[categoryIndex]) >= SPECTRUM_CAPACITY / 2)
+                {
+                    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+                    {
+                        if (__lzcnt64((unsigned long long)(spectrum[i].incomingAmount - spectrum[i].outgoingAmount)) > 63 - categoryIndex)
+                        {
+                            spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
+                        }
+                    }
+
+                    reorganizeSpectrum();
+
+                    break;
+                }
+            }
+        }
 
     iteration:
         if (spectrum[index].publicKey == publicKey)
@@ -392,6 +476,8 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 spectrum[index].incomingAmount = amount;
                 spectrum[index].numberOfIncomingTransfers = 1;
                 spectrum[index].latestIncomingTransferTick = system.tick;
+
+                numberOfEntities++;
             }
             else
             {
@@ -2509,14 +2595,21 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
             if (isZero(transaction->destinationPublicKey))
             {
-                int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
-                if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
+                switch (transaction->inputType)
                 {
-                    if (!transaction->amount
-                        && transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                case VOTE_COUNTER_INPUT_TYPE:
+                {
+                    int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
+                    if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
                     {
-                        voteCounter.addVotes(transaction->inputPtr(), computorIndex);
+                        if (!transaction->amount
+                            && transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                        {
+                            voteCounter.addVotes(transaction->inputPtr(), computorIndex);
+                        }
                     }
+                }
+                break;
                 }
             }
             else
@@ -2852,16 +2945,16 @@ static void processTick(unsigned long long processorNumber)
             if (mainAuxStatus & 1)
             {
                 auto& payload = voteCounterPayload; // note: not thread-safe
-                payload.transaction.sourcePublicKey = computorPublicKeys[i];
+                payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
                 payload.transaction.destinationPublicKey = _mm256_setzero_si256();
                 payload.transaction.amount = 0;
                 payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
-                payload.transaction.inputType = 0;
+                payload.transaction.inputType = VOTE_COUNTER_INPUT_TYPE;
                 payload.transaction.inputSize = sizeof(payload.data);
                 voteCounter.compressNewVotesPacket(system.tick - 675, system.tick + 1, ownComputorIndices[i], payload.data);
                 unsigned char digest[32];
                 KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.data), digest, sizeof(digest));
-                sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, payload.signature);
+                sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
                 enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
             }
         }
@@ -3281,55 +3374,7 @@ static void endEpoch()
     {
         ACQUIRE(spectrumLock);
 
-        ::Entity* reorgSpectrum = (::Entity*)reorgBuffer;
-        bs->SetMem(reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity), 0);
-        for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-        {
-            if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
-            {
-                unsigned int index = spectrum[i].publicKey.m256i_u32[0] & (SPECTRUM_CAPACITY - 1);
-
-            iteration:
-                if (isZero(reorgSpectrum[index].publicKey))
-                {
-                    bs->CopyMem(&reorgSpectrum[index], &spectrum[i], sizeof(::Entity));
-                }
-                else
-                {
-                    index = (index + 1) & (SPECTRUM_CAPACITY - 1);
-
-                    goto iteration;
-                }
-            }
-        }
-        bs->CopyMem(spectrum, reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity));
-
-        unsigned int digestIndex;
-        for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
-        {
-            KangarooTwelve64To32(&spectrum[digestIndex], &spectrumDigests[digestIndex]);
-        }
-        unsigned int previousLevelBeginning = 0;
-        unsigned int numberOfLeafs = SPECTRUM_CAPACITY;
-        while (numberOfLeafs > 1)
-        {
-            for (unsigned int i = 0; i < numberOfLeafs; i += 2)
-            {
-                KangarooTwelve64To32(&spectrumDigests[previousLevelBeginning + i], &spectrumDigests[digestIndex++]);
-            }
-
-            previousLevelBeginning += numberOfLeafs;
-            numberOfLeafs >>= 1;
-        }
-
-        numberOfEntities = 0;
-        for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-        {
-            if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
-            {
-                numberOfEntities++;
-            }
-        }
+        reorganizeSpectrum();
 
         RELEASE(spectrumLock);
     }
