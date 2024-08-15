@@ -2606,14 +2606,21 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
             if (isZero(transaction->destinationPublicKey))
             {
-                int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
-                if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
+                switch (transaction->inputType)
                 {
-                    if (!transaction->amount
-                        && transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                case VOTE_COUNTER_INPUT_TYPE:
+                {
+                    int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
+                    if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
                     {
-                        voteCounter.addVotes(transaction->inputPtr(), computorIndex);
+                        if (!transaction->amount
+                            && transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES)
+                        {
+                            voteCounter.addVotes(transaction->inputPtr(), computorIndex);
+                        }
                     }
+                }
+                break;
                 }
             }
             else
@@ -2949,7 +2956,7 @@ static void processTick(unsigned long long processorNumber)
                 payload.transaction.destinationPublicKey = _mm256_setzero_si256();
                 payload.transaction.amount = 0;
                 payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
-                payload.transaction.inputType = 0;
+                payload.transaction.inputType = VOTE_COUNTER_INPUT_TYPE;
                 payload.transaction.inputSize = sizeof(payload.data);
                 voteCounter.compressNewVotesPacket(system.tick - 675, system.tick + 1, ownComputorIndices[i], payload.data);
                 unsigned char digest[32];
