@@ -65,10 +65,27 @@ TEST(TestCoreQPI, Array)
     EXPECT_EQ(uint8_4.get(1), 2);
     EXPECT_EQ(uint8_4.get(2), 2);
     EXPECT_EQ(uint8_4.get(3), 2);
+    EXPECT_TRUE(uint8_4.rangeEquals(0, 4, 2));
+    EXPECT_TRUE(isArraySorted(uint8_4));
+    EXPECT_FALSE(isArraySortedWithoutDuplicates(uint8_4));
+    uint8_4.set(3, 1);
+    EXPECT_FALSE(isArraySorted(uint8_4));
+    EXPECT_FALSE(isArraySortedWithoutDuplicates(uint8_4));
+    uint8_4.setRange(1, 3, 0);
+    EXPECT_EQ(uint8_4.get(0), 2);
+    EXPECT_EQ(uint8_4.get(1), 0);
+    EXPECT_EQ(uint8_4.get(2), 0);
+    EXPECT_EQ(uint8_4.get(3), 1);
+    EXPECT_TRUE(uint8_4.rangeEquals(1, 3, 0));
+    EXPECT_FALSE(isArraySorted(uint8_4));
+    EXPECT_FALSE(isArraySortedWithoutDuplicates(uint8_4));
     for (int i = 0; i < uint8_4.capacity(); ++i)
         uint8_4.set(i, i+1);
     for (int i = 0; i < uint8_4.capacity(); ++i)
         EXPECT_EQ(uint8_4.get(i), i+1);
+    EXPECT_FALSE(uint8_4.rangeEquals(0, 4, 2));
+    EXPECT_TRUE(isArraySorted(uint8_4));
+    EXPECT_TRUE(isArraySortedWithoutDuplicates(uint8_4));
 
     QPI::array<QPI::uint64, 4> uint64_4;
     uint64_4.setMem(QPI::id(101, 102, 103, 104));

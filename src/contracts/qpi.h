@@ -241,6 +241,26 @@ namespace QPI
 			for (uint64 i = 0; i < L; ++i)
 				_values[i] = value;
 		}
+
+		// Set elements in range to passed value
+		inline void setRange(uint64 indexBegin, uint64 indexEnd, const T& value)
+		{
+			for (uint64 i = indexBegin; i < indexEnd; ++i)
+				_values[i & (L - 1)] = value;
+		}
+
+		// Returns true if all elements of the range equal value (and range is valid).
+		inline bool rangeEquals(uint64 indexBegin, uint64 indexEnd, const T& value) const
+		{
+			if (indexEnd > L || indexBegin > indexEnd)
+				return false;
+			for (uint64 i = indexBegin; i < indexEnd; ++i)
+			{
+				if (!(_values[i] == value))
+					return false;
+			}
+			return true;
+		}
 	};
 	
 	// Array convenience definitions
@@ -279,6 +299,14 @@ namespace QPI
 	typedef array<id, 2> id_2;
 	typedef array<id, 8> id_4;
 	typedef array<id, 8> id_8;
+
+	// Check if array is sorted in given range (duplicates allowed). Returns false if range is invalid.
+	template <typename T, uint64 L>
+	bool isArraySorted(const array<T, L>& array, uint64 beginIdx = 0, uint64 endIdx = L);
+
+	// Check if array is sorted without duplicates in given range. Returns false if range is invalid.
+	template <typename T, uint64 L>
+	bool isArraySortedWithoutDuplicates(const array<T, L>& array, uint64 beginIdx = 0, uint64 endIdx = L);
 
 
 	// Collection of priority queues of elements with type T and total element capacity L.
