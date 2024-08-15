@@ -17,6 +17,7 @@ typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state,
 
 #include "../src/contracts/qpi.h"
 #include "../src/contract_core/qpi_collection_impl.h"
+#include "../src/contract_core/qpi_trivial_impl.h"
 
 
 #include <vector>

@@ -105,11 +105,11 @@ namespace QPI
 
 	// Copy memory of src to dst. Both may have different types, but size of both must match exactly.
 	template <typename T1, typename T2>
-	void copyMemory(T1& dst, const T2& src);
+	inline void copyMemory(T1& dst, const T2& src);
 
 	// Set all memory of dst to byte value.
 	template <typename T>
-	void setMemory(T& dst, uint8 value);
+	inline void setMemory(T& dst, uint8 value);
 
 
 	// Array of L bits encoded in array of uint64 (overall size is at least 8 bytes, L must be 2^N)
@@ -922,16 +922,10 @@ namespace QPI
 		) const; // [0..23]
 
 		// Return the invocation reward (amount transferred to contract immediately before invoking)
-		sint64 invocationReward(
-		) const {
-			return _invocationReward;
-		}
+		sint64 invocationReward() const { return _invocationReward; }
 
 		// Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
-		id invocator(
-		) const {
-			return _invocator;
-		}
+		id invocator() const { return _invocator; }
 
 		template <typename T>
 		id K12(
@@ -964,10 +958,7 @@ namespace QPI
 		) const;
 
 		// Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
-		id originator(
-		) const {
-			return _originator;
-		}
+		id originator() const { return _originator; }
 
 		uint8 second(
 		) const; // [0..59]
@@ -1271,11 +1262,14 @@ namespace QPI
 		static_assert(sizeof(userProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userProcedure "_locals size too large"); \
 		qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
 
-	// Call function or procedure of current contract
+	// Call function or procedure of current contract (without changing invocation reward)
 	#define CALL(functionOrProcedure, input, output) \
 		static_assert(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #functionOrProcedure "_locals size too large"); \
 		functionOrProcedure(qpi, state, input, output, *(functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals))); \
 		qpi.__qpiFreeLocals()
+
+	// Invoke procedure of current contract with changed invocation reward
+	// TODO: INVOKE
 
 	// Call function of other contract
 	#define CALL_OTHER_CONTRACT_FUNCTION(contractStateType, function, input, output) \

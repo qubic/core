@@ -154,6 +154,9 @@
     <ClInclude Include="contracts\GeneralQuorumProposal.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contract_core\qpi_trivial_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
