@@ -27,10 +27,25 @@ struct ScoreFunction
     static constexpr const int inNeuronsCount = numberOfInputNeurons + dataLength;
     static constexpr const unsigned long long allParamsCount = dataLength + numberOfInputNeurons + dataLength;
     static constexpr unsigned long long synapseInputSize = inNeuronsCount * allParamsCount;
-    static constexpr unsigned long long priorSynapsesLength = 3200;
+    static constexpr unsigned long long priorSynapsesLength = allParamsCount > 3200 ? 3200 : allParamsCount / 2;
     static constexpr unsigned long long priorSynapsesOffset = allParamsCount - priorSynapsesLength;
     static constexpr unsigned int numberOfCheckPoints = 2;
-    static constexpr unsigned int maxNumMods = 48;
+    /* 
+    DURATION 65536 | MAX_NUM_MODS 48
+    DURATION 32768 | MAX_NUM_MODS 44
+    DURATION 16384  | MAX_NUM_MODS 41
+    DURATION 4096  | MAX_NUM_MODS 34
+    DURATION 2048  | MAX_NUM_MODS 30
+    DURATION 1024  | MAX_NUM_MODS 26
+    DURATION 512   | MAX_NUM_MODS 22
+    */
+    static constexpr unsigned int maxNumMods = (maxInputDuration <= 512)  ? 22 : 
+                                               (maxInputDuration <= 1024  ? 26 : 
+                                               (maxInputDuration <= 2048  ? 30 : 
+                                               (maxInputDuration <= 4096  ? 34 :
+                                               (maxInputDuration <= 16384 ? 41 :
+                                               (maxInputDuration <= 32768 ? 44 : 
+                                                48)))));
 
     long long miningData[dataLength];
     struct synapseStruct
@@ -149,7 +164,7 @@ struct ScoreFunction
         bool isGeneratedBucketOffset[inNeuronsCount];
 
         static_assert((allParamsCount) % 8 == 0, "need to check this packed synapse");
-        static_assert(maxInputDuration <= 16384, "need to check this maxInputDuration and adjust maxNumMods");
+        static_assert(maxInputDuration <= 65536, "need to check this maxInputDuration and adjust maxNumMods");
 
         queueItem queue[allParamsCount * 2];
         bool isProcessing[allParamsCount * 2];
