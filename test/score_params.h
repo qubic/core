@@ -2,7 +2,6 @@
 
 namespace score_params
 {
-
 enum ParamType
 {
     NR_NEURONS = 0,
@@ -11,13 +10,9 @@ enum ParamType
 };
 
 static constexpr unsigned long long kDataLength = 256;
+
+// Comment out when we want to reduce the number of running test
 static constexpr unsigned long long kSettings[][MAX_PARAM_TYPE] = {
-        //{2048, 512},
-        //{2048, 256},
-        //{1024, 512},
-        //{1024, 256},
-        //{1024, 128}
-    
     {8192, 32768},
     {8192, 65536},
     {4096, 16384},

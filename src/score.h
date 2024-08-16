@@ -784,11 +784,14 @@ struct ScoreFunction
 #endif
 #ifdef NO_UEFI
         int y = 2 + score;
-        unsigned long long ss = top_of_stack - ((unsigned long long)(&y));
-        std::cout << "Stack size: " << ss << " bytes\n";
+        stackSize = top_of_stack - ((unsigned long long)(&y));
 #endif
         return score;
     }
+
+#ifdef NO_UEFI
+    unsigned long long stackSize = 0;
+#endif
 
     // Multithreaded solutions verification:
     // This module mainly serve tick processor in qubic core node, thus the queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 

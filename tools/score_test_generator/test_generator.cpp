@@ -6,18 +6,18 @@
 #include "../../src/platform/m256.h"
 #include "../../test/score_params.h"
 #include "../../test/score_reference.h"
+#include "../../test/utils.h"
 
 #include <vector>
 #include <thread>
 #include <tuple>
 #include <sstream>
-#include <fstream>
-#include <filesystem>
 #include <omp.h>
 
 using namespace score_params;
+using namespace test_utils;
 
-constexpr unsigned int kTotalSamples = 32;
+constexpr unsigned int kDefaultTotalSamples = 32;
 std::vector<m256i> miningSeeds;
 std::vector<m256i> publicKeys;
 std::vector<m256i> nonces;
@@ -57,43 +57,6 @@ static void processHelper(unsigned char* miningSeed, unsigned char* publicKey, u
 template <unsigned long long N>
 static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int threadId = 0, bool writeFile = true) {
     processHelper<N>(miningSeed, publicKey, nonce, threadId, writeFile, std::make_index_sequence<N>{});
-}
-
-// Function to read and parse the CSV file
-std::vector<std::vector<std::string>> readCSV(const std::string& filename)
-{
-    std::vector<std::vector<std::string>> data;
-    std::ifstream file(filename);
-    std::string line;
-
-    // Read each line from the file
-    while (std::getline(file, line))
-    {
-        std::stringstream ss(line);
-        std::string item;
-        std::vector<std::string> parsedLine;
-
-        // Parse each item separated by commas
-        while (std::getline(ss, item, ','))
-        {
-            parsedLine.push_back(item);
-        }
-        data.push_back(parsedLine);
-    }
-    return data;
-}
-
-m256i convertFromString(std::string& rStr)
-{
-    m256i value;
-    std::stringstream ss(rStr);
-    std::string item;
-    int i = 0;
-    while (std::getline(ss, item, '-'))
-    {
-        value.m256i_u64[i++] = std::stoull(item);
-    }
-    return value;
 }
 
 int generateSamples(std::string sampleFileName, unsigned int numberOfSamples, bool initMiningZeros = false)
@@ -137,13 +100,13 @@ int generateSamples(std::string sampleFileName, unsigned int numberOfSamples, bo
         // Write the input to file
         for (unsigned int i = 0; i < numberOfSamples; i++)
         {
-            auto miningSeed = miningSeeds[i];
-            auto publicKey = publicKeys[i];
-            auto nonce = nonces[i];
+            auto miningSeedHexStr = byteToHex(miningSeeds[i].m256i_u8, 32);
+            auto publicKeyHexStr = byteToHex(publicKeys[i].m256i_u8, 32);
+            auto nonceHexStr = byteToHex(nonces[i].m256i_u8, 32);
             sampleFile
-                << miningSeed.m256i_u64[0] << "-" << miningSeed.m256i_u64[1] << "-" << miningSeed.m256i_u64[2] << "-" << miningSeed.m256i_u64[3] << ", "
-                << publicKey.m256i_u64[0] << "-" << publicKey.m256i_u64[1] << "-" << publicKey.m256i_u64[2] << "-" << publicKey.m256i_u64[3] << ", "
-                << nonce.m256i_u64[0] << "-" << nonce.m256i_u64[1] << "-" << nonce.m256i_u64[2] << "-" << nonce.m256i_u64[3] << std::endl;
+                << miningSeedHexStr << ", "
+                << publicKeyHexStr << ", "
+                << nonceHexStr << std::endl;
         }
         if (sampleFile.is_open())
         {
@@ -155,7 +118,7 @@ int generateSamples(std::string sampleFileName, unsigned int numberOfSamples, bo
     {
         std::cout << "Reading sample file " << sampleFileName << " ..." << std::endl;
         // Open the sample file if there is any
-        if ( !std::filesystem::exists(sampleFileName))
+        if (!std::filesystem::exists(sampleFileName))
         {
             std::cerr << "Sample file name is not existed. Exit!";
             return 1;
@@ -181,11 +144,11 @@ int generateSamples(std::string sampleFileName, unsigned int numberOfSamples, bo
             }
             else
             {
-                miningSeeds[i] = convertFromString(sampleString[i][0]);
+                miningSeeds[i] = hexToByte(sampleString[i][0], 32);
             }
 
-            publicKeys[i] = convertFromString(sampleString[i][1]);
-            nonces[i] = convertFromString(sampleString[i][2]);
+            publicKeys[i] = hexToByte(sampleString[i][1], 32);
+            nonces[i] = hexToByte(sampleString[i][2], 32);
         }
         std::cout << "Read sample file DONE " << std::endl;
     }
@@ -374,7 +337,7 @@ int main(int argc, char* argv[])
     // Print random unittest and exit
     if (mode == "unittest")
     {
-        numberOfSamples = std::max(numberOfSamples, (unsigned int)32);
+        numberOfSamples = std::max(numberOfSamples, kDefaultTotalSamples);
         std::cout << "  Number of samples: " << numberOfSamples << std::endl;
         for (unsigned int i = 0; i < numberOfSamples; ++i)
         {
