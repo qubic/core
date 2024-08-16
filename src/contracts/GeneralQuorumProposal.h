@@ -133,7 +133,7 @@ public:
 		{
 			// Return proposals that are open for voting in current epoch
 			// (output is initalized with zeros by contract system)
-			while (input.prevProposalIndex = qpi(state.proposals).nextActiveProposalIndex(input.prevProposalIndex) >= 0)
+			while ((input.prevProposalIndex = qpi(state.proposals).nextActiveProposalIndex(input.prevProposalIndex)) >= 0)
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
@@ -143,7 +143,7 @@ public:
 		{
 			// Return proposals of previous epochs not overwritten yet
 			// (output is initalized with zeros by contract system)
-			while (input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex) >= 0)
+			while ((input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
