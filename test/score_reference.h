@@ -35,7 +35,10 @@ struct ScoreReferenceImplementation
     {
         for (int i = 0; i < solutionBufferCount; i++)
         {
-            allocatePool(synapseInputSize, (void**) & (_synapses[i].inputLength));
+            allocatePool(synapseInputSize, (void**)&(_synapses[i].inputLength));
+            setMem(_synapses[i].inputLength, synapseInputSize, 0);
+            setMem(_neurons[i].neuronBuffer, dataLength + numberOfInputNeurons + dataLength, 0);
+            setMem(_neurons[i].input, dataLength + numberOfInputNeurons + dataLength, 0);
         }
     }
 
@@ -56,6 +59,17 @@ struct ScoreReferenceImplementation
     {
         unsigned char randomSeed[32];
         setMem(randomSeed, 32, 0);
+        random(randomSeed, randomSeed, (unsigned char*)miningData, sizeof(miningData));
+        for (unsigned int i = 0; i < dataLength; i++)
+        {
+            miningData[i] = (miningData[i] >= 0 ? 1 : -1);
+        }
+    }
+
+    void initMiningData(unsigned char* seed)
+    {
+        unsigned char randomSeed[32];
+        copyMem(randomSeed, seed, 32);
         random(randomSeed, randomSeed, (unsigned char*)miningData, sizeof(miningData));
         for (unsigned int i = 0; i < dataLength; i++)
         {

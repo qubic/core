@@ -16,6 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
+    <ClInclude Include="score_params.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
