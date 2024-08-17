@@ -68,7 +68,6 @@ struct ResponseLogIdRangeFromTx
 #define BURNING 8
 #define CUSTOM_MESSAGE 255
 
-
 /*
 * STRUCTS FOR LOGGING
 */
@@ -185,6 +184,7 @@ struct Burning
 #define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
 #define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
 #define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
+#define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
 
 class qLogger
 {
@@ -212,9 +212,48 @@ public:
 
     static unsigned long long getLogId(const char* ptr)
     {
-        // first 16 bytes are date time and epoch tick info
+        // first 10 bytes are: epoch(2) + tick(4)+ size/type(4)
         // next 8 bytes are logId
-        return ((unsigned long long*)ptr)[2];
+        return *((unsigned long long*)(ptr+10));
+    }
+
+    static unsigned long long getLogDigest(const char* ptr)
+    {
+        // first 18 bytes are: epoch(2) + tick(4)+ size/type(4) + logid(8)
+        // next 8 bytes are logdigest
+        return *((unsigned long long*)(ptr + 18));
+    }
+
+    static unsigned int getLogSize(const char* ptr)
+    {
+        // first 6 bytes are: epoch(2) + tick(4)
+        // next 4 bytes are size&type
+        unsigned int sizeAndType = *((unsigned int*)(ptr + 6));
+
+        return sizeAndType & 0xFFFFFF; // last 24 bits are message size
+    }
+
+    // since we use round buffer, verifying digest for each log is needed to avoid sending out wrong log
+    static bool verifyLog(const char* ptr, unsigned long long logId)
+    {
+        if (getLogId(ptr) != logId)
+        {
+            return false;
+        }
+        unsigned long long computedLogDigest = 0;
+        unsigned long long logDigest = getLogDigest(ptr);
+        unsigned int msgSize = getLogSize(ptr);
+        if (msgSize >= RequestResponseHeader::max_size)
+        {
+            // invalid size
+            return false;
+        }
+        KangarooTwelve(ptr + LOG_HEADER_SIZE, msgSize, &computedLogDigest, 8);
+        if (logDigest != computedLogDigest)
+        {
+            return false;
+        }
+        return true;
     }
 
     // Struct to map log buffer from log id    
@@ -232,19 +271,9 @@ public:
         static long long getIndex(unsigned long long logId)
         {
             BlobInfo res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
-            if (getLogId(logBuffer + res.startIndex) == logId)
+            if (verifyLog(logBuffer + res.startIndex, logId))
             {
                 return res.startIndex;
-            }
-            return -1;
-        }
-
-        static long long getLength(unsigned long long logId)
-        {
-            BlobInfo res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
-            if (getLogId(logBuffer + res.startIndex) == logId)
-            {
-                return res.length;
             }
             return -1;
         }
@@ -252,7 +281,7 @@ public:
         static BlobInfo getBlobInfo(unsigned long long logId)
         {
             BlobInfo res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
-            if (getLogId(logBuffer + res.startIndex) == logId)
+            if (verifyLog(logBuffer + res.startIndex, logId))
             {
                 return res;
             }
@@ -369,26 +398,20 @@ public:
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
         tx.addLogId();
-        if (logBufferTail + 24 + messageSize >= LOG_BUFFER_SIZE)
+        if (logBufferTail + LOG_HEADER_SIZE + messageSize >= LOG_BUFFER_SIZE)
         {
             logBufferTail = 0; // reset back to beginning
         }
-        logBuf.set(logId, logBufferTail, 24 + messageSize);
-        *((unsigned char*)(logBuffer + (logBufferTail + 0))) = (unsigned char)(time.Year - 2000);
-        *((unsigned char*)(logBuffer + (logBufferTail + 1))) = time.Month;
-        *((unsigned char*)(logBuffer + (logBufferTail + 2))) = time.Day;
-        *((unsigned char*)(logBuffer + (logBufferTail + 3))) = time.Hour;
-        *((unsigned char*)(logBuffer + (logBufferTail + 4))) = time.Minute;
-        *((unsigned char*)(logBuffer + (logBufferTail + 5))) = time.Second;
-
-        *((unsigned short*)(logBuffer + (logBufferTail + 6))) = system.epoch;
-        *((unsigned int*)(logBuffer + (logBufferTail + 8))) = system.tick;
-
-        *((unsigned int*)(logBuffer + (logBufferTail + 12))) = messageSize | (messageType << 24);
-        // add logId here
-        *((unsigned long long*)(logBuffer + (logBufferTail + 16))) = logId++;
-        copyMem(logBuffer + (logBufferTail + 24), message, messageSize);
-        logBufferTail += 24 + messageSize;
+        logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
+        *((unsigned short*)(logBuffer + (logBufferTail))) = system.epoch;
+        *((unsigned int*)(logBuffer + (logBufferTail + 2))) = system.tick;
+        *((unsigned int*)(logBuffer + (logBufferTail + 6))) = messageSize | (messageType << 24);
+        *((unsigned long long*)(logBuffer + (logBufferTail + 10))) = logId++;
+        unsigned long long logDigest = 0;
+        KangarooTwelve(message, messageSize, &logDigest, 8);
+        *((unsigned long long*)(logBuffer + (logBufferTail + 18))) = logDigest;
+        copyMem(logBuffer + (logBufferTail + LOG_HEADER_SIZE), message, messageSize);
+        logBufferTail += LOG_HEADER_SIZE + messageSize;
     }
 
     template <typename T>
