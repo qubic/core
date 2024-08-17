@@ -552,7 +552,7 @@ public:
             {
                 if (endIdBufferRange.startIndex < startIdBufferRange.startIndex)
                 {
-                    // round buffer case, response 2 packets
+                    // round buffer case, only response first packet - let the client figure out and request the rest
                     unsigned long long i = 0;
                     for (i = request->fromID; i <= request->toID; i++)
                     {
@@ -574,16 +574,7 @@ public:
                         }
                         enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
                     }
-                    // second packet: from start buffer to endID
-                    {
-                        unsigned long long startFrom = 0;
-                        unsigned long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
-                        if (length > RequestResponseHeader::max_size)
-                        {
-                            length = RequestResponseHeader::max_size;
-                        }
-                        enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
-                    }
+                    // second packet: from start buffer to endID - NOT SEND THIS
                 }
                 else
                 {
