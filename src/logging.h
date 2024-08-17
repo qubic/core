@@ -76,9 +76,6 @@ struct QuTransfer
     m256i sourcePublicKey;
     m256i destinationPublicKey;
     long long amount;
-#if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
-    long long transferId;
-#endif
     char _terminator; // Only data before "_terminator" are logged
 };
 

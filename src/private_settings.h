@@ -23,7 +23,6 @@ static const unsigned char whiteListPeers[][4] = {
 };
 
 #define LOG_QU_TRANSFERS 1 // "0" disables logging, "1" enables it
-#define LOG_QU_TRANSFERS_TRACK_TRANSFER_ID 1
 #define LOG_ASSET_ISSUANCES 1
 #define LOG_ASSET_OWNERSHIP_CHANGES 1
 #define LOG_ASSET_POSSESSION_CHANGES 1
