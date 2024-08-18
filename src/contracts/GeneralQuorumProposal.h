@@ -137,6 +137,9 @@ public:
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
+
+				if (output.numOfIndices == output.indices.capacity())
+					break;
 			}
 		}
 		else
@@ -147,6 +150,9 @@ public:
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
+
+				if (output.numOfIndices == output.indices.capacity())
+					break;
 			}
 		}
 	_
@@ -159,6 +165,7 @@ public:
 	struct GetProposal_output
 	{
 		bit okay;
+		uint8 _padding0[7];
 		id proposerPubicKey;
 		ProposalDataT proposal;
 	};
