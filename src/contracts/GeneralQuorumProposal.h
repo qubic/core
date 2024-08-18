@@ -294,4 +294,21 @@ public:
 			}
 		}
 	_
+
+
+	struct INITIALIZE_locals
+	{
+		RevenueDonationEntry revenueDonationEntry;
+		Success_output success;
+	};
+
+	INITIALIZE_WITH_LOCALS
+		// All works with zeroed state, but:
+		// In the construction epoch 123, directly add the 15% revenue donation to the Supply Watcher contract,
+		// which has been accepted by quorum with the old proposal system
+		locals.revenueDonationEntry.destinationPublicKey = id(7, 0, 0, 0);
+		locals.revenueDonationEntry.millionthAmount = 150 * 1000;
+		locals.revenueDonationEntry.firstEpoch = 123;
+		CALL(_SetRevenueDonationEntry, locals.revenueDonationEntry, locals.success);
+	_
 };
