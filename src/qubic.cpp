@@ -1,10 +1,10 @@
+// contract_def.h needs to be included first to make sure that contracts have minimal access
+#include "contract_core/contract_def.h"
+#include "contract_core/contract_exec.h"
+
 #include <intrin.h>
 
 #include "network_messages/all.h"
-
-// needs to be included early to make sure that contracts have minimal access
-#include "contract_core/contract_def.h"
-#include "contract_core/contract_exec.h"
 
 #include "private_settings.h"
 #include "public_settings.h"
@@ -1278,6 +1278,9 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             }
             break;
 
+            // proposal and ballot are replaced by SC
+            // TODO: remove completely
+            /*
             case SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST:
             {
                 SpecialCommandGetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
@@ -1314,6 +1317,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 }
             }
             break;
+            */
             
             case SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST:
             {
@@ -1755,7 +1759,7 @@ unsigned short QPI::QpiContextFunctionCall::epoch() const
     return system.epoch;
 }
 
-bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, Entity& entity) const
+bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity) const
 {
     int index = spectrumIndex(id);
     if (index < 0)
@@ -1787,16 +1791,6 @@ bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, Entity& entity) con
 unsigned char QPI::QpiContextFunctionCall::hour() const
 {
     return etalonTick.hour;
-}
-
-long long QPI::QpiContextFunctionCall::invocationReward() const
-{
-    return _invocationReward;
-}
-
-QPI::id QPI::QpiContextFunctionCall::invocator() const
-{
-    return _invocator;
 }
 
 long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, const QPI::id& issuer, signed char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement) const
@@ -1970,11 +1964,6 @@ iteration:
 int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
 {
     return -1; // TODO: Return -1 if the current tick is empty, return the number of the transactions in the tick otherwise, including 0
-}
-
-m256i QPI::QpiContextFunctionCall::originator() const
-{
-    return _originator;
 }
 
 bool QPI::QpiContextProcedureCall::releaseShares(uint64 assetName, const id& issuer, const id& owner, const id& possessor, sint64 numberOfShares, uint16 destinationOwnershipManagingContractIndex, uint16 destinationPossessionManagingContractIndex) const
@@ -2875,6 +2864,9 @@ static void processTick(unsigned long long processorNumber)
                     broadcastedFutureTickData.tickData.month = time.Month;
                     broadcastedFutureTickData.tickData.year = time.Year - 2000;
 
+                    // proposal and ballot are replaced by SC
+                    // TODO: remove completely
+                    /*
                     if (system.proposals[ownComputorIndices[i]].uriSize)
                     {
                         bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.proposal, &system.proposals[ownComputorIndices[i]], sizeof(ComputorProposal));
@@ -2883,6 +2875,7 @@ static void processTick(unsigned long long processorNumber)
                     {
                         bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.ballot, &system.ballots[ownComputorIndices[i]], sizeof(ComputorBallot));
                     }
+                    */
 
                     m256i timelockPreimage[3];
                     static_assert(sizeof(timelockPreimage) == 3 * 32, "Unexpected array size");
@@ -3092,8 +3085,12 @@ static void beginEpoch1of2()
     }
 
     system.latestOperatorNonce = 0;
+    // proposal and ballot are replaced by SC
+    // TODO: remove completely
+    /*
     bs->SetMem(system.proposals, sizeof(system.proposals), 0);
     bs->SetMem(system.ballots, sizeof(system.ballots), 0);
+    */
     system.numberOfSolutions = 0;
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
@@ -3171,6 +3168,7 @@ static void endEpoch()
     getUniverseDigest(etalonTick.prevUniverseDigest);
     getComputerDigest(etalonTick.prevComputerDigest);
 
+    // Handle IPO
     for (unsigned int contractIndex = 1; contractIndex < contractCount; contractIndex++)
     {
         if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
@@ -3237,8 +3235,7 @@ static void endEpoch()
     system.initialMonth = etalonTick.month;
     system.initialYear = etalonTick.year;
 
-    long long arbitratorRevenue = ISSUANCE_RATE;
-
+    // Compute revenue scores of computors
     unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
     bs->SetMem(revenueScore, sizeof(revenueScore), 0);
     for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
@@ -3295,7 +3292,7 @@ static void endEpoch()
     }
 #endif
     
-
+    // Sort revenue scores to get lowest score of quorum
     unsigned long long sortedRevenueScore[QUORUM + 1];
     bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
     for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
@@ -3314,22 +3311,66 @@ static void endEpoch()
     {
         sortedRevenueScore[QUORUM - 1] = 1;
     }
+
+    // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
+    QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
+    qpiContext.call(5, "", 0);
+    ASSERT(qpiContext.outputSize == sizeof(GQMPROP::RevenueDonationT));
+    GQMPROP::RevenueDonationT* emissionDist = (GQMPROP::RevenueDonationT*)qpiContext.outputBuffer;
+
+    // Compute revenue of computors and arbitrator
+    long long arbitratorRevenue = ISSUANCE_RATE;
     for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
-        const long long revenue = (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1]) ? (ISSUANCE_RATE / NUMBER_OF_COMPUTORS) : (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+        // Compute initial computor revenue, reducing arbitrator revenue
+        long long revenue;
+        if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
+            revenue = (ISSUANCE_RATE / NUMBER_OF_COMPUTORS);
+        else
+            revenue = (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+        arbitratorRevenue -= revenue;
+
+        // Reduce computor revenue based on revenue donation table agreed on by quorum
+        for (unsigned long long i = 0; i < emissionDist->capacity(); ++i)
+        {
+            const GQMPROP::RevenueDonationEntry& rdEntry = emissionDist->get(i);
+            if (isZero(rdEntry.destinationPublicKey))
+            {
+                // There are no gaps in the table, so first empty entry means we are done
+                break;
+            }
+            if (rdEntry.millionthAmount > 0 && rdEntry.millionthAmount <= 1000000 && system.epoch >= rdEntry.firstEpoch)
+            {
+                // Compute donation and update revenue
+                long long donation = revenue * rdEntry.millionthAmount / 1000000;
+                revenue -= donation;
+
+                // Generate revenue donation
+                increaseEnergy(rdEntry.destinationPublicKey, donation);
+                if (revenue)
+                {
+                    const QuTransfer quTransfer = { _mm256_setzero_si256(), rdEntry.destinationPublicKey, donation };
+                    logQuTransfer(quTransfer);
+                }
+            }
+        }
+
+        // Generate computor revenue
         increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
         if (revenue)
         {
             const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
             logQuTransfer(quTransfer);
         }
-        arbitratorRevenue -= revenue;
     }
+    emissionDist = nullptr; qpiContext.freeBuffer(); // Free buffer holding revenue donation table, because we don't need it anymore
 
+    // Generate arbitrator revenue
     increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
     const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
     logQuTransfer(quTransfer);
 
+    // Reorganize spectrum hash map
     {
         ACQUIRE(spectrumLock);
 

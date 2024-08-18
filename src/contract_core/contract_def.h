@@ -2,13 +2,13 @@
 
 #include "platform/m256.h"
 
-#include "network_messages/common_def.h"
-
 ////////// Smart contracts \\\\\\\\\\
 
 // The order in this file is very important, because it restricts what is available to the contracts.
 // For example, a contract may only call a contract with lower index, which is enforced by order of
 // include / availability of definition.
+// Additionally, most types, functions, and variables of the core have to be defined after including
+// the contract to keep them unavailable in the contract code.
 
 namespace QPI
 {
@@ -58,7 +58,10 @@ struct __FunctionOrProcedureBeginEndGuard
 };
 
 
+// With no other includes before, the following are the only headers available to contracts.
+// When adding something, be cautious to keep access of contracts limited to safe features only.
 #include "contracts/qpi.h"
+#include "qpi_proposal_voting.h"
 
 #define QX_CONTRACT_INDEX 1
 #define CONTRACT_INDEX QX_CONTRACT_INDEX
@@ -138,6 +141,12 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef POST_RELEASE_SHARES
 #undef POST_ACQUIRE_SHARES
 
+// The following are included after the contracts to keep their definitions and dependencies
+// inaccessible for contracts
+#include "qpi_collection_impl.h"
+#include "qpi_trivial_impl.h"
+
+#include "network_messages/common_def.h"
 
 struct Contract0State
 {
@@ -166,7 +175,7 @@ constexpr struct ContractDescription
     {"RANDOM", 88, 10000, sizeof(IPO)},
     {"QUTIL", 99, 10000, sizeof(IPO)},
     {"MLM", 112, 10000, sizeof(IPO)},
-    {"GQMPROP", 123, 10000, sizeof(IPO)},
+    {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
 };
 
