@@ -240,7 +240,7 @@ public:
     _
 
 		
-	struct END_EPOCH_locals
+	struct BEGIN_EPOCH_locals
 	{
 		sint32 proposalIndex;
 		ProposalDataT proposal;
@@ -253,14 +253,14 @@ public:
 		Success_output success;
 	};
 
-	END_EPOCH_WITH_LOCALS
+	BEGIN_EPOCH_WITH_LOCALS
 		// Analyze transfer proposal results
 
-		// Iterate all proposals that were open for voting in current epoch ...
+		// Iterate all proposals that were open for voting in previous epoch ...
 		locals.proposalIndex = -1;
-		while (locals.proposalIndex = qpi(state.proposals).nextActiveProposalIndex(locals.proposalIndex) >= 0)
+		while (locals.proposalIndex = qpi(state.proposals).nextFinishedProposalIndex(locals.proposalIndex) >= 0)
 		{
-			if (qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
+			if (qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal) && locals.proposal.epoch == qpi.epoch() - 1)
 			{
 				// ... and have transfer proposal type
 				if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::Transfer)
@@ -285,18 +285,17 @@ public:
 							}
 
 							// Option for changing status quo has been accepted?
-							if (locals.mostVotedOptionVotes > QUORUM/2)
+							if (locals.mostVotedOptionVotes > QUORUM / 2)
 							{
-								// Set in revenueDonation table
+								// Set in revenueDonation table (cannot be done in END_EPOCH, because this may overwrite entries that
+								// are still needed unchanged for this epoch for the revenue donation which is run after END_EPOCH)
 								locals.revenueDonationEntry.destinationPublicKey = locals.proposal.transfer.destination;
-								locals.revenueDonationEntry.millionthAmount = locals.proposal.transfer.amounts.get(locals.optionIndex - 1);
-								locals.revenueDonationEntry.firstEpoch = qpi.epoch() + 1;
+								locals.revenueDonationEntry.millionthAmount = locals.proposal.transfer.amounts.get(locals.mostVotedOptionIndex - 1);
+								locals.revenueDonationEntry.firstEpoch = qpi.epoch();
 								CALL(_SetRevenueDonationEntry, locals.revenueDonationEntry, locals.success);
-								break;
 							}
 						}
 					}
-					break;
 				}
 			}
 		}
