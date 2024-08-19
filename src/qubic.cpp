@@ -3235,140 +3235,154 @@ static void endEpoch()
     system.initialMonth = etalonTick.month;
     system.initialYear = etalonTick.year;
 
-    // Compute revenue scores of computors
-    unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
-    bs->SetMem(revenueScore, sizeof(revenueScore), 0);
-    for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
+
+    // Calculate current supply
+    unsigned long long currentSupply = 0;
+    ACQUIRE(spectrumLock);
+    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
-        ts.tickData.acquireLock();
-        TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
-        if (td.epoch == system.epoch)
-        {
-            unsigned int numberOfTransactions = 0;
-            for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
-            {
-                if (!isZero(td.transactionDigests[transactionIndex]))
-                {
-                    numberOfTransactions++;
-                }
-            }
-            revenueScore[tick % NUMBER_OF_COMPUTORS] += revenuePoints[numberOfTransactions];
-        }
-        ts.tickData.releaseLock();
+        currentSupply += spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
     }
+    RELEASE(spectrumLock);
+
+    // Only issue qus if the max supply is not yet reached
+    if (currentSupply + ISSUANCE_RATE <= MAX_SUPPLY)
+    {
+        // Compute revenue scores of computors
+        unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
+        bs->SetMem(revenueScore, sizeof(revenueScore), 0);
+        for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
+        {
+            ts.tickData.acquireLock();
+            TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
+            if (td.epoch == system.epoch)
+            {
+                unsigned int numberOfTransactions = 0;
+                for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
+                {
+                    if (!isZero(td.transactionDigests[transactionIndex]))
+                    {
+                        numberOfTransactions++;
+                    }
+                }
+                revenueScore[tick % NUMBER_OF_COMPUTORS] += revenuePoints[numberOfTransactions];
+            }
+            ts.tickData.releaseLock();
+        }
 
 #if 0
-    //TODO: temporarily disable this, will merge votecount to final rev score
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-    {
-        unsigned long long vote_count = voteCounter.getVoteCount(i);
-        if (vote_count != 0)
+        //TODO: temporarily disable this, will merge votecount to final rev score
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            unsigned long long final_score = vote_count * revenueScore[i];
-            if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+            unsigned long long vote_count = voteCounter.getVoteCount(i);
+            if (vote_count != 0)
             {
-                revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+                unsigned long long final_score = vote_count * revenueScore[i];
+                if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+                {
+                    revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+                }
+                else
+                {
+                    revenueScore[i] = final_score;
+                }
             }
             else
             {
-                revenueScore[i] = final_score;
-            }            
-        }
-        else
-        {
-            revenueScore[i] = 0;
-        }
-    }
-#else
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-    {
-        revenueScoreFile.logTxScore[i] = revenueScore[i]; // log tx score
-        revenueScoreFile.voteCountScore[i] = voteCounter.getVoteCount(i); // vote count score
-    }
-    revenueScoreFileMustBeSaved = true;
-    while (revenueScoreFileMustBeSaved)
-    {
-        _mm_pause();
-    }
-#endif
-    
-    // Sort revenue scores to get lowest score of quorum
-    unsigned long long sortedRevenueScore[QUORUM + 1];
-    bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
-    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
-    {
-        sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
-        unsigned int i = QUORUM;
-        while (i
-            && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
-        {
-            const unsigned long long tmp = sortedRevenueScore[i - 1];
-            sortedRevenueScore[i - 1] = sortedRevenueScore[i];
-            sortedRevenueScore[i--] = tmp;
-        }
-    }
-    if (!sortedRevenueScore[QUORUM - 1])
-    {
-        sortedRevenueScore[QUORUM - 1] = 1;
-    }
-
-    // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
-    QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
-    qpiContext.call(5, "", 0);
-    ASSERT(qpiContext.outputSize == sizeof(GQMPROP::RevenueDonationT));
-    GQMPROP::RevenueDonationT* emissionDist = (GQMPROP::RevenueDonationT*)qpiContext.outputBuffer;
-
-    // Compute revenue of computors and arbitrator
-    long long arbitratorRevenue = ISSUANCE_RATE;
-    for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
-    {
-        // Compute initial computor revenue, reducing arbitrator revenue
-        long long revenue;
-        if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
-            revenue = (ISSUANCE_RATE / NUMBER_OF_COMPUTORS);
-        else
-            revenue = (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
-        arbitratorRevenue -= revenue;
-
-        // Reduce computor revenue based on revenue donation table agreed on by quorum
-        for (unsigned long long i = 0; i < emissionDist->capacity(); ++i)
-        {
-            const GQMPROP::RevenueDonationEntry& rdEntry = emissionDist->get(i);
-            if (isZero(rdEntry.destinationPublicKey))
-            {
-                // There are no gaps in the table, so first empty entry means we are done
-                break;
+                revenueScore[i] = 0;
             }
-            if (rdEntry.millionthAmount > 0 && rdEntry.millionthAmount <= 1000000 && system.epoch >= rdEntry.firstEpoch)
-            {
-                // Compute donation and update revenue
-                long long donation = revenue * rdEntry.millionthAmount / 1000000;
-                revenue -= donation;
+        }
+#else
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            revenueScoreFile.logTxScore[i] = revenueScore[i]; // log tx score
+            revenueScoreFile.voteCountScore[i] = voteCounter.getVoteCount(i); // vote count score
+        }
+        revenueScoreFileMustBeSaved = true;
+        while (revenueScoreFileMustBeSaved)
+        {
+            _mm_pause();
+        }
+#endif
 
-                // Generate revenue donation
-                increaseEnergy(rdEntry.destinationPublicKey, donation);
-                if (revenue)
+        // Sort revenue scores to get lowest score of quorum
+        unsigned long long sortedRevenueScore[QUORUM + 1];
+        bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+        for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+        {
+            sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
+            unsigned int i = QUORUM;
+            while (i
+                && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
+            {
+                const unsigned long long tmp = sortedRevenueScore[i - 1];
+                sortedRevenueScore[i - 1] = sortedRevenueScore[i];
+                sortedRevenueScore[i--] = tmp;
+            }
+        }
+        if (!sortedRevenueScore[QUORUM - 1])
+        {
+            sortedRevenueScore[QUORUM - 1] = 1;
+        }
+
+        // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
+        QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
+        qpiContext.call(5, "", 0);
+        ASSERT(qpiContext.outputSize == sizeof(GQMPROP::RevenueDonationT));
+        GQMPROP::RevenueDonationT* emissionDist = (GQMPROP::RevenueDonationT*)qpiContext.outputBuffer;
+
+        // Compute revenue of computors and arbitrator
+        long long arbitratorRevenue = ISSUANCE_RATE;
+        for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+        {
+            // Compute initial computor revenue, reducing arbitrator revenue
+            long long revenue;
+            if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
+                revenue = (ISSUANCE_RATE / NUMBER_OF_COMPUTORS);
+            else
+                revenue = (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+            arbitratorRevenue -= revenue;
+
+            // Reduce computor revenue based on revenue donation table agreed on by quorum
+            for (unsigned long long i = 0; i < emissionDist->capacity(); ++i)
+            {
+                const GQMPROP::RevenueDonationEntry& rdEntry = emissionDist->get(i);
+                if (isZero(rdEntry.destinationPublicKey))
                 {
-                    const QuTransfer quTransfer = { _mm256_setzero_si256(), rdEntry.destinationPublicKey, donation };
-                    logQuTransfer(quTransfer);
+                    // There are no gaps in the table, so first empty entry means we are done
+                    break;
+                }
+                if (rdEntry.millionthAmount > 0 && rdEntry.millionthAmount <= 1000000 && system.epoch >= rdEntry.firstEpoch)
+                {
+                    // Compute donation and update revenue
+                    long long donation = revenue * rdEntry.millionthAmount / 1000000;
+                    revenue -= donation;
+
+                    // Generate revenue donation
+                    increaseEnergy(rdEntry.destinationPublicKey, donation);
+                    if (revenue)
+                    {
+                        const QuTransfer quTransfer = { _mm256_setzero_si256(), rdEntry.destinationPublicKey, donation };
+                        logQuTransfer(quTransfer);
+                    }
                 }
             }
-        }
 
-        // Generate computor revenue
-        increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
-        if (revenue)
-        {
-            const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
-            logQuTransfer(quTransfer);
+            // Generate computor revenue
+            increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
+            if (revenue)
+            {
+                const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
+                logQuTransfer(quTransfer);
+            }
         }
+        emissionDist = nullptr; qpiContext.freeBuffer(); // Free buffer holding revenue donation table, because we don't need it anymore
+
+        // Generate arbitrator revenue
+        increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
+        const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
+        logQuTransfer(quTransfer);
     }
-    emissionDist = nullptr; qpiContext.freeBuffer(); // Free buffer holding revenue donation table, because we don't need it anymore
-
-    // Generate arbitrator revenue
-    increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
-    const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
-    logQuTransfer(quTransfer);
 
     // Reorganize spectrum hash map
     {
