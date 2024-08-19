@@ -1279,8 +1279,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             break;
 
             // proposal and ballot are replaced by SC
-            // TODO: remove completely
-            /*
+            // TODO: remove completely for epoch 124
             case SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST:
             {
                 SpecialCommandGetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
@@ -1317,7 +1316,6 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 }
             }
             break;
-            */
             
             case SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST:
             {
@@ -2865,8 +2863,7 @@ static void processTick(unsigned long long processorNumber)
                     broadcastedFutureTickData.tickData.year = time.Year - 2000;
 
                     // proposal and ballot are replaced by SC
-                    // TODO: remove completely
-                    /*
+                    // TODO: remove completely for epoch 124                    /*
                     if (system.proposals[ownComputorIndices[i]].uriSize)
                     {
                         bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.proposal, &system.proposals[ownComputorIndices[i]], sizeof(ComputorProposal));
@@ -2875,7 +2872,6 @@ static void processTick(unsigned long long processorNumber)
                     {
                         bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.ballot, &system.ballots[ownComputorIndices[i]], sizeof(ComputorBallot));
                     }
-                    */
 
                     m256i timelockPreimage[3];
                     static_assert(sizeof(timelockPreimage) == 3 * 32, "Unexpected array size");
@@ -3086,11 +3082,10 @@ static void beginEpoch1of2()
 
     system.latestOperatorNonce = 0;
     // proposal and ballot are replaced by SC
-    // TODO: remove completely
-    /*
+    // TODO: remove completely for epoch 124    /*
     bs->SetMem(system.proposals, sizeof(system.proposals), 0);
     bs->SetMem(system.ballots, sizeof(system.ballots), 0);
-    */
+    
     system.numberOfSolutions = 0;
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
