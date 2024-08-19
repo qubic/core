@@ -1278,45 +1278,6 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             }
             break;
 
-            // proposal and ballot are replaced by SC
-            // TODO: remove completely for epoch 124
-            case SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST:
-            {
-                SpecialCommandGetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
-                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
-                {
-                    SpecialCommandGetProposalAndBallotResponse response;
-
-                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = _request->computorIndex;
-                    *((short*)response.padding) = 0;
-                    bs->CopyMem(&response.proposal, &system.proposals[_request->computorIndex], sizeof(ComputorProposal));
-                    bs->CopyMem(&response.ballot, &system.ballots[_request->computorIndex], sizeof(ComputorBallot));
-
-                    enqueueResponse(peer, sizeof(response), SpecialCommand::type, header->dejavu(), &response);
-                }
-            }
-            break;
-
-            case SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_REQUEST:
-            {
-                SpecialCommandSetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandSetProposalAndBallotRequest>();
-                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
-                {
-                    bs->CopyMem(&system.proposals[_request->computorIndex], &_request->proposal, sizeof(ComputorProposal));
-                    bs->CopyMem(&system.ballots[_request->computorIndex], &_request->ballot, sizeof(ComputorBallot));
-
-                    SpecialCommandSetProposalAndBallotResponse response;
-
-                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = _request->computorIndex;
-                    *((short*)response.padding) = 0;
-
-                    enqueueResponse(peer, sizeof(response), SpecialCommand::type, header->dejavu(), &response);
-                }
-            }
-            break;
-            
             case SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST:
             {
                 SpecialCommandSetSolutionThresholdRequestAndResponse* _request = header->getPayload<SpecialCommandSetSolutionThresholdRequestAndResponse>();
@@ -2862,17 +2823,6 @@ static void processTick(unsigned long long processorNumber)
                     broadcastedFutureTickData.tickData.month = time.Month;
                     broadcastedFutureTickData.tickData.year = time.Year - 2000;
 
-                    // proposal and ballot are replaced by SC
-                    // TODO: remove completely for epoch 124                    /*
-                    if (system.proposals[ownComputorIndices[i]].uriSize)
-                    {
-                        bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.proposal, &system.proposals[ownComputorIndices[i]], sizeof(ComputorProposal));
-                    }
-                    else
-                    {
-                        bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.ballot, &system.ballots[ownComputorIndices[i]], sizeof(ComputorBallot));
-                    }
-
                     m256i timelockPreimage[3];
                     static_assert(sizeof(timelockPreimage) == 3 * 32, "Unexpected array size");
                     timelockPreimage[0] = etalonTick.saltedSpectrumDigest;
@@ -3081,11 +3031,6 @@ static void beginEpoch1of2()
     }
 
     system.latestOperatorNonce = 0;
-    // proposal and ballot are replaced by SC
-    // TODO: remove completely for epoch 124    /*
-    bs->SetMem(system.proposals, sizeof(system.proposals), 0);
-    bs->SetMem(system.ballots, sizeof(system.ballots), 0);
-    
     system.numberOfSolutions = 0;
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
