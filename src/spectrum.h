@@ -25,6 +25,8 @@ static constexpr unsigned char entityCategoryCount = sizeof(entityCategoryPopula
 static m256i* spectrumDigests = nullptr;
 constexpr unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
 
+static unsigned long long spectrumReorgTotalExecutionTicks = 0;
+
 
 // Update SpectrumInfo data (exensive, because it iterates the whole spectrum), acquire no lock
 void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
@@ -92,6 +94,8 @@ bool analyzeEntityCategoryPopulations(unsigned long long & dustThresholdBurnAll,
 // Clean up spectrum hash map, removing all entities with balance 0. Updates spectrumInfo.
 static void reorganizeSpectrum()
 {
+    unsigned long long spectrumReorgStartTick = __rdtsc();
+
     ::Entity* reorgSpectrum = (::Entity*)reorgBuffer;
     setMem(reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity), 0);
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
@@ -134,6 +138,8 @@ static void reorganizeSpectrum()
     }
 
     updateSpectrumInfo();
+
+    spectrumReorgTotalExecutionTicks += __rdtsc() - spectrumReorgStartTick;
 }
 
 static int spectrumIndex(const m256i& publicKey)
