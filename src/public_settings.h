@@ -49,12 +49,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 214
-#define VERSION_C 1
+#define VERSION_B 215
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 122
-#define TICK 15390000
+#define EPOCH 123
+#define TICK 15500000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -73,7 +73,7 @@ static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testin
 #define MAX_INPUT_DURATION 16384
 #define MAX_OUTPUT_DURATION 16384
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 40
+#define SOLUTION_THRESHOLD_DEFAULT 39
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
