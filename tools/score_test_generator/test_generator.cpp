@@ -27,7 +27,7 @@ std::vector<std::vector<unsigned int>> scoreResults;
 template <unsigned long long i>
 static void processElement(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int threadId, bool writeFile)
 {
-    ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEURONS], kSettings[i][DURATIONS], kSettings[i][DURATIONS], 1> score;
+    ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
     score.initMemory();
     score.initMiningData(miningSeed);
     unsigned int score_value = score(0, publicKey, nonce);
@@ -229,6 +229,10 @@ void generateScore(
             }
         }
         process<numberOfGeneratedSetting>(miningSeeds[i].m256i_u8, publicKeys[i].m256i_u8, nonces[i].m256i_u8, i, writeFilePerSample);
+#pragma omp critical
+        {
+            std::cout << "Processed sample " << i << "." << std::endl;
+        }
     }
 
     // Write to a general file
