@@ -133,7 +133,7 @@ public:
 		{
 			// Return proposals that are open for voting in current epoch
 			// (output is initalized with zeros by contract system)
-			while ((input.prevProposalIndex = qpi(state.proposals).nextActiveProposalIndex(input.prevProposalIndex)) >= 0)
+			while ((input.prevProposalIndex = qpi(state.proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
@@ -258,9 +258,9 @@ public:
 
 		// Iterate all proposals that were open for voting in previous epoch ...
 		locals.proposalIndex = -1;
-		while (locals.proposalIndex = qpi(state.proposals).nextFinishedProposalIndex(locals.proposalIndex) >= 0)
+		while ((locals.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.proposalIndex, qpi.epoch() - 1)) >= 0)
 		{
-			if (qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal) && locals.proposal.epoch == qpi.epoch() - 1)
+			if (qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
 			{
 				// ... and have transfer proposal type
 				if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::Transfer)

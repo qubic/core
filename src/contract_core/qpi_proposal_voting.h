@@ -513,21 +513,24 @@ namespace QPI
 		return pv.proposersAndVoters.getVoterId(qpi, voterIndex);
 	}
 
-	// Return next proposal index of active proposal (voting possible this epoch)
+	// Return next proposal index of proposals of given epoch (default: current epoch)
 	// or -1 if there are not any more such proposals behind the passed index.
 	// Pass -1 to get first index.
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
-	sint32 QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::nextActiveProposalIndex(
-		sint32 prevProposalIndex
+	sint32 QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::nextProposalIndex(
+		sint32 prevProposalIndex,
+		uint16 epoch
 	) const
 	{
 		if (prevProposalIndex >= pv.maxProposals)
 			return -1;
+		if (epoch == 0)
+			epoch = qpi.epoch();
 
 		uint16 idx = (prevProposalIndex < 0) ? 0 : prevProposalIndex + 1;
 		while (idx < pv.maxProposals)
 		{
-			if (pv.proposals[idx].epoch == qpi.epoch())
+			if (pv.proposals[idx].epoch == epoch)
 				return idx;
 			++idx;
 		}
@@ -535,7 +538,7 @@ namespace QPI
 		return -1;
 	}
 
-	// Return next proposal index of finished proposal (voting not possible anymore)
+	// Return next proposal index of finished proposal (not created in current epoch, voting not possible anymore)
 	// or -1 if there are not any more such proposals behind the passed index.
 	// Pass -1 to get first index.
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>

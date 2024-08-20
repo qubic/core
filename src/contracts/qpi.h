@@ -848,12 +848,12 @@ namespace QPI
 		// Return ID for given voter index or NULL_ID if index is invalid
 		id voterId(uint32 voterIndex) const;
 
-		// Return next proposal index of active proposal (voting possible this epoch)
+		// Return next proposal index of proposals of given epoch (default: current epoch)
 		// or -1 if there are not any more such proposals behind the passed index.
 		// Pass -1 to get first index.
-		sint32 nextActiveProposalIndex(sint32 prevProposalIndex) const;
+		sint32 nextProposalIndex(sint32 prevProposalIndex, uint16 epoch = 0) const;
 
-		// Return next proposal index of finished proposal (voting not possible anymore)
+		// Return next proposal index of finished proposal (not created in current epoch, voting not possible anymore)
 		// or -1 if there are not any more such proposals behind the passed index.
 		// Pass -1 to get first index.
 		sint32 nextFinishedProposalIndex(sint32 prevProposalIndex) const;

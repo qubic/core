@@ -576,7 +576,7 @@ int countActiveProposals(
 {
     int activeProposals = 0;
     QPI::sint32 idx = -1;
-    while ((idx = qpi(*pv).nextActiveProposalIndex(idx)) >= 0)
+    while ((idx = qpi(*pv).nextProposalIndex(idx)) >= 0)
         ++activeProposals;
     return activeProposals;
 }
@@ -615,9 +615,9 @@ void testProposalVotingV1()
         EXPECT_FALSE(qpi(*pv).getVote(i, 0, voteDataReturned));
         EXPECT_FALSE(qpi(*pv).getVotingSummary(i, votingSummaryReturned));
     }
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(-1), -1);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(0), -1);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(123456), -1);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), -1);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(0), -1);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(123456), -1);
     EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
     EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(0), -1);
     EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(123456), -1);
@@ -659,8 +659,8 @@ void testProposalVotingV1()
     proposal.type = QPI::ProposalTypes::YesNo;
     setProposalWithSuccessCheck(qpi, pv, qpi.computor(0), proposal);
     EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(0)), 0);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(-1), 0);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(0), -1);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), 0);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(0), -1);
     EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
 
     // fail: vote although no proposal is available at proposal index
@@ -717,9 +717,9 @@ void testProposalVotingV1()
     proposal.epoch = 1; // non-zero means current epoch
     setProposalWithSuccessCheck(qpi, pv, qpi.computor(2), proposal);
     EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(2)), 1);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(-1), 0);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(0), 1);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(1), -1);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), 0);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(0), 1);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(1), -1);
     EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
 
     // fail: vote with invalid values (for yes/no only the values 0 and 1 are valid)
@@ -773,9 +773,9 @@ void testProposalVotingV1()
     proposal.transfer.amounts.set(0, 1005);
     setProposalWithSuccessCheck(qpi, pv, qpi.computor(2), proposal);
     EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(2)), 1);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(-1), 0);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(0), 1);
-    EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(1), -1);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), 0);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(0), 1);
+    EXPECT_EQ(qpi(*pv).nextProposalIndex(1), -1);
     EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
 
     // fail: vote with invalid values (for yes/no only the values 0 and 1 are valid)
@@ -826,10 +826,10 @@ void testProposalVotingV1()
         setProposalWithSuccessCheck(qpi, pv, qpi.computor(1), proposal);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(1)), 2);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(2)), 1);
-        EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(-1), 0);
-        EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(0), 1);
-        EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(1), 2);
-        EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(2), -1);
+        EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), 0);
+        EXPECT_EQ(qpi(*pv).nextProposalIndex(0), 1);
+        EXPECT_EQ(qpi(*pv).nextProposalIndex(1), 2);
+        EXPECT_EQ(qpi(*pv).nextProposalIndex(2), -1);
         EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
 
         // okay: votes in proposalIndex of computor 1 for testing overflow-avoiding summary algorithm for average
@@ -854,11 +854,11 @@ void testProposalVotingV1()
         proposal.variableScalar.maxValue = 1000;
         setProposalWithSuccessCheck(qpi, pv, qpi.computor(10), proposal);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(10)), 3);
-        EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(-1), 0);
-        EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(0), 1);
-        EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(1), 2);
-        EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(2), 3);
-        EXPECT_EQ(qpi(*pv).nextActiveProposalIndex(3), -1);
+        EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), 0);
+        EXPECT_EQ(qpi(*pv).nextProposalIndex(0), 1);
+        EXPECT_EQ(qpi(*pv).nextProposalIndex(1), 2);
+        EXPECT_EQ(qpi(*pv).nextProposalIndex(2), 3);
+        EXPECT_EQ(qpi(*pv).nextProposalIndex(3), -1);
         EXPECT_EQ(qpi(*pv).nextFinishedProposalIndex(-1), -1);
 
         // fail: vote with invalid values
