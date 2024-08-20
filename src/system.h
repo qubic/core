@@ -26,6 +26,8 @@ static struct System
 
     unsigned long long latestOperatorNonce;
 
+    // proposal and ballot are replaced by SC
+    // TODO: remove completely for epoch 124
     ComputorProposal proposals[NUMBER_OF_COMPUTORS];
     ComputorBallot ballots[NUMBER_OF_COMPUTORS];
 
@@ -38,4 +40,4 @@ static struct System
 
     m256i futureComputors[NUMBER_OF_COMPUTORS];
 } system;
-static_assert(sizeof(System) == 367792 + 64 * MAX_NUMBER_OF_SOLUTIONS, "Unexpected size");
+//static_assert(sizeof(System) == 20 + 8 + 8 + 8 + 4 + 64 * MAX_NUMBER_OF_SOLUTIONS + 32 * NUMBER_OF_COMPUTORS, "Unexpected size");
