@@ -4933,10 +4933,7 @@ static bool initialize()
         }
     }
 
-    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
-    {
-        initializeContract(contractIndex, contractStates[contractIndex]);
-    }
+    initializeContracts();
 
     score->loadScoreCache(system.epoch);
 
