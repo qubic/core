@@ -291,7 +291,7 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
 
     case SWATCH_CONTRACT_INDEX:
     {
-        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(GQMPROP);
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(SWATCH);
     }
     break;
     }
