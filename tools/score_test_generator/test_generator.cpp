@@ -22,6 +22,7 @@ std::vector<m256i> miningSeeds;
 std::vector<m256i> publicKeys;
 std::vector<m256i> nonces;
 std::vector<std::vector<unsigned int>> scoreResults;
+std::vector<std::vector<unsigned long long>> scoreProcessingTimes;
 
 // Recursive template to process each element in scoreSettings
 template <unsigned long long i>
@@ -30,9 +31,16 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
     ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
     score.initMemory();
     score.initMiningData(miningSeed);
+
+    auto t0 = std::chrono::high_resolution_clock::now();
+
     unsigned int score_value = score(0, publicKey, nonce);
 
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto d = t1 - t0;
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d);
     scoreResults[threadId][i] = score_value;
+    scoreProcessingTimes[threadId][i] = elapsed.count();
 
     // Write the result
     if (writeFile)
@@ -213,12 +221,14 @@ void generateScore(
     // Prepare memory for generated scores
     unsigned long long totalSamples = nonces.size();
     scoreResults.resize(totalSamples);
+    scoreProcessingTimes.resize(totalSamples);
 
     bool writeFilePerSample = true;
 #pragma omp parallel for num_threads(threadsCount)
     for (int i = 0; i < totalSamples; ++i)
     {
         scoreResults[i].resize(numberOfGeneratedSetting);
+        scoreProcessingTimes[i].resize(numberOfGeneratedSetting);
         if (writeFilePerSample)
         {
             std::string fileName = "score_" + std::to_string(i) + ".txt";
@@ -255,6 +265,22 @@ void generateScore(
         scoreFile << std::endl;
     }
     scoreFile.close();
+
+    // Print out the processing time in case of 
+    for (int j = 0; j < numberOfGeneratedSetting; j++)
+    {
+        unsigned long long processingTime = 0;
+        for (int i = 0; i < totalSamples; i++)
+        {
+            processingTime += scoreProcessingTimes[i][j];
+        }
+        processingTime = processingTime / totalSamples;
+        std::cout << "Setting " << j << ", NEURON " << kSettings[j][NR_NEURONS]
+            << ", NEIGHBOR " << kSettings[j][NR_NEIGHBOR_NEURONS]
+            << ", DURATION " << kSettings[j][DURATIONS] 
+            << ": time " << processingTime << " ms"
+            << std::endl;
+    }
 }
 
 void print_random_test_case()
@@ -285,6 +311,7 @@ void printHelp()
     std::cout << "--numsamples, -n <number>                [generator] Number of samples,  \n";
     std::cout << "                                              zeros/unset sample in samplefile will be use\n";
     std::cout << "                                              otherwise generate new samplefile\n";
+    std::cout << "--threads, -t    <number>                [generator] Number of threads use for generating\n";
     std::cout << "--miningzero, -z                         [generator] Force mining seed init as zeros \n";
     std::cout << "--scorefile, -o <output score file>      [generator] Output score file \n";
 }
@@ -296,6 +323,7 @@ int main(int argc, char* argv[])
     std::string scoreFile;
     unsigned int numberOfSamples = 0;
     bool miningInitZeros = false;
+    unsigned int numberOfThreads = std::thread::hardware_concurrency();
 
     // Loop through each argument
     for (int i = 1; i < argc; ++i)
@@ -319,6 +347,10 @@ int main(int argc, char* argv[])
         else if (arg == "--numsamples" || arg == "-n")
         {
             numberOfSamples = std::stoi(argv[++i]);
+        }
+        else if (arg == "--threads" || arg == "-t")
+        {
+            numberOfThreads = std::stoi(argv[++i]);
         }
         else if (arg == "--miningzero" || arg == "-z")
         {
@@ -355,7 +387,6 @@ int main(int argc, char* argv[])
     std::cout << "  Init mining zeros: " << miningInitZeros << std::endl;
     std::cout << "  Output score file: " << scoreFile << std::endl;
 
-    unsigned int numberOfThreads = std::thread::hardware_concurrency();
     std::cout << "Score generator using " << numberOfThreads << " threads." << std::endl;
     generateScore(sampleFile, scoreFile, numberOfThreads, numberOfSamples, miningInitZeros);
 
