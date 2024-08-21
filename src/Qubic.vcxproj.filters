@@ -160,6 +160,9 @@
     <ClInclude Include="contracts\SupplyWatcher.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\ComputorControlledFund.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

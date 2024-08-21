@@ -129,6 +129,17 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE SWATCH2
 #include "contracts/SupplyWatcher.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define CCF_CONTRACT_INDEX 8
+#define CONTRACT_INDEX CCF_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE CCF
+#define CONTRACT_STATE2_TYPE CCF2
+#include "contracts/ComputorControlledFund.h"
+
+
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
 
 #undef INITIALIZE
@@ -177,6 +188,7 @@ constexpr struct ContractDescription
     {"MLM", 112, 10000, sizeof(IPO)},
     {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
+    {"CCF", 125, 10000, sizeof(CCF)},
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -260,4 +272,5 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MLM);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(GQMPROP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(SWATCH);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(CCF);
 }
