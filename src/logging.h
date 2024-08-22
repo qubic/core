@@ -194,6 +194,7 @@ public:
 
     inline static char* logBuffer = NULL;
     inline static BlobInfo* mapTxToLogId = NULL;
+    inline static BlobInfo* mapLogIdToBufferIndex = NULL;
     inline static unsigned long long logBufferTail;
     inline static unsigned long long logId;
     inline static unsigned int tickBegin;
@@ -256,7 +257,6 @@ public:
     // Struct to map log buffer from log id    
     static struct mapLogIdToBuffer
     {
-        inline static BlobInfo mapLogIdToBufferIndex[LOG_MAX_STORAGE_ENTRIES]; // x: index on buffer, y: length
         static void init()
         {
             BlobInfo null_blob{ -1,-1 };
@@ -363,9 +363,20 @@ public:
                 return false;
             }
         }
+
         if (mapTxToLogId == NULL)
         {
             if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
+            {
+                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+
+                return false;
+            }
+        }
+
+        if (mapLogIdToBufferIndex == NULL)
+        {
+            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
             {
                 logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
 
