@@ -1,25 +1,23 @@
-struct OracleReplyCommitTransaction
+struct OracleReplyCommitTransaction : public Transaction
 {
 	static constexpr unsigned char transactionType()
 	{
 		return 2; // TODO: Set actual value
 	}
 
-	Transaction transaction;
 	unsigned long long queryIndex;
 	m256i replyDigest;
 	m256i replyKnowledgeProof;
 	unsigned char signature[SIGNATURE_SIZE];
 };
 
-struct OracleReplyRevealTransactionPrefix
+struct OracleReplyRevealTransactionPrefix : public Transaction
 {
 	static constexpr unsigned char transactionType()
 	{
 		return 3; // TODO: Set actual value
 	}
 
-	Transaction transaction;
 	unsigned long long queryIndex;
 };
 
