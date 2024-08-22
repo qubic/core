@@ -117,20 +117,21 @@ static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigne
 }
 
 
-static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "test_data/samples_20240815.csv";
-static const std::string COMMON_TEST_SCORES_FILE_NAME = "test_data/scores_20240815.csv";
+static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
+static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_20240815.csv";
 
 void runCommonTests()
 {
 #ifdef __AVX512F__
     initAVX512KangarooTwelveConstants();
 #endif
-
     constexpr unsigned long long numberOfGeneratedSetting = sizeof(score_params::kSettings) / sizeof(score_params::kSettings[0]);
 
     // Read the parameters and results
     auto sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
     auto scoresString = readCSV(COMMON_TEST_SCORES_FILE_NAME);
+    ASSERT_FALSE(sampleString.empty());
+    ASSERT_FALSE(scoresString.empty());
 
     // Convert the raw string and do the data verification
     unsigned long long numberOfSamples = sampleString.size();
@@ -216,7 +217,7 @@ void runCommonTests()
         {
             continue;
         }
-        std::cout << i << "...";
+        std::cout << i << "..." << std::flush;
         process<numberOfGeneratedSetting>(miningSeeds[i].m256i_u8, publicKeys[i].m256i_u8, nonces[i].m256i_u8, i);
     }
     std::cout << std::endl;
