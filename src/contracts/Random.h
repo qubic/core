@@ -4,7 +4,7 @@ struct RANDOM2
 {
 };
 
-struct RANDOM
+struct RANDOM : public ContractBase
 {
 public:
 	struct RevealAndCommit_input
@@ -36,32 +36,5 @@ private:
 	INITIALIZE
 
 		state._bitFee = 1000;
-	_
-
-	BEGIN_EPOCH
-	_
-
-	END_EPOCH
-	_
-
-	BEGIN_TICK
-	_
-
-	END_TICK
-	_
-
-	PRE_ACQUIRE_SHARES
-	_
-
-	POST_ACQUIRE_SHARES
-	_
-
-	PRE_RELEASE_SHARES
-	_
-
-	POST_RELEASE_SHARES
-	_
-
-	EXPAND
 	_
 };

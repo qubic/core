@@ -3,6 +3,8 @@
 #include "gtest/gtest.h"
 #include "../src/platform/m256.h"
 
+#include <chrono>
+
 
 TEST(TestCore256BitClass, ConstructAssignCompare) {
     // Basic construction, comparison, and assignment
@@ -137,6 +139,53 @@ TEST(TestCore256BitFunctionsIntrinsicType, isZero) {
     EXPECT_FALSE(isZero(m256i(0, 0, 1, 0).m256i_intr()));
     EXPECT_FALSE(isZero(m256i(0, 0, 0, 1).m256i_intr()));
     EXPECT_FALSE(isZero(m256i(-1, -1, -1, -1).m256i_intr()));
+}
+
+TEST(TestCore256BitFunctionsIntrinsicType, isZeroPerformance)
+{
+    constexpr int N = 50000000;
+    volatile m256i optimizeBarrierValue(0, 0, 0, 0);
+    m256i value;
+    volatile bool optimizeBarrierResult;
+
+    // measure isZero
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < N; ++i)
+    {
+        optimizeBarrierValue.i64._0 = i;
+        value = optimizeBarrierValue;
+        optimizeBarrierResult = isZero(value);
+    }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    std::cout << N << " x isZero: " << ms << " milliseconds" << std::endl;
+
+    // measure comparison with existing zero m256i
+    t0 = std::chrono::high_resolution_clock::now();
+    m256i zero = _mm256_setzero_si256();
+    for (int i = 0; i < N; ++i)
+    {
+        optimizeBarrierValue.i64._0 = i;
+        value = optimizeBarrierValue;
+        optimizeBarrierResult = (value == zero);
+    }
+    t1 = std::chrono::high_resolution_clock::now();
+    ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    std::cout << N << " x compare with existing zero instance: " << ms << " milliseconds" << std::endl;
+
+    // measure comparison with new zero m256i
+    t0 = std::chrono::high_resolution_clock::now();
+    volatile m256i zeroVol;
+    for (int i = 0; i < N; ++i)
+    {
+        optimizeBarrierValue.i64._0 = i;
+        value = optimizeBarrierValue;
+        zeroVol = _mm256_setzero_si256();
+        optimizeBarrierResult = (value == zeroVol);
+    }
+    t1 = std::chrono::high_resolution_clock::now();
+    ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    std::cout << N << " x compare with new zero instance: " << ms << " milliseconds" << std::endl;
 }
 
 TEST(TestCore256BitFunctionsIntrinsicType, operatorEqual) {

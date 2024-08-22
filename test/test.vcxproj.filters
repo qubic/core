@@ -12,6 +12,7 @@
     <ClCompile Include="score_cache.cpp" />
     <ClCompile Include="tick_storage.cpp" />
     <ClCompile Include="vote_counter.cpp" />
+    <ClCompile Include="qpi_collection.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />

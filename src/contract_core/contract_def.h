@@ -2,13 +2,13 @@
 
 #include "platform/m256.h"
 
-#include "network_messages/common_def.h"
-
 ////////// Smart contracts \\\\\\\\\\
 
 // The order in this file is very important, because it restricts what is available to the contracts.
 // For example, a contract may only call a contract with lower index, which is enforced by order of
 // include / availability of definition.
+// Additionally, most types, functions, and variables of the core have to be defined after including
+// the contract to keep them unavailable in the contract code.
 
 namespace QPI
 {
@@ -17,7 +17,7 @@ namespace QPI
 }
 
 // TODO: add option for having locals to SYSTEM and EXPAND procedures
-typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output);
+typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContextFunctionCall&, void*, void*); // cannot not change anything except state
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
@@ -58,7 +58,10 @@ struct __FunctionOrProcedureBeginEndGuard
 };
 
 
+// With no other includes before, the following are the only headers available to contracts.
+// When adding something, be cautious to keep access of contracts limited to safe features only.
 #include "contracts/qpi.h"
+#include "qpi_proposal_voting.h"
 
 #define QX_CONTRACT_INDEX 1
 #define CONTRACT_INDEX QX_CONTRACT_INDEX
@@ -106,6 +109,26 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE MLM2
 #include "contracts/MyLastMatch.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define GQMPROP_CONTRACT_INDEX 6
+#define CONTRACT_INDEX GQMPROP_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE GQMPROP
+#define CONTRACT_STATE2_TYPE GQMPROP2
+#include "contracts/GeneralQuorumProposal.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define SWATCH_CONTRACT_INDEX 7
+#define CONTRACT_INDEX SWATCH_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE SWATCH
+#define CONTRACT_STATE2_TYPE SWATCH2
+#include "contracts/SupplyWatcher.h"
+
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
 
 #undef INITIALIZE
@@ -118,6 +141,12 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef POST_RELEASE_SHARES
 #undef POST_ACQUIRE_SHARES
 
+// The following are included after the contracts to keep their definitions and dependencies
+// inaccessible for contracts
+#include "qpi_collection_impl.h"
+#include "qpi_trivial_impl.h"
+
+#include "network_messages/common_def.h"
 
 struct Contract0State
 {
@@ -146,6 +175,8 @@ constexpr struct ContractDescription
     {"RANDOM", 88, 10000, sizeof(IPO)},
     {"QUTIL", 99, 10000, sizeof(IPO)},
     {"MLM", 112, 10000, sizeof(IPO)},
+    {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
+    {"SWATCH", 123, 10000, sizeof(IPO)},
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -191,19 +222,29 @@ enum MoreProcedureIDs
 };
 
 static SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
+static unsigned short contractSystemProcedureLocalsSizes[contractCount][contractSystemProcedureCount];
 
 
 #define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName)\
-contractSystemProcedures[contractIndex][INITIALIZE] = (SYSTEM_PROCEDURE)contractName::__initialize;\
-contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (SYSTEM_PROCEDURE)contractName::__beginEpoch;\
-contractSystemProcedures[contractIndex][END_EPOCH] = (SYSTEM_PROCEDURE)contractName::__endEpoch;\
-contractSystemProcedures[contractIndex][BEGIN_TICK] = (SYSTEM_PROCEDURE)contractName::__beginTick;\
-contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
-contractSystemProcedures[contractIndex][PRE_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preReleaseShares;\
-contractSystemProcedures[contractIndex][PRE_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preAcquireShares;\
-contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
-contractSystemProcedures[contractIndex][POST_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postAcquireShares;\
-contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
+if (!contractName::__initializeEmpty) contractSystemProcedures[contractIndex][INITIALIZE] = (SYSTEM_PROCEDURE)contractName::__initialize;\
+contractSystemProcedureLocalsSizes[contractIndex][INITIALIZE] = contractName::__initializeLocalsSize; \
+if (!contractName::__beginEpochEmpty) contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (SYSTEM_PROCEDURE)contractName::__beginEpoch;\
+contractSystemProcedureLocalsSizes[contractIndex][BEGIN_EPOCH] = contractName::__beginEpochLocalsSize; \
+if (!contractName::__endEpochEmpty) contractSystemProcedures[contractIndex][END_EPOCH] = (SYSTEM_PROCEDURE)contractName::__endEpoch;\
+contractSystemProcedureLocalsSizes[contractIndex][END_EPOCH] = contractName::__endEpochLocalsSize; \
+if (!contractName::__beginTickEmpty) contractSystemProcedures[contractIndex][BEGIN_TICK] = (SYSTEM_PROCEDURE)contractName::__beginTick;\
+contractSystemProcedureLocalsSizes[contractIndex][BEGIN_TICK] = contractName::__beginTickLocalsSize; \
+if (!contractName::__endTickEmpty) contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
+contractSystemProcedureLocalsSizes[contractIndex][END_TICK] = contractName::__endTickLocalsSize; \
+if (!contractName::__preAcquireSharesEmpty) contractSystemProcedures[contractIndex][PRE_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preAcquireShares;\
+contractSystemProcedureLocalsSizes[contractIndex][PRE_ACQUIRE_SHARES] = contractName::__preAcquireSharesSize; \
+if (!contractName::__preReleaseSharesEmpty) contractSystemProcedures[contractIndex][PRE_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preReleaseShares;\
+contractSystemProcedureLocalsSizes[contractIndex][PRE_RELEASE_SHARES] = contractName::__preReleaseSharesSize; \
+if (!contractName::__postAcquireSharesEmpty) contractSystemProcedures[contractIndex][POST_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postAcquireShares;\
+contractSystemProcedureLocalsSizes[contractIndex][POST_ACQUIRE_SHARES] = contractName::__postAcquireSharesSize; \
+if (!contractName::__postReleaseSharesEmpty) contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
+contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesSize; \
+if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 ((contractName*)contractState)->__registerUserFunctionsAndProcedures(qpi);
 
 
@@ -239,6 +280,18 @@ static void initializeContract(const unsigned int contractIndex, void* contractS
     case MLM_CONTRACT_INDEX:
     {
         REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MLM);
+    }
+    break;
+
+    case GQMPROP_CONTRACT_INDEX:
+    {
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(GQMPROP);
+    }
+    break;
+
+    case SWATCH_CONTRACT_INDEX:
+    {
+        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(SWATCH);
     }
     break;
     }
