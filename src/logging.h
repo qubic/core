@@ -542,19 +542,6 @@ public:
         {
             BlobInfo startIdBufferRange = logBuf.getBlobInfo(request->fromID);
             BlobInfo endIdBufferRange = logBuf.getBlobInfo(request->toID); // inclusive
-            {
-                //TODO: remove this log after testnet
-                CHAR16 dbgmsg[256];
-                setText(dbgmsg, L"got request ");
-                appendNumber(dbgmsg, request->fromID, false);
-                appendText(dbgmsg, L" -> ");
-                appendNumber(dbgmsg, request->toID, false);
-                appendText(dbgmsg, L" Result: ");
-                appendNumber(dbgmsg, startIdBufferRange.startIndex, false);
-                appendText(dbgmsg, L" -> ");
-                appendNumber(dbgmsg, endIdBufferRange.length + endIdBufferRange.startIndex, false);
-                addDebugMessage(dbgmsg);
-            }
             if (startIdBufferRange.startIndex != -1 && startIdBufferRange.length != -1
                 && endIdBufferRange.startIndex != -1 && endIdBufferRange.length != -1)
             {
@@ -620,20 +607,6 @@ public:
             BlobInfo info = tx.getLogIdInfo(request->tick, request->txId);
             resp.fromLogId = info.startIndex;
             resp.length = info.length;
-            {
-                //TODO: remove this log after testnet
-                CHAR16 dbgmsg[256];
-                setText(dbgmsg, L"got request ");
-                appendNumber(dbgmsg, request->tick, false);
-                appendText(dbgmsg, L" -> ");
-                appendNumber(dbgmsg, request->txId, false);
-                appendText(dbgmsg, L" Result: ");
-                appendNumber(dbgmsg, info.startIndex, false);
-                appendText(dbgmsg, L" -> ");
-                appendNumber(dbgmsg, info.length, false);
-                addDebugMessage(dbgmsg);
-            }
-
             enqueueResponse(peer, sizeof(ResponseLogIdRangeFromTx), ResponseLogIdRangeFromTx::type, header->dejavu(), &resp);
             return;
         }
