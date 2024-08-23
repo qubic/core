@@ -2577,14 +2577,13 @@ static void processTick(unsigned long long processorNumber)
             while (contractProcessorState)
             {
                 _mm_pause();
-            }            
-        }
-
-        contractProcessorPhase = BEGIN_EPOCH;
-        contractProcessorState = 1;
-        while (contractProcessorState)
-        {
-            _mm_pause();
+            }
+            contractProcessorPhase = BEGIN_EPOCH;
+            contractProcessorState = 1;
+            while (contractProcessorState)
+            {
+                _mm_pause();
+            }
         }
     }
 
