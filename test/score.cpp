@@ -51,7 +51,7 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
         return;
     }
 
-    auto pScore = std::make_unique<ScoreFunction<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEURONS], kSettings[i][DURATIONS], kSettings[i][DURATIONS], 1>>();
+    auto pScore = std::make_unique<ScoreFunction<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1>>();
     pScore->initMemory();
     pScore->initMiningData(miningSeed);
     int x = 0;

@@ -68,10 +68,9 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testing purpose, will delete at epoch 111
 
 #define DATA_LENGTH 256
-#define NUMBER_OF_INPUT_NEURONS 4096
-#define NUMBER_OF_OUTPUT_NEURONS 4096
-#define MAX_INPUT_DURATION 16384
-#define MAX_OUTPUT_DURATION 16384
+#define NUMBER_OF_HIDDEN_NEURONS 32768
+#define NUMBER_OF_NEIGHBOR_NEURONS 8192
+#define MAX_DURATION 256
 #define NEURON_VALUE_LIMIT 1LL
 #define SOLUTION_THRESHOLD_DEFAULT 40
 

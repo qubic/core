@@ -178,8 +178,9 @@ static int nSolutionProcessorIDs = 0;
 
 static ScoreFunction<
     DATA_LENGTH,
-    NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
-    MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
+    NUMBER_OF_HIDDEN_NEURONS, 
+    NUMBER_OF_NEIGHBOR_NEURONS,
+    MAX_DURATION,
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static volatile char solutionsLock = 0;
