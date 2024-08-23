@@ -2570,11 +2570,14 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        contractProcessorPhase = INITIALIZE;
-        contractProcessorState = 1;
-        while (contractProcessorState)
+        if (!loadAllNodeStateFromFile) // only call initialize SC if it doesn't load node states from files
         {
-            _mm_pause();
+            contractProcessorPhase = INITIALIZE;
+            contractProcessorState = 1;
+            while (contractProcessorState)
+            {
+                _mm_pause();
+            }            
         }
 
         contractProcessorPhase = BEGIN_EPOCH;
