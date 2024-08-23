@@ -222,7 +222,7 @@ static bool saveSpectrum(CHAR16* directory = NULL);
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadSpectrum(CHAR16* directory = NULL);
-static bool loadComputer(CHAR16* directory = NULL);
+static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -3606,7 +3606,8 @@ static bool loadAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-    if (!loadComputer(directory))
+    const bool forceLoadContractFile = true;
+    if (!loadComputer(directory, forceLoadContractFile))
     {
         logToConsole(L"Failed to load computer");
         return false;
@@ -4524,13 +4525,15 @@ static bool saveSpectrum(CHAR16* directory)
     return false;
 }
 
-
-static bool loadComputer(CHAR16* directory)
+// directory: source directory to load the file. Default: NULL - load from root dir /
+// forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
+static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
 {
     logToConsole(L"Loading contract files ...");
+    setText(message, L"Loaded SC: ");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
-        if (contractDescriptions[contractIndex].constructionEpoch == system.epoch)
+        if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
         {
             bs->SetMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
         }
@@ -4544,11 +4547,16 @@ static bool loadComputer(CHAR16* directory)
             if (loadedSize != contractDescriptions[contractIndex].stateSize)
             {
                 logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
-
                 return false;
+            }
+            else
+            {
+                appendText(message, CONTRACT_FILE_NAME);
+                appendText(message, L" ");
             }
         }
     }
+    logToConsole(message);
     return true;
 }
 
