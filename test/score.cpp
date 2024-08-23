@@ -19,6 +19,7 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
+#include <thread>
 
 using namespace score_params;
 using namespace test_utils;
@@ -34,7 +35,7 @@ using namespace test_utils;
 static constexpr bool PRINT_DETAILED_INFO = false;
 
 // Only run on specific index of samples and setting
-std::vector<unsigned int> filteredSamples;// = { 0 };
+std::vector<unsigned int> filteredSamples; //= { 0 };
 std::vector<unsigned int> filteredSettings;// = { 0,1 };
 
 std::vector<std::vector<unsigned int>> gScoresGroundTruth;
@@ -60,45 +61,50 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
     unsigned int score_value = (*pScore)(0, publicKey, nonce);
     auto t1 = std::chrono::high_resolution_clock::now();
     auto d = t1 - t0;
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
 
-    if (gScoreProcessingTime.count(i) == 0)
+#pragma omp critical
     {
-        gScoreProcessingTime[i] = elapsed.count();
-    }
-    else
-    {
-        gScoreProcessingTime[i] += elapsed.count();
-    }
-    long long gtIndex = -1;
-    if (gScoreIndexMap.count(i) > 0)
-    {
-        gtIndex = gScoreIndexMap[i];
-    }
+        long long gtIndex = -1;
+        if (gScoreIndexMap.count(i) > 0)
+        {
+            gtIndex = gScoreIndexMap[i];
+        }
 
-    if (PRINT_DETAILED_INFO || gtIndex < 0 || (score_value != gScoresGroundTruth[sampleIndex][gtIndex]))
-    {
-        std::cout << "[sample " << sampleIndex
-            << "; setting " << i
-            << ": NEURON " << kSettings[i][NR_NEURONS]
-            << ", DURATIONS " << kSettings[i][DURATIONS] << "]" << std::endl;
-        std::cout << "    stack size: " << pScore->stackSize << std::endl;
-        std::cout << "    score " << score_value;
+        if (PRINT_DETAILED_INFO || gtIndex < 0 || (score_value != gScoresGroundTruth[sampleIndex][gtIndex]))
+        {
+            if (gScoreProcessingTime.count(i) == 0)
+            {
+                gScoreProcessingTime[i] = elapsed;
+            }
+            else
+            {
+                gScoreProcessingTime[i] += elapsed;
+            }
+
+            std::cout << "[sample " << sampleIndex
+                << "; setting " << i
+                << ": NEURON " << kSettings[i][NR_NEURONS]
+                << ", NEIGHBOR " << kSettings[i][NR_NEIGHBOR_NEURONS]
+                << ", DURATIONS " << kSettings[i][DURATIONS] << "]" << std::endl;
+            std::cout << "    stack size: " << pScore->stackSize << std::endl;
+            std::cout << "    score " << score_value;
+            if (gtIndex >= 0)
+            {
+                std::cout << " vs reference " << gScoresGroundTruth[sampleIndex][gtIndex] << std::endl;
+            }
+            else // No mapping from ground truth
+            {
+                std::cout << " vs reference NA" << std::endl;
+            }
+            std::cout << "    time " << elapsed << " ms " << std::endl;
+        }
+
+        EXPECT_GT(gScoreIndexMap.count(i), 0);
         if (gtIndex >= 0)
         {
-            std::cout << " vs reference " << gScoresGroundTruth[sampleIndex][gtIndex] << std::endl;
+            EXPECT_EQ(gScoresGroundTruth[sampleIndex][gtIndex], score_value);
         }
-        else // No mapping from ground truth
-        {
-            std::cout << " vs reference NA" << std::endl;
-        }
-        std::cout << "    time " << elapsed.count() << " ms " << std::endl;
-    }
-
-    EXPECT_GT(gScoreIndexMap.count(i), 0);
-    if (gtIndex >= 0)
-    {
-        EXPECT_EQ(gScoresGroundTruth[sampleIndex][gtIndex], score_value);
     }
 }
 
@@ -118,7 +124,7 @@ static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigne
 
 
 static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
-static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_20240815.csv";
+static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_20240821.csv";
 
 void runCommonTests()
 {
@@ -197,6 +203,7 @@ void runCommonTests()
     }
 
     // Read the groudtruth scores and init result scores
+    numberOfSamples = std::min(numberOfSamples, scoresString.size() - 1);
     gScoresGroundTruth.resize(numberOfSamples);
     for (size_t i = 0; i < numberOfSamples; ++i)
     {
@@ -209,7 +216,17 @@ void runCommonTests()
     }
 
     // Run the test
-    std::cout << "Process samples ";
+    unsigned int numberOfThreads = PRINT_DETAILED_INFO ? 1 : std::thread::hardware_concurrency();
+    if (numberOfThreads > 1)
+    {
+        std::cout << "Compare score only. Lauching test with all available " << numberOfThreads << " threads." << std::endl;
+    }
+    else
+    {
+        std::cout << "Running one sample on one thread for collecting performance." << std::endl;
+    }
+
+    std::vector<int> samples;
     for (int i = 0; i < numberOfSamples; ++i)
     {
         if (!filteredSamples.empty()
@@ -217,18 +234,31 @@ void runCommonTests()
         {
             continue;
         }
-        std::cout << i << "..." << std::flush;
-        process<numberOfGeneratedSetting>(miningSeeds[i].m256i_u8, publicKeys[i].m256i_u8, nonces[i].m256i_u8, i);
+        samples.push_back(i);
     }
-    std::cout << std::endl;
+
+    std::cout << "Processing " << samples.size() << " samples ..." << std::endl;
+#pragma omp parallel for num_threads(numberOfThreads)
+    for (int i = 0; i < samples.size(); ++i)
+    {
+        int index = samples[i];
+        process<numberOfGeneratedSetting>(miningSeeds[index].m256i_u8, publicKeys[index].m256i_u8, nonces[index].m256i_u8, index);
+#pragma omp critical
+        std::cout << "Sample " << i << " finished." << std::endl;
+    }
 
     // Print the average processing time
-    for (auto scoreTime : gScoreProcessingTime)
+    if (PRINT_DETAILED_INFO)
     {
-        unsigned long long processingTime = filteredSamples.empty() ? scoreTime.second / numberOfSamples : scoreTime.second / filteredSamples.size();
-        std::cout << "Avg processing time [setting " << scoreTime.first << ", NEURON " << kSettings[scoreTime.first][NR_NEURONS]
-            << ", DURATIONS " << kSettings[scoreTime.first][DURATIONS]
-            << "]: " << processingTime << " ms" << std::endl;
+        for (auto scoreTime : gScoreProcessingTime)
+        {
+            unsigned long long processingTime = filteredSamples.empty() ? scoreTime.second / numberOfSamples : scoreTime.second / filteredSamples.size();
+            std::cout << "Avg processing time [setting " << scoreTime.first
+                << ", NEURON " << kSettings[scoreTime.first][NR_NEURONS]
+                << ", NEIGHBOR " << kSettings[scoreTime.first][NR_NEIGHBOR_NEURONS]
+                << ", DURATIONS " << kSettings[scoreTime.first][DURATIONS]
+                << "]: " << processingTime << " ms" << std::endl;
+        }
     }
 }
 

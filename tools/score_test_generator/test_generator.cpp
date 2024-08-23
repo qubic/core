@@ -49,7 +49,7 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
         std::ofstream output_file(fileName, std::ios::app);
         if (output_file.is_open())
         {
-            output_file << kSettings[i][NR_NEURONS] << "-" << kSettings[i][DURATIONS] << ", " << score_value << std::endl;
+            output_file << kSettings[i][NR_NEURONS] << "-" << kSettings[i][NR_NEIGHBOR_NEURONS] << "-" << kSettings[i][DURATIONS] << ", " << score_value << std::endl;
             output_file.close();
         }
     }

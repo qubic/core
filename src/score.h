@@ -497,7 +497,13 @@ struct ScoreFunction
             }
         }
         if (currentMax == -1) return NULL_INDEX;
-        char v = accessNeuron<neurBefore, isInput>(cb, tick, _neuronNNIndices[neuronIdx - neurBefore][currentMax >> 1]);
+        const unsigned int synapseIdx = currentMax >> 1;
+        unsigned int nnNeuronIdx = neuronIdx - neurBefore + 1 + synapseIdx;
+        if (nnNeuronIdx >= allParamsCount)
+        {
+            nnNeuronIdx -= allParamsCount;
+        }
+        char v = accessNeuron<neurBefore, isInput>(cb, tick, nnNeuronIdx);
         if (v) {
             if (v != NOT_CALCULATED) {
                 v *= (currentMax & 1) ? 1 : -1;
@@ -506,7 +512,7 @@ struct ScoreFunction
                 maxIndexBuffer[max_id]++;
             }
             else {
-                outIdx = _neuronNNIndices[neuronIdx - neurBefore][currentMax >> 1];
+                outIdx = nnNeuronIdx;
             }
         }
         else {
@@ -532,7 +538,11 @@ struct ScoreFunction
         char v = 0;
         for (int i = 0; i < numberOfNeighborNeurons; i++)
         {
-            unsigned long long nnNeuronIdx = _neuronNNIndices[neuronIdx][i];
+            unsigned long long nnNeuronIdx = neuronIdx + 1 + i;
+            if (nnNeuronIdx >= allParamsCount)
+            {
+                nnNeuronIdx -= allParamsCount;
+            }
             if (nnNeuronIdx < neurBefore)
             {
                 unsigned long long synapseIdx = neuronIdx * numberOfNeighborNeurons + i;
