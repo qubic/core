@@ -212,6 +212,7 @@ struct
     m256i initialRandomSeed;    
     int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
     unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
+    unsigned char voteCounterData[VoteCounter::VoteCounterDataSize];
     BroadcastComputors broadcastedComputors;
     unsigned long long resourceTestingDigest;
     unsigned int numberOfMiners;
@@ -3498,6 +3499,7 @@ static bool saveAllNodeStates()
     nodeStateBuffer.initialRandomSeed = score->initialRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;
+    voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
@@ -3634,6 +3636,7 @@ static bool loadAllNodeStates()
     initialRandomSeedFromPersistingState = nodeStateBuffer.initialRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
     loadMiningSeedFromFile = true;
+    voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)

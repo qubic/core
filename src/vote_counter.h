@@ -48,6 +48,7 @@ protected:
 	}
 
 public:
+	static constexpr unsigned int VoteCounterDataSize = sizeof(votes) + sizeof(accumulatedVoteCount);
 	void init()
 	{
 		setMem(votes, sizeof(votes), 0);
@@ -119,5 +120,17 @@ public:
 	unsigned long long getVoteCount(unsigned int computorIdx)
 	{
 		return accumulatedVoteCount[computorIdx];
+	}
+
+	void saveAllDataToArray(unsigned char* dst)
+	{
+		copyMem(dst, &votes[0][0], sizeof(votes));
+		copyMem(dst + sizeof(votes), &accumulatedVoteCount[0], sizeof(accumulatedVoteCount));
+	}
+
+	void loadAllDataFromArray(const unsigned char* src)
+	{
+		copyMem(&votes[0][0], src, sizeof(votes));
+		copyMem(&accumulatedVoteCount[0], src + sizeof(votes), sizeof(accumulatedVoteCount));
 	}
 };
