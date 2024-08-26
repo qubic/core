@@ -24,11 +24,24 @@ struct CCF : public ContractBase
 		bool okay;
 	};
 
+	struct LatestTransfersEntry
+	{
+		id destination;
+		array<uint8, 256> url;
+		sint64 amount;
+		uint32 tick;
+		bool success;
+	};
+
+	typedef array<LatestTransfersEntry, 16> LatestTransfersT;
 
 private:
 	//----------------------------------------------------------------------------
 	// Define state
 	ProposalVotingT proposals;
+
+	LatestTransfersT latestTransfers;
+	uint8 lastTransfersNextOverwriteIdx;
 
 	//----------------------------------------------------------------------------
 	// Define private procedures and functions with input and output
@@ -167,11 +180,20 @@ public:
 	_
 
 
+	typedef NoData GetLatestTransfers_input;
+	typedef LatestTransfersT GetLatestTransfers_output;
+
+	PUBLIC_FUNCTION(GetLatestTransfers)
+		output = state.latestTransfers;
+	_
+
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 		REGISTER_USER_FUNCTION(GetProposalIndices, 1);
 		REGISTER_USER_FUNCTION(GetProposal, 2);
 		REGISTER_USER_FUNCTION(GetVote, 3);
 		REGISTER_USER_FUNCTION(GetVotingResults, 4);
+		REGISTER_USER_FUNCTION(GetLatestTransfers, 5);
 
 		REGISTER_USER_PROCEDURE(SetProposal, 1);
 		REGISTER_USER_PROCEDURE(Vote, 2);
@@ -187,6 +209,7 @@ public:
 		uint32 optionVotes;
 		sint32 mostVotedOptionIndex;
 		uint32 mostVotedOptionVotes;
+		LatestTransfersEntry transfer;
 	};
 
 	END_EPOCH_WITH_LOCALS
@@ -230,10 +253,16 @@ public:
 				// Option for transfer has been accepted?
 				if (locals.mostVotedOptionVotes > QUORUM / 2)
 				{
-					// Transfer
-					qpi.transfer(locals.proposal.transfer.destination, locals.proposal.transfer.amounts.get(locals.mostVotedOptionIndex - 1));
+					// Prepare log entry and do transfer
+					locals.transfer.destination = locals.proposal.transfer.destination;
+					locals.transfer.amount = locals.proposal.transfer.amounts.get(locals.mostVotedOptionIndex - 1);
+					locals.transfer.tick = qpi.tick();
+					copyMemory(locals.transfer.url, locals.proposal.url);
+					locals.transfer.success = (qpi.transfer(locals.transfer.destination, locals.transfer.amount) >= 0);
 
-					// TODO: keep log of last N transfers for query function?
+					// Add log entry
+					state.latestTransfers.set(state.lastTransfersNextOverwriteIdx, locals.transfer);
+					state.lastTransfersNextOverwriteIdx = (state.lastTransfersNextOverwriteIdx + 1) & state.latestTransfers.capacity();
 				}
 			}
 		}
