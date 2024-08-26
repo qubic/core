@@ -8,6 +8,11 @@
 #include "system.h"
 #include "network_core/peers.h"
 
+#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+#define ENABLED_LOGGING 1
+#else
+#define ENABLED_LOGGING 0
+#endif
 
 // Fetches log
 struct RequestLog
@@ -234,6 +239,7 @@ public:
     // since we use round buffer, verifying digest for each log is needed to avoid sending out wrong log
     static bool verifyLog(const char* ptr, unsigned long long logId)
     {
+#if ENABLED_LOGGING
         if (getLogId(ptr) != logId)
         {
             return false;
@@ -251,9 +257,11 @@ public:
         {
             return false;
         }
+#endif
         return true;
     }
 
+#if ENABLED_LOGGING
     // Struct to map log buffer from log id    
     static struct mapLogIdToBuffer
     {
@@ -343,16 +351,19 @@ public:
             }
         }
     } tx;
+#endif
 
     static void registerNewTx(const unsigned int tick, const unsigned int txId)
     {
+#if ENABLED_LOGGING
         tx._registerNewTx(tick, txId);
+#endif
     }
 
 
     static bool initLogging()
     {
-#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+#if ENABLED_LOGGING
         EFI_STATUS status;
         if (logBuffer == NULL)
         {
@@ -396,15 +407,18 @@ public:
 
     static void reset(unsigned int _tickBegin)
     {
+#if ENABLED_LOGGING
         logBuf.init();
         tx.init();
         logBufferTail = 0;
         logId = 0;
         tickBegin = _tickBegin;
+#endif
     }
 
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
+#if ENABLED_LOGGING
         tx.addLogId();
         if (logBufferTail + LOG_HEADER_SIZE + messageSize >= LOG_BUFFER_SIZE)
         {
@@ -420,6 +434,7 @@ public:
         *((unsigned long long*)(logBuffer + (logBufferTail + 18))) = logDigest;
         copyMem(logBuffer + (logBufferTail + LOG_HEADER_SIZE), message, messageSize);
         logBufferTail += LOG_HEADER_SIZE + messageSize;
+#endif
     }
 
     template <typename T>
@@ -534,6 +549,7 @@ public:
     // Request: ranges of log ID
     static void processRequestLog(Peer* peer, RequestResponseHeader* header)
     {
+#if ENABLED_LOGGING
         RequestLog* request = header->getPayload<RequestLog>();
         if (request->passcode[0] == logReaderPasscodes[0]
             && request->passcode[1] == logReaderPasscodes[1]
@@ -588,12 +604,13 @@ public:
             }
             return;
         }
-
+#endif
         enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
     }
 
     static void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
     {
+#if ENABLED_LOGGING
         RequestLogIdRangeFromTx* request = header->getPayload<RequestLogIdRangeFromTx>();
         if (request->passcode[0] == logReaderPasscodes[0]
             && request->passcode[1] == logReaderPasscodes[1]
@@ -610,7 +627,7 @@ public:
             enqueueResponse(peer, sizeof(ResponseLogIdRangeFromTx), ResponseLogIdRangeFromTx::type, header->dejavu(), &resp);
             return;
         }
-
+#endif
         enqueueResponse(peer, 0, ResponseLogIdRangeFromTx::type, header->dejavu(), NULL);
     }
 };
