@@ -141,7 +141,7 @@ private:
     uint32 _Unlocked_cnt;
 
     PUBLIC_FUNCTION(GetStateOfRound)
-        if(input.Epoch <= 118) {                                                            // non staking
+        if(input.Epoch <= 122) {                                                            // non staking
             output.state = 2; return ;
         }
         if(input.Epoch > qpi.epoch()) output.state = 0;                                     // opening round, not started yet
