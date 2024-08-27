@@ -418,7 +418,7 @@ private:
 
         state.Locker.set(locals.indexOfinvocator, locals.updatedUserInfo);
 
-        if(state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount == 0) {            // The case to be unlocked early all users of one epoch, at this time, boost amount will put in next round.
+        if(state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount == 0 && input.Locked_Epoch != qpi.epoch()) {            // The case to be unlocked early all users of one epoch, at this time, boost amount will put in next round.
             
             state.remain_amount = state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount;
 
