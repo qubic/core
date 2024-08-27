@@ -5885,6 +5885,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             }
             logToConsole(message);
 
+            if (NUMBER_OF_SOLUTION_PROCESSORS * 2 > numberOfProcessors)
+            {
+                logToConsole(L"WARNING: NUMBER_OF_SOLUTION_PROCESSORS should not be greater than half of the total processor number!");
+            }
+
 
             // -----------------------------------------------------
             // Main loop
