@@ -9,7 +9,7 @@
 // random seed is now obtained from spectrumDigests
 
 #define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 6 // do not increase this for this epoch, because there may be issues due to too fast ticking
+#define NUMBER_OF_SOLUTION_PROCESSORS 12 // do not increase this, because there may be issues due to too fast ticking
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
@@ -49,12 +49,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 215
+#define VERSION_B 216
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 123
-#define TICK 15500000
+#define EPOCH 124
+#define TICK 15590000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -73,7 +73,7 @@ static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testin
 #define MAX_INPUT_DURATION 16384
 #define MAX_OUTPUT_DURATION 16384
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 39
+#define SOLUTION_THRESHOLD_DEFAULT 40
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"

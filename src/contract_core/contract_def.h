@@ -225,7 +225,8 @@ static SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemPr
 static unsigned short contractSystemProcedureLocalsSizes[contractCount][contractSystemProcedureCount];
 
 
-#define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName)\
+#define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName) { \
+constexpr unsigned int contractIndex = contractName##_CONTRACT_INDEX; \
 if (!contractName::__initializeEmpty) contractSystemProcedures[contractIndex][INITIALIZE] = (SYSTEM_PROCEDURE)contractName::__initialize;\
 contractSystemProcedureLocalsSizes[contractIndex][INITIALIZE] = contractName::__initializeLocalsSize; \
 if (!contractName::__beginEpochEmpty) contractSystemProcedures[contractIndex][BEGIN_EPOCH] = (SYSTEM_PROCEDURE)contractName::__beginEpoch;\
@@ -245,54 +246,18 @@ contractSystemProcedureLocalsSizes[contractIndex][POST_ACQUIRE_SHARES] = contrac
 if (!contractName::__postReleaseSharesEmpty) contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
 contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesSize; \
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
-((contractName*)contractState)->__registerUserFunctionsAndProcedures(qpi);
+QpiContextForInit qpi(contractIndex); \
+contractName::__registerUserFunctionsAndProcedures(qpi); \
+}
 
 
-static void initializeContract(const unsigned int contractIndex, void* contractState)
+static void initializeContracts()
 {
-    QpiContextForInit qpi(contractIndex);
-    switch (contractIndex)
-    {
-    case QX_CONTRACT_INDEX:
-    {
-        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QX);
-    }
-    break;
-
-    case QUOTTERY_CONTRACT_INDEX:
-    {
-        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUOTTERY);
-    }
-    break;
-
-    case RANDOM_CONTRACT_INDEX:
-    {
-        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RANDOM);
-    }
-    break;
-
-    case QUTIL_CONTRACT_INDEX:
-    {
-        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUTIL);
-    }
-    break;
-
-    case MLM_CONTRACT_INDEX:
-    {
-        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MLM);
-    }
-    break;
-
-    case GQMPROP_CONTRACT_INDEX:
-    {
-        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(GQMPROP);
-    }
-    break;
-
-    case SWATCH_CONTRACT_INDEX:
-    {
-        REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(SWATCH);
-    }
-    break;
-    }
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QX);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUOTTERY);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RANDOM);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUTIL);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MLM);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(GQMPROP);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(SWATCH);
 }

@@ -61,23 +61,6 @@ struct TickData
     unsigned char month;
     unsigned char year;
 
-    // proposal and ballot are replaced by SC
-    // TODO: remove completely for epoch 124
-    union
-    {
-        struct
-        {
-            unsigned char uriSize;
-            unsigned char uri[255];
-        } proposal;
-        struct
-        {
-            unsigned char zero;
-            unsigned char votes[(NUMBER_OF_COMPUTORS * 3 + 7) / 8];
-            unsigned char quasiRandomNumber;
-        } ballot;
-    } varStruct;
-
     m256i timelock;
     m256i transactionDigests[NUMBER_OF_TRANSACTIONS_PER_TICK];
     long long contractFees[MAX_NUMBER_OF_CONTRACTS];
@@ -85,7 +68,7 @@ struct TickData
     unsigned char signature[SIGNATURE_SIZE];
 };
 
-//static_assert(sizeof(TickData) == 8 + 8 + 32 + NUMBER_OF_TRANSACTIONS_PER_TICK * 32 + 8 * MAX_NUMBER_OF_CONTRACTS + SIGNATURE_SIZE, "Something is wrong with the struct size.");
+static_assert(sizeof(TickData) == 8 + 8 + 32 + NUMBER_OF_TRANSACTIONS_PER_TICK * 32 + 8 * MAX_NUMBER_OF_CONTRACTS + SIGNATURE_SIZE, "Something is wrong with the struct size.");
 
 
 struct BroadcastFutureTickData
