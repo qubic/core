@@ -26,7 +26,7 @@ struct RequestLog
     };
 };
 
-// Returns buffered log; clears the buffer; make sure you fetch log quickly enough, if the buffer is overflown log stops being written into it till the node restart
+
 struct RespondLog
 {
     // Variable-size log;
@@ -400,7 +400,7 @@ public:
     }
     static void deinitLogging()
     {
-#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+#if ENABLED_LOGGING
         freePool(logBuffer);
 #endif
     }
