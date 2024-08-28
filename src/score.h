@@ -182,7 +182,7 @@ struct ScoreFunction
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
     unsigned char _modNum[maxDuration + 1][129];
 
-    m256i initialRandomSeed;
+    m256i currentRandomSeed;
 
     volatile char solutionEngineLock[solutionBufferCount];
 
@@ -195,8 +195,8 @@ struct ScoreFunction
 
     void initMiningData(m256i randomSeed)
     {
-        initialRandomSeed = randomSeed; // persist the initial random seed to be able to send it back on system info response
-        if (!isZero(initialRandomSeed))
+        currentRandomSeed = randomSeed; // persist the initial random seed to be able to send it back on system info response
+        if (!isZero(currentRandomSeed))
         {
             random((unsigned char*)&randomSeed, (unsigned char*)&randomSeed, (unsigned char*)miningData, sizeof(miningData));
             for (unsigned int i = 0; i < dataLength; i++)
@@ -721,7 +721,7 @@ struct ScoreFunction
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {
-        if (isZero(miningSeed) || miningSeed != initialRandomSeed)
+        if (isZero(miningSeed) || miningSeed != currentRandomSeed)
         {
             return DATA_LENGTH + 1; // return invalid score
         }

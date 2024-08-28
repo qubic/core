@@ -216,7 +216,7 @@ struct
     m256i competitorPublicKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
     unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
     bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
-    m256i initialRandomSeed;    
+    m256i currentRandomSeed;    
     int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
     unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
     unsigned char voteCounterData[VoteCounter::VoteCounterDataSize];
@@ -1210,7 +1210,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.numberOfEntities = numberOfEntities;
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
-    respondedSystemInfo.randomMiningSeed = score->initialRandomSeed;
+    respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
     respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
 
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
@@ -2929,7 +2929,7 @@ static void processTick(unsigned long long processorNumber)
                 {
                     if (solutionPublicationTicks[j] <= (int)system.tick)
                     {
-                        if (system.solutions[j].miningSeed == score->initialRandomSeed)
+                        if (system.solutions[j].miningSeed == score->currentRandomSeed)
                         {
                             solutionIndexToPublish = j;
                         }
@@ -3591,7 +3591,7 @@ static bool saveAllNodeStates()
     copyMem(nodeStateBuffer.faultyComputorFlags, (void*)faultyComputorFlags, sizeof(faultyComputorFlags));
     copyMem(&nodeStateBuffer.broadcastedComputors, (void*)&broadcastedComputors, sizeof(broadcastedComputors));
     copyMem(&nodeStateBuffer.resourceTestingDigest, &resourceTestingDigest, sizeof(resourceTestingDigest));
-    nodeStateBuffer.initialRandomSeed = score->initialRandomSeed;
+    nodeStateBuffer.currentRandomSeed = score->currentRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
@@ -3728,7 +3728,7 @@ static bool loadAllNodeStates()
     copyMem((void*)&broadcastedComputors, &nodeStateBuffer.broadcastedComputors, sizeof(broadcastedComputors));
     copyMem(&resourceTestingDigest, &nodeStateBuffer.resourceTestingDigest, sizeof(resourceTestingDigest));
     numberOfMiners = nodeStateBuffer.numberOfMiners;
-    initialRandomSeedFromPersistingState = nodeStateBuffer.initialRandomSeed;
+    initialRandomSeedFromPersistingState = nodeStateBuffer.currentRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
@@ -4528,7 +4528,7 @@ static void tickProcessor(void*)
                                         {
                                             CHAR16 dbgMsgBuf[300];
                                             CHAR16 digestChars[60 + 1];
-                                            getIdentity(score->initialRandomSeed.m256i_u8, digestChars, true);
+                                            getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
                                             setText(dbgMsgBuf, L"Old mining seed: ");
                                             appendText(dbgMsgBuf, digestChars);
                                             addDebugMessage(dbgMsgBuf);
@@ -4561,7 +4561,7 @@ static void tickProcessor(void*)
                                         {
                                             CHAR16 dbgMsgBuf[300];
                                             CHAR16 digestChars[60 + 1];
-                                            getIdentity(score->initialRandomSeed.m256i_u8, digestChars, true);
+                                            getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
                                             setText(dbgMsgBuf, L"New mining seed: ");
                                             appendText(dbgMsgBuf, digestChars);
                                             addDebugMessage(dbgMsgBuf);
