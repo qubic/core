@@ -212,6 +212,7 @@ struct
     m256i initialRandomSeed;    
     int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
     unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
+    unsigned char voteCounterData[VoteCounter::VoteCounterDataSize];
     BroadcastComputors broadcastedComputors;
     unsigned long long resourceTestingDigest;
     unsigned int numberOfMiners;
@@ -222,7 +223,7 @@ static bool saveSpectrum(CHAR16* directory = NULL);
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadSpectrum(CHAR16* directory = NULL);
-static bool loadComputer(CHAR16* directory = NULL);
+static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -1192,45 +1193,6 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             }
             break;
 
-            // proposal and ballot are replaced by SC
-            // TODO: remove completely for epoch 124
-            case SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST:
-            {
-                SpecialCommandGetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
-                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
-                {
-                    SpecialCommandGetProposalAndBallotResponse response;
-
-                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = _request->computorIndex;
-                    *((short*)response.padding) = 0;
-                    bs->CopyMem(&response.proposal, &system.proposals[_request->computorIndex], sizeof(ComputorProposal));
-                    bs->CopyMem(&response.ballot, &system.ballots[_request->computorIndex], sizeof(ComputorBallot));
-
-                    enqueueResponse(peer, sizeof(response), SpecialCommand::type, header->dejavu(), &response);
-                }
-            }
-            break;
-
-            case SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_REQUEST:
-            {
-                SpecialCommandSetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandSetProposalAndBallotRequest>();
-                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
-                {
-                    bs->CopyMem(&system.proposals[_request->computorIndex], &_request->proposal, sizeof(ComputorProposal));
-                    bs->CopyMem(&system.ballots[_request->computorIndex], &_request->ballot, sizeof(ComputorBallot));
-
-                    SpecialCommandSetProposalAndBallotResponse response;
-
-                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = _request->computorIndex;
-                    *((short*)response.padding) = 0;
-
-                    enqueueResponse(peer, sizeof(response), SpecialCommand::type, header->dejavu(), &response);
-                }
-            }
-            break;
-            
             case SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST:
             {
                 SpecialCommandSetSolutionThresholdRequestAndResponse* _request = header->getPayload<SpecialCommandSetSolutionThresholdRequestAndResponse>();
@@ -2615,21 +2577,24 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick); // reset here to persist the data when we do seamless transition
-        logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
-        contractProcessorPhase = INITIALIZE;
-        contractProcessorState = 1;
-        while (contractProcessorState)
+        logger.reset(system.initialTick); // reset here to persist the data when we do seamless transition        
+        if (!loadAllNodeStateFromFile) // only call initialize SC if it doesn't load node states from files
         {
-            _mm_pause();
-        }
+            logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
+            contractProcessorPhase = INITIALIZE;
+            contractProcessorState = 1;
+            while (contractProcessorState)
+            {
+                _mm_pause();
+            }
 
-        logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
-        contractProcessorPhase = BEGIN_EPOCH;
-        contractProcessorState = 1;
-        while (contractProcessorState)
-        {
-            _mm_pause();
+            logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
+            contractProcessorPhase = BEGIN_EPOCH;
+            contractProcessorState = 1;
+            while (contractProcessorState)
+            {
+                _mm_pause();
+            }
         }
     }
 
@@ -2787,17 +2752,6 @@ static void processTick(unsigned long long processorNumber)
                     broadcastedFutureTickData.tickData.day = time.Day;
                     broadcastedFutureTickData.tickData.month = time.Month;
                     broadcastedFutureTickData.tickData.year = time.Year - 2000;
-
-                    // proposal and ballot are replaced by SC
-                    // TODO: remove completely for epoch 124                    /*
-                    if (system.proposals[ownComputorIndices[i]].uriSize)
-                    {
-                        bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.proposal, &system.proposals[ownComputorIndices[i]], sizeof(ComputorProposal));
-                    }
-                    else
-                    {
-                        bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.ballot, &system.ballots[ownComputorIndices[i]], sizeof(ComputorBallot));
-                    }
 
                     m256i timelockPreimage[3];
                     static_assert(sizeof(timelockPreimage) == 3 * 32, "Unexpected array size");
@@ -3007,11 +2961,6 @@ static void beginEpoch1of2()
     }
 
     system.latestOperatorNonce = 0;
-    // proposal and ballot are replaced by SC
-    // TODO: remove completely for epoch 124    /*
-    bs->SetMem(system.proposals, sizeof(system.proposals), 0);
-    bs->SetMem(system.ballots, sizeof(system.ballots), 0);
-    
     system.numberOfSolutions = 0;
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
@@ -3560,6 +3509,7 @@ static bool saveAllNodeStates()
     nodeStateBuffer.initialRandomSeed = score->initialRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;
+    voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
@@ -3668,7 +3618,8 @@ static bool loadAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-    if (!loadComputer(directory))
+    const bool forceLoadContractFile = true;
+    if (!loadComputer(directory, forceLoadContractFile))
     {
         logToConsole(L"Failed to load computer");
         return false;
@@ -3695,6 +3646,7 @@ static bool loadAllNodeStates()
     initialRandomSeedFromPersistingState = nodeStateBuffer.initialRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
     loadMiningSeedFromFile = true;
+    voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4586,13 +4538,15 @@ static bool saveSpectrum(CHAR16* directory)
     return false;
 }
 
-
-static bool loadComputer(CHAR16* directory)
+// directory: source directory to load the file. Default: NULL - load from root dir /
+// forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
+static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
 {
     logToConsole(L"Loading contract files ...");
+    setText(message, L"Loaded SC: ");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
-        if (contractDescriptions[contractIndex].constructionEpoch == system.epoch)
+        if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
         {
             bs->SetMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
         }
@@ -4606,11 +4560,16 @@ static bool loadComputer(CHAR16* directory)
             if (loadedSize != contractDescriptions[contractIndex].stateSize)
             {
                 logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
-
                 return false;
+            }
+            else
+            {
+                appendText(message, CONTRACT_FILE_NAME);
+                appendText(message, L" ");
             }
         }
     }
+    logToConsole(message);
     return true;
 }
 
@@ -4945,10 +4904,7 @@ static bool initialize()
         }
     }
 
-    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
-    {
-        initializeContract(contractIndex, contractStates[contractIndex]);
-    }
+    initializeContracts();
 
     score->loadScoreCache(system.epoch);
 
@@ -5941,6 +5897,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (i != nSolutionProcessorIDs - 1) appendText(message, L" | ");
             }
             logToConsole(message);
+
+            if (NUMBER_OF_SOLUTION_PROCESSORS * 2 > numberOfProcessors)
+            {
+                logToConsole(L"WARNING: NUMBER_OF_SOLUTION_PROCESSORS should not be greater than half of the total processor number!");
+            }
 
 
             // -----------------------------------------------------

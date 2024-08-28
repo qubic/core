@@ -41,6 +41,9 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -61,8 +64,12 @@
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="score_params.h" />
     <ClInclude Include="score_reference.h" />
   </ItemGroup>
   <ItemGroup>
