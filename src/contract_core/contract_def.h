@@ -187,7 +187,7 @@ constexpr struct ContractDescription
     {"MLM", 112, 10000, sizeof(IPO)},
     {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
-    {"QEARN", 123, 10000, sizeof(QEARN)},
+    {"QEARN", 999, 10000, sizeof(QEARN)},
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
