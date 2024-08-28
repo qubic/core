@@ -1461,7 +1461,13 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case RequestLog::type:
                 {
-                    processRequestLog(peer, header);
+                    logger.processRequestLog(peer, header);
+                }
+                break;
+
+                case RequestLogIdRangeFromTx::type:
+                {
+                    logger.processRequestTxLogInfo(peer, header);
                 }
                 break;
 
@@ -1607,7 +1613,7 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
         contractStateLock[0].releaseWrite();
 
         const Burning burning = { _currentContractId , amount };
-        logBurning(burning);
+        logger.logBurning(burning);
     }
 
     return remainingAmount;
@@ -1896,7 +1902,7 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
             __qpiAbort(ContractErrorTooManyActions);
 
         const QuTransfer quTransfer = { _currentContractId , destination , amount };
-        logQuTransfer(quTransfer);
+        logger.logQuTransfer(quTransfer);
     }
 
     return remainingAmount;
@@ -2141,7 +2147,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
         if (decreaseEnergy(spectrumIndex, amount))
         {
             const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
-            logQuTransfer(quTransfer);
+            logger.logQuTransfer(quTransfer);
 
             numberOfReleasedEntities = 0;
             contractStateLock[contractIndex].acquireWrite();
@@ -2211,7 +2217,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
         }
     }
@@ -2464,7 +2470,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
             {
                 moneyFlew = true;
                 const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
 
             if (isZero(transaction->destinationPublicKey))
@@ -2571,14 +2577,18 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
+        logger.reset(system.initialTick); // reset here to persist the data when we do seamless transition        
         if (!loadAllNodeStateFromFile) // only call initialize SC if it doesn't load node states from files
         {
+            logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
             contractProcessorPhase = INITIALIZE;
             contractProcessorState = 1;
             while (contractProcessorState)
             {
                 _mm_pause();
             }
+
+            logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
             contractProcessorPhase = BEGIN_EPOCH;
             contractProcessorState = 1;
             while (contractProcessorState)
@@ -2588,6 +2598,7 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
+    logger.registerNewTx(system.tick, logger.SC_BEGIN_TICK_TX);
     contractProcessorPhase = BEGIN_TICK;
     contractProcessorState = 1;
     while (contractProcessorState)
@@ -2665,6 +2676,7 @@ static void processTick(unsigned long long processorNumber)
                 if (tsCurrentTickTransactionOffsets[transactionIndex])
                 {
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
+                    logger.registerNewTx(transaction->tick, transactionIndex);
                     processTickTransaction(transaction, nextTickData.transactionDigests[transactionIndex], processorNumber);
                 }
                 else
@@ -2678,6 +2690,7 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
+    logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
     contractProcessorState = 1;
     while (contractProcessorState)
@@ -2957,10 +2970,6 @@ static void beginEpoch1of2()
     resourceTestingDigest = 0;
 
     numberOfTransactions = 0;
-
-#if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
-    CurrentTransferId = 0;
-#endif
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
 #endif
@@ -3010,6 +3019,7 @@ static bool saveRevenueScoreFile(CHAR16* directory = NULL)
 // called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
 {
+    logger.registerNewTx(system.tick, logger.SC_END_EPOCH_TX);
     contractProcessorPhase = END_EPOCH;
     contractProcessorState = 1;
     while (contractProcessorState)
@@ -3074,7 +3084,7 @@ static void endEpoch()
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
             contractStateLock[contractIndex].releaseRead();
 
@@ -3220,7 +3230,7 @@ static void endEpoch()
                     if (revenue)
                     {
                         const QuTransfer quTransfer = { _mm256_setzero_si256(), rdEntry.destinationPublicKey, donation };
-                        logQuTransfer(quTransfer);
+                        logger.logQuTransfer(quTransfer);
                     }
                 }
             }
@@ -3230,7 +3240,7 @@ static void endEpoch()
             if (revenue)
             {
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
         }
         emissionDist = nullptr; qpiContext.freeBuffer(); // Free buffer holding revenue donation table, because we don't need it anymore
@@ -3238,7 +3248,7 @@ static void endEpoch()
         // Generate arbitrator revenue
         increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
         const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
-        logQuTransfer(quTransfer);
+        logger.logQuTransfer(quTransfer);
     }
 
     // Reorganize spectrum hash map
@@ -4757,8 +4767,11 @@ static bool initialize()
             return false;
         }
 
-        if (!initLogging())
+        if (!logger.initLogging())
+        {
             return false;
+        }
+            
 
 #if ADDON_TX_STATUS_REQUEST
         if (!initTxStatusRequestAddOn())
@@ -5018,7 +5031,7 @@ static void deinitialize()
         bs->FreePool(reorgBuffer);
     }
 
-    deinitLogging();
+    logger.deinitLogging();
 
 #if ADDON_TX_STATUS_REQUEST
     deinitTxStatusRequestAddOn();
