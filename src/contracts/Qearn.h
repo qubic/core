@@ -119,7 +119,7 @@ private:
     struct UserInfo {
 
         uint64 _Locked_Amount;
-        uint16 _Locked_Epoch;
+        uint32 _Locked_Epoch;
         id ID;
 
     };
@@ -370,79 +370,79 @@ private:
 
         locals.RewardPercent = state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount * 10000000UL / state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount;
 
-        if(qpi.epoch() - input.Locked_Epoch >= 0 && qpi.epoch() - input.Locked_Epoch <= 4) 
+        if(qpi.epoch() - input.Locked_Epoch >= 0 && qpi.epoch() - input.Locked_Epoch - 1 <= 3) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_0_3 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_0_3 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 5 && qpi.epoch() - input.Locked_Epoch <= 8) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 4 && qpi.epoch() - input.Locked_Epoch - 1 <= 7) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_4_7 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_4_7 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 9 && qpi.epoch() - input.Locked_Epoch <= 12) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 8 && qpi.epoch() - input.Locked_Epoch - 1 <= 11) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_8_11 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_8_11 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 13 && qpi.epoch() - input.Locked_Epoch <= 16) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 12 && qpi.epoch() - input.Locked_Epoch - 1 <= 15) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_12_15 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_12_15 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 17 && qpi.epoch() - input.Locked_Epoch <= 20) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 16 && qpi.epoch() - input.Locked_Epoch - 1 <= 19) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_16_19 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_16_19 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 21 && qpi.epoch() - input.Locked_Epoch <= 24) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 20 && qpi.epoch() - input.Locked_Epoch - 1 <= 23) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_20_23 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_20_23 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 25 && qpi.epoch() - input.Locked_Epoch <= 28) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 24 && qpi.epoch() - input.Locked_Epoch - 1 <= 27) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_24_27 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_24_27 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 29 && qpi.epoch() - input.Locked_Epoch <= 32) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 28 && qpi.epoch() - input.Locked_Epoch - 1 <= 31) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_28_31 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_28_31 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 33 && qpi.epoch() - input.Locked_Epoch <= 36) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 32 && qpi.epoch() - input.Locked_Epoch - 1 <= 35) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_32_35 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_32_35 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 37 && qpi.epoch() - input.Locked_Epoch <= 40) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 36 && qpi.epoch() - input.Locked_Epoch - 1 <= 39) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_36_39 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_36_39 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 41 && qpi.epoch() - input.Locked_Epoch <= 44) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 40 && qpi.epoch() - input.Locked_Epoch - 1 <= 43) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_40_43 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_40_43 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 45 && qpi.epoch() - input.Locked_Epoch <= 48) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 44 && qpi.epoch() - input.Locked_Epoch - 1 <= 47) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_44_47 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_44_47 / 10000000UL;
         }
 
-        if(qpi.epoch() - input.Locked_Epoch >= 49 && qpi.epoch() - input.Locked_Epoch <= 52) 
+        if(qpi.epoch() - input.Locked_Epoch - 1 >= 48 && qpi.epoch() - input.Locked_Epoch - 1 <= 51) 
         {
             locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_48_51 / 10000000UL;
             locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_48_51 / 10000000UL;
