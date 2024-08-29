@@ -1337,6 +1337,27 @@ static void checkinTime(unsigned long long processorNumber)
     threadTimeCheckin[processorNumber].day = time.Day;
 }
 
+static void setNewMiningSeed()
+{
+    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+}
+
+static void checkAndSwitchMiningPhase()
+{
+    const unsigned int r = (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+    if (!r)
+    {
+        setNewMiningSeed();
+    }
+    else
+    {
+        if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
+        {
+            score->initMiningData(_mm256_setzero_si256());
+        }
+    }
+}
+
 static void requestProcessor(void* ProcedureArgument)
 {
     enableAVX();
@@ -4500,20 +4521,7 @@ static void tickProcessor(void*)
 
                                     system.tick++;
 
-                                    {
-                                        const unsigned int r = (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
-                                        if (!r)
-                                        {
-                                            score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
-                                        }
-                                        else
-                                        {
-                                            if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
-                                            {
-                                                score->initMiningData(_mm256_setzero_si256());
-                                            }
-                                        }
-                                    }
+                                    checkAndSwitchMiningPhase();
 
                                     if (epochTransitionState == 1)
                                     {
@@ -4551,7 +4559,7 @@ static void tickProcessor(void*)
                                         addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
 #endif
                                         beginEpoch();
-                                        score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+                                        setNewMiningSeed();
 #ifndef NDEBUG
                                         addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
                                         {
@@ -5061,7 +5069,7 @@ static bool initialize()
     }
     else
     {
-        score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+        setNewMiningSeed();
     }    
     score->loadScoreCache(system.epoch);
 
