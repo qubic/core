@@ -3039,6 +3039,7 @@ static void beginEpoch()
 
     score->initMemory();
     score->resetTaskQueue();
+    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     bs->SetMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
     bs->SetMem((void*)minerScores, sizeof(minerScores), 0);
@@ -5056,8 +5057,7 @@ static bool initialize()
         }
     }
 
-    initializeContracts();
-    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+    initializeContracts();    
     score->loadScoreCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
