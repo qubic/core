@@ -3039,7 +3039,6 @@ static void beginEpoch()
 
     score->initMemory();
     score->resetTaskQueue();
-    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     bs->SetMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
     bs->SetMem((void*)minerScores, sizeof(minerScores), 0);
@@ -3066,11 +3065,6 @@ static void beginEpoch()
     numberOfTransactions = 0;
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
-    if (loadMiningSeedFromFile)
-    {
-        score->initMiningData(initialRandomSeedFromPersistingState);
-        loadMiningSeedFromFile = false;;
-    }
 #endif
 }
 
@@ -4557,6 +4551,7 @@ static void tickProcessor(void*)
                                         addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
 #endif
                                         beginEpoch();
+                                        score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 #ifndef NDEBUG
                                         addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
                                         {
@@ -5057,7 +5052,17 @@ static bool initialize()
         }
     }
 
-    initializeContracts();    
+    initializeContracts();
+
+    if (loadMiningSeedFromFile)
+    {
+        score->initMiningData(initialRandomSeedFromPersistingState);
+        loadMiningSeedFromFile = false;;
+    }
+    else
+    {
+        score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+    }    
     score->loadScoreCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
