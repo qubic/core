@@ -34,6 +34,13 @@ constexpr unsigned long long BURN_PERCENT_40_43 = 30;
 constexpr unsigned long long BURN_PERCENT_44_47 = 30;
 constexpr unsigned long long BURN_PERCENT_48_51 = 25;
 
+constexpr signed int INVALID_INPUT_AMOUNT = -1;
+constexpr signed int LOCK_SUCCESS = 0;
+constexpr signed int INVALID_INPUT_LOCKED_EPOCH = 1;
+constexpr signed int INVALID_INPUT_UNLOCK_AMOUNT = 2;
+constexpr signed int EMPTY_LOCKED = 3;
+constexpr signed int UNLOCK_SUCCESS = 4;
+
 struct QEARN2
 {
 };
@@ -102,6 +109,7 @@ public:
     };
 
     struct Unlock_output {
+        sint32 returnCode;
     };
 
 private:
@@ -253,9 +261,9 @@ private:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(Lock)
     
-        if(qpi.invocationReward() < MINIMUM_LOCKING_AMOUNT) 
+        if(qpi.invocationReward() < MINIMUM_LOCKING_AMOUNT)
         {
-            output.returnCode = -1;
+            output.returnCode = INVALID_INPUT_AMOUNT;         // if the amount of locking is less than 10M, it should be failed to lock.
             return;
         }
 
@@ -265,7 +273,7 @@ private:
         {
 
             if(state.Locker.get(locals.t).ID == qpi.invocator() && state.Locker.get(locals.t)._Locked_Epoch == qpi.epoch()) 
-            {      // the case to be locked several times at one epoch
+            {      // the case to be locked several times at one epoch, at that time, this address already located in state.Locker array, the amount will be increased as current locking amount.
                 
                 locals.newLocker._Locked_Amount = state.Locker.get(locals.t)._Locked_Amount + qpi.invocationReward();
                 locals.newLocker._Locked_Epoch = qpi.epoch();
@@ -281,6 +289,7 @@ private:
                 locals.updatedRoundInfo._Epoch_Bonus_Amount = state._CurrentRoundInfo.get(qpi.epoch())._Epoch_Bonus_Amount;
                 state._CurrentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
                 
+                output.returnCode = LOCK_SUCCESS;          //  additional locking of this epoch is succeed
                 return ;
             }
 
@@ -321,6 +330,8 @@ private:
         locals.updatedRoundInfo._Total_Locked_Amount = state._CurrentRoundInfo.get(qpi.epoch())._Total_Locked_Amount + qpi.invocationReward();
         locals.updatedRoundInfo._Epoch_Bonus_Amount = state._CurrentRoundInfo.get(qpi.epoch())._Epoch_Bonus_Amount;
         state._CurrentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
+
+        output.returnCode = LOCK_SUCCESS;            //  new locking of this epoch is succeed
     _
 
     struct Unlock_locals {
@@ -341,7 +352,12 @@ private:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(Unlock)
 
-        if(input.Locked_Epoch > MAXIMUM_EPOCH) return ;
+        if(input.Locked_Epoch > MAXIMUM_EPOCH) {
+
+            output.returnCode = INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
+            return ;
+
+        }
 
         locals.indexOfinvocator = MAXIMUM_OF_USER;
 
@@ -350,7 +366,12 @@ private:
 
             if(state.Locker.get(locals.t).ID == qpi.invocator() && state.Locker.get(locals.t)._Locked_Epoch == input.Locked_Epoch) 
             { 
-                if(state.Locker.get(locals.t)._Locked_Amount < input.Amount) return ;   // the amount to be unlocked has been exceeded
+                if(state.Locker.get(locals.t)._Locked_Amount < input.Amount) {
+
+                    output.returnCode = INVALID_INPUT_UNLOCK_AMOUNT;  //  if the amount to be wanted to unlock is more than locked amount, it should be failed to unlock
+                    return ;  
+
+                }
                 else {
                     locals.indexOfinvocator = locals.t;
                     break;
@@ -359,7 +380,11 @@ private:
 
         }
 
-        if(locals.indexOfinvocator == MAXIMUM_OF_USER) return ;   // the case that invocator didn't lock at input.epoch
+        if(locals.indexOfinvocator == MAXIMUM_OF_USER) {
+            
+            output.returnCode = EMPTY_LOCKED;     //   if there is no any locked info in state.Locker array, it shows this address didn't lock at the epoch (input.Locked_Epoch)
+            return ;  
+        }
 
         /* the rest amount after unlocking should be more than MINIMUM_LOCKING_AMOUNT */
         if(state.Locker.get(locals.indexOfinvocator)._Locked_Amount - input.Amount < MINIMUM_LOCKING_AMOUNT) 
@@ -518,6 +543,7 @@ private:
             state._Locked_Last_Index -= locals.count_Of_last_vacancy;
         }
 
+        output.returnCode = UNLOCK_SUCCESS; //  unlock is succeed
     _
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
