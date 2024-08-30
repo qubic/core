@@ -2593,7 +2593,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     if (transaction->destinationPublicKey == arbitratorPublicKey)
                     {
                         if (!transaction->amount
-                            && transaction->inputSize == 32
+                            && transaction->inputSize == 64
                             && !transaction->inputType)
                         {
                             processTickTransactionSolution(transaction, processorNumber);
