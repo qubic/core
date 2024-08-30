@@ -393,84 +393,84 @@ private:
         }
         else locals.AmountOfUnlocking = input.Amount;
 
-        locals.RewardPercent = state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount * 10000000UL / state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount;
+        locals.RewardPercent = QPI::div(state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount * 10000000ULL, state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount);
 
         if(qpi.epoch() - input.Locked_Epoch >= 0 && qpi.epoch() - input.Locked_Epoch - 1 <= 3) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_0_3 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_0_3 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking, 100ULL) * EARLY_UNLOCKING_PERCENT_0_3, 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_0_3 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 4 && qpi.epoch() - input.Locked_Epoch - 1 <= 7) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_4_7 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_4_7 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_4_7 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_4_7 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 8 && qpi.epoch() - input.Locked_Epoch - 1 <= 11) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_8_11 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_8_11 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_8_11 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_8_11 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 12 && qpi.epoch() - input.Locked_Epoch - 1 <= 15) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_12_15 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_12_15 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_12_15 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_12_15 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 16 && qpi.epoch() - input.Locked_Epoch - 1 <= 19) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_16_19 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_16_19 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_16_19 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_16_19 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 20 && qpi.epoch() - input.Locked_Epoch - 1 <= 23) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_20_23 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_20_23 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_20_23 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_20_23 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 24 && qpi.epoch() - input.Locked_Epoch - 1 <= 27) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_24_27 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_24_27 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_24_27 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_24_27 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 28 && qpi.epoch() - input.Locked_Epoch - 1 <= 31) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_28_31 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_28_31 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_28_31 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_28_31 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 32 && qpi.epoch() - input.Locked_Epoch - 1 <= 35) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_32_35 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_32_35 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_32_35 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_32_35 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 36 && qpi.epoch() - input.Locked_Epoch - 1 <= 39) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_36_39 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_36_39 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_36_39 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_36_39 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 40 && qpi.epoch() - input.Locked_Epoch - 1 <= 43) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_40_43 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_40_43 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_40_43 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_40_43 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 44 && qpi.epoch() - input.Locked_Epoch - 1 <= 47) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_44_47 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_44_47 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_44_47 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_44_47 , 10000000ULL);
         }
 
         if(qpi.epoch() - input.Locked_Epoch - 1 >= 48 && qpi.epoch() - input.Locked_Epoch - 1 <= 51) 
         {
-            locals.AmountOfReward = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * EARLY_UNLOCKING_PERCENT_48_51 / 10000000UL;
-            locals.AmountOfburn = locals.RewardPercent * locals.AmountOfUnlocking / 100UL * BURN_PERCENT_48_51 / 10000000UL;
+            locals.AmountOfReward = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * EARLY_UNLOCKING_PERCENT_48_51 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL) * BURN_PERCENT_48_51 , 10000000ULL);
         }
 
         qpi.transfer(qpi.invocator(), locals.AmountOfUnlocking + locals.AmountOfReward);
@@ -625,7 +625,7 @@ private:
         
         if(state._CurrentRoundInfo.get(qpi.epoch() - 52)._Total_Locked_Amount > 0) 
         {
-            locals._reward_percent = state._CurrentRoundInfo.get(qpi.epoch() - 52)._Epoch_Bonus_Amount * 10000000UL / state._CurrentRoundInfo.get(qpi.epoch() - 52)._Total_Locked_Amount;
+            locals._reward_percent = QPI::div(state._CurrentRoundInfo.get(qpi.epoch() - 52)._Epoch_Bonus_Amount * 10000000ULL, state._CurrentRoundInfo.get(qpi.epoch() - 52)._Total_Locked_Amount);
         }
 
         for(locals._t = 0 ; locals._t < state._Locked_Last_Index; locals._t++) 
@@ -640,7 +640,7 @@ private:
                     
                 }
 
-                locals._reward_amount = state.Locker.get(locals._t)._Locked_Amount * locals._reward_percent / 10000000UL;
+                locals._reward_amount = QPI::div(state.Locker.get(locals._t)._Locked_Amount * locals._reward_percent, 10000000ULL);
                 qpi.transfer(state.Locker.get(locals._t).ID, locals._reward_amount + state.Locker.get(locals._t)._Locked_Amount);
 
                 if(state._Unlocked_cnt < MAXIMUM_UNLOCK_HISTORY) 
