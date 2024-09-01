@@ -190,6 +190,8 @@ static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
 static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 static unsigned long long solutionTotalExecutionTicks = 0;
+static unsigned long long K1TotalExecutionTicks = 0;
+static unsigned long long K12StartingExecutionTicks = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 
@@ -5899,8 +5901,19 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             // TODO: remove later
             unsigned long long debugDigestOriginal = 0, debugDigestCurrent = 0;
             unsigned int debugTick = 0;
+            K12StartingExecutionTicks = __rdtsc();
             KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
+            K1TotalExecutionTicks = __rdtsc() - K12StartingExecutionTicks;
 
+            setText(message, L"Execution time ");
+#if GENERIC_K12
+            appendText(message, L"for Generic K12 is ");
+#else
+            appendText(message, L"for AVX512 K12 is ");
+#endif //GENERIC_K12
+            appendNumber(message, K1TotalExecutionTicks, TRUE);
+            appendText(message, L" ticks.");
+            logToConsole(message);
 
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
