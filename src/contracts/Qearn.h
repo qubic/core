@@ -623,10 +623,7 @@ private:
         
         locals._burn_amount = state._CurrentRoundInfo.get(qpi.epoch() - 52)._Epoch_Bonus_Amount;
         
-        if(state._CurrentRoundInfo.get(qpi.epoch() - 52)._Total_Locked_Amount > 0) 
-        {
-            locals._reward_percent = QPI::div(state._CurrentRoundInfo.get(qpi.epoch() - 52)._Epoch_Bonus_Amount * 10000000ULL, state._CurrentRoundInfo.get(qpi.epoch() - 52)._Total_Locked_Amount);
-        }
+        locals._reward_percent = QPI::div(state._CurrentRoundInfo.get(qpi.epoch() - 52)._Epoch_Bonus_Amount * 10000000ULL, state._CurrentRoundInfo.get(qpi.epoch() - 52)._Total_Locked_Amount);
 
         for(locals._t = 0 ; locals._t < state._Locked_Last_Index; locals._t++) 
         {
