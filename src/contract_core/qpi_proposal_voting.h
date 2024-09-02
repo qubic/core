@@ -106,6 +106,16 @@ namespace QPI
 		id currentProposalProposers[maxProposals];
 	};
 
+	template <uint16 proposalSlotCount>
+	struct ProposalByAnyoneVotingByComputors : public ProposalAndVotingByComputors<proposalSlotCount>
+	{
+		// Check if proposer has right to propose (and is not NULL_ID)
+		bool isValidProposer(const QpiContextFunctionCall& qpi, const id& proposerId) const
+		{
+			return !isZero(proposerId);
+		}
+	};
+
 	template <unsigned int maxShareholders>
 	struct ProposalAndVotingByShareholders
 	{

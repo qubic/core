@@ -773,8 +773,13 @@ namespace QPI
 	struct ProposalWithAllVoteData;
 
 
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting and setting proposals for computors only.
 	template <uint16 proposalSlotCount = NUMBER_OF_COMPUTORS>
 	struct ProposalAndVotingByComputors;
+
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting for computors only and creating/chaning proposals for anyone.
+	template <uint16 proposalSlotCount>
+	struct ProposalByAnyoneVotingByComputors;
 
 	template <unsigned int maxShareholders>
 	struct ProposalAndVotingByShareholders;
