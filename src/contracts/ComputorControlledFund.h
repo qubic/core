@@ -12,9 +12,8 @@ struct CCF : public ContractBase
 	// Proposal data type. We don't support scalar votes, but multi-option voting.
 	typedef ProposalDataV1<false> ProposalDataT;
 
-	// Computors have right to propose and vote. There is one proposal slot per computor to make sure
-	// that a proposal can never be blocked by no free slots.
-	typedef ProposalAndVotingByComputors<NUMBER_OF_COMPUTORS> ProposersAndVotersT;
+	// Anyone can set a proposal, but only computors have right vote.
+	typedef ProposalByAnyoneVotingByComputors<100> ProposersAndVotersT;
 
 	// Proposal and voting storage type
 	typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
@@ -33,7 +32,7 @@ struct CCF : public ContractBase
 		bool success;
 	};
 
-	typedef array<LatestTransfersEntry, 16> LatestTransfersT;
+	typedef array<LatestTransfersEntry, 128> LatestTransfersT;
 
 private:
 	//----------------------------------------------------------------------------
@@ -42,6 +41,8 @@ private:
 
 	LatestTransfersT latestTransfers;
 	uint8 lastTransfersNextOverwriteIdx;
+
+	uint32 setProposalFee;
 
 	//----------------------------------------------------------------------------
 	// Define private procedures and functions with input and output
@@ -60,7 +61,25 @@ public:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetProposal)
-		// TODO: Fee? Burn fee?
+
+		if (qpi.invocationReward() < state.setProposalFee)
+		{
+			// Invocation reward not sufficient, undo payment and cancel
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.okay = false;
+			return;
+		}
+		else if (qpi.invocationReward() > state.setProposalFee)
+		{
+			// Invocation greater than fee, pay back difference
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.setProposalFee);
+		}
+
+		// Burn invocation reward
+		qpi.burn(qpi.invocationReward());
 
 		// Check requirements for proposals in this contract
 		if (ProposalTypes::cls(input.type) == ProposalTypes::Class::Variable)
@@ -69,8 +88,6 @@ public:
 			output.okay = false;
 			return;
 		}
-
-		// TODO: anything else to check, for example if there are enough qus in the balance for this funding?
 
 		// Try to set proposal (checks originators rights and general validity of input proposal)
 		output.okay = qpi(state.proposals).setProposal(qpi.originator(), input);
@@ -140,7 +157,14 @@ public:
 	typedef Success_output Vote_output;
 
 	PUBLIC_PROCEDURE(Vote)
-		// TODO: Fee? Burn fee?
+		// For voting, there is no fee
+		if (qpi.invocationReward() > 0)
+		{
+			// Pay back invocation reward
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+		
+		// Try to vote (checks right to vote and match with proposal)
 		output.okay = qpi(state.proposals).vote(qpi.originator(), input);
 	_
 
@@ -188,15 +212,32 @@ public:
 	_
 
 
+	typedef NoData GetProposalFee_input;
+	struct GetProposalFee_output
+	{
+		uint32 proposalFee; // Amount of qus
+	};
+
+	PUBLIC_FUNCTION(GetProposalFee)
+		output.proposalFee = state.setProposalFee;
+	_
+
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 		REGISTER_USER_FUNCTION(GetProposalIndices, 1);
 		REGISTER_USER_FUNCTION(GetProposal, 2);
 		REGISTER_USER_FUNCTION(GetVote, 3);
 		REGISTER_USER_FUNCTION(GetVotingResults, 4);
 		REGISTER_USER_FUNCTION(GetLatestTransfers, 5);
+		REGISTER_USER_FUNCTION(GetProposalFee, 6);
 
 		REGISTER_USER_PROCEDURE(SetProposal, 1);
 		REGISTER_USER_PROCEDURE(Vote, 2);
+	_
+
+
+	INITIALIZE
+		state.setProposalFee = 1000000;
 	_
 
 
