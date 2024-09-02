@@ -16,19 +16,18 @@ unsigned long long top_of_stack;
 
 template<
     unsigned int dataLength,
-    unsigned int numberOfInputNeurons,
-    unsigned int _numberOfOutputNeurons,
-    unsigned int maxInputDuration,
-    unsigned int _maxOutputDuration,
+    unsigned int numberOfHiddenNeurons,
+    unsigned int numberOfNeighborNeurons,
+    unsigned int maxDuration,
     unsigned int solutionBufferCount
 >
 struct ScoreFunction
 {
-    static constexpr const int inNeuronsCount = numberOfInputNeurons + dataLength;
-    static constexpr const unsigned long long allParamsCount = dataLength + numberOfInputNeurons + dataLength;
-    static constexpr unsigned long long synapseInputSize = inNeuronsCount * allParamsCount;
-    static constexpr unsigned long long priorSynapsesLength = allParamsCount > 3200 ? 3200 : allParamsCount / 2;
-    static constexpr unsigned long long priorSynapsesOffset = allParamsCount - priorSynapsesLength;
+    static constexpr const int inNeuronsCount = numberOfHiddenNeurons + dataLength;
+    static constexpr const unsigned long long allParamsCount = dataLength + numberOfHiddenNeurons + dataLength;
+    static constexpr unsigned long long synapseInputSize = inNeuronsCount * numberOfNeighborNeurons;
+    static constexpr unsigned long long priorSynapsesLength = 0;//numberOfNeighborNeurons > 3200 ? 3200 : numberOfNeighborNeurons / 2;
+    static constexpr unsigned long long priorSynapsesOffset = numberOfNeighborNeurons - priorSynapsesLength;
     static constexpr unsigned int numberOfCheckPoints = 2;
     /* 
     DURATION 65536 | MAX_NUM_MODS 48
@@ -39,12 +38,12 @@ struct ScoreFunction
     DURATION 1024  | MAX_NUM_MODS 26
     DURATION 512   | MAX_NUM_MODS 22
     */
-    static constexpr unsigned int maxNumMods = (maxInputDuration <= 512)  ? 22 : 
-                                               (maxInputDuration <= 1024  ? 26 : 
-                                               (maxInputDuration <= 2048  ? 30 : 
-                                               (maxInputDuration <= 4096  ? 34 :
-                                               (maxInputDuration <= 16384 ? 41 :
-                                               (maxInputDuration <= 32768 ? 44 : 
+    static constexpr unsigned int maxNumMods = (maxDuration <= 512)  ? 22 :
+                                               (maxDuration <= 1024  ? 26 :
+                                               (maxDuration <= 2048  ? 30 :
+                                               (maxDuration <= 4096  ? 34 :
+                                               (maxDuration <= 16384 ? 41 :
+                                               (maxDuration <= 32768 ? 44 :
                                                 48)))));
 
     long long miningData[dataLength];
@@ -156,15 +155,15 @@ struct ScoreFunction
     struct computeBuffer {
         // neuron only has values [-1, 0, 1]
         struct {
-            char inputAtTick[maxInputDuration + 1][dataLength + numberOfInputNeurons + dataLength];
+            char inputAtTick[maxDuration + 1][dataLength + numberOfHiddenNeurons + dataLength];
         } neurons;
         char* inputLength;
-        unsigned int* indicePos[inNeuronsCount];
-        int bucketPos[inNeuronsCount][129];
+        unsigned int* nnNeuronIndicePos[inNeuronsCount];
+        int synapseBucketPos[inNeuronsCount][129];
         bool isGeneratedBucketOffset[inNeuronsCount];
 
         static_assert((allParamsCount) % 8 == 0, "need to check this packed synapse");
-        static_assert(maxInputDuration <= 65536, "need to check this maxInputDuration and adjust maxNumMods");
+        static_assert(maxDuration <= 65536, "need to check this maxDuration and adjust maxNumMods");
 
         queueItem queue[allParamsCount * 2];
         bool isProcessing[allParamsCount * 2];
@@ -172,20 +171,22 @@ struct ScoreFunction
         unsigned int _maxIndexBuffer[allParamsCount * 2][maxNumMods];
         int buffer[256];
         K12EngineX1 k12;
-        synapseCheckpoint sckpInput[(numberOfInputNeurons + dataLength)][numberOfCheckPoints];
-        bool isGeneratedSynapseOffset[numberOfInputNeurons + dataLength];
-        bool isGeneratedSynapseFull[numberOfInputNeurons + dataLength];
+        synapseCheckpoint sckpInput[(numberOfHiddenNeurons + dataLength)][numberOfCheckPoints];
+        bool isGeneratedSynapseOffset[numberOfHiddenNeurons + dataLength];
+        bool isGeneratedSynapseFull[numberOfHiddenNeurons + dataLength];
     } *_computeBuffer = nullptr;
     unsigned int* _indiceBigBuffer = nullptr;
 
     // _totalModNum[i]: total of divisible numbers of i
-    unsigned char _totalModNum[maxInputDuration + 1];
+    unsigned char _totalModNum[maxDuration + 1];
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
-    unsigned char _modNum[maxInputDuration + 1][129];
+    unsigned char _modNum[maxDuration + 1][129];
 
     m256i initialRandomSeed;
 
     volatile char solutionEngineLock[solutionBufferCount];
+
+    unsigned int* _neuronNNIndices[inNeuronsCount];
 
 #if USE_SCORE_CACHE
     volatile char scoreCacheLock;
@@ -204,7 +205,7 @@ struct ScoreFunction
         setMem(_modNum, sizeof(_modNum), 0);
 
         // init the divisible table
-        for (int i = 1; i <= maxInputDuration; i++) {
+        for (int i = 1; i <= maxDuration; i++) {
             for (int j = 1; j <= 127; j++) { // exclude 128
                 if (j && i % j == 0) {
                     _modNum[i][_totalModNum[i]++] = j;
@@ -271,7 +272,7 @@ struct ScoreFunction
                 return false;
             }
 
-            if (!allocatePool(sizeof(unsigned int) * allParamsCount * inNeuronsCount * solutionBufferCount, (void**)&_indiceBigBuffer))
+            if (!allocatePool(sizeof(unsigned int) * numberOfNeighborNeurons * inNeuronsCount * solutionBufferCount, (void**)&_indiceBigBuffer))
             {
                 logToConsole(L"Failed to allocate memory for score indice pos!");
                 return false;
@@ -283,8 +284,8 @@ struct ScoreFunction
                 auto& cb = _computeBuffer[bufId];
                 for (int i = 0; i < inNeuronsCount; i++)
                 {
-                    cb.indicePos[i] = bigBuffer;
-                    bigBuffer += allParamsCount;
+                    cb.nnNeuronIndicePos[i] = bigBuffer;
+                    bigBuffer += numberOfNeighborNeurons;
                 }
             }
         }
@@ -294,8 +295,8 @@ struct ScoreFunction
             setMem(_synapses[i].inputLength, synapseInputSize, 0);
             setMem(&_computeBuffer[i].neurons, sizeof(_computeBuffer[i].neurons), 0);
 
-            setMem(_computeBuffer[i].indicePos[0], sizeof(unsigned int) * allParamsCount * inNeuronsCount, 0); // it's continuous memory region
-            setMem(_computeBuffer[i].bucketPos, sizeof(_computeBuffer[i].bucketPos), 0);
+            setMem(_computeBuffer[i].nnNeuronIndicePos[0], sizeof(unsigned int) * numberOfNeighborNeurons * inNeuronsCount, 0); // it's continuous memory region
+            setMem(_computeBuffer[i].synapseBucketPos, sizeof(_computeBuffer[i].synapseBucketPos), 0);
             setMem(_computeBuffer[i].isGeneratedBucketOffset, sizeof(_computeBuffer[i].isGeneratedBucketOffset), 0);
             setMem(_computeBuffer[i].queue, sizeof(_computeBuffer[i].queue), 0);
             setMem(_computeBuffer[i].isProcessing, sizeof(_computeBuffer[i].isProcessing), 0);
@@ -361,7 +362,7 @@ struct ScoreFunction
         }
     }
 
-    static inline void zeroOutSynapses(char* synapses, int idx) {
+    static inline void zeroOutSynapses2(char* synapses, int idx) {
         synapses[idx + dataLength] = 0;
     }
 
@@ -399,55 +400,64 @@ struct ScoreFunction
     {
         auto& synapses = _synapses[solutionBufIdx];
         cb.k12.initState(publicKey.m256i_u64, nonce.m256i_u64);
-        for (unsigned long long i = 0; i < numberOfInputNeurons; i++) {
-            // Checkpoint at the beginning of the synapse list
-            synapseCheckpoint* p_sckp[1] = { &cb.sckpInput[i][0] };
-            cb.k12.saveCheckpoint(p_sckp);
 
-            // Checkpoint at the tail offset of the synapse list
-            cb.k12.hashWithoutWrite(allParamsCount - priorSynapsesLength);
-            synapseCheckpoint* p_sckp1[1] = { &cb.sckpInput[i][1] };
-            cb.k12.saveCheckpoint(p_sckp1);
-
-            // State move to the checkpoint 1
-            // Hash to the end of the synapse of current neuron
-            cb.k12.hashWithoutWrite(priorSynapsesLength);
-
-            cb.isGeneratedSynapseFull[i] = false;
-            cb.isGeneratedSynapseOffset[i] = false;
-
-        };
-        cb.k12.scatterFromVector();
-        for (unsigned long long i = numberOfInputNeurons; i < inNeuronsCount; i++) {
-            cb.k12.write((unsigned char*)(&synapses.inputLength[0] + i * allParamsCount), allParamsCount);
-            cb.isGeneratedSynapseFull[i] = true;
+        // Generate full synapses
+        if (priorSynapsesLength == 0)
+        {
+            for (unsigned long long i = 0; i < inNeuronsCount; i++) {
+                cb.k12.write((unsigned char*)(&synapses.inputLength[0] + i * numberOfNeighborNeurons), numberOfNeighborNeurons);
+                cb.isGeneratedSynapseFull[i] = true;
+            }
         }
-        for (unsigned long long i = numberOfInputNeurons; i < inNeuronsCount; i++) {
-            zeroOutSynapses(synapses.inputLength + i * allParamsCount, int(i));
+        else
+        {
+            for (unsigned long long i = 0; i < numberOfHiddenNeurons; i++) {
+                // Checkpoint at the beginning of the synapse list
+                synapseCheckpoint* p_sckp[1] = { &cb.sckpInput[i][0] };
+                cb.k12.saveCheckpoint(p_sckp);
+
+                // Checkpoint at the tail offset of the synapse list
+                cb.k12.hashWithoutWrite(numberOfNeighborNeurons - priorSynapsesLength);
+                synapseCheckpoint* p_sckp1[1] = { &cb.sckpInput[i][1] };
+                cb.k12.saveCheckpoint(p_sckp1);
+
+                // State move to the checkpoint 1
+                // Hash to the end of the synapse of current neuron
+                cb.k12.hashWithoutWrite(priorSynapsesLength);
+
+                cb.isGeneratedSynapseFull[i] = false;
+                cb.isGeneratedSynapseOffset[i] = false;
+
+            };
+            cb.k12.scatterFromVector();
+            for (unsigned long long i = numberOfHiddenNeurons; i < inNeuronsCount; i++) {
+                cb.k12.write((unsigned char*)(&synapses.inputLength[0] + i * numberOfNeighborNeurons), numberOfNeighborNeurons);
+                cb.isGeneratedSynapseFull[i] = true;
+            }
         }
     }
 
 
-    void cacheBucketIndices(const char* synapseLength, computeBuffer& cb, size_t nrIdx, size_t fromOffset, size_t toOffset) {
+    void cacheBucketIndices(const char* synapseLength, computeBuffer& cb, size_t nrIdx, size_t fromSynapseOffset, size_t toSynapseOffset) {
         int* buffer = cb.buffer;
-        synapseLength += nrIdx * allParamsCount;
-        for (size_t j = fromOffset; j <= toOffset; j++) {
+        synapseLength += nrIdx * numberOfNeighborNeurons;
+        for (size_t j = fromSynapseOffset; j <= toSynapseOffset; j++) {
             const char len = synapseLength[j];
             if (len == 0 || len == -128) continue;
-            cb.bucketPos[nrIdx][abs(len)]++;
+            cb.synapseBucketPos[nrIdx][abs(len)]++;
         }
 
         buffer[0] = 0;
         for (size_t j = 1; j <= 128; j++) {
-            buffer[j] = buffer[j - 1] + cb.bucketPos[nrIdx][j - 1];
+            buffer[j] = buffer[j - 1] + cb.synapseBucketPos[nrIdx][j - 1];
         }
-        copyMem(cb.bucketPos[nrIdx], buffer, 129 * sizeof(int));
+        copyMem(cb.synapseBucketPos[nrIdx], buffer, 129 * sizeof(int));
 
-        for (size_t j = fromOffset; j <= toOffset; j++) {
+        for (size_t j = fromSynapseOffset; j <= toSynapseOffset; j++) {
             const char len = synapseLength[j];
             if (len == 0 || len == -128) continue;
             unsigned int sign = (len > 0) ? 1 : 0;
-            cb.indicePos[nrIdx][buffer[abs(len)]++] = (unsigned int)(j << 1) | sign;
+            cb.nnNeuronIndicePos[nrIdx][buffer[abs(len)]++] = (unsigned int)(j << 1) | sign;
         }
     }
 
@@ -461,6 +471,7 @@ struct ScoreFunction
     }
 
     // Get the max of synapse index 
+    // TODO: with the neigbor that ro
     template <int neurBefore, bool isInput>
     char findTopFromBucket(computeBuffer& cb,
         const int tick,
@@ -486,7 +497,13 @@ struct ScoreFunction
             }
         }
         if (currentMax == -1) return NULL_INDEX;
-        char v = accessNeuron<neurBefore, isInput>(cb, tick, currentMax >> 1);
+        const unsigned int synapseIdx = currentMax >> 1;
+        unsigned int nnNeuronIdx = neuronIdx - neurBefore + 1 + synapseIdx;
+        if (nnNeuronIdx >= allParamsCount)
+        {
+            nnNeuronIdx -= allParamsCount;
+        }
+        char v = accessNeuron<neurBefore, isInput>(cb, tick, nnNeuronIdx);
         if (v) {
             if (v != NOT_CALCULATED) {
                 v *= (currentMax & 1) ? 1 : -1;
@@ -495,7 +512,7 @@ struct ScoreFunction
                 maxIndexBuffer[max_id]++;
             }
             else {
-                outIdx = currentMax >> 1;
+                outIdx = nnNeuronIdx;
             }
         }
         else {
@@ -516,15 +533,25 @@ struct ScoreFunction
         computeBuffer& cb,
         char* pNr,
         const char* sy,
-        const int outNrIdx) {
+        const int outNrIdx)
+    {
         char v = 0;
-        for (int i = 0; i < neurBefore; i++) {
-            unsigned long long idx = neuronIdx * allParamsCount + i;
-            const char s = sy[idx];
-            if (s == 1 || s == -1 && pNr[i])
+        for (int i = 0; i < numberOfNeighborNeurons; i++)
+        {
+            unsigned long long nnNeuronIdx = neuronIdx + 1 + i;
+            if (nnNeuronIdx >= allParamsCount)
             {
-                v += pNr[i] * s;
-                clampNeuron(v);
+                nnNeuronIdx -= allParamsCount;
+            }
+            if (nnNeuronIdx < neurBefore)
+            {
+                unsigned long long synapseIdx = neuronIdx * numberOfNeighborNeurons + i;
+                const char s = sy[synapseIdx];
+                if (s == 1 || s == -1 && pNr[nnNeuronIdx])
+                {
+                    v += pNr[nnNeuronIdx] * s;
+                    clampNeuron(v);
+                }
             }
         }
         pNr[outNrIdx] = v;
@@ -553,7 +580,7 @@ struct ScoreFunction
             unsigned int neuronIdx = queue[size - 1].neuronIdx;
             // Index of neuron in the synapse table
             const unsigned int idx = neuronIdx - neurBefore;
-            unsigned char* synapseOfNeuron = (unsigned char*)cb.inputLength + idx * (unsigned long long)allParamsCount;
+            unsigned char* synapseOfNeuron = (unsigned char*)cb.inputLength + idx * (unsigned long long)numberOfNeighborNeurons;
             auto& maxIndexBuffer = _maxIndexBuffer[size - 1];
             auto& sum0 = state[size - 1].sum0;
             auto& sum1 = state[size - 1].sum1;
@@ -570,48 +597,6 @@ struct ScoreFunction
                 nSum = 0;
                 currentTopMaxCount = 0;
                 isProcessing[size - 1] = true;
-                priorCompute = true;
-                if (tick == 1)
-                {
-                    priorCompute = false;
-                }
-            }
-
-            // Check if full synapse of this neuron is not generated.
-            if (!cb.isGeneratedSynapseFull[idx])
-            {
-                if (priorCompute && !cb.isGeneratedSynapseOffset[idx])
-                {
-                    continueGeneratingSynapseFromCkp(cb.sckpInput[idx][1], synapseOfNeuron + priorSynapsesOffset, priorSynapsesLength);
-                    cb.isGeneratedSynapseOffset[idx] = true;
-                }
-                else // worst case, all synapse need to be recomputed from the first check point
-                {
-                    if (!cb.isGeneratedSynapseOffset[idx])
-                    {
-                        continueGeneratingSynapseFromCkp(cb.sckpInput[idx][0], synapseOfNeuron, allParamsCount);
-                    }
-                    else
-                    {
-                        continueGeneratingSynapseFromCkp(cb.sckpInput[idx][0], synapseOfNeuron, allParamsCount - priorSynapsesLength);
-                    }
-                    cb.isGeneratedSynapseFull[idx] = true;
-                }
-                zeroOutSynapses((char*)synapseOfNeuron, idx);
-            }
-            if (priorCompute)
-            {
-                if (!cb.isGeneratedBucketOffset[idx])
-                {
-                    setMem(cb.bucketPos[idx], sizeof(cb.bucketPos[idx]), 0);
-                    cacheBucketIndices(cb.inputLength, cb, idx, priorSynapsesOffset, allParamsCount - 1);
-                    cb.isGeneratedBucketOffset[idx] = true;
-                }
-            }
-            else
-            {
-                setMem(cb.bucketPos[idx], sizeof(cb.bucketPos[idx]), 0);
-                cacheBucketIndices(cb.inputLength, cb, idx, 0, allParamsCount - 1);
             }
 
             if (tick == 1)
@@ -632,8 +617,8 @@ struct ScoreFunction
                     int prev = currentTopMaxCount;
                     unsigned int foundPos = -1;
                     char res = findTopFromBucket<neurBefore, isInput>(cb, tick, neuronIdx,
-                        cb.indicePos[idx],
-                        cb.bucketPos[idx],
+                        cb.nnNeuronIndicePos[idx],
+                        cb.synapseBucketPos[idx],
                         modList,
                         foundPos,
                         numMods,
@@ -743,11 +728,22 @@ struct ScoreFunction
         generateSynapse(cb, solutionBufIdx, publicKey, nonce);
         cb.inputLength = synapses.inputLength;
 
-        setMem(cb.bucketPos, sizeof(cb.bucketPos), 0);
+        setMem(cb.synapseBucketPos, sizeof(cb.synapseBucketPos), 0);
         setMem(cb.isGeneratedBucketOffset, sizeof(cb.isGeneratedBucketOffset), 0);
 
         // ComputeInput
         {
+            if (priorSynapsesLength == 0)
+            {
+                for (unsigned long long idx = 0; idx < inNeuronsCount; idx++)
+                {
+                    setMem(cb.synapseBucketPos[idx], sizeof(cb.synapseBucketPos[idx]), 0);
+                    cacheBucketIndices(cb.inputLength, cb, idx, 0, numberOfNeighborNeurons - 1);
+                    cb.isGeneratedBucketOffset[idx] = false;
+                    cb.isGeneratedSynapseFull[idx] = true;
+                }
+            }
+
             setMem(cb.neurons.inputAtTick, sizeof(cb.neurons.inputAtTick), NOT_CALCULATED);
             for (int i = 0; i < dataLength; i++) {
                 cb.neurons.inputAtTick[0][i] = (char)miningData[i];
@@ -755,7 +751,7 @@ struct ScoreFunction
             }
 
             setMem(cb.neurons.inputAtTick[0] + dataLength, inNeuronsCount * sizeof(cb.neurons.inputAtTick[0][0]), 0);
-            for (unsigned int inputNeuronIndex = numberOfInputNeurons; inputNeuronIndex < numberOfInputNeurons + dataLength; inputNeuronIndex++) {
+            for (unsigned int inputNeuronIndex = numberOfHiddenNeurons; inputNeuronIndex < numberOfHiddenNeurons + dataLength; inputNeuronIndex++) {
                 fullComputeNeuron<dataLength>(1,
                     inputNeuronIndex,
                     cb,
@@ -763,9 +759,9 @@ struct ScoreFunction
                     synapses.inputLength,
                     dataLength + inputNeuronIndex);
             }
-            for (int tick = 2; tick <= maxInputDuration; tick++)
+            for (int tick = 2; tick <= maxDuration; tick++)
             {
-                for (unsigned int inputNeuronIndex = numberOfInputNeurons; inputNeuronIndex < numberOfInputNeurons + dataLength; inputNeuronIndex++) {
+                for (unsigned int inputNeuronIndex = numberOfHiddenNeurons; inputNeuronIndex < numberOfHiddenNeurons + dataLength; inputNeuronIndex++) {
                     cb.neurons.inputAtTick[tick][dataLength + inputNeuronIndex] = solveNeuron<dataLength, true>(cb, tick, dataLength + inputNeuronIndex);
                 }
             }
@@ -773,7 +769,7 @@ struct ScoreFunction
 
         score = 0;
         for (unsigned int i = 0; i < dataLength; i++) {
-            if (miningData[i] == cb.neurons.inputAtTick[maxInputDuration][dataLength + numberOfInputNeurons + i]) {
+            if (miningData[i] == cb.neurons.inputAtTick[maxDuration][dataLength + numberOfHiddenNeurons + i]) {
                 score++;
             }
         }
