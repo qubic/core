@@ -54,13 +54,8 @@ public:
 
 	typedef ProposalDataT SetProposal_input;
 	typedef Success_output SetProposal_output;
-	struct SetProposal_locals
-	{
-		uint32 i;
-		sint64 millionthAmount;
-	};
 
-	PUBLIC_PROCEDURE_WITH_LOCALS(SetProposal)
+	PUBLIC_PROCEDURE(SetProposal)
 
 		if (qpi.invocationReward() < state.setProposalFee)
 		{
