@@ -338,16 +338,19 @@ public:
         {
             unsigned long long offsetTick = currentTick - tickBegin;
             ASSERT(offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH);
-            auto& txInfo = mapTxToLogId[offsetTick * LOG_TX_PER_TICK + currentTxId];
-            if (txInfo.startIndex == -1)
+            if (offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH)
             {
-                txInfo.startIndex = logId;
-                txInfo.length = 1;
-            }
-            else
-            {
-                ASSERT(txInfo.startIndex != -1);
-                txInfo.length++;
+                auto& txInfo = mapTxToLogId[offsetTick * LOG_TX_PER_TICK + currentTxId];
+                if (txInfo.startIndex == -1)
+                {
+                    txInfo.startIndex = logId;
+                    txInfo.length = 1;
+                }
+                else
+                {
+                    ASSERT(txInfo.startIndex != -1);
+                    txInfo.length++;
+                }                
             }
         }
     } tx;

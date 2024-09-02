@@ -2325,7 +2325,7 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
     ASSERT(transaction->destinationPublicKey == arbitratorPublicKey);
-    ASSERT(!transaction->amount && transaction->inputSize == 32 && !transaction->inputType);
+    ASSERT(!transaction->amount && transaction->inputSize == 64 && !transaction->inputType);
 
     const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
     const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
@@ -3818,6 +3818,10 @@ static bool loadAllNodeStates()
     }
 #endif
 
+#if ENABLED_LOGGING
+    logToConsole(L"Initializing logger");
+    logger.reset(system.initialTick); // initialize the logger
+#endif
     return true;
 }
 
