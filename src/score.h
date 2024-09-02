@@ -182,7 +182,7 @@ struct ScoreFunction
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
     unsigned char _modNum[maxDuration + 1][129];
 
-    m256i initialRandomSeed;
+    m256i currentRandomSeed;
 
     volatile char solutionEngineLock[solutionBufferCount];
 
@@ -195,20 +195,26 @@ struct ScoreFunction
 
     void initMiningData(m256i randomSeed)
     {
-        initialRandomSeed = randomSeed; // persist the initial random seed to be able to sned it back on system info response
-        random((unsigned char*)&randomSeed, (unsigned char*)&randomSeed, (unsigned char*)miningData, sizeof(miningData));
-        for (unsigned int i = 0; i < dataLength; i++)
+        currentRandomSeed = randomSeed; // persist the initial random seed to be able to send it back on system info response
+        if (!isZero(currentRandomSeed))
         {
-            miningData[i] = (miningData[i] >= 0 ? 1 : -1);
-        }
-        setMem(_totalModNum, sizeof(_totalModNum), 0);
-        setMem(_modNum, sizeof(_modNum), 0);
+            random((unsigned char*)&randomSeed, (unsigned char*)&randomSeed, (unsigned char*)miningData, sizeof(miningData));
+            for (unsigned int i = 0; i < dataLength; i++)
+            {
+                miningData[i] = (miningData[i] >= 0 ? 1 : -1);
+            }
+            setMem(_totalModNum, sizeof(_totalModNum), 0);
+            setMem(_modNum, sizeof(_modNum), 0);
 
-        // init the divisible table
-        for (int i = 1; i <= maxDuration; i++) {
-            for (int j = 1; j <= 127; j++) { // exclude 128
-                if (j && i % j == 0) {
-                    _modNum[i][_totalModNum[i]++] = j;
+            // init the divisible table
+            for (int i = 1; i <= maxDuration; i++) 
+            {
+                for (int j = 1; j <= 127; j++) // exclude 128
+                { 
+                    if (j && i % j == 0) 
+                    {
+                        _modNum[i][_totalModNum[i]++] = j;
+                    }
                 }
             }
         }
@@ -704,14 +710,26 @@ struct ScoreFunction
 
         return cb.neurons.inputAtTick[targetTick][targetNeuronIdx];
     }
-
-    // main score function
-    unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& nonce)
+    bool isValidScore(unsigned int solutionScore)
     {
+        return (solutionScore >=0 && solutionScore <= DATA_LENGTH);
+    }
+    bool isGoodScore(unsigned int solutionScore, int threshold)
+    {
+        return (threshold <= (DATA_LENGTH / 3)) && ((solutionScore >= (unsigned int)((DATA_LENGTH / 3) + threshold)) || (solutionScore <= (unsigned int)((DATA_LENGTH / 3) - threshold)));
+    }
+    // main score function
+    unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
+    {
+        if (isZero(miningSeed) || miningSeed != currentRandomSeed)
+        {
+            return DATA_LENGTH + 1; // return invalid score
+        }
+
         int score = 0;
 #if USE_SCORE_CACHE
-        unsigned int scoreCacheIndex = scoreCache.getCacheIndex(publicKey, nonce);
-        score = scoreCache.tryFetching(publicKey, nonce, scoreCacheIndex);
+        unsigned int scoreCacheIndex = scoreCache.getCacheIndex(publicKey, miningSeed, nonce);
+        score = scoreCache.tryFetching(publicKey, miningSeed, nonce, scoreCacheIndex);
         if (score >= scoreCache.MIN_VALID_SCORE)
         {
             return score;
@@ -776,7 +794,7 @@ struct ScoreFunction
 
         RELEASE(solutionEngineLock[solutionBufIdx]);
 #if USE_SCORE_CACHE
-        scoreCache.addEntry(publicKey, nonce, scoreCacheIndex, score);
+        scoreCache.addEntry(publicKey, miningSeed, nonce, scoreCacheIndex, score);
 #endif
 #ifdef NO_UEFI
         int y = 2 + score;
@@ -796,6 +814,7 @@ struct ScoreFunction
     volatile char taskQueueLock = 0;
     struct {
         m256i publicKey[NUMBER_OF_TRANSACTIONS_PER_TICK];
+        m256i miningSeed[NUMBER_OF_TRANSACTIONS_PER_TICK];
         m256i nonce[NUMBER_OF_TRANSACTIONS_PER_TICK];
     } taskQueue;
     unsigned int _nTask;
@@ -815,13 +834,14 @@ struct ScoreFunction
 
     // add task to the queue
     // queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
-    void addTask(m256i publicKey, m256i nonce)
+    void addTask(m256i publicKey, m256i miningSeed, m256i nonce)
     {
         ACQUIRE(taskQueueLock);
         if (_nTask < NUMBER_OF_TRANSACTIONS_PER_TICK)
         {
             unsigned int index = _nTask++;
             taskQueue.publicKey[index] = publicKey;
+            taskQueue.miningSeed[index] = miningSeed;
             taskQueue.nonce[index] = nonce;
         }
         RELEASE(taskQueueLock);
@@ -842,7 +862,7 @@ struct ScoreFunction
     }
 
     // get a task, can call on any thread
-    bool getTask(m256i* publicKey, m256i* nonce)
+    bool getTask(m256i* publicKey, m256i* miningSeed, m256i* nonce)
     {
         if (!_nIsTaskQueueReady)
         {
@@ -854,6 +874,7 @@ struct ScoreFunction
         {
             unsigned int index = _nProcessing++;
             *publicKey = taskQueue.publicKey[index];
+            *miningSeed = taskQueue.miningSeed[index];
             *nonce = taskQueue.nonce[index];
             result = true;
         }
@@ -879,11 +900,12 @@ struct ScoreFunction
     void tryProcessSolution(unsigned long long processorNumber)
     {
         m256i publicKey;
+        m256i miningSeed;
         m256i nonce;
-        bool res = this->getTask(&publicKey, &nonce);
+        bool res = this->getTask(&publicKey, &miningSeed, &nonce);
         if (res)
         {
-            (*this)(processorNumber, publicKey, nonce);
+            (*this)(processorNumber, publicKey, miningSeed, nonce);
             this->finishTask();
         }
     }

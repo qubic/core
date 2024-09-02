@@ -58,7 +58,7 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
     int x = 0;
     top_of_stack = (unsigned long long)(&x);
     auto t0 = std::chrono::high_resolution_clock::now();
-    unsigned int score_value = (*pScore)(0, publicKey, nonce);
+    unsigned int score_value = (*pScore)(0, publicKey, miningSeed, nonce);
     auto t1 = std::chrono::high_resolution_clock::now();
     auto d = t1 - t0;
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
