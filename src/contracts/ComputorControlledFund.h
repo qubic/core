@@ -9,8 +9,9 @@ struct CCF : public ContractBase
 	//----------------------------------------------------------------------------
 	// Define common types
 
-	// Proposal data type. We don't support scalar votes, but multi-option voting.
-	typedef ProposalDataV1<false> ProposalDataT;
+	// Proposal data type. We only support yes/no voting. Complex projects should be broken down into milestones
+	// and apply for funding multiple times.
+	typedef ProposalDataYesNo ProposalDataT;
 
 	// Anyone can set a proposal, but only computors have right vote.
 	typedef ProposalByAnyoneVotingByComputors<100> ProposersAndVotersT;
@@ -77,9 +78,9 @@ public:
 		qpi.burn(qpi.invocationReward());
 
 		// Check requirements for proposals in this contract
-		if (ProposalTypes::cls(input.type) == ProposalTypes::Class::Variable)
+		if (ProposalTypes::cls(input.type) != ProposalTypes::Class::Transfer)
 		{
-			// Proposals for setting a variable are not allowed at the moment (lack of meaning)
+			// Only transfer proposals are allowed
 			output.okay = false;
 			return;
 		}
@@ -241,10 +242,6 @@ public:
 		sint32 proposalIndex;
 		ProposalDataT proposal;
 		ProposalSummarizedVotingDataV1 results;
-		sint32 optionIndex;
-		uint32 optionVotes;
-		sint32 mostVotedOptionIndex;
-		uint32 mostVotedOptionVotes;
 		LatestTransfersEntry transfer;
 	};
 
@@ -269,29 +266,16 @@ public:
 				if (locals.results.totalVotes < QUORUM)
 					continue;
 
-				// TODO: apply rule proposed by CFB?
-				// https://discord.com/channels/768887649540243497/768890555564163092/1272616099728461916
-				// Also apply to GQMPROP?
-
-				// Find most voted "transfer" option (option 0 is "no transfer")
-				locals.mostVotedOptionIndex = 0;
-				locals.mostVotedOptionVotes = 0;
-				for (locals.optionIndex = 1; locals.optionIndex < locals.results.optionCount; ++locals.optionIndex)
-				{
-					locals.optionVotes = locals.results.optionVoteCount.get(locals.optionIndex);
-					if (locals.mostVotedOptionVotes < locals.optionVotes)
-					{
-						locals.mostVotedOptionVotes = locals.optionVotes;
-						locals.mostVotedOptionIndex = locals.optionIndex;
-					}
-				}
-
+				// The transfer option (1) must have more votes than the no-transfer option (0)
+				if (locals.results.optionVoteCount.get(1) < locals.results.optionVoteCount.get(0))
+					continue;
+				
 				// Option for transfer has been accepted?
-				if (locals.mostVotedOptionVotes > QUORUM / 2)
+				if (locals.results.optionVoteCount.get(1) > QUORUM / 2)
 				{
 					// Prepare log entry and do transfer
 					locals.transfer.destination = locals.proposal.transfer.destination;
-					locals.transfer.amount = locals.proposal.transfer.amounts.get(locals.mostVotedOptionIndex - 1);
+					locals.transfer.amount = locals.proposal.transfer.amount;
 					locals.transfer.tick = qpi.tick();
 					copyMemory(locals.transfer.url, locals.proposal.url);
 					locals.transfer.success = (qpi.transfer(locals.transfer.destination, locals.transfer.amount) >= 0);
