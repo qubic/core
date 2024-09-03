@@ -4637,7 +4637,7 @@ static bool initialize()
 {
     enableAVX();
 
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
     initAVX512KangarooTwelveConstants();
     initAVX512FourQConstants();
 #endif
@@ -5593,6 +5593,7 @@ static void processKeyPresses()
 #endif
             appendNumber(message, K12MeasurementsSum/ K12GlobalIndex, TRUE);
             appendText(message, L" ticks.");
+            logToConsole(message);
         }
         break;
 
