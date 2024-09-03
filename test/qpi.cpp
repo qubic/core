@@ -338,15 +338,24 @@ void testProposalWithAllVoteDataOptionVotes(
     EXPECT_FALSE(pwav.setVoteValue(0, 123456));
 
     // set and check valid vote range
-    for (QPI::uint32 i = 0; i < numOptions; ++i)
+    for (QPI::uint32 j = 0; j < numOptions; ++j)
     {
-        EXPECT_TRUE(pwav.setVoteValue(i % numVoters, i));
-        EXPECT_EQ(pwav.getVoteValue(i % numVoters), i);
+        for (QPI::uint32 i = 0; i < numVoters; ++i)
+            EXPECT_TRUE(pwav.setVoteValue(i, (j + i) % numOptions));
+        for (QPI::uint32 i = 0; i < numVoters; ++i)
+            EXPECT_EQ(pwav.getVoteValue(i), (j + i) % numOptions);
+
+        for (QPI::uint32 i = 0; i < numVoters; ++i)
+            EXPECT_TRUE(pwav.setVoteValue(i, (j + numVoters - i) % numOptions));
+        for (QPI::uint32 i = 0; i < numVoters; ++i)
+            EXPECT_EQ(pwav.getVoteValue(i), (j + numVoters - i) % numOptions);
     }
 
     // clear vote
-    EXPECT_TRUE(pwav.setVoteValue(0, QPI::NO_VOTE_VALUE));
-    EXPECT_EQ(pwav.getVoteValue(0), QPI::NO_VOTE_VALUE);
+    for (QPI::uint32 i = 0; i < numVoters; ++i)
+        EXPECT_TRUE(pwav.setVoteValue(i, QPI::NO_VOTE_VALUE));
+    for (QPI::uint32 i = 0; i < numVoters; ++i)
+        EXPECT_EQ(pwav.getVoteValue(i), QPI::NO_VOTE_VALUE);
 }
 
 // Test internal class ProposalWithAllVoteData that stores valid proposals along with its votes
@@ -354,7 +363,7 @@ template <bool supportScalarVotes>
 void testProposalWithAllVoteData()
 {
     typedef QPI::ProposalDataV1<supportScalarVotes> ProposalT;
-    QPI::ProposalWithAllVoteData<ProposalT, 2> pwav;
+    QPI::ProposalWithAllVoteData<ProposalT, 42> pwav;
     ProposalT proposal;
 
     // YesNo proposal
@@ -449,6 +458,68 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataWithoutScalarVoteSupport)
     testProposalWithAllVoteData<false>();
 }
 
+TEST(TestCoreQPI, ProposalWithAllVoteDataYesNoProposals)
+{
+    typedef QPI::ProposalDataYesNo ProposalT;
+    QPI::ProposalWithAllVoteData<ProposalT, 42> pwav;
+    ProposalT proposal;
+
+    // YesNo proposal
+    proposal.type = QPI::ProposalTypes::YesNo;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
+
+    // ThreeOption proposal (accepted for general proposal only, because it does not cost anything)
+    proposal.type = QPI::ProposalTypes::ThreeOptions;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 3);
+
+    // Proposal with 4 options
+    proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::GeneralOptions, 4);
+    EXPECT_FALSE(proposal.checkValidity());
+
+    // Proposal with 8 options
+    proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::GeneralOptions, 8);
+    EXPECT_FALSE(proposal.checkValidity());
+
+    // TransferYesNo proposal
+    proposal.type = QPI::ProposalTypes::TransferYesNo;
+    proposal.transfer.destination = QPI::id(1, 2, 3, 4);
+    proposal.transfer.amount = 1234;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
+
+    // TransferTwoAmounts
+    proposal.type = QPI::ProposalTypes::TransferTwoAmounts;
+    EXPECT_FALSE(proposal.checkValidity());
+
+    // TransferThreeAmounts
+    proposal.type = QPI::ProposalTypes::TransferThreeAmounts;
+    EXPECT_FALSE(proposal.checkValidity());
+
+    // VariableYesNo proposal
+    proposal.type = QPI::ProposalTypes::VariableYesNo;
+    proposal.variableOptions.variable = 42;
+    proposal.variableOptions.value = 987;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
+
+    // VariableTwoValues proposal
+    proposal.type = QPI::ProposalTypes::VariableTwoValues;
+    EXPECT_FALSE(proposal.checkValidity());
+
+    // VariableThreeValues proposal
+    proposal.type = QPI::ProposalTypes::VariableThreeValues;
+    EXPECT_FALSE(proposal.checkValidity());
+
+    // fail: test variable proposal with too many or too few options (0 options means scalar)
+    proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::Variable, 1);
+    EXPECT_FALSE(QPI::ProposalTypes::isValid(proposal.type));
+    EXPECT_FALSE(proposal.checkValidity());
+    proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::Variable, 6);
+    EXPECT_FALSE(QPI::ProposalTypes::isValid(proposal.type));
+    EXPECT_FALSE(proposal.checkValidity());
+
+    // VariableScalarMean proposal
+    proposal.type = QPI::ProposalTypes::VariableScalarMean;
+    EXPECT_FALSE(proposal.checkValidity());
+}
 
 template <typename ProposalVotingType>
 void expectNoVotes(
