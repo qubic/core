@@ -190,8 +190,10 @@ static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
 static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 static unsigned long long solutionTotalExecutionTicks = 0;
-static unsigned long long K1TotalExecutionTicks = 0;
+static unsigned long long K12TotalExecutionTicks = 0;
 static unsigned long long K12StartingExecutionTicks = 0;
+int K12GlobalIndex = 0;
+static unsigned long long K12MeasurementsSum = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 
@@ -463,7 +465,15 @@ static void getComputerDigest(m256i& digest)
                 // digest.
                 // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
                 contractStateLock[digestIndex].acquireRead();
+
+                K12StartingExecutionTicks = __rdtsc();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
+                K12TotalExecutionTicks = __rdtsc() - K12StartingExecutionTicks;
+                if (K12GlobalIndex < 500)
+                {
+                    K12MeasurementsSum += K12TotalExecutionTicks;
+                    K12GlobalIndex++;
+                }
                 contractStateLock[digestIndex].releaseRead();
             }
         }
@@ -5573,6 +5583,16 @@ static void processKeyPresses()
             logToConsole(message);
 
             logHealthStatus();
+
+
+            setText(message, L"Average K12 duration for  ");
+#if defined (__AVX512F__) && !GENERIC_K12
+            appendText(message, L"AVX512 implementation is ");
+#else
+            appendText(message, L"Generic implementation is ");
+#endif
+            appendNumber(message, K12MeasurementsSum/ K12GlobalIndex, TRUE);
+            appendText(message, L" ticks.");
         }
         break;
 
@@ -5901,19 +5921,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             // TODO: remove later
             unsigned long long debugDigestOriginal = 0, debugDigestCurrent = 0;
             unsigned int debugTick = 0;
-            K12StartingExecutionTicks = __rdtsc();
-            KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
-            K1TotalExecutionTicks = __rdtsc() - K12StartingExecutionTicks;
 
-            setText(message, L"Execution time ");
-#if GENERIC_K12
-            appendText(message, L"for Generic K12 is ");
-#else
-            appendText(message, L"for AVX512 K12 is ");
-#endif //GENERIC_K12
-            appendNumber(message, K1TotalExecutionTicks, TRUE);
-            appendText(message, L" ticks.");
-            logToConsole(message);
+            KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
 
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
