@@ -40,11 +40,11 @@ public:
     }
 
     /// Get cache index based on hash function
-    unsigned int getCacheIndex(const m256i& publicKey, const m256i& nonce)
+    unsigned int getCacheIndex(const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {
-        m256i buffer[2] = { publicKey, nonce };
+        m256i buffer[3] = { publicKey, miningSeed, nonce };
         unsigned char digest[32];
-        KangarooTwelve64To32(buffer, digest);
+        KangarooTwelve(buffer, 96, digest, 32);
         unsigned int result = *((unsigned long long*)digest) % capacity();
 
         return result;
@@ -56,7 +56,7 @@ public:
 
     // Try to fetch data from cacheIndex, also checking a few following entries in case of collisions (may update cacheIndex),
     // increments counter of hits, misses, or collisions
-    int tryFetching(const m256i& publicKey, const m256i& nonce, unsigned int & cacheIndex)
+    int tryFetching(const m256i& publicKey, const m256i& miningSeed, const m256i& nonce, unsigned int & cacheIndex)
     {
         int retVal;
         unsigned int tryFetchIdx = cacheIndex % capacity();
@@ -72,8 +72,9 @@ public:
                 break;
             }
 
+            const m256i& cachedMiningSeed = cache[tryFetchIdx].miningSeed;
             const m256i& cachedNonce = cache[tryFetchIdx].nonce;
-            if (cachedPublicKey == publicKey && cachedNonce == nonce)
+            if (cachedPublicKey == publicKey && cachedMiningSeed == miningSeed && cachedNonce == nonce)
             {
                 // hit: data available in cache -> return score
                 hits++;
@@ -99,11 +100,12 @@ public:
     }
 
     /// Add entry to cache (may overwrite existing entry)
-    void addEntry(const m256i& publicKey, const m256i& nonce, unsigned int cacheIndex, int score)
+    void addEntry(const m256i& publicKey, const m256i& miningSeed, const m256i& nonce, unsigned int cacheIndex, int score)
     {
         cacheIndex %= capacity();
         ACQUIRE(lock);
         cache[cacheIndex].publicKey = publicKey;
+        cache[cacheIndex].miningSeed = miningSeed;
         cache[cacheIndex].nonce = nonce;
         cache[cacheIndex].score = score;
         RELEASE(lock);
@@ -182,6 +184,7 @@ private:
     struct CacheEntry
     {
         m256i publicKey;
+        m256i miningSeed;
         m256i nonce;
         int score;
     };
