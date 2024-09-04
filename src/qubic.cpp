@@ -2645,24 +2645,21 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick); // reset here to persist the data when we do seamless transition        
-        if (!loadAllNodeStateFromFile) // only call initialize SC if it doesn't load node states from files
+        logger.reset(system.initialTick); // reset here to persist the data when we do seamless transition
+        logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
+        contractProcessorPhase = INITIALIZE;
+        contractProcessorState = 1;
+        while (contractProcessorState)
         {
-            logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
-            contractProcessorPhase = INITIALIZE;
-            contractProcessorState = 1;
-            while (contractProcessorState)
-            {
-                _mm_pause();
-            }
+            _mm_pause();
+        }
 
-            logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
-            contractProcessorPhase = BEGIN_EPOCH;
-            contractProcessorState = 1;
-            while (contractProcessorState)
-            {
-                _mm_pause();
-            }
+        logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
+        contractProcessorPhase = BEGIN_EPOCH;
+        contractProcessorState = 1;
+        while (contractProcessorState)
+        {
+            _mm_pause();
         }
     }
 
