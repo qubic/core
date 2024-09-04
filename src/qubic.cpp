@@ -3838,6 +3838,7 @@ static void tickProcessor(void*)
     }
 #endif
 
+    loadAllNodeStateFromFile = false;
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
