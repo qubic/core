@@ -159,9 +159,11 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
             {
                 if ((newNumberOfEntities += entityCategoryPopulations[categoryIndex]) >= SPECTRUM_CAPACITY / 2)
                 {
+                    const unsigned long long balanceThreshold = (1llu << (categoryIndex + 1)) - 1;
                     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                     {
-                        if (__lzcnt64((unsigned long long)(spectrum[i].incomingAmount - spectrum[i].outgoingAmount)) > 63 - categoryIndex)
+                        const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+                        if (balance <= balanceThreshold && balance)
                         {
                             spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
                         }
