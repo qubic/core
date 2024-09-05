@@ -43,7 +43,7 @@ void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
 static void reorganizeSpectrum()
 {
     ::Entity* reorgSpectrum = (::Entity*)reorgBuffer;
-    bs->SetMem(reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity), 0);
+    setMem(reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity), 0);
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
         if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
@@ -53,7 +53,7 @@ static void reorganizeSpectrum()
         iteration:
             if (isZero(reorgSpectrum[index].publicKey))
             {
-                bs->CopyMem(&reorgSpectrum[index], &spectrum[i], sizeof(::Entity));
+                copyMem(&reorgSpectrum[index], &spectrum[i], sizeof(::Entity));
             }
             else
             {
@@ -63,7 +63,7 @@ static void reorganizeSpectrum()
             }
         }
     }
-    bs->CopyMem(spectrum, reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity));
+    copyMem(spectrum, reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity));
 
     unsigned int digestIndex;
     for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
@@ -225,10 +225,10 @@ static bool decreaseEnergy(const int index, long long amount)
 }
 
 
-static bool loadSpectrum(CHAR16* directory)
+static bool loadSpectrum(const CHAR16* fileName = SPECTRUM_FILE_NAME, const CHAR16* directory = nullptr)
 {
     logToConsole(L"Loading spectrum file ...");
-    long long loadedSize = load(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
+    long long loadedSize = load(fileName, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
     if (loadedSize != SPECTRUM_CAPACITY * sizeof(::Entity))
     {
         logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
@@ -238,14 +238,14 @@ static bool loadSpectrum(CHAR16* directory)
     return true;
 }
 
-static bool saveSpectrum(CHAR16* directory)
+static bool saveSpectrum(const CHAR16* fileName = SPECTRUM_FILE_NAME, const CHAR16* directory = nullptr)
 {
     logToConsole(L"Saving spectrum file...");
 
     const unsigned long long beginningTick = __rdtsc();
 
     ACQUIRE(spectrumLock);
-    long long savedSize = save(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
+    long long savedSize = save(fileName, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
     RELEASE(spectrumLock);
 
     if (savedSize == SPECTRUM_CAPACITY * sizeof(::Entity))

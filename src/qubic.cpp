@@ -219,10 +219,8 @@ struct
     unsigned int numberOfTransactions;
 } nodeStateBuffer;
 #endif
-static bool saveSpectrum(CHAR16* directory = NULL);
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
-static bool loadSpectrum(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
 
 BroadcastFutureTickData broadcastedFutureTickData;
