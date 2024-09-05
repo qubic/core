@@ -15,11 +15,30 @@
 
 static volatile char spectrumLock = 0;
 static ::Entity* spectrum = nullptr;
-static unsigned int numberOfEntities = 0;
+static struct SpectrumInfo {
+    unsigned int numberOfEntities = 0;
+    long long totalAmount = 0;
+} spectrumInfo;
 static unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
 static m256i* spectrumDigests = nullptr;
 constexpr unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
 
+
+// Update SpectrumInfo data (exensive, because it iterates the whole spectrum), acquire no lock
+void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
+{
+    si.numberOfEntities = 0;
+    si.totalAmount = 0;
+    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+    {
+        long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+        if (balance)
+        {
+            si.numberOfEntities++;
+            si.totalAmount += balance;
+        }
+    }
+}
 
 static void reorganizeSpectrum()
 {
@@ -64,14 +83,7 @@ static void reorganizeSpectrum()
         numberOfLeafs >>= 1;
     }
 
-    numberOfEntities = 0;
-    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-    {
-        if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
-        {
-            numberOfEntities++;
-        }
-    }
+    updateSpectrumInfo();
 }
 
 static int spectrumIndex(const m256i& publicKey)
@@ -122,7 +134,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
         ACQUIRE(spectrumLock);
 
-        if (numberOfEntities >= (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
+        if (spectrumInfo.numberOfEntities >= (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
         {
             setMem(entityCategoryPopulations, sizeof(entityCategoryPopulations), 0);
 
@@ -150,6 +162,10 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
                     reorganizeSpectrum();
 
+                    // Correct total amount (spectrum info has been recomputed after decreasing
+                    // but before increasing energy again)
+                    spectrumInfo.totalAmount += amount;
+
                     break;
                 }
             }
@@ -171,7 +187,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 spectrum[index].numberOfIncomingTransfers = 1;
                 spectrum[index].latestIncomingTransferTick = system.tick;
 
-                numberOfEntities++;
+                spectrumInfo.numberOfEntities++;
             }
             else
             {

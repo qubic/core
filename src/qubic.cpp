@@ -1099,7 +1099,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.initialMonth = system.initialMonth;
     respondedSystemInfo.initialYear = system.initialYear;
 
-    respondedSystemInfo.numberOfEntities = numberOfEntities;
+    respondedSystemInfo.numberOfEntities = spectrumInfo.numberOfEntities;
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
     respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
@@ -1570,6 +1570,8 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
 
         const Burning burning = { _currentContractId , amount };
         logger.logBurning(burning);
+
+        spectrumInfo.totalAmount -= amount;
     }
 
     return remainingAmount;
@@ -2896,6 +2898,16 @@ static void processTick(unsigned long long processorNumber)
             }
         }
     }
+
+#ifndef NDEBUG
+    // Check that continous updating of spectrum info is consistent with counting from scratch
+    SpectrumInfo si;
+    updateSpectrumInfo(si);
+    if (si.numberOfEntities != spectrumInfo.numberOfEntities || si.totalAmount != spectrumInfo.totalAmount)
+    {
+        addDebugMessage(L"BUG DETECTED: Spectrum info of continuous updating is inconsistent with counting from scratch!");
+    }
+#endif
 }
 
 static void beginEpoch()
@@ -3093,17 +3105,8 @@ static void endEpoch()
     system.initialYear = etalonTick.year;
 
 
-    // Calculate current supply
-    unsigned long long currentSupply = 0;
-    ACQUIRE(spectrumLock);
-    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-    {
-        currentSupply += spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-    }
-    RELEASE(spectrumLock);
-
     // Only issue qus if the max supply is not yet reached
-    if (currentSupply + ISSUANCE_RATE <= MAX_SUPPLY)
+    if (spectrumInfo.totalAmount + ISSUANCE_RATE <= MAX_SUPPLY)
     {
         // Compute revenue scores of computors
         unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
@@ -3241,7 +3244,7 @@ static void endEpoch()
         logger.logQuTransfer(quTransfer);
     }
 
-    // Reorganize spectrum hash map
+    // Reorganize spectrum hash map (also updates spectrumInfo)
     {
         ACQUIRE(spectrumLock);
 
@@ -4799,22 +4802,12 @@ static bool initialize()
                 logToConsole(message);
 
                 CHAR16 digestChars[60 + 1];
-                unsigned long long totalAmount = 0;
-
                 getIdentity((unsigned char*)&spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1], digestChars, true);
+                updateSpectrumInfo();
 
-                for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-                {
-                    if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
-                    {
-                        numberOfEntities++;
-                        totalAmount += spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-                    }
-                }
-
-                setNumber(message, totalAmount, TRUE);
+                setNumber(message, spectrumInfo.totalAmount, TRUE);
                 appendText(message, L" qus in ");
-                appendNumber(message, numberOfEntities, TRUE);
+                appendNumber(message, spectrumInfo.numberOfEntities, TRUE);
                 appendText(message, L" entities (digest = ");
                 appendText(message, digestChars);
                 appendText(message, L").");
@@ -5487,21 +5480,11 @@ static void processKeyPresses()
             logToConsole(message);
 
             CHAR16 digestChars[60 + 1];
-
             getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
-            unsigned int numberOfEntities = 0;
-            unsigned long long totalAmount = 0;
-            for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-            {
-                if (energy(i))
-                {
-                    numberOfEntities++;
-                    totalAmount += energy(i);
-                }
-            }
-            setNumber(message, totalAmount, TRUE);
+
+            setNumber(message, spectrumInfo.totalAmount, TRUE);
             appendText(message, L" qus in ");
-            appendNumber(message, numberOfEntities, TRUE);
+            appendNumber(message, spectrumInfo.numberOfEntities, TRUE);
             appendText(message, L" entities (digest = ");
             appendText(message, digestChars);
             appendText(message, L"); ");
