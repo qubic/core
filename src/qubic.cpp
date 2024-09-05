@@ -44,6 +44,8 @@
 
 #include "addons/tx_status_request.h"
 
+#include "oracles/oracle_machines.h"
+
 ////////// Qubic \\\\\\\\\\
 
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
@@ -2514,6 +2516,27 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     }
 }
 
+static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(transaction->tick == system.tick);
+
+    // TODO
+}
+
+static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTransactionPrefix* transaction)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(transaction->tick == system.tick);
+
+    // TODO
+}
 
 static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, unsigned long long processorNumber)
 {
@@ -2555,6 +2578,26 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                         {
                             voteCounter.addVotes(transaction->inputPtr(), computorIndex);
                         }
+                    }
+                }
+                break;
+
+                case OracleReplyCommitTransaction::transactionType():
+                {
+                    if (computorIndex(transaction->sourcePublicKey) >= 0
+                        && transaction->inputSize == sizeof(OracleReplyCommitTransaction))
+                    {
+                        processTickTransactionOracleReplyCommit((OracleReplyCommitTransaction*)transaction);
+                    }
+                }
+                break;
+
+                case OracleReplyRevealTransactionPrefix::transactionType():
+                {
+                    if (computorIndex(transaction->sourcePublicKey) >= 0
+                        && transaction->inputSize >= sizeof(OracleReplyRevealTransactionPrefix) + sizeof(OracleReplyRevealTransactionPostfix))
+                    {
+                        processTickTransactionOracleReplyReveal((OracleReplyRevealTransactionPrefix*)transaction);
                     }
                 }
                 break;
