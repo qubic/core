@@ -66,9 +66,9 @@ SpectrumInfo checkAndGetInfo()
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
         long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-        if (balance == 0)
+        if (!balance && isZero(spectrum[i].publicKey))
             continue;
-        EXPECT_GT(balance, 0);
+        EXPECT_GE(balance, 0);
         EXPECT_LE(spectrum[i].latestIncomingTransferTick, system.tick);
         EXPECT_LE(spectrum[i].latestOutgoingTransferTick, system.tick);
         si.totalAmount += balance;

@@ -16,8 +16,8 @@
 static volatile char spectrumLock = 0;
 static ::Entity* spectrum = nullptr;
 static struct SpectrumInfo {
-    unsigned int numberOfEntities = 0;
-    long long totalAmount = 0;
+    unsigned int numberOfEntities = 0;  // Number of entities in the spectrum hash map, may include entries with balance == 0
+    long long totalAmount = 0;          // Total amount of qubics in the spectrum
 } spectrumInfo;
 static unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
 static constexpr unsigned char entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
@@ -33,7 +33,7 @@ void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
         long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-        if (balance)
+        if (balance || !isZero(spectrum[i].publicKey))
         {
             si.numberOfEntities++;
             si.totalAmount += balance;
