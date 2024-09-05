@@ -11,6 +11,9 @@
 
 bool transfer(const m256i& src, const m256i& dst, long long amount)
 {
+    if (isZero(src) || isZero(dst))
+        return false;
+
     if (amount < 0 || amount > MAX_AMOUNT)
         return false;
     
@@ -18,9 +21,10 @@ bool transfer(const m256i& src, const m256i& dst, long long amount)
     if (index < 0)
         return false;
 
-    if (decreaseEnergy(index, amount))
-        increaseEnergy(dst, amount);
+    if (!decreaseEnergy(index, amount))
+        return false;
 
+    increaseEnergy(dst, amount);
     return true;
 }
 
@@ -78,7 +82,7 @@ SpectrumInfo checkAndGetInfo()
 
 void printEntityCategoryPopulations()
 {
-    std::cout << "entityCategoryPopulations:\n";
+    updateEntityCategoryPopulations();
     static constexpr int entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
     for (int i = 0; i < entityCategoryCount; ++i)
     {
@@ -94,8 +98,9 @@ void printEntityCategoryPopulations()
     }
 }
 
-void dust_attack(unsigned int transferAmount, unsigned int repetitions)
+void dust_attack(unsigned int transferMinAmount, unsigned int transferMaxAmount, unsigned int repetitions)
 {
+    std::cout << "------------------ Dust attack with transfers between " << transferMinAmount << " and " << transferMaxAmount << " qu ------------------\n";
     for (unsigned int rep = 0; rep < repetitions; ++rep)
     {
         m256i richId = getRichestEntity();
@@ -107,7 +112,12 @@ void dust_attack(unsigned int transferAmount, unsigned int repetitions)
         // Fill spectrum with dust attack (until next transfer should trigger anti-dust)
         while (spectrumInfo.numberOfEntities < (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
         {
-            transfer(richId, randomId, transferAmount);
+            unsigned int transferAmount = transferMinAmount;
+            if (transferMinAmount < transferMaxAmount)
+                transferAmount = (spectrumInfo.numberOfEntities % (transferMaxAmount - transferMinAmount)) + transferMinAmount;
+
+            if (!transfer(richId, randomId, transferAmount))
+                richId = getRichestEntity();
             randomId = m256i::randomValue();
         }
 
@@ -115,16 +125,21 @@ void dust_attack(unsigned int transferAmount, unsigned int repetitions)
         SpectrumInfo si1 = checkAndGetInfo();
 
         // Print distribution of entity balances
-        updateEntityCategoryPopulations();
+        std::cout << "entityCategoryPopulations before transfer with anti-dust:\n";
         printEntityCategoryPopulations();
 
         // Should trigger anti-dust
         auto t0 = std::chrono::high_resolution_clock::now();
-        transfer(richId, randomId, transferAmount);
+        ASSERT_TRUE(transfer(richId, randomId, transferMinAmount));
         auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - t0);
         std::cout << "Transfer with anti-dust took " << duration_ms << " ms: entities "
             << si1.numberOfEntities << " -> " << spectrumInfo.numberOfEntities << " (delta " << (long long)spectrumInfo.numberOfEntities - (long long)si1.numberOfEntities
             << ");  total amount " << si1.totalAmount << " -> " << spectrumInfo.totalAmount << " (delta " << (long long)spectrumInfo.totalAmount - (long long)si1.totalAmount << ")" << std::endl;
+        EXPECT_LE(spectrumInfo.numberOfEntities, (SPECTRUM_CAPACITY / 2));
+
+        // Print distribution of entity balances
+        std::cout << "entityCategoryPopulations after transfer with anti-dust:\n";
+        printEntityCategoryPopulations();
     }
 }
 
@@ -139,7 +154,7 @@ TEST(TestCoreSpectrum, AntiDustFile)
         system.tick = 15600000;
 
         SpectrumInfo si1 = checkAndGetInfo();
-        dust_attack(1, 3);
+        dust_attack(1, 10, 3);
     }
     else
     {
@@ -161,9 +176,33 @@ TEST(TestCoreSpectrum, AntiDustOneRichRandomDust)
     increaseEnergy(m256i::randomValue(), 1000000000000llu);
     updateSpectrumInfo();
 
-    dust_attack(1, 2);
-    dust_attack(100, 2);
-    dust_attack(10000, 2);
+    dust_attack(1, 1, 2);
+    dust_attack(100, 100, 2);
+    dust_attack(1, 10000, 2);
+
+    deinitSpectrum();
+    deinitCommonBuffers();
+}
+
+TEST(TestCoreSpectrum, AntiDustManyRichRandomDust)
+{
+    EXPECT_TRUE(initSpectrum());
+    EXPECT_TRUE(initCommonBuffers());
+
+    // Create spectrum with one rich ID
+    memset(spectrum, 0, spectrumSizeInBytes);
+    system.tick = 15600000;
+    for (int i = 0; i < 10000; i++)
+    {
+        increaseEnergy(m256i::randomValue(), i * 100000llu);
+    }
+    updateSpectrumInfo();
+    std::cout << "Entity balance distribution before dust attack:" << std::endl;
+    printEntityCategoryPopulations();
+
+    dust_attack(1, 1000, 2);
+    dust_attack(1, 50, 2);
+    dust_attack(1, 1, 2);
 
     deinitSpectrum();
     deinitCommonBuffers();
