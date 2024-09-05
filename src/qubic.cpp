@@ -37,6 +37,7 @@
 #include "system.h"
 
 #include "assets.h"
+#include "spectrum.h"
 #include "logging.h"
 
 #include "tick_storage.h"
@@ -57,7 +58,6 @@
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define PEER_REFRESHING_PERIOD 120000ULL
 #define PORT 21841
-#define SPECTRUM_CAPACITY (1ULL << SPECTRUM_DEPTH) // Must be 2^N
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 4 // Must be at least 3+: 1+ for tx propagration + 1 for tickData propagration + 1 for vote propagration
@@ -122,14 +122,8 @@ static TickData nextTickData;
 static m256i uniqueNextTickTransactionDigests[NUMBER_OF_COMPUTORS];
 static unsigned int uniqueNextTickTransactionDigestCounters[NUMBER_OF_COMPUTORS];
 
-static void* reorgBuffer = NULL; // Must be large enough to fit any contract!
-
 static unsigned long long resourceTestingDigest = 0;
 
-static volatile char spectrumLock = 0;
-static ::Entity* spectrum = NULL;
-static unsigned int numberOfEntities = 0;
-static unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
 static unsigned int numberOfTransactions = 0;
 static volatile char entityPendingTransactionsLock = 0;
 static unsigned char* entityPendingTransactions = NULL;
@@ -139,8 +133,6 @@ static volatile char computorPendingTransactionsLock = 0;
 static unsigned char* computorPendingTransactions = NULL;
 static unsigned char* computorPendingTransactionDigests = NULL;
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
-static m256i* spectrumDigests = NULL;
-const unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
 
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
@@ -335,192 +327,6 @@ static void logToConsole(const CHAR16* message)
 #endif
 }
 
-static void reorganizeSpectrum()
-{
-    ::Entity* reorgSpectrum = (::Entity*)reorgBuffer;
-    bs->SetMem(reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity), 0);
-    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-    {
-        if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
-        {
-            unsigned int index = spectrum[i].publicKey.m256i_u32[0] & (SPECTRUM_CAPACITY - 1);
-
-        iteration:
-            if (isZero(reorgSpectrum[index].publicKey))
-            {
-                bs->CopyMem(&reorgSpectrum[index], &spectrum[i], sizeof(::Entity));
-            }
-            else
-            {
-                index = (index + 1) & (SPECTRUM_CAPACITY - 1);
-
-                goto iteration;
-            }
-        }
-    }
-    bs->CopyMem(spectrum, reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity));
-
-    unsigned int digestIndex;
-    for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
-    {
-        KangarooTwelve64To32(&spectrum[digestIndex], &spectrumDigests[digestIndex]);
-    }
-    unsigned int previousLevelBeginning = 0;
-    unsigned int numberOfLeafs = SPECTRUM_CAPACITY;
-    while (numberOfLeafs > 1)
-    {
-        for (unsigned int i = 0; i < numberOfLeafs; i += 2)
-        {
-            KangarooTwelve64To32(&spectrumDigests[previousLevelBeginning + i], &spectrumDigests[digestIndex++]);
-        }
-
-        previousLevelBeginning += numberOfLeafs;
-        numberOfLeafs >>= 1;
-    }
-
-    numberOfEntities = 0;
-    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-    {
-        if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
-        {
-            numberOfEntities++;
-        }
-    }
-}
-
-static int spectrumIndex(const m256i& publicKey)
-{
-    if (isZero(publicKey))
-    {
-        return -1;
-    }
-
-    unsigned int index = publicKey.m256i_u32[0] & (SPECTRUM_CAPACITY - 1);
-
-    ACQUIRE(spectrumLock);
-
-iteration:
-    if (spectrum[index].publicKey == publicKey)
-    {
-        RELEASE(spectrumLock);
-
-        return index;
-    }
-    else
-    {
-        if (isZero(spectrum[index].publicKey))
-        {
-            RELEASE(spectrumLock);
-
-            return -1;
-        }
-        else
-        {
-            index = (index + 1) & (SPECTRUM_CAPACITY - 1);
-
-            goto iteration;
-        }
-    }
-}
-
-static long long energy(const int index)
-{
-    return spectrum[index].incomingAmount - spectrum[index].outgoingAmount;
-}
-
-static void increaseEnergy(const m256i& publicKey, long long amount)
-{
-    if (!isZero(publicKey) && amount >= 0)
-    {
-        unsigned int index = publicKey.m256i_u32[0] & (SPECTRUM_CAPACITY - 1);
-
-        ACQUIRE(spectrumLock);
-
-        if (numberOfEntities >= (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
-        {
-            setMem(entityCategoryPopulations, sizeof(entityCategoryPopulations), 0);
-
-            for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-            {
-                const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-                if (balance)
-                {
-                    entityCategoryPopulations[63 - __lzcnt64(balance)]++;
-                }
-            }
-
-            unsigned int newNumberOfEntities = 0;
-            for (unsigned int categoryIndex = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]); categoryIndex-- > 0; )
-            {
-                if ((newNumberOfEntities += entityCategoryPopulations[categoryIndex]) >= SPECTRUM_CAPACITY / 2)
-                {
-                    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-                    {
-                        if (__lzcnt64((unsigned long long)(spectrum[i].incomingAmount - spectrum[i].outgoingAmount)) > 63 - categoryIndex)
-                        {
-                            spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
-                        }
-                    }
-
-                    reorganizeSpectrum();
-
-                    break;
-                }
-            }
-        }
-
-    iteration:
-        if (spectrum[index].publicKey == publicKey)
-        {
-            spectrum[index].incomingAmount += amount;
-            spectrum[index].numberOfIncomingTransfers++;
-            spectrum[index].latestIncomingTransferTick = system.tick;
-        }
-        else
-        {
-            if (isZero(spectrum[index].publicKey))
-            {
-                spectrum[index].publicKey = publicKey;
-                spectrum[index].incomingAmount = amount;
-                spectrum[index].numberOfIncomingTransfers = 1;
-                spectrum[index].latestIncomingTransferTick = system.tick;
-
-                numberOfEntities++;
-            }
-            else
-            {
-                index = (index + 1) & (SPECTRUM_CAPACITY - 1);
-
-                goto iteration;
-            }
-        }
-
-        RELEASE(spectrumLock);
-    }
-}
-
-static bool decreaseEnergy(const int index, long long amount)
-{
-    if (amount >= 0)
-    {
-        ACQUIRE(spectrumLock);
-
-        if (energy(index) >= amount)
-        {
-            spectrum[index].outgoingAmount += amount;
-            spectrum[index].numberOfOutgoingTransfers++;
-            spectrum[index].latestOutgoingTransferTick = system.tick;
-
-            RELEASE(spectrumLock);
-
-            return true;
-        }
-
-        RELEASE(spectrumLock);
-    }
-
-    return false;
-}
 
 static int computorIndex(m256i computor)
 {
@@ -3444,7 +3250,7 @@ static void endEpoch()
         RELEASE(spectrumLock);
     }
 
-    assetsEndEpoch(reorgBuffer);
+    assetsEndEpoch();
 
     system.epoch++;
     system.initialTick = system.tick;
@@ -4688,41 +4494,6 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
     contractProcessorState = 0;
 }
 
-static bool loadSpectrum(CHAR16* directory)
-{
-    logToConsole(L"Loading spectrum file ...");
-    long long loadedSize = load(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
-    if (loadedSize != SPECTRUM_CAPACITY * sizeof(::Entity))
-    {
-        logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
-
-        return false;
-    }
-    return true;
-}
-
-static bool saveSpectrum(CHAR16* directory)
-{
-    logToConsole(L"Saving spectrum file...");
-
-    const unsigned long long beginningTick = __rdtsc();
-
-    ACQUIRE(spectrumLock);
-    long long savedSize = save(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
-    RELEASE(spectrumLock);
-
-    if (savedSize == SPECTRUM_CAPACITY * sizeof(::Entity))
-    {
-        setNumber(message, savedSize, TRUE);
-        appendText(message, L" bytes of the spectrum data are saved (");
-        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-        appendText(message, L" microseconds).");
-        logToConsole(message);
-        return true;
-    }
-    return false;
-}
-
 // directory: source directory to load the file. Default: NULL - load from root dir /
 // forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
 static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
@@ -4905,26 +4676,13 @@ static bool initialize()
 
             return false;
         }
-
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset), (void**)&reorgBuffer))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset));
-
-            return false;
-        }
-
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity), (void**)&spectrum))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * sizeof(::Entity));
-            return false;
-        }
-        else if (status = bs->AllocatePool(EfiRuntimeServicesData, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL, (void**)&spectrumDigests))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL);
-
-            return false;
-        }
         bs->SetMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
+
+        if (!initSpectrum())
+            return false;
+
+        if (!initCommonBuffers())
+            return false;
 
         if (!initAssets())
             return false;
@@ -5218,21 +4976,9 @@ static void deinitialize()
         root->Close(root);
     }
 
-    if (spectrumDigests)
-    {
-        bs->FreePool(spectrumDigests);
-    }
-    if (spectrum)
-    {
-        bs->FreePool(spectrum);
-    }
-
     deinitAssets();
-
-    if (reorgBuffer)
-    {
-        bs->FreePool(reorgBuffer);
-    }
+    deinitSpectrum();
+    deinitCommonBuffers();
 
     logger.deinitLogging();
 
