@@ -103,7 +103,10 @@ static m256i arbitratorPublicKey;
 BroadcastComputors broadcastedComputors;
 
 // data closely related to system
-static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
+static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS]; // scheduled tick to broadcast solution, -1 means already broadcasted, -2 means obsolete solution
+#define SOLUTION_RECORDED_FLAG -1
+#define SOLUTION_OBSOLETE_FLAG -2
+
 static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
 static unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, futureTickTotalNumberOfComputors = 0;
 static unsigned int nextTickTransactionsSemaphore = 0, numberOfNextTickTransactions = 0, numberOfKnownNextTickTransactions = 0;
@@ -131,7 +134,10 @@ static unsigned int numberOfTransactions = 0;
 static volatile char entityPendingTransactionsLock = 0;
 static unsigned char* entityPendingTransactions = NULL;
 static unsigned char* entityPendingTransactionDigests = NULL;
-static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY];
+static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY]; // [SPECTRUM_CAPACITY] must be >= than [NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR]
+static volatile char computorPendingTransactionsLock = 0;
+static unsigned char* computorPendingTransactions = NULL;
+static unsigned char* computorPendingTransactionDigests = NULL;
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
 static m256i* spectrumDigests = NULL;
 const unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
@@ -176,8 +182,9 @@ static int nSolutionProcessorIDs = 0;
 
 static ScoreFunction<
     DATA_LENGTH,
-    NUMBER_OF_INPUT_NEURONS, NUMBER_OF_OUTPUT_NEURONS,
-    MAX_INPUT_DURATION, MAX_OUTPUT_DURATION,
+    NUMBER_OF_HIDDEN_NEURONS, 
+    NUMBER_OF_NEIGHBOR_NEURONS,
+    MAX_DURATION,
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static volatile char solutionsLock = 0;
@@ -210,9 +217,10 @@ struct
     m256i competitorPublicKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
     unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
     bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
-    m256i initialRandomSeed;    
+    m256i currentRandomSeed;    
     int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
     unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
+    unsigned char voteCounterData[VoteCounter::VoteCounterDataSize];
     BroadcastComputors broadcastedComputors;
     unsigned long long resourceTestingDigest;
     unsigned int numberOfMiners;
@@ -223,7 +231,7 @@ static bool saveSpectrum(CHAR16* directory = NULL);
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadSpectrum(CHAR16* directory = NULL);
-static bool loadComputer(CHAR16* directory = NULL);
+static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -514,6 +522,19 @@ static bool decreaseEnergy(const int index, long long amount)
     return false;
 }
 
+static int computorIndex(m256i computor)
+{
+    for (int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    {
+        if (broadcastedComputors.computors.publicKeys[computorIndex] == computor)
+        {
+            return computorIndex;
+        }
+    }
+
+    return -1;
+}
+
 // NOTE: this function doesn't work well on a few CPUs, some bits will be flipped after calling this. It's probably microcode bug.
 static void enableAVX()
 {
@@ -673,13 +694,15 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             {
                             case MESSAGE_TYPE_SOLUTION:
                             {
-                                if (messagePayloadSize >= 32)
+                                if (messagePayloadSize >= 32 + 32)
                                 {
-                                    const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
+                                    const m256i& solution_miningSeed = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
+                                    const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage) + 32);
                                     unsigned int k;
                                     for (k = 0; k < system.numberOfSolutions; k++)
                                     {
                                         if (solution_nonce == system.solutions[k].nonce
+                                            && solution_miningSeed == system.solutions[k].miningSeed
                                             && request->destinationPublicKey == system.solutions[k].computorPublicKey)
                                         {
                                             break;
@@ -687,16 +710,18 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     }
                                     if (k == system.numberOfSolutions)
                                     {
-                                        unsigned long long solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_nonce);
+                                        unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                         const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
                                         if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && (solutionScore >= (DATA_LENGTH / 3) + threshold) || (solutionScore <= (DATA_LENGTH / 3) - threshold))
+                                            && score->isValidScore(solutionScore)
+                                            && score->isGoodScore(solutionScore, threshold))
                                         {
                                             ACQUIRE(solutionsLock);
 
                                             for (k = 0; k < system.numberOfSolutions; k++)
                                             {
                                                 if (solution_nonce == system.solutions[k].nonce
+                                                    && solution_miningSeed == system.solutions[k].miningSeed
                                                     && request->destinationPublicKey == system.solutions[k].computorPublicKey)
                                                 {
                                                     break;
@@ -705,6 +730,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                             if (k == system.numberOfSolutions)
                                             {
                                                 system.solutions[system.numberOfSolutions].computorPublicKey = request->destinationPublicKey;
+                                                system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
                                                 system.solutions[system.numberOfSolutions++].nonce = solution_nonce;
                                             }
 
@@ -943,23 +969,41 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 enqueueResponse(NULL, header);
             }
 
-            const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
-            if (spectrumIndex >= 0)
+            const int computorIndex = ::computorIndex(request->sourcePublicKey);
+            if (computorIndex >= 0)
             {
-                ACQUIRE(entityPendingTransactionsLock);
+                ACQUIRE(computorPendingTransactionsLock);
 
-                // Pending transactions pool follows the rule: A transaction with a higher tick overwrites previous transaction from the same address.
-                // The second filter is to avoid accident made by users/devs (setting scheduled tick too high) and get locked until end of epoch.
-                // It also makes sense that a node doesn't need to store a transaction that is scheduled on a tick that node will never reach.
-                // Notice: MAX_NUMBER_OF_TICKS_PER_EPOCH is not set globally since every node may have different TARGET_TICK_DURATION time due to memory limitation.
-                if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
+                const unsigned int offset = random(MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR);
+                if (((Transaction*)&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE])->tick < request->tick
                     && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                 {
-                    bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
-                    KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
+                    bs->CopyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
+                    KangarooTwelve(request, transactionSize, &computorPendingTransactionDigests[computorIndex * offset * 32ULL], 32);
                 }
 
-                RELEASE(entityPendingTransactionsLock);
+                RELEASE(computorPendingTransactionsLock);
+            }
+            else
+            {
+                const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
+                if (spectrumIndex >= 0)
+                {
+                    ACQUIRE(entityPendingTransactionsLock);
+
+                    // Pending transactions pool follows the rule: A transaction with a higher tick overwrites previous transaction from the same address.
+                    // The second filter is to avoid accident made by users/devs (setting scheduled tick too high) and get locked until end of epoch.
+                    // It also makes sense that a node doesn't need to store a transaction that is scheduled on a tick that node will never reach.
+                    // Notice: MAX_NUMBER_OF_TICKS_PER_EPOCH is not set globally since every node may have different TARGET_TICK_DURATION time due to memory limitation.
+                    if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
+                        && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
+                    {
+                        bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
+                        KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
+                    }
+
+                    RELEASE(entityPendingTransactionsLock);
+                }
             }
 
             unsigned int tickIndex = ts.tickToIndexCurrentEpoch(request->tick);
@@ -1252,7 +1296,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.numberOfEntities = numberOfEntities;
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
-    respondedSystemInfo.randomMiningSeed = score->initialRandomSeed;
+    respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
     respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
 
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
@@ -1278,45 +1322,6 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             }
             break;
 
-            // proposal and ballot are replaced by SC
-            // TODO: remove completely for epoch 124
-            case SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_REQUEST:
-            {
-                SpecialCommandGetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandGetProposalAndBallotRequest>();
-                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
-                {
-                    SpecialCommandGetProposalAndBallotResponse response;
-
-                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_GET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = _request->computorIndex;
-                    *((short*)response.padding) = 0;
-                    bs->CopyMem(&response.proposal, &system.proposals[_request->computorIndex], sizeof(ComputorProposal));
-                    bs->CopyMem(&response.ballot, &system.ballots[_request->computorIndex], sizeof(ComputorBallot));
-
-                    enqueueResponse(peer, sizeof(response), SpecialCommand::type, header->dejavu(), &response);
-                }
-            }
-            break;
-
-            case SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_REQUEST:
-            {
-                SpecialCommandSetProposalAndBallotRequest* _request = header->getPayload<SpecialCommandSetProposalAndBallotRequest>();
-                if (_request->computorIndex < NUMBER_OF_COMPUTORS)
-                {
-                    bs->CopyMem(&system.proposals[_request->computorIndex], &_request->proposal, sizeof(ComputorProposal));
-                    bs->CopyMem(&system.ballots[_request->computorIndex], &_request->ballot, sizeof(ComputorBallot));
-
-                    SpecialCommandSetProposalAndBallotResponse response;
-
-                    response.everIncreasingNonceAndCommandType = (_request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SET_PROPOSAL_AND_BALLOT_RESPONSE << 56);
-                    response.computorIndex = _request->computorIndex;
-                    *((short*)response.padding) = 0;
-
-                    enqueueResponse(peer, sizeof(response), SpecialCommand::type, header->dejavu(), &response);
-                }
-            }
-            break;
-            
             case SPECIAL_COMMAND_SET_SOLUTION_THRESHOLD_REQUEST:
             {
                 SpecialCommandSetSolutionThresholdRequestAndResponse* _request = header->getPayload<SpecialCommandSetSolutionThresholdRequestAndResponse>();
@@ -1416,6 +1421,27 @@ static void checkinTime(unsigned long long processorNumber)
     threadTimeCheckin[processorNumber].minute = time.Minute;
     threadTimeCheckin[processorNumber].hour = time.Hour;
     threadTimeCheckin[processorNumber].day = time.Day;
+}
+
+static void setNewMiningSeed()
+{
+    score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
+}
+
+static void checkAndSwitchMiningPhase()
+{
+    const unsigned int r = (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+    if (!r)
+    {
+        setNewMiningSeed();
+    }
+    else
+    {
+        if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
+        {
+            score->initMiningData(_mm256_setzero_si256());
+        }
+    }
 }
 
 static void requestProcessor(void* ProcedureArgument)
@@ -1585,7 +1611,13 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case RequestLog::type:
                 {
-                    processRequestLog(peer, header);
+                    logger.processRequestLog(peer, header);
+                }
+                break;
+
+                case RequestLogIdRangeFromTx::type:
+                {
+                    logger.processRequestTxLogInfo(peer, header);
                 }
                 break;
 
@@ -1731,7 +1763,7 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
         contractStateLock[0].releaseWrite();
 
         const Burning burning = { _currentContractId , amount };
-        logBurning(burning);
+        logger.logBurning(burning);
     }
 
     return remainingAmount;
@@ -2020,7 +2052,7 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
             __qpiAbort(ContractErrorTooManyActions);
 
         const QuTransfer quTransfer = { _currentContractId , destination , amount };
-        logQuTransfer(quTransfer);
+        logger.logQuTransfer(quTransfer);
     }
 
     return remainingAmount;
@@ -2265,7 +2297,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
         if (decreaseEnergy(spectrumIndex, amount))
         {
             const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
-            logQuTransfer(quTransfer);
+            logger.logQuTransfer(quTransfer);
 
             numberOfReleasedEntities = 0;
             contractStateLock[contractIndex].acquireWrite();
@@ -2335,7 +2367,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
         }
     }
@@ -2379,152 +2411,157 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
     ASSERT(transaction->destinationPublicKey == arbitratorPublicKey);
-    ASSERT(!transaction->amount && transaction->inputSize == 32 && !transaction->inputType);
+    ASSERT(!transaction->amount && transaction->inputSize == 64 && !transaction->inputType);
 
-    const m256i& solution_nonce = *(m256i*)transaction->inputPtr();
-    m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
-    static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
+    const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
+    const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
+    m256i data[3] = { transaction->sourcePublicKey, solution_miningSeed, solution_nonce };
+    static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
     unsigned int flagIndex;
     KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
     if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
     {
         minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
 
-        unsigned long long solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_nonce);
-
-        resourceTestingDigest ^= solutionScore;
-        KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
-
-        const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
-        if ((solutionScore >= (DATA_LENGTH / 3) + threshold) || (solutionScore <= (DATA_LENGTH / 3) - threshold))
+        unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
+        if (score->isValidScore(solutionScore))
         {
-            for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
-            {
-                if (transaction->sourcePublicKey == computorPublicKeys[i])
-                {
-                    ACQUIRE(solutionsLock);
+            resourceTestingDigest ^= (unsigned long long)(solutionScore);
+            KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
-                    unsigned int j;
-                    for (j = 0; j < system.numberOfSolutions; j++)
+            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+            if (score->isGoodScore(solutionScore, threshold))
+            {
+                for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+                {
+                    if (transaction->sourcePublicKey == computorPublicKeys[i])
                     {
-                        if (solution_nonce == system.solutions[j].nonce
-                            && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
+                        ACQUIRE(solutionsLock);
+
+                        unsigned int j;
+                        for (j = 0; j < system.numberOfSolutions; j++)
                         {
-                            solutionPublicationTicks[j] = -1;
+                            if (solution_nonce == system.solutions[j].nonce
+                                && solution_miningSeed == system.solutions[j].miningSeed
+                                && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
+                            {
+                                solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
 
-                            break;
+                                break;
+                            }
                         }
+                        if (j == system.numberOfSolutions
+                            && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
+                        {
+                            system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
+                            system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
+                            system.solutions[system.numberOfSolutions].nonce = solution_nonce;
+                            solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
+                        }
+
+                        RELEASE(solutionsLock);
+
+                        break;
                     }
-                    if (j == system.numberOfSolutions
-                        && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
+                }
+
+                ACQUIRE(minerScoreArrayLock);
+                unsigned int minerIndex;
+                for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
+                {
+                    if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
                     {
-                        system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
-                        system.solutions[system.numberOfSolutions].nonce = solution_nonce;
-                        solutionPublicationTicks[system.numberOfSolutions++] = -1;
+                        minerScores[minerIndex]++;
+
+                        break;
                     }
-
-                    RELEASE(solutionsLock);
-
-                    break;
                 }
-            }
-
-            ACQUIRE(minerScoreArrayLock);
-            unsigned int minerIndex;
-            for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
-            {
-                if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
+                if (minerIndex == numberOfMiners
+                    && numberOfMiners < MAX_NUMBER_OF_MINERS)
                 {
-                    minerScores[minerIndex]++;
-
-                    break;
+                    minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
+                    minerScores[numberOfMiners++] = 1;
                 }
-            }
-            if (minerIndex == numberOfMiners
-                && numberOfMiners < MAX_NUMBER_OF_MINERS)
-            {
-                minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
-                minerScores[numberOfMiners++] = 1;
-            }
 
-            const m256i tmpPublicKey = minerPublicKeys[minerIndex];
-            const unsigned int tmpScore = minerScores[minerIndex];
-            while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
-                && minerScores[minerIndex - 1] < minerScores[minerIndex])
-            {
-                minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
-                minerScores[minerIndex] = minerScores[minerIndex - 1];
-                minerPublicKeys[--minerIndex] = tmpPublicKey;
-                minerScores[minerIndex] = tmpScore;
-            }
-
-            // combine 225 worst current computors with 225 best candidates
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS - QUORUM; i++)
-            {
-                competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
-                competitorScores[i] = minerScores[QUORUM + i];
-                competitorComputorStatuses[i] = true;
-
-                if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
+                const m256i tmpPublicKey = minerPublicKeys[minerIndex];
+                const unsigned int tmpScore = minerScores[minerIndex];
+                while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
+                    && minerScores[minerIndex - 1] < minerScores[minerIndex])
                 {
-                    competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
-                    competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
+                    minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
+                    minerScores[minerIndex] = minerScores[minerIndex - 1];
+                    minerPublicKeys[--minerIndex] = tmpPublicKey;
+                    minerScores[minerIndex] = tmpScore;
                 }
-                else
+
+                // combine 225 worst current computors with 225 best candidates
+                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS - QUORUM; i++)
                 {
-                    competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
-                }
-                competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
-            }
-            RELEASE(minerScoreArrayLock);
+                    competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
+                    competitorScores[i] = minerScores[QUORUM + i];
+                    competitorComputorStatuses[i] = true;
 
-            // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
-            for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
-            {
-                int j = i;
-                const m256i tmpPublicKey = competitorPublicKeys[j];
-                const unsigned int tmpScore = competitorScores[j];
-                const bool tmpComputorStatus = false;
-                while (j
-                    && competitorScores[j - 1] < competitorScores[j])
+                    if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
+                    {
+                        competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
+                        competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
+                    }
+                    else
+                    {
+                        competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
+                    }
+                    competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
+                }
+                RELEASE(minerScoreArrayLock);
+
+                // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
+                for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
                 {
-                    competitorPublicKeys[j] = competitorPublicKeys[j - 1];
-                    competitorScores[j] = competitorScores[j - 1];
-                    competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
-                    competitorPublicKeys[--j] = tmpPublicKey;
-                    competitorScores[j] = tmpScore;
-                    competitorComputorStatuses[j] = tmpComputorStatus;
+                    int j = i;
+                    const m256i tmpPublicKey = competitorPublicKeys[j];
+                    const unsigned int tmpScore = competitorScores[j];
+                    const bool tmpComputorStatus = false;
+                    while (j
+                        && competitorScores[j - 1] < competitorScores[j])
+                    {
+                        competitorPublicKeys[j] = competitorPublicKeys[j - 1];
+                        competitorScores[j] = competitorScores[j - 1];
+                        competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
+                        competitorPublicKeys[--j] = tmpPublicKey;
+                        competitorScores[j] = tmpScore;
+                        competitorComputorStatuses[j] = tmpComputorStatus;
+                    }
                 }
-            }
 
-            minimumComputorScore = competitorScores[NUMBER_OF_COMPUTORS - QUORUM - 1];
+                minimumComputorScore = competitorScores[NUMBER_OF_COMPUTORS - QUORUM - 1];
 
-            unsigned char candidateCounter = 0;
-            for (unsigned int i = 0; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
-            {
-                if (!competitorComputorStatuses[i])
+                unsigned char candidateCounter = 0;
+                for (unsigned int i = 0; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
                 {
-                    minimumCandidateScore = competitorScores[i];
-                    candidateCounter++;
+                    if (!competitorComputorStatuses[i])
+                    {
+                        minimumCandidateScore = competitorScores[i];
+                        candidateCounter++;
+                    }
+                }
+                if (candidateCounter < NUMBER_OF_COMPUTORS - QUORUM)
+                {
+                    minimumCandidateScore = minimumComputorScore;
+                }
+
+                ACQUIRE(minerScoreArrayLock);
+                for (unsigned int i = 0; i < QUORUM; i++)
+                {
+                    system.futureComputors[i] = minerPublicKeys[i];
+                }
+                RELEASE(minerScoreArrayLock);
+
+                for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
+                {
+                    system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
                 }
             }
-            if (candidateCounter < NUMBER_OF_COMPUTORS - QUORUM)
-            {
-                minimumCandidateScore = minimumComputorScore;
-            }
-
-            ACQUIRE(minerScoreArrayLock);
-            for (unsigned int i = 0; i < QUORUM; i++)
-            {
-                system.futureComputors[i] = minerPublicKeys[i];
-            }
-            RELEASE(minerScoreArrayLock);
-
-            for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
-            }
-        }
+        }        
     }
     else
     {
@@ -2538,9 +2575,10 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                 for (j = 0; j < system.numberOfSolutions; j++)
                 {
                     if (solution_nonce == system.solutions[j].nonce
+                        && solution_miningSeed == system.solutions[j].miningSeed
                         && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
                     {
-                        solutionPublicationTicks[j] = -1;
+                        solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
 
                         break;
                     }
@@ -2549,8 +2587,9 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                     && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
                 {
                     system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
+                    system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
                     system.solutions[system.numberOfSolutions].nonce = solution_nonce;
-                    solutionPublicationTicks[system.numberOfSolutions++] = -1;
+                    solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
                 }
 
                 RELEASE(solutionsLock);
@@ -2570,11 +2609,8 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     ASSERT(transaction->tick == system.tick);
 
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
-    if (spectrumIndex >= 0
-        && !entityPendingTransactionIndices[spectrumIndex])
+    if (spectrumIndex >= 0)
     {
-        entityPendingTransactionIndices[spectrumIndex] = 1;
-
         numberOfTransactions++;
         bool moneyFlew = false;
 #if ADDON_TX_STATUS_REQUEST
@@ -2588,7 +2624,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
             {
                 moneyFlew = true;
                 const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
 
             if (isZero(transaction->destinationPublicKey))
@@ -2643,7 +2679,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     if (transaction->destinationPublicKey == arbitratorPublicKey)
                     {
                         if (!transaction->amount
-                            && transaction->inputSize == 32
+                            && transaction->inputSize == 64
                             && !transaction->inputType)
                         {
                             processTickTransactionSolution(transaction, processorNumber);
@@ -2695,6 +2731,8 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
+        logger.reset(system.initialTick); // reset here to persist the data when we do seamless transition
+        logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
         while (contractProcessorState)
@@ -2702,6 +2740,7 @@ static void processTick(unsigned long long processorNumber)
             _mm_pause();
         }
 
+        logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
         contractProcessorPhase = BEGIN_EPOCH;
         contractProcessorState = 1;
         while (contractProcessorState)
@@ -2710,6 +2749,7 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
+    logger.registerNewTx(system.tick, logger.SC_BEGIN_TICK_TX);
     contractProcessorPhase = BEGIN_TICK;
     contractProcessorState = 1;
     while (contractProcessorState)
@@ -2728,7 +2768,6 @@ static void processTick(unsigned long long processorNumber)
 #if ADDON_TX_STATUS_REQUEST
         txStatusData.tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
-        bs->SetMem(entityPendingTransactionIndices, sizeof(entityPendingTransactionIndices), 0);
         // reset solution task queue
         score->resetTaskQueue();
         // pre-scan any solution tx and add them to solution task queue
@@ -2742,23 +2781,23 @@ static void processTick(unsigned long long processorNumber)
                     ASSERT(transaction->checkValidity());
                     ASSERT(transaction->tick == system.tick);
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
-                    if (spectrumIndex >= 0
-                        && !entityPendingTransactionIndices[spectrumIndex])
+                    if (spectrumIndex >= 0)
                     {
                         if (transaction->destinationPublicKey == arbitratorPublicKey)
                         {
                             if (!transaction->amount
-                                && transaction->inputSize == 32
+                                && transaction->inputSize == 32 + 32
                                 && !transaction->inputType)
                             {
-                                const m256i& solution_nonce = *(m256i*)transaction->inputPtr();
-                                m256i data[2] = { transaction->sourcePublicKey, solution_nonce };
-                                static_assert(sizeof(data) == 2 * 32, "Unexpected array size");
+                                const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
+                                const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
+                                m256i data[3] = { transaction->sourcePublicKey, solution_miningSeed, solution_nonce };
+                                static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
                                 unsigned int flagIndex;
                                 KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
                                 if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
                                 {
-                                    score->addTask(transaction->sourcePublicKey, solution_nonce);
+                                    score->addTask(transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
                                 }
                             }
                         }
@@ -2787,6 +2826,7 @@ static void processTick(unsigned long long processorNumber)
                 if (tsCurrentTickTransactionOffsets[transactionIndex])
                 {
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
+                    logger.registerNewTx(transaction->tick, transactionIndex);
                     processTickTransaction(transaction, nextTickData.transactionDigests[transactionIndex], processorNumber);
                 }
                 else
@@ -2800,6 +2840,7 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
+    logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
     contractProcessorState = 1;
     while (contractProcessorState)
@@ -2862,17 +2903,6 @@ static void processTick(unsigned long long processorNumber)
                     broadcastedFutureTickData.tickData.month = time.Month;
                     broadcastedFutureTickData.tickData.year = time.Year - 2000;
 
-                    // proposal and ballot are replaced by SC
-                    // TODO: remove completely for epoch 124                    /*
-                    if (system.proposals[ownComputorIndices[i]].uriSize)
-                    {
-                        bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.proposal, &system.proposals[ownComputorIndices[i]], sizeof(ComputorProposal));
-                    }
-                    else
-                    {
-                        bs->CopyMem(&broadcastedFutureTickData.tickData.varStruct.ballot, &system.ballots[ownComputorIndices[i]], sizeof(ComputorBallot));
-                    }
-
                     m256i timelockPreimage[3];
                     static_assert(sizeof(timelockPreimage) == 3 * 32, "Unexpected array size");
                     timelockPreimage[0] = etalonTick.saltedSpectrumDigest;
@@ -2880,12 +2910,44 @@ static void processTick(unsigned long long processorNumber)
                     timelockPreimage[2] = etalonTick.saltedComputerDigest;
                     KangarooTwelve(timelockPreimage, sizeof(timelockPreimage), &broadcastedFutureTickData.tickData.timelock, sizeof(broadcastedFutureTickData.tickData.timelock));
 
+                    unsigned int j = 0;
+
                     unsigned int numberOfEntityPendingTransactionIndices;
+                    for (numberOfEntityPendingTransactionIndices = 0; numberOfEntityPendingTransactionIndices < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; numberOfEntityPendingTransactionIndices++)
+                    {
+                        entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices] = numberOfEntityPendingTransactionIndices;
+                    }
+                    while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
+                    {
+                        const unsigned int index = random(numberOfEntityPendingTransactionIndices);
+
+                        const Transaction* pendingTransaction = ((Transaction*)&computorPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
+                        if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        {
+                            ASSERT(pendingTransaction->checkValidity());
+                            const unsigned int transactionSize = pendingTransaction->totalSize();
+                            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                            {
+                                ts.tickTransactions.acquireLock();
+                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                {
+                                    ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
+                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
+                                    broadcastedFutureTickData.tickData.transactionDigests[j] = &computorPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
+                                    j++;
+                                    ts.nextTickTransactionOffset += transactionSize;
+                                }
+                                ts.tickTransactions.releaseLock();
+                            }
+                        }
+
+                        entityPendingTransactionIndices[index] = entityPendingTransactionIndices[--numberOfEntityPendingTransactionIndices];
+                    }
+
                     for (numberOfEntityPendingTransactionIndices = 0; numberOfEntityPendingTransactionIndices < SPECTRUM_CAPACITY; numberOfEntityPendingTransactionIndices++)
                     {
                         entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices] = numberOfEntityPendingTransactionIndices;
                     }
-                    unsigned int j = 0;
                     while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
                     {
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
@@ -2912,6 +2974,7 @@ static void processTick(unsigned long long processorNumber)
 
                         entityPendingTransactionIndices[index] = entityPendingTransactionIndices[--numberOfEntityPendingTransactionIndices];
                     }
+
                     for (; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                     {
                         broadcastedFutureTickData.tickData.transactionDigests[j] = _mm256_setzero_si256();
@@ -2970,7 +3033,15 @@ static void processTick(unsigned long long processorNumber)
                 {
                     if (solutionPublicationTicks[j] <= (int)system.tick)
                     {
-                        solutionIndexToPublish = j;
+                        if (system.solutions[j].miningSeed == score->currentRandomSeed)
+                        {
+                            solutionIndexToPublish = j;
+                        }
+                        else
+                        {
+                            // obsolete solution
+                            solutionPublicationTicks[j] = SOLUTION_OBSOLETE_FLAG;
+                        }
                     }
 
                     break;
@@ -2995,10 +3066,11 @@ static void processTick(unsigned long long processorNumber)
                 struct
                 {
                     Transaction transaction;
+                    m256i miningSeed;
                     m256i nonce;
                     unsigned char signature[SIGNATURE_SIZE];
                 } payload;
-                static_assert(sizeof(payload) == sizeof(Transaction) + 32 + SIGNATURE_SIZE, "Unexpected struct size!");
+                static_assert(sizeof(payload) == sizeof(Transaction) + 32 + 32 + SIGNATURE_SIZE, "Unexpected struct size!");
                 payload.transaction.sourcePublicKey = computorPublicKeys[i];
                 payload.transaction.destinationPublicKey = arbitratorPublicKey;
                 payload.transaction.amount = 0;
@@ -3006,11 +3078,12 @@ static void processTick(unsigned long long processorNumber)
                 _rdrand32_step(&random);
                 solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET + random % MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
                 payload.transaction.inputType = 0;
-                payload.transaction.inputSize = sizeof(payload.nonce);
+                payload.transaction.inputSize = sizeof(payload.miningSeed) + sizeof(payload.nonce);
+                payload.miningSeed = system.solutions[solutionIndexToPublish].miningSeed;
                 payload.nonce = system.solutions[solutionIndexToPublish].nonce;
 
                 unsigned char digest[32];
-                KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.nonce), digest, sizeof(digest));
+                KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.miningSeed) + sizeof(payload.nonce), digest, sizeof(digest));
                 sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, payload.signature);
 
                 enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
@@ -3019,7 +3092,7 @@ static void processTick(unsigned long long processorNumber)
     }
 }
 
-static void beginEpoch1of2()
+static void beginEpoch()
 {
     // This version doesn't support migration from contract IPO to contract operation!
 
@@ -3044,6 +3117,10 @@ static void beginEpoch1of2()
     beginEpochTxStatusRequestAddOn(system.initialTick);
 #endif
 
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
+    {
+        ((Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
+    }
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
         ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
@@ -3081,11 +3158,6 @@ static void beginEpoch1of2()
     }
 
     system.latestOperatorNonce = 0;
-    // proposal and ballot are replaced by SC
-    // TODO: remove completely for epoch 124    /*
-    bs->SetMem(system.proposals, sizeof(system.proposals), 0);
-    bs->SetMem(system.ballots, sizeof(system.ballots), 0);
-    
     system.numberOfSolutions = 0;
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
@@ -3095,26 +3167,9 @@ static void beginEpoch1of2()
     resourceTestingDigest = 0;
 
     numberOfTransactions = 0;
-
-#if LOG_QU_TRANSFERS && LOG_QU_TRANSFERS_TRACK_TRANSFER_ID
-    CurrentTransferId = 0;
-#endif
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
 #endif
-}
-
-static void beginEpoch2of2()
-{
-    if (loadMiningSeedFromFile)
-    {
-        score->initMiningData(initialRandomSeedFromPersistingState);
-        loadMiningSeedFromFile = false;
-    }
-    else
-    {
-        score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
-    }
 }
 
 static struct
@@ -3148,6 +3203,7 @@ static bool saveRevenueScoreFile(CHAR16* directory = NULL)
 // called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
 {
+    logger.registerNewTx(system.tick, logger.SC_END_EPOCH_TX);
     contractProcessorPhase = END_EPOCH;
     contractProcessorState = 1;
     while (contractProcessorState)
@@ -3212,7 +3268,7 @@ static void endEpoch()
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
             contractStateLock[contractIndex].releaseRead();
 
@@ -3358,7 +3414,7 @@ static void endEpoch()
                     if (revenue)
                     {
                         const QuTransfer quTransfer = { _mm256_setzero_si256(), rdEntry.destinationPublicKey, donation };
-                        logQuTransfer(quTransfer);
+                        logger.logQuTransfer(quTransfer);
                     }
                 }
             }
@@ -3368,7 +3424,7 @@ static void endEpoch()
             if (revenue)
             {
                 const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
-                logQuTransfer(quTransfer);
+                logger.logQuTransfer(quTransfer);
             }
         }
         emissionDist = nullptr; qpiContext.freeBuffer(); // Free buffer holding revenue donation table, because we don't need it anymore
@@ -3376,7 +3432,7 @@ static void endEpoch()
         // Generate arbitrator revenue
         increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
         const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
-        logQuTransfer(quTransfer);
+        logger.logQuTransfer(quTransfer);
     }
 
     // Reorganize spectrum hash map
@@ -3586,9 +3642,10 @@ static bool saveAllNodeStates()
     copyMem(nodeStateBuffer.faultyComputorFlags, (void*)faultyComputorFlags, sizeof(faultyComputorFlags));
     copyMem(&nodeStateBuffer.broadcastedComputors, (void*)&broadcastedComputors, sizeof(broadcastedComputors));
     copyMem(&nodeStateBuffer.resourceTestingDigest, &resourceTestingDigest, sizeof(resourceTestingDigest));
-    nodeStateBuffer.initialRandomSeed = score->initialRandomSeed;
+    nodeStateBuffer.currentRandomSeed = score->currentRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;
+    voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
@@ -3697,7 +3754,8 @@ static bool loadAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-    if (!loadComputer(directory))
+    const bool forceLoadContractFile = true;
+    if (!loadComputer(directory, forceLoadContractFile))
     {
         logToConsole(L"Failed to load computer");
         return false;
@@ -3721,9 +3779,10 @@ static bool loadAllNodeStates()
     copyMem((void*)&broadcastedComputors, &nodeStateBuffer.broadcastedComputors, sizeof(broadcastedComputors));
     copyMem(&resourceTestingDigest, &nodeStateBuffer.resourceTestingDigest, sizeof(resourceTestingDigest));
     numberOfMiners = nodeStateBuffer.numberOfMiners;
-    initialRandomSeedFromPersistingState = nodeStateBuffer.initialRandomSeed;
+    initialRandomSeedFromPersistingState = nodeStateBuffer.currentRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
     loadMiningSeedFromFile = true;
+    voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -3794,6 +3853,10 @@ static bool loadAllNodeStates()
     }
 #endif
 
+#if ENABLED_LOGGING
+    logToConsole(L"Initializing logger");
+    logger.reset(system.initialTick); // initialize the logger
+#endif
     return true;
 }
 
@@ -3813,6 +3876,7 @@ static void tickProcessor(void*)
     }
 #endif
 
+    loadAllNodeStateFromFile = false;
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
@@ -4125,12 +4189,54 @@ static void tickProcessor(void*)
                         }
                         if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
                         {
+                            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
+                            {
+                                Transaction* pendingTransaction = (Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE];
+                                if (pendingTransaction->tick == nextTick)
+                                {
+                                    ACQUIRE(computorPendingTransactionsLock);
+
+                                    ASSERT(pendingTransaction->checkValidity());
+                                    auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
+                                    for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
+                                    {
+                                        if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
+                                        {
+                                            if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
+                                            {
+                                                unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
+                                                const unsigned int transactionSize = pendingTransaction->totalSize();
+                                                bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
+
+                                                pendingTransaction = (Transaction*)transactionBuffer;
+                                                ts.tickTransactions.acquireLock();
+                                                if (!tsPendingTransactionOffsets[j])
+                                                {
+                                                    if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                                    {
+                                                        tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
+                                                        bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                                        ts.nextTickTransactionOffset += transactionSize;
+                                                    }
+                                                }
+                                                ts.tickTransactions.releaseLock();
+
+                                                numberOfKnownNextTickTransactions++;
+                                                unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+                                            }
+                                        }
+                                    }
+
+                                    RELEASE(computorPendingTransactionsLock);
+                                }
+                            }
                             for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                             {
                                 Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
                                 if (pendingTransaction->tick == nextTick)
                                 {
                                     ACQUIRE(entityPendingTransactionsLock);
+
                                     ASSERT(pendingTransaction->checkValidity());
                                     auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
                                     for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
@@ -4455,6 +4561,8 @@ static void tickProcessor(void*)
 
                                     system.tick++;
 
+                                    checkAndSwitchMiningPhase();
+
                                     if (epochTransitionState == 1)
                                     {
                                         // seamless epoch transistion
@@ -4463,7 +4571,7 @@ static void tickProcessor(void*)
                                         {
                                             CHAR16 dbgMsgBuf[300];
                                             CHAR16 digestChars[60 + 1];
-                                            getIdentity(score->initialRandomSeed.m256i_u8, digestChars, true);
+                                            getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
                                             setText(dbgMsgBuf, L"Old mining seed: ");
                                             appendText(dbgMsgBuf, digestChars);
                                             addDebugMessage(dbgMsgBuf);
@@ -4490,14 +4598,14 @@ static void tickProcessor(void*)
 #ifndef NDEBUG
                                         addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
 #endif
-                                        beginEpoch1of2();
-                                        beginEpoch2of2();
+                                        beginEpoch();
+                                        setNewMiningSeed();
 #ifndef NDEBUG
                                         addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
                                         {
                                             CHAR16 dbgMsgBuf[300];
                                             CHAR16 digestChars[60 + 1];
-                                            getIdentity(score->initialRandomSeed.m256i_u8, digestChars, true);
+                                            getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
                                             setText(dbgMsgBuf, L"New mining seed: ");
                                             appendText(dbgMsgBuf, digestChars);
                                             addDebugMessage(dbgMsgBuf);
@@ -4615,13 +4723,15 @@ static bool saveSpectrum(CHAR16* directory)
     return false;
 }
 
-
-static bool loadComputer(CHAR16* directory)
+// directory: source directory to load the file. Default: NULL - load from root dir /
+// forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
+static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
 {
     logToConsole(L"Loading contract files ...");
+    setText(message, L"Loaded SC: ");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
-        if (contractDescriptions[contractIndex].constructionEpoch == system.epoch)
+        if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
         {
             bs->SetMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
         }
@@ -4635,11 +4745,16 @@ static bool loadComputer(CHAR16* directory)
             if (loadedSize != contractDescriptions[contractIndex].stateSize)
             {
                 logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
-
                 return false;
+            }
+            else
+            {
+                appendText(message, CONTRACT_FILE_NAME);
+                appendText(message, L" ");
             }
         }
     }
+    logToConsole(message);
     return true;
 }
 
@@ -4779,6 +4894,17 @@ static bool initialize()
 
             return false;
         }
+        if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE, (void**)&computorPendingTransactions))
+        {
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE);
+            return false;
+        }
+        else if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL, (void**)&computorPendingTransactionDigests))
+        {
+            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL);
+
+            return false;
+        }
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset), (void**)&reorgBuffer))
         {
@@ -4837,8 +4963,11 @@ static bool initialize()
             return false;
         }
 
-        if (!initLogging())
+        if (!logger.initLogging())
+        {
             return false;
+        }
+            
 
 #if ADDON_TX_STATUS_REQUEST
         if (!initTxStatusRequestAddOn())
@@ -4863,7 +4992,7 @@ static bool initialize()
         }
         system.tick = system.initialTick;
 
-        beginEpoch1of2();
+        beginEpoch();
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
 #else
@@ -4971,11 +5100,17 @@ static bool initialize()
         }
     }
 
-    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
-    {
-        initializeContract(contractIndex, contractStates[contractIndex]);
-    }
+    initializeContracts();
 
+    if (loadMiningSeedFromFile)
+    {
+        score->initMiningData(initialRandomSeedFromPersistingState);
+        loadMiningSeedFromFile = false;;
+    }
+    else
+    {
+        setNewMiningSeed();
+    }    
     score->loadScoreCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
@@ -5062,8 +5197,6 @@ static bool initialize()
     if (!initTcp4(PORT))
         return false;
 
-    beginEpoch2of2();
-
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
@@ -5101,7 +5234,7 @@ static void deinitialize()
         bs->FreePool(reorgBuffer);
     }
 
-    deinitLogging();
+    logger.deinitLogging();
 
 #if ADDON_TX_STATUS_REQUEST
     deinitTxStatusRequestAddOn();
@@ -5119,6 +5252,14 @@ static void deinitialize()
         }
     }
 
+    if (computorPendingTransactionDigests)
+    {
+        bs->FreePool(computorPendingTransactionDigests);
+    }
+    if (computorPendingTransactions)
+    {
+        bs->FreePool(computorPendingTransactions);
+    }
     if (entityPendingTransactionDigests)
     {
         bs->FreePool(entityPendingTransactionDigests);
@@ -5295,6 +5436,13 @@ static void logInfo()
     logToConsole(message);
 
     unsigned int numberOfPendingTransactions = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
+    {
+        if (((Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick > system.tick)
+        {
+            numberOfPendingTransactions++;
+        }
+    }
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
         if (((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick > system.tick)
@@ -5632,16 +5780,20 @@ static void processKeyPresses()
             appendText(message, L".");
             logToConsole(message);
 
-            unsigned int numberOfPublishedSolutions = 0, numberOfRecordedSolutions = 0;
+            unsigned int numberOfPublishedSolutions = 0, numberOfRecordedSolutions = 0, numberOfObsoleteSolutions = 0;
             for (unsigned int i = 0; i < system.numberOfSolutions; i++)
             {
                 if (solutionPublicationTicks[i])
                 {
                     numberOfPublishedSolutions++;
 
-                    if (solutionPublicationTicks[i] < 0)
+                    if (solutionPublicationTicks[i] == SOLUTION_RECORDED_FLAG)
                     {
                         numberOfRecordedSolutions++;
+                    }
+                    else if (solutionPublicationTicks[i] == SOLUTION_OBSOLETE_FLAG)
+                    {
+                        numberOfObsoleteSolutions++;
                     }
                 }
             }
@@ -5649,6 +5801,8 @@ static void processKeyPresses()
             appendText(message, L"/");
             appendNumber(message, numberOfPublishedSolutions, TRUE);
             appendText(message, L"/");
+            appendNumber(message, numberOfObsoleteSolutions, TRUE);
+            appendText(message, L"/");            
             appendNumber(message, system.numberOfSolutions, TRUE);
             appendText(message, L" solutions.");
             logToConsole(message);
@@ -5967,6 +6121,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (i != nSolutionProcessorIDs - 1) appendText(message, L" | ");
             }
             logToConsole(message);
+
+            if (NUMBER_OF_SOLUTION_PROCESSORS * 2 > numberOfProcessors)
+            {
+                logToConsole(L"WARNING: NUMBER_OF_SOLUTION_PROCESSORS should not be greater than half of the total processor number!");
+            }
 
 
             // -----------------------------------------------------
