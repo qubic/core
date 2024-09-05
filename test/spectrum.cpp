@@ -76,6 +76,24 @@ SpectrumInfo checkAndGetInfo()
     return si;
 }
 
+void printEntityCategoryPopulations()
+{
+    std::cout << "entityCategoryPopulations:\n";
+    static constexpr int entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
+    for (int i = 0; i < entityCategoryCount; ++i)
+    {
+        if (entityCategoryPopulations[i])
+        {
+            std::cout << '\t' << i << ": " << entityCategoryPopulations[i] << " entities with amount ";
+            if (i == 0)
+                std::cout << (1llu << i);
+            else
+                std::cout << "between " << (1llu << i) << " and " << (1llu << (i + 1)) - 1;
+            std::cout << std::endl;
+        }
+    }
+}
+
 void dust_attack(unsigned int transferAmount, unsigned int repetitions)
 {
     for (unsigned int rep = 0; rep < repetitions; ++rep)
@@ -95,6 +113,10 @@ void dust_attack(unsigned int transferAmount, unsigned int repetitions)
 
         // Check and get current spectrum state
         SpectrumInfo si1 = checkAndGetInfo();
+
+        // Print distribution of entity balances
+        updateEntityCategoryPopulations();
+        printEntityCategoryPopulations();
 
         // Should trigger anti-dust
         auto t0 = std::chrono::high_resolution_clock::now();

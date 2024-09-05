@@ -20,6 +20,7 @@ static struct SpectrumInfo {
     long long totalAmount = 0;
 } spectrumInfo;
 static unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
+static constexpr unsigned char entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
 static m256i* spectrumDigests = nullptr;
 constexpr unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
 
@@ -36,6 +37,21 @@ void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
         {
             si.numberOfEntities++;
             si.totalAmount += balance;
+        }
+    }
+}
+
+void updateEntityCategoryPopulations()
+{
+    static_assert(MAX_SUPPLY < (1llu << entityCategoryCount));
+    setMem(entityCategoryPopulations, sizeof(entityCategoryPopulations), 0);
+
+    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+    {
+        const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+        if (balance)
+        {
+            entityCategoryPopulations[63 - __lzcnt64(balance)]++;
         }
     }
 }
@@ -136,19 +152,10 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
         if (spectrumInfo.numberOfEntities >= (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
         {
-            setMem(entityCategoryPopulations, sizeof(entityCategoryPopulations), 0);
-
-            for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-            {
-                const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-                if (balance)
-                {
-                    entityCategoryPopulations[63 - __lzcnt64(balance)]++;
-                }
-            }
+            updateEntityCategoryPopulations();
 
             unsigned int newNumberOfEntities = 0;
-            for (unsigned int categoryIndex = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]); categoryIndex-- > 0; )
+            for (unsigned int categoryIndex = entityCategoryCount; categoryIndex-- > 0; )
             {
                 if ((newNumberOfEntities += entityCategoryPopulations[categoryIndex]) >= SPECTRUM_CAPACITY / 2)
                 {
