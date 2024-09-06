@@ -2961,6 +2961,10 @@ static void processTick(unsigned long long processorNumber)
         addDebugMessage(L"BUG DETECTED: Spectrum info of continuous updating is inconsistent with counting from scratch!");
     }
 #endif
+
+    // Update entity category populations each 8 ticks
+    if ((system.tick & 7) == 0)
+        updateEntityCategoryPopulations();
 }
 
 static void beginEpoch()
@@ -5318,6 +5322,14 @@ static void logInfo()
     appendText(message, L" ms | Spectrum reorg time = ");
     appendNumber(message, spectrumReorgTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms.");
+    logToConsole(message);
+
+    setText(message, L"Entity balance dust threshold: ");
+    unsigned long long dustThreshold, dustThreshold2;
+    analyzeEntityCategoryPopulations(dustThreshold, dustThreshold2);
+    if (dustThreshold2 > dustThreshold)
+        dustThreshold = dustThreshold2;
+    appendNumber(message, dustThreshold, TRUE);
     logToConsole(message);
 }
 
