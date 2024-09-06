@@ -7,9 +7,9 @@
 #include "../src/spectrum.h"
 
 #include <chrono>
+#include <random>
 
-
-bool transfer(const m256i& src, const m256i& dst, long long amount)
+static bool transfer(const m256i& src, const m256i& dst, long long amount)
 {
     if (isZero(src) || isZero(dst))
         return false;
@@ -28,7 +28,7 @@ bool transfer(const m256i& src, const m256i& dst, long long amount)
     return true;
 }
 
-m256i getRichestEntity()
+static m256i getRichestEntity()
 {
     m256i pubKey(0, 0, 0, 0);
     long long maxBalance = 0;
@@ -44,7 +44,7 @@ m256i getRichestEntity()
     return pubKey;
 }
 
-m256i getAnyEntity()
+static m256i getAnyEntity()
 {
     m256i pubKey(0, 0, 0, 0);
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
@@ -59,7 +59,7 @@ m256i getAnyEntity()
     return pubKey;
 }
 
-SpectrumInfo checkAndGetInfo()
+static SpectrumInfo checkAndGetInfo()
 {
     // Total amount <= total supply
     SpectrumInfo si{ 0, 0 };
@@ -80,31 +80,109 @@ SpectrumInfo checkAndGetInfo()
     return si;
 }
 
-void printEntityCategoryPopulations()
+static void printEntityCategoryPopulations()
 {
+    unsigned long long dustThresholdBurnAll, dustThresholdBurnThird;
     updateEntityCategoryPopulations();
+    analyzeEntityCategoryPopulations(dustThresholdBurnAll, dustThresholdBurnThird);
     static constexpr int entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
     for (int i = 0; i < entityCategoryCount; ++i)
     {
         if (entityCategoryPopulations[i])
         {
-            std::cout << '\t' << i << ": " << entityCategoryPopulations[i] << " entities with amount ";
+            unsigned long long lowerBound = (1llu << i), upperBound = (1llu << (i + 1)) - 1;
+            const char* burnIndicator = "\t+ bin ";
+            if (lowerBound < dustThresholdBurnAll)
+                burnIndicator = "\t- bin ";
+            else if (lowerBound < dustThresholdBurnThird)
+                burnIndicator = "\t* bin ";
+            std::cout << burnIndicator << i << ": " << entityCategoryPopulations[i] << " entities with amount ";
             if (i == 0)
-                std::cout << (1llu << i);
+                std::cout << lowerBound;
             else
-                std::cout << "between " << (1llu << i) << " and " << (1llu << (i + 1)) - 1;
+                std::cout << "between " << lowerBound << " and " << upperBound;
             std::cout << std::endl;
         }
     }
 }
 
-void dust_attack(unsigned int transferMinAmount, unsigned int transferMaxAmount, unsigned int repetitions)
+// Spectrum test class for proper init, cleanup, and other repeated tasks
+struct SpectrumTest
+{
+    SpectrumInfo beforeAntiDustSpectrumInfo;
+    std::chrono::steady_clock::time_point beforeAntiDustTimestamp;
+    bool antiDustCornerCase;
+    std::mt19937_64 rnd64;
+
+    SpectrumTest(unsigned long long seed = 0)
+    {
+        if (!seed)
+            _rdrand64_step(&seed);
+        rnd64.seed(seed);
+        EXPECT_TRUE(initSpectrum());
+        EXPECT_TRUE(initCommonBuffers());
+        system.tick = 15600000;
+        clearSpectrum();
+        antiDustCornerCase = false;
+    }
+
+    ~SpectrumTest()
+    {
+        deinitSpectrum();
+        deinitCommonBuffers();
+    }
+
+    void clearSpectrum()
+    {
+        memset(spectrum, 0, spectrumSizeInBytes);
+        updateSpectrumInfo();
+    }
+
+    void beforeAntiDust()
+    {
+        // Check and get current spectrum state
+        beforeAntiDustSpectrumInfo = checkAndGetInfo();
+
+        // Print distribution of entity balances
+        std::cout << "Entity balance distribution before anti-dust:" << std::endl;
+        printEntityCategoryPopulations();
+
+        // Start measuring run-time
+        beforeAntiDustTimestamp = std::chrono::high_resolution_clock::now();
+    }
+
+    void afterAntiDust()
+    {
+        // Print anti-dust info
+        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - beforeAntiDustTimestamp);
+        std::cout << "Transfer with anti-dust took " << duration_ms << " ms: entities "
+            << beforeAntiDustSpectrumInfo.numberOfEntities << " -> " << spectrumInfo.numberOfEntities
+            << " (to " << spectrumInfo.numberOfEntities * 100llu / SPECTRUM_CAPACITY
+            << "% of capacity);  total amount " << beforeAntiDustSpectrumInfo.totalAmount << " -> " << spectrumInfo.totalAmount
+            << " (" << ((long long)spectrumInfo.totalAmount - (long long)beforeAntiDustSpectrumInfo.totalAmount) * 100ll / beforeAntiDustSpectrumInfo.totalAmount << "% reduction)" << std::endl;
+
+        // Print distribution of entity balances
+        std::cout << "Entity balance distribution after anti-dust:" << std::endl;
+        printEntityCategoryPopulations();
+
+        // Anti-dust always cleans up to at least half of the spectrum
+        EXPECT_LE(spectrumInfo.numberOfEntities, (SPECTRUM_CAPACITY / 2));
+
+        // Except for improbably corner cases, never burn more than 10% of the spectrum (quite arbitrary factor, just meaning no huge amount)
+        if (!antiDustCornerCase)
+            EXPECT_GT(spectrumInfo.totalAmount, beforeAntiDustSpectrumInfo.totalAmount * 9 / 10);
+    }
+
+    void dust_attack(unsigned int transferMinAmount, unsigned int transferMaxAmount, unsigned int repetitions);
+};
+
+void SpectrumTest::dust_attack(unsigned int transferMinAmount, unsigned int transferMaxAmount, unsigned int repetitions)
 {
     std::cout << "------------------ Dust attack with transfers between " << transferMinAmount << " and " << transferMaxAmount << " qu ------------------\n";
     for (unsigned int rep = 0; rep < repetitions; ++rep)
     {
         m256i richId = getRichestEntity();
-        m256i randomId = m256i::randomValue();
+        m256i randomId(rnd64(), rnd64(), rnd64(), rnd64());
 
         // Check current spectrum state
         checkAndGetInfo();
@@ -118,92 +196,90 @@ void dust_attack(unsigned int transferMinAmount, unsigned int transferMaxAmount,
 
             if (!transfer(richId, randomId, transferAmount))
                 richId = getRichestEntity();
-            randomId = m256i::randomValue();
+            randomId = m256i(rnd64(), rnd64(), rnd64(), rnd64());
         }
 
-        // Check and get current spectrum state
-        SpectrumInfo si1 = checkAndGetInfo();
-
-        // Print distribution of entity balances
-        std::cout << "entityCategoryPopulations before transfer with anti-dust:\n";
-        printEntityCategoryPopulations();
-
         // Should trigger anti-dust
-        auto t0 = std::chrono::high_resolution_clock::now();
+        beforeAntiDust();
         ASSERT_TRUE(transfer(richId, randomId, transferMinAmount));
-        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - t0);
-        std::cout << "Transfer with anti-dust took " << duration_ms << " ms: entities "
-            << si1.numberOfEntities << " -> " << spectrumInfo.numberOfEntities << " (delta " << (long long)spectrumInfo.numberOfEntities - (long long)si1.numberOfEntities
-            << ");  total amount " << si1.totalAmount << " -> " << spectrumInfo.totalAmount << " (delta " << (long long)spectrumInfo.totalAmount - (long long)si1.totalAmount << ")" << std::endl;
-        EXPECT_LE(spectrumInfo.numberOfEntities, (SPECTRUM_CAPACITY / 2));
-
-        // Print distribution of entity balances
-        std::cout << "entityCategoryPopulations after transfer with anti-dust:\n";
-        printEntityCategoryPopulations();
+        afterAntiDust();
     }
 }
 
+
 TEST(TestCoreSpectrum, AntiDustFile)
 {
-    EXPECT_TRUE(initSpectrum());
-    EXPECT_TRUE(initCommonBuffers());
-
+    SpectrumTest test;
     if (loadSpectrum(L"spectrum.000"))
     {
-        updateSpectrumInfo();
-        system.tick = 15600000;
-
         SpectrumInfo si1 = checkAndGetInfo();
-        dust_attack(1, 10, 3);
+        test.dust_attack(1, 10, 3);
     }
     else
     {
         std::cout << "Spectrum file not found. Skipping file test..." << std::endl;
     }
-
-    deinitSpectrum();
-    deinitCommonBuffers();
 }
 
 TEST(TestCoreSpectrum, AntiDustOneRichRandomDust)
 {
-    EXPECT_TRUE(initSpectrum());
-    EXPECT_TRUE(initCommonBuffers());
-
     // Create spectrum with one rich ID
-    memset(spectrum, 0, spectrumSizeInBytes);
-    system.tick = 15600000;
+    SpectrumTest test;
     increaseEnergy(m256i::randomValue(), 1000000000000llu);
-    updateSpectrumInfo();
+    spectrumInfo.totalAmount += 1000000000000llu;
 
-    dust_attack(1, 1, 2);
-    dust_attack(100, 100, 2);
-    dust_attack(1, 10000, 2);
-
-    deinitSpectrum();
-    deinitCommonBuffers();
+    test.dust_attack(1, 1, 1);
+    test.dust_attack(100, 100, 1);
+    test.dust_attack(1, 10000, 1);
 }
 
 TEST(TestCoreSpectrum, AntiDustManyRichRandomDust)
 {
-    EXPECT_TRUE(initSpectrum());
-    EXPECT_TRUE(initCommonBuffers());
-
-    // Create spectrum with one rich ID
-    memset(spectrum, 0, spectrumSizeInBytes);
-    system.tick = 15600000;
+    // Create spectrum with many rich IDs
+    SpectrumTest test;
     for (int i = 0; i < 10000; i++)
     {
         increaseEnergy(m256i::randomValue(), i * 100000llu);
+        spectrumInfo.totalAmount += i * 100000llu;
     }
-    updateSpectrumInfo();
-    std::cout << "Entity balance distribution before dust attack:" << std::endl;
-    printEntityCategoryPopulations();
 
-    dust_attack(1, 1000, 2);
-    dust_attack(1, 50, 2);
-    dust_attack(1, 1, 2);
+    test.dust_attack(1, 1000, 1);
+    test.dust_attack(1, 50, 1);
+    test.dust_attack(1, 1, 1);
+}
 
-    deinitSpectrum();
-    deinitCommonBuffers();
+TEST(TestCoreSpectrum, AntiDustEdgeCaseAllInSameBin)
+{
+    SpectrumTest test;
+    test.antiDustCornerCase = true;
+    for (unsigned long long i = 0; i < (SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4); ++i)
+    {
+        increaseEnergy(m256i(i, 1, 2, 3), 100llu);
+        spectrumInfo.totalAmount += 100llu;
+    }
+
+    test.beforeAntiDust();
+    increaseEnergy(m256i::randomValue(), 100llu);
+    test.afterAntiDust();
+}
+
+
+TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBins)
+{
+    SpectrumTest test;
+    for (unsigned long long i = 0; i < (SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4); ++i)
+    {
+        unsigned long long amount;
+        if (i < SPECTRUM_CAPACITY / 4)
+            amount = 100;
+        else if (i < SPECTRUM_CAPACITY / 2)
+            amount = 1000;
+        else if (i < SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4)
+            amount = 10000;
+        increaseEnergy(m256i(i, 1, 2, 3), amount);
+        spectrumInfo.totalAmount += amount;
+    }
+    test.beforeAntiDust();
+    increaseEnergy(m256i::randomValue(), 1000llu);
+    test.afterAntiDust();
 }

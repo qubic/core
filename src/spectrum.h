@@ -18,6 +18,7 @@ static ::Entity* spectrum = nullptr;
 static struct SpectrumInfo {
     unsigned int numberOfEntities = 0;  // Number of entities in the spectrum hash map, may include entries with balance == 0
     long long totalAmount = 0;          // Total amount of qubics in the spectrum
+    // TODO: add burn thresholds -> should be monitored to find when it is time to expand spectrum size
 } spectrumInfo;
 static unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
 static constexpr unsigned char entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
@@ -56,6 +57,39 @@ void updateEntityCategoryPopulations()
     }
 }
 
+// Compute balances that count as dust and are burned if 75% of spectrum hash map is filled.
+// All balances < dustThresholdBurnAll are burned in this case.
+// Every 2nd balance < dustThresholdBurnHalf is burned in this case.
+// Requires that updateEntityCategoryPopulations() is called before to give up-to-date values.
+bool analyzeEntityCategoryPopulations(unsigned long long & dustThresholdBurnAll, unsigned long long& dustThresholdBurnHalf)
+{
+    dustThresholdBurnAll = 0;
+    dustThresholdBurnHalf = 0;
+    unsigned int numberOfEntities = 0;
+    for (unsigned int categoryIndex = entityCategoryCount; categoryIndex-- > 0; )
+    {
+        if ((numberOfEntities += entityCategoryPopulations[categoryIndex]) >= SPECTRUM_CAPACITY / 2)
+        {
+            if (entityCategoryPopulations[categoryIndex] >= spectrumInfo.numberOfEntities)
+            {
+                // Corner case handling: if all entities are in one bin, burn only half of it
+                dustThresholdBurnHalf = (1llu << (categoryIndex + 1));
+                dustThresholdBurnAll = (1llu << categoryIndex);
+            }
+            else
+            {
+                // Regular case: burn all balances in current category and smaller (reduces
+                // spectrum to < 50% of capacity, but keeps as many entities as possible
+                // within this contraint and the granularity of categories
+                dustThresholdBurnAll = (1llu << (categoryIndex + 1));
+            }
+            break;
+        }
+    }
+    return true;
+}
+
+// Clean up spectrum hash map, removing all entities with balance 0. Updates spectrumInfo.
 static void reorganizeSpectrum()
 {
     ::Entity* reorgSpectrum = (::Entity*)reorgBuffer;
@@ -142,6 +176,7 @@ static long long energy(const int index)
     return spectrum[index].incomingAmount - spectrum[index].outgoingAmount;
 }
 
+// Increase balance of entity. Does not update spectrumInfo.totalAmount.
 static void increaseEnergy(const m256i& publicKey, long long amount)
 {
     if (!isZero(publicKey) && amount >= 0)
@@ -152,31 +187,50 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
         if (spectrumInfo.numberOfEntities >= (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
         {
+            // Update anti-dust burn thresholds
+            unsigned long long dustThresholdBurnAll, dustThresholdBurnHalf;
             updateEntityCategoryPopulations();
+            analyzeEntityCategoryPopulations(dustThresholdBurnAll, dustThresholdBurnHalf);
 
-            unsigned int newNumberOfEntities = 0;
-            for (unsigned int categoryIndex = entityCategoryCount; categoryIndex-- > 0; )
+            if (dustThresholdBurnAll > 0)
             {
-                if ((newNumberOfEntities += entityCategoryPopulations[categoryIndex]) >= SPECTRUM_CAPACITY / 2)
+                // Burn every balance with balance < dustThresholdBurnAll
+                for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                 {
-                    const unsigned long long balanceThreshold = (1llu << (categoryIndex + 1)) - 1;
-                    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+                    const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+                    if (balance < dustThresholdBurnAll && balance)
                     {
-                        const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-                        if (balance <= balanceThreshold && balance)
+                        spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
+                    }
+                }
+            }
+
+            if (dustThresholdBurnHalf > 0)
+            {
+                // Burn every second balance with balance < dustThresholdBurnHalf
+                unsigned int countBurnCanadiates = 0;
+                for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+                {
+                    const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+                    if (balance < dustThresholdBurnHalf && balance)
+                    {
+                        if (++countBurnCanadiates & 1)
                         {
                             spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
                         }
                     }
-
-                    reorganizeSpectrum();
-
-                    // Correct total amount (spectrum info has been recomputed after decreasing
-                    // but before increasing energy again)
-                    spectrumInfo.totalAmount += amount;
-
-                    break;
                 }
+            }
+
+            if (dustThresholdBurnAll > 0 || dustThresholdBurnHalf > 0)
+            {
+                // Remove entries with balance zero from hash map
+                reorganizeSpectrum();
+
+                // Correct total amount (spectrum info has been recomputed before increasing energy;
+                // in transfer case energy has been decreased before and total amount is not changed
+                // without anti-dust burning)
+                spectrumInfo.totalAmount += amount;
             }
         }
 
@@ -210,6 +264,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
     }
 }
 
+// Decrease balance of entity if it is high enough. Does not update spectrumInfo.totalAmount.
 static bool decreaseEnergy(const int index, long long amount)
 {
     if (amount >= 0)
@@ -244,6 +299,7 @@ static bool loadSpectrum(const CHAR16* fileName = SPECTRUM_FILE_NAME, const CHAR
 
         return false;
     }
+    updateSpectrumInfo();
     return true;
 }
 
