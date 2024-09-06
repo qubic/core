@@ -44,6 +44,7 @@
 
 #include "addons/tx_status_request.h"
 
+#include "mining/mining.h"
 #include "oracles/oracle_machines.h"
 
 ////////// Qubic \\\\\\\\\\
@@ -2320,7 +2321,7 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
     return true;
 }
 
-static void processTickTransactionSolution(const Transaction* transaction, const unsigned long long processorNumber)
+static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
@@ -2329,9 +2330,7 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     ASSERT(transaction->destinationPublicKey == arbitratorPublicKey);
     ASSERT(!transaction->amount && transaction->inputSize == 64 && !transaction->inputType);
 
-    const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
-    const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
-    m256i data[3] = { transaction->sourcePublicKey, solution_miningSeed, solution_nonce };
+    m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
     static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
     unsigned int flagIndex;
     KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
@@ -2339,7 +2338,7 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     {
         minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
 
-        unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
+        unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         if (score->isValidScore(solutionScore))
         {
             resourceTestingDigest ^= (unsigned long long)(solutionScore);
@@ -2348,6 +2347,11 @@ static void processTickTransactionSolution(const Transaction* transaction, const
             const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
             if (score->isGoodScore(solutionScore, threshold))
             {
+                if (transaction->amount) // Remove this condition after the migration period
+                {
+                    increaseEnergy(transaction->sourcePublicKey, transaction->amount);
+                }
+
                 for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
                 {
                     if (transaction->sourcePublicKey == computorPublicKeys[i])
@@ -2357,8 +2361,8 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                         unsigned int j;
                         for (j = 0; j < system.numberOfSolutions; j++)
                         {
-                            if (solution_nonce == system.solutions[j].nonce
-                                && solution_miningSeed == system.solutions[j].miningSeed
+                            if (transaction->nonce == system.solutions[j].nonce
+                                && transaction->miningSeed == system.solutions[j].miningSeed
                                 && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
                             {
                                 solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
@@ -2370,8 +2374,8 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                             && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
                         {
                             system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
-                            system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
-                            system.solutions[system.numberOfSolutions].nonce = solution_nonce;
+                            system.solutions[system.numberOfSolutions].miningSeed = transaction->miningSeed;
+                            system.solutions[system.numberOfSolutions].nonce = transaction->nonce;
                             solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
                         }
 
@@ -2490,8 +2494,8 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                 unsigned int j;
                 for (j = 0; j < system.numberOfSolutions; j++)
                 {
-                    if (solution_nonce == system.solutions[j].nonce
-                        && solution_miningSeed == system.solutions[j].miningSeed
+                    if (transaction->nonce == system.solutions[j].nonce
+                        && transaction->miningSeed == system.solutions[j].miningSeed
                         && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
                     {
                         solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
@@ -2503,8 +2507,8 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                     && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
                 {
                     system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
-                    system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
-                    system.solutions[system.numberOfSolutions].nonce = solution_nonce;
+                    system.solutions[system.numberOfSolutions].miningSeed = transaction->miningSeed;
+                    system.solutions[system.numberOfSolutions].nonce = transaction->nonce;
                     solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
                 }
 
@@ -2582,6 +2586,16 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
+                case MiningSolutionTransaction::transactionType():
+                {
+                    if (transaction->amount >= MiningSolutionTransaction::minAmount()
+                        && transaction->inputSize >= MiningSolutionTransaction::minInputSize())
+                    {
+                        processTickTransactionSolution((MiningSolutionTransaction*)transaction, processorNumber);
+                    }
+                }
+                break;
+
                 case OracleReplyCommitTransaction::transactionType():
                 {
                     if (computorIndex(transaction->sourcePublicKey) >= 0
@@ -2633,13 +2647,14 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 else
                 {
                     // Other transactions
+                    // TODO: Remove after the migration period
                     if (transaction->destinationPublicKey == arbitratorPublicKey)
                     {
                         if (!transaction->amount
                             && transaction->inputSize == 64
                             && !transaction->inputType)
                         {
-                            processTickTransactionSolution(transaction, processorNumber);
+                            processTickTransactionSolution((MiningSolutionTransaction*)transaction, processorNumber);
                         }
                     }
                 }
