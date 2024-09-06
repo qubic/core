@@ -20,6 +20,7 @@
   <ItemGroup>
     <ClInclude Include="addons\tx_status_request.h" />
     <ClInclude Include="assets.h" />
+    <ClInclude Include="contracts\ComputorControlledFund.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
