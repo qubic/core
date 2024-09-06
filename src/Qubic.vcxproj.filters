@@ -162,6 +162,9 @@
     </ClInclude>
     <ClInclude Include="spectrum.h" />
     <ClInclude Include="common_buffers.h" />
+    <ClInclude Include="contracts\ComputorControlledFund.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="oracles\Price.h">
       <Filter>oracles</Filter>
     </ClInclude>
