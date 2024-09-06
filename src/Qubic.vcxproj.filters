@@ -162,6 +162,12 @@
     </ClInclude>
     <ClInclude Include="spectrum.h" />
     <ClInclude Include="common_buffers.h" />
+    <ClInclude Include="oracles\Price.h">
+      <Filter>oracles</Filter>
+    </ClInclude>
+    <ClInclude Include="oracles\oracle_machines.h">
+      <Filter>oracles</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -181,6 +187,9 @@
     </Filter>
     <Filter Include="addons">
       <UniqueIdentifier>{d409258b-a63c-443f-8c7a-918c14f192a6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="oracles">
+      <UniqueIdentifier>{74ae36a2-d776-43e9-a6b9-f41412f5fdd2}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
