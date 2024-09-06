@@ -296,36 +296,46 @@ public:
         }
         unsigned long long nTick = tick - tickBegin + 1; // inclusive [tickBegin, tick]
         prepareFilenames(epoch);
-        logToConsole(L"Saving tick data...");
 
+        logToConsole(L"Saving tick data...");
+        tickData.acquireLock();
         if (!saveTickData(nTick, directory))
         {
+            tickData.releaseLock();
             logToConsole(L"Failed to save tickData");
             return 5;
         }
+        tickData.releaseLock();
 
         logToConsole(L"Saving quorum ticks");
+        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.acquireLock(i);
         if (!saveTicks(nTick, directory))
         {
+            for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.releaseLock(i);
             logToConsole(L"Failed to save Ticks");
             return 4;
         }
+        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.releaseLock(i);
 
+
+        tickTransactions.acquireLock();
         logToConsole(L"Saving tick transaction offset");
         if (!saveTickTransactionOffsets(nTick, directory))
         {
+            tickTransactions.releaseLock();
             logToConsole(L"Failed to save transactionOffset");
             return 3;
         }
-
         logToConsole(L"Saving transactions");
         long long outTotalTransactionSize = 0;
         unsigned long long outNextTickTransactionOffset = 0;
         if (!saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
         {
+            tickTransactions.releaseLock();
             logToConsole(L"Failed to save transactions");
             return 2;
         }
+        tickTransactions.releaseLock();
 
         logToConsole(L"Saving meta data");
         if (!saveMetaData(epoch, tick, outTotalTransactionSize, outNextTickTransactionOffset, directory))

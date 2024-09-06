@@ -42,7 +42,7 @@
       <SubSystem>Console</SubSystem>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)test_data"</Command>
+      <Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -57,6 +57,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -65,7 +66,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)test_data"</Command>
+      <Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

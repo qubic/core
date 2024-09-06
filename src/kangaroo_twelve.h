@@ -4,6 +4,10 @@
 
 #include "platform/memory.h"
 
+// Compiler flag to determine AVX512 or generic implementation of K12
+
+#define GENERIC_K12 1
+
 
 ////////// KangarooTwelve \\\\\\\\\\
 
@@ -322,7 +326,7 @@
 #define ROL64(a, offset) ((((unsigned long long)a) << offset) ^ (((unsigned long long)a) >> (64 - offset)))
 #endif
 
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
 static __m512i zero, moveThetaPrev, moveThetaNext, rhoB, rhoG, rhoK, rhoM, rhoS, pi1B, pi1G, pi1K, pi1M, pi1S, pi2S1, pi2S2, pi2BG, pi2KM, pi2S3, padding;
 static __m512i K12RoundConst0, K12RoundConst1, K12RoundConst2, K12RoundConst3, K12RoundConst4, K12RoundConst5, K12RoundConst6, K12RoundConst7, K12RoundConst8, K12RoundConst9, K12RoundConst10, K12RoundConst11;
 
@@ -659,7 +663,7 @@ typedef struct
 
 static void KeccakP1600_Permute_12rounds(unsigned char* state)
 {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
     __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, state);
     __m512i Gaeiou = _mm512_maskz_loadu_epi64(0x1F, state + 40);
     __m512i Kaeiou = _mm512_maskz_loadu_epi64(0x1F, state + 80);
@@ -964,7 +968,7 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned c
     {
         if (!instance->byteIOIndex && dataByteLen >= i + K12_rateInBytes)
         {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
             __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state);
             __m512i Gaeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state + 40);
             __m512i Kaeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state + 80);
@@ -978,7 +982,7 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned c
                 unsigned long long modifiedDataByteLen = dataByteLen - i;
             while (modifiedDataByteLen >= K12_rateInBytes)
             {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
                 Baeiou = _mm512_xor_si512(Baeiou, _mm512_maskz_loadu_epi64(0x1F, data));
                 Gaeiou = _mm512_xor_si512(Gaeiou, _mm512_maskz_loadu_epi64(0x1F, data + 40));
                 Kaeiou = _mm512_xor_si512(Kaeiou, _mm512_maskz_loadu_epi64(0x1F, data + 80));
@@ -1288,7 +1292,7 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned c
                     data += K12_rateInBytes;
                 modifiedDataByteLen -= K12_rateInBytes;
             }
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
             _mm512_mask_storeu_epi64(instance->state, 0x1F, Baeiou);
             _mm512_mask_storeu_epi64(instance->state + 40, 0x1F, Gaeiou);
             _mm512_mask_storeu_epi64(instance->state + 80, 0x1F, Kaeiou);
@@ -1531,7 +1535,7 @@ static inline void KangarooTwelve(const void* input, unsigned int inputByteLen, 
 
 static void KangarooTwelve64To32(const unsigned char* input, unsigned char* output)
 {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
     __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, input);
     __m512i Gaeiou = _mm512_set_epi64(0, 0, 0, 0, 0x0700, ((unsigned long long*)input)[7], ((unsigned long long*)input)[6], ((unsigned long long*)input)[5]);
 
