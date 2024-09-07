@@ -174,6 +174,9 @@ struct ScoreFunction
         synapseCheckpoint sckpInput[(numberOfHiddenNeurons + dataLength)][numberOfCheckPoints];
         bool isGeneratedSynapseOffset[numberOfHiddenNeurons + dataLength];
         bool isGeneratedSynapseFull[numberOfHiddenNeurons + dataLength];
+
+        unsigned char* _poolBuffer;
+
     } *_computeBuffer = nullptr;
     unsigned int* _indiceBigBuffer = nullptr;
 
@@ -248,6 +251,14 @@ struct ScoreFunction
 
         if (_computeBuffer == nullptr)
         {
+            for (unsigned int i = 0; i < solutionBufferCount; i++)
+            {
+                if (_computeBuffer[i]._poolBuffer)
+                {
+                    freePool(_computeBuffer[i]._poolBuffer);
+                }
+            }
+
             freePool(_computeBuffer);
             _computeBuffer = nullptr;
         }
@@ -293,11 +304,18 @@ struct ScoreFunction
                     cb.nnNeuronIndicePos[i] = bigBuffer;
                     bigBuffer += numberOfNeighborNeurons;
                 }
+
+                if (!allocatePool(RANDOM2_POOL_SIZE, (void**)&(cb._poolBuffer)))
+                {
+                    logToConsole(L"Failed to allocate memory for score pool buffer!");
+                    return false;
+                }
             }
         }
 
         for (int i = 0; i < solutionBufferCount; i++) {
             //setMem(&_synapses[i], sizeof(synapseStruct), 0);
+
             setMem(_synapses[i].inputLength, synapseInputSize, 0);
             setMem(&_computeBuffer[i].neurons, sizeof(_computeBuffer[i].neurons), 0);
 
@@ -405,44 +423,8 @@ struct ScoreFunction
     void generateSynapse(computeBuffer& cb, int solutionBufIdx, const m256i& publicKey, const m256i& nonce)
     {
         auto& synapses = _synapses[solutionBufIdx];
-        cb.k12.initState(publicKey.m256i_u64, nonce.m256i_u64);
-
-        // Generate full synapses
-        if (priorSynapsesLength == 0)
-        {
-            for (unsigned long long i = 0; i < inNeuronsCount; i++) {
-                cb.k12.write((unsigned char*)(&synapses.inputLength[0] + i * numberOfNeighborNeurons), numberOfNeighborNeurons);
-                cb.isGeneratedSynapseFull[i] = true;
-            }
-        }
-        else
-        {
-            for (unsigned long long i = 0; i < numberOfHiddenNeurons; i++) {
-                // Checkpoint at the beginning of the synapse list
-                synapseCheckpoint* p_sckp[1] = { &cb.sckpInput[i][0] };
-                cb.k12.saveCheckpoint(p_sckp);
-
-                // Checkpoint at the tail offset of the synapse list
-                cb.k12.hashWithoutWrite(numberOfNeighborNeurons - priorSynapsesLength);
-                synapseCheckpoint* p_sckp1[1] = { &cb.sckpInput[i][1] };
-                cb.k12.saveCheckpoint(p_sckp1);
-
-                // State move to the checkpoint 1
-                // Hash to the end of the synapse of current neuron
-                cb.k12.hashWithoutWrite(priorSynapsesLength);
-
-                cb.isGeneratedSynapseFull[i] = false;
-                cb.isGeneratedSynapseOffset[i] = false;
-
-            };
-            cb.k12.scatterFromVector();
-            for (unsigned long long i = numberOfHiddenNeurons; i < inNeuronsCount; i++) {
-                cb.k12.write((unsigned char*)(&synapses.inputLength[0] + i * numberOfNeighborNeurons), numberOfNeighborNeurons);
-                cb.isGeneratedSynapseFull[i] = true;
-            }
-        }
+        random2(&publicKey.m256i_u8[0], &nonce.m256i_u8[0], (unsigned char*)(synapses.inputLength), synapseInputSize, cb._poolBuffer);
     }
-
 
     void cacheBucketIndices(const char* synapseLength, computeBuffer& cb, size_t nrIdx, size_t fromSynapseOffset, size_t toSynapseOffset) {
         int* buffer = cb.buffer;
@@ -593,7 +575,6 @@ struct ScoreFunction
             auto& sum2 = state[size - 1].sum2;
             auto& nSum = state[size - 1].nSum;
             auto& currentTopMaxCount = state[size - 1].currentTopMaxCount;
-            auto& priorCompute = state[size - 1].priorCompute;
 
             if (!isProcessing[size - 1]) {
                 setMem(maxIndexBuffer, numMods * sizeof(maxIndexBuffer[0]), 0);
@@ -668,21 +649,6 @@ struct ScoreFunction
                         continue;
                     }
                     else { // need full compute
-
-                        // Not found the shortcut for the prior neuron. Re-try with all synapse computation
-                        if (priorCompute)
-                        {
-                            priorCompute = false;
-                            setMem(maxIndexBuffer, numMods * sizeof(maxIndexBuffer[0]), 0);
-                            sum0 = 0;
-                            sum1 = 0;
-                            sum2 = 0;
-                            nSum = 0;
-                            currentTopMaxCount = 0;
-
-                            continue;
-                        }
-
                         // Else
                         char v = accessNeuron<neurBefore, isInput>(cb, tick, neuronIdx);
                         if (v == NOT_CALCULATED) {
@@ -751,15 +717,12 @@ struct ScoreFunction
 
         // ComputeInput
         {
-            if (priorSynapsesLength == 0)
+            for (unsigned long long idx = 0; idx < inNeuronsCount; idx++)
             {
-                for (unsigned long long idx = 0; idx < inNeuronsCount; idx++)
-                {
-                    setMem(cb.synapseBucketPos[idx], sizeof(cb.synapseBucketPos[idx]), 0);
-                    cacheBucketIndices(cb.inputLength, cb, idx, 0, numberOfNeighborNeurons - 1);
-                    cb.isGeneratedBucketOffset[idx] = false;
-                    cb.isGeneratedSynapseFull[idx] = true;
-                }
+                setMem(cb.synapseBucketPos[idx], sizeof(cb.synapseBucketPos[idx]), 0);
+                cacheBucketIndices(cb.inputLength, cb, idx, 0, numberOfNeighborNeurons - 1);
+                cb.isGeneratedBucketOffset[idx] = false;
+                cb.isGeneratedSynapseFull[idx] = true;
             }
 
             setMem(cb.neurons.inputAtTick, sizeof(cb.neurons.inputAtTick), NOT_CALCULATED);
