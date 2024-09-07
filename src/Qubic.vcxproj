@@ -37,6 +37,7 @@
     <ClInclude Include="contract_core\qpi_trivial_impl.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
     <ClInclude Include="contract_core\qpi_proposal_voting.h" />
+    <ClInclude Include="files\files.h" />
     <ClInclude Include="logging.h" />
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />

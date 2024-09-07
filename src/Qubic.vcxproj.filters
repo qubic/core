@@ -166,6 +166,9 @@
     <ClInclude Include="oracles\oracle_machines.h">
       <Filter>oracles</Filter>
     </ClInclude>
+    <ClInclude Include="files\files.h">
+      <Filter>files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -188,6 +191,9 @@
     </Filter>
     <Filter Include="oracles">
       <UniqueIdentifier>{74ae36a2-d776-43e9-a6b9-f41412f5fdd2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="files">
+      <UniqueIdentifier>{ed6ee181-230c-46ac-91bd-234b9081e36f}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
