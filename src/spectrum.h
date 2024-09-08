@@ -228,16 +228,13 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 }
             }
 
-            if (dustThresholdBurnAll > 0 || dustThresholdBurnHalf > 0)
-            {
-                // Remove entries with balance zero from hash map
-                reorganizeSpectrum();
+            // Remove entries with balance zero from hash map
+            reorganizeSpectrum();
 
-                // Correct total amount (spectrum info has been recomputed before increasing energy;
-                // in transfer case energy has been decreased before and total amount is not changed
-                // without anti-dust burning)
-                spectrumInfo.totalAmount += amount;
-            }
+            // Correct total amount (spectrum info has been recomputed before increasing energy;
+            // in transfer case energy has been decreased before and total amount is not changed
+            // without anti-dust burning)
+            spectrumInfo.totalAmount += amount;
         }
 
     iteration:

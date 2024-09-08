@@ -80,11 +80,21 @@ static SpectrumInfo checkAndGetInfo()
     return si;
 }
 
-static void printEntityCategoryPopulations()
+static void updateAndPrintEntityCategoryPopulations()
 {
     unsigned long long dustThresholdBurnAll, dustThresholdBurnThird;
     updateEntityCategoryPopulations();
     analyzeEntityCategoryPopulations(dustThresholdBurnAll, dustThresholdBurnThird);
+
+    // Compute number of entities with 0 balance
+    unsigned int sumEntityCategoryPopulations = 0;
+    for (int i = 0; i < entityCategoryCount; ++i)
+        sumEntityCategoryPopulations += entityCategoryPopulations[i];
+    EXPECT_GE(spectrumInfo.numberOfEntities, sumEntityCategoryPopulations);
+    unsigned int zeroBalanceEntities = spectrumInfo.numberOfEntities - sumEntityCategoryPopulations;
+    if (zeroBalanceEntities > 0)
+        std::cout << "  - bin -1: " << zeroBalanceEntities << " entities with zero balance\n";
+
     static constexpr int entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
     for (int i = 0; i < entityCategoryCount; ++i)
     {
@@ -145,7 +155,7 @@ struct SpectrumTest
 
         // Print distribution of entity balances
         std::cout << "Entity balance distribution before anti-dust:" << std::endl;
-        printEntityCategoryPopulations();
+        updateAndPrintEntityCategoryPopulations();
 
         // Start measuring run-time
         beforeAntiDustTimestamp = std::chrono::high_resolution_clock::now();
@@ -163,7 +173,7 @@ struct SpectrumTest
 
         // Print distribution of entity balances
         std::cout << "Entity balance distribution after anti-dust:" << std::endl;
-        printEntityCategoryPopulations();
+        updateAndPrintEntityCategoryPopulations();
 
         // Anti-dust always cleans up to at least half of the spectrum
         EXPECT_LE(spectrumInfo.numberOfEntities, (SPECTRUM_CAPACITY / 2));
@@ -283,3 +293,23 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBins)
     increaseEnergy(m256i::randomValue(), 1000llu);
     test.afterAntiDust();
 }
+
+TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinZeroBalance)
+{
+    SpectrumTest test;
+    m256i richId(123, 4, 5, 6);
+    unsigned long long amount = 1000;
+    increaseEnergy(richId, 100 * amount);
+    spectrumInfo.totalAmount += 100 * amount;
+    unsigned int spectrum75pct = (SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4);
+    for (unsigned long long i = 0; i < spectrum75pct - 1; ++i)
+    {
+        m256i id(i, 1, 2, 3);
+        increaseEnergy(id, amount);
+        decreaseEnergy(spectrumIndex(id), amount);
+    }
+    test.beforeAntiDust();
+    transfer(richId, m256i(1234, 4, 5, 6), 100 * amount);
+    test.afterAntiDust();
+}
+
