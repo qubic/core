@@ -76,6 +76,8 @@
   <ItemGroup>
     <ClCompile Include="contract_core.cpp" />
     <ClCompile Include="qpi_collection.cpp" />
+    <ClCompile Include="spectrum.cpp" />
+    <ClCompile Include="stdlib_impl.cpp" />
     <ClCompile Include="tx_status_request.cpp" />
     <ClCompile Include="m256.cpp" />
     <ClCompile Include="math_lib.cpp" />

@@ -160,6 +160,8 @@
     <ClInclude Include="contracts\SupplyWatcher.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="spectrum.h" />
+    <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h">
       <Filter>contracts</Filter>
     </ClInclude>

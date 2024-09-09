@@ -20,6 +20,7 @@
   <ItemGroup>
     <ClInclude Include="addons\tx_status_request.h" />
     <ClInclude Include="assets.h" />
+    <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
@@ -74,6 +75,7 @@
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />
     <ClInclude Include="score_cache.h" />
+    <ClInclude Include="spectrum.h" />
     <ClInclude Include="system.h" />
     <ClInclude Include="text_output.h" />
     <ClInclude Include="private_settings.h" />
