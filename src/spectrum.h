@@ -60,8 +60,8 @@ void updateEntityCategoryPopulations()
 }
 
 // Compute balances that count as dust and are burned if 75% of spectrum hash map is filled.
-// All balances < dustThresholdBurnAll are burned in this case.
-// Every 2nd balance < dustThresholdBurnHalf is burned in this case.
+// All balances <= dustThresholdBurnAll are burned in this case.
+// Every 2nd balance <= dustThresholdBurnHalf is burned in this case.
 // Requires that updateEntityCategoryPopulations() is called before to give up-to-date values.
 bool analyzeEntityCategoryPopulations(unsigned long long & dustThresholdBurnAll, unsigned long long& dustThresholdBurnHalf)
 {
@@ -75,15 +75,15 @@ bool analyzeEntityCategoryPopulations(unsigned long long & dustThresholdBurnAll,
             if (entityCategoryPopulations[categoryIndex] >= spectrumInfo.numberOfEntities)
             {
                 // Corner case handling: if all entities are in one bin, burn only half of it
-                dustThresholdBurnHalf = (1llu << (categoryIndex + 1));
-                dustThresholdBurnAll = (1llu << categoryIndex);
+                dustThresholdBurnHalf = (1llu << (categoryIndex + 1)) - 1;
+                dustThresholdBurnAll = (1llu << categoryIndex) - 1;
             }
             else
             {
                 // Regular case: burn all balances in current category and smaller (reduces
                 // spectrum to < 50% of capacity, but keeps as many entities as possible
                 // within this contraint and the granularity of categories
-                dustThresholdBurnAll = (1llu << (categoryIndex + 1));
+                dustThresholdBurnAll = (1llu << (categoryIndex + 1)) - 1;
             }
             break;
         }
@@ -204,7 +204,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                 {
                     const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-                    if (balance < dustThresholdBurnAll && balance)
+                    if (balance <= dustThresholdBurnAll && balance)
                     {
                         spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
                     }
@@ -218,7 +218,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                 {
                     const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-                    if (balance < dustThresholdBurnHalf && balance)
+                    if (balance <= dustThresholdBurnHalf && balance)
                     {
                         if (++countBurnCanadiates & 1)
                         {

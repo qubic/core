@@ -101,11 +101,11 @@ static void updateAndPrintEntityCategoryPopulations()
         if (entityCategoryPopulations[i])
         {
             unsigned long long lowerBound = (1llu << i), upperBound = (1llu << (i + 1)) - 1;
-            const char* burnIndicator = "\t+ bin ";
-            if (lowerBound < dustThresholdBurnAll)
-                burnIndicator = "\t- bin ";
-            else if (lowerBound < dustThresholdBurnThird)
-                burnIndicator = "\t* bin ";
+            const char* burnIndicator = "  + bin ";
+            if (lowerBound <= dustThresholdBurnAll)
+                burnIndicator = "  - bin ";
+            else if (lowerBound <= dustThresholdBurnThird)
+                burnIndicator = "  * bin ";
             std::cout << burnIndicator << i << ": " << entityCategoryPopulations[i] << " entities with amount ";
             if (i == 0)
                 std::cout << lowerBound;
