@@ -169,6 +169,9 @@
     <ClInclude Include="oracles\oracle_machines.h">
       <Filter>oracles</Filter>
     </ClInclude>
+    <ClInclude Include="mining\mining.h">
+      <Filter>mining</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -191,6 +194,9 @@
     </Filter>
     <Filter Include="oracles">
       <UniqueIdentifier>{74ae36a2-d776-43e9-a6b9-f41412f5fdd2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mining">
+      <UniqueIdentifier>{df525479-7504-470c-a25a-de4af8be0e5d}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

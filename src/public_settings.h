@@ -74,6 +74,8 @@ static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testin
 #define NEURON_VALUE_LIMIT 1LL
 #define SOLUTION_THRESHOLD_DEFAULT 42
 
+#define SOLUTION_SECURITY_DEPOSIT 1000000
+
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
