@@ -2234,7 +2234,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
-    ASSERT(transaction->destinationPublicKey == arbitratorPublicKey);
+    ASSERT(transaction->destinationPublicKey == arbitratorPublicKey || isZero(transaction->destinationPublicKey));
     ASSERT(!transaction->amount && transaction->inputSize == 64 && !transaction->inputType);
 
     m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
@@ -2257,6 +2257,9 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 if (transaction->amount) // Remove this condition after the migration period
                 {
                     increaseEnergy(transaction->sourcePublicKey, transaction->amount);
+
+                    const QuTransfer quTransfer = { _mm256_setzero_si256(), transaction->sourcePublicKey, transaction->amount };
+                    logger.logQuTransfer(quTransfer);
                 }
 
                 for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
