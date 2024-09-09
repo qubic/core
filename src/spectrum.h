@@ -72,9 +72,12 @@ bool analyzeEntityCategoryPopulations(unsigned long long & dustThresholdBurnAll,
     {
         if ((numberOfEntities += entityCategoryPopulations[categoryIndex]) >= SPECTRUM_CAPACITY / 2)
         {
-            if (entityCategoryPopulations[categoryIndex] >= spectrumInfo.numberOfEntities)
+            // Balances in this category + higher balances fill more than half of the spectrum
+            // -> Reduce to less than half of the spectrum by detelting this category + lower balances
+            if (entityCategoryPopulations[categoryIndex] == numberOfEntities)
             {
-                // Corner case handling: if all entities are in one bin, burn only half of it
+                // Corner case handling: if all entities would be deleted, burn only half in the current category
+                // and all in the the lower categories
                 dustThresholdBurnHalf = (1llu << (categoryIndex + 1)) - 1;
                 dustThresholdBurnAll = (1llu << categoryIndex) - 1;
             }

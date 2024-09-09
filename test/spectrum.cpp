@@ -131,7 +131,7 @@ struct SpectrumTest
         rnd64.seed(seed);
         EXPECT_TRUE(initSpectrum());
         EXPECT_TRUE(initCommonBuffers());
-        system.tick = 15600000;
+        system.tick = 15700000;
         clearSpectrum();
         antiDustCornerCase = false;
     }
@@ -216,12 +216,14 @@ void SpectrumTest::dust_attack(unsigned int transferMinAmount, unsigned int tran
     }
 }
 
-
 TEST(TestCoreSpectrum, AntiDustFile)
 {
     SpectrumTest test;
     if (loadSpectrum(L"spectrum.000"))
     {
+        std::cout << "Spectrum file state before dust attack:" << std::endl;
+        updateAndPrintEntityCategoryPopulations();
+
         SpectrumInfo si1 = checkAndGetInfo();
         test.dust_attack(1, 10, 3);
     }
@@ -273,17 +275,15 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseAllInSameBin)
     test.afterAntiDust();
 }
 
-
 TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBins)
 {
     SpectrumTest test;
+    test.antiDustCornerCase = true;
     for (unsigned long long i = 0; i < (SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4); ++i)
     {
         unsigned long long amount;
         if (i < SPECTRUM_CAPACITY / 4)
             amount = 100;
-        else if (i < SPECTRUM_CAPACITY / 2)
-            amount = 1000;
         else if (i < SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4)
             amount = 10000;
         increaseEnergy(m256i(i, 1, 2, 3), amount);
