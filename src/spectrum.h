@@ -17,11 +17,13 @@ static volatile char spectrumLock = 0;
 static ::Entity* spectrum = nullptr;
 static struct SpectrumInfo {
     unsigned int numberOfEntities = 0;  // Number of entities in the spectrum hash map, may include entries with balance == 0
-    long long totalAmount = 0;          // Total amount of qubics in the spectrum
-    // TODO: add burn thresholds -> should be monitored to find when it is time to expand spectrum size
+    unsigned long long totalAmount = 0; // Total amount of qubics in the spectrum
 } spectrumInfo;
+
 static unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
 static constexpr unsigned char entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
+unsigned long long dustThresholdBurnAll = 0, dustThresholdBurnHalf = 0;
+
 static m256i* spectrumDigests = nullptr;
 constexpr unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
 
@@ -44,7 +46,10 @@ void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
     }
 }
 
-void updateEntityCategoryPopulations()
+// Compute balances that count as dust and are burned if 75% of spectrum hash map is filled.
+// All balances <= dustThresholdBurnAll are burned in this case.
+// Every 2nd balance <= dustThresholdBurnHalf is burned in this case.
+void updateAndAnalzeEntityCategoryPopulations()
 {
     static_assert(MAX_SUPPLY < (1llu << entityCategoryCount));
     setMem(entityCategoryPopulations, sizeof(entityCategoryPopulations), 0);
@@ -57,14 +62,7 @@ void updateEntityCategoryPopulations()
             entityCategoryPopulations[63 - __lzcnt64(balance)]++;
         }
     }
-}
 
-// Compute balances that count as dust and are burned if 75% of spectrum hash map is filled.
-// All balances <= dustThresholdBurnAll are burned in this case.
-// Every 2nd balance <= dustThresholdBurnHalf is burned in this case.
-// Requires that updateEntityCategoryPopulations() is called before to give up-to-date values.
-bool analyzeEntityCategoryPopulations(unsigned long long & dustThresholdBurnAll, unsigned long long& dustThresholdBurnHalf)
-{
     dustThresholdBurnAll = 0;
     dustThresholdBurnHalf = 0;
     unsigned int numberOfEntities = 0;
@@ -91,7 +89,6 @@ bool analyzeEntityCategoryPopulations(unsigned long long & dustThresholdBurnAll,
             break;
         }
     }
-    return true;
 }
 
 // Clean up spectrum hash map, removing all entities with balance 0. Updates spectrumInfo.
@@ -197,9 +194,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
         if (spectrumInfo.numberOfEntities >= (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
         {
             // Update anti-dust burn thresholds
-            unsigned long long dustThresholdBurnAll, dustThresholdBurnHalf;
-            updateEntityCategoryPopulations();
-            analyzeEntityCategoryPopulations(dustThresholdBurnAll, dustThresholdBurnHalf);
+            updateAndAnalzeEntityCategoryPopulations();
 
             if (dustThresholdBurnAll > 0)
             {

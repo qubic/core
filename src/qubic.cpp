@@ -1117,6 +1117,9 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
     respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
 
+    respondedSystemInfo.totalSpectrumAmount = spectrumInfo.totalAmount;
+    respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
+
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
 }
 
@@ -2962,9 +2965,9 @@ static void processTick(unsigned long long processorNumber)
     }
 #endif
 
-    // Update entity category populations each 8 ticks
+    // Update entity category populations and dust thresholds each 8 ticks
     if ((system.tick & 7) == 0)
-        updateEntityCategoryPopulations();
+        updateAndAnalzeEntityCategoryPopulations();
 }
 
 static void beginEpoch()
@@ -5325,11 +5328,7 @@ static void logInfo()
     logToConsole(message);
 
     setText(message, L"Entity balance dust threshold: ");
-    unsigned long long dustThreshold, dustThreshold2;
-    analyzeEntityCategoryPopulations(dustThreshold, dustThreshold2);
-    if (dustThreshold2 > dustThreshold)
-        dustThreshold = dustThreshold2;
-    appendNumber(message, dustThreshold, TRUE);
+    appendNumber(message, (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf, TRUE);
     logToConsole(message);
 }
 

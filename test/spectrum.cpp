@@ -82,9 +82,7 @@ static SpectrumInfo checkAndGetInfo()
 
 static void updateAndPrintEntityCategoryPopulations()
 {
-    unsigned long long dustThresholdBurnAll, dustThresholdBurnThird;
-    updateEntityCategoryPopulations();
-    analyzeEntityCategoryPopulations(dustThresholdBurnAll, dustThresholdBurnThird);
+    updateAndAnalzeEntityCategoryPopulations();
 
     // Compute number of entities with 0 balance
     unsigned int sumEntityCategoryPopulations = 0;
@@ -104,7 +102,7 @@ static void updateAndPrintEntityCategoryPopulations()
             const char* burnIndicator = "  + bin ";
             if (lowerBound <= dustThresholdBurnAll)
                 burnIndicator = "  - bin ";
-            else if (lowerBound <= dustThresholdBurnThird)
+            else if (lowerBound <= dustThresholdBurnHalf)
                 burnIndicator = "  * bin ";
             std::cout << burnIndicator << i << ": " << entityCategoryPopulations[i] << " entities with amount ";
             if (i == 0)
