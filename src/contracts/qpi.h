@@ -667,17 +667,17 @@ namespace QPI
 			// Used if type class is Variable and type is not VariableScalarMean
 			struct VariableOptions
 			{
+				uint64 variable;            // For identifying variable (interpreted by contract only)
 				array<sint64, 4> values;    // N first amounts are proposed options sorted without duplicates, rest zero
-				uint16 variable;            // For identifying variable (interpreted by contract only)
 			} variableOptions;
 
 			// Used if type is VariableScalarMean
 			struct VariableScalar
 			{
+				uint64 variable;            // For identifying variable (interpreted by contract only)
 				sint64 minValue;            // Minimum value allowed in proposedValue and votes, must be > NO_VOTE_VALUE
 				sint64 maxValue;            // Maximum value allowed in proposedValue and votes, must be >= minValue
 				sint64 proposedValue;       // Needs to be in range between minValue and maxValue
-				uint16 variable;            // For identifying variable (interpreted by contract only)
 
 				static constexpr sint64 minSupportedValue = 0x8000000000000001;
 				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
@@ -771,8 +771,8 @@ namespace QPI
 			// Used if type class is Variable and type is not VariableScalarMean
 			struct VariableOptions
 			{
+				uint64 variable;    // For identifying variable (interpreted by contract only)
 				sint64 value;		// Value of proposed option, rest zero
-				uint16 variable;    // For identifying variable (interpreted by contract only)
 			} variableOptions;
 		};
 
