@@ -4854,6 +4854,8 @@ static bool initialize()
 
 #if defined (__AVX512F__) && !GENERIC_K12
     initAVX512KangarooTwelveConstants();
+#endif
+#if defined (__AVX512F__)
     initAVX512FourQConstants();
 #endif
 
