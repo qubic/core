@@ -286,7 +286,7 @@ public:
 
 					// Add log entry
 					state.latestTransfers.set(state.lastTransfersNextOverwriteIdx, locals.transfer);
-					state.lastTransfersNextOverwriteIdx = (state.lastTransfersNextOverwriteIdx + 1) & state.latestTransfers.capacity();
+					state.lastTransfersNextOverwriteIdx = (state.lastTransfersNextOverwriteIdx + 1) & (state.latestTransfers.capacity() - 1);
 				}
 			}
 		}
