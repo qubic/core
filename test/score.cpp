@@ -35,7 +35,7 @@ using namespace test_utils;
 static constexpr bool PRINT_DETAILED_INFO = false;
 
 // Only run on specific index of samples and setting
-std::vector<unsigned int> filteredSamples; //= { 0 };
+std::vector<unsigned int> filteredSamples;// = { 0 };
 std::vector<unsigned int> filteredSettings;// = { 0,1 };
 
 std::vector<std::vector<unsigned int>> gScoresGroundTruth;
@@ -124,7 +124,7 @@ static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigne
 
 
 static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
-static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_20240821.csv";
+static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_random2.csv";
 
 void runCommonTests()
 {
