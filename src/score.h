@@ -249,7 +249,7 @@ struct ScoreFunction
             _indiceBigBuffer = nullptr;
         }
 
-        if (_computeBuffer == nullptr)
+        if (_computeBuffer)
         {
             for (unsigned int i = 0; i < solutionBufferCount; i++)
             {
