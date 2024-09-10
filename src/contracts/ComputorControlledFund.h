@@ -81,8 +81,12 @@ public:
 		if (ProposalTypes::cls(input.type) != ProposalTypes::Class::Transfer)
 		{
 			// Only transfer proposals are allowed
-			output.okay = false;
-			return;
+			// -> Cancel if epoch is not 0 (which means clearing the proposal)
+			if (input.epoch != 0)
+			{
+				output.okay = false;
+				return;
+			}
 		}
 
 		// Try to set proposal (checks originators rights and general validity of input proposal)
