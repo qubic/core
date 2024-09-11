@@ -29,12 +29,14 @@ struct ScoreReferenceImplementation
     };
 
     Synapse _synapses[solutionBufferCount];
+    unsigned char* _poolBuffer[solutionBufferCount];
 
     void initMemory()
     {
         for (int i = 0; i < solutionBufferCount; i++)
         {
             allocatePool(synapseInputSize, (void**)&(_synapses[i].inputLength));
+            allocatePool(RANDOM2_POOL_SIZE, (void**)&(_poolBuffer[i]));
             setMem(_synapses[i].inputLength, synapseInputSize, 0);
             setMem(_neurons[i].neuronBuffer, sizeof(_neurons[i].neuronBuffer), 0);
             setMem(_neurons[i].input, sizeof(_neurons[i].input), 0);
@@ -46,6 +48,7 @@ struct ScoreReferenceImplementation
         for (int i = 0; i < solutionBufferCount; i++)
         {
             freePool(_synapses[i].inputLength);
+            freePool(_poolBuffer[i]);
         }
     }
 
@@ -90,8 +93,10 @@ struct ScoreReferenceImplementation
         auto& neurons = _neurons[processorNumber];
         auto& neuronBufferInput = neurons.neuronBuffer;
         auto& synapses = _synapses[processorNumber];
+        auto& random2PoolBuffer = _poolBuffer[processorNumber];
         memset(neurons.input, 0, sizeof(neurons.input));
-        random(publicKey, nonce, (unsigned char*)synapses.inputLength, synapseInputSize);
+        random2(publicKey, nonce, (unsigned char*)synapses.inputLength, synapseInputSize, random2PoolBuffer);
+
         for (unsigned long long synapseIndex = 0; synapseIndex < (numberOfHiddenNeurons + dataLength) * numberOfNeighborNeurons; synapseIndex++)
         {
             if (synapses.inputLength[synapseIndex] == -128)

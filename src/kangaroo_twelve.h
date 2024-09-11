@@ -4,6 +4,10 @@
 
 #include "platform/memory.h"
 
+// Compiler flag to determine AVX512 or generic implementation of K12
+
+#define GENERIC_K12 1
+
 
 ////////// KangarooTwelve \\\\\\\\\\
 
@@ -322,7 +326,7 @@
 #define ROL64(a, offset) ((((unsigned long long)a) << offset) ^ (((unsigned long long)a) >> (64 - offset)))
 #endif
 
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
 static __m512i zero, moveThetaPrev, moveThetaNext, rhoB, rhoG, rhoK, rhoM, rhoS, pi1B, pi1G, pi1K, pi1M, pi1S, pi2S1, pi2S2, pi2BG, pi2KM, pi2S3, padding;
 static __m512i K12RoundConst0, K12RoundConst1, K12RoundConst2, K12RoundConst3, K12RoundConst4, K12RoundConst5, K12RoundConst6, K12RoundConst7, K12RoundConst8, K12RoundConst9, K12RoundConst10, K12RoundConst11;
 
@@ -659,7 +663,7 @@ typedef struct
 
 static void KeccakP1600_Permute_12rounds(unsigned char* state)
 {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
     __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, state);
     __m512i Gaeiou = _mm512_maskz_loadu_epi64(0x1F, state + 40);
     __m512i Kaeiou = _mm512_maskz_loadu_epi64(0x1F, state + 80);
@@ -964,7 +968,7 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned c
     {
         if (!instance->byteIOIndex && dataByteLen >= i + K12_rateInBytes)
         {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
             __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state);
             __m512i Gaeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state + 40);
             __m512i Kaeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state + 80);
@@ -978,7 +982,7 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned c
                 unsigned long long modifiedDataByteLen = dataByteLen - i;
             while (modifiedDataByteLen >= K12_rateInBytes)
             {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
                 Baeiou = _mm512_xor_si512(Baeiou, _mm512_maskz_loadu_epi64(0x1F, data));
                 Gaeiou = _mm512_xor_si512(Gaeiou, _mm512_maskz_loadu_epi64(0x1F, data + 40));
                 Kaeiou = _mm512_xor_si512(Kaeiou, _mm512_maskz_loadu_epi64(0x1F, data + 80));
@@ -1288,7 +1292,7 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned c
                     data += K12_rateInBytes;
                 modifiedDataByteLen -= K12_rateInBytes;
             }
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
             _mm512_mask_storeu_epi64(instance->state, 0x1F, Baeiou);
             _mm512_mask_storeu_epi64(instance->state + 40, 0x1F, Gaeiou);
             _mm512_mask_storeu_epi64(instance->state + 80, 0x1F, Kaeiou);
@@ -1531,7 +1535,7 @@ static inline void KangarooTwelve(const void* input, unsigned int inputByteLen, 
 
 static void KangarooTwelve64To32(const unsigned char* input, unsigned char* output)
 {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
     __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, input);
     __m512i Gaeiou = _mm512_set_epi64(0, 0, 0, 0, 0x0700, ((unsigned long long*)input)[7], ((unsigned long long*)input)[6], ((unsigned long long*)input)[5]);
 
@@ -2507,5 +2511,37 @@ static void random(const unsigned char* publicKey, const unsigned char* nonce, u
     {
         KeccakP1600_Permute_12rounds(state);
         copyMem(output, state, outputSize % sizeof(state));
+    }
+}
+
+static constexpr unsigned int RANDOM2_POOL_ACTUAL_SIZE = 1048576;
+static constexpr unsigned int RANDOM2_POOL_SIZE = RANDOM2_POOL_ACTUAL_SIZE + 24;  // Need a multiple of 200
+static_assert(RANDOM2_POOL_SIZE % 200 == 0, "Random2: pool buffer size must be a multiple of 200");
+
+// Provide the pool buffer from outside
+static void random2(
+    const unsigned char* publicKey,
+    const unsigned char* nonce,
+    unsigned char* output,
+    unsigned long long outputSize, // outputSize must be a multiple of 8
+    unsigned char* poolBuffer // intermediate buffer that have size of RANDOM2_POOL_SIZE
+)
+{
+    unsigned char state[200];
+    *((__m256i*) & state[0]) = *((__m256i*)publicKey);
+    *((__m256i*) & state[32]) = *((__m256i*)nonce);
+    setMem(&state[64], sizeof(state) - 64, 0);
+
+    for (unsigned int i = 0; i < RANDOM2_POOL_SIZE; i += sizeof(state))
+    {
+        KeccakP1600_Permute_12rounds(state);
+        copyMem(&poolBuffer[i], state, sizeof(state));
+    }
+
+    unsigned int x = 0; // The same sequence is always used, exploit this for optimization
+    for (unsigned long long i = 0; i < outputSize; i += 8)
+    {
+        *((unsigned long long*) & output[i]) = *((unsigned long long*) & poolBuffer[x & (RANDOM2_POOL_ACTUAL_SIZE - 1)]);
+        x = x * 1664525 + 1013904223;// https://en.wikipedia.org/wiki/Linear_congruential_generator#Parameters_in_common_use
     }
 }

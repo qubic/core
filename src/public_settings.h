@@ -5,6 +5,9 @@
 //////////////////////////////////////////////////////////////////////////
 // Config options for operators
 
+// Need to be set depending on voting results of proposal on IPO of the CCF contract (1 if accepted, 0 if rejected)
+#define IPO_OF_CCF 1
+
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
 // random seed is now obtained from spectrumDigests
 
@@ -49,12 +52,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 217
+#define VERSION_B 218
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 125
-#define TICK 15700000
+#define EPOCH 126
+#define TICK 15840000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -73,6 +76,8 @@ static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testin
 #define MAX_DURATION 2000
 #define NEURON_VALUE_LIMIT 1LL
 #define SOLUTION_THRESHOLD_DEFAULT 42
+
+#define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"

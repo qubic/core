@@ -1,36 +1,54 @@
-### Checkmark for successful testing network
-✅ All nodes ticking without being stuck. In rare instances of weak connections, nodes may require manual intervention (F9) to re-issue votes. Forcing an empty tick (F5) is discouraged as it disrupts normal operation.
+### Testing checklist
+Importance Levels:
+- **High**: the networks and node can't function properly, need to fix asap or we should not release.
 
-#### Common reasons for being stuck:
-- Digest Mismatches (`spectrum`, `universe`, `ResourceTesting`):
-  - Buggy smart contract execution affecting the `spectrum` digest.
-  - Incorrect asset transfers impacting the `universe` digest.
-  - Miscalculated solutions leading to mismatch in the `ResourceTesting` digest.
-- Weak connections: May necessitate manual intervention (F9) to re-establish communication.
-- Node hangups: In rare cases, the node may require manual restarting.
+- **Medium**: Funds are cryptographically secured but extra serivces don't work as expected (moneyFlew, state save/load features). These services can be turned off temporarily.
 
-✅ No freeze and crash during ticking, `beginEpoch`, `endEpoch`.
+- **Low**: Not really harmful, eg: display error. Can be fixed later
 
-✅ New files with correct names for the new epoch are generated after `endEpoch` event.
 
-✅ No thread gets crashed 
+5 main components inside qubic core:
+```
+[Consensus algo (tick processors)]
+[Solution scoring system]
+[Request processors] + [Networking]
+[Smart contract processor]
+[Extra services]
+```
 
-#### Seamless epoch transition:
+Consensus algo (tick processors):
+- [High] No misalignment
+- [High] Files that are generated at the end of each epoch must be matched between nodes (universe, spectrum, contractXXXX, `.futureComputor` part of `system`)
+- [High] No stuck for more than 10 mins (not misalignment)
+- [Medium] Successfully epoch transition. After the transition, fresh node can join with the EFI file with new tick and epoch.
+- [Low] All displayed stats are reset after epoch transition
 
-✅ Fresh nodes can sync from scratch with new blockchain files.
 
-✅ Third-party services should be able to get all logs generated during the previous epoch.
+Extra services:
+- [High] The tx add on (moneyflew)
+- [Medium] The node is able to save ticks data and reload when reseting.
+- [Medium] All loggings work as expected. Including: qu transfer, share transfer, contract message, burning loggings
 
-✅ Old solutions are reset and stop broadcasting them to new epoch.
 
-✅ The new mining seed is retrieved from the updated `spectrum`.
+Solution scoring system:
+- [High] No misalignment on resourceTestingDigest
+- [High] Submit 30 valid solutions from different addresses, node shows +30 solutions, deposited coins are returned
+- [High] Submit 30 invalid solutions from different addresses, node doesn't show anything, M burns logs appear
+- [High] Submit 4 valid solutions with 2 invalid solutions from the same address, node shows +4 solutions, 4 deposits are returned, 2 get burned
+- [High] Mining seed changes between mining&idle phases.
+- [Medium] Solution processing time is under 1000ms (only on BM avx512)
+- [Medium] Can set mining threshold remotely
+- [Medium] Repeatedly submitting 30 valid solutions, expect the "Cache hit number" increases
 
-✅ New computors can participate in voting and "pass" salted digests, even when syncing from scratch. This scenario is tested by:
-- After endEpoch event, 226 computors are replaced (451 old computors remain), and they will run on a fresh node.
-- Simulating a lack of votes from 51 "old" computors (400 out of 451 participated).
-- 226 computors spin up the node. We expect the network ticking despite the absence of these 51 "old" computors.
+Smart contract processor:
+- [High] No misalignment on computerDigest/spectrumDigest/universeDigest
+- [High] Good stack memory usage (can only know by pressing F2 for now)
 
-✅ The network continues functioning smoothly and can do another seamless epoch transition.
+Request processors and networking:
+- [High] All threads are healthy.
+- [Medium] Success rate of connection to the node: >90% Good. >70% OK. Acceptable >50%. Potentially bug <50%
+
+
 
 ### Score test
 
