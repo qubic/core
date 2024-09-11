@@ -133,11 +133,13 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
+#if IPO_OF_CCF
 #define CCF_CONTRACT_INDEX 8
 #define CONTRACT_INDEX CCF_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE CCF
 #define CONTRACT_STATE2_TYPE CCF2
 #include "contracts/ComputorControlledFund.h"
+#endif
 
 
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
@@ -188,7 +190,9 @@ constexpr struct ContractDescription
     {"MLM", 112, 10000, sizeof(IPO)},
     {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
+#if IPO_OF_CCF
     {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
+#endif
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -272,5 +276,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MLM);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(GQMPROP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(SWATCH);
+#if IPO_OF_CCF
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(CCF);
+#endif
 }

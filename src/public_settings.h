@@ -5,6 +5,9 @@
 //////////////////////////////////////////////////////////////////////////
 // Config options for operators
 
+// Need to be set depending on voting results of proposal on IPO of the CCF contract (1 if accepted, 0 if rejected)
+#define IPO_OF_CCF 1
+
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
 // random seed is now obtained from spectrumDigests
 
