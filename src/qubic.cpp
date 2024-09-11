@@ -2234,8 +2234,10 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
-    ASSERT(transaction->destinationPublicKey == arbitratorPublicKey || isZero(transaction->destinationPublicKey));
-    ASSERT(!transaction->amount && transaction->inputSize == 64 && !transaction->inputType);
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(transaction->amount >=MiningSolutionTransaction::minAmount()
+            && transaction->inputSize == 64
+            && transaction->inputType == MiningSolutionTransaction::transactionType());
 
     m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
     static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
@@ -2254,7 +2256,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
             const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
             if (score->isGoodScore(solutionScore, threshold))
             {
-                if (transaction->amount) // Remove this condition after the migration period
+                // Solution deposit return
                 {
                     increaseEnergy(transaction->sourcePublicKey, transaction->amount);
 
@@ -2554,20 +2556,6 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                         moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
                     }
                 }
-                else
-                {
-                    // Other transactions
-                    // TODO: Remove after the migration period
-                    if (transaction->destinationPublicKey == arbitratorPublicKey)
-                    {
-                        if (!transaction->amount
-                            && transaction->inputSize == 64
-                            && !transaction->inputType)
-                        {
-                            processTickTransactionSolution((MiningSolutionTransaction*)transaction, processorNumber);
-                        }
-                    }
-                }
             }
         }
 
@@ -2665,9 +2653,10 @@ static void processTick(unsigned long long processorNumber)
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     if (spectrumIndex >= 0)
                     {
-                        if ((transaction->destinationPublicKey == arbitratorPublicKey && !transaction->amount && !transaction->inputType) ||
-                            (isZero(transaction->destinationPublicKey) && transaction->amount >= MiningSolutionTransaction::minAmount()
-                                && transaction->inputType == MiningSolutionTransaction::transactionType()))
+                        // Solution transactions
+                        if (isZero(transaction->destinationPublicKey)
+                            && transaction->amount >= MiningSolutionTransaction::minAmount()
+                            && transaction->inputType == MiningSolutionTransaction::transactionType())
                         {
                             if (transaction->inputSize == 32 + 32)
                             {
@@ -2954,12 +2943,12 @@ static void processTick(unsigned long long processorNumber)
                 } payload;
                 static_assert(sizeof(payload) == sizeof(Transaction) + 32 + 32 + SIGNATURE_SIZE, "Unexpected struct size!");
                 payload.transaction.sourcePublicKey = computorPublicKeys[i];
-                payload.transaction.destinationPublicKey = arbitratorPublicKey;
-                payload.transaction.amount = 0;
+                payload.transaction.destinationPublicKey = _mm256_setzero_si256();
+                payload.transaction.amount = MiningSolutionTransaction::minAmount();
                 unsigned int random;
                 _rdrand32_step(&random);
                 solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET + random % MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
-                payload.transaction.inputType = 0;
+                payload.transaction.inputType = MiningSolutionTransaction::transactionType();
                 payload.transaction.inputSize = sizeof(payload.miningSeed) + sizeof(payload.nonce);
                 payload.miningSeed = system.solutions[solutionIndexToPublish].miningSeed;
                 payload.nonce = system.solutions[solutionIndexToPublish].nonce;
