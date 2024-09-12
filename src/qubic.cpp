@@ -3477,7 +3477,7 @@ static bool saveAllNodeStates()
     appendText(message, directory); appendText(message, L"/");
     appendText(message, SPECTRUM_FILE_NAME);
     logToConsole(message);
-    if (!saveSpectrum(directory))
+    if (!saveSpectrum(SPECTRUM_FILE_NAME, directory))
     {
         logToConsole(L"Failed to save spectrum");
         return false;
@@ -3623,7 +3623,7 @@ static bool loadAllNodeStates()
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
-    if (!loadSpectrum(directory))
+    if (!loadSpectrum(SPECTRUM_FILE_NAME, directory))
     {
         logToConsole(L"Failed to load spectrum");
         return false;
