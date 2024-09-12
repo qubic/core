@@ -130,6 +130,26 @@ TEST(TestCore256BitClass, ConstructAssignCompare) {
         for (int j = 0; j < 32; ++j)
             EXPECT_EQ(v1.m256i_u8[j], 7 + i + j);
     }
+
+    // m256i::zero()
+    EXPECT_FALSE(isZero(v1));
+    EXPECT_FALSE(v1 == m256i::zero());
+    EXPECT_TRUE(v1 != m256i::zero());
+    v1 = m256i::zero();
+    EXPECT_TRUE(isZero(v1));
+    EXPECT_TRUE(v1 == m256i::zero());
+    EXPECT_FALSE(v1 != m256i::zero());
+
+    // 4 x u64 constructor
+    m256i v7(1234, 5678, 9012, 3456);
+    EXPECT_EQ(v7.u64._0, 1234);
+    EXPECT_EQ(v7.u64._1, 5678);
+    EXPECT_EQ(v7.u64._2, 9012);
+    EXPECT_EQ(v7.u64._3, 3456);
+    EXPECT_EQ(v7.m256i_u64[0], 1234);
+    EXPECT_EQ(v7.m256i_u64[1], 5678);
+    EXPECT_EQ(v7.m256i_u64[2], 9012);
+    EXPECT_EQ(v7.m256i_u64[3], 3456);
 }
 
 TEST(TestCore256BitFunctionsIntrinsicType, isZero) {
@@ -162,7 +182,7 @@ TEST(TestCore256BitFunctionsIntrinsicType, isZeroPerformance)
 
     // measure comparison with existing zero m256i
     t0 = std::chrono::high_resolution_clock::now();
-    m256i zero = _mm256_setzero_si256();
+    m256i zero = m256i::zero();
     for (int i = 0; i < N; ++i)
     {
         optimizeBarrierValue.i64._0 = i;
@@ -180,7 +200,7 @@ TEST(TestCore256BitFunctionsIntrinsicType, isZeroPerformance)
     {
         optimizeBarrierValue.i64._0 = i;
         value = optimizeBarrierValue;
-        zeroVol = _mm256_setzero_si256();
+        zeroVol = m256i::zero();
         optimizeBarrierResult = (value == zeroVol);
     }
     t1 = std::chrono::high_resolution_clock::now();

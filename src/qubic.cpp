@@ -368,7 +368,7 @@ static void getComputerDigest(m256i& digest)
             const unsigned long long size = digestIndex < contractCount ? contractDescriptions[digestIndex].stateSize : 0;
             if (!size)
             {
-                contractStateDigests[digestIndex] = _mm256_setzero_si256();
+                contractStateDigests[digestIndex] = m256i::zero();
             }
             else
             {
@@ -1261,7 +1261,7 @@ static void checkAndSwitchMiningPhase()
     {
         if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
         {
-            score->initMiningData(_mm256_setzero_si256());
+            score->initMiningData(m256i::zero());
         }
     }
 }
@@ -1733,7 +1733,7 @@ m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
         }
     }
 
-    return _mm256_setzero_si256();
+    return m256i::zero();
 }
 
 long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex) const
@@ -2120,7 +2120,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
         const long long amount = contractIPOBid->price * contractIPOBid->quantity;
         if (decreaseEnergy(spectrumIndex, amount))
         {
-            const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
+            const QuTransfer quTransfer = { transaction->sourcePublicKey, m256i::zero(), amount };
             logger.logQuTransfer(quTransfer);
 
             numberOfReleasedEntities = 0;
@@ -2190,7 +2190,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
         }
@@ -2258,7 +2258,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 {
                     increaseEnergy(transaction->sourcePublicKey, transaction->amount);
 
-                    const QuTransfer quTransfer = { _mm256_setzero_si256(), transaction->sourcePublicKey, transaction->amount };
+                    const QuTransfer quTransfer = { m256i::zero(), transaction->sourcePublicKey, transaction->amount };
                     logger.logQuTransfer(quTransfer);
                 }
 
@@ -2859,7 +2859,7 @@ static void processTick(unsigned long long processorNumber)
 
                     for (; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                     {
-                        broadcastedFutureTickData.tickData.transactionDigests[j] = _mm256_setzero_si256();
+                        broadcastedFutureTickData.tickData.transactionDigests[j] = m256i::zero();
                     }
 
                     bs->SetMem(broadcastedFutureTickData.tickData.contractFees, sizeof(broadcastedFutureTickData.tickData.contractFees), 0);
@@ -2887,7 +2887,7 @@ static void processTick(unsigned long long processorNumber)
             {
                 auto& payload = voteCounterPayload; // note: not thread-safe
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
-                payload.transaction.destinationPublicKey = _mm256_setzero_si256();
+                payload.transaction.destinationPublicKey = m256i::zero();
                 payload.transaction.amount = 0;
                 payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
                 payload.transaction.inputType = VOTE_COUNTER_INPUT_TYPE;
@@ -3126,7 +3126,7 @@ static void endEpoch()
             int issuanceIndex, ownershipIndex, possessionIndex;
             if (finalPrice)
             {
-                if (!issueAsset(_mm256_setzero_si256(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex))
+                if (!issueAsset(m256i::zero(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex))
                 {
                     finalPrice = 0;
                 }
@@ -3163,7 +3163,7 @@ static void endEpoch()
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
             contractStateLock[contractIndex].releaseRead();
@@ -3300,7 +3300,7 @@ static void endEpoch()
                     increaseEnergy(rdEntry.destinationPublicKey, donation);
                     if (revenue)
                     {
-                        const QuTransfer quTransfer = { _mm256_setzero_si256(), rdEntry.destinationPublicKey, donation };
+                        const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
                         logger.logQuTransfer(quTransfer);
                     }
                 }
@@ -3310,7 +3310,7 @@ static void endEpoch()
             increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
             if (revenue)
             {
-                const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
+                const QuTransfer quTransfer = { m256i::zero(), broadcastedComputors.computors.publicKeys[computorIndex], revenue };
                 logger.logQuTransfer(quTransfer);
             }
         }
@@ -3318,7 +3318,7 @@ static void endEpoch()
 
         // Generate arbitrator revenue
         increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
-        const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
+        const QuTransfer quTransfer = { m256i::zero(), arbitratorPublicKey, arbitratorRevenue };
         logger.logQuTransfer(quTransfer);
     }
 
@@ -3859,7 +3859,7 @@ static void tickProcessor(void*)
                             || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
                         {
                             // Create empty tick
-                            targetNextTickDataDigest = _mm256_setzero_si256();
+                            targetNextTickDataDigest = m256i::zero();
                             targetNextTickDataDigestIsKnown = true;
                         }
                     }
@@ -3919,7 +3919,7 @@ static void tickProcessor(void*)
                             if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
                                 || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
                             {
-                                targetNextTickDataDigest = _mm256_setzero_si256();
+                                targetNextTickDataDigest = m256i::zero();
                                 targetNextTickDataDigestIsKnown = true;
                             }
                         }
@@ -4012,7 +4012,7 @@ static void tickProcessor(void*)
                     nextTickData.epoch = 0;
                     setMem(nextTickData.transactionDigests, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
                     // first and second tick of an epoch are always empty tick
-                    targetNextTickDataDigest = _mm256_setzero_si256();
+                    targetNextTickDataDigest = m256i::zero();
                     targetNextTickDataDigestIsKnown = true;
                     tickDataSuits = true;
                 }
@@ -4199,7 +4199,7 @@ static void tickProcessor(void*)
                         }
                         else
                         {
-                            etalonTick.transactionDigest = _mm256_setzero_si256();
+                            etalonTick.transactionDigest = m256i::zero();
                         }
 
                         if (nextTickData.epoch == system.epoch)
@@ -4211,7 +4211,7 @@ static void tickProcessor(void*)
                         }
                         else
                         {
-                            etalonTick.expectedNextTickTransactionDigest = _mm256_setzero_si256();
+                            etalonTick.expectedNextTickTransactionDigest = m256i::zero();
                         }
 
                         if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
@@ -4346,7 +4346,7 @@ static void tickProcessor(void*)
 
                                 if (forceNextTick)
                                 {
-                                    targetNextTickDataDigest = _mm256_setzero_si256();
+                                    targetNextTickDataDigest = m256i::zero();
                                     targetNextTickDataDigestIsKnown = true;
                                 }
                             }
