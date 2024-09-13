@@ -12,8 +12,7 @@
 #include "logging.h"
 #include "kangaroo_twelve.h"
 #include "four_q.h"
-
-
+#include "common_buffers.h"
 
 
 
@@ -103,7 +102,7 @@ iteration:
                 *((unsigned long long*) assetIssuance.name) = *((unsigned long long*) name); // Order must be preserved!
                 assetIssuance.numberOfDecimalPlaces = numberOfDecimalPlaces; // Order must be preserved!
                 *((unsigned long long*) assetIssuance.unitOfMeasurement) = *((unsigned long long*) unitOfMeasurement); // Order must be preserved!
-                logAssetIssuance(assetIssuance);
+                logger.logAssetIssuance(assetIssuance);
 
                 return numberOfShares;
             }
@@ -219,7 +218,7 @@ iteration:
             *((unsigned long long*) & assetOwnershipChange.name) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
             assetOwnershipChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
             *((unsigned long long*) & assetOwnershipChange.unitOfMeasurement) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
-            logAssetOwnershipChange(assetOwnershipChange);
+            logger.logAssetOwnershipChange(assetOwnershipChange);
 
             AssetPossessionChange assetPossessionChange;
             assetPossessionChange.sourcePublicKey = assets[sourcePossessionIndex].varStruct.possession.publicKey;
@@ -229,7 +228,7 @@ iteration:
             *((unsigned long long*) & assetPossessionChange.name) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
             assetPossessionChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
             *((unsigned long long*) & assetPossessionChange.unitOfMeasurement) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
-            logAssetPossessionChange(assetPossessionChange);
+            logger.logAssetPossessionChange(assetPossessionChange);
 
             return true;
         }
@@ -430,7 +429,7 @@ static bool loadUniverse(CHAR16* directory = NULL)
     return true;
 }
 
-void assetsEndEpoch(void* reorgBuffer)
+void assetsEndEpoch()
 {
     ACQUIRE(universeLock);
 

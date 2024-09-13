@@ -23,8 +23,8 @@
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
-#define TARGET_TICK_DURATION 2000
-#define TRANSACTION_SPARSENESS 3
+#define TARGET_TICK_DURATION 1500
+#define TRANSACTION_SPARSENESS 2
 
 // Below are 2 variables that are used for auto-F5 feature:
 #define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
@@ -49,12 +49,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 216
+#define VERSION_B 218
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 124
-#define TICK 15590000
+#define EPOCH 126
+#define TICK 15840000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -68,12 +68,13 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testing purpose, will delete at epoch 111
 
 #define DATA_LENGTH 256
-#define NUMBER_OF_INPUT_NEURONS 4096
-#define NUMBER_OF_OUTPUT_NEURONS 4096
-#define MAX_INPUT_DURATION 16384
-#define MAX_OUTPUT_DURATION 16384
+#define NUMBER_OF_HIDDEN_NEURONS 2000
+#define NUMBER_OF_NEIGHBOR_NEURONS 2000
+#define MAX_DURATION 2000
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 40
+#define SOLUTION_THRESHOLD_DEFAULT 42
+
+#define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
@@ -81,6 +82,9 @@ static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testin
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
+
+#define INTERNAL_COMPUTATIONS_INTERVAL 676
+#define EXTERNAL_COMPUTATIONS_INTERVAL (676 + 1)
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE

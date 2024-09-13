@@ -133,7 +133,13 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QEARN_CONTRACT_INDEX 8
+#define CCF_CONTRACT_INDEX 8
+#define CONTRACT_INDEX CCF_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE CCF
+#define CONTRACT_STATE2_TYPE CCF2
+#include "contracts/ComputorControlledFund.h"
+
+#define QEARN_CONTRACT_INDEX 9
 #define CONTRACT_INDEX QEARN_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QEARN
 #define CONTRACT_STATE2_TYPE QEARN2
@@ -187,6 +193,7 @@ constexpr struct ContractDescription
     {"MLM", 112, 10000, sizeof(IPO)},
     {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
+    {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
     {"QEARN", 999, 10000, sizeof(QEARN)},
 };
 
@@ -271,5 +278,6 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MLM);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(GQMPROP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(SWATCH);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(CCF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QEARN);
 }
