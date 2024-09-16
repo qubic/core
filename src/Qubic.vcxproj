@@ -59,6 +59,7 @@
     <ClInclude Include="network_messages\transactions.h" />
     <ClInclude Include="oracles\oracle_machines.h" />
     <ClInclude Include="oracles\Price.h" />
+    <ClInclude Include="platform\assert.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />

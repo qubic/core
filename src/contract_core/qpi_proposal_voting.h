@@ -174,7 +174,7 @@ namespace QPI
 			if (!supportScalarVotes)
 			{
 				// option voting only (1 byte per voter)
-				// TODO: ASSERT that proposal type does not require sint64 (internal logic error)
+				ASSERT(proposal.type != ProposalTypes::VariableScalarMean);
 				constexpr uint8 noVoteValue = 0xff;
 				setMemory(votes, noVoteValue);
 			}
@@ -206,7 +206,7 @@ namespace QPI
 						// scalar vote
 						if (supportScalarVotes)
 						{
-							// TODO: add ASSERT checking that storage type is sint64
+							ASSERT(sizeof(votes[0]) == 8);
 							if ((voteValue >= this->variableScalar.minValue && voteValue <= this->variableScalar.maxValue))
 							{
 								// (cast should not be needed but is to get rid of warning)
@@ -365,8 +365,7 @@ namespace QPI
 			// remove oldest proposal
 			clearProposal(proposalIndex);
 
-			// call voters interface again in case it needs to register the proposer
-			// TODO: add ASSERT, because this should always return the same value if the interface is implemented correctly
+			// call voters interface again in case it needs to register the proposer (should always return the same value)
 			proposalIndex = pv.proposersAndVoters.getNewProposalIndex(qpi, proposer);
 		}
 
@@ -463,7 +462,6 @@ namespace QPI
 			return false;
 
 		// scalar voting -> compute mean value of votes
-		// TODO: ASSERT(optionCount) == 0
 		sint64 value;
 		sint64 accumulation = 0;
 		if (p.variableScalar.maxValue > p.variableScalar.maxSupportedValue / maxVoters
@@ -554,8 +552,8 @@ namespace QPI
 		else
 		{
 			// option voting -> compute histogram
-			// TODO: ASSERT(optionCount) > 0
-			// TODO: assert option count >= array capacity
+			ASSERT(votingSummary.optionCount > 0);
+			ASSERT(votingSummary.optionCount <= votingSummary.optionVoteCount.capacity());
 			auto& hist = votingSummary.optionVoteCount;
 			hist.setAll(0);
 			for (uint32 i = 0; i < pv.maxVoters; ++i)

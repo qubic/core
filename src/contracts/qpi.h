@@ -5,6 +5,8 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
+// ASSERT can be used to support debugging and speed-up development
+#include "../platform/assert.h"
 
 namespace QPI
 {
