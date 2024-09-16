@@ -91,6 +91,51 @@ void updateAndAnalzeEntityCategoryPopulations()
     }
 }
 
+void logSpectrumStats()
+{
+    SpectrumStats spectrumStats;
+    spectrumStats.totalAmount = spectrumInfo.totalAmount;
+    spectrumStats.dustThresholdBurnAll = dustThresholdBurnAll;
+    spectrumStats.dustThresholdBurnHalf = dustThresholdBurnHalf;
+    spectrumStats.numberOfEntities = spectrumInfo.numberOfEntities;
+    copyMemory(spectrumStats.entityCategoryPopulations, entityCategoryPopulations);
+
+    logger.logSpectrumStats(spectrumStats);
+}
+
+// Build and log variable-size DustBurning log message.
+// Assumes to be used tick processor or contract processor only, so can use reorgBuffer.
+struct DustBurnLogger
+{
+    DustBurnLogger()
+    {
+        buf = (DustBurning*)reorgBuffer;
+        buf->numberOfBurns = 0;
+    }
+
+    // Add burned amount of of entity, may send buffered message to logging.
+    void addDustBurn(const m256i& publicKey, unsigned long long amount)
+    {
+        unsigned short i = buf->numberOfBurns++;
+        buf->entityPublicKey(i) = publicKey;
+        buf->entityAmount(i) = amount;
+
+        if (i == 0xffff)
+            finished();
+    }
+
+    // Send buffered message to logging
+    void finished()
+    {
+        logger.logDustBurning(buf);
+        buf->numberOfBurns = 0;
+    }
+
+    // send to log when max size is full or finished
+private:
+    DustBurning* buf;
+};
+
 // Clean up spectrum hash map, removing all entities with balance 0. Updates spectrumInfo.
 static void reorganizeSpectrum()
 {
@@ -191,10 +236,17 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
         ACQUIRE(spectrumLock);
 
+        // Anti-dust feature: prevent that spectrum fills to more than 75% of capacity to keep hash map lookup fast
         if (spectrumInfo.numberOfEntities >= (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
         {
-            // Update anti-dust burn thresholds
+            // Update anti-dust burn thresholds (and log spectrum stats before burning)
             updateAndAnalzeEntityCategoryPopulations();
+#if LOG_SPECTRUM_STATS
+            logSpectrumStats();
+#endif
+#if LOG_DUST_BURNINGS
+            DustBurnLogger dbl;
+#endif
 
             if (dustThresholdBurnAll > 0)
             {
@@ -205,6 +257,9 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                     if (balance <= dustThresholdBurnAll && balance)
                     {
                         spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
+#if LOG_DUST_BURNINGS
+                        dbl.addDustBurn(spectrum[i].publicKey, balance);
+#endif
                     }
                 }
             }
@@ -221,10 +276,18 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                         if (++countBurnCanadiates & 1)
                         {
                             spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
+#if LOG_DUST_BURNINGS
+                            dbl.addDustBurn(spectrum[i].publicKey, balance);
+#endif
                         }
                     }
                 }
             }
+
+#if LOG_DUST_BURNINGS
+            // Finished dust burning (pass message to log)
+            dbl.finished();
+#endif
 
             // Remove entries with balance zero from hash map
             reorganizeSpectrum();
@@ -233,6 +296,12 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
             // in transfer case energy has been decreased before and total amount is not changed
             // without anti-dust burning)
             spectrumInfo.totalAmount += amount;
+
+#if LOG_SPECTRUM_STATS
+            // Lod spectrum stats after burning
+            updateAndAnalzeEntityCategoryPopulations();
+            logSpectrumStats();
+#endif
         }
 
     iteration:
@@ -252,6 +321,9 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 spectrum[index].latestIncomingTransferTick = system.tick;
 
                 spectrumInfo.numberOfEntities++;
+
+                if ((spectrumInfo.numberOfEntities & 0xfffff) == 0)
+                    logSpectrumStats();
             }
             else
             {

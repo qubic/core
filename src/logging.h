@@ -8,7 +8,11 @@
 #include "system.h"
 #include "network_core/peers.h"
 
-#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+#define LOG_UNIVERSE (LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES)
+#define LOG_SPECTRUM (LOG_QU_TRANSFERS | LOG_BURNINGS | LOG_DUST_BURNINGS | LOG_SPECTRUM_STATS)
+#define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
+
+#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES
 #define ENABLED_LOGGING 1
 #else
 #define ENABLED_LOGGING 0
@@ -71,6 +75,8 @@ struct ResponseLogIdRangeFromTx
 #define CONTRACT_INFORMATION_MESSAGE 6
 #define CONTRACT_DEBUG_MESSAGE 7
 #define BURNING 8
+#define DUST_BURNING 9
+#define SPECTRUM_STATS 10
 #define CUSTOM_MESSAGE 255
 
 /*
@@ -177,6 +183,43 @@ struct Burning
 
     char _terminator; // Only data before "_terminator" are logged
 };
+
+// Contains N entites and amounts of dust burns in the memory layout: [N with 2 bytes] | [public key 0] | [amount 0] | [public key 1] | [amount 1] | ... | [public key N-1] | [amount N-1].
+// CAUTION: This is a variable-size log type and the full log message content goes boyond the size of this struct!
+struct DustBurning
+{
+    unsigned short numberOfBurns;
+
+    unsigned int messageSize() const
+    {
+        return 2 + numberOfBurns * (sizeof(m256i) + sizeof(unsigned long long));
+    }
+
+    m256i& entityPublicKey(unsigned short i)
+    {
+        ASSERT(i < numberOfBurns);
+        char* buf = reinterpret_cast<char*>(this);
+        return *reinterpret_cast<m256i*>(buf + i * (sizeof(m256i) + sizeof(unsigned long long)) + 2);
+    }
+
+    unsigned long long& entityAmount(unsigned short i)
+    {
+        ASSERT(i < numberOfBurns);
+        char* buf = reinterpret_cast<char*>(this);
+        return *reinterpret_cast<unsigned long long*>(buf + i * (sizeof(m256i) + sizeof(unsigned long long)) + (2 + sizeof(m256i)));
+    }
+};
+
+struct SpectrumStats
+{
+    unsigned long long totalAmount;
+    unsigned long long dustThresholdBurnAll;
+    unsigned long long dustThresholdBurnHalf;
+    unsigned int numberOfEntities;
+    unsigned int entityCategoryPopulations[48];
+    char _terminator; // Only data before "_terminator" are logged
+};
+
 
 /*
  * LOGGING IMPLEMENTATION
@@ -367,12 +410,11 @@ public:
     static bool initLogging()
     {
 #if ENABLED_LOGGING
-        EFI_STATUS status;
         if (logBuffer == NULL)
         {
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffer))
+            if (!allocatePool(LOG_BUFFER_SIZE, (void**)&logBuffer))
             {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logToConsole(L"Failed to allocate logging buffer!");
 
                 return false;
             }
@@ -380,9 +422,9 @@ public:
 
         if (mapTxToLogId == NULL)
         {
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
+            if (!allocatePool(LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
             {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logToConsole(L"Failed to allocate logging buffer!");
 
                 return false;
             }
@@ -390,9 +432,9 @@ public:
 
         if (mapLogIdToBufferIndex == NULL)
         {
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
+            if (!allocatePool(LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
             {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logToConsole(L"Failed to allocate logging buffer!");
 
                 return false;
             }
@@ -401,10 +443,16 @@ public:
 #endif
         return true;
     }
+
     static void deinitLogging()
     {
 #if ENABLED_LOGGING
-        freePool(logBuffer);
+        if (logBuffer)
+            freePool(logBuffer);
+        if (mapTxToLogId)
+            freePool(mapTxToLogId);
+        if (mapLogIdToBufferIndex)
+            freePool(mapLogIdToBufferIndex);
 #endif
     }
 
@@ -537,6 +585,21 @@ public:
     {
 #if LOG_BURNINGS
         logMessage(offsetof(T, _terminator), BURNING, &message);
+#endif
+    }
+
+    void logDustBurning(const DustBurning* message)
+    {
+#if LOG_DUST_BURNINGS
+        logMessage(message->messageSize(), DUST_BURNING, message);
+#endif
+    }
+
+    template <typename T>
+    void logSpectrumStats(const T& message)
+    {
+#if LOG_SPECTRUM_STATS
+        logMessage(offsetof(T, _terminator), SPECTRUM_STATS, &message);
 #endif
     }
 
