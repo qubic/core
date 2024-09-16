@@ -282,18 +282,18 @@ static void logToConsole(const CHAR16* message)
         return;
     }
 
-    timestampedMessage[0] = (time.Year % 100) / 10 + L'0';
-    timestampedMessage[1] = time.Year % 10 + L'0';
-    timestampedMessage[2] = time.Month / 10 + L'0';
-    timestampedMessage[3] = time.Month % 10 + L'0';
-    timestampedMessage[4] = time.Day / 10 + L'0';
-    timestampedMessage[5] = time.Day % 10 + L'0';
-    timestampedMessage[6] = time.Hour / 10 + L'0';
-    timestampedMessage[7] = time.Hour % 10 + L'0';
-    timestampedMessage[8] = time.Minute / 10 + L'0';
-    timestampedMessage[9] = time.Minute % 10 + L'0';
-    timestampedMessage[10] = time.Second / 10 + L'0';
-    timestampedMessage[11] = time.Second % 10 + L'0';
+    timestampedMessage[0] = (utcTime.Year % 100) / 10 + L'0';
+    timestampedMessage[1] = utcTime.Year % 10 + L'0';
+    timestampedMessage[2] = utcTime.Month / 10 + L'0';
+    timestampedMessage[3] = utcTime.Month % 10 + L'0';
+    timestampedMessage[4] = utcTime.Day / 10 + L'0';
+    timestampedMessage[5] = utcTime.Day % 10 + L'0';
+    timestampedMessage[6] = utcTime.Hour / 10 + L'0';
+    timestampedMessage[7] = utcTime.Hour % 10 + L'0';
+    timestampedMessage[8] = utcTime.Minute / 10 + L'0';
+    timestampedMessage[9] = utcTime.Minute % 10 + L'0';
+    timestampedMessage[10] = utcTime.Second / 10 + L'0';
+    timestampedMessage[11] = utcTime.Second % 10 + L'0';
     timestampedMessage[12] = ' ';
     timestampedMessage[13] = 0;
 
@@ -695,7 +695,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
         && request->tickData.minute <= 59
         && request->tickData.second <= 59
         && request->tickData.millisecond <= 999
-        && ms(request->tickData.year, request->tickData.month, request->tickData.day, request->tickData.hour, request->tickData.minute, request->tickData.second, request->tickData.millisecond) <= ms(time.Year - 2000, time.Month, time.Day, time.Hour, time.Minute, time.Second, time.Nanosecond / 1000000) + TIME_ACCURACY)
+        && ms(request->tickData.year, request->tickData.month, request->tickData.day, request->tickData.hour, request->tickData.minute, request->tickData.second, request->tickData.millisecond) <= ms(utcTime.Year - 2000, utcTime.Month, utcTime.Day, utcTime.Hour, utcTime.Minute, utcTime.Second, utcTime.Nanosecond / 1000000) + TIME_ACCURACY)
     {
         bool ok = true;
         for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK && ok; i++)
@@ -1189,7 +1189,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 // set time
                 SpecialCommandSendTime* _request = header->getPayload<SpecialCommandSendTime>();
                 EFI_TIME newTime;
-                copyMem(&newTime, &_request->utcTime, sizeof(_request->utcTime)); // caution: response.utcTime is subset of time (smaller size)
+                copyMem(&newTime, &_request->utcTime, sizeof(_request->utcTime)); // caution: response.utcTime is subset of newTime (smaller size)
                 newTime.TimeZone = 0;
                 newTime.Daylight = 0;
                 EFI_STATUS status = rs->SetTime(&newTime);
@@ -1205,7 +1205,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 SpecialCommandSendTime response;
                 response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SEND_TIME << 56);
                 updateTime();
-                copyMem(&response.utcTime, &time, sizeof(response.utcTime)); // caution: response.utcTime is subset of time (smaller size)
+                copyMem(&response.utcTime, &utcTime, sizeof(response.utcTime)); // caution: response.utcTime is subset of global utcTime (smaller size)
                 enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type, header->dejavu(), &response);
             }
             break;
@@ -1239,10 +1239,10 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 // a tracker to detect if a thread is crashed
 static void checkinTime(unsigned long long processorNumber)
 {
-    threadTimeCheckin[processorNumber].second = time.Second;
-    threadTimeCheckin[processorNumber].minute = time.Minute;
-    threadTimeCheckin[processorNumber].hour = time.Hour;
-    threadTimeCheckin[processorNumber].day = time.Day;
+    threadTimeCheckin[processorNumber].second = utcTime.Second;
+    threadTimeCheckin[processorNumber].minute = utcTime.Minute;
+    threadTimeCheckin[processorNumber].hour = utcTime.Hour;
+    threadTimeCheckin[processorNumber].day = utcTime.Day;
 }
 
 static void setNewMiningSeed()
@@ -2777,13 +2777,13 @@ static void processTick(unsigned long long processorNumber)
                     broadcastedFutureTickData.tickData.epoch = system.epoch;
                     broadcastedFutureTickData.tickData.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
 
-                    broadcastedFutureTickData.tickData.millisecond = time.Nanosecond / 1000000;
-                    broadcastedFutureTickData.tickData.second = time.Second;
-                    broadcastedFutureTickData.tickData.minute = time.Minute;
-                    broadcastedFutureTickData.tickData.hour = time.Hour;
-                    broadcastedFutureTickData.tickData.day = time.Day;
-                    broadcastedFutureTickData.tickData.month = time.Month;
-                    broadcastedFutureTickData.tickData.year = time.Year - 2000;
+                    broadcastedFutureTickData.tickData.millisecond = utcTime.Nanosecond / 1000000;
+                    broadcastedFutureTickData.tickData.second = utcTime.Second;
+                    broadcastedFutureTickData.tickData.minute = utcTime.Minute;
+                    broadcastedFutureTickData.tickData.hour = utcTime.Hour;
+                    broadcastedFutureTickData.tickData.day = utcTime.Day;
+                    broadcastedFutureTickData.tickData.month = utcTime.Month;
+                    broadcastedFutureTickData.tickData.year = utcTime.Year - 2000;
 
                     m256i timelockPreimage[3];
                     static_assert(sizeof(timelockPreimage) == 3 * 32, "Unexpected array size");
@@ -5366,8 +5366,8 @@ static void logHealthStatus()
     for (int i = 0; i < nTickProcessorIDs; i++)
     {
         unsigned long long tid = tickProcessorIDs[i];
-        long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
-            + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+        long long diffInSecond = 86400 * (utcTime.Day - threadTimeCheckin[tid].day) + 3600 * (utcTime.Hour - threadTimeCheckin[tid].hour)
+            + 60 * (utcTime.Minute - threadTimeCheckin[tid].minute) + (utcTime.Second - threadTimeCheckin[tid].second);
         if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
         {
             allThreadsAreGood = false;
@@ -5380,8 +5380,8 @@ static void logHealthStatus()
     for (int i = 0; i < nRequestProcessorIDs; i++)
     {
         unsigned long long tid = requestProcessorIDs[i];
-        long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
-            + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+        long long diffInSecond = 86400 * (utcTime.Day - threadTimeCheckin[tid].day) + 3600 * (utcTime.Hour - threadTimeCheckin[tid].hour)
+            + 60 * (utcTime.Minute - threadTimeCheckin[tid].minute) + (utcTime.Second - threadTimeCheckin[tid].second);
         if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
         {
             allThreadsAreGood = false;
