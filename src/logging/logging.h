@@ -197,23 +197,23 @@ struct DustBurning
 {
     unsigned short numberOfBurns;
 
+    struct Entity
+    {
+        m256i publicKey;
+        unsigned long long amount;
+    };
+    static_assert(sizeof(Entity) == (sizeof(m256i) + sizeof(unsigned long long)), "Unexpected size");
+
     unsigned int messageSize() const
     {
-        return 2 + numberOfBurns * (sizeof(m256i) + sizeof(unsigned long long));
+        return 2 + numberOfBurns * sizeof(Entity);
     }
 
-    m256i& entityPublicKey(unsigned short i)
+    Entity& entity(unsigned short i)
     {
         ASSERT(i < numberOfBurns);
         char* buf = reinterpret_cast<char*>(this);
-        return *reinterpret_cast<m256i*>(buf + i * (sizeof(m256i) + sizeof(unsigned long long)) + 2);
-    }
-
-    unsigned long long& entityAmount(unsigned short i)
-    {
-        ASSERT(i < numberOfBurns);
-        char* buf = reinterpret_cast<char*>(this);
-        return *reinterpret_cast<unsigned long long*>(buf + i * (sizeof(m256i) + sizeof(unsigned long long)) + (2 + sizeof(m256i)));
+        return *reinterpret_cast<Entity*>(buf + i * (sizeof(Entity)) + 2);
     }
 };
 
@@ -224,7 +224,6 @@ struct SpectrumStats
     unsigned long long dustThresholdBurnHalf;
     unsigned int numberOfEntities;
     unsigned int entityCategoryPopulations[48];
-    char _terminator; // Only data before "_terminator" are logged
 };
 
 
@@ -455,11 +454,20 @@ public:
     {
 #if ENABLED_LOGGING
         if (logBuffer)
+        {
             freePool(logBuffer);
+            logBuffer = nullptr;
+        }
         if (mapTxToLogId)
+        {
             freePool(mapTxToLogId);
+            mapTxToLogId = nullptr;
+        }
         if (mapLogIdToBufferIndex)
+        {
             freePool(mapLogIdToBufferIndex);
+            mapLogIdToBufferIndex = nullptr;
+        }
 #endif
     }
 
@@ -602,11 +610,10 @@ public:
 #endif
     }
 
-    template <typename T>
-    void logSpectrumStats(const T& message)
+    void logSpectrumStats(const SpectrumStats& message)
     {
 #if LOG_SPECTRUM_STATS
-        logMessage(offsetof(T, _terminator), SPECTRUM_STATS, &message);
+        logMessage(sizeof(SpectrumStats), SPECTRUM_STATS, &message);
 #endif
     }
 

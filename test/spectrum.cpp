@@ -2,7 +2,13 @@
 
 #include "gtest/gtest.h"
 
+// workaround for name clash with stdlib
 #define system qubicSystemStruct
+
+// enable some logging for testing
+#include "../src/private_settings.h"
+#define LOG_DUST_BURNINGS 1
+#define LOG_SPECTRUM_STATS 1
 
 #include "../src/spectrum.h"
 
@@ -132,10 +138,12 @@ struct SpectrumTest
         system.tick = 15700000;
         clearSpectrum();
         antiDustCornerCase = false;
+        EXPECT_TRUE(logger.initLogging());
     }
 
     ~SpectrumTest()
     {
+        logger.deinitLogging();
         deinitSpectrum();
         deinitCommonBuffers();
     }
@@ -161,6 +169,8 @@ struct SpectrumTest
 
     void afterAntiDust()
     {
+        checkAndGetInfo();
+
         // Print anti-dust info
         auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - beforeAntiDustTimestamp);
         std::cout << "Transfer with anti-dust took " << duration_ms << " ms: entities "
@@ -273,10 +283,27 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseAllInSameBin)
     test.afterAntiDust();
 }
 
-TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBins)
+SpectrumStats* getSpectrumStatsLog(long long id)
+{
+    qLogger::BlobInfo bi = logger.logBuf.getBlobInfo(id);
+    EXPECT_EQ(bi.length, LOG_HEADER_SIZE + sizeof(SpectrumStats));
+    return reinterpret_cast<SpectrumStats*>(logger.logBuffer + bi.startIndex + LOG_HEADER_SIZE);
+}
+
+DustBurning* getDustBurningLog(long long id)
+{
+    qLogger::BlobInfo bi = logger.logBuf.getBlobInfo(id);
+    DustBurning* db = reinterpret_cast<DustBurning*>(logger.logBuffer + bi.startIndex + LOG_HEADER_SIZE);
+    EXPECT_EQ(bi.length, LOG_HEADER_SIZE + db->messageSize());
+    return db;
+}
+
+TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinsAndLogging)
 {
     SpectrumTest test;
     test.antiDustCornerCase = true;
+
+    // build-up spectrum
     for (unsigned long long i = 0; i < (SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4); ++i)
     {
         unsigned long long amount;
@@ -284,12 +311,74 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBins)
             amount = 100;
         else if (i < SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4)
             amount = 10000;
-        increaseEnergy(m256i(i, 1, 2, 3), amount);
         spectrumInfo.totalAmount += amount;
+        increaseEnergy(m256i(i, 1, 2, 3), amount);
     }
+
+    // test anti-dust
     test.beforeAntiDust();
-    increaseEnergy(m256i::randomValue(), 1000llu);
+    increaseEnergy(m256i(SPECTRUM_CAPACITY - 1, 1, 2, 3), 1000llu);
     test.afterAntiDust();
+
+    // check logs:
+    // first 12 are from building up spectrum
+    SpectrumStats* stats;
+    for (int i = 0; i < 12; ++i)
+    {
+        stats = getSpectrumStatsLog(i);
+        EXPECT_EQ(stats->numberOfEntities, (i + 1) * 1048576);
+        EXPECT_EQ(stats->entityCategoryPopulations[6], std::min(i + 1, 4) * 1048576);
+        EXPECT_EQ(stats->entityCategoryPopulations[13], std::max(i - 3, 0) * 1048576);
+        EXPECT_EQ(stats->totalAmount, stats->entityCategoryPopulations[6] * 100llu + stats->entityCategoryPopulations[13] * 10000llu);
+
+        if (i < 7)
+        {
+            EXPECT_EQ(stats->dustThresholdBurnAll, 0);
+            EXPECT_EQ(stats->dustThresholdBurnHalf, 0);
+        }
+        else if (i < 11)
+        {
+            EXPECT_EQ(stats->dustThresholdBurnAll, (2 << 6) - 1);
+            EXPECT_EQ(stats->dustThresholdBurnHalf, 0);
+        }
+        else
+        {
+            EXPECT_EQ(stats->dustThresholdBurnAll, (2 << 12) - 1);
+            EXPECT_EQ(stats->dustThresholdBurnHalf, (2 << 13) - 1);
+        }
+    }
+
+    // next are state before anti-dust and dust burning
+    SpectrumStats* beforeAntidustStats = getSpectrumStatsLog(12);
+    EXPECT_EQ(memcmp(beforeAntidustStats, stats, sizeof(*stats)), 0);
+    int balancesBurned = 0;
+    int logId = 13;
+    while (balancesBurned < 8 * 1048576)
+    {
+        DustBurning* db = getDustBurningLog(logId);
+        for (int i = 0; i < db->numberOfBurns; ++i)
+        {
+            // Of the first 4M entities, all are burned (amount 100), of the following every second is burned.
+            unsigned long long expectedSpectrumIndex = balancesBurned;
+            if (balancesBurned >= 4194304)
+                expectedSpectrumIndex = (balancesBurned - 4194304) * 2 + 4194304;
+
+            DustBurning::Entity& e = db->entity(i);
+            EXPECT_EQ(e.publicKey, m256i(expectedSpectrumIndex, 1, 2, 3));
+            EXPECT_EQ(e.amount, (balancesBurned < 4194304) ? 100 : 10000);
+            ++balancesBurned;
+        }
+        ++logId;
+    }
+
+    // Finally, check state logged after dust burning (logged before increaing energy / adding new entity)
+    SpectrumStats* afterAntidustStats = getSpectrumStatsLog(logId);
+    EXPECT_EQ(afterAntidustStats->numberOfEntities, 4194304);
+    EXPECT_EQ(afterAntidustStats->entityCategoryPopulations[9], 0);
+    EXPECT_EQ(afterAntidustStats->entityCategoryPopulations[13], 4 * 1048576);
+    EXPECT_EQ(afterAntidustStats->totalAmount, afterAntidustStats->entityCategoryPopulations[13] * 10000llu);
+    EXPECT_EQ(afterAntidustStats->dustThresholdBurnAll, 0);
+    EXPECT_EQ(afterAntidustStats->dustThresholdBurnHalf, 0);
 }
 
 TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinZeroBalance)

@@ -119,11 +119,11 @@ struct DustBurnLogger
     // Add burned amount of of entity, may send buffered message to logging.
     void addDustBurn(const m256i& publicKey, unsigned long long amount)
     {
-        unsigned short i = buf->numberOfBurns++;
-        buf->entityPublicKey(i) = publicKey;
-        buf->entityAmount(i) = amount;
+        DustBurning::Entity& e = buf->entity(buf->numberOfBurns++);
+        e.publicKey = publicKey;
+        e.amount = amount;
 
-        if (i == 0xffff)
+        if (buf->numberOfBurns == 0xffff)
             finished();
     }
 
@@ -295,16 +295,16 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
             // Remove entries with balance zero from hash map
             reorganizeSpectrum();
 
+#if LOG_SPECTRUM_STATS
+            // Log spectrum stats after burning (before increasing energy / potenitally creating entity)
+            updateAndAnalzeEntityCategoryPopulations();
+            logSpectrumStats();
+#endif
+
             // Correct total amount (spectrum info has been recomputed before increasing energy;
             // in transfer case energy has been decreased before and total amount is not changed
             // without anti-dust burning)
             spectrumInfo.totalAmount += amount;
-
-#if LOG_SPECTRUM_STATS
-            // Lod spectrum stats after burning
-            updateAndAnalzeEntityCategoryPopulations();
-            logSpectrumStats();
-#endif
         }
 
     iteration:
@@ -325,8 +325,14 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
                 spectrumInfo.numberOfEntities++;
 
+#if LOG_SPECTRUM_STATS
                 if ((spectrumInfo.numberOfEntities & 0xfffff) == 0)
+                {
+                    // Log spectrum stats number of entities hit the next million
+                    updateAndAnalzeEntityCategoryPopulations();
                     logSpectrumStats();
+                }
+#endif
             }
             else
             {
