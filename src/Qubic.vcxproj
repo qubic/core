@@ -39,7 +39,8 @@
     <ClInclude Include="contract_core\qpi_trivial_impl.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
     <ClInclude Include="contract_core\qpi_proposal_voting.h" />
-    <ClInclude Include="logging.h" />
+    <ClInclude Include="logging\logging.h" />
+    <ClInclude Include="logging\net_msg_impl.h" />
     <ClInclude Include="mining\mining.h" />
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />

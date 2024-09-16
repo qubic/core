@@ -38,7 +38,8 @@
 
 #include "assets.h"
 #include "spectrum.h"
-#include "logging.h"
+#include "logging/logging.h"
+#include "logging/net_msg_impl.h"
 
 #include "tick_storage.h"
 #include "vote_counter.h"

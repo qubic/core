@@ -4,8 +4,11 @@
 #include "platform/concurrency.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
+#include "platform/memory.h"
 
 #include "network_messages/entity.h"
+
+#include "logging/logging.h"
 
 #include "public_settings.h"
 #include "system.h"
@@ -98,7 +101,7 @@ void logSpectrumStats()
     spectrumStats.dustThresholdBurnAll = dustThresholdBurnAll;
     spectrumStats.dustThresholdBurnHalf = dustThresholdBurnHalf;
     spectrumStats.numberOfEntities = spectrumInfo.numberOfEntities;
-    copyMemory(spectrumStats.entityCategoryPopulations, entityCategoryPopulations);
+    copyMem(spectrumStats.entityCategoryPopulations, entityCategoryPopulations, sizeof(entityCategoryPopulations));
 
     logger.logSpectrumStats(spectrumStats);
 }
