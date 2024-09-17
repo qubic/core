@@ -9,6 +9,7 @@
 #include "../src/private_settings.h"
 #define LOG_DUST_BURNINGS 1
 #define LOG_SPECTRUM_STATS 1
+// TODO: use smaller logging buffer here than in core
 
 #include "../src/spectrum.h"
 
@@ -321,38 +322,40 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinsAndLogging)
     test.afterAntiDust();
 
     // check logs:
-    // first 12 are from building up spectrum
+    // first 24 are from building up spectrum
     SpectrumStats* stats;
-    for (int i = 0; i < 12; ++i)
+    for (int i = 0; i < 24; ++i)
     {
         stats = getSpectrumStatsLog(i);
-        EXPECT_EQ(stats->numberOfEntities, (i + 1) * 1048576);
-        EXPECT_EQ(stats->entityCategoryPopulations[6], std::min(i + 1, 4) * 1048576);
-        EXPECT_EQ(stats->entityCategoryPopulations[13], std::max(i - 3, 0) * 1048576);
+        EXPECT_EQ(stats->numberOfEntities, i * 524288 + 1);
+        EXPECT_EQ(stats->entityCategoryPopulations[6], std::min(i * 524288 + 1, int(SPECTRUM_CAPACITY / 4)));
+        EXPECT_EQ(stats->entityCategoryPopulations[13], (i < 8) ? 0 : (i - 8) * 524288 + 1);
         EXPECT_EQ(stats->totalAmount, stats->entityCategoryPopulations[6] * 100llu + stats->entityCategoryPopulations[13] * 10000llu);
 
-        if (i < 7)
+        if (i < 16)
         {
             EXPECT_EQ(stats->dustThresholdBurnAll, 0);
             EXPECT_EQ(stats->dustThresholdBurnHalf, 0);
         }
-        else if (i < 11)
+        else
         {
             EXPECT_EQ(stats->dustThresholdBurnAll, (2 << 6) - 1);
             EXPECT_EQ(stats->dustThresholdBurnHalf, 0);
         }
-        else
-        {
-            EXPECT_EQ(stats->dustThresholdBurnAll, (2 << 12) - 1);
-            EXPECT_EQ(stats->dustThresholdBurnHalf, (2 << 13) - 1);
-        }
     }
 
-    // next are state before anti-dust and dust burning
-    SpectrumStats* beforeAntidustStats = getSpectrumStatsLog(12);
-    EXPECT_EQ(memcmp(beforeAntidustStats, stats, sizeof(*stats)), 0);
+    // Check state before anti-dust
+    SpectrumStats* beforeAntidustStats = getSpectrumStatsLog(24);
+    EXPECT_EQ(beforeAntidustStats->numberOfEntities, 24 * 524288);
+    EXPECT_EQ(beforeAntidustStats->entityCategoryPopulations[6], SPECTRUM_CAPACITY / 4);
+    EXPECT_EQ(beforeAntidustStats->entityCategoryPopulations[13], SPECTRUM_CAPACITY / 2);
+    EXPECT_EQ(beforeAntidustStats->totalAmount, beforeAntidustStats->entityCategoryPopulations[6] * 100llu + beforeAntidustStats->entityCategoryPopulations[13] * 10000llu);
+    EXPECT_EQ(beforeAntidustStats->dustThresholdBurnAll, (2 << 12) - 1);
+    EXPECT_EQ(beforeAntidustStats->dustThresholdBurnHalf, (2 << 13) - 1);
+
+    // Check dust burning log messages
     int balancesBurned = 0;
-    int logId = 13;
+    int logId = 25;
     while (balancesBurned < 8 * 1048576)
     {
         DustBurning* db = getDustBurningLog(logId);

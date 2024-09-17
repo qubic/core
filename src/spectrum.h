@@ -326,9 +326,10 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 spectrumInfo.numberOfEntities++;
 
 #if LOG_SPECTRUM_STATS
-                if ((spectrumInfo.numberOfEntities & 0xfffff) == 0)
+                if ((spectrumInfo.numberOfEntities & 0x7ffff) == 1)
                 {
-                    // Log spectrum stats number of entities hit the next million
+                    // Log spectrum stats when the number of entities hits the next half million
+                    // (== 1 is to avoid duplicate when anti-dust is triggered)
                     updateAndAnalzeEntityCategoryPopulations();
                     logSpectrumStats();
                 }
