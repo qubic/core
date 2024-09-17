@@ -1251,9 +1251,14 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
+static unsigned int getTickInMiningPhaseCycle()
+{
+    return (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+}
+
 static void checkAndSwitchMiningPhase()
 {
-    const unsigned int r = (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+    const unsigned int r = getTickInMiningPhaseCycle();
     if (!r)
     {
         setNewMiningSeed();
@@ -2893,10 +2898,12 @@ static void processTick(unsigned long long processorNumber)
 
     if (mainAuxStatus & 1)
     {
+        // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
         for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
         {
             int solutionIndexToPublish = -1;
 
+            // Select solution to publish as tx
             unsigned int j;
             for (j = 0; j < system.numberOfSolutions; j++)
             {
@@ -2935,6 +2942,16 @@ static void processTick(unsigned long long processorNumber)
 
             if (solutionIndexToPublish >= 0)
             {
+                // Compute tick offset, when to publish solution
+                unsigned int random;
+                _rdrand32_step(&random);
+                unsigned int publishingTickOffset = MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET + random % MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
+
+                // Do not publish, if the solution tx would end up after reset of mining seed, preventing loss of security deposit
+                if (getTickInMiningPhaseCycle() + publishingTickOffset >= INTERNAL_COMPUTATIONS_INTERVAL + 3)
+                    continue;
+
+                // Prepare, sign, and broadcast MiningSolutionTransaction
                 struct
                 {
                     Transaction transaction;
@@ -2944,11 +2961,9 @@ static void processTick(unsigned long long processorNumber)
                 } payload;
                 static_assert(sizeof(payload) == sizeof(Transaction) + 32 + 32 + SIGNATURE_SIZE, "Unexpected struct size!");
                 payload.transaction.sourcePublicKey = computorPublicKeys[i];
-                payload.transaction.destinationPublicKey = _mm256_setzero_si256();
+                payload.transaction.destinationPublicKey = m256i::zero();
                 payload.transaction.amount = MiningSolutionTransaction::minAmount();
-                unsigned int random;
-                _rdrand32_step(&random);
-                solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET + random % MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
+                solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + publishingTickOffset;
                 payload.transaction.inputType = MiningSolutionTransaction::transactionType();
                 payload.transaction.inputSize = sizeof(payload.miningSeed) + sizeof(payload.nonce);
                 payload.miningSeed = system.solutions[solutionIndexToPublish].miningSeed;
