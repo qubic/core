@@ -123,7 +123,7 @@ struct DustBurnLogger
         e.publicKey = publicKey;
         e.amount = amount;
 
-        if (buf->numberOfBurns == 0xffff)
+        if (buf->numberOfBurns == 1000) // TODO: better use 0xffff (when proved to be stable with logging)
             finished();
     }
 
