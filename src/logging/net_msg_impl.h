@@ -22,39 +22,36 @@ void qLogger::processRequestLog(Peer* peer, RequestResponseHeader* header)
             if (endIdBufferRange.startIndex < startIdBufferRange.startIndex)
             {
                 // round buffer case, only response first packet - let the client figure out and request the rest
-                unsigned long long i = 0;
-                for (i = request->fromID; i <= request->toID; i++)
+                for (unsigned long long i = request->fromID; i <= request->toID; i++)
                 {
                     BlobInfo iBufferRange = logBuf.getBlobInfo(i);
+                    ASSERT(iBufferRange.startIndex >= 0);
+                    ASSERT(iBufferRange.length >= 0);
                     if (iBufferRange.startIndex < startIdBufferRange.startIndex)
                     {
-                        i--;
+                        endIdBufferRange = logBuf.getBlobInfo(i - 1);
                         break;
                     }
                 }
-                // first packet: from startID to end of buffer
-                {
-                    BlobInfo iBufferRange = logBuf.getBlobInfo(i);
-                    unsigned long long startFrom = startIdBufferRange.startIndex;
-                    unsigned long long length = iBufferRange.length + iBufferRange.startIndex - startFrom;
-                    if (length > RequestResponseHeader::max_size)
-                    {
-                        length = RequestResponseHeader::max_size;
-                    }
-                    enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
-                }
-                // second packet: from start buffer to endID - NOT SEND THIS
+                // first packet: from startID to end of buffer IS SENT BELOW
+                // second packet: from start buffer to endID IS NOT SENT FROM HERE, but requested by client later
             }
-            else
+
+            long long startFrom = startIdBufferRange.startIndex;
+            long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
+            if (length > RequestResponseHeader::max_size)
             {
-                unsigned long long startFrom = startIdBufferRange.startIndex;
-                unsigned long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
-                if (length > RequestResponseHeader::max_size)
+                unsigned long long toID = request->toID;
+                length -= endIdBufferRange.length;
+                while (length > RequestResponseHeader::max_size)
                 {
-                    length = RequestResponseHeader::max_size;
+                    ASSERT(toID > request->fromID);
+                    --toID;
+                    endIdBufferRange = logBuf.getBlobInfo(toID);
+                    length -= endIdBufferRange.length;
                 }
-                enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
             }
+            enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
         }
         else
         {
