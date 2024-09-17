@@ -2983,6 +2983,17 @@ static void processTick(unsigned long long processorNumber)
     if (si.numberOfEntities != spectrumInfo.numberOfEntities || si.totalAmount != spectrumInfo.totalAmount)
     {
         addDebugMessage(L"BUG DETECTED: Spectrum info of continuous updating is inconsistent with counting from scratch!");
+        appendText(message, L"tick=");
+        appendNumber(message, system.tick, FALSE);
+        appendText(message, L";  numberOfEntities scratch=");
+        appendNumber(message, si.numberOfEntities, FALSE);
+        appendText(message, L", update=");
+        appendNumber(message, spectrumInfo.numberOfEntities, FALSE);
+        appendText(message, L", totalAmount scratch=");
+        appendNumber(message, si.totalAmount, FALSE);
+        appendText(message, L", update=");
+        appendNumber(message, spectrumInfo.totalAmount, FALSE);
+        addDebugMessage(message);
     }
 #endif
 
