@@ -2943,9 +2943,7 @@ static void processTick(unsigned long long processorNumber)
             if (solutionIndexToPublish >= 0)
             {
                 // Compute tick offset, when to publish solution
-                unsigned int random;
-                _rdrand32_step(&random);
-                unsigned int publishingTickOffset = MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET + random % MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
+                unsigned int publishingTickOffset = MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
 
                 // Do not publish, if the solution tx would end up after reset of mining seed, preventing loss of security deposit
                 if (getTickInMiningPhaseCycle() + publishingTickOffset >= INTERNAL_COMPUTATIONS_INTERVAL + 3)
