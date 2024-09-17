@@ -159,6 +159,14 @@ private:
     uint32 _EarlyUnlocked_cnt;
     uint32 _FullyUnlocked_cnt;
 
+    /*
+        GetStateOfRound function returns following.
+
+        0 = open epoch,not started yet
+        1 = running epoch
+        2 = ended epoch(>52weeks)
+    */
+
     PUBLIC_FUNCTION(GetStateOfRound)
         if(input.Epoch < INITIAL_EPOCH) 
         {                                                            // non staking
@@ -197,6 +205,15 @@ private:
         }
     _
 
+
+    /*
+        the status will return the binary status.
+        1101010010110101001011010100101101010010110101001001
+
+        1 means locked in [index of 1] weeks ago. 0 means unlocked in [index of zero] weeks ago.
+        The frontend can get the status of locked in 52 epochs. in above binary status, 
+        the frontend can know that user locked 0 week ago, 1 week ago, 3 weeks ago, 5, 8,10,11,13 weeks ago.
+    */
     struct GetUserLockStatus_locals {
         uint64 bn;
         uint32 _t;
@@ -214,9 +231,7 @@ private:
             {
             
                 locals.lockedWeeks = qpi.epoch() - state.Locker.get(locals._t)._Locked_Epoch;
-                locals.bn = 1;
-
-                for(locals._r = 0; locals._r < locals.lockedWeeks; locals._r++) locals.bn *= 2;
+                locals.bn = 1ULL<<locals.lockedWeeks;
 
                 output.status += locals.bn;
             }
@@ -227,6 +242,27 @@ private:
     struct GetEndedStatus_locals {
         uint32 _t;
     };
+
+    /*
+        output.Early_Rewarded_Amount returns the amount rewarded by unlocking early at current epoch
+        output.Early_Unlocked_Amount returns the amount unlocked by unlocking early at current epoch
+        output.Fully_Rewarded_Amount returns the amount rewarded by unlocking fully at the end of previous epoch
+        output.Fully_Unlocked_Amount returns the amount unlocked by unlocking fully at the end of previous epoch
+
+        let's assume that current epoch is 170, user unlocked the 15B qu totally at this epoch and he got the 30B qu of reward.
+        in this case, output.Early_Unlocked_Amount = 15B qu, output.Early_Rewarded_Amount = 30B qu
+        if this user unlocks 3B qu additionally at this epoch and rewarded 6B qu, 
+        in this case, output.Early_Unlocked_Amount = 18B qu, output.Early_Rewarded_Amount = 36B qu
+        state.EarlyUnlocker array would be initialized at the end of every epoch
+
+        let's assume also that current epoch is 170, user got the 15B(locked amount for 52 weeks) + 10B(rewarded amount for 52 weeks) at the end of epoch 169.
+        in this case, output.Fully_Rewarded_Amount = 10B, output.Fully_Unlocked_Amount = 15B
+        state.FullyUnlocker array would be decided with distributions at the end of every epoch
+
+        state.EarlyUnlocker, state.FullyUnlocker arrays would be initialized and decided by following expression at the END_EPOCH_WITH_LOCALS function.
+        state._EarlyUnlocked_cnt = 0;
+        state._FullyUnlocked_cnt = 0;
+    */
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetEndedStatus)
 
