@@ -1592,8 +1592,6 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
 
         const Burning burning = { _currentContractId , amount };
         logger.logBurning(burning);
-
-        spectrumInfo.totalAmount -= amount;
     }
 
     return remainingAmount;

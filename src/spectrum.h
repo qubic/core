@@ -230,7 +230,7 @@ static long long energy(const int index)
     return spectrum[index].incomingAmount - spectrum[index].outgoingAmount;
 }
 
-// Increase balance of entity. Does not update spectrumInfo.totalAmount.
+// Increase balance of entity.
 static void increaseEnergy(const m256i& publicKey, long long amount)
 {
     if (!isZero(publicKey) && amount >= 0)
@@ -300,11 +300,6 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
             updateAndAnalzeEntityCategoryPopulations();
             logSpectrumStats();
 #endif
-
-            // Correct total amount (spectrum info has been recomputed before increasing energy;
-            // in transfer case energy has been decreased before and total amount is not changed
-            // without anti-dust burning)
-            spectrumInfo.totalAmount += amount;
         }
 
     iteration:
@@ -345,9 +340,11 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
         RELEASE(spectrumLock);
     }
+
+    spectrumInfo.totalAmount += amount;
 }
 
-// Decrease balance of entity if it is high enough. Does not update spectrumInfo.totalAmount.
+// Decrease balance of entity if it is high enough.
 static bool decreaseEnergy(const int index, long long amount)
 {
     if (amount >= 0)
@@ -359,6 +356,8 @@ static bool decreaseEnergy(const int index, long long amount)
             spectrum[index].outgoingAmount += amount;
             spectrum[index].numberOfOutgoingTransfers++;
             spectrum[index].latestOutgoingTransferTick = system.tick;
+
+            spectrumInfo.totalAmount -= amount;
 
             RELEASE(spectrumLock);
 
