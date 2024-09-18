@@ -1,9 +1,9 @@
 using namespace QPI;
 
 constexpr uint64 QEARN_MINIMUM_LOCKING_AMOUNT = 10000000;
-constexpr uint64 QEARN_MAXIMUM_OF_USER = 16777216;
-constexpr uint64 QEARN_MAXIMUM_EPOCH = 65535;
-constexpr uint64 QEARN_MAXIMUM_UNLOCK_HISTORY = 524288;
+constexpr uint64 QEARN_MAX_LOCKS = 4194304;
+constexpr uint64 QEARN_MAX_EPOCHS = 4096;
+constexpr uint64 QEARN_MAX_USERS = 524288;
 constexpr uint64 QEARN_INITIAL_EPOCH = 999;                             //  we need to change this epoch when merging
 
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
@@ -70,6 +70,15 @@ public:
         uint64 LockedAmount;                   /* the amount user locked at input.epoch */
     };
 
+    /*
+        GetStateOfRound FUNCTION
+
+        GetStateOfRound function returns following.
+
+        0 = open epoch,not started yet
+        1 = running epoch
+        2 = ended epoch(>52weeks)
+    */
     struct GetStateOfRound_input {
         uint32 Epoch;
     };
@@ -78,6 +87,16 @@ public:
         uint32 state;
     };
     
+    /*
+        GetUserLockStatus FUNCTION
+
+        the status will return the binary status.
+        1101010010110101001011010100101101010010110101001001
+
+        1 means locked in [index of 1] weeks ago. 0 means unlocked in [index of zero] weeks ago.
+        The frontend can get the status of locked in 52 epochs. in above binary status, 
+        the frontend can know that user locked 0 week ago, 1 week ago, 3 weeks ago, 5, 8,10,11,13 weeks ago.
+    */
     struct GetUserLockStatus_input {
         id user;
     };
@@ -85,6 +104,29 @@ public:
     struct GetUserLockStatus_output {
         uint64 status;
     };
+
+    /*
+        GetEndedStatus FUNCTION
+
+        output.Early_Rewarded_Amount returns the amount rewarded by unlocking early at current epoch
+        output.Early_Unlocked_Amount returns the amount unlocked by unlocking early at current epoch
+        output.Fully_Rewarded_Amount returns the amount rewarded by unlocking fully at the end of previous epoch
+        output.Fully_Unlocked_Amount returns the amount unlocked by unlocking fully at the end of previous epoch
+
+        let's assume that current epoch is 170, user unlocked the 15B qu totally at this epoch and he got the 30B qu of reward.
+        in this case, output.Early_Unlocked_Amount = 15B qu, output.Early_Rewarded_Amount = 30B qu
+        if this user unlocks 3B qu additionally at this epoch and rewarded 6B qu, 
+        in this case, output.Early_Unlocked_Amount = 18B qu, output.Early_Rewarded_Amount = 36B qu
+        state.EarlyUnlocker array would be initialized at the end of every epoch
+
+        let's assume also that current epoch is 170, user got the 15B(locked amount for 52 weeks) + 10B(rewarded amount for 52 weeks) at the end of epoch 169.
+        in this case, output.Fully_Rewarded_Amount = 10B, output.Fully_Unlocked_Amount = 15B
+        state.FullyUnlocker array would be decided with distributions at the end of every epoch
+
+        state.EarlyUnlocker, state.FullyUnlocker arrays would be initialized and decided by following expression at the END_EPOCH_WITH_LOCALS function.
+        state._EarlyUnlocked_cnt = 0;
+        state._FullyUnlocked_cnt = 0;
+    */
 
     struct GetEndedStatus_input {
         id user;
@@ -122,8 +164,8 @@ private:
 
     };
 
-    array<RoundInfo, 65536> _InitialRoundInfo;
-    array<RoundInfo, 65536> _CurrentRoundInfo;
+    array<RoundInfo, QEARN_MAX_LOCKS> _InitialRoundInfo;
+    array<RoundInfo, QEARN_MAX_LOCKS> _CurrentRoundInfo;
 
     struct EpochIndexInfo {
 
@@ -131,9 +173,9 @@ private:
         uint32 endIndex;
     };
 
-    array<EpochIndexInfo, 65536> EpochIndex;
+    array<EpochIndexInfo, QEARN_MAX_LOCKS> EpochIndex;
 
-    struct UserInfo {
+    struct LockInfo {
 
         uint64 _Locked_Amount;
         id ID;
@@ -141,7 +183,7 @@ private:
         
     };
 
-    array<UserInfo, 16777216> Locker;
+    array<LockInfo, QEARN_MAX_LOCKS> Locker;
 
     struct HistoryInfo {
 
@@ -151,30 +193,32 @@ private:
 
     };
 
-    array<HistoryInfo, 524288> EarlyUnlocker;
-    array<HistoryInfo, 524288> FullyUnlocker;
+    array<HistoryInfo, QEARN_MAX_USERS> EarlyUnlocker;
+    array<HistoryInfo, QEARN_MAX_USERS> FullyUnlocker;
     
     uint64 remain_amount;          //  The remain amount boosted by last early unlocker of one round, this amount will put in next round
 
     uint32 _EarlyUnlocked_cnt;
     uint32 _FullyUnlocked_cnt;
 
-    /*
-        GetStateOfRound function returns following.
-
-        0 = open epoch,not started yet
-        1 = running epoch
-        2 = ended epoch(>52weeks)
-    */
-
     PUBLIC_FUNCTION(GetStateOfRound)
         if(input.Epoch < QEARN_INITIAL_EPOCH) 
         {                                                            // non staking
-            output.state = 2; return ;
+            output.state = 2; 
+            return ;
         }
-        if(input.Epoch > qpi.epoch()) output.state = 0;                                     // opening round, not started yet
-        if(input.Epoch <= qpi.epoch() && input.Epoch >= qpi.epoch() - 52) output.state = 1; // running round, available unlocking early
-        if(input.Epoch < qpi.epoch() - 52) output.state = 2;                                // ended round
+        if(input.Epoch > qpi.epoch()) 
+        {
+            output.state = 0;                                     // opening round, not started yet
+        }
+        if(input.Epoch <= qpi.epoch() && input.Epoch >= qpi.epoch() - 52) 
+        {
+            output.state = 1;       // running round, available unlocking early
+        }
+        if(input.Epoch < qpi.epoch() - 52) 
+        {
+            output.state = 2;       // ended round
+        }
     _
 
     PUBLIC_FUNCTION(GetLockInforPerEpoch)
@@ -185,49 +229,51 @@ private:
         output.CurrentLockedAmount = state._CurrentRoundInfo.get(input.Epoch)._Total_Locked_Amount;
         if(state._CurrentRoundInfo.get(input.Epoch)._Total_Locked_Amount) 
         {
-            output.Yield = state._CurrentRoundInfo.get(input.Epoch)._Epoch_Bonus_Amount * 10000000UL / state._CurrentRoundInfo.get(input.Epoch)._Total_Locked_Amount;
+            output.Yield = state._CurrentRoundInfo.get(input.Epoch)._Epoch_Bonus_Amount * 10000000ULL / state._CurrentRoundInfo.get(input.Epoch)._Total_Locked_Amount;
         }
-        else output.Yield = 0UL;
+        else 
+        {
+            output.Yield = 0ULL;
+        }
     _
 
     struct GetUserLockedInfor_locals {
         uint32 _t;
+        uint32 startIndex;
+        uint32 endIndex;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetUserLockedInfor)
+
+        locals.startIndex = state.EpochIndex.get(input.epoch).startIndex;
+        locals.endIndex = state.EpochIndex.get(input.epoch).endIndex;
         
-        for(locals._t = state.EpochIndex.get(input.epoch).startIndex; locals._t < state.EpochIndex.get(input.epoch).endIndex; locals._t++) 
+        for(locals._t = locals.startIndex; locals._t < locals.endIndex; locals._t++) 
         {
             if(state.Locker.get(locals._t).ID == input.user) 
             {
-                output.LockedAmount = state.Locker.get(locals._t)._Locked_Amount; return;
+                output.LockedAmount = state.Locker.get(locals._t)._Locked_Amount; 
+                return;
             }
         }
     _
 
-
-    /*
-        the status will return the binary status.
-        1101010010110101001011010100101101010010110101001001
-
-        1 means locked in [index of 1] weeks ago. 0 means unlocked in [index of zero] weeks ago.
-        The frontend can get the status of locked in 52 epochs. in above binary status, 
-        the frontend can know that user locked 0 week ago, 1 week ago, 3 weeks ago, 5, 8,10,11,13 weeks ago.
-    */
     struct GetUserLockStatus_locals {
         uint64 bn;
         uint32 _t;
         uint32 _r;
+        uint32 endIndex;
         uint8 lockedWeeks;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetUserLockStatus)
 
-        output.status = 0UL;
+        output.status = 0ULL;
+        locals.endIndex = state.EpochIndex.get(qpi.epoch()).endIndex;
         
-        for(locals._t = 0; locals._t < state.EpochIndex.get(qpi.epoch()).endIndex; locals._t++) 
+        for(locals._t = 0; locals._t < locals.endIndex; locals._t++) 
         {
-            if(state.Locker.get(locals._t).ID == input.user && state.Locker.get(locals._t)._Locked_Amount > 0) 
+            if(state.Locker.get(locals._t)._Locked_Amount > 0 && state.Locker.get(locals._t).ID == input.user) 
             {
             
                 locals.lockedWeeks = qpi.epoch() - state.Locker.get(locals._t)._Locked_Epoch;
@@ -242,27 +288,6 @@ private:
     struct GetEndedStatus_locals {
         uint32 _t;
     };
-
-    /*
-        output.Early_Rewarded_Amount returns the amount rewarded by unlocking early at current epoch
-        output.Early_Unlocked_Amount returns the amount unlocked by unlocking early at current epoch
-        output.Fully_Rewarded_Amount returns the amount rewarded by unlocking fully at the end of previous epoch
-        output.Fully_Unlocked_Amount returns the amount unlocked by unlocking fully at the end of previous epoch
-
-        let's assume that current epoch is 170, user unlocked the 15B qu totally at this epoch and he got the 30B qu of reward.
-        in this case, output.Early_Unlocked_Amount = 15B qu, output.Early_Rewarded_Amount = 30B qu
-        if this user unlocks 3B qu additionally at this epoch and rewarded 6B qu, 
-        in this case, output.Early_Unlocked_Amount = 18B qu, output.Early_Rewarded_Amount = 36B qu
-        state.EarlyUnlocker array would be initialized at the end of every epoch
-
-        let's assume also that current epoch is 170, user got the 15B(locked amount for 52 weeks) + 10B(rewarded amount for 52 weeks) at the end of epoch 169.
-        in this case, output.Fully_Rewarded_Amount = 10B, output.Fully_Unlocked_Amount = 15B
-        state.FullyUnlocker array would be decided with distributions at the end of every epoch
-
-        state.EarlyUnlocker, state.FullyUnlocker arrays would be initialized and decided by following expression at the END_EPOCH_WITH_LOCALS function.
-        state._EarlyUnlocked_cnt = 0;
-        state._FullyUnlocked_cnt = 0;
-    */
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetEndedStatus)
 
@@ -296,10 +321,11 @@ private:
 
     struct Lock_locals {
 
-        UserInfo newLocker;
+        LockInfo newLocker;
         RoundInfo updatedRoundInfo;
         EpochIndexInfo tmpIndex;
         sint32 t;
+        uint32 endIndex;
         
     };
 
@@ -316,7 +342,9 @@ private:
             return;
         }
 
-        for(locals.t = state.EpochIndex.get(qpi.epoch()).startIndex ; locals.t < state.EpochIndex.get(qpi.epoch()).endIndex; locals.t++) 
+        locals.endIndex = state.EpochIndex.get(qpi.epoch()).endIndex;
+
+        for(locals.t = state.EpochIndex.get(qpi.epoch()).startIndex ; locals.t < locals.endIndex; locals.t++) 
         {
 
             if(state.Locker.get(locals.t).ID == qpi.invocator()) 
@@ -342,7 +370,7 @@ private:
 
         }
 
-        if(state.EpochIndex.get(qpi.epoch()).endIndex == QEARN_MAXIMUM_OF_USER - 1) 
+        if(locals.endIndex == QEARN_MAX_LOCKS - 1) 
         {
             output.returnCode = QEARN_OVERFLOW_USER;
             if(qpi.invocationReward() > 0) 
@@ -356,10 +384,10 @@ private:
         locals.newLocker._Locked_Amount = qpi.invocationReward();
         locals.newLocker._Locked_Epoch = qpi.epoch();
 
-        state.Locker.set(state.EpochIndex.get(qpi.epoch()).endIndex, locals.newLocker);
+        state.Locker.set(locals.endIndex, locals.newLocker);
 
         locals.tmpIndex.startIndex = state.EpochIndex.get(qpi.epoch()).startIndex;
-        locals.tmpIndex.endIndex = state.EpochIndex.get(qpi.epoch()).endIndex + 1;
+        locals.tmpIndex.endIndex = locals.endIndex + 1;
         state.EpochIndex.set(qpi.epoch(), locals.tmpIndex);
 
         locals.updatedRoundInfo._Total_Locked_Amount = state._InitialRoundInfo.get(qpi.epoch())._Total_Locked_Amount + qpi.invocationReward();
@@ -376,7 +404,7 @@ private:
     struct Unlock_locals {
 
         RoundInfo updatedRoundInfo;
-        UserInfo updatedUserInfo;
+        LockInfo updatedUserInfo;
         HistoryInfo unlockerInfo;
         
         uint64 AmountOfUnlocking;
@@ -388,32 +416,39 @@ private:
         sint32 t;
         uint32 count_Of_last_vacancy;
         uint32 locked_weeks;
+        uint32 startIndex;
+        uint32 endIndex;
         
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(Unlock)
 
-        if(input.Locked_Epoch > QEARN_MAXIMUM_EPOCH) {
+        if(input.Locked_Epoch > QEARN_MAX_EPOCHS) 
+        {
 
             output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
             return ;
 
         }
 
-        locals.indexOfinvocator = QEARN_MAXIMUM_OF_USER;
+        locals.indexOfinvocator = QEARN_MAX_LOCKS;
+        locals.startIndex = state.EpochIndex.get(input.Locked_Epoch).startIndex;
+        locals.endIndex = state.EpochIndex.get(input.Locked_Epoch).endIndex;
 
-        for(locals.t = state.EpochIndex.get(input.Locked_Epoch).startIndex ; locals.t < state.EpochIndex.get(input.Locked_Epoch).endIndex; locals.t++) 
+        for(locals.t = locals.startIndex ; locals.t < locals.endIndex; locals.t++) 
         {
 
             if(state.Locker.get(locals.t).ID == qpi.invocator()) 
             { 
-                if(state.Locker.get(locals.t)._Locked_Amount < input.Amount) {
+                if(state.Locker.get(locals.t)._Locked_Amount < input.Amount) 
+                {
 
                     output.returnCode = QEARN_INVALID_INPUT_UNLOCK_AMOUNT;  //  if the amount to be wanted to unlock is more than locked amount, it should be failed to unlock
                     return ;  
 
                 }
-                else {
+                else 
+                {
                     locals.indexOfinvocator = locals.t;
                     break;
                 }
@@ -421,7 +456,8 @@ private:
 
         }
 
-        if(locals.indexOfinvocator == QEARN_MAXIMUM_OF_USER) {
+        if(locals.indexOfinvocator == QEARN_MAX_LOCKS) 
+        {
             
             output.returnCode = QEARN_EMPTY_LOCKED;     //   if there is no any locked info in state.Locker array, it shows this address didn't lock at the epoch (input.Locked_Epoch)
             return ;  
@@ -432,7 +468,10 @@ private:
         {
             locals.AmountOfUnlocking = state.Locker.get(locals.indexOfinvocator)._Locked_Amount;
         }
-        else locals.AmountOfUnlocking = input.Amount;
+        else 
+        {
+            locals.AmountOfUnlocking = input.Amount;
+        }
 
         locals.RewardPercent = QPI::div(state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount * 10000000ULL, state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount);
         locals.locked_weeks = qpi.epoch() - input.Locked_Epoch - 1;
@@ -591,7 +630,7 @@ private:
     struct BEGIN_EPOCH_locals
     {
         HistoryInfo INITIALIZE_HISTORY;
-        UserInfo INITIALIZE_USER;
+        LockInfo INITIALIZE_USER;
         RoundInfo INITIALIZE_ROUNDINFO;
 
         uint32 t;
@@ -607,7 +646,7 @@ private:
         qpi.getEntity(SELF, locals.entity);
         locals.current_balance = locals.entity.incomingAmount - locals.entity.outgoingAmount;
 
-        locals.pre_epoch_balance = 0UL;
+        locals.pre_epoch_balance = 0ULL;
         locals.locked_epoch = qpi.epoch() - 52;
         for(locals.t = qpi.epoch() - 1; locals.t >= locals.locked_epoch; locals.t--) 
         {
@@ -636,7 +675,7 @@ private:
     struct END_EPOCH_locals 
     {
         HistoryInfo INITIALIZE_HISTORY;
-        UserInfo INITIALIZE_USER;
+        LockInfo INITIALIZE_USER;
         RoundInfo INITIALIZE_ROUNDINFO;
         EpochIndexInfo tmpEpochIndex;
 
@@ -649,6 +688,7 @@ private:
         sint32 st;
         sint32 en;
         uint32 empty_cnt;
+        uint32 endIndex;
 
     };
 
@@ -657,14 +697,18 @@ private:
         state._EarlyUnlocked_cnt = 0;
         state._FullyUnlocked_cnt = 0;
         locals.locked_epoch = qpi.epoch() - 52;
+        locals.endIndex = state.EpochIndex.get(locals.locked_epoch).endIndex;
         
         locals._burn_amount = state._CurrentRoundInfo.get(locals.locked_epoch)._Epoch_Bonus_Amount;
         
         locals._reward_percent = QPI::div(state._CurrentRoundInfo.get(locals.locked_epoch)._Epoch_Bonus_Amount * 10000000ULL, state._CurrentRoundInfo.get(locals.locked_epoch)._Total_Locked_Amount);
 
-        for(locals._t = state.EpochIndex.get(locals.locked_epoch).startIndex; locals._t < state.EpochIndex.get(locals.locked_epoch).endIndex; locals._t++) 
+        for(locals._t = state.EpochIndex.get(locals.locked_epoch).startIndex; locals._t < locals.endIndex; locals._t++) 
         {
-            if(state.Locker.get(locals._t)._Locked_Amount == 0) continue;
+            if(state.Locker.get(locals._t)._Locked_Amount == 0) 
+            {
+                continue;
+            }
 
             locals._reward_amount = QPI::div(state.Locker.get(locals._t)._Locked_Amount * locals._reward_percent, 10000000ULL);
             qpi.transfer(state.Locker.get(locals._t).ID, locals._reward_amount + state.Locker.get(locals._t)._Locked_Amount);
@@ -692,7 +736,7 @@ private:
 
         locals.st = 0;
 
-        for(locals._t = 0; locals._t < QEARN_MAXIMUM_OF_USER; locals._t++)
+        for(locals._t = 0; locals._t < QEARN_MAX_LOCKS; locals._t++)
         {
             if(state.Locker.get(locals._t)._Locked_Epoch) 
             {
@@ -762,7 +806,7 @@ private:
         }
 
         locals.tmpEpochIndex.startIndex = state.EpochIndex.get(qpi.epoch()).endIndex - locals.empty_cnt;
-        locals.tmpEpochIndex.endIndex = state.EpochIndex.get(qpi.epoch()).endIndex - locals.empty_cnt;
+        locals.tmpEpochIndex.endIndex = locals.tmpEpochIndex.startIndex;
 
         state.EpochIndex.set(qpi.epoch() + 1, locals.tmpEpochIndex);
 
