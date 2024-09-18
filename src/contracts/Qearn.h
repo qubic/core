@@ -1,46 +1,46 @@
 using namespace QPI;
 
-constexpr uint64 MINIMUM_LOCKING_AMOUNT = 10000000;
-constexpr uint64 MAXIMUM_OF_USER = 16777216;
-constexpr uint64 MAXIMUM_EPOCH = 65535;
-constexpr uint64 MAXIMUM_UNLOCK_HISTORY = 524288;
-constexpr uint64 INITIAL_EPOCH = 999;                             //  we need to change this epoch when merging
+constexpr uint64 QEARN_MINIMUM_LOCKING_AMOUNT = 10000000;
+constexpr uint64 QEARN_MAXIMUM_OF_USER = 16777216;
+constexpr uint64 QEARN_MAXIMUM_EPOCH = 65535;
+constexpr uint64 QEARN_MAXIMUM_UNLOCK_HISTORY = 524288;
+constexpr uint64 QEARN_INITIAL_EPOCH = 999;                             //  we need to change this epoch when merging
 
-constexpr uint64 EARLY_UNLOCKING_PERCENT_0_3 = 0;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_4_7 = 5;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_8_11 = 5;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_12_15 = 10;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_16_19 = 15;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_20_23 = 20;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_24_27 = 25;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_28_31 = 30;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_32_35 = 35;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_36_39 = 40;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_40_43 = 45;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_44_47 = 50;
-constexpr uint64 EARLY_UNLOCKING_PERCENT_48_51 = 55;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_4_7 = 5;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_8_11 = 5;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_12_15 = 10;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_16_19 = 15;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_20_23 = 20;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_24_27 = 25;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_28_31 = 30;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_32_35 = 35;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_36_39 = 40;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_40_43 = 45;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_44_47 = 50;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_48_51 = 55;
 
-constexpr uint64 BURN_PERCENT_0_3 = 0;
-constexpr uint64 BURN_PERCENT_4_7 = 45;
-constexpr uint64 BURN_PERCENT_8_11 = 45;
-constexpr uint64 BURN_PERCENT_12_15 = 45;
-constexpr uint64 BURN_PERCENT_16_19 = 40;
-constexpr uint64 BURN_PERCENT_20_23 = 40;
-constexpr uint64 BURN_PERCENT_24_27 = 35;
-constexpr uint64 BURN_PERCENT_28_31 = 35;
-constexpr uint64 BURN_PERCENT_32_35 = 35;
-constexpr uint64 BURN_PERCENT_36_39 = 30;
-constexpr uint64 BURN_PERCENT_40_43 = 30;
-constexpr uint64 BURN_PERCENT_44_47 = 30;
-constexpr uint64 BURN_PERCENT_48_51 = 25;
+constexpr uint64 QEARN_BURN_PERCENT_0_3 = 0;
+constexpr uint64 QEARN_BURN_PERCENT_4_7 = 45;
+constexpr uint64 QEARN_BURN_PERCENT_8_11 = 45;
+constexpr uint64 QEARN_BURN_PERCENT_12_15 = 45;
+constexpr uint64 QEARN_BURN_PERCENT_16_19 = 40;
+constexpr uint64 QEARN_BURN_PERCENT_20_23 = 40;
+constexpr uint64 QEARN_BURN_PERCENT_24_27 = 35;
+constexpr uint64 QEARN_BURN_PERCENT_28_31 = 35;
+constexpr uint64 QEARN_BURN_PERCENT_32_35 = 35;
+constexpr uint64 QEARN_BURN_PERCENT_36_39 = 30;
+constexpr uint64 QEARN_BURN_PERCENT_40_43 = 30;
+constexpr uint64 QEARN_BURN_PERCENT_44_47 = 30;
+constexpr uint64 QEARN_BURN_PERCENT_48_51 = 25;
 
-constexpr sint32 INVALID_INPUT_AMOUNT = -1;
-constexpr sint32 LOCK_SUCCESS = 0;
-constexpr sint32 INVALID_INPUT_LOCKED_EPOCH = 1;
-constexpr sint32 INVALID_INPUT_UNLOCK_AMOUNT = 2;
-constexpr sint32 EMPTY_LOCKED = 3;
-constexpr sint32 UNLOCK_SUCCESS = 4;
-constexpr sint32 OVERFLOW_USER = 5;
+constexpr sint32 QEARN_INVALID_INPUT_AMOUNT = -1;
+constexpr sint32 QEARN_LOCK_SUCCESS = 0;
+constexpr sint32 QEARN_INVALID_INPUT_LOCKED_EPOCH = 1;
+constexpr sint32 QEARN_INVALID_INPUT_UNLOCK_AMOUNT = 2;
+constexpr sint32 QEARN_EMPTY_LOCKED = 3;
+constexpr sint32 QEARN_UNLOCK_SUCCESS = 4;
+constexpr sint32 QEARN_OVERFLOW_USER = 5;
 
 struct QEARN2
 {
@@ -168,7 +168,7 @@ private:
     */
 
     PUBLIC_FUNCTION(GetStateOfRound)
-        if(input.Epoch < INITIAL_EPOCH) 
+        if(input.Epoch < QEARN_INITIAL_EPOCH) 
         {                                                            // non staking
             output.state = 2; return ;
         }
@@ -305,9 +305,9 @@ private:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(Lock)
     
-        if(qpi.invocationReward() < MINIMUM_LOCKING_AMOUNT)
+        if(qpi.invocationReward() < QEARN_MINIMUM_LOCKING_AMOUNT)
         {
-            output.returnCode = INVALID_INPUT_AMOUNT;         // if the amount of locking is less than 10M, it should be failed to lock.
+            output.returnCode = QEARN_INVALID_INPUT_AMOUNT;         // if the amount of locking is less than 10M, it should be failed to lock.
             
             if(qpi.invocationReward() > 0) 
             {
@@ -336,15 +336,15 @@ private:
                 locals.updatedRoundInfo._Epoch_Bonus_Amount = state._CurrentRoundInfo.get(qpi.epoch())._Epoch_Bonus_Amount;
                 state._CurrentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
                 
-                output.returnCode = LOCK_SUCCESS;          //  additional locking of this epoch is succeed
+                output.returnCode = QEARN_LOCK_SUCCESS;          //  additional locking of this epoch is succeed
                 return ;
             }
 
         }
 
-        if(state.EpochIndex.get(qpi.epoch()).endIndex == MAXIMUM_OF_USER - 1) 
+        if(state.EpochIndex.get(qpi.epoch()).endIndex == QEARN_MAXIMUM_OF_USER - 1) 
         {
-            output.returnCode = OVERFLOW_USER;
+            output.returnCode = QEARN_OVERFLOW_USER;
             if(qpi.invocationReward() > 0) 
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -370,7 +370,7 @@ private:
         locals.updatedRoundInfo._Epoch_Bonus_Amount = state._CurrentRoundInfo.get(qpi.epoch())._Epoch_Bonus_Amount;
         state._CurrentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
 
-        output.returnCode = LOCK_SUCCESS;            //  new locking of this epoch is succeed
+        output.returnCode = QEARN_LOCK_SUCCESS;            //  new locking of this epoch is succeed
     _
 
     struct Unlock_locals {
@@ -393,14 +393,14 @@ private:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(Unlock)
 
-        if(input.Locked_Epoch > MAXIMUM_EPOCH) {
+        if(input.Locked_Epoch > QEARN_MAXIMUM_EPOCH) {
 
-            output.returnCode = INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
+            output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
             return ;
 
         }
 
-        locals.indexOfinvocator = MAXIMUM_OF_USER;
+        locals.indexOfinvocator = QEARN_MAXIMUM_OF_USER;
 
         for(locals.t = state.EpochIndex.get(input.Locked_Epoch).startIndex ; locals.t < state.EpochIndex.get(input.Locked_Epoch).endIndex; locals.t++) 
         {
@@ -409,7 +409,7 @@ private:
             { 
                 if(state.Locker.get(locals.t)._Locked_Amount < input.Amount) {
 
-                    output.returnCode = INVALID_INPUT_UNLOCK_AMOUNT;  //  if the amount to be wanted to unlock is more than locked amount, it should be failed to unlock
+                    output.returnCode = QEARN_INVALID_INPUT_UNLOCK_AMOUNT;  //  if the amount to be wanted to unlock is more than locked amount, it should be failed to unlock
                     return ;  
 
                 }
@@ -421,14 +421,14 @@ private:
 
         }
 
-        if(locals.indexOfinvocator == MAXIMUM_OF_USER) {
+        if(locals.indexOfinvocator == QEARN_MAXIMUM_OF_USER) {
             
-            output.returnCode = EMPTY_LOCKED;     //   if there is no any locked info in state.Locker array, it shows this address didn't lock at the epoch (input.Locked_Epoch)
+            output.returnCode = QEARN_EMPTY_LOCKED;     //   if there is no any locked info in state.Locker array, it shows this address didn't lock at the epoch (input.Locked_Epoch)
             return ;  
         }
 
         /* the rest amount after unlocking should be more than MINIMUM_LOCKING_AMOUNT */
-        if(state.Locker.get(locals.indexOfinvocator)._Locked_Amount - input.Amount < MINIMUM_LOCKING_AMOUNT) 
+        if(state.Locker.get(locals.indexOfinvocator)._Locked_Amount - input.Amount < QEARN_MINIMUM_LOCKING_AMOUNT) 
         {
             locals.AmountOfUnlocking = state.Locker.get(locals.indexOfinvocator)._Locked_Amount;
         }
@@ -440,80 +440,80 @@ private:
 
         if(qpi.epoch() - input.Locked_Epoch >= 0 && locals.locked_weeks <= 3) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_0_3, 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_0_3 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_0_3, 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_0_3 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 4 && locals.locked_weeks <= 7) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_4_7 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_4_7 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_4_7 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_4_7 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 8 && locals.locked_weeks <= 11) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_8_11 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_8_11 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_8_11 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_8_11 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 12 && locals.locked_weeks <= 15) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_12_15 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_12_15 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_12_15 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_12_15 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 16 && locals.locked_weeks <= 19) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_16_19 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_16_19 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_16_19 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_16_19 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 20 && locals.locked_weeks <= 23) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_20_23 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_20_23 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_20_23 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_20_23 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 24 && locals.locked_weeks <= 27) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_24_27 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_24_27 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_24_27 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_24_27 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 28 && locals.locked_weeks <= 31) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_28_31 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_28_31 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_28_31 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_28_31 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 32 && locals.locked_weeks <= 35) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_32_35 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_32_35 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_32_35 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_32_35 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 36 && locals.locked_weeks <= 39) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_36_39 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_36_39 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_36_39 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_36_39 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 40 && locals.locked_weeks <= 43) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_40_43 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_40_43 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_40_43 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_40_43 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 44 && locals.locked_weeks <= 47) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_44_47 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_44_47 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_44_47 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_44_47 , 10000000ULL);
         }
 
         if(locals.locked_weeks >= 48 && locals.locked_weeks <= 51) 
         {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * EARLY_UNLOCKING_PERCENT_48_51 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * BURN_PERCENT_48_51 , 10000000ULL);
+            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_48_51 , 10000000ULL);
+            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_48_51 , 10000000ULL);
         }
 
         qpi.transfer(qpi.invocator(), locals.AmountOfUnlocking + locals.AmountOfReward);
@@ -561,7 +561,7 @@ private:
                 }
             }
 
-            if(locals.t == state._EarlyUnlocked_cnt && state._EarlyUnlocked_cnt < MAXIMUM_UNLOCK_HISTORY) 
+            if(locals.t == state._EarlyUnlocked_cnt && state._EarlyUnlocked_cnt < QEARN_MAXIMUM_UNLOCK_HISTORY) 
             {
                 locals.unlockerInfo._Rewarded_Amount = locals.AmountOfReward;
                 locals.unlockerInfo._Unlocked_Amount = locals.AmountOfUnlocking;
@@ -572,7 +572,7 @@ private:
 
         }
 
-        output.returnCode = UNLOCK_SUCCESS; //  unlock is succeed
+        output.returnCode = QEARN_UNLOCK_SUCCESS; //  unlock is succeed
     _
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
@@ -669,7 +669,7 @@ private:
             locals._reward_amount = QPI::div(state.Locker.get(locals._t)._Locked_Amount * locals._reward_percent, 10000000ULL);
             qpi.transfer(state.Locker.get(locals._t).ID, locals._reward_amount + state.Locker.get(locals._t)._Locked_Amount);
 
-            if(state._FullyUnlocked_cnt < MAXIMUM_UNLOCK_HISTORY) 
+            if(state._FullyUnlocked_cnt < QEARN_MAXIMUM_UNLOCK_HISTORY) 
             {
 
                 locals.INITIALIZE_HISTORY._Unlocked_ID = state.Locker.get(locals._t).ID;
@@ -692,7 +692,7 @@ private:
 
         locals.st = 0;
 
-        for(locals._t = 0; locals._t < MAXIMUM_OF_USER; locals._t++)
+        for(locals._t = 0; locals._t < QEARN_MAXIMUM_OF_USER; locals._t++)
         {
             if(state.Locker.get(locals._t)._Locked_Epoch) 
             {
