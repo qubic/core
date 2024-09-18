@@ -308,6 +308,8 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
             spectrum[index].incomingAmount += amount;
             spectrum[index].numberOfIncomingTransfers++;
             spectrum[index].latestIncomingTransferTick = system.tick;
+
+            spectrumInfo.totalAmount += amount;
         }
         else
         {
@@ -319,6 +321,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 spectrum[index].latestIncomingTransferTick = system.tick;
 
                 spectrumInfo.numberOfEntities++;
+                spectrumInfo.totalAmount += amount;
 
 #if LOG_SPECTRUM_STATS
                 if ((spectrumInfo.numberOfEntities & 0x7ffff) == 1)
@@ -340,8 +343,6 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
         RELEASE(spectrumLock);
     }
-
-    spectrumInfo.totalAmount += amount;
 }
 
 // Decrease balance of entity if it is high enough.

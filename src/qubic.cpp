@@ -2901,29 +2901,32 @@ static void processTick(unsigned long long processorNumber)
         {
             int solutionIndexToPublish = -1;
 
-            // Select solution to publish as tx
+            // Select solution to publish as tx (and mark solutions as obsolete, whose mining seed does not match).
+            // Primarily, consider solutions of the computor i that were already selected for tx before.
             unsigned int j;
             for (j = 0; j < system.numberOfSolutions; j++)
             {
+                // solutionPublicationTicks[j] > 0 means the solution has already been selected for creating tx
+                // but has neither been RECORDED (successfully processed by tx) nor marked OBSOLETE (outdated mining seed)
                 if (solutionPublicationTicks[j] > 0
                     && system.solutions[j].computorPublicKey == computorPublicKeys[i])
                 {
+                    // Only consider this sol if the scheduled tick has passed already (tx not successful)
                     if (solutionPublicationTicks[j] <= (int)system.tick)
                     {
                         if (system.solutions[j].miningSeed == score->currentRandomSeed)
                         {
                             solutionIndexToPublish = j;
+                            break;
                         }
                         else
                         {
-                            // obsolete solution
                             solutionPublicationTicks[j] = SOLUTION_OBSOLETE_FLAG;
                         }
                     }
-
-                    break;
                 }
             }
+            // Secondarily, if no solution has been selected above, consider new solutions without previous tx
             if (j == system.numberOfSolutions)
             {
                 for (j = 0; j < system.numberOfSolutions; j++)
@@ -2931,9 +2934,15 @@ static void processTick(unsigned long long processorNumber)
                     if (!solutionPublicationTicks[j]
                         && system.solutions[j].computorPublicKey == computorPublicKeys[i])
                     {
-                        solutionIndexToPublish = j;
-
-                        break;
+                        if (system.solutions[j].miningSeed == score->currentRandomSeed)
+                        {
+                            solutionIndexToPublish = j;
+                            break;
+                        }
+                        else
+                        {
+                            solutionPublicationTicks[j] = SOLUTION_OBSOLETE_FLAG;
+                        }
                     }
                 }
             }
