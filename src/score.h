@@ -155,7 +155,7 @@ struct ScoreFunction
     struct computeBuffer {
         // neuron only has values [-1, 0, 1]
         struct {
-            char inputAtTick[maxDuration + 1][dataLength + numberOfHiddenNeurons + dataLength];
+            char inputAtTick[maxDuration + 1][dataLength + numberOfHiddenNeurons + dataLength + numberOfNeighborNeurons];
         } neurons;
         char* inputLength;
         unsigned int* nnNeuronIndicePos[inNeuronsCount];
@@ -164,6 +164,7 @@ struct ScoreFunction
 
         static_assert((allParamsCount) % 8 == 0, "need to check this packed synapse");
         static_assert(maxDuration <= 65536, "need to check this maxDuration and adjust maxNumMods");
+        static_assert(dataLength <= numberOfNeighborNeurons, "data length need to be smaller than or equal numberOfNeighborNeurons");
 
         queueItem queue[allParamsCount * 2];
         bool isProcessing[allParamsCount * 2];
@@ -184,6 +185,7 @@ struct ScoreFunction
     unsigned char _totalModNum[maxDuration + 1];
     // i is divisible by _modNum[i][j], j < _totalModNum[i]
     unsigned char _modNum[maxDuration + 1][129];
+    unsigned char _tickDiviable[maxDuration + 1][129];
 
     m256i currentRandomSeed;
 
@@ -208,6 +210,7 @@ struct ScoreFunction
             }
             setMem(_totalModNum, sizeof(_totalModNum), 0);
             setMem(_modNum, sizeof(_modNum), 0);
+            setMem(_tickDiviable, sizeof(_tickDiviable), 0);
 
             // init the divisible table
             for (int i = 1; i <= maxDuration; i++) 
@@ -217,6 +220,7 @@ struct ScoreFunction
                     if (j && i % j == 0) 
                     {
                         _modNum[i][_totalModNum[i]++] = j;
+                        _tickDiviable[i][j] = 1;
                     }
                 }
             }
@@ -726,25 +730,153 @@ struct ScoreFunction
             }
 
             setMem(cb.neurons.inputAtTick, sizeof(cb.neurons.inputAtTick), NOT_CALCULATED);
+
+            setMem(cb.neurons.inputAtTick[0], allParamsCount + numberOfNeighborNeurons, 0);
             for (int i = 0; i < dataLength; i++) {
                 cb.neurons.inputAtTick[0][i] = (char)miningData[i];
+            }
+            copyMem(cb.neurons.inputAtTick[0] + allParamsCount, cb.neurons.inputAtTick[0], numberOfNeighborNeurons);
+
+            for (int i = 0; i < dataLength; i++)
+            {
                 cb.neurons.inputAtTick[1][i] = (char)miningData[i];
             }
-
-            setMem(cb.neurons.inputAtTick[0] + dataLength, inNeuronsCount * sizeof(cb.neurons.inputAtTick[0][0]), 0);
-            for (unsigned int inputNeuronIndex = numberOfHiddenNeurons; inputNeuronIndex < numberOfHiddenNeurons + dataLength; inputNeuronIndex++) {
-                fullComputeNeuron<dataLength>(1,
-                    inputNeuronIndex,
-                    cb,
-                    cb.neurons.inputAtTick[1],
-                    synapses.inputLength,
-                    dataLength + inputNeuronIndex);
-            }
-            for (int tick = 2; tick <= maxDuration; tick++)
+            for (int tick = 1; tick < maxDuration; tick++)
             {
-                for (unsigned int inputNeuronIndex = numberOfHiddenNeurons; inputNeuronIndex < numberOfHiddenNeurons + dataLength; inputNeuronIndex++) {
-                    cb.neurons.inputAtTick[tick][dataLength + inputNeuronIndex] = solveNeuron<dataLength, true>(cb, tick, dataLength + inputNeuronIndex);
+                copyMem(cb.neurons.inputAtTick[tick - 1] + allParamsCount, cb.neurons.inputAtTick[tick - 1], numberOfNeighborNeurons);
+                for (int i = 0; i < dataLength; i++)
+                {
+                    cb.neurons.inputAtTick[tick][i] = (char)miningData[i];
                 }
+
+                const int numMods = _totalModNum[tick];
+                const auto* modList = _modNum[tick];
+                for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfHiddenNeurons + dataLength; inputNeuronIndex++)
+                {
+                    char* pSynapseInput = synapses.inputLength + inputNeuronIndex * numberOfNeighborNeurons;
+                    char prev = 0;
+                    char sum = 0;
+                    char sum0 = 0;
+                    char sum1 = 0;
+                    char sum2 = 0;
+                    bool foundShortCut = false;
+                    long long i = numberOfNeighborNeurons - 32;
+                    for (; i >= 0 && !foundShortCut; i -= 32)
+                    {
+                        char* pNNSynapse = pSynapseInput + i;
+                        char* pNNNr = cb.neurons.inputAtTick[tick - 1] + inputNeuronIndex + 1 + i;
+                        unsigned int negMask = 0;
+                        unsigned int nonZerosMask = 0;
+
+                        const __m256i neurons256 = _mm256_loadu_si256((const __m256i*)(pNNNr));
+                        const __m256i synapses256 = _mm256_loadu_si256((const __m256i*)(pNNSynapse));
+                        const __m256i absSynapse = _mm256_abs_epi8(synapses256);
+                        const __m256i zeros256 = _mm256_setzero_si256();
+                        unsigned int divMask = 0;
+                        for (int modIdx = 0; modIdx < numMods; modIdx++)
+                        {
+                            divMask |= _mm256_cmpeq_epi8_mask(absSynapse, _mm256_set1_epi8(modList[modIdx]));
+                        }
+                        nonZerosMask = ~(_mm256_cmpeq_epi8_mask(neurons256, zeros256)) & divMask;
+                        const unsigned int negSyn = nonZerosMask & _mm256_cmpgt_epi8_mask(_mm256_setzero_si256(), synapses256);
+                        const unsigned int negNr = nonZerosMask & _mm256_cmpgt_epi8_mask(zeros256, neurons256);
+                        negMask = negSyn ^ negNr;
+                        constexpr unsigned int markBit = (1U << 31);
+                        if (nonZerosMask)
+                        {
+                            int testBit = _lzcnt_u32(nonZerosMask);
+                            constexpr unsigned int markBit = (1U << 31);
+                            while (nonZerosMask && !foundShortCut)
+                            {
+                                const unsigned int maskBit = markBit >> _lzcnt_u32(nonZerosMask);
+                                const char nnV = (maskBit & negMask) ? -1 : 1;
+                                {
+                                    sum2 = sum1;
+                                    sum1 = sum0;
+                                    sum0 = nnV;
+                                    if (prev > 1)
+                                    {
+                                        if (sum2 > 0) sum++;
+                                        else sum--;
+                                    }
+                                }
+
+                                if (prev > 1 && sum0 == sum1)
+                                {
+                                    char result = (sum0 > 0) ? NEURON_VALUE_LIMIT : -NEURON_VALUE_LIMIT;
+                                    sum += result;
+                                    clampNeuron(sum);
+                                    foundShortCut = true;
+                                    break;
+                                }
+                                nonZerosMask ^= maskBit;
+                                prev++;
+                            }
+                        }
+                    }
+
+                    if (!foundShortCut)
+                    {
+                        i = numberOfNeighborNeurons & 31;
+                        if (i > 0)
+                        {
+                            for (; i >= 0 && !foundShortCut; i--)
+                            {
+                                char s = pSynapseInput[i];
+                                char absS = _tickDiviable[tick][(unsigned char)abs(s)];
+                                if (absS)
+                                {
+                                    unsigned long long anotherInputNeuronIndex = inputNeuronIndex + 1 + i;
+                                    char nnV = cb.neurons.inputAtTick[tick - 1][anotherInputNeuronIndex];
+                                    if (!nnV)
+                                        continue;
+                                    nnV = s > 0 ? nnV : -nnV;
+
+                                    {
+                                        sum2 = sum1;
+                                        sum1 = sum0;
+                                        sum0 = nnV;
+                                        if (prev > 1)
+                                        {
+                                            if (sum2 > 0) sum++;
+                                            else sum--;
+                                        }
+                                    }
+                                    prev++;
+
+                                    if (prev > 1 && sum0 == sum1)
+                                    {
+                                        char result = (sum0 > 0) ? NEURON_VALUE_LIMIT : -NEURON_VALUE_LIMIT;
+                                        sum += result;
+                                        clampNeuron(sum);
+                                        foundShortCut = true;
+                                        break;
+                                    }
+                                    prev++;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!foundShortCut)
+                    {
+                        char v = cb.neurons.inputAtTick[tick - 1][dataLength + inputNeuronIndex];
+                        v += sum0;
+                        clampNeuron(v);
+                        v += sum1;
+                        clampNeuron(v);
+                        sum += v;
+                        clampNeuron(sum);
+                    }
+                    cb.neurons.inputAtTick[tick][dataLength + inputNeuronIndex] = sum;
+                }
+            }
+        }
+
+        {
+            int tick = maxDuration;
+            for (unsigned int inputNeuronIndex = numberOfHiddenNeurons; inputNeuronIndex < numberOfHiddenNeurons + dataLength; inputNeuronIndex++) {
+                cb.neurons.inputAtTick[tick][dataLength + inputNeuronIndex] = solveNeuron<dataLength, true>(cb, tick, dataLength + inputNeuronIndex);
             }
         }
 
