@@ -38,7 +38,8 @@
 
 #include "assets.h"
 #include "spectrum.h"
-#include "logging.h"
+#include "logging/logging.h"
+#include "logging/net_msg_impl.h"
 
 #include "tick_storage.h"
 #include "vote_counter.h"
@@ -282,18 +283,18 @@ static void logToConsole(const CHAR16* message)
         return;
     }
 
-    timestampedMessage[0] = (time.Year % 100) / 10 + L'0';
-    timestampedMessage[1] = time.Year % 10 + L'0';
-    timestampedMessage[2] = time.Month / 10 + L'0';
-    timestampedMessage[3] = time.Month % 10 + L'0';
-    timestampedMessage[4] = time.Day / 10 + L'0';
-    timestampedMessage[5] = time.Day % 10 + L'0';
-    timestampedMessage[6] = time.Hour / 10 + L'0';
-    timestampedMessage[7] = time.Hour % 10 + L'0';
-    timestampedMessage[8] = time.Minute / 10 + L'0';
-    timestampedMessage[9] = time.Minute % 10 + L'0';
-    timestampedMessage[10] = time.Second / 10 + L'0';
-    timestampedMessage[11] = time.Second % 10 + L'0';
+    timestampedMessage[0] = (utcTime.Year % 100) / 10 + L'0';
+    timestampedMessage[1] = utcTime.Year % 10 + L'0';
+    timestampedMessage[2] = utcTime.Month / 10 + L'0';
+    timestampedMessage[3] = utcTime.Month % 10 + L'0';
+    timestampedMessage[4] = utcTime.Day / 10 + L'0';
+    timestampedMessage[5] = utcTime.Day % 10 + L'0';
+    timestampedMessage[6] = utcTime.Hour / 10 + L'0';
+    timestampedMessage[7] = utcTime.Hour % 10 + L'0';
+    timestampedMessage[8] = utcTime.Minute / 10 + L'0';
+    timestampedMessage[9] = utcTime.Minute % 10 + L'0';
+    timestampedMessage[10] = utcTime.Second / 10 + L'0';
+    timestampedMessage[11] = utcTime.Second % 10 + L'0';
     timestampedMessage[12] = ' ';
     timestampedMessage[13] = 0;
 
@@ -368,7 +369,7 @@ static void getComputerDigest(m256i& digest)
             const unsigned long long size = digestIndex < contractCount ? contractDescriptions[digestIndex].stateSize : 0;
             if (!size)
             {
-                contractStateDigests[digestIndex] = _mm256_setzero_si256();
+                contractStateDigests[digestIndex] = m256i::zero();
             }
             else
             {
@@ -695,7 +696,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
         && request->tickData.minute <= 59
         && request->tickData.second <= 59
         && request->tickData.millisecond <= 999
-        && ms(request->tickData.year, request->tickData.month, request->tickData.day, request->tickData.hour, request->tickData.minute, request->tickData.second, request->tickData.millisecond) <= ms(time.Year - 2000, time.Month, time.Day, time.Hour, time.Minute, time.Second, time.Nanosecond / 1000000) + TIME_ACCURACY)
+        && ms(request->tickData.year, request->tickData.month, request->tickData.day, request->tickData.hour, request->tickData.minute, request->tickData.second, request->tickData.millisecond) <= ms(utcTime.Year - 2000, utcTime.Month, utcTime.Day, utcTime.Hour, utcTime.Minute, utcTime.Second, utcTime.Nanosecond / 1000000) + TIME_ACCURACY)
     {
         bool ok = true;
         for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK && ok; i++)
@@ -1189,7 +1190,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 // set time
                 SpecialCommandSendTime* _request = header->getPayload<SpecialCommandSendTime>();
                 EFI_TIME newTime;
-                copyMem(&newTime, &_request->utcTime, sizeof(_request->utcTime)); // caution: response.utcTime is subset of time (smaller size)
+                copyMem(&newTime, &_request->utcTime, sizeof(_request->utcTime)); // caution: response.utcTime is subset of newTime (smaller size)
                 newTime.TimeZone = 0;
                 newTime.Daylight = 0;
                 EFI_STATUS status = rs->SetTime(&newTime);
@@ -1205,7 +1206,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 SpecialCommandSendTime response;
                 response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SEND_TIME << 56);
                 updateTime();
-                copyMem(&response.utcTime, &time, sizeof(response.utcTime)); // caution: response.utcTime is subset of time (smaller size)
+                copyMem(&response.utcTime, &utcTime, sizeof(response.utcTime)); // caution: response.utcTime is subset of global utcTime (smaller size)
                 enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type, header->dejavu(), &response);
             }
             break;
@@ -1239,10 +1240,10 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 // a tracker to detect if a thread is crashed
 static void checkinTime(unsigned long long processorNumber)
 {
-    threadTimeCheckin[processorNumber].second = time.Second;
-    threadTimeCheckin[processorNumber].minute = time.Minute;
-    threadTimeCheckin[processorNumber].hour = time.Hour;
-    threadTimeCheckin[processorNumber].day = time.Day;
+    threadTimeCheckin[processorNumber].second = utcTime.Second;
+    threadTimeCheckin[processorNumber].minute = utcTime.Minute;
+    threadTimeCheckin[processorNumber].hour = utcTime.Hour;
+    threadTimeCheckin[processorNumber].day = utcTime.Day;
 }
 
 static void setNewMiningSeed()
@@ -1250,9 +1251,14 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
+static unsigned int getTickInMiningPhaseCycle()
+{
+    return (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+}
+
 static void checkAndSwitchMiningPhase()
 {
-    const unsigned int r = (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+    const unsigned int r = getTickInMiningPhaseCycle();
     if (!r)
     {
         setNewMiningSeed();
@@ -1261,7 +1267,7 @@ static void checkAndSwitchMiningPhase()
     {
         if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
         {
-            score->initMiningData(_mm256_setzero_si256());
+            score->initMiningData(m256i::zero());
         }
     }
 }
@@ -1586,8 +1592,6 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
 
         const Burning burning = { _currentContractId , amount };
         logger.logBurning(burning);
-
-        spectrumInfo.totalAmount -= amount;
     }
 
     return remainingAmount;
@@ -1733,7 +1737,7 @@ m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
         }
     }
 
-    return _mm256_setzero_si256();
+    return m256i::zero();
 }
 
 long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex) const
@@ -2120,7 +2124,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
         const long long amount = contractIPOBid->price * contractIPOBid->quantity;
         if (decreaseEnergy(spectrumIndex, amount))
         {
-            const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
+            const QuTransfer quTransfer = { transaction->sourcePublicKey, m256i::zero(), amount };
             logger.logQuTransfer(quTransfer);
 
             numberOfReleasedEntities = 0;
@@ -2190,7 +2194,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
         }
@@ -2234,8 +2238,10 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
-    ASSERT(transaction->destinationPublicKey == arbitratorPublicKey || isZero(transaction->destinationPublicKey));
-    ASSERT(!transaction->amount && transaction->inputSize == 64 && !transaction->inputType);
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(transaction->amount >=MiningSolutionTransaction::minAmount()
+            && transaction->inputSize == 64
+            && transaction->inputType == MiningSolutionTransaction::transactionType());
 
     m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
     static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
@@ -2254,11 +2260,11 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
             const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
             if (score->isGoodScore(solutionScore, threshold))
             {
-                if (transaction->amount) // Remove this condition after the migration period
+                // Solution deposit return
                 {
                     increaseEnergy(transaction->sourcePublicKey, transaction->amount);
 
-                    const QuTransfer quTransfer = { _mm256_setzero_si256(), transaction->sourcePublicKey, transaction->amount };
+                    const QuTransfer quTransfer = { m256i::zero(), transaction->sourcePublicKey, transaction->amount };
                     logger.logQuTransfer(quTransfer);
                 }
 
@@ -2554,20 +2560,6 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                         moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
                     }
                 }
-                else
-                {
-                    // Other transactions
-                    // TODO: Remove after the migration period
-                    if (transaction->destinationPublicKey == arbitratorPublicKey)
-                    {
-                        if (!transaction->amount
-                            && transaction->inputSize == 64
-                            && !transaction->inputType)
-                        {
-                            processTickTransactionSolution((MiningSolutionTransaction*)transaction, processorNumber);
-                        }
-                    }
-                }
             }
         }
 
@@ -2665,9 +2657,10 @@ static void processTick(unsigned long long processorNumber)
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     if (spectrumIndex >= 0)
                     {
-                        if ((transaction->destinationPublicKey == arbitratorPublicKey && !transaction->amount && !transaction->inputType) ||
-                            (isZero(transaction->destinationPublicKey) && transaction->amount >= MiningSolutionTransaction::minAmount()
-                                && transaction->inputType == MiningSolutionTransaction::transactionType()))
+                        // Solution transactions
+                        if (isZero(transaction->destinationPublicKey)
+                            && transaction->amount >= MiningSolutionTransaction::minAmount()
+                            && transaction->inputType == MiningSolutionTransaction::transactionType())
                         {
                             if (transaction->inputSize == 32 + 32)
                             {
@@ -2777,13 +2770,13 @@ static void processTick(unsigned long long processorNumber)
                     broadcastedFutureTickData.tickData.epoch = system.epoch;
                     broadcastedFutureTickData.tickData.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
 
-                    broadcastedFutureTickData.tickData.millisecond = time.Nanosecond / 1000000;
-                    broadcastedFutureTickData.tickData.second = time.Second;
-                    broadcastedFutureTickData.tickData.minute = time.Minute;
-                    broadcastedFutureTickData.tickData.hour = time.Hour;
-                    broadcastedFutureTickData.tickData.day = time.Day;
-                    broadcastedFutureTickData.tickData.month = time.Month;
-                    broadcastedFutureTickData.tickData.year = time.Year - 2000;
+                    broadcastedFutureTickData.tickData.millisecond = utcTime.Nanosecond / 1000000;
+                    broadcastedFutureTickData.tickData.second = utcTime.Second;
+                    broadcastedFutureTickData.tickData.minute = utcTime.Minute;
+                    broadcastedFutureTickData.tickData.hour = utcTime.Hour;
+                    broadcastedFutureTickData.tickData.day = utcTime.Day;
+                    broadcastedFutureTickData.tickData.month = utcTime.Month;
+                    broadcastedFutureTickData.tickData.year = utcTime.Year - 2000;
 
                     m256i timelockPreimage[3];
                     static_assert(sizeof(timelockPreimage) == 3 * 32, "Unexpected array size");
@@ -2859,7 +2852,7 @@ static void processTick(unsigned long long processorNumber)
 
                     for (; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                     {
-                        broadcastedFutureTickData.tickData.transactionDigests[j] = _mm256_setzero_si256();
+                        broadcastedFutureTickData.tickData.transactionDigests[j] = m256i::zero();
                     }
 
                     bs->SetMem(broadcastedFutureTickData.tickData.contractFees, sizeof(broadcastedFutureTickData.tickData.contractFees), 0);
@@ -2887,7 +2880,7 @@ static void processTick(unsigned long long processorNumber)
             {
                 auto& payload = voteCounterPayload; // note: not thread-safe
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
-                payload.transaction.destinationPublicKey = _mm256_setzero_si256();
+                payload.transaction.destinationPublicKey = m256i::zero();
                 payload.transaction.amount = 0;
                 payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
                 payload.transaction.inputType = VOTE_COUNTER_INPUT_TYPE;
@@ -2903,32 +2896,37 @@ static void processTick(unsigned long long processorNumber)
 
     if (mainAuxStatus & 1)
     {
+        // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
         for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
         {
             int solutionIndexToPublish = -1;
 
+            // Select solution to publish as tx (and mark solutions as obsolete, whose mining seed does not match).
+            // Primarily, consider solutions of the computor i that were already selected for tx before.
             unsigned int j;
             for (j = 0; j < system.numberOfSolutions; j++)
             {
+                // solutionPublicationTicks[j] > 0 means the solution has already been selected for creating tx
+                // but has neither been RECORDED (successfully processed by tx) nor marked OBSOLETE (outdated mining seed)
                 if (solutionPublicationTicks[j] > 0
                     && system.solutions[j].computorPublicKey == computorPublicKeys[i])
                 {
+                    // Only consider this sol if the scheduled tick has passed already (tx not successful)
                     if (solutionPublicationTicks[j] <= (int)system.tick)
                     {
                         if (system.solutions[j].miningSeed == score->currentRandomSeed)
                         {
                             solutionIndexToPublish = j;
+                            break;
                         }
                         else
                         {
-                            // obsolete solution
                             solutionPublicationTicks[j] = SOLUTION_OBSOLETE_FLAG;
                         }
                     }
-
-                    break;
                 }
             }
+            // Secondarily, if no solution has been selected above, consider new solutions without previous tx
             if (j == system.numberOfSolutions)
             {
                 for (j = 0; j < system.numberOfSolutions; j++)
@@ -2936,15 +2934,29 @@ static void processTick(unsigned long long processorNumber)
                     if (!solutionPublicationTicks[j]
                         && system.solutions[j].computorPublicKey == computorPublicKeys[i])
                     {
-                        solutionIndexToPublish = j;
-
-                        break;
+                        if (system.solutions[j].miningSeed == score->currentRandomSeed)
+                        {
+                            solutionIndexToPublish = j;
+                            break;
+                        }
+                        else
+                        {
+                            solutionPublicationTicks[j] = SOLUTION_OBSOLETE_FLAG;
+                        }
                     }
                 }
             }
 
             if (solutionIndexToPublish >= 0)
             {
+                // Compute tick offset, when to publish solution
+                unsigned int publishingTickOffset = MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
+
+                // Do not publish, if the solution tx would end up after reset of mining seed, preventing loss of security deposit
+                if (getTickInMiningPhaseCycle() + publishingTickOffset >= INTERNAL_COMPUTATIONS_INTERVAL + 3)
+                    continue;
+
+                // Prepare, sign, and broadcast MiningSolutionTransaction
                 struct
                 {
                     Transaction transaction;
@@ -2954,12 +2966,10 @@ static void processTick(unsigned long long processorNumber)
                 } payload;
                 static_assert(sizeof(payload) == sizeof(Transaction) + 32 + 32 + SIGNATURE_SIZE, "Unexpected struct size!");
                 payload.transaction.sourcePublicKey = computorPublicKeys[i];
-                payload.transaction.destinationPublicKey = arbitratorPublicKey;
-                payload.transaction.amount = 0;
-                unsigned int random;
-                _rdrand32_step(&random);
-                solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET + random % MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
-                payload.transaction.inputType = 0;
+                payload.transaction.destinationPublicKey = m256i::zero();
+                payload.transaction.amount = MiningSolutionTransaction::minAmount();
+                solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + publishingTickOffset;
+                payload.transaction.inputType = MiningSolutionTransaction::transactionType();
                 payload.transaction.inputSize = sizeof(payload.miningSeed) + sizeof(payload.nonce);
                 payload.miningSeed = system.solutions[solutionIndexToPublish].miningSeed;
                 payload.nonce = system.solutions[solutionIndexToPublish].nonce;
@@ -3126,7 +3136,7 @@ static void endEpoch()
             int issuanceIndex, ownershipIndex, possessionIndex;
             if (finalPrice)
             {
-                if (!issueAsset(_mm256_setzero_si256(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex))
+                if (!issueAsset(m256i::zero(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex))
                 {
                     finalPrice = 0;
                 }
@@ -3163,7 +3173,7 @@ static void endEpoch()
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
             contractStateLock[contractIndex].releaseRead();
@@ -3300,7 +3310,7 @@ static void endEpoch()
                     increaseEnergy(rdEntry.destinationPublicKey, donation);
                     if (revenue)
                     {
-                        const QuTransfer quTransfer = { _mm256_setzero_si256(), rdEntry.destinationPublicKey, donation };
+                        const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
                         logger.logQuTransfer(quTransfer);
                     }
                 }
@@ -3310,7 +3320,7 @@ static void endEpoch()
             increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
             if (revenue)
             {
-                const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
+                const QuTransfer quTransfer = { m256i::zero(), broadcastedComputors.computors.publicKeys[computorIndex], revenue };
                 logger.logQuTransfer(quTransfer);
             }
         }
@@ -3318,7 +3328,7 @@ static void endEpoch()
 
         // Generate arbitrator revenue
         increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
-        const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
+        const QuTransfer quTransfer = { m256i::zero(), arbitratorPublicKey, arbitratorRevenue };
         logger.logQuTransfer(quTransfer);
     }
 
@@ -3477,7 +3487,7 @@ static bool saveAllNodeStates()
     appendText(message, directory); appendText(message, L"/");
     appendText(message, SPECTRUM_FILE_NAME);
     logToConsole(message);
-    if (!saveSpectrum(directory))
+    if (!saveSpectrum(SPECTRUM_FILE_NAME, directory))
     {
         logToConsole(L"Failed to save spectrum");
         return false;
@@ -3623,7 +3633,7 @@ static bool loadAllNodeStates()
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
-    if (!loadSpectrum(directory))
+    if (!loadSpectrum(SPECTRUM_FILE_NAME, directory))
     {
         logToConsole(L"Failed to load spectrum");
         return false;
@@ -3859,7 +3869,7 @@ static void tickProcessor(void*)
                             || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
                         {
                             // Create empty tick
-                            targetNextTickDataDigest = _mm256_setzero_si256();
+                            targetNextTickDataDigest = m256i::zero();
                             targetNextTickDataDigestIsKnown = true;
                         }
                     }
@@ -3919,7 +3929,7 @@ static void tickProcessor(void*)
                             if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
                                 || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
                             {
-                                targetNextTickDataDigest = _mm256_setzero_si256();
+                                targetNextTickDataDigest = m256i::zero();
                                 targetNextTickDataDigestIsKnown = true;
                             }
                         }
@@ -4012,7 +4022,7 @@ static void tickProcessor(void*)
                     nextTickData.epoch = 0;
                     setMem(nextTickData.transactionDigests, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
                     // first and second tick of an epoch are always empty tick
-                    targetNextTickDataDigest = _mm256_setzero_si256();
+                    targetNextTickDataDigest = m256i::zero();
                     targetNextTickDataDigestIsKnown = true;
                     tickDataSuits = true;
                 }
@@ -4199,7 +4209,7 @@ static void tickProcessor(void*)
                         }
                         else
                         {
-                            etalonTick.transactionDigest = _mm256_setzero_si256();
+                            etalonTick.transactionDigest = m256i::zero();
                         }
 
                         if (nextTickData.epoch == system.epoch)
@@ -4211,7 +4221,7 @@ static void tickProcessor(void*)
                         }
                         else
                         {
-                            etalonTick.expectedNextTickTransactionDigest = _mm256_setzero_si256();
+                            etalonTick.expectedNextTickTransactionDigest = m256i::zero();
                         }
 
                         if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
@@ -4346,7 +4356,7 @@ static void tickProcessor(void*)
 
                                 if (forceNextTick)
                                 {
-                                    targetNextTickDataDigest = _mm256_setzero_si256();
+                                    targetNextTickDataDigest = m256i::zero();
                                     targetNextTickDataDigestIsKnown = true;
                                 }
                             }
@@ -5366,8 +5376,8 @@ static void logHealthStatus()
     for (int i = 0; i < nTickProcessorIDs; i++)
     {
         unsigned long long tid = tickProcessorIDs[i];
-        long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
-            + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+        long long diffInSecond = 86400 * (utcTime.Day - threadTimeCheckin[tid].day) + 3600 * (utcTime.Hour - threadTimeCheckin[tid].hour)
+            + 60 * (utcTime.Minute - threadTimeCheckin[tid].minute) + (utcTime.Second - threadTimeCheckin[tid].second);
         if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
         {
             allThreadsAreGood = false;
@@ -5380,8 +5390,8 @@ static void logHealthStatus()
     for (int i = 0; i < nRequestProcessorIDs; i++)
     {
         unsigned long long tid = requestProcessorIDs[i];
-        long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
-            + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+        long long diffInSecond = 86400 * (utcTime.Day - threadTimeCheckin[tid].day) + 3600 * (utcTime.Hour - threadTimeCheckin[tid].hour)
+            + 60 * (utcTime.Minute - threadTimeCheckin[tid].minute) + (utcTime.Second - threadTimeCheckin[tid].second);
         if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
         {
             allThreadsAreGood = false;

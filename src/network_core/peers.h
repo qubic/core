@@ -31,7 +31,7 @@ static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_OUTGOING_CONNECTIONS) 
 static volatile bool listOfPeersIsStatic = false;
 
 
-typedef struct
+struct Peer
 {
     EFI_TCP4_PROTOCOL* tcp4Protocol;
     EFI_TCP4_LISTEN_TOKEN connectAcceptToken;
@@ -50,7 +50,7 @@ typedef struct
     BOOLEAN isClosing;
     // Indicate the peer is incomming connection type
     BOOLEAN isIncommingConnection;
-} Peer;
+};
 
 typedef struct
 {

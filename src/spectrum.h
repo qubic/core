@@ -4,8 +4,11 @@
 #include "platform/concurrency.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
+#include "platform/memory.h"
 
 #include "network_messages/entity.h"
+
+#include "logging/logging.h"
 
 #include "public_settings.h"
 #include "system.h"
@@ -90,6 +93,51 @@ void updateAndAnalzeEntityCategoryPopulations()
         }
     }
 }
+
+void logSpectrumStats()
+{
+    SpectrumStats spectrumStats;
+    spectrumStats.totalAmount = spectrumInfo.totalAmount;
+    spectrumStats.dustThresholdBurnAll = dustThresholdBurnAll;
+    spectrumStats.dustThresholdBurnHalf = dustThresholdBurnHalf;
+    spectrumStats.numberOfEntities = spectrumInfo.numberOfEntities;
+    copyMem(spectrumStats.entityCategoryPopulations, entityCategoryPopulations, sizeof(entityCategoryPopulations));
+
+    logger.logSpectrumStats(spectrumStats);
+}
+
+// Build and log variable-size DustBurning log message.
+// Assumes to be used tick processor or contract processor only, so can use reorgBuffer.
+struct DustBurnLogger
+{
+    DustBurnLogger()
+    {
+        buf = (DustBurning*)reorgBuffer;
+        buf->numberOfBurns = 0;
+    }
+
+    // Add burned amount of of entity, may send buffered message to logging.
+    void addDustBurn(const m256i& publicKey, unsigned long long amount)
+    {
+        DustBurning::Entity& e = buf->entity(buf->numberOfBurns++);
+        e.publicKey = publicKey;
+        e.amount = amount;
+
+        if (buf->numberOfBurns == 1000) // TODO: better use 0xffff (when proved to be stable with logging)
+            finished();
+    }
+
+    // Send buffered message to logging
+    void finished()
+    {
+        logger.logDustBurning(buf);
+        buf->numberOfBurns = 0;
+    }
+
+    // send to log when max size is full or finished
+private:
+    DustBurning* buf;
+};
 
 // Clean up spectrum hash map, removing all entities with balance 0. Updates spectrumInfo.
 static void reorganizeSpectrum()
@@ -182,7 +230,7 @@ static long long energy(const int index)
     return spectrum[index].incomingAmount - spectrum[index].outgoingAmount;
 }
 
-// Increase balance of entity. Does not update spectrumInfo.totalAmount.
+// Increase balance of entity.
 static void increaseEnergy(const m256i& publicKey, long long amount)
 {
     if (!isZero(publicKey) && amount >= 0)
@@ -191,10 +239,17 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
         ACQUIRE(spectrumLock);
 
+        // Anti-dust feature: prevent that spectrum fills to more than 75% of capacity to keep hash map lookup fast
         if (spectrumInfo.numberOfEntities >= (SPECTRUM_CAPACITY / 2) + (SPECTRUM_CAPACITY / 4))
         {
-            // Update anti-dust burn thresholds
+            // Update anti-dust burn thresholds (and log spectrum stats before burning)
             updateAndAnalzeEntityCategoryPopulations();
+#if LOG_SPECTRUM_STATS
+            logSpectrumStats();
+#endif
+#if LOG_DUST_BURNINGS
+            DustBurnLogger dbl;
+#endif
 
             if (dustThresholdBurnAll > 0)
             {
@@ -205,6 +260,9 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                     if (balance <= dustThresholdBurnAll && balance)
                     {
                         spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
+#if LOG_DUST_BURNINGS
+                        dbl.addDustBurn(spectrum[i].publicKey, balance);
+#endif
                     }
                 }
             }
@@ -221,18 +279,27 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                         if (++countBurnCanadiates & 1)
                         {
                             spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
+#if LOG_DUST_BURNINGS
+                            dbl.addDustBurn(spectrum[i].publicKey, balance);
+#endif
                         }
                     }
                 }
             }
 
+#if LOG_DUST_BURNINGS
+            // Finished dust burning (pass message to log)
+            dbl.finished();
+#endif
+
             // Remove entries with balance zero from hash map
             reorganizeSpectrum();
 
-            // Correct total amount (spectrum info has been recomputed before increasing energy;
-            // in transfer case energy has been decreased before and total amount is not changed
-            // without anti-dust burning)
-            spectrumInfo.totalAmount += amount;
+#if LOG_SPECTRUM_STATS
+            // Log spectrum stats after burning (before increasing energy / potenitally creating entity)
+            updateAndAnalzeEntityCategoryPopulations();
+            logSpectrumStats();
+#endif
         }
 
     iteration:
@@ -241,6 +308,8 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
             spectrum[index].incomingAmount += amount;
             spectrum[index].numberOfIncomingTransfers++;
             spectrum[index].latestIncomingTransferTick = system.tick;
+
+            spectrumInfo.totalAmount += amount;
         }
         else
         {
@@ -252,6 +321,17 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 spectrum[index].latestIncomingTransferTick = system.tick;
 
                 spectrumInfo.numberOfEntities++;
+                spectrumInfo.totalAmount += amount;
+
+#if LOG_SPECTRUM_STATS
+                if ((spectrumInfo.numberOfEntities & 0x7ffff) == 1)
+                {
+                    // Log spectrum stats when the number of entities hits the next half million
+                    // (== 1 is to avoid duplicate when anti-dust is triggered)
+                    updateAndAnalzeEntityCategoryPopulations();
+                    logSpectrumStats();
+                }
+#endif
             }
             else
             {
@@ -265,7 +345,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
     }
 }
 
-// Decrease balance of entity if it is high enough. Does not update spectrumInfo.totalAmount.
+// Decrease balance of entity if it is high enough.
 static bool decreaseEnergy(const int index, long long amount)
 {
     if (amount >= 0)
@@ -277,6 +357,8 @@ static bool decreaseEnergy(const int index, long long amount)
             spectrum[index].outgoingAmount += amount;
             spectrum[index].numberOfOutgoingTransfers++;
             spectrum[index].latestOutgoingTransferTick = system.tick;
+
+            spectrumInfo.totalAmount -= amount;
 
             RELEASE(spectrumLock);
 

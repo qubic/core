@@ -23,6 +23,9 @@ static const unsigned char whiteListPeers[][4] = {
 };
 
 #define LOG_QU_TRANSFERS 0 // "0" disables logging, "1" enables it
+#define LOG_BURNINGS 0
+#define LOG_DUST_BURNINGS 1
+#define LOG_SPECTRUM_STATS 1
 #define LOG_ASSET_ISSUANCES 0
 #define LOG_ASSET_OWNERSHIP_CHANGES 0
 #define LOG_ASSET_POSSESSION_CHANGES 0
@@ -30,7 +33,6 @@ static const unsigned char whiteListPeers[][4] = {
 #define LOG_CONTRACT_WARNING_MESSAGES 0
 #define LOG_CONTRACT_INFO_MESSAGES 0
 #define LOG_CONTRACT_DEBUG_MESSAGES 0
-#define LOG_BURNINGS 0
 #define LOG_CUSTOM_MESSAGES 0
 static unsigned long long logReaderPasscodes[4] = {
     0, 0, 0, 0 // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN RANDOM NUMBERS IN [0..18446744073709551615] RANGE IF LOGGING IS ENABLED

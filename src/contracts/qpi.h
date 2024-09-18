@@ -5,6 +5,8 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
+// ASSERT can be used to support debugging and speed-up development
+#include "../platform/assert.h"
 
 namespace QPI
 {
@@ -1404,7 +1406,7 @@ namespace QPI
 			input, output, \
 			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
 		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
-		qpi.__qpiFreeContextOtherContract(contractStateType::__contract_index); \
+		qpi.__qpiFreeContextOtherContract(); \
 		qpi.__qpiFreeLocals()
 
 	// Transfer invocation reward and invoke of other contract (procedure only)
@@ -1420,7 +1422,7 @@ namespace QPI
 			input, output, \
 			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
 		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
-		qpi.__qpiFreeContextOtherContract(contractStateType::__contract_index); \
+		qpi.__qpiFreeContextOtherContract(); \
 		qpi.__qpiFreeLocals()
 
 	#define QUERY_ORACLE(oracle, query) // TODO
