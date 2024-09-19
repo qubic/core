@@ -600,7 +600,7 @@ private:
                 }
             }
 
-            if(locals.t == state._EarlyUnlocked_cnt && state._EarlyUnlocked_cnt < QEARN_MAXIMUM_UNLOCK_HISTORY) 
+            if(locals.t == state._EarlyUnlocked_cnt && state._EarlyUnlocked_cnt < QEARN_MAX_USERS) 
             {
                 locals.unlockerInfo._Rewarded_Amount = locals.AmountOfReward;
                 locals.unlockerInfo._Unlocked_Amount = locals.AmountOfUnlocking;
@@ -713,7 +713,7 @@ private:
             locals._reward_amount = QPI::div(state.Locker.get(locals._t)._Locked_Amount * locals._reward_percent, 10000000ULL);
             qpi.transfer(state.Locker.get(locals._t).ID, locals._reward_amount + state.Locker.get(locals._t)._Locked_Amount);
 
-            if(state._FullyUnlocked_cnt < QEARN_MAXIMUM_UNLOCK_HISTORY) 
+            if(state._FullyUnlocked_cnt < QEARN_MAX_USERS) 
             {
 
                 locals.INITIALIZE_HISTORY._Unlocked_ID = state.Locker.get(locals._t).ID;
