@@ -7,6 +7,7 @@
 namespace QPI {
 
 	template <typename KeyT> class HashFunction {
+	public:
 		static uint64 hash(const KeyT& key) {
 			uint64 ret;
 			KangarooTwelve(&key, sizeof(KeyT), &ret, 8);
@@ -54,9 +55,9 @@ namespace QPI {
 		uint64 _getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const;
 
 	public:
-		// Add element (key, value) to the hash map, return elementIndex of new element.
-		// If key already exists in the hash map, the old value will be overwritten.
-		sint64 add(const KeyT& key, const ValueT& value);
+		HashMap() {
+			_softReset();
+		}
 
 		// Return maximum number of elements that may be stored.
 		static constexpr uint64 capacity()
@@ -64,17 +65,23 @@ namespace QPI {
 			return L;
 		}
 
-		// Remove all elements marked for removal, this is a very expensive operation.
-		void cleanup();
+		// Return overall number of elements.
+		inline uint64 population() const;
+
+		// Return boolean indicating whether key is contained in the hash map.
+		// If key is contained, write the associated value into the provided ValueT&. 
+		bool get(const KeyT& key, ValueT& value) const;
 
 		// Return key at elementIndex.
 		inline KeyT key(sint64 elementIndex) const;
 
-		// Return key at elementIndex.
+		// Return value at elementIndex.
 		inline ValueT value(sint64 elementIndex) const;
 
-		// Return overall number of elements.
-		inline uint64 population() const;
+		// Add element (key, value) to the hash map, return elementIndex of new element.
+		// If key already exists in the hash map, the old value will be overwritten.
+		// If the hash map is full, return NULL_INDEX.
+		sint64 add(const KeyT& key, const ValueT& value);
 
 		// Mark element for removal.
 		void remove(sint64 elementIdx);
@@ -83,10 +90,13 @@ namespace QPI {
 		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
 		sint64 remove(const KeyT& key);
 
+		// Remove all elements marked for removal, this is a very expensive operation.
+		void cleanup();
+
 		// Replace value for *existing* key, do nothing otherwise.
-		// - The key exists: replace its value.
-		// - The key is not contained in the hash map: no action is taken.
-		void replace(const KeyT& key, const ValueT& newValue);
+		// - The key exists: replace its value. Return true.
+		// - The key is not contained in the hash map: no action is taken. Return false.
+		bool replace(const KeyT& key, const ValueT& newValue);
 
 		// Reinitialize as empty hash map.
 		void reset();

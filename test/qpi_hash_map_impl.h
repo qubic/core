@@ -54,6 +54,34 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	bool HashMap<KeyT, ValueT, L, HashFunc>::get(const KeyT& key, ValueT& value) const {
+		sint64 elementIndex = _elementIndex(key);
+		if (elementIndex != NULL_INDEX) {
+			value = _elements[elementIndex].value;
+			return true;
+		}
+		return false;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	inline KeyT HashMap<KeyT, ValueT, L, HashFunc>::key(sint64 elementIndex) const
+	{
+		return _elements[elementIndex & (L - 1)].key;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	inline ValueT HashMap<KeyT, ValueT, L, HashFunc>::value(sint64 elementIndex) const
+	{
+		return _elements[elementIndex & (L - 1)].value;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	inline uint64 HashMap<KeyT, ValueT, L, HashFunc>::population() const
+	{
+		return _population;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	sint64 HashMap<KeyT, ValueT, L, HashFunc>::add(const KeyT& key, const ValueT& value)
 	{
 		if (_population < capacity() && _markRemovalCounter < capacity())
@@ -88,6 +116,33 @@ namespace QPI
 			}
 		}
 		return NULL_INDEX;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	void HashMap<KeyT, ValueT, L, HashFunc>::remove(sint64 elementIdx)
+	{
+		elementIdx &= (L - 1);
+		_population--;
+		_markRemovalCounter++;
+		_occupationFlags[elementIdx >> 5] ^= (3ULL << ((elementIdx & 31) << 1));
+
+		const bool CLEAR_UNUSED_ELEMENT = true;
+		if (CLEAR_UNUSED_ELEMENT)
+		{
+			setMem(&_elements[elementIdx], sizeof(Element), 0);
+		}
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	sint64 HashMap<KeyT, ValueT, L, HashFunc>::remove(const KeyT& key) {
+		sint64 elementIndex = _elementIndex(key);
+		if (elementIndex == NULL_INDEX) {
+			return NULL_INDEX;
+		}
+		else {
+			remove(elementIndex);
+			return elementIndex;
+		}
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
@@ -181,57 +236,14 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	inline KeyT HashMap<KeyT, ValueT, L, HashFunc>::key(sint64 elementIndex) const
-	{
-		return _elements[elementIndex & (L - 1)].key;
-	}
-
-	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	inline ValueT HashMap<KeyT, ValueT, L, HashFunc>::value(sint64 elementIndex) const
-	{
-		return _elements[elementIndex & (L - 1)].value;
-	}
-
-	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	inline uint64 HashMap<KeyT, ValueT, L, HashFunc>::population() const
-	{
-		return _population;
-	}
-
-	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	void HashMap<KeyT, ValueT, L, HashFunc>::remove(sint64 elementIdx)
-	{
-		elementIdx &= (L - 1);
-		_population--;
-		_markRemovalCounter++;
-		_occupationFlags[elementIndex >> 5] ^= (3ULL << ((elementIndex & 31) << 1));
-
-		const bool CLEAR_UNUSED_ELEMENT = true;
-		if (CLEAR_UNUSED_ELEMENT)
-		{
-			setMem(&_elements[elementIndex], sizeof(Element), 0);
-		}
-	}
-
-	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	sint64 HashMap<KeyT, ValueT, L, HashFunc>::remove(const KeyT& key) {
-		sint64 elementIndex = _elementIndex(key);
-		if (elementIndex == NULL_INDEX) {
-			return NULL_INDEX;
-		}
-		else {
-			remove(elementIndex);
-			return elementIndex;
-		}
-	}
-
-	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	void HashMap<KeyT, ValueT, L, HashFunc>::replace(const KeyT& key, const ValueT& newValue)
+	bool HashMap<KeyT, ValueT, L, HashFunc>::replace(const KeyT& key, const ValueT& newValue)
 	{
 		sint64 elementIndex = _elementIndex(key);
 		if (elementIndex != NULL_INDEX) {
 			_elements[elementIndex].value = newValue;
+			return true;
 		}
+		return false;
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
