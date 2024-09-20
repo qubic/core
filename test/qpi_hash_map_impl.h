@@ -7,16 +7,29 @@
 namespace QPI
 {
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	void HashMap<KeyT, ValueT, L, HashFunc>::_softReset()
+	uint64 HashMap<KeyT, ValueT, L, HashFunc>::_getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const
 	{
-		setMem(_elements, sizeof(_elements), 0);
-		setMem(_occupationFlags, sizeof(_occupationFlags), 0);
-		_population = 0;
-		_markRemovalCounter = 0;
+		const sint64 offset = (elementIndex & 31) << 1;
+		uint64 flags = occupationFlags[elementIndex >> 5] >> offset;
+		if (offset > 0)
+		{
+			flags |= occupationFlags[((elementIndex + 32) & (L - 1)) >> 5] << (2 * _nEncodedFlags - offset);
+		}
+		return flags;
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	sint64 HashMap<KeyT, ValueT, L, HashFunc>::_elementIndex(const KeyT& key) const
+	bool HashMap<KeyT, ValueT, L, HashFunc>::get(const KeyT& key, ValueT& value) const {
+		sint64 elementIndex = getElementIndex(key);
+		if (elementIndex != NULL_INDEX) {
+			value = _elements[elementIndex].value;
+			return true;
+		}
+		return false;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	sint64 HashMap<KeyT, ValueT, L, HashFunc>::getElementIndex(const KeyT& key) const
 	{
 		sint64 index = HashFunc::hash(key) & (L - 1);
 		for (sint64 counter = 0; counter < L; counter += 32)
@@ -42,28 +55,6 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	uint64 HashMap<KeyT, ValueT, L, HashFunc>::_getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const
-	{
-		const sint64 offset = (elementIndex & 31) << 1;
-		uint64 flags = occupationFlags[elementIndex >> 5] >> offset;
-		if (offset > 0)
-		{
-			flags |= occupationFlags[((elementIndex + 32) & (L - 1)) >> 5] << (2 * _nEncodedFlags - offset);
-		}
-		return flags;
-	}
-
-	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	bool HashMap<KeyT, ValueT, L, HashFunc>::get(const KeyT& key, ValueT& value) const {
-		sint64 elementIndex = _elementIndex(key);
-		if (elementIndex != NULL_INDEX) {
-			value = _elements[elementIndex].value;
-			return true;
-		}
-		return false;
-	}
-
-	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	inline KeyT HashMap<KeyT, ValueT, L, HashFunc>::key(sint64 elementIndex) const
 	{
 		return _elements[elementIndex & (L - 1)].key;
@@ -82,7 +73,7 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	sint64 HashMap<KeyT, ValueT, L, HashFunc>::add(const KeyT& key, const ValueT& value)
+	sint64 HashMap<KeyT, ValueT, L, HashFunc>::set(const KeyT& key, const ValueT& value)
 	{
 		if (_population < capacity() && _markRemovalCounter < capacity())
 		{
@@ -115,6 +106,16 @@ namespace QPI
 				}
 			}
 		}
+		else if (_population == capacity())
+		{
+			// Check if key exists for value replacement.
+			sint64 index = getElementIndex(key);
+			if (index != NULL_INDEX)
+			{
+				_elements[index].value = value;
+				return index;
+			}
+		}
 		return NULL_INDEX;
 	}
 
@@ -135,7 +136,7 @@ namespace QPI
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	sint64 HashMap<KeyT, ValueT, L, HashFunc>::remove(const KeyT& key) {
-		sint64 elementIndex = _elementIndex(key);
+		sint64 elementIndex = getElementIndex(key);
 		if (elementIndex == NULL_INDEX) {
 			return NULL_INDEX;
 		}
@@ -161,7 +162,7 @@ namespace QPI
 		// Speedup case of empty hash map but existed marked for removal elements
 		if (!population())
 		{
-			_softReset();
+			reset();
 			return;
 		}
 
@@ -238,7 +239,7 @@ namespace QPI
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	bool HashMap<KeyT, ValueT, L, HashFunc>::replace(const KeyT& key, const ValueT& newValue)
 	{
-		sint64 elementIndex = _elementIndex(key);
+		sint64 elementIndex = getElementIndex(key);
 		if (elementIndex != NULL_INDEX) {
 			_elements[elementIndex].value = newValue;
 			return true;

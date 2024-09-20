@@ -45,18 +45,12 @@ namespace QPI {
 		uint64 _population;
 		uint64 _markRemovalCounter;
 
-		// Internal reinitialize as empty hash map.
-		void _softReset();
-
-		// Return index of element with key in hash map _elements, or NULL_INDEX if not found
-		sint64 _elementIndex(const KeyT& key) const;
-
 		// Read and encode 32 POV occupation flags, return a 64bits number presents 32 occupation flags
 		uint64 _getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const;
 
 	public:
 		HashMap() {
-			_softReset();
+			reset();
 		}
 
 		// Return maximum number of elements that may be stored.
@@ -72,6 +66,9 @@ namespace QPI {
 		// If key is contained, write the associated value into the provided ValueT&. 
 		bool get(const KeyT& key, ValueT& value) const;
 
+		// Return index of element with key in hash map _elements, or NULL_INDEX if not found.
+		sint64 getElementIndex(const KeyT& key) const;
+
 		// Return key at elementIndex.
 		inline KeyT key(sint64 elementIndex) const;
 
@@ -81,7 +78,7 @@ namespace QPI {
 		// Add element (key, value) to the hash map, return elementIndex of new element.
 		// If key already exists in the hash map, the old value will be overwritten.
 		// If the hash map is full, return NULL_INDEX.
-		sint64 add(const KeyT& key, const ValueT& value);
+		sint64 set(const KeyT& key, const ValueT& value);
 
 		// Mark element for removal.
 		void remove(sint64 elementIdx);
