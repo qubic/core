@@ -4,6 +4,7 @@ constexpr uint64 QEARN_MINIMUM_LOCKING_AMOUNT = 10000000;
 constexpr uint64 QEARN_MAX_LOCKS = 4194304;
 constexpr uint64 QEARN_MAX_EPOCHS = 4096;
 constexpr uint64 QEARN_MAX_USERS = 131072;
+constexpr uint64 QEARN_MAX_LOCK_AMOUNT = 100000000000ULL;
 constexpr uint64 QEARN_INITIAL_EPOCH = 999;                             //  we need to change this epoch when merging
 
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
@@ -41,6 +42,7 @@ constexpr sint32 QEARN_INVALID_INPUT_UNLOCK_AMOUNT = 2;
 constexpr sint32 QEARN_EMPTY_LOCKED = 3;
 constexpr sint32 QEARN_UNLOCK_SUCCESS = 4;
 constexpr sint32 QEARN_OVERFLOW_USER = 5;
+constexpr sint32 QEARN_LIMIT_LOCK = 6;
 
 struct QEARN2
 {
@@ -349,7 +351,16 @@ private:
 
             if(state.Locker.get(locals.t).ID == qpi.invocator()) 
             {      // the case to be locked several times at one epoch, at that time, this address already located in state.Locker array, the amount will be increased as current locking amount.
-                
+                if(state.Locker.get(locals.t)._Locked_Amount + qpi.invocationReward() > QEARN_MAX_LOCK_AMOUNT)
+                {
+                    output.returnCode = QEARN_LIMIT_LOCK;
+                    if(qpi.invocationReward() > 0) 
+                    {
+                        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                    }
+                    return;
+                }
+
                 locals.newLocker._Locked_Amount = state.Locker.get(locals.t)._Locked_Amount + qpi.invocationReward();
                 locals.newLocker._Locked_Epoch = qpi.epoch();
                 locals.newLocker.ID = qpi.invocator();
