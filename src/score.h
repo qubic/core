@@ -741,6 +741,9 @@ struct ScoreFunction
             {
                 cb.neurons.inputAtTick[1][i] = (char)miningData[i];
             }
+            static constexpr int OFFSET = 16;
+            static constexpr int OFFSET_1 = OFFSET - 1;
+
             for (int tick = 1; tick < maxDuration; tick++)
             {
                 copyMem(cb.neurons.inputAtTick[tick - 1] + allParamsCount, cb.neurons.inputAtTick[tick - 1], numberOfNeighborNeurons);
@@ -750,7 +753,6 @@ struct ScoreFunction
                 }
 
                 const int numMods = _totalModNum[tick];
-                const auto* modList = _modNum[tick];
                 for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfHiddenNeurons + dataLength; inputNeuronIndex++)
                 {
                     char* pSynapseInput = synapses.inputLength + inputNeuronIndex * numberOfNeighborNeurons;
@@ -760,35 +762,34 @@ struct ScoreFunction
                     char sum1 = 0;
                     char sum2 = 0;
                     bool foundShortCut = false;
-                    long long i = numberOfNeighborNeurons - 32;
-                    for (; i >= 0 && !foundShortCut; i -= 32)
+                    long long i = (long long)numberOfNeighborNeurons - OFFSET;
+                    for (; i >= 0 && !foundShortCut; i -= OFFSET)
                     {
                         char* pNNSynapse = pSynapseInput + i;
                         char* pNNNr = cb.neurons.inputAtTick[tick - 1] + inputNeuronIndex + 1 + i;
-                        unsigned int negMask = 0;
-                        unsigned int nonZerosMask = 0;
+                        unsigned long long negMask = 0;
+                        unsigned long long nonZerosMask = 0;
 
-                        const __m256i neurons256 = _mm256_loadu_si256((const __m256i*)(pNNNr));
-                        const __m256i synapses256 = _mm256_loadu_si256((const __m256i*)(pNNSynapse));
-                        const __m256i absSynapse = _mm256_abs_epi8(synapses256);
-                        const __m256i zeros256 = _mm256_setzero_si256();
-                        unsigned int divMask = 0;
+                        const __m128i neurons128 = _mm_loadu_si128((const __m128i*)(pNNNr));
+                        const __m128i synapses128 = _mm_loadu_si128((const __m128i*)(pNNSynapse));
+                        const __m128i absSynapse = _mm_abs_epi8(synapses128);
+                        const __m128i zeros128 = _mm_setzero_si128();
+                        __m128i nonZeros128 = zeros128;
                         for (int modIdx = 0; modIdx < numMods; modIdx++)
                         {
-                            divMask |= _mm256_cmpeq_epi8_mask(absSynapse, _mm256_set1_epi8(modList[modIdx]));
+                            nonZeros128 = _mm_or_si128(nonZeros128, _mm_cmpeq_epi8(absSynapse, _mm_set1_epi8(_modNum[tick][modIdx])));
                         }
-                        nonZerosMask = ~(_mm256_cmpeq_epi8_mask(neurons256, zeros256)) & divMask;
-                        const unsigned int negSyn = nonZerosMask & _mm256_cmpgt_epi8_mask(_mm256_setzero_si256(), synapses256);
-                        const unsigned int negNr = nonZerosMask & _mm256_cmpgt_epi8_mask(zeros256, neurons256);
-                        negMask = negSyn ^ negNr;
-                        constexpr unsigned int markBit = (1U << 31);
+
+                        nonZerosMask = (unsigned long long)(~(_mm_movemask_epi8(_mm_cmpeq_epi8(neurons128, zeros128))) & _mm_movemask_epi8(nonZeros128));
+                        const unsigned int negSyn = _mm_movemask_epi8(_mm_and_si128(_mm_cmpgt_epi8(zeros128, synapses128), nonZeros128));
+                        const unsigned int negNr = _mm_movemask_epi8(_mm_and_si128(_mm_cmpgt_epi8(zeros128, neurons128), nonZeros128));
+                        negMask = (unsigned long long)(negSyn ^ negNr);
+                        constexpr unsigned long long markBit = (1ULL << 63);
                         if (nonZerosMask)
                         {
-                            int testBit = _lzcnt_u32(nonZerosMask);
-                            constexpr unsigned int markBit = (1U << 31);
                             while (nonZerosMask && !foundShortCut)
                             {
-                                const unsigned int maskBit = markBit >> _lzcnt_u32(nonZerosMask);
+                                const unsigned long long maskBit = markBit >> _lzcnt_u64(nonZerosMask);
                                 const char nnV = (maskBit & negMask) ? -1 : 1;
                                 {
                                     sum2 = sum1;
@@ -817,7 +818,7 @@ struct ScoreFunction
 
                     if (!foundShortCut)
                     {
-                        i = numberOfNeighborNeurons & 31;
+                        i = numberOfNeighborNeurons & OFFSET_1;
                         if (i > 0)
                         {
                             for (; i >= 0 && !foundShortCut; i--)
