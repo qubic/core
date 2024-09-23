@@ -72,11 +72,13 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="contract_testing.h" />
     <ClInclude Include="score_params.h" />
     <ClInclude Include="score_reference.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="contract_core.cpp" />
+    <ClCompile Include="contract_qearn.cpp" />
     <ClCompile Include="kangaroo_twelve.cpp" />
     <ClCompile Include="spectrum.cpp" />
     <ClCompile Include="stdlib_impl.cpp" />
