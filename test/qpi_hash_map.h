@@ -49,7 +49,8 @@ namespace QPI {
 		uint64 _getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const;
 
 	public:
-		HashMap() {
+		HashMap() 
+		{
 			reset();
 		}
 
