@@ -166,8 +166,8 @@ private:
 
     };
 
-    array<RoundInfo, QEARN_MAX_LOCKS> _InitialRoundInfo;
-    array<RoundInfo, QEARN_MAX_LOCKS> _CurrentRoundInfo;
+    array<RoundInfo, QEARN_MAX_EPOCHS> _InitialRoundInfo;
+    array<RoundInfo, QEARN_MAX_EPOCHS> _CurrentRoundInfo;
 
     struct EpochIndexInfo {
 
@@ -175,7 +175,7 @@ private:
         uint32 endIndex;
     };
 
-    array<EpochIndexInfo, QEARN_MAX_LOCKS> EpochIndex;
+    array<EpochIndexInfo, QEARN_MAX_EPOCHS> EpochIndex;
 
     struct LockInfo {
 
