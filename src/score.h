@@ -180,6 +180,7 @@ struct ScoreFunction
 
     } *_computeBuffer = nullptr;
     unsigned int* _indiceBigBuffer = nullptr;
+    unsigned int* _randomPoolIndices = nullptr;
 
     // _totalModNum[i]: total of divisible numbers of i
     unsigned char _totalModNum[maxDuration + 1];
@@ -744,7 +745,7 @@ struct ScoreFunction
             static constexpr int OFFSET = 16;
             static constexpr int OFFSET_1 = OFFSET - 1;
 
-            for (int tick = 1; tick < maxDuration; tick++)
+            for (int tick = 1; tick <= maxDuration; tick++)
             {
                 copyMem(cb.neurons.inputAtTick[tick - 1] + allParamsCount, cb.neurons.inputAtTick[tick - 1], numberOfNeighborNeurons);
                 for (int i = 0; i < dataLength; i++)
@@ -752,15 +753,13 @@ struct ScoreFunction
                     cb.neurons.inputAtTick[tick][i] = (char)miningData[i];
                 }
 
+                char* pSynapseInput = synapses.inputLength;
                 const int numMods = _totalModNum[tick];
-                for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < numberOfHiddenNeurons + dataLength; inputNeuronIndex++)
+                for (unsigned int inputNeuronIndex = 0; inputNeuronIndex < inNeuronsCount; inputNeuronIndex++, pSynapseInput += numberOfNeighborNeurons)
                 {
-                    char* pSynapseInput = synapses.inputLength + inputNeuronIndex * numberOfNeighborNeurons;
-                    char prev = 0;
+                    char prev = 2;
                     char sum = 0;
-                    char sum0 = 0;
-                    char sum1 = 0;
-                    char sum2 = 0;
+
                     bool foundShortCut = false;
                     long long i = (long long)numberOfNeighborNeurons - OFFSET;
                     for (; i >= 0 && !foundShortCut; i -= OFFSET)
@@ -781,38 +780,23 @@ struct ScoreFunction
                         }
 
                         nonZerosMask = (unsigned long long)(~(_mm_movemask_epi8(_mm_cmpeq_epi8(neurons128, zeros128))) & _mm_movemask_epi8(nonZeros128));
-                        const unsigned int negSyn = _mm_movemask_epi8(_mm_and_si128(_mm_cmpgt_epi8(zeros128, synapses128), nonZeros128));
-                        const unsigned int negNr = _mm_movemask_epi8(_mm_and_si128(_mm_cmpgt_epi8(zeros128, neurons128), nonZeros128));
-                        negMask = (unsigned long long)(negSyn ^ negNr);
+                        negMask = (unsigned long long)_mm_movemask_epi8(_mm_cmpgt_epi8(zeros128, _mm_and_si128(_mm_xor_si128(synapses128, neurons128), nonZeros128)));
                         constexpr unsigned long long markBit = (1ULL << 63);
-                        if (nonZerosMask)
+                        while (nonZerosMask)
                         {
-                            while (nonZerosMask && !foundShortCut)
+                            const unsigned long long maskBit = markBit >> _lzcnt_u64(nonZerosMask);
+                            const char nnV = (maskBit & negMask) ? -1 : 1;
+                            if (nnV == prev)
                             {
-                                const unsigned long long maskBit = markBit >> _lzcnt_u64(nonZerosMask);
-                                const char nnV = (maskBit & negMask) ? -1 : 1;
-                                {
-                                    sum2 = sum1;
-                                    sum1 = sum0;
-                                    sum0 = nnV;
-                                    if (prev > 1)
-                                    {
-                                        if (sum2 > 0) sum++;
-                                        else sum--;
-                                    }
-                                }
-
-                                if (prev > 1 && sum0 == sum1)
-                                {
-                                    char result = (sum0 > 0) ? NEURON_VALUE_LIMIT : -NEURON_VALUE_LIMIT;
-                                    sum += result;
-                                    clampNeuron(sum);
-                                    foundShortCut = true;
-                                    break;
-                                }
-                                nonZerosMask ^= maskBit;
-                                prev++;
+                                foundShortCut = true;
+                                break;
                             }
+                            else
+                            {
+                                sum += nnV;
+                                prev = nnV;
+                            }
+                            nonZerosMask ^= maskBit;
                         }
                     }
 
@@ -828,32 +812,17 @@ struct ScoreFunction
                                 if (absS)
                                 {
                                     unsigned long long anotherInputNeuronIndex = inputNeuronIndex + 1 + i;
-                                    char nnV = cb.neurons.inputAtTick[tick - 1][anotherInputNeuronIndex];
+                                    char nnV = cb.neurons.inputAtTick[tick-1][anotherInputNeuronIndex];
                                     if (!nnV)
                                         continue;
                                     nnV = s > 0 ? nnV : -nnV;
-
+                                    if (nnV == prev)
                                     {
-                                        sum2 = sum1;
-                                        sum1 = sum0;
-                                        sum0 = nnV;
-                                        if (prev > 1)
-                                        {
-                                            if (sum2 > 0) sum++;
-                                            else sum--;
-                                        }
-                                    }
-                                    prev++;
-
-                                    if (prev > 1 && sum0 == sum1)
-                                    {
-                                        char result = (sum0 > 0) ? NEURON_VALUE_LIMIT : -NEURON_VALUE_LIMIT;
-                                        sum += result;
-                                        clampNeuron(sum);
                                         foundShortCut = true;
                                         break;
                                     }
-                                    prev++;
+                                    sum += nnV;
+                                    prev = nnV;
                                 }
                             }
                         }
@@ -862,12 +831,11 @@ struct ScoreFunction
                     if (!foundShortCut)
                     {
                         char v = cb.neurons.inputAtTick[tick - 1][dataLength + inputNeuronIndex];
-                        v += sum0;
-                        clampNeuron(v);
-                        v += sum1;
-                        clampNeuron(v);
-                        sum += v;
-                        clampNeuron(sum);
+                        if (v != prev)
+                        {
+                            sum += v;
+                            clampNeuron(sum);
+                        }
                     }
                     cb.neurons.inputAtTick[tick][dataLength + inputNeuronIndex] = sum;
                 }
@@ -875,9 +843,8 @@ struct ScoreFunction
         }
 
         {
-            int tick = maxDuration;
             for (unsigned int inputNeuronIndex = numberOfHiddenNeurons; inputNeuronIndex < numberOfHiddenNeurons + dataLength; inputNeuronIndex++) {
-                cb.neurons.inputAtTick[tick][dataLength + inputNeuronIndex] = solveNeuron<dataLength, true>(cb, tick, dataLength + inputNeuronIndex);
+                cb.neurons.inputAtTick[maxDuration][dataLength + inputNeuronIndex] = solveNeuron<dataLength, true>(cb, maxDuration, dataLength + inputNeuronIndex);
             }
         }
 
