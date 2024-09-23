@@ -180,7 +180,6 @@ struct ScoreFunction
 
     } *_computeBuffer = nullptr;
     unsigned int* _indiceBigBuffer = nullptr;
-    unsigned int* _randomPoolIndices = nullptr;
 
     // _totalModNum[i]: total of divisible numbers of i
     unsigned char _totalModNum[maxDuration + 1];
@@ -745,7 +744,7 @@ struct ScoreFunction
             static constexpr int OFFSET = 16;
             static constexpr int OFFSET_1 = OFFSET - 1;
 
-            for (int tick = 1; tick <= maxDuration; tick++)
+            for (int tick = 1; tick < maxDuration; tick++)
             {
                 copyMem(cb.neurons.inputAtTick[tick - 1] + allParamsCount, cb.neurons.inputAtTick[tick - 1], numberOfNeighborNeurons);
                 for (int i = 0; i < dataLength; i++)
