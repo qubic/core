@@ -4,26 +4,21 @@
 
 #include <type_traits>
 
-namespace QPI
-{
-    struct QpiContextProcedureCall;
-    struct QpiContextFunctionCall;
-}
-typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
-typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
+// workaround for name clash with stdlib
+#define system qubicSystemStruct
 
 namespace QPI
 {
     struct QpiContextProcedureCall;
     struct QpiContextFunctionCall;
 }
-
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 
 #include "../src/contracts/qpi.h"
 #include "../src/contract_core/qpi_trivial_impl.h"
 #include "../src/contract_core/qpi_proposal_voting.h"
+#include "../src/contract_core/qpi_system_impl.h"
 
 struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 {
@@ -39,20 +34,6 @@ QPI::id QPI::QpiContextFunctionCall::computor(unsigned short computorIndex) cons
 {
     return QPI::id(computorIndex + computorIdOffset, 9, 8, 7);
 }
-
-QPI::uint16 currentEpoch = 12345;
-
-QPI::uint16 QPI::QpiContextFunctionCall::epoch() const
-{
-    return currentEpoch;
-}
-
-QPI::uint32 QPI::QpiContextFunctionCall::tick() const
-{
-    return 123456789;
-}
-
-
 
 
 TEST(TestCoreQPI, Array)
@@ -670,6 +651,9 @@ int countFinishedProposals(
 template <bool supportScalarVotes, bool proposalByComputorsOnly>
 void testProposalVotingV1()
 {
+    system.tick = 123456789;
+    system.epoch = 12345;
+
     typedef std::conditional<
         proposalByComputorsOnly,
         QPI::ProposalAndVotingByComputors<200>,   // Allow less proposals than NUMBER_OF_COMPUTORS to check handling of full arrays
@@ -1046,7 +1030,7 @@ void testProposalVotingV1()
         voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), 3);
 
     // simulate epoch change
-    ++currentEpoch;
+    ++system.epoch;
     EXPECT_EQ(countActiveProposals(qpi, pv), 0);
     EXPECT_EQ(countFinishedProposals(qpi, pv), (int)pv->maxProposals);
 
@@ -1084,7 +1068,7 @@ void testProposalVotingV1()
     EXPECT_EQ(countFinishedProposals(qpi, pv), (int)pv->maxProposals - 3);
 
     // simulate epoch change with changes in computors
-    ++currentEpoch;
+    ++system.epoch;
     computorIdOffset += 100;
     EXPECT_EQ(countActiveProposals(qpi, pv), 0);
     EXPECT_EQ(countFinishedProposals(qpi, pv), (int)pv->maxProposals - 2);

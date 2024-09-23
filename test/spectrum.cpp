@@ -7,6 +7,8 @@
 
 // enable some logging for testing
 #include "../src/private_settings.h"
+#undef LOG_DUST_BURNINGS
+#undef LOG_SPECTRUM_STATS
 #define LOG_DUST_BURNINGS 1
 #define LOG_SPECTRUM_STATS 1
 // TODO: use smaller logging buffer here than in core

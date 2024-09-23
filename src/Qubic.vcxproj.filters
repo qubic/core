@@ -182,6 +182,12 @@
     <ClInclude Include="platform\assert.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="contract_core\qpi_spectrum_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_system_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

@@ -35,9 +35,13 @@
 #include "network_core/peers.h"
 
 #include "system.h"
+#include "contract_core/qpi_system_impl.h"
 
 #include "assets.h"
+
 #include "spectrum.h"
+#include "contract_core/qpi_spectrum_impl.h"
+
 #include "logging/logging.h"
 #include "logging/net_msg_impl.h"
 
@@ -57,7 +61,6 @@
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
-#define MAX_CONTRACT_STATE_SIZE 1073741824
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define PEER_REFRESHING_PERIOD 120000ULL
@@ -1481,46 +1484,6 @@ static void requestProcessor(void* ProcedureArgument)
     }
 }
 
-// Return reference to fee reserve of contract for changing its value (data stored in state of contract 0)
-static long long & contractFeeReserve(unsigned int contractIndex)
-{
-    contractStateChangeFlags[0] |= 1ULL;
-    return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
-}
-
-// Prologue of contract functions / procedures
-static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
-{
-    // TODO
-    // called by all non-empty system procedures, user procedures, and user functions
-    // purpose:
-    // - make sure the limit of nested calls is not violated
-    // - measure execution time
-    // - construction of execution graph
-    // - debugging
-}
-
-// Epilogue of contract functions / procedures
-static void __endFunctionOrProcedure(const unsigned int functionOrProcedureId)
-{
-    // TODO
-}
-
-void QPI::QpiContextForInit::__registerUserFunction(USER_FUNCTION userFunction, unsigned short inputType, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
-{
-    contractUserFunctions[_currentContractIndex][inputType] = userFunction;
-    contractUserFunctionInputSizes[_currentContractIndex][inputType] = inputSize;
-    contractUserFunctionOutputSizes[_currentContractIndex][inputType] = outputSize;
-    contractUserFunctionLocalsSizes[_currentContractIndex][inputType] = localsSize;
-}
-
-void QPI::QpiContextForInit::__registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
-{
-    contractUserProcedures[_currentContractIndex][inputType] = userProcedure;
-    contractUserProcedureInputSizes[_currentContractIndex][inputType] = inputSize;
-    contractUserProcedureOutputSizes[_currentContractIndex][inputType] = outputSize;
-    contractUserProcedureLocalsSizes[_currentContractIndex][inputType] = localsSize;
-}
 
 QPI::id QPI::QpiContextFunctionCall::arbitrator() const
 {
@@ -1563,40 +1526,6 @@ bool QPI::QpiContextProcedureCall::acquireShares(uint64 assetName, const id& iss
     return pre_output.ok;
 }
 
-long long QPI::QpiContextProcedureCall::burn(long long amount) const
-{
-    if (amount < 0 || amount > MAX_AMOUNT)
-    {
-        return -((long long)(MAX_AMOUNT + 1));
-    }
-
-    const int index = spectrumIndex(_currentContractId);
-
-    if (index < 0)
-    {
-        return -amount;
-    }
-
-    const long long remainingAmount = energy(index) - amount;
-
-    if (remainingAmount < 0)
-    {
-        return remainingAmount;
-    }
-
-    if (decreaseEnergy(index, amount))
-    {
-        contractStateLock[0].acquireWrite();
-        contractFeeReserve(_currentContractIndex) += amount;
-        contractStateLock[0].releaseWrite();
-
-        const Burning burning = { _currentContractId , amount };
-        logger.logBurning(burning);
-    }
-
-    return remainingAmount;
-}
-
 QPI::id QPI::QpiContextFunctionCall::computor(unsigned short computorIndex) const
 {
     return broadcastedComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
@@ -1610,40 +1539,6 @@ unsigned char QPI::QpiContextFunctionCall::day() const
 unsigned char QPI::QpiContextFunctionCall::dayOfWeek(unsigned char year, unsigned char month, unsigned char day) const
 {
     return dayIndex(year, month, day) % 7;
-}
-
-unsigned short QPI::QpiContextFunctionCall::epoch() const
-{
-    return system.epoch;
-}
-
-bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity) const
-{
-    int index = spectrumIndex(id);
-    if (index < 0)
-    {
-        entity.publicKey = id;
-        entity.incomingAmount = 0;
-        entity.outgoingAmount = 0;
-        entity.numberOfIncomingTransfers = 0;
-        entity.numberOfOutgoingTransfers = 0;
-        entity.latestIncomingTransferTick = 0;
-        entity.latestOutgoingTransferTick = 0;
-
-        return false;
-    }
-    else
-    {
-        entity.publicKey = spectrum[index].publicKey;
-        entity.incomingAmount = spectrum[index].incomingAmount;
-        entity.outgoingAmount = spectrum[index].outgoingAmount;
-        entity.numberOfIncomingTransfers = spectrum[index].numberOfIncomingTransfers;
-        entity.numberOfOutgoingTransfers = spectrum[index].numberOfOutgoingTransfers;
-        entity.latestIncomingTransferTick = spectrum[index].latestIncomingTransferTick;
-        entity.latestOutgoingTransferTick = spectrum[index].latestOutgoingTransferTick;
-
-        return true;
-    }
 }
 
 unsigned char QPI::QpiContextFunctionCall::hour() const
@@ -1839,51 +1734,6 @@ unsigned char QPI::QpiContextFunctionCall::second() const
 bool QPI::QpiContextFunctionCall::signatureValidity(const m256i& entity, const m256i& digest, const array<signed char, 64>& signature) const
 {
     return verify(entity.m256i_u8, digest.m256i_u8, reinterpret_cast<const unsigned char*>(&signature));
-}
-
-static void* __scratchpad()
-{
-    return reorgBuffer;
-}
-
-unsigned int QPI::QpiContextFunctionCall::tick() const
-{
-    return system.tick;
-}
-
-long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
-{
-    if (amount < 0 || amount > MAX_AMOUNT)
-    {
-        return -((long long)(MAX_AMOUNT + 1));
-    }
-
-    const int index = spectrumIndex(_currentContractId);
-
-    if (index < 0)
-    {
-        return -amount;
-    }
-
-    const long long remainingAmount = energy(index) - amount;
-
-    if (remainingAmount < 0)
-    {
-        return remainingAmount;
-    }
-
-    if (decreaseEnergy(index, amount))
-    {
-        increaseEnergy(destination, amount);
-
-        if (!contractActionTracker.addQuTransfer(_currentContractId, destination, amount))
-            __qpiAbort(ContractErrorTooManyActions);
-
-        const QuTransfer quTransfer = { _currentContractId , destination , amount };
-        logger.logQuTransfer(quTransfer);
-    }
-
-    return remainingAmount;
 }
 
 long long QPI::QpiContextProcedureCall::transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor) const
@@ -4689,21 +4539,6 @@ static bool initialize()
     initAVX512FourQConstants();
 #endif
 
-    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
-    {
-        contractStates[contractIndex] = NULL;
-    }
-    bs->SetMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
-    bs->SetMem(contractSystemProcedureLocalsSizes, sizeof(contractSystemProcedureLocalsSizes), 0);
-    bs->SetMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
-    bs->SetMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
-    bs->SetMem(contractUserFunctionInputSizes, sizeof(contractUserFunctionInputSizes), 0);
-    bs->SetMem(contractUserFunctionOutputSizes, sizeof(contractUserFunctionOutputSizes), 0);
-    bs->SetMem(contractUserFunctionLocalsSizes, sizeof(contractUserFunctionLocalsSizes), 0);
-    bs->SetMem(contractUserProcedureInputSizes, sizeof(contractUserProcedureInputSizes), 0);
-    bs->SetMem(contractUserProcedureOutputSizes, sizeof(contractUserProcedureOutputSizes), 0);
-    bs->SetMem(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), 0);
-
     getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
     if (isZero(operatorPublicKey))
     {
@@ -4791,13 +4626,6 @@ static bool initialize()
                 return false;
             }
         }
-        if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags)))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, MAX_NUMBER_OF_CONTRACTS / 8);
-
-            return false;
-        }
-        bs->SetMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(*score), (void**)&score))
         {

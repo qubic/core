@@ -36,6 +36,8 @@
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
+    <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
+    <ClInclude Include="contract_core\qpi_system_impl.h" />
     <ClInclude Include="contract_core\qpi_trivial_impl.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
     <ClInclude Include="contract_core\qpi_proposal_voting.h" />
@@ -186,6 +188,7 @@
       <GuardEHContMetadata>false</GuardEHContMetadata>
       <AssemblerOutput>All</AssemblerOutput>
       <AssemblerListingLocation>$(IntDir)Qubic.asm</AssemblerListingLocation>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>
@@ -233,6 +236,7 @@
       <GuardEHContMetadata>false</GuardEHContMetadata>
       <AssemblerOutput>All</AssemblerOutput>
       <AssemblerListingLocation>$(IntDir)Qubic.asm</AssemblerListingLocation>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>
@@ -270,6 +274,7 @@
       <AdditionalOptions>/Gs1638400 %(AdditionalOptions)</AdditionalOptions>
       <StackReserveSize>126976</StackReserveSize>
       <StackCommitSize>126976</StackCommitSize>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>
