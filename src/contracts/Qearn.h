@@ -4,7 +4,7 @@ constexpr uint64 QEARN_MINIMUM_LOCKING_AMOUNT = 10000000;
 constexpr uint64 QEARN_MAX_LOCKS = 4194304;
 constexpr uint64 QEARN_MAX_EPOCHS = 4096;
 constexpr uint64 QEARN_MAX_USERS = 131072;
-constexpr uint64 QEARN_MAX_LOCK_AMOUNT = 100000000000ULL;
+constexpr uint64 QEARN_MAX_LOCK_AMOUNT = 1000000000000ULL;
 constexpr uint64 QEARN_INITIAL_EPOCH = 999;                             //  we need to change this epoch when merging
 
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
