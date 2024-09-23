@@ -9,7 +9,7 @@
 #include "network_messages/assets.h"
 
 #include "public_settings.h"
-#include "logging.h"
+#include "logging/logging.h"
 #include "kangaroo_twelve.h"
 #include "four_q.h"
 #include "common_buffers.h"

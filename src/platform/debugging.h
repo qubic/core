@@ -1,23 +1,21 @@
 #pragma once
 
+#include "assert.h"
 #include "concurrency.h"
 #include "file_io.h"
 
 
 #if defined(EXPECT_TRUE)
 
-// in gtest context, use EXPECT_TRUE as ASSERT
-#define ASSERT EXPECT_TRUE
-
+// In gtest context, print with standard library
 static void addDebugMessage(const CHAR16* msg)
 {
     wprintf(L"%ls\n", msg);
 }
 
 #elif defined(NDEBUG)
+
 // static void addDebugMessage(const CHAR16* msg){} // empty impl
-// with NDEBUG, make ASSERT disappear
-#define ASSERT(expression) ((void)0)
 
 #else
 
@@ -126,10 +124,5 @@ static void addDebugMessageAssert(const CHAR16* message, const CHAR16* file, con
     }
     RELEASE(debugLogLock);
 }
-
-#define ASSERT(expression) (void)(                                                       \
-            (!!(expression)) ||                                                              \
-            (addDebugMessageAssert(_CRT_WIDE(#expression), _CRT_WIDE(__FILE__), (unsigned int)(__LINE__)), 0) \
-        )
 
 #endif

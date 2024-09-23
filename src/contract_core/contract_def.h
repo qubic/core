@@ -22,6 +22,8 @@ typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContextFunctionCall&, void*, void
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 
+constexpr unsigned long long MAX_CONTRACT_STATE_SIZE = 1073741824;
+
 // Maximum size of local variables that may be used by a contract function or procedure
 // If increased, the size of contractLocalsStack should be increased as well.
 constexpr unsigned int MAX_SIZE_OF_CONTRACT_LOCALS = 32 * 1024;

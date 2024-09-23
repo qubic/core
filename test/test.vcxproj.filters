@@ -15,10 +15,13 @@
     <ClCompile Include="qpi_collection.cpp" />
     <ClCompile Include="spectrum.cpp" />
     <ClCompile Include="stdlib_impl.cpp" />
+    <ClCompile Include="kangaroo_twelve.cpp" />
+    <ClCompile Include="contract_qearn.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
     <ClInclude Include="score_params.h" />
+    <ClInclude Include="contract_testing.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
