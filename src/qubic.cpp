@@ -3083,7 +3083,7 @@ static struct
     unsigned long long logTxScore[676];
     unsigned long long voteCountScore[676];
 } revenueScoreFile;
-// TODO: for testing purpose, will delete at epoch 111
+// TODO: for testing purpose, will delete soon
 static bool saveRevenueScoreFile(CHAR16* directory = NULL)
 {
     logToConsole(L"Saving revenue score file...");
@@ -3218,8 +3218,19 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
-#if 0
-        //TODO: temporarily disable this, will merge votecount to final rev score
+        // Save file for testing purpose, will be removed soon
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            revenueScoreFile.logTxScore[i] = revenueScore[i];
+            revenueScoreFile.voteCountScore[i] = voteCounter.getVoteCount(i);
+        }
+        revenueScoreFileMustBeSaved = true;
+        while (revenueScoreFileMustBeSaved)
+        {
+            _mm_pause();
+        }
+
+        // Merge votecount to final rev score
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
             unsigned long long vote_count = voteCounter.getVoteCount(i);
@@ -3240,18 +3251,6 @@ static void endEpoch()
                 revenueScore[i] = 0;
             }
         }
-#else
-        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-        {
-            revenueScoreFile.logTxScore[i] = revenueScore[i]; // log tx score
-            revenueScoreFile.voteCountScore[i] = voteCounter.getVoteCount(i); // vote count score
-        }
-        revenueScoreFileMustBeSaved = true;
-        while (revenueScoreFileMustBeSaved)
-        {
-            _mm_pause();
-        }
-#endif
 
         // Sort revenue scores to get lowest score of quorum
         unsigned long long sortedRevenueScore[QUORUM + 1];
