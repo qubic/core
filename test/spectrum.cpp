@@ -247,7 +247,6 @@ TEST(TestCoreSpectrum, AntiDustOneRichRandomDust)
     // Create spectrum with one rich ID
     SpectrumTest test;
     increaseEnergy(m256i::randomValue(), 1000000000000llu);
-    spectrumInfo.totalAmount += 1000000000000llu;
 
     test.dust_attack(1, 1, 1);
     test.dust_attack(100, 100, 1);
@@ -261,7 +260,6 @@ TEST(TestCoreSpectrum, AntiDustManyRichRandomDust)
     for (int i = 0; i < 10000; i++)
     {
         increaseEnergy(m256i::randomValue(), i * 100000llu);
-        spectrumInfo.totalAmount += i * 100000llu;
     }
 
     test.dust_attack(1, 1000, 1);
@@ -276,7 +274,6 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseAllInSameBin)
     for (unsigned long long i = 0; i < (SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4); ++i)
     {
         increaseEnergy(m256i(i, 1, 2, 3), 100llu);
-        spectrumInfo.totalAmount += 100llu;
     }
 
     test.beforeAntiDust();
@@ -312,7 +309,6 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinsAndLogging)
             amount = 100;
         else if (i < SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4)
             amount = 10000;
-        spectrumInfo.totalAmount += amount;
         increaseEnergy(m256i(i, 1, 2, 3), amount);
     }
 
@@ -390,7 +386,6 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinZeroBalance)
     m256i richId(123, 4, 5, 6);
     unsigned long long amount = 1000;
     increaseEnergy(richId, 100 * amount);
-    spectrumInfo.totalAmount += 100 * amount;
     unsigned int spectrum75pct = (SPECTRUM_CAPACITY / 2 + SPECTRUM_CAPACITY / 4);
     for (unsigned long long i = 0; i < spectrum75pct - 1; ++i)
     {

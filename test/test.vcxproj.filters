@@ -16,6 +16,7 @@
     <ClCompile Include="spectrum.cpp" />
     <ClCompile Include="stdlib_impl.cpp" />
     <ClCompile Include="qpi_hash_map.cpp" />
+    <ClCompile Include="kangaroo_twelve.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
