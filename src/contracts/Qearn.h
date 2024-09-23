@@ -203,7 +203,11 @@ private:
     uint32 _EarlyUnlocked_cnt;
     uint32 _FullyUnlocked_cnt;
 
-    PUBLIC_FUNCTION(GetStateOfRound)
+    struct GetStateOfRound_locals {
+        uint32 first_epoch;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(GetStateOfRound)
         if(input.Epoch < QEARN_INITIAL_EPOCH) 
         {                                                            // non staking
             output.state = 2; 
@@ -213,11 +217,12 @@ private:
         {
             output.state = 0;                                     // opening round, not started yet
         }
-        if(input.Epoch <= qpi.epoch() && input.Epoch >= qpi.epoch() - 52) 
+        locals.first_epoch = qpi.epoch() - 52;
+        if(input.Epoch <= qpi.epoch() && input.Epoch >= locals.first_epoch) 
         {
             output.state = 1;       // running round, available unlocking early
         }
-        if(input.Epoch < qpi.epoch() - 52) 
+        if(input.Epoch < locals.first_epoch) 
         {
             output.state = 2;       // ended round
         }
@@ -326,7 +331,7 @@ private:
         LockInfo newLocker;
         RoundInfo updatedRoundInfo;
         EpochIndexInfo tmpIndex;
-        sint32 t;
+        uint32 t;
         uint32 endIndex;
         
     };
@@ -424,7 +429,7 @@ private:
         uint64 RewardPercent;
         sint64 divCalcu;
         uint32 indexOfinvocator;
-        sint32 t;
+        uint32 t;
         uint32 count_Of_last_vacancy;
         uint32 locked_weeks;
         uint32 startIndex;
@@ -695,7 +700,7 @@ private:
         uint64 _burn_amount;
         uint32 locked_epoch;
         uint32 startEpoch;
-        sint32 _t;
+        uint32 _t;
         sint32 st;
         sint32 en;
         uint32 empty_cnt;

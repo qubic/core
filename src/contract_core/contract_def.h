@@ -141,6 +141,10 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE CCF2
 #include "contracts/ComputorControlledFund.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
 #define QEARN_CONTRACT_INDEX 9
 #define CONTRACT_INDEX QEARN_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QEARN
