@@ -21,7 +21,8 @@ typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state,
 #include <unordered_set>
 
 
-TEST(TestQPIHashMap, TestHashFunctionQPIID) {
+TEST(TestQPIHashMap, TestHashFunctionQPIID) 
+{
 	auto randomId = QPI::id::randomValue();
 
 	// Check that the hash function returns the first 8 bytes as hash for QPI::id.
@@ -29,7 +30,8 @@ TEST(TestQPIHashMap, TestHashFunctionQPIID) {
 	EXPECT_EQ(hashRes, randomId.u64._0);
 }
 
-TEST(TestQPIHashMap, TestHashFunction) {
+TEST(TestQPIHashMap, TestHashFunction) 
+{
 	std::unordered_set<QPI::uint64> hashesSoFar;
 
 	for (int i = 0; i < 1000; ++i)
@@ -41,7 +43,8 @@ TEST(TestQPIHashMap, TestHashFunction) {
 	}
 }
 
-TEST(TestQPIHashMap, TestCreation) {
+TEST(TestQPIHashMap, TestCreation) 
+{
 	constexpr QPI::uint64 capacity = 2;
 	QPI::HashMap<QPI::id, int, capacity> hashMap;
 
@@ -49,7 +52,8 @@ TEST(TestQPIHashMap, TestCreation) {
 	EXPECT_EQ(hashMap.population(), 0);
 }
 
-TEST(TestQPIHashMap, TestGetters) {
+TEST(TestQPIHashMap, TestGetters) 
+{
 	constexpr QPI::uint64 capacity = 4;
 	QPI::HashMap<QPI::id, int, capacity> hashMap;
 
@@ -77,12 +81,13 @@ TEST(TestQPIHashMap, TestGetters) {
 	// Test getElementIndex when all slots are marked for removal so it has to iterate through the whole hash map.
 	for (int i = 0; i < 3; ++i)
 	{
-		hashMap.remove(ids[i]);
+		hashMap.removeByKey(ids[i]);
 	}
 	EXPECT_EQ(hashMap.getElementIndex(ids[0]), QPI::NULL_INDEX);
 }
 
-TEST(TestQPIHashMap, TestSet) {
+TEST(TestQPIHashMap, TestSet) 
+{
 	constexpr QPI::uint64 capacity = 2;
 	QPI::HashMap<QPI::id, int, capacity> hashMap;
 
@@ -109,7 +114,8 @@ TEST(TestQPIHashMap, TestSet) {
 	EXPECT_EQ(hashMap.value(returnedIndex), values[2]);
 }
 
-TEST(TestQPIHashMap, TestRemove) {
+TEST(TestQPIHashMap, TestRemove) 
+{
 	constexpr QPI::uint64 capacity = 8;
 	QPI::HashMap<QPI::id, int, capacity> hashMap;
 
@@ -124,7 +130,7 @@ TEST(TestQPIHashMap, TestRemove) {
 	EXPECT_EQ(hashMap.population(), 3);
 
 	// Remove by element index.
-	hashMap.remove(returnedIndex);
+	hashMap.removeByIndex(returnedIndex);
 
 	EXPECT_EQ(hashMap.population(), 2);
 	EXPECT_NE(hashMap.getElementIndex(ids[0]), QPI::NULL_INDEX);
@@ -132,12 +138,12 @@ TEST(TestQPIHashMap, TestRemove) {
 	EXPECT_EQ(hashMap.getElementIndex(ids[2]), QPI::NULL_INDEX);
 
 	// Try to remove key not contained in the hash map. 
-	returnedIndex = hashMap.remove({ 1,2,3,4 });
+	returnedIndex = hashMap.removeByKey({ 1,2,3,4 });
 	EXPECT_EQ(returnedIndex, QPI::NULL_INDEX);
 	EXPECT_EQ(hashMap.population(), 2);
 
 	// Remove by key that is contained in the hash map.
-	returnedIndex = hashMap.remove(ids[0]);
+	returnedIndex = hashMap.removeByKey(ids[0]);
 	EXPECT_NE(returnedIndex, QPI::NULL_INDEX);
 	EXPECT_EQ(hashMap.population(), 1);
 	EXPECT_EQ(hashMap.getElementIndex(ids[0]), QPI::NULL_INDEX);
@@ -145,7 +151,8 @@ TEST(TestQPIHashMap, TestRemove) {
 	EXPECT_EQ(hashMap.getElementIndex(ids[2]), QPI::NULL_INDEX);
 }
 
-TEST(TestQPIHashMap, TestCleanup) {
+TEST(TestQPIHashMap, TestCleanup) 
+{
 	__scratchpadBuffer = new char[256];
 
 	constexpr QPI::uint64 capacity = 4;
@@ -161,7 +168,7 @@ TEST(TestQPIHashMap, TestCleanup) {
 	}
 
 	// This will mark for removal but slot will not become available.
-	hashMap.remove(ids[3]);
+	hashMap.removeByKey(ids[3]);
 	EXPECT_EQ(hashMap.population(), 3);
 	// So the next set will fail because no slot is available.
 	returnedIndex = hashMap.set(ids[3], values[3]);
@@ -186,7 +193,8 @@ TEST(TestQPIHashMap, TestCleanup) {
 	__scratchpadBuffer = nullptr;
 }
 
-TEST(TestQPIHashMap, TestCleanupPerformanceShortcuts) {
+TEST(TestQPIHashMap, TestCleanupPerformanceShortcuts) 
+{
 
 	constexpr QPI::uint64 capacity = 4;
 	QPI::HashMap<QPI::id, int, capacity> hashMap;
@@ -204,7 +212,7 @@ TEST(TestQPIHashMap, TestCleanupPerformanceShortcuts) {
 
 	for (int i = 0; i < 4; ++i)
 	{
-		hashMap.remove(ids[i]);
+		hashMap.removeByKey(ids[i]);
 	}
 	EXPECT_EQ(hashMap.population(), 0);
 
@@ -212,7 +220,8 @@ TEST(TestQPIHashMap, TestCleanupPerformanceShortcuts) {
 	hashMap.cleanup();
 }
 
-TEST(TestQPIHashMap, TestCleanupLargeMapSameHashes) {
+TEST(TestQPIHashMap, TestCleanupLargeMapSameHashes) 
+{
 	constexpr QPI::uint64 capacity = 64;
 	QPI::HashMap<QPI::id, int, capacity> hashMap;
 
@@ -224,7 +233,7 @@ TEST(TestQPIHashMap, TestCleanupLargeMapSameHashes) {
 		// The hash for QPI::id is the first 8 bytes.
 		hashMap.set({ 3478, i, i + 1, i + 2 }, i * 2 + 7);
 	}
-	hashMap.remove({ 3478, 63, 64, 65 });
+	hashMap.removeByKey({ 3478, 63, 64, 65 });
 
 	// Cleanup will have to iterate through the whole map to find an empty slot for the last element.
 	hashMap.cleanup();
@@ -233,7 +242,8 @@ TEST(TestQPIHashMap, TestCleanupLargeMapSameHashes) {
 	__scratchpadBuffer = nullptr;
 }
 
-TEST(TestQPIHashMap, TestReplace) {
+TEST(TestQPIHashMap, TestReplace) 
+{
 	constexpr QPI::uint64 capacity = 8;
 	QPI::HashMap<QPI::id, int, capacity> hashMap;
 
@@ -262,7 +272,8 @@ TEST(TestQPIHashMap, TestReplace) {
 	EXPECT_EQ(value, values[2]);
 }
 
-TEST(TestQPIHashMap, TestReset) {
+TEST(TestQPIHashMap, TestReset) 
+{
 	constexpr QPI::uint64 capacity = 4;
 	QPI::HashMap<QPI::id, int, capacity> hashMap;
 

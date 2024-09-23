@@ -120,7 +120,7 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	void HashMap<KeyT, ValueT, L, HashFunc>::remove(sint64 elementIdx)
+	void HashMap<KeyT, ValueT, L, HashFunc>::removeByIndex(sint64 elementIdx)
 	{
 		elementIdx &= (L - 1);
 		_population--;
@@ -135,13 +135,13 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	sint64 HashMap<KeyT, ValueT, L, HashFunc>::remove(const KeyT& key) {
+	sint64 HashMap<KeyT, ValueT, L, HashFunc>::removeByKey(const KeyT& key) {
 		sint64 elementIndex = getElementIndex(key);
 		if (elementIndex == NULL_INDEX) {
 			return NULL_INDEX;
 		}
 		else {
-			remove(elementIndex);
+			removeByIndex(elementIndex);
 			return elementIndex;
 		}
 	}

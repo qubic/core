@@ -81,11 +81,11 @@ namespace QPI {
 		sint64 set(const KeyT& key, const ValueT& value);
 
 		// Mark element for removal.
-		void remove(sint64 elementIdx);
+		void removeByIndex(sint64 elementIdx);
 
 		// Mark element for removal if key is contained in the hash map, 
 		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
-		sint64 remove(const KeyT& key);
+		sint64 removeByKey(const KeyT& key);
 
 		// Remove all elements marked for removal, this is a very expensive operation.
 		void cleanup();
