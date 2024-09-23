@@ -18,6 +18,7 @@
     <ClCompile Include="qubic.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\test\qpi_hash_map_impl.h" />
     <ClInclude Include="addons\tx_status_request.h" />
     <ClInclude Include="assets.h" />
     <ClInclude Include="common_buffers.h" />

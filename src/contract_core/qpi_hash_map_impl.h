@@ -1,11 +1,29 @@
+// Implements functions of QPI::HashMap in order to:
+// 1. keep setMem() and copyMem() unavailable to contracts
+// 2. keep QPI file smaller and easier to read for contract devs
+// CAUTION: Include this AFTER the contract implementations!
+
 #pragma once
 
-#include "../src/contracts/qpi.h"
-#include "../src/platform/memory.h"
-#include "qpi_hash_map.h"
+#include "../contracts/qpi.h"
+#include "../platform/memory.h"
+#include "../kangaroo_twelve.h"
 
 namespace QPI
 {
+	template <typename KeyT>
+	uint64 HashFunction<KeyT>::hash(const KeyT& key) {
+		uint64 ret;
+		KangarooTwelve(&key, sizeof(KeyT), &ret, 8);
+		return ret;
+	}
+
+	// For performance reasons, we use the first 8 bytes as hash for m256i/id types.
+	template <>
+	uint64 HashFunction<m256i>::hash(const m256i& key) {
+		return key.u64._0;
+	}
+
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	uint64 HashMap<KeyT, ValueT, L, HashFunc>::_getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const
 	{

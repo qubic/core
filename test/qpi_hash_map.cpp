@@ -16,8 +16,7 @@ typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, v
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 
 #include "../src/contracts/qpi.h"
-#include "qpi_hash_map.h"
-#include "qpi_hash_map_impl.h"
+#include "../src/contract_core/qpi_hash_map_impl.h"
 #include <unordered_set>
 #include <array>
 #include <ranges>

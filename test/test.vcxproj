@@ -70,8 +70,6 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="qpi_hash_map.h" />
-    <ClInclude Include="qpi_hash_map_impl.h" />
     <ClInclude Include="score_params.h" />
     <ClInclude Include="score_reference.h" />
   </ItemGroup>
