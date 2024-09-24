@@ -32,10 +32,14 @@ using namespace test_utils;
 // - Copy the files into test/data
 // - Rename COMMON_TEST_SAMPLES_FILE_NAME and COMMON_TEST_SCORES_FILE_NAME if neccessary
 
+
+static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
+static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_random2.csv";
+static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 32; // set to 0 for run all available samples
 static constexpr bool PRINT_DETAILED_INFO = false;
 
 // Only run on specific index of samples and setting
-std::vector<unsigned int> filteredSamples; //= { 0 };
+std::vector<unsigned int> filteredSamples;// = { 0 };
 std::vector<unsigned int> filteredSettings;// = { 0,1 };
 
 std::vector<std::vector<unsigned int>> gScoresGroundTruth;
@@ -122,10 +126,6 @@ static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigne
     processHelper<N>(miningSeed, publicKey, nonce, sampleIndex, std::make_index_sequence<N>{});
 }
 
-
-static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
-static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_20240821.csv";
-
 void runCommonTests()
 {
 #ifdef __AVX512F__
@@ -141,6 +141,10 @@ void runCommonTests()
 
     // Convert the raw string and do the data verification
     unsigned long long numberOfSamples = sampleString.size();
+    if (COMMON_TEST_NUMBER_OF_SAMPLES > 0)
+    {
+        numberOfSamples = std::min(COMMON_TEST_NUMBER_OF_SAMPLES, numberOfSamples);
+    }
 
     std::vector<m256i> miningSeeds(numberOfSamples);
     std::vector<m256i> publicKeys(numberOfSamples);
@@ -244,8 +248,9 @@ void runCommonTests()
         int index = samples[i];
         process<numberOfGeneratedSetting>(miningSeeds[index].m256i_u8, publicKeys[index].m256i_u8, nonces[index].m256i_u8, index);
 #pragma omp critical
-        std::cout << "Sample " << i << " finished." << std::endl;
+        std::cout << i << ", ";
     }
+    std::cout << std::endl;
 
     // Print the average processing time
     if (PRINT_DETAILED_INFO)

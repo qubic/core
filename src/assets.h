@@ -9,11 +9,10 @@
 #include "network_messages/assets.h"
 
 #include "public_settings.h"
-#include "logging.h"
+#include "logging/logging.h"
 #include "kangaroo_twelve.h"
 #include "four_q.h"
-
-
+#include "common_buffers.h"
 
 
 
@@ -430,7 +429,7 @@ static bool loadUniverse(CHAR16* directory = NULL)
     return true;
 }
 
-void assetsEndEpoch(void* reorgBuffer)
+void assetsEndEpoch()
 {
     ACQUIRE(universeLock);
 

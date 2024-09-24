@@ -5,6 +5,8 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
+// ASSERT can be used to support debugging and speed-up development
+#include "../platform/assert.h"
 
 namespace QPI
 {
@@ -566,13 +568,13 @@ namespace QPI
 		// Class of proposal type
 		struct Class
 		{
-			// Options without extra data. Supported options: 2 <= N <= 8.
+			// Options without extra data. Supported options: 2 <= N <= 8 with ProposalDataV1.
 			static constexpr uint16 GeneralOptions = 0;
 
-			// Propose to transfer amount to address. Supported options: 2 <= N <= 5.
+			// Propose to transfer amount to address. Supported options: 2 <= N <= 5 with ProposalDataV1.
 			static constexpr uint16 Transfer = 0x100;
 
-			// Propose to set variable to a value. Supported options: 2 <= N <= 5; N == 0 means scalar voting.
+			// Propose to set variable to a value. Supported options: 2 <= N <= 5 with ProposalDataV1; N == 0 means scalar voting.
 			static constexpr uint16 Variable = 0x200;
 		};
 
@@ -667,17 +669,17 @@ namespace QPI
 			// Used if type class is Variable and type is not VariableScalarMean
 			struct VariableOptions
 			{
+				uint64 variable;            // For identifying variable (interpreted by contract only)
 				array<sint64, 4> values;    // N first amounts are proposed options sorted without duplicates, rest zero
-				uint16 variable;            // For identifying variable (interpreted by contract only)
 			} variableOptions;
 
 			// Used if type is VariableScalarMean
 			struct VariableScalar
 			{
+				uint64 variable;            // For identifying variable (interpreted by contract only)
 				sint64 minValue;            // Minimum value allowed in proposedValue and votes, must be > NO_VOTE_VALUE
 				sint64 maxValue;            // Maximum value allowed in proposedValue and votes, must be >= minValue
 				sint64 proposedValue;       // Needs to be in range between minValue and maxValue
-				uint16 variable;            // For identifying variable (interpreted by contract only)
 
 				static constexpr sint64 minSupportedValue = 0x8000000000000001;
 				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
@@ -742,7 +744,7 @@ namespace QPI
 	};
 	static_assert(sizeof(ProposalDataV1<true>) == 256 + 8 + 64, "Unexpected struct size.");
 
-	// Proposal data struct for yes/no proposal type only (requires less storage space).
+	// Proposal data struct for 2-option proposals (requires less storage space).
 	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
 	struct ProposalDataYesNo
 	{
@@ -758,14 +760,51 @@ namespace QPI
 		// Tick when proposal has been set. Output only, overwritten in setProposal().
 		uint32 tick;
 
+		// Proposal payload data (for all except types with class GeneralProposal)
+		union
+		{
+			// Used if type class is Transfer
+			struct Transfer
+			{
+				id destination;
+				sint64 amount;		// Amount of proposed option (non-negative)
+			} transfer;
+
+			// Used if type class is Variable and type is not VariableScalarMean
+			struct VariableOptions
+			{
+				uint64 variable;    // For identifying variable (interpreted by contract only)
+				sint64 value;		// Value of proposed option, rest zero
+			} variableOptions;
+		};
+
+		// Check if content of instance are valid. Epoch is not checked.
+		// Also useful to show requirements of valid proposal.
 		bool checkValidity() const
 		{
-			bool okay = type == ProposalTypes::YesNo;
+			bool okay = false;
 			// TODO: validate URL
+			uint16 cls = ProposalTypes::cls(type);
+			uint16 options = ProposalTypes::optionCount(type);
+			switch (cls)
+			{
+			case ProposalTypes::Class::GeneralOptions:
+				okay = options >= 2 && options <= 3;
+				break;
+			case ProposalTypes::Class::Transfer:
+				okay = (options == 2 && !isZero(transfer.destination) && transfer.amount >= 0);
+				break;
+			case ProposalTypes::Class::Variable:
+				okay = (options == 2);
+				break;
+			}
 			return okay;
 		}
+
+		// Whether to support scalar votes next to option votes.
+		static constexpr bool supportScalarVotes = false;
 	};
-	static_assert(sizeof(ProposalDataYesNo) == 256 + 8, "Unexpected struct size.");
+	static_assert(sizeof(ProposalDataYesNo) == 256 + 8 + 40, "Unexpected struct size.");
 
 
 	// Used internally by ProposalVoting to store a proposal with all votes
@@ -773,8 +812,13 @@ namespace QPI
 	struct ProposalWithAllVoteData;
 
 
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting and setting proposals for computors only.
 	template <uint16 proposalSlotCount = NUMBER_OF_COMPUTORS>
 	struct ProposalAndVotingByComputors;
+
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting for computors only and creating/chaning proposals for anyone.
+	template <uint16 proposalSlotCount>
+	struct ProposalByAnyoneVotingByComputors;
 
 	template <unsigned int maxShareholders>
 	struct ProposalAndVotingByShareholders;
@@ -1362,7 +1406,7 @@ namespace QPI
 			input, output, \
 			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
 		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
-		qpi.__qpiFreeContextOtherContract(contractStateType::__contract_index); \
+		qpi.__qpiFreeContextOtherContract(); \
 		qpi.__qpiFreeLocals()
 
 	// Transfer invocation reward and invoke of other contract (procedure only)
@@ -1378,7 +1422,7 @@ namespace QPI
 			input, output, \
 			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
 		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
-		qpi.__qpiFreeContextOtherContract(contractStateType::__contract_index); \
+		qpi.__qpiFreeContextOtherContract(); \
 		qpi.__qpiFreeLocals()
 
 	#define QUERY_ORACLE(oracle, query) // TODO

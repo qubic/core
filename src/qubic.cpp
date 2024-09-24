@@ -37,7 +37,9 @@
 #include "system.h"
 
 #include "assets.h"
-#include "logging.h"
+#include "spectrum.h"
+#include "logging/logging.h"
+#include "logging/net_msg_impl.h"
 
 #include "tick_storage.h"
 #include "vote_counter.h"
@@ -45,6 +47,7 @@
 #include "addons/tx_status_request.h"
 
 #include "files/files.h"
+#include "mining/mining.h"
 #include "oracles/oracle_machines.h"
 
 ////////// Qubic \\\\\\\\\\
@@ -60,7 +63,6 @@
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define PEER_REFRESHING_PERIOD 120000ULL
 #define PORT 21841
-#define SPECTRUM_CAPACITY (1ULL << SPECTRUM_DEPTH) // Must be 2^N
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 4 // Must be at least 3+: 1+ for tx propagration + 1 for tickData propagration + 1 for vote propagration
@@ -89,8 +91,6 @@ static volatile bool forceNextTick = false;
 static volatile bool forceSwitchEpoch = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
-
-static volatile bool revenueScoreFileMustBeSaved = false;
 
 static int misalignedState = 0;
 
@@ -125,13 +125,8 @@ static TickData nextTickData;
 static m256i uniqueNextTickTransactionDigests[NUMBER_OF_COMPUTORS];
 static unsigned int uniqueNextTickTransactionDigestCounters[NUMBER_OF_COMPUTORS];
 
-static void* reorgBuffer = NULL; // Must be large enough to fit any contract!
-
 static unsigned long long resourceTestingDigest = 0;
 
-static volatile char spectrumLock = 0;
-static ::Entity* spectrum = NULL;
-static unsigned int numberOfEntities = 0;
 static unsigned int numberOfTransactions = 0;
 static volatile char entityPendingTransactionsLock = 0;
 static unsigned char* entityPendingTransactions = NULL;
@@ -141,8 +136,6 @@ static volatile char computorPendingTransactionsLock = 0;
 static unsigned char* computorPendingTransactions = NULL;
 static unsigned char* computorPendingTransactionDigests = NULL;
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
-static m256i* spectrumDigests = NULL;
-const unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
 
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
@@ -200,6 +193,10 @@ static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
 static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 static unsigned long long solutionTotalExecutionTicks = 0;
+static unsigned long long K12TotalExecutionTicks = 0;
+static unsigned long long K12StartingExecutionTicks = 0;
+int K12GlobalIndex = 0;
+static unsigned long long K12MeasurementsSum = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 
@@ -229,10 +226,8 @@ struct
     unsigned int numberOfTransactions;
 } nodeStateBuffer;
 #endif
-static bool saveSpectrum(CHAR16* directory = NULL);
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
-static bool loadSpectrum(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
 
 BroadcastFutureTickData broadcastedFutureTickData;
@@ -287,18 +282,18 @@ static void logToConsole(const CHAR16* message)
         return;
     }
 
-    timestampedMessage[0] = (time.Year % 100) / 10 + L'0';
-    timestampedMessage[1] = time.Year % 10 + L'0';
-    timestampedMessage[2] = time.Month / 10 + L'0';
-    timestampedMessage[3] = time.Month % 10 + L'0';
-    timestampedMessage[4] = time.Day / 10 + L'0';
-    timestampedMessage[5] = time.Day % 10 + L'0';
-    timestampedMessage[6] = time.Hour / 10 + L'0';
-    timestampedMessage[7] = time.Hour % 10 + L'0';
-    timestampedMessage[8] = time.Minute / 10 + L'0';
-    timestampedMessage[9] = time.Minute % 10 + L'0';
-    timestampedMessage[10] = time.Second / 10 + L'0';
-    timestampedMessage[11] = time.Second % 10 + L'0';
+    timestampedMessage[0] = (utcTime.Year % 100) / 10 + L'0';
+    timestampedMessage[1] = utcTime.Year % 10 + L'0';
+    timestampedMessage[2] = utcTime.Month / 10 + L'0';
+    timestampedMessage[3] = utcTime.Month % 10 + L'0';
+    timestampedMessage[4] = utcTime.Day / 10 + L'0';
+    timestampedMessage[5] = utcTime.Day % 10 + L'0';
+    timestampedMessage[6] = utcTime.Hour / 10 + L'0';
+    timestampedMessage[7] = utcTime.Hour % 10 + L'0';
+    timestampedMessage[8] = utcTime.Minute / 10 + L'0';
+    timestampedMessage[9] = utcTime.Minute % 10 + L'0';
+    timestampedMessage[10] = utcTime.Second / 10 + L'0';
+    timestampedMessage[11] = utcTime.Second % 10 + L'0';
     timestampedMessage[12] = ' ';
     timestampedMessage[13] = 0;
 
@@ -338,107 +333,6 @@ static void logToConsole(const CHAR16* message)
 }
 
 
-static int spectrumIndex(const m256i& publicKey)
-{
-    if (isZero(publicKey))
-    {
-        return -1;
-    }
-
-    unsigned int index = publicKey.m256i_u32[0] & (SPECTRUM_CAPACITY - 1);
-
-    ACQUIRE(spectrumLock);
-
-iteration:
-    if (spectrum[index].publicKey == publicKey)
-    {
-        RELEASE(spectrumLock);
-
-        return index;
-    }
-    else
-    {
-        if (isZero(spectrum[index].publicKey))
-        {
-            RELEASE(spectrumLock);
-
-            return -1;
-        }
-        else
-        {
-            index = (index + 1) & (SPECTRUM_CAPACITY - 1);
-
-            goto iteration;
-        }
-    }
-}
-
-static long long energy(const int index)
-{
-    return spectrum[index].incomingAmount - spectrum[index].outgoingAmount;
-}
-
-static void increaseEnergy(const m256i& publicKey, long long amount)
-{
-    if (!isZero(publicKey) && amount >= 0)
-    {
-        // TODO: numberOfEntities!
-
-        unsigned int index = publicKey.m256i_u32[0] & (SPECTRUM_CAPACITY - 1);
-
-        ACQUIRE(spectrumLock);
-
-    iteration:
-        if (spectrum[index].publicKey == publicKey)
-        {
-            spectrum[index].incomingAmount += amount;
-            spectrum[index].numberOfIncomingTransfers++;
-            spectrum[index].latestIncomingTransferTick = system.tick;
-        }
-        else
-        {
-            if (isZero(spectrum[index].publicKey))
-            {
-                spectrum[index].publicKey = publicKey;
-                spectrum[index].incomingAmount = amount;
-                spectrum[index].numberOfIncomingTransfers = 1;
-                spectrum[index].latestIncomingTransferTick = system.tick;
-            }
-            else
-            {
-                index = (index + 1) & (SPECTRUM_CAPACITY - 1);
-
-                goto iteration;
-            }
-        }
-
-        RELEASE(spectrumLock);
-    }
-}
-
-static bool decreaseEnergy(const int index, long long amount)
-{
-    if (amount >= 0)
-    {
-        ACQUIRE(spectrumLock);
-
-        if (energy(index) >= amount)
-        {
-            spectrum[index].outgoingAmount += amount;
-            spectrum[index].numberOfOutgoingTransfers++;
-            spectrum[index].latestOutgoingTransferTick = system.tick;
-
-            RELEASE(spectrumLock);
-
-            return true;
-        }
-
-        RELEASE(spectrumLock);
-    }
-
-    return false;
-}
-
 static int computorIndex(m256i computor)
 {
     for (int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
@@ -474,7 +368,7 @@ static void getComputerDigest(m256i& digest)
             const unsigned long long size = digestIndex < contractCount ? contractDescriptions[digestIndex].stateSize : 0;
             if (!size)
             {
-                contractStateDigests[digestIndex] = _mm256_setzero_si256();
+                contractStateDigests[digestIndex] = m256i::zero();
             }
             else
             {
@@ -484,7 +378,15 @@ static void getComputerDigest(m256i& digest)
                 // digest.
                 // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
                 contractStateLock[digestIndex].acquireRead();
+
+                K12StartingExecutionTicks = __rdtsc();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
+                K12TotalExecutionTicks = __rdtsc() - K12StartingExecutionTicks;
+                if (K12GlobalIndex < 500)
+                {
+                    K12MeasurementsSum += K12TotalExecutionTicks;
+                    K12GlobalIndex++;
+                }
                 contractStateLock[digestIndex].releaseRead();
             }
         }
@@ -793,7 +695,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
         && request->tickData.minute <= 59
         && request->tickData.second <= 59
         && request->tickData.millisecond <= 999
-        && ms(request->tickData.year, request->tickData.month, request->tickData.day, request->tickData.hour, request->tickData.minute, request->tickData.second, request->tickData.millisecond) <= ms(time.Year - 2000, time.Month, time.Day, time.Hour, time.Minute, time.Second, time.Nanosecond / 1000000) + TIME_ACCURACY)
+        && ms(request->tickData.year, request->tickData.month, request->tickData.day, request->tickData.hour, request->tickData.minute, request->tickData.second, request->tickData.millisecond) <= ms(utcTime.Year - 2000, utcTime.Month, utcTime.Day, utcTime.Hour, utcTime.Minute, utcTime.Second, utcTime.Nanosecond / 1000000) + TIME_ACCURACY)
     {
         bool ok = true;
         for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK && ok; i++)
@@ -1210,11 +1112,14 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.initialMonth = system.initialMonth;
     respondedSystemInfo.initialYear = system.initialYear;
 
-    respondedSystemInfo.numberOfEntities = numberOfEntities;
+    respondedSystemInfo.numberOfEntities = spectrumInfo.numberOfEntities;
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
     respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
     respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+
+    respondedSystemInfo.totalSpectrumAmount = spectrumInfo.totalAmount;
+    respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
 
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
 }
@@ -1284,7 +1189,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 // set time
                 SpecialCommandSendTime* _request = header->getPayload<SpecialCommandSendTime>();
                 EFI_TIME newTime;
-                copyMem(&newTime, &_request->utcTime, sizeof(_request->utcTime)); // caution: response.utcTime is subset of time (smaller size)
+                copyMem(&newTime, &_request->utcTime, sizeof(_request->utcTime)); // caution: response.utcTime is subset of newTime (smaller size)
                 newTime.TimeZone = 0;
                 newTime.Daylight = 0;
                 EFI_STATUS status = rs->SetTime(&newTime);
@@ -1300,7 +1205,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 SpecialCommandSendTime response;
                 response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SEND_TIME << 56);
                 updateTime();
-                copyMem(&response.utcTime, &time, sizeof(response.utcTime)); // caution: response.utcTime is subset of time (smaller size)
+                copyMem(&response.utcTime, &utcTime, sizeof(response.utcTime)); // caution: response.utcTime is subset of global utcTime (smaller size)
                 enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type, header->dejavu(), &response);
             }
             break;
@@ -1334,10 +1239,10 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 // a tracker to detect if a thread is crashed
 static void checkinTime(unsigned long long processorNumber)
 {
-    threadTimeCheckin[processorNumber].second = time.Second;
-    threadTimeCheckin[processorNumber].minute = time.Minute;
-    threadTimeCheckin[processorNumber].hour = time.Hour;
-    threadTimeCheckin[processorNumber].day = time.Day;
+    threadTimeCheckin[processorNumber].second = utcTime.Second;
+    threadTimeCheckin[processorNumber].minute = utcTime.Minute;
+    threadTimeCheckin[processorNumber].hour = utcTime.Hour;
+    threadTimeCheckin[processorNumber].day = utcTime.Day;
 }
 
 static void setNewMiningSeed()
@@ -1345,9 +1250,14 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
+static unsigned int getTickInMiningPhaseCycle()
+{
+    return (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+}
+
 static void checkAndSwitchMiningPhase()
 {
-    const unsigned int r = (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+    const unsigned int r = getTickInMiningPhaseCycle();
     if (!r)
     {
         setNewMiningSeed();
@@ -1356,7 +1266,7 @@ static void checkAndSwitchMiningPhase()
     {
         if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
         {
-            score->initMiningData(_mm256_setzero_si256());
+            score->initMiningData(m256i::zero());
         }
     }
 }
@@ -1826,7 +1736,7 @@ m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
         }
     }
 
-    return _mm256_setzero_si256();
+    return m256i::zero();
 }
 
 long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex) const
@@ -2213,7 +2123,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
         const long long amount = contractIPOBid->price * contractIPOBid->quantity;
         if (decreaseEnergy(spectrumIndex, amount))
         {
-            const QuTransfer quTransfer = { transaction->sourcePublicKey , _mm256_setzero_si256() , amount };
+            const QuTransfer quTransfer = { transaction->sourcePublicKey, m256i::zero(), amount };
             logger.logQuTransfer(quTransfer);
 
             numberOfReleasedEntities = 0;
@@ -2283,7 +2193,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
         }
@@ -2321,18 +2231,18 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
     return true;
 }
 
-static void processTickTransactionSolution(const Transaction* transaction, const unsigned long long processorNumber)
+static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
-    ASSERT(transaction->destinationPublicKey == arbitratorPublicKey);
-    ASSERT(!transaction->amount && transaction->inputSize == 64 && !transaction->inputType);
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(transaction->amount >=MiningSolutionTransaction::minAmount()
+            && transaction->inputSize == 64
+            && transaction->inputType == MiningSolutionTransaction::transactionType());
 
-    const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
-    const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
-    m256i data[3] = { transaction->sourcePublicKey, solution_miningSeed, solution_nonce };
+    m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
     static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
     unsigned int flagIndex;
     KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
@@ -2340,7 +2250,7 @@ static void processTickTransactionSolution(const Transaction* transaction, const
     {
         minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
 
-        unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
+        unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         if (score->isValidScore(solutionScore))
         {
             resourceTestingDigest ^= (unsigned long long)(solutionScore);
@@ -2349,6 +2259,14 @@ static void processTickTransactionSolution(const Transaction* transaction, const
             const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
             if (score->isGoodScore(solutionScore, threshold))
             {
+                // Solution deposit return
+                {
+                    increaseEnergy(transaction->sourcePublicKey, transaction->amount);
+
+                    const QuTransfer quTransfer = { m256i::zero(), transaction->sourcePublicKey, transaction->amount };
+                    logger.logQuTransfer(quTransfer);
+                }
+
                 for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
                 {
                     if (transaction->sourcePublicKey == computorPublicKeys[i])
@@ -2358,8 +2276,8 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                         unsigned int j;
                         for (j = 0; j < system.numberOfSolutions; j++)
                         {
-                            if (solution_nonce == system.solutions[j].nonce
-                                && solution_miningSeed == system.solutions[j].miningSeed
+                            if (transaction->nonce == system.solutions[j].nonce
+                                && transaction->miningSeed == system.solutions[j].miningSeed
                                 && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
                             {
                                 solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
@@ -2371,8 +2289,8 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                             && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
                         {
                             system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
-                            system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
-                            system.solutions[system.numberOfSolutions].nonce = solution_nonce;
+                            system.solutions[system.numberOfSolutions].miningSeed = transaction->miningSeed;
+                            system.solutions[system.numberOfSolutions].nonce = transaction->nonce;
                             solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
                         }
 
@@ -2491,8 +2409,8 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                 unsigned int j;
                 for (j = 0; j < system.numberOfSolutions; j++)
                 {
-                    if (solution_nonce == system.solutions[j].nonce
-                        && solution_miningSeed == system.solutions[j].miningSeed
+                    if (transaction->nonce == system.solutions[j].nonce
+                        && transaction->miningSeed == system.solutions[j].miningSeed
                         && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
                     {
                         solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
@@ -2504,8 +2422,8 @@ static void processTickTransactionSolution(const Transaction* transaction, const
                     && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
                 {
                     system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
-                    system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
-                    system.solutions[system.numberOfSolutions].nonce = solution_nonce;
+                    system.solutions[system.numberOfSolutions].miningSeed = transaction->miningSeed;
+                    system.solutions[system.numberOfSolutions].nonce = transaction->nonce;
                     solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
                 }
 
@@ -2625,6 +2543,16 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
+                case MiningSolutionTransaction::transactionType():
+                {
+                    if (transaction->amount >= MiningSolutionTransaction::minAmount()
+                        && transaction->inputSize >= MiningSolutionTransaction::minInputSize())
+                    {
+                        processTickTransactionSolution((MiningSolutionTransaction*)transaction, processorNumber);
+                    }
+                }
+                break;
+
                 case OracleReplyCommitTransaction::transactionType():
                 {
                     if (computorIndex(transaction->sourcePublicKey) >= 0
@@ -2671,19 +2599,6 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     {
                         // Regular contract procedure invocation
                         moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
-                    }
-                }
-                else
-                {
-                    // Other transactions
-                    if (transaction->destinationPublicKey == arbitratorPublicKey)
-                    {
-                        if (!transaction->amount
-                            && transaction->inputSize == 64
-                            && !transaction->inputType)
-                        {
-                            processTickTransactionSolution(transaction, processorNumber);
-                        }
                     }
                 }
             }
@@ -2783,11 +2698,12 @@ static void processTick(unsigned long long processorNumber)
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     if (spectrumIndex >= 0)
                     {
-                        if (transaction->destinationPublicKey == arbitratorPublicKey)
+                        // Solution transactions
+                        if (isZero(transaction->destinationPublicKey)
+                            && transaction->amount >= MiningSolutionTransaction::minAmount()
+                            && transaction->inputType == MiningSolutionTransaction::transactionType())
                         {
-                            if (!transaction->amount
-                                && transaction->inputSize == 32 + 32
-                                && !transaction->inputType)
+                            if (transaction->inputSize == 32 + 32)
                             {
                                 const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
                                 const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
@@ -2895,13 +2811,13 @@ static void processTick(unsigned long long processorNumber)
                     broadcastedFutureTickData.tickData.epoch = system.epoch;
                     broadcastedFutureTickData.tickData.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
 
-                    broadcastedFutureTickData.tickData.millisecond = time.Nanosecond / 1000000;
-                    broadcastedFutureTickData.tickData.second = time.Second;
-                    broadcastedFutureTickData.tickData.minute = time.Minute;
-                    broadcastedFutureTickData.tickData.hour = time.Hour;
-                    broadcastedFutureTickData.tickData.day = time.Day;
-                    broadcastedFutureTickData.tickData.month = time.Month;
-                    broadcastedFutureTickData.tickData.year = time.Year - 2000;
+                    broadcastedFutureTickData.tickData.millisecond = utcTime.Nanosecond / 1000000;
+                    broadcastedFutureTickData.tickData.second = utcTime.Second;
+                    broadcastedFutureTickData.tickData.minute = utcTime.Minute;
+                    broadcastedFutureTickData.tickData.hour = utcTime.Hour;
+                    broadcastedFutureTickData.tickData.day = utcTime.Day;
+                    broadcastedFutureTickData.tickData.month = utcTime.Month;
+                    broadcastedFutureTickData.tickData.year = utcTime.Year - 2000;
 
                     m256i timelockPreimage[3];
                     static_assert(sizeof(timelockPreimage) == 3 * 32, "Unexpected array size");
@@ -2977,7 +2893,7 @@ static void processTick(unsigned long long processorNumber)
 
                     for (; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                     {
-                        broadcastedFutureTickData.tickData.transactionDigests[j] = _mm256_setzero_si256();
+                        broadcastedFutureTickData.tickData.transactionDigests[j] = m256i::zero();
                     }
 
                     bs->SetMem(broadcastedFutureTickData.tickData.contractFees, sizeof(broadcastedFutureTickData.tickData.contractFees), 0);
@@ -3005,7 +2921,7 @@ static void processTick(unsigned long long processorNumber)
             {
                 auto& payload = voteCounterPayload; // note: not thread-safe
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
-                payload.transaction.destinationPublicKey = _mm256_setzero_si256();
+                payload.transaction.destinationPublicKey = m256i::zero();
                 payload.transaction.amount = 0;
                 payload.transaction.tick = system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET;
                 payload.transaction.inputType = VOTE_COUNTER_INPUT_TYPE;
@@ -3021,32 +2937,37 @@ static void processTick(unsigned long long processorNumber)
 
     if (mainAuxStatus & 1)
     {
+        // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
         for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
         {
             int solutionIndexToPublish = -1;
 
+            // Select solution to publish as tx (and mark solutions as obsolete, whose mining seed does not match).
+            // Primarily, consider solutions of the computor i that were already selected for tx before.
             unsigned int j;
             for (j = 0; j < system.numberOfSolutions; j++)
             {
+                // solutionPublicationTicks[j] > 0 means the solution has already been selected for creating tx
+                // but has neither been RECORDED (successfully processed by tx) nor marked OBSOLETE (outdated mining seed)
                 if (solutionPublicationTicks[j] > 0
                     && system.solutions[j].computorPublicKey == computorPublicKeys[i])
                 {
+                    // Only consider this sol if the scheduled tick has passed already (tx not successful)
                     if (solutionPublicationTicks[j] <= (int)system.tick)
                     {
                         if (system.solutions[j].miningSeed == score->currentRandomSeed)
                         {
                             solutionIndexToPublish = j;
+                            break;
                         }
                         else
                         {
-                            // obsolete solution
                             solutionPublicationTicks[j] = SOLUTION_OBSOLETE_FLAG;
                         }
                     }
-
-                    break;
                 }
             }
+            // Secondarily, if no solution has been selected above, consider new solutions without previous tx
             if (j == system.numberOfSolutions)
             {
                 for (j = 0; j < system.numberOfSolutions; j++)
@@ -3054,15 +2975,29 @@ static void processTick(unsigned long long processorNumber)
                     if (!solutionPublicationTicks[j]
                         && system.solutions[j].computorPublicKey == computorPublicKeys[i])
                     {
-                        solutionIndexToPublish = j;
-
-                        break;
+                        if (system.solutions[j].miningSeed == score->currentRandomSeed)
+                        {
+                            solutionIndexToPublish = j;
+                            break;
+                        }
+                        else
+                        {
+                            solutionPublicationTicks[j] = SOLUTION_OBSOLETE_FLAG;
+                        }
                     }
                 }
             }
 
             if (solutionIndexToPublish >= 0)
             {
+                // Compute tick offset, when to publish solution
+                unsigned int publishingTickOffset = MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
+
+                // Do not publish, if the solution tx would end up after reset of mining seed, preventing loss of security deposit
+                if (getTickInMiningPhaseCycle() + publishingTickOffset >= INTERNAL_COMPUTATIONS_INTERVAL + 3)
+                    continue;
+
+                // Prepare, sign, and broadcast MiningSolutionTransaction
                 struct
                 {
                     Transaction transaction;
@@ -3072,12 +3007,10 @@ static void processTick(unsigned long long processorNumber)
                 } payload;
                 static_assert(sizeof(payload) == sizeof(Transaction) + 32 + 32 + SIGNATURE_SIZE, "Unexpected struct size!");
                 payload.transaction.sourcePublicKey = computorPublicKeys[i];
-                payload.transaction.destinationPublicKey = arbitratorPublicKey;
-                payload.transaction.amount = 0;
-                unsigned int random;
-                _rdrand32_step(&random);
-                solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET + random % MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
-                payload.transaction.inputType = 0;
+                payload.transaction.destinationPublicKey = m256i::zero();
+                payload.transaction.amount = MiningSolutionTransaction::minAmount();
+                solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + publishingTickOffset;
+                payload.transaction.inputType = MiningSolutionTransaction::transactionType();
                 payload.transaction.inputSize = sizeof(payload.miningSeed) + sizeof(payload.nonce);
                 payload.miningSeed = system.solutions[solutionIndexToPublish].miningSeed;
                 payload.nonce = system.solutions[solutionIndexToPublish].nonce;
@@ -3090,6 +3023,20 @@ static void processTick(unsigned long long processorNumber)
             }
         }
     }
+
+#ifndef NDEBUG
+    // Check that continous updating of spectrum info is consistent with counting from scratch
+    SpectrumInfo si;
+    updateSpectrumInfo(si);
+    if (si.numberOfEntities != spectrumInfo.numberOfEntities || si.totalAmount != spectrumInfo.totalAmount)
+    {
+        addDebugMessage(L"BUG DETECTED: Spectrum info of continuous updating is inconsistent with counting from scratch!");
+    }
+#endif
+
+    // Update entity category populations and dust thresholds each 8 ticks
+    if ((system.tick & 7) == 0)
+        updateAndAnalzeEntityCategoryPopulations();
 }
 
 static void beginEpoch()
@@ -3172,33 +3119,6 @@ static void beginEpoch()
 #endif
 }
 
-static struct
-{
-    unsigned long long logTxScore[676];
-    unsigned long long voteCountScore[676];
-} revenueScoreFile;
-// TODO: for testing purpose, will delete at epoch 111
-static bool saveRevenueScoreFile(CHAR16* directory = NULL)
-{
-    logToConsole(L"Saving revenue score file...");
-
-    const unsigned long long beginningTick = __rdtsc();
-
-    long long savedSize = save(REVENUE_FILE_NAME, sizeof(revenueScoreFile), (unsigned char*)(&revenueScoreFile), directory);
-
-    if (savedSize == sizeof(revenueScoreFile))
-    {
-        setNumber(message, savedSize, TRUE);
-        appendText(message, L" bytes of the revenue file are saved (");
-        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-        appendText(message, L" microseconds).");
-        logToConsole(message);
-        return true;
-    }
-    return false;
-}
-
-
 
 // called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
@@ -3230,7 +3150,7 @@ static void endEpoch()
             int issuanceIndex, ownershipIndex, possessionIndex;
             if (finalPrice)
             {
-                if (!issueAsset(_mm256_setzero_si256(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex))
+                if (!issueAsset(m256i::zero(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex))
                 {
                     finalPrice = 0;
                 }
@@ -3267,7 +3187,7 @@ static void endEpoch()
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                const QuTransfer quTransfer = { _mm256_setzero_si256() , releasedPublicKeys[i] , releasedAmounts[i] };
+                const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
             contractStateLock[contractIndex].releaseRead();
@@ -3287,17 +3207,8 @@ static void endEpoch()
     system.initialYear = etalonTick.year;
 
 
-    // Calculate current supply
-    unsigned long long currentSupply = 0;
-    ACQUIRE(spectrumLock);
-    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-    {
-        currentSupply += spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-    }
-    RELEASE(spectrumLock);
-
     // Only issue qus if the max supply is not yet reached
-    if (currentSupply + ISSUANCE_RATE <= MAX_SUPPLY)
+    if (spectrumInfo.totalAmount + ISSUANCE_RATE <= MAX_SUPPLY)
     {
         // Compute revenue scores of computors
         unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
@@ -3321,8 +3232,7 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
-#if 0
-        //TODO: temporarily disable this, will merge votecount to final rev score
+        // Merge votecount to final rev score
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
             unsigned long long vote_count = voteCounter.getVoteCount(i);
@@ -3343,18 +3253,6 @@ static void endEpoch()
                 revenueScore[i] = 0;
             }
         }
-#else
-        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-        {
-            revenueScoreFile.logTxScore[i] = revenueScore[i]; // log tx score
-            revenueScoreFile.voteCountScore[i] = voteCounter.getVoteCount(i); // vote count score
-        }
-        revenueScoreFileMustBeSaved = true;
-        while (revenueScoreFileMustBeSaved)
-        {
-            _mm_pause();
-        }
-#endif
 
         // Sort revenue scores to get lowest score of quorum
         unsigned long long sortedRevenueScore[QUORUM + 1];
@@ -3413,7 +3311,7 @@ static void endEpoch()
                     increaseEnergy(rdEntry.destinationPublicKey, donation);
                     if (revenue)
                     {
-                        const QuTransfer quTransfer = { _mm256_setzero_si256(), rdEntry.destinationPublicKey, donation };
+                        const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
                         logger.logQuTransfer(quTransfer);
                     }
                 }
@@ -3423,7 +3321,7 @@ static void endEpoch()
             increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
             if (revenue)
             {
-                const QuTransfer quTransfer = { _mm256_setzero_si256() , broadcastedComputors.computors.publicKeys[computorIndex] , revenue };
+                const QuTransfer quTransfer = { m256i::zero(), broadcastedComputors.computors.publicKeys[computorIndex], revenue };
                 logger.logQuTransfer(quTransfer);
             }
         }
@@ -3431,68 +3329,20 @@ static void endEpoch()
 
         // Generate arbitrator revenue
         increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
-        const QuTransfer quTransfer = { _mm256_setzero_si256() , arbitratorPublicKey , arbitratorRevenue };
+        const QuTransfer quTransfer = { m256i::zero(), arbitratorPublicKey, arbitratorRevenue };
         logger.logQuTransfer(quTransfer);
     }
 
-    // Reorganize spectrum hash map
+    // Reorganize spectrum hash map (also updates spectrumInfo)
     {
         ACQUIRE(spectrumLock);
 
-        ::Entity* reorgSpectrum = (::Entity*)reorgBuffer;
-        bs->SetMem(reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity), 0);
-        for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-        {
-            if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
-            {
-                unsigned int index = spectrum[i].publicKey.m256i_u32[0] & (SPECTRUM_CAPACITY - 1);
-
-            iteration:
-                if (isZero(reorgSpectrum[index].publicKey))
-                {
-                    bs->CopyMem(&reorgSpectrum[index], &spectrum[i], sizeof(::Entity));
-                }
-                else
-                {
-                    index = (index + 1) & (SPECTRUM_CAPACITY - 1);
-
-                    goto iteration;
-                }
-            }
-        }
-        bs->CopyMem(spectrum, reorgSpectrum, SPECTRUM_CAPACITY * sizeof(::Entity));
-
-        unsigned int digestIndex;
-        for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
-        {
-            KangarooTwelve64To32(&spectrum[digestIndex], &spectrumDigests[digestIndex]);
-        }
-        unsigned int previousLevelBeginning = 0;
-        unsigned int numberOfLeafs = SPECTRUM_CAPACITY;
-        while (numberOfLeafs > 1)
-        {
-            for (unsigned int i = 0; i < numberOfLeafs; i += 2)
-            {
-                KangarooTwelve64To32(&spectrumDigests[previousLevelBeginning + i], &spectrumDigests[digestIndex++]);
-            }
-
-            previousLevelBeginning += numberOfLeafs;
-            numberOfLeafs >>= 1;
-        }
-
-        numberOfEntities = 0;
-        for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-        {
-            if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
-            {
-                numberOfEntities++;
-            }
-        }
+        reorganizeSpectrum();
 
         RELEASE(spectrumLock);
     }
 
-    assetsEndEpoch(reorgBuffer);
+    assetsEndEpoch();
 
     system.epoch++;
     system.initialTick = system.tick;
@@ -3638,7 +3488,7 @@ static bool saveAllNodeStates()
     appendText(message, directory); appendText(message, L"/");
     appendText(message, SPECTRUM_FILE_NAME);
     logToConsole(message);
-    if (!saveSpectrum(directory))
+    if (!saveSpectrum(SPECTRUM_FILE_NAME, directory))
     {
         logToConsole(L"Failed to save spectrum");
         return false;
@@ -3784,7 +3634,7 @@ static bool loadAllNodeStates()
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
-    if (!loadSpectrum(directory))
+    if (!loadSpectrum(SPECTRUM_FILE_NAME, directory))
     {
         logToConsole(L"Failed to load spectrum");
         return false;
@@ -4020,7 +3870,7 @@ static void tickProcessor(void*)
                             || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
                         {
                             // Create empty tick
-                            targetNextTickDataDigest = _mm256_setzero_si256();
+                            targetNextTickDataDigest = m256i::zero();
                             targetNextTickDataDigestIsKnown = true;
                         }
                     }
@@ -4080,7 +3930,7 @@ static void tickProcessor(void*)
                             if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
                                 || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
                             {
-                                targetNextTickDataDigest = _mm256_setzero_si256();
+                                targetNextTickDataDigest = m256i::zero();
                                 targetNextTickDataDigestIsKnown = true;
                             }
                         }
@@ -4173,7 +4023,7 @@ static void tickProcessor(void*)
                     nextTickData.epoch = 0;
                     setMem(nextTickData.transactionDigests, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
                     // first and second tick of an epoch are always empty tick
-                    targetNextTickDataDigest = _mm256_setzero_si256();
+                    targetNextTickDataDigest = m256i::zero();
                     targetNextTickDataDigestIsKnown = true;
                     tickDataSuits = true;
                 }
@@ -4360,7 +4210,7 @@ static void tickProcessor(void*)
                         }
                         else
                         {
-                            etalonTick.transactionDigest = _mm256_setzero_si256();
+                            etalonTick.transactionDigest = m256i::zero();
                         }
 
                         if (nextTickData.epoch == system.epoch)
@@ -4372,7 +4222,7 @@ static void tickProcessor(void*)
                         }
                         else
                         {
-                            etalonTick.expectedNextTickTransactionDigest = _mm256_setzero_si256();
+                            etalonTick.expectedNextTickTransactionDigest = m256i::zero();
                         }
 
                         if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
@@ -4507,7 +4357,7 @@ static void tickProcessor(void*)
 
                                 if (forceNextTick)
                                 {
-                                    targetNextTickDataDigest = _mm256_setzero_si256();
+                                    targetNextTickDataDigest = m256i::zero();
                                     targetNextTickDataDigestIsKnown = true;
                                 }
                             }
@@ -4736,41 +4586,6 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
     contractProcessorState = 0;
 }
 
-static bool loadSpectrum(CHAR16* directory)
-{
-    logToConsole(L"Loading spectrum file ...");
-    long long loadedSize = load(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
-    if (loadedSize != SPECTRUM_CAPACITY * sizeof(::Entity))
-    {
-        logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
-
-        return false;
-    }
-    return true;
-}
-
-static bool saveSpectrum(CHAR16* directory)
-{
-    logToConsole(L"Saving spectrum file...");
-
-    const unsigned long long beginningTick = __rdtsc();
-
-    ACQUIRE(spectrumLock);
-    long long savedSize = save(SPECTRUM_FILE_NAME, SPECTRUM_CAPACITY * sizeof(::Entity), (unsigned char*)spectrum, directory);
-    RELEASE(spectrumLock);
-
-    if (savedSize == SPECTRUM_CAPACITY * sizeof(::Entity))
-    {
-        setNumber(message, savedSize, TRUE);
-        appendText(message, L" bytes of the spectrum data are saved (");
-        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-        appendText(message, L" microseconds).");
-        logToConsole(message);
-        return true;
-    }
-    return false;
-}
-
 // directory: source directory to load the file. Default: NULL - load from root dir /
 // forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
 static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
@@ -4868,8 +4683,10 @@ static bool initialize()
 {
     enableAVX();
 
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
     initAVX512KangarooTwelveConstants();
+#endif
+#if defined (__AVX512F__)
     initAVX512FourQConstants();
 #endif
 
@@ -4953,26 +4770,13 @@ static bool initialize()
 
             return false;
         }
-
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset), (void**)&reorgBuffer))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * sizeof(::Entity) >= ASSETS_CAPACITY * sizeof(Asset) ? SPECTRUM_CAPACITY * sizeof(::Entity) : ASSETS_CAPACITY * sizeof(Asset));
-
-            return false;
-        }
-
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * sizeof(::Entity), (void**)&spectrum))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * sizeof(::Entity));
-            return false;
-        }
-        else if (status = bs->AllocatePool(EfiRuntimeServicesData, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL, (void**)&spectrumDigests))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, (SPECTRUM_CAPACITY * 2 - 1) * 32ULL);
-
-            return false;
-        }
         bs->SetMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
+
+        if (!initSpectrum())
+            return false;
+
+        if (!initCommonBuffers())
+            return false;
 
         if (!initAssets())
             return false;
@@ -5089,22 +4893,12 @@ static bool initialize()
                 logToConsole(message);
 
                 CHAR16 digestChars[60 + 1];
-                unsigned long long totalAmount = 0;
-
                 getIdentity((unsigned char*)&spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1], digestChars, true);
+                updateSpectrumInfo();
 
-                for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-                {
-                    if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
-                    {
-                        numberOfEntities++;
-                        totalAmount += spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-                    }
-                }
-
-                setNumber(message, totalAmount, TRUE);
+                setNumber(message, spectrumInfo.totalAmount, TRUE);
                 appendText(message, L" qus in ");
-                appendNumber(message, numberOfEntities, TRUE);
+                appendNumber(message, spectrumInfo.numberOfEntities, TRUE);
                 appendText(message, L" entities (digest = ");
                 appendText(message, digestChars);
                 appendText(message, L").");
@@ -5266,21 +5060,9 @@ static void deinitialize()
         root->Close(root);
     }
 
-    if (spectrumDigests)
-    {
-        bs->FreePool(spectrumDigests);
-    }
-    if (spectrum)
-    {
-        bs->FreePool(spectrum);
-    }
-
     deinitAssets();
-
-    if (reorgBuffer)
-    {
-        bs->FreePool(reorgBuffer);
-    }
+    deinitSpectrum();
+    deinitCommonBuffers();
 
     logger.deinitLogging();
 
@@ -5571,7 +5353,13 @@ static void logInfo()
     appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
     appendText(message, L" ms | Solution process time = ");
     appendNumber(message, solutionTotalExecutionTicks * 1000 / frequency, TRUE);
+    appendText(message, L" ms | Spectrum reorg time = ");
+    appendNumber(message, spectrumReorgTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms.");
+    logToConsole(message);
+
+    setText(message, L"Entity balance dust threshold: ");
+    appendNumber(message, (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf, TRUE);
     logToConsole(message);
 }
 
@@ -5589,8 +5377,8 @@ static void logHealthStatus()
     for (int i = 0; i < nTickProcessorIDs; i++)
     {
         unsigned long long tid = tickProcessorIDs[i];
-        long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
-            + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+        long long diffInSecond = 86400 * (utcTime.Day - threadTimeCheckin[tid].day) + 3600 * (utcTime.Hour - threadTimeCheckin[tid].hour)
+            + 60 * (utcTime.Minute - threadTimeCheckin[tid].minute) + (utcTime.Second - threadTimeCheckin[tid].second);
         if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
         {
             allThreadsAreGood = false;
@@ -5603,8 +5391,8 @@ static void logHealthStatus()
     for (int i = 0; i < nRequestProcessorIDs; i++)
     {
         unsigned long long tid = requestProcessorIDs[i];
-        long long diffInSecond = 86400 * (time.Day - threadTimeCheckin[tid].day) + 3600 * (time.Hour - threadTimeCheckin[tid].hour)
-            + 60 * (time.Minute - threadTimeCheckin[tid].minute) + (time.Second - threadTimeCheckin[tid].second);
+        long long diffInSecond = 86400 * (utcTime.Day - threadTimeCheckin[tid].day) + 3600 * (utcTime.Hour - threadTimeCheckin[tid].hour)
+            + 60 * (utcTime.Minute - threadTimeCheckin[tid].minute) + (utcTime.Second - threadTimeCheckin[tid].second);
         if (diffInSecond > 120) // if they don't check in in 2 minutes, we can assume the thread is already crashed
         {
             allThreadsAreGood = false;
@@ -5789,21 +5577,11 @@ static void processKeyPresses()
             logToConsole(message);
 
             CHAR16 digestChars[60 + 1];
-
             getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
-            unsigned int numberOfEntities = 0;
-            unsigned long long totalAmount = 0;
-            for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-            {
-                if (energy(i))
-                {
-                    numberOfEntities++;
-                    totalAmount += energy(i);
-                }
-            }
-            setNumber(message, totalAmount, TRUE);
+
+            setNumber(message, spectrumInfo.totalAmount, TRUE);
             appendText(message, L" qus in ");
-            appendNumber(message, numberOfEntities, TRUE);
+            appendNumber(message, spectrumInfo.numberOfEntities, TRUE);
             appendText(message, L" entities (digest = ");
             appendText(message, digestChars);
             appendText(message, L"); ");
@@ -5856,6 +5634,17 @@ static void processKeyPresses()
             logToConsole(message);
 
             logHealthStatus();
+
+
+            setText(message, L"Average K12 duration for  ");
+#if defined (__AVX512F__) && !GENERIC_K12
+            appendText(message, L"AVX512 implementation is ");
+#else
+            appendText(message, L"Generic implementation is ");
+#endif
+            appendNumber(message, K12MeasurementsSum/ K12GlobalIndex, TRUE);
+            appendText(message, L" ticks.");
+            logToConsole(message);
         }
         break;
 
@@ -6184,8 +5973,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             // TODO: remove later
             unsigned long long debugDigestOriginal = 0, debugDigestCurrent = 0;
             unsigned int debugTick = 0;
-            KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
 
+            KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
 
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
@@ -6445,13 +6234,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     saveComputer();
                     computerMustBeSaved = false;
-                }
-
-                // TODO: for testing purpose, will delete at epoch 111
-                if (revenueScoreFileMustBeSaved)
-                {
-                    saveRevenueScoreFile();
-                    revenueScoreFileMustBeSaved = false;
                 }
 
                 if (forceRefreshPeerList)
