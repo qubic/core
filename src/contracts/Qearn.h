@@ -395,6 +395,16 @@ private:
             }
             return ;                        // overflow users in Qearn
         }
+        
+        if(qpi.invocationReward() > QEARN_MAX_LOCK_AMOUNT)
+        {
+            output.returnCode = QEARN_LIMIT_LOCK;
+            if(qpi.invocationReward() > 0) 
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
 
         locals.newLocker.ID = qpi.invocator();
         locals.newLocker._Locked_Amount = qpi.invocationReward();
@@ -787,6 +797,8 @@ private:
                     locals.empty_cnt++;
                 }
 
+                if(locals.st > locals.en) break;
+
                 locals.INITIALIZE_USER.ID = state.Locker.get(locals.en).ID;
                 locals.INITIALIZE_USER._Locked_Amount = state.Locker.get(locals.en)._Locked_Amount;
                 locals.INITIALIZE_USER._Locked_Epoch = state.Locker.get(locals.en)._Locked_Epoch;
@@ -804,24 +816,31 @@ private:
                 locals.empty_cnt++;
             }
 
-            if(locals.st == locals.en)
+            if(locals.st == locals.en && !state.Locker.get(locals.st)._Locked_Amount)
             {
                 locals.empty_cnt++;
             }
 
-            locals.tmpEpochIndex.startIndex = state.EpochIndex.get(locals._t).startIndex;
+            if(locals._t == locals.startEpoch) 
+            {
+                locals.tmpEpochIndex.startIndex = 0;
+            }
+            else 
+            {
+                locals.tmpEpochIndex.startIndex = state.EpochIndex.get(locals._t).startIndex;
+            }
             locals.tmpEpochIndex.endIndex = state.EpochIndex.get(locals._t).endIndex - locals.empty_cnt;
 
             state.EpochIndex.set(locals._t, locals.tmpEpochIndex);
 
-            locals.tmpEpochIndex.startIndex = state.EpochIndex.get(locals._t).endIndex - locals.empty_cnt;
+            locals.tmpEpochIndex.startIndex = locals.tmpEpochIndex.endIndex;
             locals.tmpEpochIndex.endIndex = state.EpochIndex.get(locals._t + 1).endIndex;
 
             state.EpochIndex.set(locals._t + 1, locals.tmpEpochIndex);
             
         }
 
-        locals.tmpEpochIndex.startIndex = state.EpochIndex.get(qpi.epoch()).endIndex - locals.empty_cnt;
+        locals.tmpEpochIndex.startIndex = state.EpochIndex.get(qpi.epoch() + 1).startIndex;
         locals.tmpEpochIndex.endIndex = locals.tmpEpochIndex.startIndex;
 
         state.EpochIndex.set(qpi.epoch() + 1, locals.tmpEpochIndex);
