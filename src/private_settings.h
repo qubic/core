@@ -24,8 +24,8 @@ static const unsigned char whiteListPeers[][4] = {
 
 #define LOG_QU_TRANSFERS 0 // "0" disables logging, "1" enables it
 #define LOG_BURNINGS 0
-#define LOG_DUST_BURNINGS 1
-#define LOG_SPECTRUM_STATS 1
+#define LOG_DUST_BURNINGS 0
+#define LOG_SPECTRUM_STATS 0
 #define LOG_ASSET_ISSUANCES 0
 #define LOG_ASSET_OWNERSHIP_CHANGES 0
 #define LOG_ASSET_POSSESSION_CHANGES 0
