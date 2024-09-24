@@ -185,6 +185,9 @@
     <ClInclude Include="platform\assert.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="contract_core\qpi_hash_map_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
