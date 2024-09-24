@@ -312,7 +312,8 @@ namespace QPI
 
 
 	// Hash function class to be used with the hash map.
-	template <typename KeyT> class HashFunction {
+	template <typename KeyT> class HashFunction 
+	{
 	public:
 		static uint64 hash(const KeyT& key);
 	};

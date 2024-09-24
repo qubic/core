@@ -12,7 +12,8 @@
 namespace QPI
 {
 	template <typename KeyT>
-	uint64 HashFunction<KeyT>::hash(const KeyT& key) {
+	uint64 HashFunction<KeyT>::hash(const KeyT& key) 
+	{
 		uint64 ret;
 		KangarooTwelve(&key, sizeof(KeyT), &ret, 8);
 		return ret;
@@ -20,7 +21,8 @@ namespace QPI
 
 	// For performance reasons, we use the first 8 bytes as hash for m256i/id types.
 	template <>
-	uint64 HashFunction<m256i>::hash(const m256i& key) {
+	uint64 HashFunction<m256i>::hash(const m256i& key) 
+	{
 		return key.u64._0;
 	}
 
@@ -37,9 +39,11 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	bool HashMap<KeyT, ValueT, L, HashFunc>::get(const KeyT& key, ValueT& value) const {
+	bool HashMap<KeyT, ValueT, L, HashFunc>::get(const KeyT& key, ValueT& value) const 
+	{
 		sint64 elementIndex = getElementIndex(key);
-		if (elementIndex != NULL_INDEX) {
+		if (elementIndex != NULL_INDEX) 
+		{
 			value = _elements[elementIndex].value;
 			return true;
 		}
@@ -141,24 +145,32 @@ namespace QPI
 	void HashMap<KeyT, ValueT, L, HashFunc>::removeByIndex(sint64 elementIdx)
 	{
 		elementIdx &= (L - 1);
-		_population--;
-		_markRemovalCounter++;
-		_occupationFlags[elementIdx >> 5] ^= (3ULL << ((elementIdx & 31) << 1));
+		uint64 flags = _getEncodedOccupationFlags(_occupationFlags, elementIdx);
 
-		const bool CLEAR_UNUSED_ELEMENT = true;
-		if (CLEAR_UNUSED_ELEMENT)
+		if ((flags & 3ULL) == 1)
 		{
-			setMem(&_elements[elementIdx], sizeof(Element), 0);
+			_population--;
+			_markRemovalCounter++;
+			_occupationFlags[elementIdx >> 5] ^= (3ULL << ((elementIdx & 31) << 1));
+
+			const bool CLEAR_UNUSED_ELEMENT = true;
+			if (CLEAR_UNUSED_ELEMENT)
+			{
+				setMem(&_elements[elementIdx], sizeof(Element), 0);
+			}
 		}
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	sint64 HashMap<KeyT, ValueT, L, HashFunc>::removeByKey(const KeyT& key) {
+	sint64 HashMap<KeyT, ValueT, L, HashFunc>::removeByKey(const KeyT& key) 
+	{
 		sint64 elementIndex = getElementIndex(key);
-		if (elementIndex == NULL_INDEX) {
+		if (elementIndex == NULL_INDEX) 
+		{
 			return NULL_INDEX;
 		}
-		else {
+		else 
+		{
 			removeByIndex(elementIndex);
 			return elementIndex;
 		}
@@ -258,7 +270,8 @@ namespace QPI
 	bool HashMap<KeyT, ValueT, L, HashFunc>::replace(const KeyT& key, const ValueT& newValue)
 	{
 		sint64 elementIndex = getElementIndex(key);
-		if (elementIndex != NULL_INDEX) {
+		if (elementIndex != NULL_INDEX) 
+		{
 			_elements[elementIndex].value = newValue;
 			return true;
 		}
