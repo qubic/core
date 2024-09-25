@@ -723,7 +723,7 @@ namespace QPI
 		}
 
 		// Check if given type is valid (supported by most comprehensive ProposalData class).
-		static bool isValid(uint16 proposalType);
+		inline static bool isValid(uint16 proposalType);
 	};
 
 	// Proposal data struct for all types of proposals defined in August 2024.
@@ -1069,6 +1069,7 @@ namespace QPI
 			const m256i& invocator,
 			long long invocationReward
 		) {
+			ASSERT(invocationReward >= 0);
 			_currentContractIndex = contractIndex;
 			_currentContractId = m256i(contractIndex, 0, 0, 0);
 			_originator = originator;
@@ -1109,7 +1110,7 @@ namespace QPI
 			uint8 day
 		) const; // [0..6]
 
-		uint16 epoch(
+		inline uint16 epoch(
 		) const; // [0..9'999]
 
 		bit getEntity(
@@ -1168,7 +1169,7 @@ namespace QPI
 			const array<sint8, 64>& signature
 		) const;
 
-		uint32 tick(
+		inline uint32 tick(
 		) const; // [0..999'999'999]
 
 		uint8 year(

@@ -122,7 +122,7 @@ namespace QPI
 	};
 
 	// Check if given type is valid (supported by most comprehensive ProposalData class).
-	bool ProposalTypes::isValid(uint16 proposalType)
+	inline bool ProposalTypes::isValid(uint16 proposalType)
 	{
 		bool valid = false;
 		uint16 cls = ProposalTypes::cls(proposalType);

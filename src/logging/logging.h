@@ -633,7 +633,7 @@ public:
     static void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header);
 };
 
-qLogger logger;
+static qLogger logger;
 
 // For smartcontract logging
 template <typename T> void __logContractDebugMessage(unsigned int size, T& msg)

@@ -32,3 +32,8 @@ static void deinitCommonBuffers()
         freePool(reorgBuffer);
     }
 }
+
+static void* __scratchpad()
+{
+    return reorgBuffer;
+}
