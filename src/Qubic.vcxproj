@@ -38,9 +38,11 @@
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
+    <ClInclude Include="contract_core\qpi_hash_map_impl.h" />
     <ClInclude Include="contract_core\qpi_trivial_impl.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
     <ClInclude Include="contract_core\qpi_proposal_voting.h" />
+    <ClInclude Include="files\files.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="logging\net_msg_impl.h" />
     <ClInclude Include="mining\mining.h" />

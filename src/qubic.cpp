@@ -50,6 +50,7 @@
 
 #include "addons/tx_status_request.h"
 
+#include "files/files.h"
 #include "mining/mining.h"
 #include "oracles/oracle_machines.h"
 
@@ -93,8 +94,6 @@ static volatile bool forceNextTick = false;
 static volatile bool forceSwitchEpoch = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
-
-static volatile bool revenueScoreFileMustBeSaved = false;
 
 static int misalignedState = 0;
 
@@ -2286,6 +2285,28 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
+static void processTickTransactionFileHeader(const FileHeaderTransaction* transaction)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(transaction->tick == system.tick);
+
+    // TODO
+}
+
+static void processTickTransactionFileFragment(const FileFragmentTransactionPrefix* transactionPrefix, const FileFragmentTransactionPostfix* transactionPostfix)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(transaction->tick == system.tick);
+
+    // TODO
+}
+
 static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
 {
     ASSERT(nextTickData.epoch == system.epoch);
@@ -2348,6 +2369,26 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                         {
                             voteCounter.addVotes(transaction->inputPtr(), computorIndex);
                         }
+                    }
+                }
+                break;
+
+                case FileHeaderTransaction::transactionType():
+                {
+                    if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
+                        && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
+                    {
+                        processTickTransactionFileHeader((FileHeaderTransaction*)transaction);
+                    }
+                }
+                break;
+
+                case FileFragmentTransactionPrefix::transactionType():
+                {
+                    if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
+                        && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
+                    {
+                        processTickTransactionFileFragment((FileFragmentTransactionPrefix*)transaction, (FileFragmentTransactionPostfix*)(((char*)transaction) + sizeof(Transaction) + transaction->inputSize));
                     }
                 }
                 break;
@@ -2928,33 +2969,6 @@ static void beginEpoch()
 #endif
 }
 
-static struct
-{
-    unsigned long long logTxScore[676];
-    unsigned long long voteCountScore[676];
-} revenueScoreFile;
-// TODO: for testing purpose, will delete at epoch 111
-static bool saveRevenueScoreFile(CHAR16* directory = NULL)
-{
-    logToConsole(L"Saving revenue score file...");
-
-    const unsigned long long beginningTick = __rdtsc();
-
-    long long savedSize = save(REVENUE_FILE_NAME, sizeof(revenueScoreFile), (unsigned char*)(&revenueScoreFile), directory);
-
-    if (savedSize == sizeof(revenueScoreFile))
-    {
-        setNumber(message, savedSize, TRUE);
-        appendText(message, L" bytes of the revenue file are saved (");
-        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-        appendText(message, L" microseconds).");
-        logToConsole(message);
-        return true;
-    }
-    return false;
-}
-
-
 
 // called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
@@ -3068,8 +3082,7 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
-#if 0
-        //TODO: temporarily disable this, will merge votecount to final rev score
+        // Merge votecount to final rev score
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
             unsigned long long vote_count = voteCounter.getVoteCount(i);
@@ -3090,18 +3103,6 @@ static void endEpoch()
                 revenueScore[i] = 0;
             }
         }
-#else
-        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-        {
-            revenueScoreFile.logTxScore[i] = revenueScore[i]; // log tx score
-            revenueScoreFile.voteCountScore[i] = voteCounter.getVoteCount(i); // vote count score
-        }
-        revenueScoreFileMustBeSaved = true;
-        while (revenueScoreFileMustBeSaved)
-        {
-            _mm_pause();
-        }
-#endif
 
         // Sort revenue scores to get lowest score of quorum
         unsigned long long sortedRevenueScore[QUORUM + 1];
@@ -6061,13 +6062,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     saveComputer();
                     computerMustBeSaved = false;
-                }
-
-                // TODO: for testing purpose, will delete at epoch 111
-                if (revenueScoreFileMustBeSaved)
-                {
-                    saveRevenueScoreFile();
-                    revenueScoreFileMustBeSaved = false;
                 }
 
                 if (forceRefreshPeerList)
