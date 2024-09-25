@@ -2299,10 +2299,11 @@ static void processTickTransactionFileHeader(const FileHeaderTransaction* transa
 static void processTickTransactionFileFragment(const FileFragmentTransactionPrefix* transactionPrefix, const FileFragmentTransactionPostfix* transactionPostfix)
 {
     ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->tick == system.tick);
+    ASSERT(transactionPrefix != nullptr);
+    ASSERT(transactionPostfix != nullptr);
+    ASSERT(transactionPrefix->checkValidity());
+    ASSERT(isZero(transactionPrefix->destinationPublicKey));
+    ASSERT(transactionPrefix->tick == system.tick);
 
     // TODO
 }
