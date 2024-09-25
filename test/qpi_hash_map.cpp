@@ -173,7 +173,7 @@ TYPED_TEST_P(QPIHashMapTest, TestSet)
 	QPI::sint64 returnedIndex = hashMap.set(ids[0], values[0]);
 	EXPECT_EQ(hashMap.population(), 1);
 	EXPECT_GE(returnedIndex, 0);
-	EXPECT_LT(returnedIndex, capacity);
+	EXPECT_LT(QPI::uint64(returnedIndex), capacity);
 
 	// Set with existing key should overwrite the value.
 	EXPECT_EQ(hashMap.set(ids[0], 42), returnedIndex);
@@ -312,7 +312,7 @@ TEST(NonTypedQPIHashMapTest, TestCleanupLargeMapSameHashes)
 	{
 		// Add 64 elements with different keys but same hash.
 		// The hash for QPI::id is the first 8 bytes.
-		hashMap.set({ 3478, i, i + 1, i + 2 }, i * 2 + 7);
+		hashMap.set({ 3478, i, i + 1, i + 2 }, int(i * 2 + 7));
 	}
 	hashMap.removeByKey({ 3478, 63, 64, 65 });
 
