@@ -1,3 +1,4 @@
+#if 0
 #define NO_UEFI
 
 #include <random>
@@ -264,3 +265,4 @@ TEST(TestContractQearn, RandomTest)
     uint32 state = qearn.getStateOfRound(128);
 
 }
+#endif

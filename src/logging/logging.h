@@ -230,7 +230,9 @@ struct SpectrumStats
 /*
  * LOGGING IMPLEMENTATION
  */
+#ifndef LOG_BUFFER_SIZE
 #define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
+#endif
 #define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
 #define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
 #define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
