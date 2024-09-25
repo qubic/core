@@ -37,7 +37,7 @@ public:
 
         for (const auto& epochAndTotal : epochTotalLocked)
         {
-            const QEARN::RoundInfo& currentRoundInfo = _InitialRoundInfo.get(epochAndTotal.first);
+            const QEARN::RoundInfo& currentRoundInfo = _CurrentRoundInfo.get(epochAndTotal.first);
             EXPECT_EQ(currentRoundInfo._Total_Locked_Amount, epochAndTotal.second);
             std::cout << "Total locked amount in epoch " << epochAndTotal.first << " = " << epochAndTotal.second << std::endl;
         }
@@ -145,7 +145,7 @@ public:
         return output.returnCode;
     }
 
-    sint32 unlock(const id& user, long long amount, uint16 lockedEpoch)
+    sint32 unlock(const id& user, long long amount, uint32 lockedEpoch)
     {
         QEARN::Unlock_input input;
         input.Amount = amount;
@@ -224,11 +224,39 @@ TEST(TestContractQearn, RandomTest)
             }
         }
 
-        // TODO: random unlocking in current and prior epochs
+        for (const auto& user : lockUsers)
+        {
+            for(uint32 LockedEpoch = system.epoch ; LockedEpoch > system.epoch - 52; LockedEpoch--) 
+            {
+                // get old amount and random amount for unlocking
+                uint64 amountBefore = qearn.getUserLockedInfor(LockedEpoch, user);
+                uint64 amountUnLock = random(1000000000);
+
+                // call Unlock prcoedure
+                uint32 retCode = qearn.unlock(user, amountUnLock, LockedEpoch);
+
+                // check amount
+                uint64 amountAfter = qearn.getUserLockedInfor(LockedEpoch, user);
+                if (retCode == QEARN_UNLOCK_SUCCESS)
+                {
+                    if(amountBefore - amountUnLock < 10000000)
+                    {
+                        EXPECT_EQ(amountAfter, 0);
+                    }
+                    else 
+                    {
+                        EXPECT_EQ(amountBefore, amountAfter + amountUnLock);
+                    }
+                }
+                else
+                {
+                    EXPECT_EQ(amountAfter, amountBefore);
+                }
+            }
+        }
 
         qearn.getState()->checkLockerArray();
 
-        // this messes up the locker array state at the moment, please fix the bugs
         qearn.endEpoch();
 
         qearn.getState()->checkLockerArray();

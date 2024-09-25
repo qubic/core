@@ -5,7 +5,7 @@ constexpr uint64 QEARN_MAX_LOCKS = 4194304;
 constexpr uint64 QEARN_MAX_EPOCHS = 4096;
 constexpr uint64 QEARN_MAX_USERS = 131072;
 constexpr uint64 QEARN_MAX_LOCK_AMOUNT = 1000000000000ULL;
-constexpr uint64 QEARN_INITIAL_EPOCH = 999;                             //  we need to change this epoch when merging
+constexpr uint64 QEARN_INITIAL_EPOCH = 127;                             //  we need to change this epoch when merging
 
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_4_7 = 5;
@@ -157,7 +157,7 @@ public:
         sint32 returnCode;
     };
 
-private:
+protected:
 
     struct RoundInfo {
 
@@ -589,9 +589,18 @@ private:
 
         state._CurrentRoundInfo.set(input.Locked_Epoch, locals.updatedRoundInfo);
 
-        locals.updatedUserInfo.ID = qpi.invocator();
-        locals.updatedUserInfo._Locked_Amount = state.Locker.get(locals.indexOfinvocator)._Locked_Amount - locals.AmountOfUnlocking;
-        locals.updatedUserInfo._Locked_Epoch = state.Locker.get(locals.indexOfinvocator)._Locked_Epoch;
+        if(state.Locker.get(locals.indexOfinvocator)._Locked_Amount == locals.AmountOfUnlocking)
+        {
+            locals.updatedUserInfo.ID = NULL_ID;
+            locals.updatedUserInfo._Locked_Amount = 0;
+            locals.updatedUserInfo._Locked_Epoch = 0;
+        }
+        else 
+        {
+            locals.updatedUserInfo.ID = qpi.invocator();
+            locals.updatedUserInfo._Locked_Amount = state.Locker.get(locals.indexOfinvocator)._Locked_Amount - locals.AmountOfUnlocking;
+            locals.updatedUserInfo._Locked_Epoch = state.Locker.get(locals.indexOfinvocator)._Locked_Epoch;
+        }
 
         state.Locker.set(locals.indexOfinvocator, locals.updatedUserInfo);
 
