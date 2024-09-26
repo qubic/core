@@ -7,25 +7,13 @@
 // workaround for name clash with stdlib
 #define system qubicSystemStruct
 
-namespace QPI
-{
-    struct QpiContextProcedureCall;
-    struct QpiContextFunctionCall;
-}
-typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
-typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
+#include "contract_core/contract_def.h"
+#include "contract_core/contract_exec.h"
 
-#include "../src/contracts/qpi.h"
 #include "../src/contract_core/qpi_trivial_impl.h"
 #include "../src/contract_core/qpi_proposal_voting.h"
 #include "../src/contract_core/qpi_system_impl.h"
 
-struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
-{
-    QpiContextUserProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QPI::QpiContextProcedureCall(contractIndex, originator, invocationReward)
-    {
-    }
-};
 
 // changing offset simulates changed computor set with changed epoch
 static int computorIdOffset = 0;

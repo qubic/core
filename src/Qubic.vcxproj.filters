@@ -41,7 +41,6 @@
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="system.h" />
-    <ClInclude Include="assets.h" />
     <ClInclude Include="network_messages\assets.h">
       <Filter>network_messages</Filter>
     </ClInclude>
@@ -194,6 +193,15 @@
     <ClInclude Include="contract_core\qpi_hash_map_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="contract_core\qpi_asset_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="assets\net_msg_impl.h">
+      <Filter>assets</Filter>
+    </ClInclude>
+    <ClInclude Include="assets\assets.h">
+      <Filter>assets</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -225,6 +233,9 @@
     </Filter>
     <Filter Include="logging">
       <UniqueIdentifier>{d334594b-f24d-440e-949a-c791aa13f867}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="assets">
+      <UniqueIdentifier>{c1da3a12-d369-44a1-82b3-73e125ac20ed}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

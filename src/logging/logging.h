@@ -4,7 +4,7 @@
 #include "platform/concurrency.h"
 #include "platform/time.h"
 #include "platform/memory.h"
-#include "platform/assert.h"
+#include "platform/debugging.h"
 
 #include "network_messages/header.h"
 

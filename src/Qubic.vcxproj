@@ -19,7 +19,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="addons\tx_status_request.h" />
-    <ClInclude Include="assets.h" />
+    <ClInclude Include="assets\assets.h" />
+    <ClInclude Include="assets\net_msg_impl.h" />
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
@@ -35,6 +36,7 @@
     <ClInclude Include="contract_core\contract_action_tracker.h" />
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
+    <ClInclude Include="contract_core\qpi_asset_impl.h" />
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
