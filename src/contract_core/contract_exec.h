@@ -32,7 +32,7 @@ enum ContractError
 
 // Used to store: locals and for first invocation level also input and output
 typedef StackBuffer<unsigned int, 32 * 1024 * 1024> ContractLocalsStack;
-ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
+static ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
 static volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
 static volatile long contractLocalsStackLockWaitingCount = 0;
 static long contractLocalsStackLockWaitingCountMax = 0;
@@ -50,7 +50,7 @@ static unsigned long long* contractStateChangeFlags = NULL;
 static ContractActionTracker<1024> contractActionTracker;
 
 
-bool initContractExec()
+static bool initContractExec()
 {
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
@@ -90,7 +90,7 @@ bool initContractExec()
 
 // Acquire lock of an currently unused stack (may block if all in use)
 // stacksToIgnore > 0 can be passed by low priority tasks to keep some stacks reserved for high prio purposes.
-void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
+static void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
 {
     static_assert(NUMBER_OF_CONTRACT_EXECUTION_BUFFERS >= 2, "NUMBER_OF_CONTRACT_EXECUTION_BUFFERS should be at least 2.");
     ASSERT(stackIdx < 0);
@@ -120,7 +120,7 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
 }
 
 // Release locked stack (and reset stackIdx)
-void releaseContractLocalsStack(int& stackIdx)
+static void releaseContractLocalsStack(int& stackIdx)
 {
     ASSERT(stackIdx >= 0);
     ASSERT(stackIdx < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
