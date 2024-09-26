@@ -128,7 +128,7 @@ static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigne
 
 void runCommonTests()
 {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
     initAVX512KangarooTwelveConstants();
 #endif
     constexpr unsigned long long numberOfGeneratedSetting = sizeof(score_params::kSettings) / sizeof(score_params::kSettings[0]);
