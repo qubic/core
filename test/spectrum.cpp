@@ -12,8 +12,8 @@
 #define LOG_DUST_BURNINGS 1
 #define LOG_SPECTRUM_STATS 1
 
-// reduced size of logging buffer (256 MB instead of 8 GB)
-#define LOG_BUFFER_SIZE 268435456ULL
+// reduced size of logging buffer (512 MB instead of 8 GB)
+#define LOG_BUFFER_SIZE (2*268435456ULL)
 
 // also reduce size of logging tx index by reducing maximum number of ticks per epoch
 #include "../src/public_settings.h"
