@@ -161,7 +161,7 @@ public:
 		sint64 removedNumberOfShares;
 	};
 
-private:
+protected:
 	uint64 _earnedAmount;
 	uint64 _distributedAmount;
 	uint64 _burnedAmount;

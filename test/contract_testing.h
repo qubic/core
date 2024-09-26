@@ -9,6 +9,7 @@
 #include "contract_core/contract_exec.h"
 
 #include "contract_core/qpi_spectrum_impl.h"
+#include "contract_core/qpi_asset_impl.h"
 #include "contract_core/qpi_system_impl.h"
 
 
@@ -26,6 +27,7 @@ public:
 
     ~ContractTesting()
     {
+        deinitAssets();
         deinitSpectrum();
         deinitCommonBuffers();
         for (unsigned int i = 0; i < contractCount; ++i)
@@ -44,6 +46,12 @@ public:
         initSpectrum();
         memset(spectrum, 0, spectrumSizeInBytes);
         updateSpectrumInfo();
+    }
+
+    void initEmptyUniverse()
+    {
+        initAssets();
+        memset(assets, 0, universeSizeInBytes);
     }
 
     template <typename InputType, typename OutputType>
@@ -111,4 +119,15 @@ public:
     contractStates[contractIndex] = (unsigned char*)malloc(size); \
     setMem(contractStates[contractIndex], size, 0); \
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName); \
+}
+
+std::ostream& operator<<(std::ostream& s, const id& v)
+{
+    CHAR16 identityWchar[61];
+    char identityChar[61];
+    getIdentity(v.m256i_u8, identityWchar, false);
+    size_t size;
+    wcstombs_s(&size, identityChar, identityWchar, 61);
+    s << identityChar;
+    return s;
 }

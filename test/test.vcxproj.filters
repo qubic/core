@@ -18,6 +18,7 @@
     <ClCompile Include="qpi_hash_map.cpp" />
     <ClCompile Include="kangaroo_twelve.cpp" />
     <ClCompile Include="contract_qearn.cpp" />
+    <ClCompile Include="contract_qx.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
