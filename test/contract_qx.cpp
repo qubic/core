@@ -2,8 +2,9 @@
 
 #include "contract_testing.h"
 
-std::string assetNameFromInt64(uint64 assetName);
+#define PRINT_DETAILS 0
 
+std::string assetNameFromInt64(uint64 assetName);
 
 class QxChecker : public QX
 {
@@ -41,17 +42,6 @@ public:
             o.numberOfShares = order.numberOfShares;
             entityOrders.insert(o);
 
-            /*
-            if (isZero(o.issuer) && o.assetName == 327647778129)
-            {
-                std::cout << i << ": "
-                    << "entity " << o.entity
-                    << ", issuer " << o.issuer
-                    << ", assetName " << assetNameFromInt64(o.assetName)
-                    << ", price " << o.price
-                    << ", shares " << o.numberOfShares << std::endl;
-            }
-            */
             ++entityCounter[o.entity];
         }
 
@@ -198,12 +188,14 @@ TEST(ContractQx, BugEntityBidOrders)
         if (order.issuer == issuer && order.assetName == assetName)
             ++entityBidOrdersCount;
 
+#if PRINT_DETAILS
         std::cout
             << "entity " << entityPubkey
             << ", issuer " << order.issuer
             << ", assetName " << assetNameFromInt64(order.assetName)
             << ", price " << order.price
             << ", shares " << order.numberOfShares << std::endl;
+#endif
     }
 
     auto assertBidOrders = qx.assetBidOrders(issuer, assetName, 0);
@@ -217,12 +209,14 @@ TEST(ContractQx, BugEntityBidOrders)
         if (order.entity == entityPubkey)
             ++assertBidOrdersCount;
 
+#if PRINT_DETAILS
         std::cout
             << "entity " << order.entity
             << ", issuer " << issuer
             << ", assetName " << assetNameFromInt64(assetName)
             << ", price " << order.price
             << ", shares " << order.numberOfShares << std::endl;
+#endif
     }
 
     EXPECT_EQ(assertBidOrdersCount, entityBidOrdersCount);
