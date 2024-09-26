@@ -51,11 +51,11 @@ struct QEARN2
 struct QEARN : public ContractBase
 {
 public:
-    struct GetLockInforPerEpoch_input {
+    struct getLockInforPerEpoch_input {
 		uint32 Epoch;                             /* epoch number to get information */
     };
 
-    struct GetLockInforPerEpoch_output {
+    struct getLockInforPerEpoch_output {
         uint64 LockedAmount;                      /* initial total locked amount in epoch */
         uint64 BonusAmount;                       /* initial bonus amount in epoch*/
         uint64 CurrentLockedAmount;               /* total locked amount in epoch. exactly the amount excluding the amount unlocked early*/
@@ -63,34 +63,34 @@ public:
         uint64 Yield;                             /* Yield calculated by 10000000 multiple*/
     };
 
-    struct GetUserLockedInfor_input {
+    struct getUserLockedInfor_input {
         id user;
         uint32 epoch;
     };
 
-    struct GetUserLockedInfor_output {
+    struct getUserLockedInfor_output {
         uint64 LockedAmount;                   /* the amount user locked at input.epoch */
     };
 
     /*
-        GetStateOfRound FUNCTION
+        getStateOfRound FUNCTION
 
-        GetStateOfRound function returns following.
+        getStateOfRound function returns following.
 
         0 = open epoch,not started yet
         1 = running epoch
         2 = ended epoch(>52weeks)
     */
-    struct GetStateOfRound_input {
+    struct getStateOfRound_input {
         uint32 Epoch;
     };
 
-    struct GetStateOfRound_output {
+    struct getStateOfRound_output {
         uint32 state;
     };
     
     /*
-        GetUserLockStatus FUNCTION
+        getUserLockStatus FUNCTION
 
         the status will return the binary status.
         1101010010110101001011010100101101010010110101001001
@@ -99,16 +99,16 @@ public:
         The frontend can get the status of locked in 52 epochs. in above binary status, 
         the frontend can know that user locked 0 week ago, 1 week ago, 3 weeks ago, 5, 8,10,11,13 weeks ago.
     */
-    struct GetUserLockStatus_input {
+    struct getUserLockStatus_input {
         id user;
     };
 
-    struct GetUserLockStatus_output {
+    struct getUserLockStatus_output {
         uint64 status;
     };
 
     /*
-        GetEndedStatus FUNCTION
+        getEndedStatus FUNCTION
 
         output.Early_Rewarded_Amount returns the amount rewarded by unlocking early at current epoch
         output.Early_Unlocked_Amount returns the amount unlocked by unlocking early at current epoch
@@ -130,30 +130,30 @@ public:
         state._FullyUnlocked_cnt = 0;
     */
 
-    struct GetEndedStatus_input {
+    struct getEndedStatus_input {
         id user;
     };
 
-    struct GetEndedStatus_output {
+    struct getEndedStatus_output {
         uint64 Fully_Unlocked_Amount;
         uint64 Fully_Rewarded_Amount;
         uint64 Early_Unlocked_Amount;
         uint64 Early_Rewarded_Amount;
     };
 
-	struct Lock_input {	
+	struct lock_input {	
     };
 
-    struct Lock_output {	
+    struct lock_output {	
         sint32 returnCode;
     };
 
-    struct Unlock_input {
+    struct unlock_input {
         uint64 Amount;                            /* unlocking amount */	
         uint32 Locked_Epoch;                      /* locked epoch */
     };
 
-    struct Unlock_output {
+    struct unlock_output {
         sint32 returnCode;
     };
 
@@ -203,11 +203,11 @@ private:
     uint32 _EarlyUnlocked_cnt;
     uint32 _FullyUnlocked_cnt;
 
-    struct GetStateOfRound_locals {
+    struct getStateOfRound_locals {
         uint32 first_epoch;
     };
 
-    PUBLIC_FUNCTION_WITH_LOCALS(GetStateOfRound)
+    PUBLIC_FUNCTION_WITH_LOCALS(getStateOfRound)
         if(input.Epoch < QEARN_INITIAL_EPOCH) 
         {                                                            // non staking
             output.state = 2; 
@@ -228,7 +228,7 @@ private:
         }
     _
 
-    PUBLIC_FUNCTION(GetLockInforPerEpoch)
+    PUBLIC_FUNCTION(getLockInforPerEpoch)
 
         output.BonusAmount = state._InitialRoundInfo.get(input.Epoch)._Epoch_Bonus_Amount;
         output.LockedAmount = state._InitialRoundInfo.get(input.Epoch)._Total_Locked_Amount;
@@ -244,13 +244,13 @@ private:
         }
     _
 
-    struct GetUserLockedInfor_locals {
+    struct getUserLockedInfor_locals {
         uint32 _t;
         uint32 startIndex;
         uint32 endIndex;
     };
 
-    PUBLIC_FUNCTION_WITH_LOCALS(GetUserLockedInfor)
+    PUBLIC_FUNCTION_WITH_LOCALS(getUserLockedInfor)
 
         locals.startIndex = state.EpochIndex.get(input.epoch).startIndex;
         locals.endIndex = state.EpochIndex.get(input.epoch).endIndex;
@@ -265,7 +265,7 @@ private:
         }
     _
 
-    struct GetUserLockStatus_locals {
+    struct getUserLockStatus_locals {
         uint64 bn;
         uint32 _t;
         uint32 _r;
@@ -273,7 +273,7 @@ private:
         uint8 lockedWeeks;
     };
 
-    PUBLIC_FUNCTION_WITH_LOCALS(GetUserLockStatus)
+    PUBLIC_FUNCTION_WITH_LOCALS(getUserLockStatus)
 
         output.status = 0ULL;
         locals.endIndex = state.EpochIndex.get(qpi.epoch()).endIndex;
@@ -292,11 +292,11 @@ private:
 
     _
     
-    struct GetEndedStatus_locals {
+    struct getEndedStatus_locals {
         uint32 _t;
     };
 
-    PUBLIC_FUNCTION_WITH_LOCALS(GetEndedStatus)
+    PUBLIC_FUNCTION_WITH_LOCALS(getEndedStatus)
 
         output.Early_Rewarded_Amount = 0;
         output.Early_Unlocked_Amount = 0;
@@ -326,7 +326,7 @@ private:
         }
     _
 
-    struct Lock_locals {
+    struct lock_locals {
 
         LockInfo newLocker;
         RoundInfo updatedRoundInfo;
@@ -336,7 +336,7 @@ private:
         
     };
 
-    PUBLIC_PROCEDURE_WITH_LOCALS(Lock)
+    PUBLIC_PROCEDURE_WITH_LOCALS(lock)
     
         if(qpi.invocationReward() < QEARN_MINIMUM_LOCKING_AMOUNT)
         {
@@ -427,7 +427,7 @@ private:
         output.returnCode = QEARN_LOCK_SUCCESS;            //  new locking of this epoch is succeed
     _
 
-    struct Unlock_locals {
+    struct unlock_locals {
 
         RoundInfo updatedRoundInfo;
         LockInfo updatedUserInfo;
@@ -447,7 +447,7 @@ private:
         
     };
 
-    PUBLIC_PROCEDURE_WITH_LOCALS(Unlock)
+    PUBLIC_PROCEDURE_WITH_LOCALS(unlock)
 
         if(input.Locked_Epoch > QEARN_MAX_EPOCHS || input.Amount < QEARN_MINIMUM_LOCKING_AMOUNT) 
         {
@@ -651,14 +651,14 @@ private:
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
     
-        REGISTER_USER_FUNCTION(GetLockInforPerEpoch, 1);
-        REGISTER_USER_FUNCTION(GetUserLockedInfor, 2);
-        REGISTER_USER_FUNCTION(GetStateOfRound, 3);
-        REGISTER_USER_FUNCTION(GetUserLockStatus, 4);
-        REGISTER_USER_FUNCTION(GetEndedStatus, 5);
+        REGISTER_USER_FUNCTION(getLockInforPerEpoch, 1);
+        REGISTER_USER_FUNCTION(getUserLockedInfor, 2);
+        REGISTER_USER_FUNCTION(getStateOfRound, 3);
+        REGISTER_USER_FUNCTION(getUserLockStatus, 4);
+        REGISTER_USER_FUNCTION(getEndedStatus, 5);
 
-        REGISTER_USER_PROCEDURE(Lock, 1);
-		REGISTER_USER_PROCEDURE(Unlock, 2);
+        REGISTER_USER_PROCEDURE(lock, 1);
+		REGISTER_USER_PROCEDURE(unlock, 2);
 
 	_
 
