@@ -439,7 +439,7 @@ protected:
 				locals._elementIndex2++;
 			}
 
-			locals._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+			locals._elementIndex = state._entityOrders.nextElementIndex(locals._elementIndex);
 		}
 
 		if (locals._elementIndex2 < 256)
