@@ -5,7 +5,7 @@ constexpr uint64 QEARN_MAX_LOCKS = 4194304;
 constexpr uint64 QEARN_MAX_EPOCHS = 4096;
 constexpr uint64 QEARN_MAX_USERS = 131072;
 constexpr uint64 QEARN_MAX_LOCK_AMOUNT = 1000000000000ULL;
-constexpr uint64 QEARN_INITIAL_EPOCH = 127;                             //  we need to change this epoch when merging
+constexpr uint64 QEARN_INITIAL_EPOCH = 128;                             //  we need to change this epoch when merging
 
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_4_7 = 5;
@@ -157,7 +157,7 @@ public:
         sint32 returnCode;
     };
 
-protected:
+private:
 
     struct RoundInfo {
 
@@ -449,7 +449,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(Unlock)
 
-        if(input.Locked_Epoch > QEARN_MAX_EPOCHS) 
+        if(input.Locked_Epoch > QEARN_MAX_EPOCHS || input.Amount < QEARN_MINIMUM_LOCKING_AMOUNT) 
         {
 
             output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.

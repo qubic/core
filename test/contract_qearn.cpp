@@ -8,6 +8,8 @@
 
 
 std::mt19937_64 rand64;
+std::vector<uint64> FullyUnlockedAmount;
+std::vector<id> FullyUnlockedUser;
 
 class QearnChecker : public QEARN
 {
@@ -68,6 +70,33 @@ public:
             EXPECT_EQ(currentRoundInfo._Total_Locked_Amount, sumLockedAmout);
         }
 #endif
+    }
+    void checkGetUnlockedInfo(uint32 epoch) 
+    {
+        FullyUnlockedAmount.clear();
+        FullyUnlockedUser.clear();
+
+        const QEARN::EpochIndexInfo& epochIndex = EpochIndex.get(epoch);
+        for(uint64 idx = epochIndex.startIndex; idx < epochIndex.endIndex; ++idx)
+        {
+            if(Locker.get(idx)._Locked_Amount != 0)
+            {
+                FullyUnlockedAmount.push_back(Locker.get(idx)._Locked_Amount);
+                FullyUnlockedUser.push_back(Locker.get(idx).ID);
+            }
+        }
+    }
+
+    void checkFullyUnlockedAmount(uint32 epoch)
+    {
+        const QEARN::EpochIndexInfo& epochIndex = EpochIndex.get(epoch);
+        for(uint32 idx = 0; idx < _FullyUnlocked_cnt; idx++)
+        {
+            const QEARN::HistoryInfo& FullyUnlockedInfo = FullyUnlocker.get(idx);
+
+            EXPECT_EQ(FullyUnlockedAmount[idx], FullyUnlockedInfo._Unlocked_Amount);
+            EXPECT_EQ(FullyUnlockedUser[idx], FullyUnlockedInfo._Unlocked_ID);
+        }
     }
 };
 
@@ -225,9 +254,17 @@ TEST(TestContractQearn, RandomTest)
             }
         }
 
+        std::map<id, unsigned long long> UnlockedAmount;
+
         for (const auto& user : lockUsers)
         {
-            for(uint32 LockedEpoch = system.epoch ; LockedEpoch > system.epoch - 52; LockedEpoch--) 
+            auto it = UnlockedAmount.find(user); 
+
+            if (it == UnlockedAmount.end()) 
+            {
+                UnlockedAmount[user] = 0;
+            }
+            for(sint32 LockedEpoch = system.epoch ; LockedEpoch > system.epoch - 52; LockedEpoch--) 
             {
                 // get old amount and random amount for unlocking
                 uint64 amountBefore = qearn.getUserLockedInfor(LockedEpoch, user);
@@ -240,13 +277,21 @@ TEST(TestContractQearn, RandomTest)
                 uint64 amountAfter = qearn.getUserLockedInfor(LockedEpoch, user);
                 if (retCode == QEARN_UNLOCK_SUCCESS)
                 {
-                    if(amountBefore - amountUnLock < 10000000)
+                    if(amountBefore - amountUnLock < QEARN_MINIMUM_LOCKING_AMOUNT)
                     {
                         EXPECT_EQ(amountAfter, 0);
+                        if(LockedEpoch != system.epoch) 
+                        {
+                            UnlockedAmount[user] += amountBefore;
+                        }
                     }
                     else 
                     {
                         EXPECT_EQ(amountBefore, amountAfter + amountUnLock);
+                        if(LockedEpoch != system.epoch)
+                        {
+                            UnlockedAmount[user] += amountUnLock;
+                        }
                     }
                 }
                 else
@@ -256,11 +301,20 @@ TEST(TestContractQearn, RandomTest)
             }
         }
 
+        for (const auto& user : lockUsers)
+        {
+            QEARN::GetEndedStatus_output Unlocked_result = qearn.getEndedStatus(user);
+            EXPECT_EQ(UnlockedAmount[user], Unlocked_result.Early_Unlocked_Amount);
+        }
+
         qearn.getState()->checkLockerArray();
+        qearn.getState()->checkGetUnlockedInfo(system.epoch - 52);
 
         qearn.endEpoch();
 
         qearn.getState()->checkLockerArray();
+
+        qearn.getState()->checkFullyUnlockedAmount(system.epoch - 52);
     }
     uint32 state = qearn.getStateOfRound(128);
 
