@@ -144,7 +144,7 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static const Transaction* contractProcessorTransaction = 0;
-static int contractProcessorTransactionCanceled = 0;
+static int contractProcessorTransactionMoneyflew = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
@@ -1946,9 +1946,9 @@ static void contractProcessor(void*)
         qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
 
         if (contractActionTracker.getOverallQuTransferBalance(transaction->sourcePublicKey) == 0)
-            contractProcessorTransactionCanceled = 1;
+            contractProcessorTransactionMoneyflew = 0;
         else
-            contractProcessorTransactionCanceled = 0;
+            contractProcessorTransactionMoneyflew = 1;
         contractProcessorTransaction = 0;
     }
     break;
@@ -2074,11 +2074,11 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
             _mm_pause();
         }
 
-        return !contractProcessorTransactionCanceled;
+        return contractProcessorTransactionMoneyflew;
     }
 
     // if transaction tries to invoke non-registered procedure, transaction amount is not reimbursed
-    return true;
+    return transaction->amount > 0;
 }
 
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
