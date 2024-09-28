@@ -170,7 +170,7 @@ struct ScoreFunction
         int synapseBucketPos[inNeuronsCount][129];
         bool isGeneratedBucketOffset[inNeuronsCount];
 
-        static_assert((allParamsCount) % 8 == 0, "need to check this packed synapse");
+        static_assert((numberOfNeighborNeurons) % 8 == 0, "need to check this packed synapse");
         static_assert(maxDuration <= 65536, "need to check this maxDuration and adjust maxNumMods");
         static_assert(dataLength <= numberOfNeighborNeurons, "data length need to be smaller than or equal numberOfNeighborNeurons");
 
