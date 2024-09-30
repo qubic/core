@@ -194,6 +194,7 @@
     <ClInclude Include="contract_core\qpi_hash_map_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="txs_pool.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
