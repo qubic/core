@@ -1,6 +1,11 @@
 #pragma once
 
-#include <network_messages/transactions.h>
+#include "network_messages/transactions.h"
+
+#include "platform/memory.h"
+#include "platform/concurrency.h"
+
+#include "public_settings.h"
 
 // Mempool that saves pending transactions (txs) of all entities.
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
@@ -11,25 +16,36 @@ private:
 	static constexpr unsigned long long maxNumTxsToSave = maxNumTicksToSave * NUMBER_OF_TRANSACTIONS_PER_TICK;
 	static constexpr unsigned long long maxNumTicksPerEpoch = MAX_NUMBER_OF_TICKS_PER_EPOCH;
 
-	static volatile char digestsLock;
-	static volatile char txsLock;
+	inline static volatile char digestsLock = 0;
+	inline static volatile char txsLock = 0;
 
 	inline static Transaction* transactions;
 	inline static m256i* digests;
 
 	inline static unsigned int* numSavedTxsPerTick;
 
-	static unsigned int firstSavedTick;
+	inline static unsigned int firstSavedTick = 0;
 
 public:
 	// Init at node startup
-	static bool init();
+	static bool init()
+	{
+		// TODO
+		return false;
+	}
 
 	// Cleanup at node shutdown
-	static void deinit();
+	static void deinit()
+	{
+		// TODO
+	}
 
 	// Return number of transaction scheduled later than the specified tick.
-	static unsigned int getNumberOfPendingTxs(unsigned int tick);
+	static unsigned int getNumberOfPendingTxs(unsigned int tick)
+	{
+		// TODO
+		return 0;
+	}
 
 	// Check validity of transaction and add to the pool.
 	static void update(Transaction* tx)
@@ -58,13 +74,24 @@ public:
 
 	// Get a transaction for the specified tick.
 	// If no more transactions for this tick, return nullptr.
-	static Transaction* get(unsigned int tick, int index);
+	static Transaction* get(unsigned int tick, int index)
+	{
+		// TODO
+		return nullptr;
+	}
 
 	// Get a transaction digest for the specified tick.
 	// If no more transactions for this tick, return nullptr.
-	static m256i getDigest(unsigned int tick, int index);
+	static m256i getDigest(unsigned int tick, int index)
+	{
+		// TODO
+		return m256i::zero();
+	}
 
 	// Delete transactions from previous epoch (except for the last TICKS_TO_KEEP_FROM_PRIOR_EPOCH ticks).
-	static void transitionEpoch(unsigned int epochInitialTick);
+	static void transitionEpoch(unsigned int epochInitialTick)
+	{
+		// TODO
+	}
 
 };
