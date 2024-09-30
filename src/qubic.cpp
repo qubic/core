@@ -2644,6 +2644,7 @@ static void processTick(unsigned long long processorNumber)
                         const Transaction* pendingTransaction = txsPool.get(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, j);
                         if (pendingTransaction)
                         {
+                            txsPool.acquireLock();
                             ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
                             if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
@@ -2653,12 +2654,16 @@ static void processTick(unsigned long long processorNumber)
                                 {
                                     ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
                                     bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
-                                    broadcastedFutureTickData.tickData.transactionDigests[j] = txsPool.getDigest(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, j);
+                                    const m256i* digest = txsPool.getDigest(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, j);
+                                    // digest should always be != nullptr because pendingTransaction != nullptr.
+                                    ASSERT(digest);
+                                    broadcastedFutureTickData.tickData.transactionDigests[j] = digest ? *digest : m256i::zero();
                                     j++;
                                     ts.nextTickTransactionOffset += transactionSize;
                                 }
                                 ts.tickTransactions.releaseLock();
                             }
+                            txsPool.releaseLock();
                         }
                         else
                         {
@@ -3858,36 +3863,43 @@ static void tickProcessor(void*)
                                 Transaction* pendingTransaction = txsPool.get(nextTick, i);
                                 if (pendingTransaction)
                                 {
+                                    txsPool.acquireLock();
                                     ASSERT(pendingTransaction->checkValidity());
                                     auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
-                                    for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
+
+                                    const m256i* digest = txsPool.getDigest(nextTick, i);
+                                    if (digest)
                                     {
-                                        if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
+                                        for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                                         {
-                                            if (txsPool.getDigest(nextTick, i) == nextTickData.transactionDigests[j])
+                                            if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
                                             {
-                                                unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
-                                                const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
-
-                                                pendingTransaction = (Transaction*)transactionBuffer;
-                                                ts.tickTransactions.acquireLock();
-                                                if (!tsPendingTransactionOffsets[j])
+                                                if (*digest == nextTickData.transactionDigests[j])
                                                 {
-                                                    if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
-                                                    {
-                                                        tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                                        bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
-                                                        ts.nextTickTransactionOffset += transactionSize;
-                                                    }
-                                                }
-                                                ts.tickTransactions.releaseLock();
+                                                    unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
+                                                    const unsigned int transactionSize = pendingTransaction->totalSize();
+                                                    bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
 
-                                                numberOfKnownNextTickTransactions++;
-                                                unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+                                                    pendingTransaction = (Transaction*)transactionBuffer;
+                                                    ts.tickTransactions.acquireLock();
+                                                    if (!tsPendingTransactionOffsets[j])
+                                                    {
+                                                        if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                                        {
+                                                            tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
+                                                            bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                                            ts.nextTickTransactionOffset += transactionSize;
+                                                        }
+                                                    }
+                                                    ts.tickTransactions.releaseLock();
+
+                                                    numberOfKnownNextTickTransactions++;
+                                                    unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+                                                }
                                             }
                                         }
                                     }
+                                    txsPool.releaseLock();
                                 }
                             }
 
