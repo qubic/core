@@ -37,6 +37,7 @@ static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.
 static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_random2.csv";
 static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 32; // set to 0 for run all available samples
 static constexpr bool PRINT_DETAILED_INFO = false;
+static bool gCompareReference = false;
 
 // Only run on specific index of samples and setting
 std::vector<unsigned int> filteredSamples;// = { 0 };
@@ -67,7 +68,20 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
     auto d = t1 - t0;
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
 
+    unsigned int refScore = 0;
+    if (gCompareReference)
+    {
+        ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
+        score.initMemory();
+        score.initMiningData(miningSeed);
+        refScore = score(0, publicKey, nonce);
+    }
 #pragma omp critical
+    if (gCompareReference)
+    {
+        EXPECT_EQ(refScore, score_value);
+    }
+    else
     {
         long long gtIndex = -1;
         if (gScoreIndexMap.count(i) > 0)
@@ -95,11 +109,11 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
             std::cout << "    score " << score_value;
             if (gtIndex >= 0)
             {
-                std::cout << " vs reference " << gScoresGroundTruth[sampleIndex][gtIndex] << std::endl;
+                std::cout << " vs gt " << gScoresGroundTruth[sampleIndex][gtIndex] << std::endl;
             }
             else // No mapping from ground truth
             {
-                std::cout << " vs reference NA" << std::endl;
+                std::cout << " vs gt NA" << std::endl;
             }
             std::cout << "    time " << elapsed << " ms " << std::endl;
         }
@@ -128,7 +142,7 @@ static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigne
 
 void runCommonTests()
 {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
     initAVX512KangarooTwelveConstants();
 #endif
     constexpr unsigned long long numberOfGeneratedSetting = sizeof(score_params::kSettings) / sizeof(score_params::kSettings[0]);
@@ -199,7 +213,7 @@ void runCommonTests()
         }
     }
     // In case of number of setting is lower than the ground truth. Consider we are in experiement, still run but expect the test failed
-    if (gScoreIndexMap.size() < numberOfGeneratedSetting)
+    if (gScoreIndexMap.size() < numberOfGeneratedSetting && !gCompareReference)
     {
         std::cout << "WARNING: Number of provided ground truth settings is lower than tested settings. Only test with available ones." 
                   << std::endl;
