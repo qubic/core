@@ -4,7 +4,7 @@
 #include "platform/concurrency.h"
 #include "platform/time.h"
 #include "platform/memory.h"
-#include "platform/assert.h"
+#include "platform/debugging.h"
 
 #include "network_messages/header.h"
 
@@ -230,7 +230,9 @@ struct SpectrumStats
 /*
  * LOGGING IMPLEMENTATION
  */
+#ifndef LOG_BUFFER_SIZE
 #define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
+#endif
 #define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
 #define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
 #define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
@@ -633,7 +635,7 @@ public:
     static void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header);
 };
 
-qLogger logger;
+static qLogger logger;
 
 // For smartcontract logging
 template <typename T> void __logContractDebugMessage(unsigned int size, T& msg)

@@ -35,9 +35,15 @@
 #include "network_core/peers.h"
 
 #include "system.h"
+#include "contract_core/qpi_system_impl.h"
 
-#include "assets.h"
+#include "assets/assets.h"
+#include "assets/net_msg_impl.h"
+#include "contract_core/qpi_asset_impl.h"
+
 #include "spectrum.h"
+#include "contract_core/qpi_spectrum_impl.h"
+
 #include "logging/logging.h"
 #include "logging/net_msg_impl.h"
 
@@ -46,6 +52,7 @@
 
 #include "addons/tx_status_request.h"
 
+#include "files/files.h"
 #include "mining/mining.h"
 #include "oracles/oracle_machines.h"
 
@@ -57,7 +64,6 @@
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
-#define MAX_CONTRACT_STATE_SIZE 1073741824
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define PEER_REFRESHING_PERIOD 120000ULL
@@ -140,7 +146,7 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static const Transaction* contractProcessorTransaction = 0;
-static int contractProcessorTransactionCanceled = 0;
+static int contractProcessorTransactionMoneyflew = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
@@ -223,6 +229,7 @@ struct
     unsigned long long resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
+    unsigned long long lastLogId;
 } nodeStateBuffer;
 #endif
 static bool saveComputer(CHAR16* directory = NULL);
@@ -1479,46 +1486,6 @@ static void requestProcessor(void* ProcedureArgument)
     }
 }
 
-// Return reference to fee reserve of contract for changing its value (data stored in state of contract 0)
-static long long & contractFeeReserve(unsigned int contractIndex)
-{
-    contractStateChangeFlags[0] |= 1ULL;
-    return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
-}
-
-// Prologue of contract functions / procedures
-static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
-{
-    // TODO
-    // called by all non-empty system procedures, user procedures, and user functions
-    // purpose:
-    // - make sure the limit of nested calls is not violated
-    // - measure execution time
-    // - construction of execution graph
-    // - debugging
-}
-
-// Epilogue of contract functions / procedures
-static void __endFunctionOrProcedure(const unsigned int functionOrProcedureId)
-{
-    // TODO
-}
-
-void QPI::QpiContextForInit::__registerUserFunction(USER_FUNCTION userFunction, unsigned short inputType, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
-{
-    contractUserFunctions[_currentContractIndex][inputType] = userFunction;
-    contractUserFunctionInputSizes[_currentContractIndex][inputType] = inputSize;
-    contractUserFunctionOutputSizes[_currentContractIndex][inputType] = outputSize;
-    contractUserFunctionLocalsSizes[_currentContractIndex][inputType] = localsSize;
-}
-
-void QPI::QpiContextForInit::__registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
-{
-    contractUserProcedures[_currentContractIndex][inputType] = userProcedure;
-    contractUserProcedureInputSizes[_currentContractIndex][inputType] = inputSize;
-    contractUserProcedureOutputSizes[_currentContractIndex][inputType] = outputSize;
-    contractUserProcedureLocalsSizes[_currentContractIndex][inputType] = localsSize;
-}
 
 QPI::id QPI::QpiContextFunctionCall::arbitrator() const
 {
@@ -1561,40 +1528,6 @@ bool QPI::QpiContextProcedureCall::acquireShares(uint64 assetName, const id& iss
     return pre_output.ok;
 }
 
-long long QPI::QpiContextProcedureCall::burn(long long amount) const
-{
-    if (amount < 0 || amount > MAX_AMOUNT)
-    {
-        return -((long long)(MAX_AMOUNT + 1));
-    }
-
-    const int index = spectrumIndex(_currentContractId);
-
-    if (index < 0)
-    {
-        return -amount;
-    }
-
-    const long long remainingAmount = energy(index) - amount;
-
-    if (remainingAmount < 0)
-    {
-        return remainingAmount;
-    }
-
-    if (decreaseEnergy(index, amount))
-    {
-        contractStateLock[0].acquireWrite();
-        contractFeeReserve(_currentContractIndex) += amount;
-        contractStateLock[0].releaseWrite();
-
-        const Burning burning = { _currentContractId , amount };
-        logger.logBurning(burning);
-    }
-
-    return remainingAmount;
-}
-
 QPI::id QPI::QpiContextFunctionCall::computor(unsigned short computorIndex) const
 {
     return broadcastedComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
@@ -1610,102 +1543,9 @@ unsigned char QPI::QpiContextFunctionCall::dayOfWeek(unsigned char year, unsigne
     return dayIndex(year, month, day) % 7;
 }
 
-unsigned short QPI::QpiContextFunctionCall::epoch() const
-{
-    return system.epoch;
-}
-
-bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity) const
-{
-    int index = spectrumIndex(id);
-    if (index < 0)
-    {
-        entity.publicKey = id;
-        entity.incomingAmount = 0;
-        entity.outgoingAmount = 0;
-        entity.numberOfIncomingTransfers = 0;
-        entity.numberOfOutgoingTransfers = 0;
-        entity.latestIncomingTransferTick = 0;
-        entity.latestOutgoingTransferTick = 0;
-
-        return false;
-    }
-    else
-    {
-        entity.publicKey = spectrum[index].publicKey;
-        entity.incomingAmount = spectrum[index].incomingAmount;
-        entity.outgoingAmount = spectrum[index].outgoingAmount;
-        entity.numberOfIncomingTransfers = spectrum[index].numberOfIncomingTransfers;
-        entity.numberOfOutgoingTransfers = spectrum[index].numberOfOutgoingTransfers;
-        entity.latestIncomingTransferTick = spectrum[index].latestIncomingTransferTick;
-        entity.latestOutgoingTransferTick = spectrum[index].latestOutgoingTransferTick;
-
-        return true;
-    }
-}
-
 unsigned char QPI::QpiContextFunctionCall::hour() const
 {
     return etalonTick.hour;
-}
-
-long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, const QPI::id& issuer, signed char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement) const
-{
-    if (((unsigned char)name) < 'A' || ((unsigned char)name) > 'Z'
-        || name > 0xFFFFFFFFFFFFFF)
-    {
-        return 0;
-    }
-    for (unsigned int i = 1; i < 7; i++)
-    {
-        if (!((unsigned char)(name >> (i * 8))))
-        {
-            while (++i < 7)
-            {
-                if ((unsigned char)(name >> (i * 8)))
-                {
-                    return 0;
-                }
-            }
-
-            break;
-        }
-    }
-    for (unsigned int i = 1; i < 7; i++)
-    {
-        if (!((unsigned char)(name >> (i * 8)))
-            || (((unsigned char)(name >> (i * 8))) >= '0' && ((unsigned char)(name >> (i * 8))) <= '9')
-            || (((unsigned char)(name >> (i * 8))) >= 'A' && ((unsigned char)(name >> (i * 8))) <= 'Z'))
-        {
-            // Do nothing
-        }
-        else
-        {
-            return 0;
-        }
-    }
-
-    if (issuer != _currentContractId && issuer != _invocator)
-    {
-        return 0;
-    }
-
-    if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
-    {
-        return 0;
-    }
-
-    if (unitOfMeasurement > 0xFFFFFFFFFFFFFF)
-    {
-        return 0;
-    }
-
-    char nameBuffer[7] = { char(name), char(name >> 8), char(name >> 16), char(name >> 24), char(name >> 32), char(name >> 40), char(name >> 48) };
-    char unitOfMeasurementBuffer[7] = { char(unitOfMeasurement), char(unitOfMeasurement >> 8), char(unitOfMeasurement >> 16), char(unitOfMeasurement >> 24), char(unitOfMeasurement >> 32), char(unitOfMeasurement >> 40), char(unitOfMeasurement >> 48) };
-    int issuanceIndex, ownershipIndex, possessionIndex;
-    numberOfShares = ::issueAsset(issuer, nameBuffer, numberOfDecimalPlaces, unitOfMeasurementBuffer, numberOfShares, _currentContractIndex, &issuanceIndex, &ownershipIndex, &possessionIndex);
-
-    return numberOfShares;
 }
 
 unsigned short QPI::QpiContextFunctionCall::millisecond() const
@@ -1738,85 +1578,6 @@ m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
     return m256i::zero();
 }
 
-long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex) const
-{
-    ACQUIRE(universeLock);
-
-    int issuanceIndex = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-iteration:
-    if (assets[issuanceIndex].varStruct.issuance.type == EMPTY)
-    {
-        RELEASE(universeLock);
-
-        return 0;
-    }
-    else
-    {
-        if (assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
-            && ((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == assetName
-            && assets[issuanceIndex].varStruct.issuance.publicKey == issuer)
-        {
-            int ownershipIndex = owner.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-        iteration2:
-            if (assets[ownershipIndex].varStruct.ownership.type == EMPTY)
-            {
-                RELEASE(universeLock);
-
-                return 0;
-            }
-            else
-            {
-                if (assets[ownershipIndex].varStruct.ownership.type == OWNERSHIP
-                    && assets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
-                    && assets[ownershipIndex].varStruct.ownership.publicKey == owner
-                    && assets[ownershipIndex].varStruct.ownership.managingContractIndex == ownershipManagingContractIndex)
-                {
-                    int possessionIndex = possessor.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-                iteration3:
-                    if (assets[possessionIndex].varStruct.possession.type == EMPTY)
-                    {
-                        RELEASE(universeLock);
-
-                        return 0;
-                    }
-                    else
-                    {
-                        if (assets[possessionIndex].varStruct.possession.type == POSSESSION
-                            && assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
-                            && assets[possessionIndex].varStruct.possession.publicKey == possessor
-                            && assets[possessionIndex].varStruct.possession.managingContractIndex == possessionManagingContractIndex)
-                        {
-                            const long long numberOfPossessedShares = assets[possessionIndex].varStruct.possession.numberOfShares;
-
-                            RELEASE(universeLock);
-
-                            return numberOfPossessedShares;
-                        }
-                        else
-                        {
-                            possessionIndex = (possessionIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                            goto iteration3;
-                        }
-                    }
-                }
-                else
-                {
-                    ownershipIndex = (ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                    goto iteration2;
-                }
-            }
-        }
-        else
-        {
-            issuanceIndex = (issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
-
-            goto iteration;
-        }
-    }
-}
-
 int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
 {
     return -1; // TODO: Return -1 if the current tick is empty, return the number of the transactions in the tick otherwise, including 0
@@ -1837,153 +1598,6 @@ unsigned char QPI::QpiContextFunctionCall::second() const
 bool QPI::QpiContextFunctionCall::signatureValidity(const m256i& entity, const m256i& digest, const array<signed char, 64>& signature) const
 {
     return verify(entity.m256i_u8, digest.m256i_u8, reinterpret_cast<const unsigned char*>(&signature));
-}
-
-static void* __scratchpad()
-{
-    return reorgBuffer;
-}
-
-unsigned int QPI::QpiContextFunctionCall::tick() const
-{
-    return system.tick;
-}
-
-long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
-{
-    if (amount < 0 || amount > MAX_AMOUNT)
-    {
-        return -((long long)(MAX_AMOUNT + 1));
-    }
-
-    const int index = spectrumIndex(_currentContractId);
-
-    if (index < 0)
-    {
-        return -amount;
-    }
-
-    const long long remainingAmount = energy(index) - amount;
-
-    if (remainingAmount < 0)
-    {
-        return remainingAmount;
-    }
-
-    if (decreaseEnergy(index, amount))
-    {
-        increaseEnergy(destination, amount);
-
-        if (!contractActionTracker.addQuTransfer(_currentContractId, destination, amount))
-            __qpiAbort(ContractErrorTooManyActions);
-
-        const QuTransfer quTransfer = { _currentContractId , destination , amount };
-        logger.logQuTransfer(quTransfer);
-    }
-
-    return remainingAmount;
-}
-
-long long QPI::QpiContextProcedureCall::transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor) const
-{
-    if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
-    {
-        return -((long long)(MAX_AMOUNT + 1));
-    }
-
-    ACQUIRE(universeLock);
-
-    int issuanceIndex = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-iteration:
-    if (assets[issuanceIndex].varStruct.issuance.type == EMPTY)
-    {
-        RELEASE(universeLock);
-
-        return -numberOfShares;
-    }
-    else
-    {
-        if (assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
-            && ((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == assetName
-            && assets[issuanceIndex].varStruct.issuance.publicKey == issuer)
-        {
-            int ownershipIndex = owner.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-        iteration2:
-            if (assets[ownershipIndex].varStruct.ownership.type == EMPTY)
-            {
-                RELEASE(universeLock);
-
-                return -numberOfShares;
-            }
-            else
-            {
-                if (assets[ownershipIndex].varStruct.ownership.type == OWNERSHIP
-                    && assets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
-                    && assets[ownershipIndex].varStruct.ownership.publicKey == owner
-                    && assets[ownershipIndex].varStruct.ownership.managingContractIndex == _currentContractIndex) // TODO: This condition needs extra attention during refactoring!
-                {
-                    int possessionIndex = possessor.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-                iteration3:
-                    if (assets[possessionIndex].varStruct.possession.type == EMPTY)
-                    {
-                        RELEASE(universeLock);
-
-                        return -numberOfShares;
-                    }
-                    else
-                    {
-                        if (assets[possessionIndex].varStruct.possession.type == POSSESSION
-                            && assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
-                            && assets[possessionIndex].varStruct.possession.publicKey == possessor)
-                        {
-                            if (assets[possessionIndex].varStruct.possession.managingContractIndex == _currentContractIndex) // TODO: This condition needs extra attention during refactoring!
-                            {
-                                if (assets[possessionIndex].varStruct.possession.numberOfShares >= numberOfShares)
-                                {
-                                    int destinationOwnershipIndex, destinationPossessionIndex;
-                                    ::transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwnerAndPossessor, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
-
-                                    RELEASE(universeLock);
-
-                                    return assets[possessionIndex].varStruct.possession.numberOfShares;
-                                }
-                                else
-                                {
-                                    RELEASE(universeLock);
-
-                                    return assets[possessionIndex].varStruct.possession.numberOfShares - numberOfShares;
-                                }
-                            }
-                            else
-                            {
-                                RELEASE(universeLock);
-
-                                return -numberOfShares;
-                            }
-                        }
-                        else
-                        {
-                            possessionIndex = (possessionIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                            goto iteration3;
-                        }
-                    }
-                }
-                else
-                {
-                    ownershipIndex = (ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                    goto iteration2;
-                }
-            }
-        }
-        else
-        {
-            issuanceIndex = (issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
-
-            goto iteration;
-        }
-    }
 }
 
 unsigned char QPI::QpiContextFunctionCall::year() const
@@ -2095,9 +1709,9 @@ static void contractProcessor(void*)
         qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
 
         if (contractActionTracker.getOverallQuTransferBalance(transaction->sourcePublicKey) == 0)
-            contractProcessorTransactionCanceled = 1;
+            contractProcessorTransactionMoneyflew = 0;
         else
-            contractProcessorTransactionCanceled = 0;
+            contractProcessorTransactionMoneyflew = 1;
         contractProcessorTransaction = 0;
     }
     break;
@@ -2223,11 +1837,11 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
             _mm_pause();
         }
 
-        return !contractProcessorTransactionCanceled;
+        return contractProcessorTransactionMoneyflew;
     }
 
     // if transaction tries to invoke non-registered procedure, transaction amount is not reimbursed
-    return true;
+    return transaction->amount > 0;
 }
 
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
@@ -2434,6 +2048,29 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
+static void processTickTransactionFileHeader(const FileHeaderTransaction* transaction)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(isZero(transaction->destinationPublicKey));
+    ASSERT(transaction->tick == system.tick);
+
+    // TODO
+}
+
+static void processTickTransactionFileFragment(const FileFragmentTransactionPrefix* transactionPrefix, const FileFragmentTransactionPostfix* transactionPostfix)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transactionPrefix != nullptr);
+    ASSERT(transactionPostfix != nullptr);
+    ASSERT(transactionPrefix->checkValidity());
+    ASSERT(isZero(transactionPrefix->destinationPublicKey));
+    ASSERT(transactionPrefix->tick == system.tick);
+
+    // TODO
+}
+
 static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
 {
     ASSERT(nextTickData.epoch == system.epoch);
@@ -2496,6 +2133,26 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                         {
                             voteCounter.addVotes(transaction->inputPtr(), computorIndex);
                         }
+                    }
+                }
+                break;
+
+                case FileHeaderTransaction::transactionType():
+                {
+                    if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
+                        && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
+                    {
+                        processTickTransactionFileHeader((FileHeaderTransaction*)transaction);
+                    }
+                }
+                break;
+
+                case FileFragmentTransactionPrefix::transactionType():
+                {
+                    if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
+                        && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
+                    {
+                        processTickTransactionFileFragment((FileFragmentTransactionPrefix*)transaction, (FileFragmentTransactionPostfix*)(((char*)transaction) + sizeof(Transaction) + transaction->inputSize));
                     }
                 }
                 break;
@@ -3500,6 +3157,7 @@ static bool saveAllNodeStates()
     nodeStateBuffer.currentRandomSeed = score->currentRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;
+    nodeStateBuffer.lastLogId = logger.logId;
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
@@ -3636,6 +3294,7 @@ static bool loadAllNodeStates()
     numberOfMiners = nodeStateBuffer.numberOfMiners;
     initialRandomSeedFromPersistingState = nodeStateBuffer.currentRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
+    logger.logId = nodeStateBuffer.lastLogId;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
@@ -4647,21 +4306,6 @@ static bool initialize()
     initAVX512FourQConstants();
 #endif
 
-    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
-    {
-        contractStates[contractIndex] = NULL;
-    }
-    bs->SetMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
-    bs->SetMem(contractSystemProcedureLocalsSizes, sizeof(contractSystemProcedureLocalsSizes), 0);
-    bs->SetMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
-    bs->SetMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
-    bs->SetMem(contractUserFunctionInputSizes, sizeof(contractUserFunctionInputSizes), 0);
-    bs->SetMem(contractUserFunctionOutputSizes, sizeof(contractUserFunctionOutputSizes), 0);
-    bs->SetMem(contractUserFunctionLocalsSizes, sizeof(contractUserFunctionLocalsSizes), 0);
-    bs->SetMem(contractUserProcedureInputSizes, sizeof(contractUserProcedureInputSizes), 0);
-    bs->SetMem(contractUserProcedureOutputSizes, sizeof(contractUserProcedureOutputSizes), 0);
-    bs->SetMem(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), 0);
-
     getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
     if (isZero(operatorPublicKey))
     {
@@ -4749,13 +4393,6 @@ static bool initialize()
                 return false;
             }
         }
-        if ((status = bs->AllocatePool(EfiRuntimeServicesData, MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags)))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, MAX_NUMBER_OF_CONTRACTS / 8);
-
-            return false;
-        }
-        bs->SetMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);
 
         if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(*score), (void**)&score))
         {

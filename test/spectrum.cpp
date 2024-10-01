@@ -7,9 +7,18 @@
 
 // enable some logging for testing
 #include "../src/private_settings.h"
+#undef LOG_DUST_BURNINGS
+#undef LOG_SPECTRUM_STATS
 #define LOG_DUST_BURNINGS 1
 #define LOG_SPECTRUM_STATS 1
-// TODO: use smaller logging buffer here than in core
+
+// reduced size of logging buffer (512 MB instead of 8 GB)
+#define LOG_BUFFER_SIZE (2*268435456ULL)
+
+// also reduce size of logging tx index by reducing maximum number of ticks per epoch
+#include "../src/public_settings.h"
+#undef MAX_NUMBER_OF_TICKS_PER_EPOCH
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH 3000
 
 #include "../src/spectrum.h"
 

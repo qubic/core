@@ -311,6 +311,94 @@ namespace QPI
 	bool isArraySortedWithoutDuplicates(const array<T, L>& array, uint64 beginIdx = 0, uint64 endIdx = L);
 
 
+	// Hash function class to be used with the hash map.
+	template <typename KeyT> class HashFunction 
+	{
+	public:
+		static uint64 hash(const KeyT& key);
+	};
+
+	// Hash map of (key, value) pairs of type (KeyT, ValueT) and total element capacity L.
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc = HashFunction<KeyT>>
+	class HashMap
+	{
+	private:
+		static_assert(L && !(L& (L - 1)),
+			"The capacity of the hash map must be 2^N."
+			);
+		static constexpr sint64 _nEncodedFlags = L > 32 ? 32 : L;
+
+		// Hash map of (key, value) pairs
+		struct Element
+		{
+			KeyT key;
+			ValueT value;
+		} _elements[L];
+
+		// 2 bits per element of _elements: 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
+		// The state "occupied but marked for removal" is needed for finding the index of a key in the hash map. Setting an entry to
+		// "not occupied" in remove() would potentially undo a collision, create a gap, and mess up the entry search.
+		uint64 _occupationFlags[(L * 2 + 63) / 64];
+
+		uint64 _population;
+		uint64 _markRemovalCounter;
+
+		// Read and encode 32 POV occupation flags, return a 64bits number presents 32 occupation flags
+		uint64 _getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const;
+
+	public:
+		HashMap()
+		{
+			reset();
+		}
+
+		// Return maximum number of elements that may be stored.
+		static constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Return overall number of elements.
+		inline uint64 population() const;
+
+		// Return boolean indicating whether key is contained in the hash map.
+		// If key is contained, write the associated value into the provided ValueT&. 
+		bool get(const KeyT& key, ValueT& value) const;
+
+		// Return index of element with key in hash map _elements, or NULL_INDEX if not found.
+		sint64 getElementIndex(const KeyT& key) const;
+
+		// Return key at elementIndex.
+		inline KeyT key(sint64 elementIndex) const;
+
+		// Return value at elementIndex.
+		inline ValueT value(sint64 elementIndex) const;
+
+		// Add element (key, value) to the hash map, return elementIndex of new element.
+		// If key already exists in the hash map, the old value will be overwritten.
+		// If the hash map is full, return NULL_INDEX.
+		sint64 set(const KeyT& key, const ValueT& value);
+
+		// Mark element for removal.
+		void removeByIndex(sint64 elementIdx);
+
+		// Mark element for removal if key is contained in the hash map, 
+		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
+		sint64 removeByKey(const KeyT& key);
+
+		// Remove all elements marked for removal, this is a very expensive operation.
+		void cleanup();
+
+		// Replace value for *existing* key, do nothing otherwise.
+		// - The key exists: replace its value. Return true.
+		// - The key is not contained in the hash map: no action is taken. Return false.
+		bool replace(const KeyT& key, const ValueT& newValue);
+
+		// Reinitialize as empty hash map.
+		void reset();
+	};
+
+
 	// Collection of priority queues of elements with type T and total element capacity L.
 	// Each ID pov (point of view) has an own queue.
 	template <typename T, uint64 L>
@@ -635,7 +723,7 @@ namespace QPI
 		}
 
 		// Check if given type is valid (supported by most comprehensive ProposalData class).
-		static bool isValid(uint16 proposalType);
+		inline static bool isValid(uint16 proposalType);
 	};
 
 	// Proposal data struct for all types of proposals defined in August 2024.
@@ -981,6 +1069,7 @@ namespace QPI
 			const m256i& invocator,
 			long long invocationReward
 		) {
+			ASSERT(invocationReward >= 0);
 			_currentContractIndex = contractIndex;
 			_currentContractId = m256i(contractIndex, 0, 0, 0);
 			_originator = originator;
@@ -1021,7 +1110,7 @@ namespace QPI
 			uint8 day
 		) const; // [0..6]
 
-		uint16 epoch(
+		inline uint16 epoch(
 		) const; // [0..9'999]
 
 		bit getEntity(
@@ -1080,7 +1169,7 @@ namespace QPI
 			const array<sint8, 64>& signature
 		) const;
 
-		uint32 tick(
+		inline uint32 tick(
 		) const; // [0..999'999'999]
 
 		uint8 year(
@@ -1093,13 +1182,13 @@ namespace QPI
 		) const;
 
 		// Internal functions, calling not allowed in contracts
-		void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
-		void __qpiFreeLocals() const;
-		const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
-		void __qpiFreeContextOtherContract() const;
-		void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
-		void __qpiReleaseStateForReading(unsigned int contractIndex) const;
-		void __qpiAbort(unsigned int errorCode) const;
+		inline void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
+		inline void __qpiFreeLocals() const;
+		inline const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
+		inline void __qpiFreeContextOtherContract() const;
+		inline void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
+		inline void __qpiReleaseStateForReading(unsigned int contractIndex) const;
+		inline void __qpiAbort(unsigned int errorCode) const;
 
 	protected:
 		// Construction is done in core, not allowed in contracts
@@ -1163,9 +1252,9 @@ namespace QPI
 
 
 		// Internal functions, calling not allowed in contracts
-		const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
-		void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
-		void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
+		inline const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
+		inline void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
+		inline void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 		template <unsigned int sysProcId, typename InputType, typename OutputType>
 		void __qpiCallSystemProcOfOtherContract(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
 
@@ -1177,8 +1266,8 @@ namespace QPI
 	// QPI available in REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 	struct QpiContextForInit : public QPI::QpiContext
 	{
-		void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short, unsigned int) const;
-		void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		inline void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		inline void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
 
 		// Construction is done in core, not allowed in contracts
 		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}

@@ -25,7 +25,7 @@ static struct SpectrumInfo {
 
 static unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
 static constexpr unsigned char entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
-unsigned long long dustThresholdBurnAll = 0, dustThresholdBurnHalf = 0;
+static unsigned long long dustThresholdBurnAll = 0, dustThresholdBurnHalf = 0;
 
 static m256i* spectrumDigests = nullptr;
 constexpr unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
@@ -34,7 +34,7 @@ static unsigned long long spectrumReorgTotalExecutionTicks = 0;
 
 
 // Update SpectrumInfo data (exensive, because it iterates the whole spectrum), acquire no lock
-void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
+static void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
 {
     si.numberOfEntities = 0;
     si.totalAmount = 0;
@@ -52,7 +52,7 @@ void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
 // Compute balances that count as dust and are burned if 75% of spectrum hash map is filled.
 // All balances <= dustThresholdBurnAll are burned in this case.
 // Every 2nd balance <= dustThresholdBurnHalf is burned in this case.
-void updateAndAnalzeEntityCategoryPopulations()
+static void updateAndAnalzeEntityCategoryPopulations()
 {
     static_assert(MAX_SUPPLY < (1llu << entityCategoryCount));
     setMem(entityCategoryPopulations, sizeof(entityCategoryPopulations), 0);
@@ -94,7 +94,7 @@ void updateAndAnalzeEntityCategoryPopulations()
     }
 }
 
-void logSpectrumStats()
+static void logSpectrumStats()
 {
     SpectrumStats spectrumStats;
     spectrumStats.totalAmount = spectrumInfo.totalAmount;
