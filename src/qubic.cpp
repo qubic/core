@@ -3876,14 +3876,10 @@ static void tickProcessor(void*)
                                             {
                                                 if (*digest == nextTickData.transactionDigests[j])
                                                 {
-                                                    unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
-                                                    const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                    bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
-
-                                                    pendingTransaction = (Transaction*)transactionBuffer;
                                                     ts.tickTransactions.acquireLock();
                                                     if (!tsPendingTransactionOffsets[j])
                                                     {
+                                                        const unsigned int transactionSize = pendingTransaction->totalSize();
                                                         if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                                         {
                                                             tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
@@ -3895,6 +3891,8 @@ static void tickProcessor(void*)
 
                                                     numberOfKnownNextTickTransactions++;
                                                     unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+
+                                                    break;
                                                 }
                                             }
                                         }
