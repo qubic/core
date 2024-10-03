@@ -30,13 +30,13 @@ public:
 
         unsigned int transactionSize = transaction->totalSize();
 
-        auto* offsets = tickTransactionOffsets.getByTickInCurrentEpoch(tick);
-        if (nextTickTransactionOffset + transactionSize <= tickTransactions.storageSpaceCurrentEpoch)
+        auto* offsets = transactionsStorage.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
+        if (transactionsStorage.nextTickTransactionOffset + transactionSize <= transactionsStorage.tickTransactions.storageSpaceCurrentEpoch)
         {
             EXPECT_EQ(offsets[transactionIdx], 0);
-            offsets[transactionIdx] = nextTickTransactionOffset;
-            copyMem(tickTransactions(nextTickTransactionOffset), transaction, transactionSize);
-            nextTickTransactionOffset += transactionSize;
+            offsets[transactionIdx] = transactionsStorage.nextTickTransactionOffset;
+            copyMem(transactionsStorage.tickTransactions(transactionsStorage.nextTickTransactionOffset), transaction, transactionSize);
+            transactionsStorage.nextTickTransactionOffset += transactionSize;
         }
     }
 };
@@ -104,7 +104,7 @@ void checkTick(unsigned int tick, unsigned long long seed, unsigned short maxTra
 
     // check transactions of tick
     {
-        const auto* offsets = previousEpoch ? ts.tickTransactionOffsets.getByTickInPreviousEpoch(tick) : ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
+        const auto* offsets = previousEpoch ? ts.transactionsStorage.tickTransactionOffsets.getByTickInPreviousEpoch(tick) : ts.transactionsStorage.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
         unsigned int transactionNum = gen64() % (maxTransactions + 1);
         unsigned int orderMode = gen64() % 2;
         unsigned int transactionSlot;
@@ -123,7 +123,7 @@ void checkTick(unsigned int tick, unsigned long long seed, unsigned short maxTra
             if (!offsets[transactionSlot])
                 continue;
 
-            Transaction* tp = ts.tickTransactions(offsets[transactionSlot]);
+            Transaction* tp = ts.transactionsStorage.tickTransactions(offsets[transactionSlot]);
             EXPECT_TRUE(tp->checkValidity());
             EXPECT_EQ(tp->tick, tick);
             EXPECT_EQ((int)tp->inputSize, expectedInputSize);

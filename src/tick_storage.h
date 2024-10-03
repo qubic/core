@@ -15,8 +15,6 @@
 static unsigned short SNAPSHOT_METADATA_FILE_NAME[] = L"snapshotMetadata.???";
 static unsigned short SNAPSHOT_TICK_DATA_FILE_NAME[] = L"snapshotTickdata.???";
 static unsigned short SNAPSHOT_TICKS_FILE_NAME[] = L"snapshotTicks.???";
-static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
-static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
 #endif
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
 // The number of ticks to keep from the previous epoch is TICKS_TO_KEEP_FROM_PRIOR_EPOCH (defined in public_settings.h).
@@ -60,15 +58,11 @@ private:
     // Ticks of previous epoch. Points to ticksPtr + ticksLengthCurrentEpoch
     inline static Tick* oldTicksPtr = nullptr;
 
-    // Transaction data.
-    inline static TickTransactionsStorage transactionsStorage;
-
     // Lock for securing tickData
     inline static volatile char tickDataLock = 0;
 
     // One lock per computor for securing ticks element in current tick (only the tick system.tick is written)
     inline static volatile char ticksLocks[NUMBER_OF_COMPUTORS];
-
 
 #if TICK_STORAGE_AUTOSAVE_MODE
     struct MetaData {
@@ -126,59 +120,6 @@ private:
         }
         return true;
     }
-    bool saveTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
-    {
-        long long totalWriteSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
-        auto sz = saveLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalWriteSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
-        if (sz != totalWriteSize)
-        {
-            return false;
-        }
-        return true;
-    }
-    bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
-    {
-        unsigned int toTick = tickBegin + (unsigned int)(nTick);
-        unsigned long long toPtr = 0;
-        outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
-        lastCheckTransactionOffset = tickBegin > lastCheckTransactionOffset ? tickBegin : lastCheckTransactionOffset;
-        // find the offset
-        {
-            unsigned long long maxOffset = FIRST_TICK_TRANSACTION_OFFSET;
-            unsigned int tick = 0;
-            for (tick = toTick; tick >= lastCheckTransactionOffset; tick--)
-            {
-                for (int idx = NUMBER_OF_TRANSACTIONS_PER_TICK - 1; idx >= 0; idx--)
-                {
-                    if (this->tickTransactionOffsets(tick, idx))
-                    {
-                        unsigned long long offset = this->tickTransactionOffsets(tick, idx);
-                        Transaction* tx = (Transaction*)(tickTransactionsPtr + offset);
-                        unsigned long long tmp = offset + tx->totalSize();
-                        if (tmp > maxOffset){
-                            maxOffset = tmp;
-                            lastCheckTransactionOffset = tick;
-                        }
-                    }
-                }
-            }
-            toPtr = maxOffset;
-            outNextTickTransactionOffset = maxOffset;
-        }
-        
-        // saving from the first tx of from tick to the last tx of (totick)
-        long long totalWriteSize = toPtr;
-        unsigned char* ptr = tickTransactionsPtr;
-        auto sz = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalWriteSize, (unsigned char*)ptr, directory);
-        if (sz != totalWriteSize)
-        {
-            outTotalTransactionSize = -1;
-            return false;
-        }
-        outTotalTransactionSize = totalWriteSize;
-
-        return true;
-    }
     bool loadMetaData(CHAR16* directory = NULL)
     {
         auto sz = loadLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(metaData), (unsigned char*)&metaData, directory);
@@ -226,28 +167,7 @@ private:
         }
         return true;
     }
-    bool loadTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
-    {
-        long long totalLoadSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
-        auto sz = loadLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalLoadSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
-        if (sz != totalLoadSize)
-        {
-            return false;
-        }
-        return true;
-    }
-    bool loadTransactions(unsigned long long nTick, unsigned long long totalLoadSize, CHAR16* directory = NULL)
-    {
-        unsigned char* ptr = tickTransactionsPtr;
-        auto sz = loadLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalLoadSize, (unsigned char*)ptr, directory);
-        if (sz != totalLoadSize)
-        {
-            return false;
-        }
-        return true;
-    }
-#endif
-    
+#endif 
 
 public:
 #if TICK_STORAGE_AUTOSAVE_MODE
@@ -295,24 +215,24 @@ public:
         for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.releaseLock(i);
 
 
-        tickTransactions.acquireLock();
+        transactionsStorage.tickTransactions.acquireLock();
         logToConsole(L"Saving tick transaction offset");
-        if (!saveTickTransactionOffsets(nTick, directory))
+        if (!transactionsStorage.saveTickTransactionOffsets(nTick, directory))
         {
-            tickTransactions.releaseLock();
+            transactionsStorage.tickTransactions.releaseLock();
             logToConsole(L"Failed to save transactionOffset");
             return 3;
         }
         logToConsole(L"Saving transactions");
         long long outTotalTransactionSize = 0;
         unsigned long long outNextTickTransactionOffset = 0;
-        if (!saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
+        if (!transactionsStorage.saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset, lastCheckTransactionOffset, directory))
         {
-            tickTransactions.releaseLock();
+            transactionsStorage.tickTransactions.releaseLock();
             logToConsole(L"Failed to save transactions");
             return 2;
         }
-        tickTransactions.releaseLock();
+        transactionsStorage.tickTransactions.releaseLock();
 
         logToConsole(L"Saving meta data");
         if (!saveMetaData(epoch, tick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
@@ -344,7 +264,7 @@ public:
             initMetaData(epoch);
             return 2;
         }
-        nextTickTransactionOffset = metaData.outNextTickTransactionOffset;
+        transactionsStorage.nextTickTransactionOffset = metaData.outNextTickTransactionOffset;
         unsigned long long nTick = metaData.tickEnd - metaData.tickBegin + 1;
         prepareFilenames(epoch);
 
@@ -365,7 +285,7 @@ public:
         }
 
         logToConsole(L"Loading transaction offset...");
-        if (!loadTickTransactionOffsets(nTick, directory))
+        if (!transactionsStorage.loadTickTransactionOffsets(nTick, directory))
         {
             logToConsole(L"Failed to load loadTickTransactionOffsets");
             initMetaData(epoch);
@@ -373,7 +293,7 @@ public:
         }
 
         logToConsole(L"Loading transactions...");
-        if (!loadTransactions(nTick, metaData.outTotalTransactionSize, directory))
+        if (!transactionsStorage.loadTransactions(nTick, metaData.outTotalTransactionSize, directory))
         {
             logToConsole(L"Failed to load loadTransactions");
             initMetaData(epoch);
@@ -410,6 +330,9 @@ public:
         return true;
     }
 #endif
+    // Transaction data.
+    inline static TickTransactionsStorage transactionsStorage;
+
     // Init at node startup
     static bool init()
     {
@@ -453,6 +376,8 @@ public:
         {
             freePool(ticksPtr);
         }
+
+        transactionsStorage.deinit();
     }
 
     // Begin new epoch. If not called the first time (seamless transition), assume that the ticks to keep
@@ -486,8 +411,6 @@ public:
             copyMem(oldTickDataPtr, tickDataPtr + tickIndex, tickCount * sizeof(TickData));
             copyMem(oldTicksPtr, ticksPtr + (tickIndex * NUMBER_OF_COMPUTORS), tickCount * NUMBER_OF_COMPUTORS * sizeof(Tick));
 
-            transactionsStorage.beginEpoch(newInitialTick);
-
             // reset data storage of new epoch
             setMem(tickDataPtr, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(TickData), 0);
             setMem(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick), 0);
@@ -503,6 +426,8 @@ public:
 
         tickBegin = newInitialTick;
         tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
+
+        transactionsStorage.beginEpoch(newInitialTick);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"End ts.beginEpoch()");

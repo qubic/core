@@ -9,9 +9,14 @@
 
 #include "public_settings.h"
 
+#if TICK_STORAGE_AUTOSAVE_MODE
+static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
+static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
+#endif
+
 class TickTransactionsStorage
 {
-public:
+private:
     static constexpr unsigned long long tickDataLength = MAX_NUMBER_OF_TICKS_PER_EPOCH + TICKS_TO_KEEP_FROM_PRIOR_EPOCH;
 
     static constexpr unsigned long long tickTransactionsSizeCurrentEpoch = FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS);
@@ -47,6 +52,83 @@ public:
 
     // Lock for securing tickTransactions and tickTransactionOffsets
     volatile char tickTransactionsLock = 0;
+
+public:
+#if TICK_STORAGE_AUTOSAVE_MODE
+    bool saveTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
+    {
+        long long totalWriteSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+        auto sz = saveLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalWriteSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
+        if (sz != totalWriteSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, unsigned long long lastCheckTransactionOffset, CHAR16* directory = NULL)
+    {
+        unsigned int toTick = tickBegin + (unsigned int)(nTick);
+        unsigned long long toPtr = 0;
+        outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
+        lastCheckTransactionOffset = tickBegin > lastCheckTransactionOffset ? tickBegin : lastCheckTransactionOffset;
+        // find the offset
+        {
+            unsigned long long maxOffset = FIRST_TICK_TRANSACTION_OFFSET;
+            unsigned int tick = 0;
+            for (tick = toTick; tick >= lastCheckTransactionOffset; tick--)
+            {
+                for (int idx = NUMBER_OF_TRANSACTIONS_PER_TICK - 1; idx >= 0; idx--)
+                {
+                    if (this->tickTransactionOffsets(tick, idx))
+                    {
+                        unsigned long long offset = this->tickTransactionOffsets(tick, idx);
+                        Transaction* tx = (Transaction*)(tickTransactionsPtr + offset);
+                        unsigned long long tmp = offset + tx->totalSize();
+                        if (tmp > maxOffset) {
+                            maxOffset = tmp;
+                            lastCheckTransactionOffset = tick;
+                        }
+                    }
+                }
+            }
+            toPtr = maxOffset;
+            outNextTickTransactionOffset = maxOffset;
+        }
+
+        // saving from the first tx of from tick to the last tx of (totick)
+        long long totalWriteSize = toPtr;
+        unsigned char* ptr = tickTransactionsPtr;
+        auto sz = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalWriteSize, (unsigned char*)ptr, directory);
+        if (sz != totalWriteSize)
+        {
+            outTotalTransactionSize = -1;
+            return false;
+        }
+        outTotalTransactionSize = totalWriteSize;
+
+        return true;
+    }
+    bool loadTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
+    {
+        long long totalLoadSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+        auto sz = loadLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalLoadSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+    bool loadTransactions(unsigned long long nTick, unsigned long long totalLoadSize, CHAR16* directory = NULL)
+    {
+        unsigned char* ptr = tickTransactionsPtr;
+        auto sz = loadLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalLoadSize, (unsigned char*)ptr, directory);
+        if (sz != totalLoadSize)
+        {
+            return false;
+        }
+        return true;
+    }
+#endif
 
     bool init()
     {
@@ -361,7 +443,7 @@ public:
     } tickTransactionOffsets;
 
     // Offset of next free space in tick transaction storage
-    inline static unsigned long long nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
+    unsigned long long nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
 
     // Struct for structured, convenient access via ".tickTransactions"
     struct TickTransactionsAccess
