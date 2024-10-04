@@ -476,7 +476,6 @@ public:
         }
 
         // Check current epoch data
-        unsigned long long lastTransactionEndOffset = FIRST_TICK_TRANSACTION_OFFSET;
         for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
         {
             const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);

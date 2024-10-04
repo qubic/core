@@ -92,7 +92,7 @@ public:
 	// Release lock for returned pointers to transactions or digests.
 	inline static void releaseLock()
 	{
-		transactionsStorage.tickTransactions.acquireLock();
+		transactionsStorage.tickTransactions.releaseLock();
 		RELEASE(txsDigestsLock);
 	}
 
@@ -157,8 +157,9 @@ public:
 	}
 
 	// Check validity of transaction and add to the pool.
-	static void update(Transaction* tx)
+	static bool update(Transaction* tx)
 	{
+		bool txAdded = false;
 		if (tx->checkValidity() && tickInCurrentEpochStorage(tx->tick))
 		{
 			unsigned int tickIndex = tickToIndexCurrentEpoch(tx->tick);
@@ -175,15 +176,17 @@ public:
 
 				KangarooTwelve(tx, transactionSize, &txsDigestsPtr[tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + numSavedTxsPerTick[tickIndex]], 32ULL);
 				transactionOffset = transactionsStorage.nextTickTransactionOffset;
-				bs->CopyMem(transactionsStorage.tickTransactions(transactionOffset), tx, transactionSize);
+				copyMem(transactionsStorage.tickTransactions(transactionOffset), tx, transactionSize);
 				transactionsStorage.nextTickTransactionOffset += transactionSize;
 
 				numSavedTxsPerTick[tickIndex]++;
+				txAdded = true;
 			}
 
 			releaseLock();
 			RELEASE(numSavedLock);
 		}
+		return txAdded;
 	}
 
 	// Get a transaction for the specified tick.
@@ -272,11 +275,14 @@ public:
 			copyMem(&numSavedTxsPerTick[MAX_NUMBER_OF_TICKS_PER_EPOCH], &numSavedTxsPerTick[tickIndex], tickCount * sizeof(numSavedTxsPerTick[0]));
 
 			setMem(txsDigestsPtr, txsDigestsSizeCurrentEpoch, 0);
+			setMem(numSavedTxsPerTick, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(numSavedTxsPerTick[0]), 0);
 		}
 		else
 		{
 			// node startup with no data of prior epoch (also use storage for prior epoch for current)
 			setMem(txsDigestsPtr, txsDigestsSize, 0);
+			setMem(numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
+
 			oldTickBegin = 0;
 			oldTickEnd = 0;
 		}
@@ -285,6 +291,70 @@ public:
 		tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
 
 		transactionsStorage.beginEpoch(newInitialTick);
+	}
+
+	// Useful for debugging, but expensive: check that everything is as expected.
+	static void checkStateConsistencyWithAssert()
+	{
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+		addDebugMessage(L"Begin tsxPool.checkStateConsistencyWithAssert()");
+		CHAR16 dbgMsgBuf[200];
+		setText(dbgMsgBuf, L"oldTickBegin=");
+		appendNumber(dbgMsgBuf, oldTickBegin, FALSE);
+		appendText(dbgMsgBuf, L", oldTickEnd=");
+		appendNumber(dbgMsgBuf, oldTickEnd, FALSE);
+		appendText(dbgMsgBuf, L", tickBegin=");
+		appendNumber(dbgMsgBuf, tickBegin, FALSE);
+		appendText(dbgMsgBuf, L", tickEnd=");
+		appendNumber(dbgMsgBuf, tickEnd, FALSE);
+		addDebugMessage(dbgMsgBuf);
+#endif
+		ASSERT(tickBegin <= tickEnd);
+		ASSERT(tickEnd - tickBegin <= MAX_NUMBER_OF_TICKS_PER_EPOCH);
+		ASSERT(oldTickBegin <= oldTickEnd);
+		ASSERT(oldTickEnd - oldTickBegin <= TICKS_TO_KEEP_FROM_PRIOR_EPOCH);
+		ASSERT(oldTickEnd <= tickBegin);
+
+		ASSERT(oldTxsDigestsPtr != nullptr);
+		ASSERT(oldTxsDigestsPtr == txsDigestsPtr + txsDigestsLengthCurrentEpoch);
+
+		// Check transactions storage
+		transactionsStorage.checkStateConsistencyWithAssert();
+
+		// Check that transaction digests and number of saved txs per tick are consistent with transactionsStorage
+		unsigned int begins[2] = { oldTickBegin, tickBegin };
+		unsigned int ends[2] = { oldTickEnd, tickEnd };
+		typedef unsigned int (*TickToIndexFunction) (unsigned int t);
+		TickToIndexFunction tickToIndexFc[2] = {tickToIndexPreviousEpoch, tickToIndexCurrentEpoch};
+		for (unsigned int section = 0; section < 2; ++section)
+		{
+			for (unsigned int tickId = begins[section]; tickId < ends[section]; ++tickId)
+			{
+				unsigned int tickIndex = tickToIndexFc[section](tickId);
+				const unsigned int numSavedTxs = numSavedTxsPerTick[tickIndex];
+				ASSERT(numSavedTxs <= NUMBER_OF_TRANSACTIONS_PER_TICK);
+				for (unsigned int txIndex = 0; txIndex < numSavedTxs; ++txIndex)
+				{
+					unsigned long long txOffset = transactionsStorage.tickTransactionOffsets.getByTickIndex(tickIndex)[txIndex];
+					ASSERT(txOffset != 0);
+					Transaction* txPtrFromStorage = transactionsStorage.tickTransactions.ptr(txOffset);
+					Transaction* txPtr = get(tickId, txIndex);
+					ASSERT(txPtr);
+					ASSERT(txPtr == txPtrFromStorage);
+				}
+				for (unsigned int txIndex = numSavedTxs; txIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; ++txIndex)
+				{
+					unsigned long long txOffset = transactionsStorage.tickTransactionOffsets.getByTickIndex(tickIndex)[txIndex];
+					ASSERT(txOffset == 0);
+					Transaction* txPtr = get(tickId, txIndex);
+					ASSERT(txPtr == nullptr);
+				}
+			}
+		}
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+		addDebugMessage(L"End txsPool.checkStateConsistencyWithAssert()");
+#endif
 	}
 
 };

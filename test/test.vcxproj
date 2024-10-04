@@ -85,6 +85,7 @@
     <ClCompile Include="kangaroo_twelve.cpp" />
     <ClCompile Include="spectrum.cpp" />
     <ClCompile Include="stdlib_impl.cpp" />
+    <ClCompile Include="txs_pool.cpp" />
     <ClCompile Include="tx_status_request.cpp" />
     <ClCompile Include="m256.cpp" />
     <ClCompile Include="math_lib.cpp" />
