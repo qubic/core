@@ -182,9 +182,6 @@ public:
             if (oldTickBegin < tickBegin)
                 oldTickBegin = tickBegin;
 
-            const unsigned int tickIndex = tickToIndexCurrentEpoch(oldTickBegin);
-            const unsigned int tickCount = oldTickEnd - oldTickBegin;
-
             // copy transactions and transactionOffsets
             {
                 // copy transactions
