@@ -203,6 +203,7 @@
       <Filter>assets</Filter>
     </ClInclude>
     <ClInclude Include="tick_txs_storage.h" />
+    <ClInclude Include="txs_pool.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

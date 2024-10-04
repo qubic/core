@@ -92,6 +92,7 @@
     <ClInclude Include="platform\uefi.h" />
     <ClInclude Include="tick_storage.h" />
     <ClInclude Include="tick_txs_storage.h" />
+    <ClInclude Include="txs_pool.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>
