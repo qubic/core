@@ -85,3 +85,30 @@ void qLogger::processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
 #endif
     enqueueResponse(peer, 0, ResponseLogIdRangeFromTx::type, header->dejavu(), NULL);
 }
+
+void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header)
+{
+#if ENABLED_LOGGING
+    RequestAllLogIdRangesFromTick* request = header->getPayload<RequestAllLogIdRangesFromTick>();
+    if (request->passcode[0] == logReaderPasscodes[0]
+        && request->passcode[1] == logReaderPasscodes[1]
+        && request->passcode[2] == logReaderPasscodes[2]
+        && request->passcode[3] == logReaderPasscodes[3]
+        && request->tick < system.tick
+        && request->tick >= system.initialTick
+        )
+    {
+        ResponseAllLogIdRangesFromTick resp;
+        int txId = 0;
+        for (txId = 0; txId < LOG_TX_PER_TICK; txId++)
+        {
+            BlobInfo info = tx.getLogIdInfo(request->tick, txId);
+            resp.fromLogId[txId] = info.startIndex;
+            resp.length[txId] = info.length;
+        }
+        enqueueResponse(peer, sizeof(ResponseLogIdRangeFromTx), ResponseLogIdRangeFromTx::type, header->dejavu(), &resp);
+        return;
+    }
+#endif
+    enqueueResponse(peer, 0, ResponseLogIdRangeFromTx::type, header->dejavu(), NULL);
+}
