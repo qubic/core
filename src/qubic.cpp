@@ -1415,11 +1415,17 @@ static void requestProcessor(void* ProcedureArgument)
 				}
 				break;
 
-				case REQUEST_SYSTEM_INFO:
-				{
-					processRequestSystemInfo(peer, header);
-				}
-				break;
+                case RequestAllLogIdRangesFromTick::type:
+                {
+                    logger.processRequestTickTxLogInfo(peer, header);
+                }
+                break;
+
+                case REQUEST_SYSTEM_INFO:
+                {
+                    processRequestSystemInfo(peer, header);
+                }
+                break;
 
 				case SpecialCommand::type:
 				{
