@@ -712,7 +712,7 @@ struct ScoreFunction
         }
         nonZerosMask = (unsigned long long)(~(_mm512_cmpeq_epi8_mask(neurons512, zeros512)) & nonZeros512);
         negMask = (unsigned long long)_mm512_cmpgt_epi8_mask(zeros512, _mm512_xor_si512(synapses512, neurons512));
-#elif defined(__AVX2__)
+#else
         const __m256i neurons256 = _mm256_loadu_si256((const __m256i*)(pNNNr));
         const __m256i synapses256 = _mm256_loadu_si256((const __m256i*)(pNNSynapse));
         const __m256i absSynapse = _mm256_abs_epi8(synapses256);
@@ -724,19 +724,6 @@ struct ScoreFunction
         }
         nonZerosMask = (unsigned long long)(~(_mm256_movemask_epi8(_mm256_cmpeq_epi8(neurons256, zeros256))) & _mm256_movemask_epi8(nonZeros256)) & 0xFFFFFFFFUL;
         negMask = (unsigned long long)_mm256_movemask_epi8(_mm256_cmpgt_epi8(zeros256, _mm256_and_si256(_mm256_xor_si256(synapses256, neurons256), nonZeros256))) & 0xFFFFFFFFUL;
-#else
-        const __m128i neurons128 = _mm_loadu_si128((const __m128i*)(pNNNr));
-        const __m128i synapses128 = _mm_loadu_si128((const __m128i*)(pNNSynapse));
-        const __m128i absSynapse = _mm_abs_epi8(synapses128);
-        const __m128i zeros128 = _mm_setzero_si128();
-        __m128i nonZeros128 = zeros128;
-        for (int modIdx = 0; modIdx < numMods; modIdx++)
-        {
-            nonZeros128 = _mm_or_si128(nonZeros128, _mm_cmpeq_epi8(absSynapse, _mm_set1_epi8(_modNum[tick][modIdx])));
-        }
-
-        nonZerosMask = (unsigned long long)(~(_mm_movemask_epi8(_mm_cmpeq_epi8(neurons128, zeros128))) & _mm_movemask_epi8(nonZeros128));
-        negMask = (unsigned long long)_mm_movemask_epi8(_mm_cmpgt_epi8(zeros128, _mm_and_si128(_mm_xor_si128(synapses128, neurons128), nonZeros128)));
 #endif
 
     }
