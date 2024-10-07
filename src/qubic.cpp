@@ -3431,7 +3431,7 @@ static void tickProcessor(void*)
             {
                 if (system.tick > latestProcessedTick)
                 {
-                    // LOGIC: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
+                    // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
                     // thus, pausing here and doing the state persisting is the best choice.
                     if (requestPersistingNodeState)
                     {
