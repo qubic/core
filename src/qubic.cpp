@@ -68,7 +68,7 @@
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
 #define PEER_REFRESHING_PERIOD 120000ULL
-#define PORT 21841
+#define PORT 31841
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 4 // Must be at least 3+: 1+ for tx propagration + 1 for tickData propagration + 1 for vote propagration
@@ -1415,17 +1415,17 @@ static void requestProcessor(void* ProcedureArgument)
 				}
 				break;
 
-                case RequestAllLogIdRangesFromTick::type:
-                {
-                    logger.processRequestTickTxLogInfo(peer, header);
-                }
-                break;
+				case RequestAllLogIdRangesFromTick::type:
+				{
+					logger.processRequestTickTxLogInfo(peer, header);
+				}
+				break;
 
-                case REQUEST_SYSTEM_INFO:
-                {
-                    processRequestSystemInfo(peer, header);
-                }
-                break;
+				case REQUEST_SYSTEM_INFO:
+				{
+					processRequestSystemInfo(peer, header);
+				}
+				break;
 
 				case SpecialCommand::type:
 				{
@@ -3891,8 +3891,9 @@ static void tickProcessor(void*)
 								if (tickDataSuits)
 								{
 									const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
-									if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
-										|| dayIndex > 738570 + system.epoch * 7)
+									// if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
+									//     || dayIndex > 738570 + system.epoch * 7)
+									if (system.tick - system.initialTick >= TESTNET_EPOCH_DURATION)
 									{
 										// start seamless epoch transition
 										epochTransitionState = 1;
@@ -4236,7 +4237,7 @@ static bool initialize()
 			return false;
 		if (!txsPool.init())
 			return false;
-		
+
 		bs->SetMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
 
 		if (!initSpectrum())
@@ -4693,20 +4694,23 @@ static void logInfo()
 	}
 	else
 	{
-		const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
-		for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
-		{
-			appendText(message, alphabet[ownComputorIndices[i] / 26]);
-			appendText(message, alphabet[ownComputorIndices[i] % 26]);
-			if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
-			{
-				appendText(message, L"+");
-			}
-			else
-			{
-				appendText(message, L".");
-			}
-		}
+		appendText(message, L"[Owning ");
+		appendNumber(message, numberOfOwnComputorIndices, false);
+		appendText(message, L" indices]");
+		// const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
+		// for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+		// {
+		//     appendText(message, alphabet[ownComputorIndices[i] / 26]);
+		//     appendText(message, alphabet[ownComputorIndices[i] % 26]);
+		//     if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
+		//     {
+		//         appendText(message, L"+");
+		//     }
+		//     else
+		//     {
+		//         appendText(message, L".");
+		//     }
+		// }
 	}
 	logToConsole(message);
 
@@ -5586,9 +5590,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 							{
 								requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags[i >> 3] |= (1 << (i & 7));
 							}
-						}
-						pushToAny(&requestedQuorumTick.header);
 					}
+						pushToAny(&requestedQuorumTick.header);
+				}
 					futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
 
 					if ((ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
@@ -5617,7 +5621,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
 						requestedTickTransactions.requestedTickTransactions.tick = 0;
 					}
-				}
+			}
 
 				// Add messages from response queue to sending buffer
 				const unsigned short responseQueueElementHead = ::responseQueueElementHead;
@@ -5753,7 +5757,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 						logHealthStatus();
 					}
 #endif
-				}
+					}
 				else
 				{
 					mainLoopNumerator += __rdtsc() - curTimeTick;
@@ -5763,7 +5767,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #if !defined(NDEBUG)
 				printDebugMessages();
 #endif
-			}
+				}
 
 			saveSystem();
 			score->saveScoreCache(system.epoch);
