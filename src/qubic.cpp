@@ -1454,6 +1454,12 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestAllLogIdRangesFromTick::type:
+                {
+                    logger.processRequestTickTxLogInfo(peer, header);
+                }
+                break;
+
                 case REQUEST_SYSTEM_INFO:
                 {
                     processRequestSystemInfo(peer, header);
