@@ -106,9 +106,9 @@ void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* hea
             resp.fromLogId[txId] = info.startIndex;
             resp.length[txId] = info.length;
         }
-        enqueueResponse(peer, sizeof(ResponseLogIdRangeFromTx), ResponseLogIdRangeFromTx::type, header->dejavu(), &resp);
+        enqueueResponse(peer, sizeof(ResponseAllLogIdRangesFromTick), ResponseAllLogIdRangesFromTick::type, header->dejavu(), &resp);
         return;
     }
 #endif
-    enqueueResponse(peer, 0, ResponseLogIdRangeFromTx::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, ResponseAllLogIdRangesFromTick::type, header->dejavu(), NULL);
 }
