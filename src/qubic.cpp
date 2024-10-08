@@ -1454,6 +1454,12 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestAllLogIdRangesFromTick::type:
+                {
+                    logger.processRequestTickTxLogInfo(peer, header);
+                }
+                break;
+
                 case REQUEST_SYSTEM_INFO:
                 {
                     processRequestSystemInfo(peer, header);
@@ -3718,14 +3724,10 @@ static void tickProcessor(void*)
                                         {
                                             if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
                                             {
-                                                unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
-                                                const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
-
-                                                pendingTransaction = (Transaction*)transactionBuffer;
                                                 ts.tickTransactions.acquireLock();
                                                 if (!tsPendingTransactionOffsets[j])
                                                 {
+                                                    const unsigned int transactionSize = pendingTransaction->totalSize();
                                                     if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                                     {
                                                         tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
@@ -3737,6 +3739,8 @@ static void tickProcessor(void*)
 
                                                 numberOfKnownNextTickTransactions++;
                                                 unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+
+                                                break;
                                             }
                                         }
                                     }
@@ -3759,14 +3763,10 @@ static void tickProcessor(void*)
                                         {
                                             if (&entityPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
                                             {
-                                                unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
-                                                const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
-
-                                                pendingTransaction = (Transaction*)transactionBuffer;
                                                 ts.tickTransactions.acquireLock();
                                                 if (!tsPendingTransactionOffsets[j])
                                                 {
+                                                    const unsigned int transactionSize = pendingTransaction->totalSize();
                                                     if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                                     {
                                                         tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
@@ -3778,6 +3778,8 @@ static void tickProcessor(void*)
 
                                                 numberOfKnownNextTickTransactions++;
                                                 unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+
+                                                break;
                                             }
                                         }
                                     }
