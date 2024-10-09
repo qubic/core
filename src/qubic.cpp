@@ -2902,14 +2902,30 @@ static void endEpoch()
 
         // Compute revenue of computors and arbitrator
         long long arbitratorRevenue = ISSUANCE_RATE;
+        constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
+        constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
+        // maxRevenueScore for 300k ticks = ((7099 * 300000) / 676) * 300000 * 675
+        constexpr unsigned scalingFactor = 51200; // >= (maxRevenueScore300kTicks / 0xFFFFFFFFFFFFFFFFULL) * issuancePerComputor =(approx)= 51159.9
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
             long long revenue;
             if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
-                revenue = (ISSUANCE_RATE / NUMBER_OF_COMPUTORS);
+                revenue = issuancePerComputor;
             else
-                revenue = (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+            {
+                if (revenueScore[computorIndex] > scalingThreshold)
+                {
+                    // scale down to prevent overflow, then scale back up after division
+                    unsigned long long scaledRev = revenueScore[computorIndex] / scalingFactor;
+                    revenue = ((issuancePerComputor * scaledRev) / sortedRevenueScore[QUORUM - 1]);
+                    revenue *= scalingFactor;
+                }
+                else
+                {
+                    revenue = ((issuancePerComputor * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+                }
+            }
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
