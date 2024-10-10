@@ -2904,8 +2904,9 @@ static void endEpoch()
         long long arbitratorRevenue = ISSUANCE_RATE;
         constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
         constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
-        // maxRevenueScore for 300k ticks = ((7099 * 300000) / 676) * 300000 * 675
-        constexpr unsigned scalingFactor = 51200; // >= (maxRevenueScore300kTicks / 0xFFFFFFFFFFFFFFFFULL) * issuancePerComputor =(approx)= 51159.9
+        static_assert(MAX_NUMBER_OF_TICKS_PER_EPOCH <= 605020, "Redefine scalingFactor");
+        // maxRevenueScore for 605020 ticks = ((7099 * 605020) / 676) * 605020 * 675
+        constexpr unsigned scalingFactor = 208100; // >= (maxRevenueScore600kTicks / 0xFFFFFFFFFFFFFFFFULL) * issuancePerComputor =(approx)= 208078.5
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
