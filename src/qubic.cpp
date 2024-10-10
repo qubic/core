@@ -2902,14 +2902,31 @@ static void endEpoch()
 
         // Compute revenue of computors and arbitrator
         long long arbitratorRevenue = ISSUANCE_RATE;
+        constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
+        constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
+        static_assert(MAX_NUMBER_OF_TICKS_PER_EPOCH <= 605020, "Redefine scalingFactor");
+        // maxRevenueScore for 605020 ticks = ((7099 * 605020) / 676) * 605020 * 675
+        constexpr unsigned scalingFactor = 208100; // >= (maxRevenueScore600kTicks / 0xFFFFFFFFFFFFFFFFULL) * issuancePerComputor =(approx)= 208078.5
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
             long long revenue;
             if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
-                revenue = (ISSUANCE_RATE / NUMBER_OF_COMPUTORS);
+                revenue = issuancePerComputor;
             else
-                revenue = (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+            {
+                if (revenueScore[computorIndex] > scalingThreshold)
+                {
+                    // scale down to prevent overflow, then scale back up after division
+                    unsigned long long scaledRev = revenueScore[computorIndex] / scalingFactor;
+                    revenue = ((issuancePerComputor * scaledRev) / sortedRevenueScore[QUORUM - 1]);
+                    revenue *= scalingFactor;
+                }
+                else
+                {
+                    revenue = ((issuancePerComputor * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+                }
+            }
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
