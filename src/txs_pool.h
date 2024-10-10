@@ -156,7 +156,7 @@ public:
 		return res;
 	}
 
-	// Check validity of transaction and add to the pool.
+	// Check validity of transaction and add to the pool. Return boolean indicating whether transaction was added.
 	static bool update(Transaction* tx)
 	{
 		bool txAdded = false;
