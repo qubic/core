@@ -409,12 +409,14 @@ public:
         inline unsigned long long* getByTickIndex(unsigned int tickIndex)
         {
             ASSERT(tickIndex < tickDataLength);
+            ASSERT(storagePtr);
             return storagePtr->tickTransactionOffsetsPtr + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK);
         }
 
         // Return pointer to offset array of transactions of tick in current epoch by tick (checking tick with ASSERT)
         inline unsigned long long* getByTickInCurrentEpoch(unsigned int tick)
         {
+            ASSERT(storagePtr);
             ASSERT(storagePtr->tickInCurrentEpochStorage(tick));
             const unsigned int tickIndex = storagePtr->tickToIndexCurrentEpoch(tick);
             return getByTickIndex(tickIndex);
@@ -423,6 +425,7 @@ public:
         // Return pointer to offset array of transactions of tick in previous epoch by tick (checking tick with ASSERT)
         inline unsigned long long* getByTickInPreviousEpoch(unsigned int tick)
         {
+            ASSERT(storagePtr);
             ASSERT(storagePtr->tickInPreviousEpochStorage(tick));
             const unsigned int tickIndex = storagePtr->tickToIndexPreviousEpoch(tick);
             return getByTickIndex(tickIndex);
@@ -452,11 +455,13 @@ public:
 
         void acquireLock()
         {
+            ASSERT(storagePtr);
             ACQUIRE(storagePtr->tickTransactionsLock);
         }
 
         void releaseLock()
         {
+            ASSERT(storagePtr);
             RELEASE(storagePtr->tickTransactionsLock);
         }
 
@@ -466,6 +471,7 @@ public:
         // Return pointer to Transaction based on transaction offset independent of epoch (checking offset with ASSERT)
         inline Transaction* ptr(unsigned long long transactionOffset)
         {
+            ASSERT(storagePtr);
             ASSERT(transactionOffset < tickTransactionsSize);
             return (Transaction*)(storagePtr->tickTransactionsPtr + transactionOffset);
         }
