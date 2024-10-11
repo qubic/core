@@ -2600,17 +2600,18 @@ static void beginEpoch()
 
 #ifndef NDEBUG
 	ts.checkStateConsistencyWithAssert();
+	txsPool.checkStateConsistencyWithAssert();
 #endif
 	ts.beginEpoch(system.initialTick);
+	txsPool.beginEpoch(system.initialTick);
 	voteCounter.init();
 #ifndef NDEBUG
 	ts.checkStateConsistencyWithAssert();
+	txsPool.checkStateConsistencyWithAssert();
 #endif
 #if ADDON_TX_STATUS_REQUEST
 	beginEpochTxStatusRequestAddOn(system.initialTick);
 #endif
-
-	txsPool.beginEpoch(system.initialTick);
 
 	setMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
 	setMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);

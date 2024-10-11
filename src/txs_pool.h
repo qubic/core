@@ -159,6 +159,9 @@ public:
 	// Check validity of transaction and add to the pool. Return boolean indicating whether transaction was added.
 	static bool update(Transaction* tx)
 	{
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+		addDebugMessage(L"Begin txsPool.update()");
+#endif
 		bool txAdded = false;
 		if (tx->checkValidity() && tickInCurrentEpochStorage(tx->tick))
 		{
@@ -186,6 +189,12 @@ public:
 			releaseLock();
 			RELEASE(numSavedLock);
 		}
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+		if (txAdded)
+			addDebugMessage(L"End txsPool.update(), txAdded true");
+		else
+			addDebugMessage(L"End txsPool.update(), txAdded false");
+#endif
 		return txAdded;
 	}
 
@@ -193,6 +202,15 @@ public:
 	// If no more transactions for this tick, return nullptr.
 	static Transaction* get(unsigned int tick, unsigned int index)
 	{
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+		addDebugMessage(L"txsPool.get()");
+		CHAR16 dbgMsgBuf[200];
+		setText(dbgMsgBuf, L"tick=");
+		appendNumber(dbgMsgBuf, tick, FALSE);
+		appendText(dbgMsgBuf, L", index=");
+		appendNumber(dbgMsgBuf, index, FALSE);
+		addDebugMessage(dbgMsgBuf);
+#endif
 		unsigned int tickIndex;
 		if (tickInCurrentEpochStorage(tick))
 		{
@@ -213,6 +231,7 @@ public:
 
 		if (hasTx)
 		{
+			ASSERT(index < NUMBER_OF_TRANSACTIONS_PER_TICK);
 			unsigned long long offset = transactionsStorage.tickTransactionOffsets.getByTickIndex(tickIndex)[index];
 			ASSERT(offset != 0);
 			return transactionsStorage.tickTransactions.ptr(offset);
@@ -227,6 +246,15 @@ public:
 	// If no more transactions for this tick, return nullptr.
 	static m256i* getDigest(unsigned int tick, unsigned int index)
 	{
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+		addDebugMessage(L"txsPool.getDigest()");
+		CHAR16 dbgMsgBuf[200];
+		setText(dbgMsgBuf, L"tick=");
+		appendNumber(dbgMsgBuf, tick, FALSE);
+		appendText(dbgMsgBuf, L", index=");
+		appendNumber(dbgMsgBuf, index, FALSE);
+		addDebugMessage(dbgMsgBuf);
+#endif
 		unsigned int tickIndex;
 		if (tickInCurrentEpochStorage(tick))
 		{
@@ -247,6 +275,7 @@ public:
 
 		if (hasTx)
 		{
+			ASSERT(index < NUMBER_OF_TRANSACTIONS_PER_TICK);
 			return &txsDigestsPtr[tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + index];
 		}
 		else
@@ -260,6 +289,9 @@ public:
 	// are ticks in [newInitialTick-TICKS_TO_KEEP_FROM_PRIOR_EPOCH, newInitialTick-1].
 	void beginEpoch(unsigned int newInitialTick)
 	{
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+		addDebugMessage(L"Begin txsPool.beginEpoch()");
+#endif
 		if (tickBegin && tickInCurrentEpochStorage(newInitialTick) && tickBegin < newInitialTick)
 		{
 			// seamless epoch transition: keep some ticks of prior epoch
@@ -291,6 +323,10 @@ public:
 		tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
 
 		transactionsStorage.beginEpoch(newInitialTick);
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+		addDebugMessage(L"End txsPool.beginEpoch()");
+#endif
 	}
 
 	// Useful for debugging, but expensive: check that everything is as expected.
