@@ -35,14 +35,14 @@ constexpr uint64 QEARN_BURN_PERCENT_40_43 = 30;
 constexpr uint64 QEARN_BURN_PERCENT_44_47 = 30;
 constexpr uint64 QEARN_BURN_PERCENT_48_51 = 25;
 
-constexpr sint32 QEARN_INVALID_INPUT_AMOUNT = -1;
-constexpr sint32 QEARN_LOCK_SUCCESS = 0;
-constexpr sint32 QEARN_INVALID_INPUT_LOCKED_EPOCH = 1;
-constexpr sint32 QEARN_INVALID_INPUT_UNLOCK_AMOUNT = 2;
-constexpr sint32 QEARN_EMPTY_LOCKED = 3;
-constexpr sint32 QEARN_UNLOCK_SUCCESS = 4;
-constexpr sint32 QEARN_OVERFLOW_USER = 5;
-constexpr sint32 QEARN_LIMIT_LOCK = 6;
+constexpr sint32 QEARN_INVALID_INPUT_AMOUNT = 0;
+constexpr sint32 QEARN_LOCK_SUCCESS = 1;
+constexpr sint32 QEARN_INVALID_INPUT_LOCKED_EPOCH = 2;
+constexpr sint32 QEARN_INVALID_INPUT_UNLOCK_AMOUNT = 3;
+constexpr sint32 QEARN_EMPTY_LOCKED = 4;
+constexpr sint32 QEARN_UNLOCK_SUCCESS = 5;
+constexpr sint32 QEARN_OVERFLOW_USER = 6;
+constexpr sint32 QEARN_LIMIT_LOCK = 7;
 
 struct QEARN2
 {
