@@ -37,7 +37,10 @@ If the code passes the PR review, it can be merged to the 'develop' branch for t
 (The idea is to test the changes in an accumulated way in the testnet, assuming that most changes work and do not require debugging. This should be easier than deploying each feature branch in the testnet separately.)
 The branch should be deleted after merging with the PR.
 
-4. `release/v1.XYZ`: This is a release branch for a specific version, usually for a new epoch.
+4. `testnet/YYYY-MM-DD-FeatureOrReleaseName`: This is a temporary branch used for the testnet, building on feature branches or the `develop` branch. It contains at least one commit that adapts the code as required for running in the testnet.
+We will delete testnet branches that have not been changed for one month or longer. And they may be cleaned up before by their owner (the developer who created it) to avoid cluttering the repository with unused branches.
+
+5. `release/v1.XYZ`: This is a release branch for a specific version, usually for a new epoch.
 It should be created from the 'develop' branch after testing the new features and agreeing on what is supposed to be included in the release.
 This branch is then merged to the main branch via PR before creating the release on the main branch.
 The branch may be deleted after merging.

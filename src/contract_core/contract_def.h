@@ -22,6 +22,8 @@ typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContextFunctionCall&, void*, void
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 
+constexpr unsigned long long MAX_CONTRACT_STATE_SIZE = 1073741824;
+
 // Maximum size of local variables that may be used by a contract function or procedure
 // If increased, the size of contractLocalsStack should be increased as well.
 constexpr unsigned int MAX_SIZE_OF_CONTRACT_LOCALS = 32 * 1024;
@@ -129,6 +131,17 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE SWATCH2
 #include "contracts/SupplyWatcher.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define CCF_CONTRACT_INDEX 8
+#define CONTRACT_INDEX CCF_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE CCF
+#define CONTRACT_STATE2_TYPE CCF2
+#include "contracts/ComputorControlledFund.h"
+
+
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
 
 #undef INITIALIZE
@@ -177,6 +190,7 @@ constexpr struct ContractDescription
     {"MLM", 112, 10000, sizeof(IPO)},
     {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
+    {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -260,4 +274,5 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MLM);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(GQMPROP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(SWATCH);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(CCF);
 }

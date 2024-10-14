@@ -5,6 +5,8 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
+// ASSERT can be used to support debugging and speed-up development
+#include "../platform/assert.h"
 
 namespace QPI
 {
@@ -309,6 +311,94 @@ namespace QPI
 	bool isArraySortedWithoutDuplicates(const array<T, L>& array, uint64 beginIdx = 0, uint64 endIdx = L);
 
 
+	// Hash function class to be used with the hash map.
+	template <typename KeyT> class HashFunction 
+	{
+	public:
+		static uint64 hash(const KeyT& key);
+	};
+
+	// Hash map of (key, value) pairs of type (KeyT, ValueT) and total element capacity L.
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc = HashFunction<KeyT>>
+	class HashMap
+	{
+	private:
+		static_assert(L && !(L& (L - 1)),
+			"The capacity of the hash map must be 2^N."
+			);
+		static constexpr sint64 _nEncodedFlags = L > 32 ? 32 : L;
+
+		// Hash map of (key, value) pairs
+		struct Element
+		{
+			KeyT key;
+			ValueT value;
+		} _elements[L];
+
+		// 2 bits per element of _elements: 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
+		// The state "occupied but marked for removal" is needed for finding the index of a key in the hash map. Setting an entry to
+		// "not occupied" in remove() would potentially undo a collision, create a gap, and mess up the entry search.
+		uint64 _occupationFlags[(L * 2 + 63) / 64];
+
+		uint64 _population;
+		uint64 _markRemovalCounter;
+
+		// Read and encode 32 POV occupation flags, return a 64bits number presents 32 occupation flags
+		uint64 _getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const;
+
+	public:
+		HashMap()
+		{
+			reset();
+		}
+
+		// Return maximum number of elements that may be stored.
+		static constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Return overall number of elements.
+		inline uint64 population() const;
+
+		// Return boolean indicating whether key is contained in the hash map.
+		// If key is contained, write the associated value into the provided ValueT&. 
+		bool get(const KeyT& key, ValueT& value) const;
+
+		// Return index of element with key in hash map _elements, or NULL_INDEX if not found.
+		sint64 getElementIndex(const KeyT& key) const;
+
+		// Return key at elementIndex.
+		inline KeyT key(sint64 elementIndex) const;
+
+		// Return value at elementIndex.
+		inline ValueT value(sint64 elementIndex) const;
+
+		// Add element (key, value) to the hash map, return elementIndex of new element.
+		// If key already exists in the hash map, the old value will be overwritten.
+		// If the hash map is full, return NULL_INDEX.
+		sint64 set(const KeyT& key, const ValueT& value);
+
+		// Mark element for removal.
+		void removeByIndex(sint64 elementIdx);
+
+		// Mark element for removal if key is contained in the hash map, 
+		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
+		sint64 removeByKey(const KeyT& key);
+
+		// Remove all elements marked for removal, this is a very expensive operation.
+		void cleanup();
+
+		// Replace value for *existing* key, do nothing otherwise.
+		// - The key exists: replace its value. Return true.
+		// - The key is not contained in the hash map: no action is taken. Return false.
+		bool replace(const KeyT& key, const ValueT& newValue);
+
+		// Reinitialize as empty hash map.
+		void reset();
+	};
+
+
 	// Collection of priority queues of elements with type T and total element capacity L.
 	// Each ID pov (point of view) has an own queue.
 	template <typename T, uint64 L>
@@ -566,13 +656,13 @@ namespace QPI
 		// Class of proposal type
 		struct Class
 		{
-			// Options without extra data. Supported options: 2 <= N <= 8.
+			// Options without extra data. Supported options: 2 <= N <= 8 with ProposalDataV1.
 			static constexpr uint16 GeneralOptions = 0;
 
-			// Propose to transfer amount to address. Supported options: 2 <= N <= 5.
+			// Propose to transfer amount to address. Supported options: 2 <= N <= 5 with ProposalDataV1.
 			static constexpr uint16 Transfer = 0x100;
 
-			// Propose to set variable to a value. Supported options: 2 <= N <= 5; N == 0 means scalar voting.
+			// Propose to set variable to a value. Supported options: 2 <= N <= 5 with ProposalDataV1; N == 0 means scalar voting.
 			static constexpr uint16 Variable = 0x200;
 		};
 
@@ -633,7 +723,7 @@ namespace QPI
 		}
 
 		// Check if given type is valid (supported by most comprehensive ProposalData class).
-		static bool isValid(uint16 proposalType);
+		inline static bool isValid(uint16 proposalType);
 	};
 
 	// Proposal data struct for all types of proposals defined in August 2024.
@@ -667,17 +757,17 @@ namespace QPI
 			// Used if type class is Variable and type is not VariableScalarMean
 			struct VariableOptions
 			{
+				uint64 variable;            // For identifying variable (interpreted by contract only)
 				array<sint64, 4> values;    // N first amounts are proposed options sorted without duplicates, rest zero
-				uint16 variable;            // For identifying variable (interpreted by contract only)
 			} variableOptions;
 
 			// Used if type is VariableScalarMean
 			struct VariableScalar
 			{
+				uint64 variable;            // For identifying variable (interpreted by contract only)
 				sint64 minValue;            // Minimum value allowed in proposedValue and votes, must be > NO_VOTE_VALUE
 				sint64 maxValue;            // Maximum value allowed in proposedValue and votes, must be >= minValue
 				sint64 proposedValue;       // Needs to be in range between minValue and maxValue
-				uint16 variable;            // For identifying variable (interpreted by contract only)
 
 				static constexpr sint64 minSupportedValue = 0x8000000000000001;
 				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
@@ -742,7 +832,7 @@ namespace QPI
 	};
 	static_assert(sizeof(ProposalDataV1<true>) == 256 + 8 + 64, "Unexpected struct size.");
 
-	// Proposal data struct for yes/no proposal type only (requires less storage space).
+	// Proposal data struct for 2-option proposals (requires less storage space).
 	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
 	struct ProposalDataYesNo
 	{
@@ -758,14 +848,51 @@ namespace QPI
 		// Tick when proposal has been set. Output only, overwritten in setProposal().
 		uint32 tick;
 
+		// Proposal payload data (for all except types with class GeneralProposal)
+		union
+		{
+			// Used if type class is Transfer
+			struct Transfer
+			{
+				id destination;
+				sint64 amount;		// Amount of proposed option (non-negative)
+			} transfer;
+
+			// Used if type class is Variable and type is not VariableScalarMean
+			struct VariableOptions
+			{
+				uint64 variable;    // For identifying variable (interpreted by contract only)
+				sint64 value;		// Value of proposed option, rest zero
+			} variableOptions;
+		};
+
+		// Check if content of instance are valid. Epoch is not checked.
+		// Also useful to show requirements of valid proposal.
 		bool checkValidity() const
 		{
-			bool okay = type == ProposalTypes::YesNo;
+			bool okay = false;
 			// TODO: validate URL
+			uint16 cls = ProposalTypes::cls(type);
+			uint16 options = ProposalTypes::optionCount(type);
+			switch (cls)
+			{
+			case ProposalTypes::Class::GeneralOptions:
+				okay = options >= 2 && options <= 3;
+				break;
+			case ProposalTypes::Class::Transfer:
+				okay = (options == 2 && !isZero(transfer.destination) && transfer.amount >= 0);
+				break;
+			case ProposalTypes::Class::Variable:
+				okay = (options == 2);
+				break;
+			}
 			return okay;
 		}
+
+		// Whether to support scalar votes next to option votes.
+		static constexpr bool supportScalarVotes = false;
 	};
-	static_assert(sizeof(ProposalDataYesNo) == 256 + 8, "Unexpected struct size.");
+	static_assert(sizeof(ProposalDataYesNo) == 256 + 8 + 40, "Unexpected struct size.");
 
 
 	// Used internally by ProposalVoting to store a proposal with all votes
@@ -773,8 +900,13 @@ namespace QPI
 	struct ProposalWithAllVoteData;
 
 
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting and setting proposals for computors only.
 	template <uint16 proposalSlotCount = NUMBER_OF_COMPUTORS>
 	struct ProposalAndVotingByComputors;
+
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting for computors only and creating/chaning proposals for anyone.
+	template <uint16 proposalSlotCount>
+	struct ProposalByAnyoneVotingByComputors;
 
 	template <unsigned int maxShareholders>
 	struct ProposalAndVotingByShareholders;
@@ -937,6 +1069,7 @@ namespace QPI
 			const m256i& invocator,
 			long long invocationReward
 		) {
+			ASSERT(invocationReward >= 0);
 			_currentContractIndex = contractIndex;
 			_currentContractId = m256i(contractIndex, 0, 0, 0);
 			_originator = originator;
@@ -977,7 +1110,7 @@ namespace QPI
 			uint8 day
 		) const; // [0..6]
 
-		uint16 epoch(
+		inline uint16 epoch(
 		) const; // [0..9'999]
 
 		bit getEntity(
@@ -1036,7 +1169,7 @@ namespace QPI
 			const array<sint8, 64>& signature
 		) const;
 
-		uint32 tick(
+		inline uint32 tick(
 		) const; // [0..999'999'999]
 
 		uint8 year(
@@ -1049,13 +1182,13 @@ namespace QPI
 		) const;
 
 		// Internal functions, calling not allowed in contracts
-		void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
-		void __qpiFreeLocals() const;
-		const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
-		void __qpiFreeContextOtherContract() const;
-		void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
-		void __qpiReleaseStateForReading(unsigned int contractIndex) const;
-		void __qpiAbort(unsigned int errorCode) const;
+		inline void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
+		inline void __qpiFreeLocals() const;
+		inline const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
+		inline void __qpiFreeContextOtherContract() const;
+		inline void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
+		inline void __qpiReleaseStateForReading(unsigned int contractIndex) const;
+		inline void __qpiAbort(unsigned int errorCode) const;
 
 	protected:
 		// Construction is done in core, not allowed in contracts
@@ -1119,9 +1252,9 @@ namespace QPI
 
 
 		// Internal functions, calling not allowed in contracts
-		const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
-		void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
-		void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
+		inline const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
+		inline void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
+		inline void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 		template <unsigned int sysProcId, typename InputType, typename OutputType>
 		void __qpiCallSystemProcOfOtherContract(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
 
@@ -1133,8 +1266,8 @@ namespace QPI
 	// QPI available in REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 	struct QpiContextForInit : public QPI::QpiContext
 	{
-		void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short, unsigned int) const;
-		void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		inline void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		inline void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
 
 		// Construction is done in core, not allowed in contracts
 		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
@@ -1362,7 +1495,7 @@ namespace QPI
 			input, output, \
 			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
 		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
-		qpi.__qpiFreeContextOtherContract(contractStateType::__contract_index); \
+		qpi.__qpiFreeContextOtherContract(); \
 		qpi.__qpiFreeLocals()
 
 	// Transfer invocation reward and invoke of other contract (procedure only)
@@ -1378,7 +1511,7 @@ namespace QPI
 			input, output, \
 			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
 		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
-		qpi.__qpiFreeContextOtherContract(contractStateType::__contract_index); \
+		qpi.__qpiFreeContextOtherContract(); \
 		qpi.__qpiFreeLocals()
 
 	#define QUERY_ORACLE(oracle, query) // TODO

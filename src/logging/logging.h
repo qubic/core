@@ -3,16 +3,37 @@
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/time.h"
+#include "platform/memory.h"
+#include "platform/debugging.h"
+
+#include "network_messages/header.h"
 
 #include "private_settings.h"
+#include "public_settings.h"
 #include "system.h"
-#include "network_core/peers.h"
+#include "kangaroo_twelve.h"
 
-#if LOG_QU_TRANSFERS | LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES | LOG_CUSTOM_MESSAGES
+struct Peer;
+
+#define LOG_UNIVERSE (LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES)
+#define LOG_SPECTRUM (LOG_QU_TRANSFERS | LOG_BURNINGS | LOG_DUST_BURNINGS | LOG_SPECTRUM_STATS)
+#define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
+
+#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES
 #define ENABLED_LOGGING 1
 #else
 #define ENABLED_LOGGING 0
 #endif
+
+// Logger defines
+#ifndef LOG_BUFFER_SIZE
+#define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
+#endif
+#define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
+#define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
+#define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
+#define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
+#define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
 
 // Fetches log
 struct RequestLog
@@ -61,6 +82,28 @@ struct ResponseLogIdRangeFromTx
     };
 };
 
+// Request logid ranges of all txs from a tick
+struct RequestAllLogIdRangesFromTick
+{
+    unsigned long long passcode[4];
+    unsigned int tick;
+
+    enum {
+        type = 50,
+    };
+};
+
+
+// Response logid ranges of all txs from a tick
+struct ResponseAllLogIdRangesFromTick
+{
+    long long fromLogId[LOG_TX_PER_TICK];
+    long long length[LOG_TX_PER_TICK];
+
+    enum {
+        type = 51,
+    };
+};
 
 #define QU_TRANSFER 0
 #define ASSET_ISSUANCE 1
@@ -71,6 +114,8 @@ struct ResponseLogIdRangeFromTx
 #define CONTRACT_INFORMATION_MESSAGE 6
 #define CONTRACT_DEBUG_MESSAGE 7
 #define BURNING 8
+#define DUST_BURNING 9
+#define SPECTRUM_STATS 10
 #define CUSTOM_MESSAGE 255
 
 /*
@@ -178,15 +223,45 @@ struct Burning
     char _terminator; // Only data before "_terminator" are logged
 };
 
+// Contains N entites and amounts of dust burns in the memory layout: [N with 2 bytes] | [public key 0] | [amount 0] | [public key 1] | [amount 1] | ... | [public key N-1] | [amount N-1].
+// CAUTION: This is a variable-size log type and the full log message content goes boyond the size of this struct!
+struct DustBurning
+{
+    unsigned short numberOfBurns;
+
+    struct Entity
+    {
+        m256i publicKey;
+        unsigned long long amount;
+    };
+    static_assert(sizeof(Entity) == (sizeof(m256i) + sizeof(unsigned long long)), "Unexpected size");
+
+    unsigned int messageSize() const
+    {
+        return 2 + numberOfBurns * sizeof(Entity);
+    }
+
+    Entity& entity(unsigned short i)
+    {
+        ASSERT(i < numberOfBurns);
+        char* buf = reinterpret_cast<char*>(this);
+        return *reinterpret_cast<Entity*>(buf + i * (sizeof(Entity)) + 2);
+    }
+};
+
+struct SpectrumStats
+{
+    unsigned long long totalAmount;
+    unsigned long long dustThresholdBurnAll;
+    unsigned long long dustThresholdBurnHalf;
+    unsigned int numberOfEntities;
+    unsigned int entityCategoryPopulations[48];
+};
+
+
 /*
  * LOGGING IMPLEMENTATION
  */
-#define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
-#define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
-#define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
-#define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
-#define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
-#define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
 
 class qLogger
 {
@@ -367,12 +442,11 @@ public:
     static bool initLogging()
     {
 #if ENABLED_LOGGING
-        EFI_STATUS status;
         if (logBuffer == NULL)
         {
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_BUFFER_SIZE, (void**)&logBuffer))
+            if (!allocatePool(LOG_BUFFER_SIZE, (void**)&logBuffer))
             {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logToConsole(L"Failed to allocate logging buffer!");
 
                 return false;
             }
@@ -380,9 +454,9 @@ public:
 
         if (mapTxToLogId == NULL)
         {
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
+            if (!allocatePool(LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
             {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logToConsole(L"Failed to allocate logging buffer!");
 
                 return false;
             }
@@ -390,9 +464,9 @@ public:
 
         if (mapLogIdToBufferIndex == NULL)
         {
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
+            if (!allocatePool(LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
             {
-                logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
+                logToConsole(L"Failed to allocate logging buffer!");
 
                 return false;
             }
@@ -401,10 +475,25 @@ public:
 #endif
         return true;
     }
+
     static void deinitLogging()
     {
 #if ENABLED_LOGGING
-        freePool(logBuffer);
+        if (logBuffer)
+        {
+            freePool(logBuffer);
+            logBuffer = nullptr;
+        }
+        if (mapTxToLogId)
+        {
+            freePool(mapTxToLogId);
+            mapTxToLogId = nullptr;
+        }
+        if (mapLogIdToBufferIndex)
+        {
+            freePool(mapLogIdToBufferIndex);
+            mapLogIdToBufferIndex = nullptr;
+        }
 #endif
     }
 
@@ -540,6 +629,20 @@ public:
 #endif
     }
 
+    void logDustBurning(const DustBurning* message)
+    {
+#if LOG_DUST_BURNINGS
+        logMessage(message->messageSize(), DUST_BURNING, message);
+#endif
+    }
+
+    void logSpectrumStats(const SpectrumStats& message)
+    {
+#if LOG_SPECTRUM_STATS
+        logMessage(sizeof(SpectrumStats), SPECTRUM_STATS, &message);
+#endif
+    }
+
     template <typename T>
     void logCustomMessage(T message)
     {
@@ -549,93 +652,18 @@ public:
         logMessage(offsetof(T, _terminator), CUSTOM_MESSAGE, &message);
 #endif
     }
-    // Request: ranges of log ID
-    static void processRequestLog(Peer* peer, RequestResponseHeader* header)
-    {
-#if ENABLED_LOGGING
-        RequestLog* request = header->getPayload<RequestLog>();
-        if (request->passcode[0] == logReaderPasscodes[0]
-            && request->passcode[1] == logReaderPasscodes[1]
-            && request->passcode[2] == logReaderPasscodes[2]
-            && request->passcode[3] == logReaderPasscodes[3])
-        {
-            BlobInfo startIdBufferRange = logBuf.getBlobInfo(request->fromID);
-            BlobInfo endIdBufferRange = logBuf.getBlobInfo(request->toID); // inclusive
-            if (startIdBufferRange.startIndex != -1 && startIdBufferRange.length != -1
-                && endIdBufferRange.startIndex != -1 && endIdBufferRange.length != -1)
-            {
-                if (endIdBufferRange.startIndex < startIdBufferRange.startIndex)
-                {
-                    // round buffer case, only response first packet - let the client figure out and request the rest
-                    unsigned long long i = 0;
-                    for (i = request->fromID; i <= request->toID; i++)
-                    {
-                        BlobInfo iBufferRange = logBuf.getBlobInfo(i);
-                        if (iBufferRange.startIndex < startIdBufferRange.startIndex)
-                        {
-                            i--;
-                            break;
-                        }
-                    }
-                    // first packet: from startID to end of buffer
-                    {
-                        BlobInfo iBufferRange = logBuf.getBlobInfo(i);
-                        unsigned long long startFrom = startIdBufferRange.startIndex;
-                        unsigned long long length = iBufferRange.length + iBufferRange.startIndex - startFrom;
-                        if (length > RequestResponseHeader::max_size)
-                        {
-                            length = RequestResponseHeader::max_size;
-                        }
-                        enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
-                    }
-                    // second packet: from start buffer to endID - NOT SEND THIS
-                }
-                else
-                {
-                    unsigned long long startFrom = startIdBufferRange.startIndex;
-                    unsigned long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
-                    if (length > RequestResponseHeader::max_size)
-                    {
-                        length = RequestResponseHeader::max_size;
-                    }
-                    enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
-                }
-            }
-            else
-            {
-                enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
-            }
-            return;
-        }
-#endif
-        enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
-    }
 
-    static void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
-    {
-#if ENABLED_LOGGING
-        RequestLogIdRangeFromTx* request = header->getPayload<RequestLogIdRangeFromTx>();
-        if (request->passcode[0] == logReaderPasscodes[0]
-            && request->passcode[1] == logReaderPasscodes[1]
-            && request->passcode[2] == logReaderPasscodes[2]
-            && request->passcode[3] == logReaderPasscodes[3]
-            && request->tick < system.tick
-            && request->tick >= system.initialTick
-            )
-        {
-            ResponseLogIdRangeFromTx resp;
-            BlobInfo info = tx.getLogIdInfo(request->tick, request->txId);
-            resp.fromLogId = info.startIndex;
-            resp.length = info.length;
-            enqueueResponse(peer, sizeof(ResponseLogIdRangeFromTx), ResponseLogIdRangeFromTx::type, header->dejavu(), &resp);
-            return;
-        }
-#endif
-        enqueueResponse(peer, 0, ResponseLogIdRangeFromTx::type, header->dejavu(), NULL);
-    }
+    // get logging content from log ID
+    static void processRequestLog(Peer* peer, RequestResponseHeader* header);
+
+    // convert from tx id to log ID
+    static void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header);
+
+    // get all log ID (mapping to tx id) from a tick
+    static void processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header);
 };
 
-qLogger logger;
+static qLogger logger;
 
 // For smartcontract logging
 template <typename T> void __logContractDebugMessage(unsigned int size, T& msg)

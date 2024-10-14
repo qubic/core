@@ -32,10 +32,15 @@ using namespace test_utils;
 // - Copy the files into test/data
 // - Rename COMMON_TEST_SAMPLES_FILE_NAME and COMMON_TEST_SCORES_FILE_NAME if neccessary
 
+
+static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
+static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_random2.csv";
+static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 32; // set to 0 for run all available samples
 static constexpr bool PRINT_DETAILED_INFO = false;
+static bool gCompareReference = false;
 
 // Only run on specific index of samples and setting
-std::vector<unsigned int> filteredSamples; //= { 0 };
+std::vector<unsigned int> filteredSamples;// = { 0 };
 std::vector<unsigned int> filteredSettings;// = { 0,1 };
 
 std::vector<std::vector<unsigned int>> gScoresGroundTruth;
@@ -63,7 +68,20 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
     auto d = t1 - t0;
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
 
+    unsigned int refScore = 0;
+    if (gCompareReference)
+    {
+        ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
+        score.initMemory();
+        score.initMiningData(miningSeed);
+        refScore = score(0, publicKey, nonce);
+    }
 #pragma omp critical
+    if (gCompareReference)
+    {
+        EXPECT_EQ(refScore, score_value);
+    }
+    else
     {
         long long gtIndex = -1;
         if (gScoreIndexMap.count(i) > 0)
@@ -91,11 +109,11 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
             std::cout << "    score " << score_value;
             if (gtIndex >= 0)
             {
-                std::cout << " vs reference " << gScoresGroundTruth[sampleIndex][gtIndex] << std::endl;
+                std::cout << " vs gt " << gScoresGroundTruth[sampleIndex][gtIndex] << std::endl;
             }
             else // No mapping from ground truth
             {
-                std::cout << " vs reference NA" << std::endl;
+                std::cout << " vs gt NA" << std::endl;
             }
             std::cout << "    time " << elapsed << " ms " << std::endl;
         }
@@ -122,13 +140,9 @@ static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigne
     processHelper<N>(miningSeed, publicKey, nonce, sampleIndex, std::make_index_sequence<N>{});
 }
 
-
-static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
-static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_20240821.csv";
-
 void runCommonTests()
 {
-#ifdef __AVX512F__
+#if defined (__AVX512F__) && !GENERIC_K12
     initAVX512KangarooTwelveConstants();
 #endif
     constexpr unsigned long long numberOfGeneratedSetting = sizeof(score_params::kSettings) / sizeof(score_params::kSettings[0]);
@@ -141,6 +155,10 @@ void runCommonTests()
 
     // Convert the raw string and do the data verification
     unsigned long long numberOfSamples = sampleString.size();
+    if (COMMON_TEST_NUMBER_OF_SAMPLES > 0)
+    {
+        numberOfSamples = std::min(COMMON_TEST_NUMBER_OF_SAMPLES, numberOfSamples);
+    }
 
     std::vector<m256i> miningSeeds(numberOfSamples);
     std::vector<m256i> publicKeys(numberOfSamples);
@@ -195,7 +213,7 @@ void runCommonTests()
         }
     }
     // In case of number of setting is lower than the ground truth. Consider we are in experiement, still run but expect the test failed
-    if (gScoreIndexMap.size() < numberOfGeneratedSetting)
+    if (gScoreIndexMap.size() < numberOfGeneratedSetting && !gCompareReference)
     {
         std::cout << "WARNING: Number of provided ground truth settings is lower than tested settings. Only test with available ones." 
                   << std::endl;
@@ -244,8 +262,9 @@ void runCommonTests()
         int index = samples[i];
         process<numberOfGeneratedSetting>(miningSeeds[index].m256i_u8, publicKeys[index].m256i_u8, nonces[index].m256i_u8, index);
 #pragma omp critical
-        std::cout << "Sample " << i << " finished." << std::endl;
+        std::cout << i << ", ";
     }
+    std::cout << std::endl;
 
     // Print the average processing time
     if (PRINT_DETAILED_INFO)

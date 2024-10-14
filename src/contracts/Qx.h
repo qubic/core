@@ -161,7 +161,7 @@ public:
 		sint64 removedNumberOfShares;
 	};
 
-private:
+protected:
 	uint64 _earnedAmount;
 	uint64 _distributedAmount;
 	uint64 _burnedAmount;
@@ -439,7 +439,7 @@ private:
 				locals._elementIndex2++;
 			}
 
-			locals._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+			locals._elementIndex = state._entityOrders.nextElementIndex(locals._elementIndex);
 		}
 
 		if (locals._elementIndex2 < 256)

@@ -1,36 +1,35 @@
 #pragma once
 
 #include "uefi.h"
+#include "memory.h"
 #include <stddef.h>
 
-#ifdef NO_UEFI
-#error "NO_UEFI implementation is missing!"
-#endif
 
-static EFI_TIME time;
+static EFI_TIME utcTime;
 
-static void initTime()
-{
-    bs->SetMem(&time, sizeof(time), 0);
-    time.Year = 2022;
-    time.Month = 4;
-    time.Day = 13;
-    time.Hour = 12;
-
-    EFI_TIME newTime;
-    if (!rs->GetTime(&newTime, NULL))
-    {
-        bs->CopyMem(&time, &newTime, sizeof(time));
-    }
-}
 
 static void updateTime()
 {
+#ifdef NO_UEFI
+    // TODO? Current time outside of UEFI
+#else
     EFI_TIME newTime;
     if (!rs->GetTime(&newTime, NULL))
     {
-        bs->CopyMem(&time, &newTime, sizeof(time));
+        bs->CopyMem(&utcTime, &newTime, sizeof(utcTime));
     }
+#endif
+}
+
+static void initTime()
+{
+    setMem(&utcTime, sizeof(utcTime), 0);
+    utcTime.Year = 2022;
+    utcTime.Month = 4;
+    utcTime.Day = 13;
+    utcTime.Hour = 12;
+
+    updateTime();
 }
 
 inline int dayIndex(unsigned int year, unsigned int month, unsigned int day) // 0 = Wednesday

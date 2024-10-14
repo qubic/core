@@ -19,7 +19,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="addons\tx_status_request.h" />
-    <ClInclude Include="assets.h" />
+    <ClInclude Include="assets\assets.h" />
+    <ClInclude Include="assets\net_msg_impl.h" />
+    <ClInclude Include="common_buffers.h" />
+    <ClInclude Include="contracts\ComputorControlledFund.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
@@ -33,12 +36,18 @@
     <ClInclude Include="contract_core\contract_action_tracker.h" />
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
+    <ClInclude Include="contract_core\qpi_asset_impl.h" />
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
+    <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
+    <ClInclude Include="contract_core\qpi_system_impl.h" />
+    <ClInclude Include="contract_core\qpi_hash_map_impl.h" />
     <ClInclude Include="contract_core\qpi_trivial_impl.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
     <ClInclude Include="contract_core\qpi_proposal_voting.h" />
     <ClInclude Include="files\files.h" />
-    <ClInclude Include="logging.h" />
+    <ClInclude Include="logging\logging.h" />
+    <ClInclude Include="logging\net_msg_impl.h" />
+    <ClInclude Include="mining\mining.h" />
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />
     <ClInclude Include="network_messages\all.h" />
@@ -57,6 +66,7 @@
     <ClInclude Include="network_messages\transactions.h" />
     <ClInclude Include="oracles\oracle_machines.h" />
     <ClInclude Include="oracles\Price.h" />
+    <ClInclude Include="platform\assert.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
@@ -73,6 +83,7 @@
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />
     <ClInclude Include="score_cache.h" />
+    <ClInclude Include="spectrum.h" />
     <ClInclude Include="system.h" />
     <ClInclude Include="text_output.h" />
     <ClInclude Include="private_settings.h" />
@@ -181,6 +192,7 @@
       <GuardEHContMetadata>false</GuardEHContMetadata>
       <AssemblerOutput>All</AssemblerOutput>
       <AssemblerListingLocation>$(IntDir)Qubic.asm</AssemblerListingLocation>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>
@@ -228,6 +240,7 @@
       <GuardEHContMetadata>false</GuardEHContMetadata>
       <AssemblerOutput>All</AssemblerOutput>
       <AssemblerListingLocation>$(IntDir)Qubic.asm</AssemblerListingLocation>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>
@@ -265,6 +278,7 @@
       <AdditionalOptions>/Gs1638400 %(AdditionalOptions)</AdditionalOptions>
       <StackReserveSize>126976</StackReserveSize>
       <StackCommitSize>126976</StackCommitSize>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>

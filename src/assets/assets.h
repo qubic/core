@@ -9,11 +9,10 @@
 #include "network_messages/assets.h"
 
 #include "public_settings.h"
-#include "logging.h"
+#include "logging/logging.h"
 #include "kangaroo_twelve.h"
 #include "four_q.h"
-
-
+#include "common_buffers.h"
 
 
 
@@ -26,16 +25,14 @@ static char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
 static bool initAssets()
 {
-    EFI_STATUS status;
-    if ((status = bs->AllocatePool(EfiRuntimeServicesData, ASSETS_CAPACITY * sizeof(Asset), (void**)&assets))
-        || (status = bs->AllocatePool(EfiRuntimeServicesData, assetDigestsSizeInBytes, (void**)&assetDigests))
-        || (status = bs->AllocatePool(EfiRuntimeServicesData, ASSETS_CAPACITY / 8, (void**)&assetChangeFlags)))
+    if (!allocatePool(ASSETS_CAPACITY * sizeof(Asset), (void**)&assets)
+        || !allocatePool(assetDigestsSizeInBytes, (void**)&assetDigests)
+        || !allocatePool(ASSETS_CAPACITY / 8, (void**)&assetChangeFlags))
     {
-        logStatusToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__);
-
+        logToConsole(L"Failed to allocate asset buffers!");
         return false;
     }
-    bs->SetMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
+    setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
     return true;
 }
 
@@ -43,15 +40,18 @@ static void deinitAssets()
 {
     if (assetChangeFlags)
     {
-        bs->FreePool(assetChangeFlags);
+        freePool(assetChangeFlags);
+        assetChangeFlags = nullptr;
     }
     if (assetDigests)
     {
-        bs->FreePool(assetDigests);
+        freePool(assetDigests);
+        assetDigests = nullptr;
     }
     if (assets)
     {
-        bs->FreePool(assets);
+        freePool(assets);
+        assets = nullptr;
     }
 }
 
@@ -67,9 +67,9 @@ iteration:
     {
         assets[*issuanceIndex].varStruct.issuance.publicKey = issuerPublicKey;
         assets[*issuanceIndex].varStruct.issuance.type = ISSUANCE;
-        bs->CopyMem(assets[*issuanceIndex].varStruct.issuance.name, name, sizeof(assets[*issuanceIndex].varStruct.issuance.name));
+        copyMem(assets[*issuanceIndex].varStruct.issuance.name, name, sizeof(assets[*issuanceIndex].varStruct.issuance.name));
         assets[*issuanceIndex].varStruct.issuance.numberOfDecimalPlaces = numberOfDecimalPlaces;
-        bs->CopyMem(assets[*issuanceIndex].varStruct.issuance.unitOfMeasurement, unitOfMeasurement, sizeof(assets[*issuanceIndex].varStruct.issuance.unitOfMeasurement));
+        copyMem(assets[*issuanceIndex].varStruct.issuance.unitOfMeasurement, unitOfMeasurement, sizeof(assets[*issuanceIndex].varStruct.issuance.unitOfMeasurement));
 
         *ownershipIndex = (*issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
     iteration2:
@@ -282,120 +282,6 @@ static void getUniverseDigest(m256i& digest)
 }
 
 
-static void processRequestIssuedAssets(Peer* peer, RequestResponseHeader* header)
-{
-    RespondIssuedAssets response;
-
-    RequestIssuedAssets* request = header->getPayload<RequestIssuedAssets>();
-
-    unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-
-    ACQUIRE(universeLock);
-
-iteration:
-    if (universeIndex >= ASSETS_CAPACITY
-        || assets[universeIndex].varStruct.issuance.type == EMPTY)
-    {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
-    }
-    else
-    {
-        if (assets[universeIndex].varStruct.issuance.type == ISSUANCE
-            && assets[universeIndex].varStruct.issuance.publicKey == request->publicKey)
-        {
-            bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(Asset));
-            response.tick = system.tick;
-            response.universeIndex = universeIndex;
-            getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
-
-            enqueueResponse(peer, sizeof(response), RespondIssuedAssets::type, header->dejavu(), &response);
-        }
-
-        universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
-
-        goto iteration;
-    }
-
-    RELEASE(universeLock);
-}
-
-static void processRequestOwnedAssets(Peer* peer, RequestResponseHeader* header)
-{
-    RespondOwnedAssets response;
-
-    RequestOwnedAssets* request = header->getPayload<RequestOwnedAssets>();
-
-    unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-
-    ACQUIRE(universeLock);
-
-iteration:
-    if (universeIndex >= ASSETS_CAPACITY
-        || assets[universeIndex].varStruct.issuance.type == EMPTY)
-    {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
-    }
-    else
-    {
-        if (assets[universeIndex].varStruct.issuance.type == OWNERSHIP
-            && assets[universeIndex].varStruct.issuance.publicKey == request->publicKey)
-        {
-            bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(Asset));
-            bs->CopyMem(&response.issuanceAsset, &assets[assets[universeIndex].varStruct.ownership.issuanceIndex], sizeof(Asset));
-            response.tick = system.tick;
-            response.universeIndex = universeIndex;
-            getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
-
-            enqueueResponse(peer, sizeof(response), RespondOwnedAssets::type, header->dejavu(), &response);
-        }
-
-        universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
-
-        goto iteration;
-    }
-
-    RELEASE(universeLock);
-}
-
-static void processRequestPossessedAssets(Peer* peer, RequestResponseHeader* header)
-{
-    RespondPossessedAssets response;
-
-    RequestPossessedAssets* request = header->getPayload<RequestPossessedAssets>();
-
-    unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-
-    ACQUIRE(universeLock);
-
-iteration:
-    if (universeIndex >= ASSETS_CAPACITY
-        || assets[universeIndex].varStruct.issuance.type == EMPTY)
-    {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
-    }
-    else
-    {
-        if (assets[universeIndex].varStruct.issuance.type == POSSESSION
-            && assets[universeIndex].varStruct.issuance.publicKey == request->publicKey)
-        {
-            bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(Asset));
-            bs->CopyMem(&response.ownershipAsset, &assets[assets[universeIndex].varStruct.possession.ownershipIndex], sizeof(Asset));
-            bs->CopyMem(&response.issuanceAsset, &assets[assets[assets[universeIndex].varStruct.possession.ownershipIndex].varStruct.ownership.issuanceIndex], sizeof(Asset));
-            response.tick = system.tick;
-            response.universeIndex = universeIndex;
-            getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
-
-            enqueueResponse(peer, sizeof(response), RespondPossessedAssets::type, header->dejavu(), &response);
-        }
-
-        universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
-
-        goto iteration;
-    }
-
-    RELEASE(universeLock);
-}
-
 static bool saveUniverse(CHAR16* directory = NULL)
 {
     logToConsole(L"Saving universe file...");
@@ -430,13 +316,13 @@ static bool loadUniverse(CHAR16* directory = NULL)
     return true;
 }
 
-void assetsEndEpoch(void* reorgBuffer)
+static void assetsEndEpoch()
 {
     ACQUIRE(universeLock);
 
     // TODO: comment what is done here
     Asset* reorgAssets = (Asset*)reorgBuffer;
-    bs->SetMem(reorgAssets, ASSETS_CAPACITY * sizeof(Asset), 0);
+    setMem(reorgAssets, ASSETS_CAPACITY * sizeof(Asset), 0);
     for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
     {
         if (assets[i].varStruct.possession.type == POSSESSION
@@ -455,7 +341,7 @@ void assetsEndEpoch(void* reorgBuffer)
             {
                 if (reorgAssets[issuanceIndex].varStruct.issuance.type == EMPTY)
                 {
-                    bs->CopyMem(&reorgAssets[issuanceIndex], &assets[oldIssuanceIndex], sizeof(Asset));
+                    copyMem(&reorgAssets[issuanceIndex], &assets[oldIssuanceIndex], sizeof(Asset));
                 }
 
                 const m256i& ownerPublicKey = assets[oldOwnershipIndex].varStruct.ownership.publicKey;
@@ -515,9 +401,9 @@ void assetsEndEpoch(void* reorgBuffer)
             }
         }
     }
-    bs->CopyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(Asset));
+    copyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(Asset));
 
-    bs->SetMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
+    setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
 
     RELEASE(universeLock);
 }

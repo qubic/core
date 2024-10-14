@@ -1743,7 +1743,7 @@ static bool getSharedKey(const unsigned char* privateKey, const unsigned char* p
     return true;
 }
 
-static void getIdentity(unsigned char* publicKey, CHAR16* identity, bool isLowerCase)
+static void getIdentity(const unsigned char* publicKey, CHAR16* identity, bool isLowerCase)
 {
     for (int i = 0; i < 4; i++)
     {

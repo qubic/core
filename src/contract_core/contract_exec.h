@@ -2,6 +2,8 @@
 
 #include "public_settings.h"
 
+#include "contracts/qpi.h"
+
 #include "platform/read_write_lock.h"
 #include "platform/debugging.h"
 #include "platform/memory.h"
@@ -9,6 +11,9 @@
 #include "contract_core/contract_def.h"
 #include "contract_core/stack_buffer.h"
 #include "contract_core/contract_action_tracker.h"
+
+#include "logging/logging.h"
+#include "common_buffers.h"
 
 // TODO: remove, only for debug output
 #include "system.h"
@@ -27,7 +32,7 @@ enum ContractError
 
 // Used to store: locals and for first invocation level also input and output
 typedef StackBuffer<unsigned int, 32 * 1024 * 1024> ContractLocalsStack;
-ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
+static ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
 static volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
 static volatile long contractLocalsStackLockWaitingCount = 0;
 static long contractLocalsStackLockWaitingCountMax = 0;
@@ -45,8 +50,23 @@ static unsigned long long* contractStateChangeFlags = NULL;
 static ContractActionTracker<1024> contractActionTracker;
 
 
-bool initContractExec()
+static bool initContractExec()
 {
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+    {
+        contractStates[contractIndex] = nullptr;
+    }
+    setMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
+    setMem(contractSystemProcedureLocalsSizes, sizeof(contractSystemProcedureLocalsSizes), 0);
+    setMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
+    setMem(contractUserProcedures, sizeof(contractUserProcedures), 0);
+    setMem(contractUserFunctionInputSizes, sizeof(contractUserFunctionInputSizes), 0);
+    setMem(contractUserFunctionOutputSizes, sizeof(contractUserFunctionOutputSizes), 0);
+    setMem(contractUserFunctionLocalsSizes, sizeof(contractUserFunctionLocalsSizes), 0);
+    setMem(contractUserProcedureInputSizes, sizeof(contractUserProcedureInputSizes), 0);
+    setMem(contractUserProcedureOutputSizes, sizeof(contractUserProcedureOutputSizes), 0);
+    setMem(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), 0);
+
     for (ContractLocalsStack::SizeType i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS; ++i)
         contractLocalsStack[i].init();
     setMem((void*)contractLocalsStackLock, sizeof(contractLocalsStackLock), 0);
@@ -58,12 +78,19 @@ bool initContractExec()
         contractStateLock[i].reset();
     }
 
+    if (!allocatePool(MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags))
+    {
+        logToConsole(L"Failed to allocate contractStateChangeFlags!");
+        return false;
+    }
+    setMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);
+
     return true;
 }
 
 // Acquire lock of an currently unused stack (may block if all in use)
 // stacksToIgnore > 0 can be passed by low priority tasks to keep some stacks reserved for high prio purposes.
-void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
+static void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
 {
     static_assert(NUMBER_OF_CONTRACT_EXECUTION_BUFFERS >= 2, "NUMBER_OF_CONTRACT_EXECUTION_BUFFERS should be at least 2.");
     ASSERT(stackIdx < 0);
@@ -93,7 +120,7 @@ void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
 }
 
 // Release locked stack (and reset stackIdx)
-void releaseContractLocalsStack(int& stackIdx)
+static void releaseContractLocalsStack(int& stackIdx)
 {
     ASSERT(stackIdx >= 0);
     ASSERT(stackIdx < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
@@ -325,6 +352,39 @@ void QPI::QpiContextFunctionCall::__qpiAbort(unsigned int errorCode) const
 // rollback should mark contract as faulty, state may be inconsistent, so exclude it from contractDigest?
 
 
+// Prologue of contract functions / procedures
+static void __beginFunctionOrProcedure(const unsigned int functionOrProcedureId)
+{
+    // TODO
+    // called by all non-empty system procedures, user procedures, and user functions
+    // purpose:
+    // - make sure the limit of nested calls is not violated
+    // - measure execution time
+    // - construction of execution graph
+    // - debugging
+}
+
+// Epilogue of contract functions / procedures
+static void __endFunctionOrProcedure(const unsigned int functionOrProcedureId)
+{
+    // TODO
+}
+
+void QPI::QpiContextForInit::__registerUserFunction(USER_FUNCTION userFunction, unsigned short inputType, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
+{
+    contractUserFunctions[_currentContractIndex][inputType] = userFunction;
+    contractUserFunctionInputSizes[_currentContractIndex][inputType] = inputSize;
+    contractUserFunctionOutputSizes[_currentContractIndex][inputType] = outputSize;
+    contractUserFunctionLocalsSizes[_currentContractIndex][inputType] = localsSize;
+}
+
+void QPI::QpiContextForInit::__registerUserProcedure(USER_PROCEDURE userProcedure, unsigned short inputType, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
+{
+    contractUserProcedures[_currentContractIndex][inputType] = userProcedure;
+    contractUserProcedureInputSizes[_currentContractIndex][inputType] = inputSize;
+    contractUserProcedureOutputSizes[_currentContractIndex][inputType] = outputSize;
+    contractUserProcedureLocalsSizes[_currentContractIndex][inputType] = localsSize;
+}
 
 
 
@@ -395,11 +455,21 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
 // QPI context used to call contract user procedure from qubic core (contract processor)
 struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 {
+    char* outputBuffer;
+    unsigned short outputSize;
+
     QpiContextUserProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QPI::QpiContextProcedureCall(contractIndex, originator, invocationReward)
     {
         contractActionTracker.init();
         if (!contractActionTracker.addQuTransfer(_originator, _currentContractId, _invocationReward))
             __qpiAbort(ContractErrorTooManyActions);
+        outputBuffer = nullptr;
+        outputSize = 0;
+    }
+
+    ~QpiContextUserProcedureCall()
+    {
+        freeBuffer();
     }
 
     void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
@@ -424,7 +494,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 
         // allocate input, output, and locals buffer from stack and init them
         unsigned short fullInputSize = contractUserProcedureInputSizes[_currentContractIndex][inputType];
-        unsigned short outputSize = contractUserProcedureOutputSizes[_currentContractIndex][inputType];
+        outputSize = contractUserProcedureOutputSizes[_currentContractIndex][inputType];
         unsigned int localsSize = contractUserProcedureLocalsSizes[_currentContractIndex][inputType];
         char* inputBuffer = contractLocalsStack[_stackIndex].allocate(fullInputSize + outputSize + localsSize);
         if (!inputBuffer)
@@ -452,7 +522,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
             __qpiAbort(ContractErrorAllocInputOutputFailed);
         }
 
-        char* outputBuffer = inputBuffer + fullInputSize;
+        outputBuffer = inputBuffer + fullInputSize;
         char* localsBuffer = outputBuffer + outputSize;
         if (inputSize < fullInputSize)
         {
@@ -478,8 +548,15 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
         contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
+    }
 
-        // free data on stack (output is unused)
+    // free buffer after output has been copied (or isn't needed anymore)
+    void freeBuffer()
+    {
+        if (_stackIndex < 0)
+            return;
+
+        // free data on stack
         contractLocalsStack[_stackIndex].free();
         ASSERT(contractLocalsStack[_stackIndex].size() == 0);
 

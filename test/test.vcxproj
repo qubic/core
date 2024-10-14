@@ -36,6 +36,7 @@
       <WarningLevel>Level3</WarningLevel>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>../src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -58,6 +59,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <OpenMPSupport>true</OpenMPSupport>
+      <AdditionalIncludeDirectories>../src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -70,12 +72,19 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="contract_testing.h" />
     <ClInclude Include="score_params.h" />
     <ClInclude Include="score_reference.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="contract_core.cpp" />
+    <ClCompile Include="contract_qearn.cpp" />
+    <ClCompile Include="contract_qx.cpp" />
     <ClCompile Include="qpi_collection.cpp" />
+    <ClCompile Include="qpi_hash_map.cpp" />
+    <ClCompile Include="kangaroo_twelve.cpp" />
+    <ClCompile Include="spectrum.cpp" />
+    <ClCompile Include="stdlib_impl.cpp" />
     <ClCompile Include="tx_status_request.cpp" />
     <ClCompile Include="m256.cpp" />
     <ClCompile Include="math_lib.cpp" />

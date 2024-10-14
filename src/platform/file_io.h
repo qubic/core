@@ -2,14 +2,18 @@
 
 #include <intrin.h>
 
+#ifdef NO_UEFI
+#include <cstdio>
+#endif
+
 #include "uefi.h"
 #include "console_logging.h"
 
 // If you get an error reading and writing files, set the chunk sizes below to
 // the cluster size set for formatting you disk. If you have no idea about the
-// cluster size, try 32768.
-#define READING_CHUNK_SIZE 1048576
-#define WRITING_CHUNK_SIZE 1048576
+// cluster size, try 16384.
+#define READING_CHUNK_SIZE 32768
+#define WRITING_CHUNK_SIZE 32768
 #define FILE_CHUNK_SIZE (209715200ULL) // for large file saving
 #define VOLUME_LABEL L"Qubic"
 
@@ -17,6 +21,10 @@ static EFI_FILE_PROTOCOL* root = NULL;
 
 static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
 {
+#ifdef NO_UEFI
+    logToConsole(L"NO_UEFI implementation of getFileSize() is missing! No valid file size returned!");
+    return -1;
+#else
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
     EFI_FILE_PROTOCOL* directoryProtocol;
@@ -55,13 +63,12 @@ static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
     unsigned char buffer[1024];
     status = file->GetInfo(file, &fileSystemInfoId, &bufferSize, buffer);
     unsigned long long fileSize = 0;
-#ifndef NO_UEFI
     copyMem(&fileSize, buffer+8, 8);
-#endif
     return fileSize;
+#endif
 }
 
-static bool checkDir(CHAR16* dirName)
+static bool checkDir(const CHAR16* dirName)
 {
 #ifdef NO_UEFI
     logToConsole(L"NO_UEFI implementation of checkDir() is missing! No directory checked!");
@@ -70,7 +77,7 @@ static bool checkDir(CHAR16* dirName)
     EFI_FILE_PROTOCOL* file;
 
     // Check if the directory exist or not
-    if (EFI_SUCCESS == root->Open(root, (void**)&file, dirName, EFI_FILE_MODE_READ, 0))
+    if (EFI_SUCCESS == root->Open(root, (void**)&file, (CHAR16*)dirName, EFI_FILE_MODE_READ, 0))
     {
         // Directory already existed. No need to create
         file->Close(file);
@@ -80,7 +87,7 @@ static bool checkDir(CHAR16* dirName)
 #endif
 }
 
-static bool createDir(CHAR16* dirName)
+static bool createDir(const CHAR16* dirName)
 {
 #ifdef NO_UEFI
     logToConsole(L"NO_UEFI implementation of createDir() is missing! No directory created!");
@@ -97,7 +104,7 @@ static bool createDir(CHAR16* dirName)
     }
 
     // Create a directory
-    if (status = root->Open(root, (void**)&file, dirName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, EFI_FILE_DIRECTORY))
+    if (status = root->Open(root, (void**)&file, (CHAR16*)dirName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, EFI_FILE_DIRECTORY))
     {
         logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
         return false;
@@ -110,11 +117,27 @@ static bool createDir(CHAR16* dirName)
 #endif
 }
 
-static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
+static long long load(const CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, const CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
-    logToConsole(L"NO_UEFI implementation of load() is missing! No file loaded!");
-    return 0;
+    if (directory)
+    {
+        logToConsole(L"Argument directory not implemented for NO_UEFI load()! Pass full path as fileName!");
+        return -1;
+    }
+    FILE* file = nullptr;
+    if (_wfopen_s(&file, fileName, L"rb") != 0 || !file)
+    {
+        wprintf(L"Error opening file %s!\n", fileName);
+        return -1;
+    }
+    if (fread(buffer, 1, totalSize, file) != totalSize)
+    {
+        wprintf(L"Error reading %llu bytes from %s!\n", totalSize, fileName);
+        return -1;
+    }
+    fclose(file);
+    return totalSize;
 #else
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
@@ -124,14 +147,14 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
     if (NULL != directory)
     {
         // Open the directory
-        if (status = root->Open(root, (void**)&directoryProtocol, directory, EFI_FILE_MODE_READ, 0))
+        if (status = root->Open(root, (void**)&directoryProtocol, (CHAR16*)directory, EFI_FILE_MODE_READ, 0))
         {
             logStatusToConsole(L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             return -1;
         }
 
         // Open the file from the directory.
-        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
+        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ, 0))
          {
             logStatusToConsole(L"FileIOLoad:OpenDir:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             directoryProtocol->Close(directoryProtocol);
@@ -143,7 +166,7 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
     }
     else
     {
-        if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ, 0))
+        if (status = root->Open(root, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ, 0))
         {
             logStatusToConsole(L"FileIOLoad:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             return -1;
@@ -178,7 +201,7 @@ static long long load(CHAR16* fileName, unsigned long long totalSize, unsigned c
 #endif
 }
 
-static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, CHAR16* directory = NULL)
+static long long save(const CHAR16* fileName, unsigned long long totalSize, const unsigned char* buffer, const CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
     logToConsole(L"NO_UEFI implementation of save() is missing! No file saved!");
@@ -195,7 +218,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
         createDir(directory);
 
         // Open the directory
-        if (status = root->Open(root, (void**)&directoryProtocol, directory, EFI_FILE_MODE_READ, 0))
+        if (status = root->Open(root, (void**)&directoryProtocol, (CHAR16*)directory, EFI_FILE_MODE_READ, 0))
         {
             logStatusToConsole(L"FileIOSave:OpenDir EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             return -1;
@@ -208,7 +231,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
         }
 
         // Open the file from the directory.
-        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
         {
             logStatusToConsole(L"FileIOSave:OpenDir::OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             directoryProtocol->Close(directoryProtocol);
@@ -218,7 +241,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
     }
     else
     {
-        if (status = root->Open(root, (void**)&file, fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        if (status = root->Open(root, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
         {
             logStatusToConsole(L"FileIOSave:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             return -1;
@@ -231,7 +254,7 @@ static long long save(CHAR16* fileName, unsigned long long totalSize, unsigned c
         while (writtenSize < totalSize)
         {
             unsigned long long size = (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize));
-            status = file->Write(file, &size, &buffer[writtenSize]);
+            status = file->Write(file, &size, (void*)&buffer[writtenSize]);
             if (status
                 || size != (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize)))
             {

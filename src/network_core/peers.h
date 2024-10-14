@@ -14,6 +14,9 @@
 #include "tcp4.h"
 #include "kangaroo_twelve.h"
 
+#include "text_output.h"
+
+
 #define DEJAVU_SWAP_LIMIT 1000000
 #define DISSEMINATION_MULTIPLIER 6
 #define NUMBER_OF_OUTGOING_CONNECTIONS 8
@@ -31,7 +34,7 @@ static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_OUTGOING_CONNECTIONS) 
 static volatile bool listOfPeersIsStatic = false;
 
 
-typedef struct
+struct Peer
 {
     EFI_TCP4_PROTOCOL* tcp4Protocol;
     EFI_TCP4_LISTEN_TOKEN connectAcceptToken;
@@ -50,7 +53,7 @@ typedef struct
     BOOLEAN isClosing;
     // Indicate the peer is incomming connection type
     BOOLEAN isIncommingConnection;
-} Peer;
+};
 
 typedef struct
 {

@@ -41,8 +41,6 @@
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="system.h" />
-    <ClInclude Include="assets.h" />
-    <ClInclude Include="logging.h" />
     <ClInclude Include="network_messages\assets.h">
       <Filter>network_messages</Filter>
     </ClInclude>
@@ -160,6 +158,11 @@
     <ClInclude Include="contracts\SupplyWatcher.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="spectrum.h" />
+    <ClInclude Include="common_buffers.h" />
+    <ClInclude Include="contracts\ComputorControlledFund.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="oracles\Price.h">
       <Filter>oracles</Filter>
     </ClInclude>
@@ -168,6 +171,36 @@
     </ClInclude>
     <ClInclude Include="files\files.h">
       <Filter>files</Filter>
+    </ClInclude>
+    <ClInclude Include="mining\mining.h">
+      <Filter>mining</Filter>
+    </ClInclude>
+    <ClInclude Include="logging\logging.h">
+      <Filter>logging</Filter>
+    </ClInclude>
+    <ClInclude Include="logging\net_msg_impl.h">
+      <Filter>logging</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\assert.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_spectrum_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_system_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_hash_map_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_asset_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="assets\net_msg_impl.h">
+      <Filter>assets</Filter>
+    </ClInclude>
+    <ClInclude Include="assets\assets.h">
+      <Filter>assets</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -194,6 +227,15 @@
     </Filter>
     <Filter Include="files">
       <UniqueIdentifier>{ed6ee181-230c-46ac-91bd-234b9081e36f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mining">
+      <UniqueIdentifier>{df525479-7504-470c-a25a-de4af8be0e5d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="logging">
+      <UniqueIdentifier>{d334594b-f24d-440e-949a-c791aa13f867}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="assets">
+      <UniqueIdentifier>{c1da3a12-d369-44a1-82b3-73e125ac20ed}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

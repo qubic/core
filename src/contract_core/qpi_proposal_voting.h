@@ -106,13 +106,23 @@ namespace QPI
 		id currentProposalProposers[maxProposals];
 	};
 
+	template <uint16 proposalSlotCount>
+	struct ProposalByAnyoneVotingByComputors : public ProposalAndVotingByComputors<proposalSlotCount>
+	{
+		// Check if proposer has right to propose (and is not NULL_ID)
+		bool isValidProposer(const QpiContextFunctionCall& qpi, const id& proposerId) const
+		{
+			return !isZero(proposerId);
+		}
+	};
+
 	template <unsigned int maxShareholders>
 	struct ProposalAndVotingByShareholders
 	{
 	};
 
 	// Check if given type is valid (supported by most comprehensive ProposalData class).
-	bool ProposalTypes::isValid(uint16 proposalType)
+	inline bool ProposalTypes::isValid(uint16 proposalType)
 	{
 		bool valid = false;
 		uint16 cls = ProposalTypes::cls(proposalType);
@@ -164,7 +174,7 @@ namespace QPI
 			if (!supportScalarVotes)
 			{
 				// option voting only (1 byte per voter)
-				// TODO: ASSERT that proposal type does not require sint64 (internal logic error)
+				ASSERT(proposal.type != ProposalTypes::VariableScalarMean);
 				constexpr uint8 noVoteValue = 0xff;
 				setMemory(votes, noVoteValue);
 			}
@@ -196,7 +206,7 @@ namespace QPI
 						// scalar vote
 						if (supportScalarVotes)
 						{
-							// TODO: add ASSERT checking that storage type is sint64
+							ASSERT(sizeof(votes[0]) == 8);
 							if ((voteValue >= this->variableScalar.minValue && voteValue <= this->variableScalar.maxValue))
 							{
 								// (cast should not be needed but is to get rid of warning)
@@ -244,14 +254,73 @@ namespace QPI
 		}
 	};
 
-	/*
 	// Used internally by ProposalVoting to store a proposal with all votes
 	// Template specialization if only yes/no is supported (saves storage space in votes)
 	template <uint32 numOfVoters>
 	struct ProposalWithAllVoteData<ProposalDataYesNo, numOfVoters> : public ProposalDataYesNo
 	{
+		// Vote storage (2 bit per voter)
 		uint8 votes[(2 * numOfVoters + 7) / 8];
-	};*/
+
+		// Set proposal and reset all votes
+		bool set(const ProposalDataYesNo& proposal)
+		{
+			if (proposal.type == ProposalTypes::VariableScalarMean)
+				return false;
+
+			copyMemory(*(ProposalDataYesNo*)this, proposal);
+
+			// option voting only (2 bit per voter)
+			constexpr uint8 noVoteValue = 0xff;
+			setMemory(votes, noVoteValue);
+
+			return true;
+		}
+
+		// Set vote value (as used in ProposalSingleVoteData) of given voter if voter and value are valid
+		bool setVoteValue(uint32 voterIndex, sint64 voteValue)
+		{
+			bool ok = false;
+			if (voterIndex < numOfVoters)
+			{
+				if (voteValue == NO_VOTE_VALUE)
+				{
+					uint8 bits = (3 << ((voterIndex & 3) * 2));
+					votes[voterIndex >> 2] |= bits;
+					ok = true;
+				}
+				else
+				{
+					uint16 numOptions = ProposalTypes::optionCount(this->type);
+					if (voteValue >= 0 && voteValue < numOptions)
+					{
+						uint8 bitMask = (3 << ((voterIndex & 3) * 2));
+						uint8 bitNum = (uint8(voteValue) << ((voterIndex & 3) * 2));
+						votes[voterIndex >> 2] &= ~bitMask;
+						votes[voterIndex >> 2] |= bitNum;
+						ok = true;
+					}
+				}
+			}
+			return ok;
+		}
+
+		// Get vote value of given voter as used in ProposalSingleVoteData
+		sint64 getVoteValue(uint32 voterIndex) const
+		{
+			sint64 vv = NO_VOTE_VALUE;
+			if (voterIndex < numOfVoters)
+			{
+				// stored in uint8 -> set if valid vote (not no-vote value 0xff)
+				uint8 value = (votes[voterIndex >> 2] >> ((voterIndex & 3) * 2)) & 3;
+				if (value != 3)
+				{
+					vv = value;
+				}
+			}
+			return vv;
+		}
+	};
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	bool QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType>::setProposal(
@@ -296,8 +365,7 @@ namespace QPI
 			// remove oldest proposal
 			clearProposal(proposalIndex);
 
-			// call voters interface again in case it needs to register the proposer
-			// TODO: add ASSERT, because this should always return the same value if the interface is implemented correctly
+			// call voters interface again in case it needs to register the proposer (should always return the same value)
 			proposalIndex = pv.proposersAndVoters.getNewProposalIndex(qpi, proposer);
 		}
 
@@ -382,6 +450,82 @@ namespace QPI
 		return true;
 	}
 
+
+	// Compute voting summary of scalar votes
+	template <typename ProposalDataType, uint32 maxVoters>
+	bool __getVotingSummaryScalarVotes(
+		const ProposalWithAllVoteData<ProposalDataType, maxVoters>& p,
+		ProposalSummarizedVotingDataV1& votingSummary
+	)
+	{
+		if (p.type != ProposalTypes::VariableScalarMean)
+			return false;
+
+		// scalar voting -> compute mean value of votes
+		sint64 value;
+		sint64 accumulation = 0;
+		if (p.variableScalar.maxValue > p.variableScalar.maxSupportedValue / maxVoters
+			|| p.variableScalar.minValue < p.variableScalar.minSupportedValue / maxVoters)
+		{
+			// calculating mean in a way that avoids overflow of sint64
+			// algorithm based on https://stackoverflow.com/questions/56663116/how-to-calculate-average-of-int64-t
+			sint64 acc2 = 0;
+			for (uint32 i = 0; i < maxVoters; ++i)
+			{
+				value = p.getVoteValue(i);
+				if (value != NO_VOTE_VALUE)
+				{
+					++votingSummary.totalVotes;
+				}
+			}
+			if (votingSummary.totalVotes)
+			{
+				for (uint32 i = 0; i < maxVoters; ++i)
+				{
+					value = p.getVoteValue(i);
+					if (value != NO_VOTE_VALUE)
+					{
+						accumulation += value / votingSummary.totalVotes;
+						acc2 += value % votingSummary.totalVotes;
+					}
+				}
+				acc2 /= votingSummary.totalVotes;
+				accumulation += acc2;
+			}
+		}
+		else
+		{
+			// compute mean the regular way (faster than above)
+			for (uint32 i = 0; i < maxVoters; ++i)
+			{
+				value = p.getVoteValue(i);
+				if (value != NO_VOTE_VALUE)
+				{
+					++votingSummary.totalVotes;
+					accumulation += value;
+				}
+			}
+			if (votingSummary.totalVotes)
+				accumulation /= votingSummary.totalVotes;
+		}
+
+		// make sure union is zeroed and set result
+		setMemory(votingSummary.optionVoteCount, 0);
+		votingSummary.scalarVotingResult = accumulation;
+
+		return true;
+	}
+
+	// Specialization of "Compute voting summary of scalar votes" for ProposalDataYesNo, which has no struct members about support scalar votes
+	template <uint32 maxVoters>
+	bool __getVotingSummaryScalarVotes(
+		const ProposalWithAllVoteData<ProposalDataYesNo, maxVoters>& p,
+		ProposalSummarizedVotingDataV1& votingSummary
+	)
+	{
+		return false;
+	}
+
 	// Get summary of all votes casted
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	bool QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::getVotingSummary(
@@ -399,71 +543,22 @@ namespace QPI
 		votingSummary.authorizedVoters = pv.maxVoters;
 		votingSummary.totalVotes = 0;
 
-		sint64 value;
 		if (p.type == ProposalTypes::VariableScalarMean)
 		{
 			// scalar voting -> compute mean value of votes
-			// TODO: ASSERT(optionCount) == 0
-			sint64 accumulation = 0;
-			if (p.variableScalar.maxValue > p.variableScalar.maxSupportedValue / pv.maxVoters
-				|| p.variableScalar.minValue < p.variableScalar.minSupportedValue / pv.maxVoters)
-			{
-				// calculating mean in a way that avoids overflow of sint64
-				// algorithm based on https://stackoverflow.com/questions/56663116/how-to-calculate-average-of-int64-t
-				sint64 acc2 = 0;
-				for (uint32 i = 0; i < pv.maxVoters; ++i)
-				{
-					value = p.getVoteValue(i);
-					if (value != NO_VOTE_VALUE)
-					{
-						++votingSummary.totalVotes;
-					}
-				}
-				if (votingSummary.totalVotes)
-				{
-					for (uint32 i = 0; i < pv.maxVoters; ++i)
-					{
-						value = p.getVoteValue(i);
-						if (value != NO_VOTE_VALUE)
-						{
-							accumulation += value / votingSummary.totalVotes;
-							acc2 += value % votingSummary.totalVotes;
-						}
-					}
-					acc2 /= votingSummary.totalVotes;
-					accumulation += acc2;
-				}
-			}
-			else
-			{
-				// compute mean the regular way (faster than above)
-				for (uint32 i = 0; i < pv.maxVoters; ++i)
-				{
-					value = p.getVoteValue(i);
-					if (value != NO_VOTE_VALUE)
-					{
-						++votingSummary.totalVotes;
-						accumulation += value;
-					}
-				}
-				if (votingSummary.totalVotes)
-					accumulation /= votingSummary.totalVotes;
-			}
-
-			// make sure union is zeroed and set result
-			setMemory(votingSummary.optionVoteCount, 0);
-			votingSummary.scalarVotingResult = accumulation;
+			if (!__getVotingSummaryScalarVotes(p, votingSummary))
+				return false;
 		}
 		else
 		{
 			// option voting -> compute histogram
-			// TODO: ASSERT(optionCount) > 0
-			// TODO: assert option count >= array capacity
+			ASSERT(votingSummary.optionCount > 0);
+			ASSERT(votingSummary.optionCount <= votingSummary.optionVoteCount.capacity());
 			auto& hist = votingSummary.optionVoteCount;
 			hist.setAll(0);
 			for (uint32 i = 0; i < pv.maxVoters; ++i)
 			{
-				value = p.getVoteValue(i);
+				sint64 value = p.getVoteValue(i);
 				if (value != NO_VOTE_VALUE && value >= 0 && value < votingSummary.optionCount)
 				{
 					++votingSummary.totalVotes;
