@@ -853,6 +853,10 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                             {
                                 tsReqTickTransactionOffsets[i] = ts.nextTickTransactionOffset;
                                 bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
+
+                                // Record the tx with digest
+                                ts.transactionsDigestAccess.insertTransaction(digest, ts.tickTransactions(ts.nextTickTransactionOffset));
+
                                 ts.nextTickTransactionOffset += transactionSize;
                             }
                         }
@@ -998,6 +1002,20 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
         }
     }
     enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+}
+
+static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* header)
+{
+    RequestedTransactionInfo* request = header->getPayload<RequestedTransactionInfo>();
+    const Transaction* transaction = ts.transactionsDigestAccess.findTransaction(request->txDigest);
+    if (transaction)
+    {
+        enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+    }
+    else
+    {
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    }
 }
 
 static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
@@ -1341,7 +1359,6 @@ static void requestProcessor(void* ProcedureArgument)
                 requestQueueElementTail++;
 
                 RELEASE(requestQueueTailLock);
-
                 switch (header->type())
                 {
                 case ExchangePublicPeers::type:
@@ -1401,6 +1418,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case REQUEST_TICK_TRANSACTIONS:
                 {
                     processRequestTickTransactions(peer, header);
+                }
+                break;
+
+                case REQUEST_TRANSACTION_INFO:
+                {
+                    processRequestTransactionInfo(peer, header);
                 }
                 break;
 
@@ -2474,6 +2497,10 @@ static void processTick(unsigned long long processorNumber)
                                     ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
                                     bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
                                     broadcastedFutureTickData.tickData.transactionDigests[j] = &computorPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
+
+                                    // Record the tx with digest
+                                    ts.transactionsDigestAccess.insertTransaction(broadcastedFutureTickData.tickData.transactionDigests[j], ts.tickTransactions(ts.nextTickTransactionOffset));
+
                                     j++;
                                     ts.nextTickTransactionOffset += transactionSize;
                                 }
@@ -2505,6 +2532,10 @@ static void processTick(unsigned long long processorNumber)
                                     ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
                                     bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
                                     broadcastedFutureTickData.tickData.transactionDigests[j] = &entityPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
+
+                                    // Record the tx with digest
+                                    ts.transactionsDigestAccess.insertTransaction(broadcastedFutureTickData.tickData.transactionDigests[j], ts.tickTransactions(ts.nextTickTransactionOffset));
+
                                     j++;
                                     ts.nextTickTransactionOffset += transactionSize;
                                 }
@@ -3753,6 +3784,10 @@ static void tickProcessor(void*)
                                                     {
                                                         tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
                                                         bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+
+                                                        // Record the tx with digest
+                                                        ts.transactionsDigestAccess.insertTransaction(nextTickData.transactionDigests[j], ts.tickTransactions(ts.nextTickTransactionOffset));
+
                                                         ts.nextTickTransactionOffset += transactionSize;
                                                     }
                                                 }
@@ -3792,6 +3827,10 @@ static void tickProcessor(void*)
                                                     {
                                                         tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
                                                         bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+
+                                                        // Record the tx with digest
+                                                        ts.transactionsDigestAccess.insertTransaction(nextTickData.transactionDigests[j], ts.tickTransactions(ts.nextTickTransactionOffset));
+
                                                         ts.nextTickTransactionOffset += transactionSize;
                                                     }
                                                 }
