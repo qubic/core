@@ -54,6 +54,16 @@ public:
         memset(assets, 0, universeSizeInBytes);
     }
 
+    long long getBalance(const id& pubKey)
+    {
+        int index = spectrumIndex(pubKey);
+        if (index < 0)
+            return 0;
+        long long balance = energy(index);
+        EXPECT_GE(balance, 0ll);
+        return balance;
+    }
+
     template <typename InputType, typename OutputType>
     void callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true)
     {
@@ -76,13 +86,18 @@ public:
     }
 
     template <typename InputType, typename OutputType>
-    void invokeUserProcedure(
+    bool invokeUserProcedure(
         unsigned int contractIndex, unsigned short procedureInputType, const InputType& input, OutputType& output,
         const id& user, sint64 amount,
         bool checkInputSize = true, bool expectSuccess = true)
     {
         EXPECT_LT(contractIndex, contractCount);
         EXPECT_NE(contractStates[contractIndex], nullptr);
+        setMemory(output, 0);
+        int userSpectrumIndex = spectrumIndex(user);
+        if (userSpectrumIndex < 0 || !decreaseEnergy(userSpectrumIndex, amount))
+            return false;
+        increaseEnergy(id(contractIndex, 0, 0, 0), amount);
         QpiContextUserProcedureCall qpiContext(contractIndex, user, amount);
         if (checkInputSize)
         {
@@ -97,6 +112,7 @@ public:
         }
         copyMem(&output, qpiContext.outputBuffer, sizeof(output));
         qpiContext.freeBuffer();
+        return true;
     }
 
     void callSystemProcedure(unsigned int contractIndex, SystemProcedureID sysProcId, bool expectSuccess = true)
@@ -121,7 +137,7 @@ public:
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName); \
 }
 
-std::ostream& operator<<(std::ostream& s, const id& v)
+static std::ostream& operator<<(std::ostream& s, const id& v)
 {
     CHAR16 identityWchar[61];
     char identityChar[61];

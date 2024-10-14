@@ -325,7 +325,7 @@ void QPI::QpiContextFunctionCall::__qpiAbort(unsigned int errorCode) const
     ASSERT(_currentContractIndex < contractCount);
     contractError[_currentContractIndex] = errorCode;
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(NO_UEFI)
     CHAR16 dbgMsgBuf[200];
     setText(dbgMsgBuf, L"__qpiAbort() called in tick ");
     appendNumber(dbgMsgBuf, system.tick, FALSE);
@@ -452,7 +452,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
     }
 };
 
-// QPI context used to call contract user procedure from qubic core (contract processor)
+// QPI context used to call contract user procedure from qubic core (contract processor), after transfer of invocation reward
 struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 {
     char* outputBuffer;
@@ -474,7 +474,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
 
     void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
     {
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[400];
         setText(dbgMsgBuf, L"QpiContextUserProcedureCall in tick ");
         appendNumber(dbgMsgBuf, system.tick, FALSE);
@@ -585,7 +585,7 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
     // call function
     void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
     {
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[300];
         setText(dbgMsgBuf, L"QpiContextUserFunctionCall in tick ");
         appendNumber(dbgMsgBuf, system.tick, FALSE);

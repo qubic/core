@@ -345,7 +345,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
     }
 }
 
-// Decrease balance of entity if it is high enough.
+// Decrease balance of entity if it is high enough. Does NOT check if index is valid.
 static bool decreaseEnergy(const int index, long long amount)
 {
     if (amount >= 0)

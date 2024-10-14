@@ -1113,7 +1113,7 @@ namespace QPI
 		inline uint16 epoch(
 		) const; // [0..9'999]
 
-		bit getEntity(
+		inline bit getEntity(
 			const id& id,
 			Entity& entity
 		) const; // Returns "true" if the entity has been found, returns "false" otherwise
@@ -1145,7 +1145,7 @@ namespace QPI
 			const id& currentId
 		) const;
 
-		sint64 numberOfPossessedShares(
+		inline sint64 numberOfPossessedShares(
 			uint64 assetName,
 			const id& issuer,
 			const id& owner,
@@ -1208,11 +1208,11 @@ namespace QPI
 			uint16 sourcePossessionManagingContractIndex
 		) const;
 
-		sint64 burn(
+		inline sint64 burn(
 			sint64 amount
 		) const;
 
-		sint64 issueAsset(
+		inline sint64 issueAsset(
 			uint64 name,
 			const id& issuer,
 			sint8 numberOfDecimalPlaces,
@@ -1230,12 +1230,12 @@ namespace QPI
 			uint16 destinationPossessionManagingContractIndex
 		) const;
 
-		sint64 transfer( // Attempts to transfer energy from this qubic
+		inline sint64 transfer( // Attempts to transfer energy from this qubic
 			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
 			sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
 		) const; // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
 
-		sint64 transferShareOwnershipAndPossession(
+		inline sint64 transferShareOwnershipAndPossession(
 			uint64 assetName,
 			const id& issuer,
 			const id& owner,
