@@ -95,6 +95,9 @@ private:
     // Lock for securing tickTransactions and tickTransactionOffsets
     inline static volatile char tickTransactionsLock = 0;
 
+    // Lock for securing tickTransactions and tickTransactionsDigestPtr
+    inline static volatile char tickTransactionsDigestAccessLock = 0;
+
 #if TICK_STORAGE_AUTOSAVE_MODE
     struct MetaData {
         unsigned int epoch;
@@ -957,17 +960,27 @@ public:
     // Struct for access the transaction using its digest. It contains the offset in tickTransactionsPtr
     struct TransactionsDigestAccess
     {
+        inline static void acquireLock()
+        {
+            ACQUIRE(tickTransactionsDigestAccessLock);
+        }
+
+        inline static void releaseLock()
+        {
+            RELEASE(tickTransactionsDigestAccessLock);
+        }
+
         struct HashMapEntry
         {
             m256i digest; // isZero mean not occupied
-            Transaction* transaction;
+            const Transaction* transaction;
         };
         unsigned long long hashFunc(const m256i& digest)
         {
             return digest.m256i_u32[7] % tickTransactionOffsetsLengthCurrentEpoch;
         }
 
-        void insertTransaction(const m256i& digest, Transaction* transaction)
+        void insertTransaction(const m256i& digest, const Transaction* transaction)
         {
             // Zero digest. No further process
             if (isZero(digest))
@@ -992,7 +1005,7 @@ public:
             pHashMap[index].digest = digest;
         }
 
-        Transaction* findTransaction(const m256i& digest)
+        const Transaction* findTransaction(const m256i& digest)
         {
             // Zero digest. No further process
             if (isZero(digest))
