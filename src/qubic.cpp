@@ -61,6 +61,7 @@
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TICK_REQUESTING_PERIOD 500ULL
 #define MAX_NUMBER_EPOCH 1000ULL
+#define INVALIDATED_TICK_DATA (MAX_NUMBER_EPOCH+1)
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
@@ -734,43 +735,46 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
 
                 ts.tickData.acquireLock();
                 TickData& td = ts.tickData.getByTickInCurrentEpoch(request->tickData.tick);
-                if (request->tickData.tick == system.tick + 1 && targetNextTickDataDigestIsKnown)
+                if (td.epoch != INVALIDATED_TICK_DATA)
                 {
-                    if (!isZero(targetNextTickDataDigest))
+                    if (request->tickData.tick == system.tick + 1 && targetNextTickDataDigestIsKnown)
                     {
-                        unsigned char digest[32];
-                        KangarooTwelve(&request->tickData, sizeof(TickData), digest, 32);
-                        if (digest == targetNextTickDataDigest)
+                        if (!isZero(targetNextTickDataDigest))
                         {
-                            bs->CopyMem(&td, &request->tickData, sizeof(TickData));
-                        }
-                    }
-                }
-                else
-                {
-                    if (td.epoch == system.epoch)
-                    {
-                        // Tick data already available. Mark computor as faulty if the data that was sent differs.
-                        if (*((unsigned long long*)&request->tickData.millisecond) != *((unsigned long long*)&td.millisecond))
-                        {
-                            faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
-                        }
-                        else
-                        {
-                            for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                            unsigned char digest[32];
+                            KangarooTwelve(&request->tickData, sizeof(TickData), digest, 32);
+                            if (digest == targetNextTickDataDigest)
                             {
-                                if (request->tickData.transactionDigests[i] != td.transactionDigests[i])
-                                {
-                                    faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
-
-                                    break;
-                                }
+                                bs->CopyMem(&td, &request->tickData, sizeof(TickData));
                             }
                         }
                     }
                     else
                     {
-                        bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                        if (td.epoch == system.epoch)
+                        {
+                            // Tick data already available. Mark computor as faulty if the data that was sent differs.
+                            if (*((unsigned long long*) & request->tickData.millisecond) != *((unsigned long long*) & td.millisecond))
+                            {
+                                faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
+                            }
+                            else
+                            {
+                                for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                                {
+                                    if (request->tickData.transactionDigests[i] != td.transactionDigests[i])
+                                    {
+                                        faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
+
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                        }
                     }
                 }
                 ts.tickData.releaseLock();
@@ -3427,7 +3431,7 @@ static void tickProcessor(void*)
             {
                 if (system.tick > latestProcessedTick)
                 {
-                    // LOGIC: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
+                    // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
                     // thus, pausing here and doing the state persisting is the best choice.
                     if (requestPersistingNodeState)
                     {
@@ -3599,7 +3603,7 @@ static void tickProcessor(void*)
                     {
                         // Empty tick
                         ts.tickData.acquireLock();
-                        ts.tickData[nextTickIndex].epoch = 0;
+                        ts.tickData[nextTickIndex].epoch = INVALIDATED_TICK_DATA; // invalidate it and also tell request processor to not update it again
                         ts.tickData.releaseLock();
                         nextTickData.epoch = 0;
                         tickDataSuits = true;
