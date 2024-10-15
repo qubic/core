@@ -5,6 +5,7 @@ constexpr uint64 QEARN_MAX_LOCKS = 4194304;
 constexpr uint64 QEARN_MAX_EPOCHS = 4096;
 constexpr uint64 QEARN_MAX_USERS = 131072;
 constexpr uint64 QEARN_MAX_LOCK_AMOUNT = 1000000000000ULL;
+constexpr uint64 QEARN_MAX_BONUS_AMOUNT = 1000000000000ULL;
 constexpr uint64 QEARN_INITIAL_EPOCH = 128;                             //  we need to change this epoch when merging
 
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
@@ -688,7 +689,15 @@ private:
             locals.pre_epoch_balance += state._CurrentRoundInfo.get(locals.t)._Epoch_Bonus_Amount + state._CurrentRoundInfo.get(locals.t)._Total_Locked_Amount;
         }
 
-        locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount = locals.current_balance - locals.pre_epoch_balance;
+        if(locals.current_balance - locals.pre_epoch_balance > QEARN_MAX_BONUS_AMOUNT)
+        {
+            qpi.burn(locals.current_balance - locals.pre_epoch_balance - QEARN_MAX_BONUS_AMOUNT);
+            locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount = QEARN_MAX_BONUS_AMOUNT;
+        }
+        else 
+        {
+            locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount = locals.current_balance - locals.pre_epoch_balance;
+        }
         locals.INITIALIZE_ROUNDINFO._Total_Locked_Amount = 0;
 
         state._InitialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
@@ -696,8 +705,16 @@ private:
 
         if(locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount > 0) 
         {
-            
-            locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount += state.remain_amount;
+
+            if(locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount + state.remain_amount > QEARN_MAX_BONUS_AMOUNT) 
+            {
+                qpi.burn(locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount + state.remain_amount - QEARN_MAX_BONUS_AMOUNT);
+                locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount = QEARN_MAX_BONUS_AMOUNT;
+            }
+            else 
+            {
+                locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount += state.remain_amount;
+            }
 
             state._InitialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
             state._CurrentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
