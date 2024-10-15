@@ -857,7 +857,6 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                             }
                         }
                         ts.tickTransactions.releaseLock();
-
                         break;
                     }
                 }
@@ -998,6 +997,20 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
         }
     }
     enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+}
+
+static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* header)
+{
+    RequestedTransactionInfo* request = header->getPayload<RequestedTransactionInfo>();
+    const Transaction* transaction = ts.transactionsDigestAccess.findTransaction(request->txDigest);
+    if (transaction)
+    {
+        enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+    }
+    else
+    {
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    }
 }
 
 static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
@@ -1341,7 +1354,6 @@ static void requestProcessor(void* ProcedureArgument)
                 requestQueueElementTail++;
 
                 RELEASE(requestQueueTailLock);
-
                 switch (header->type())
                 {
                 case ExchangePublicPeers::type:
@@ -1401,6 +1413,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case REQUEST_TICK_TRANSACTIONS:
                 {
                     processRequestTickTransactions(peer, header);
+                }
+                break;
+
+                case REQUEST_TRANSACTION_INFO:
+                {
+                    processRequestTransactionInfo(peer, header);
                 }
                 break;
 
@@ -2109,6 +2127,11 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
+
+    // Record the tx with digest
+    ts.transactionsDigestAccess.acquireLock();
+    ts.transactionsDigestAccess.insertTransaction(transactionDigest, transaction);
+    ts.transactionsDigestAccess.releaseLock();
 
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
     if (spectrumIndex >= 0)

@@ -63,3 +63,9 @@ struct RequestedTickTransactions
     unsigned char transactionFlags[NUMBER_OF_TRANSACTIONS_PER_TICK / 8];
 };
 
+#define REQUEST_TRANSACTION_INFO 26
+struct RequestedTransactionInfo
+{
+    m256i txDigest;
+};
+
