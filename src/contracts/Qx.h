@@ -1052,6 +1052,14 @@ protected:
 		state._tradeFee = 5000000; // 0.5%
 	_
 
+	END_TICK
+
+		if (qpi.distributeDividends((state._earnedAmount - state._distributedAmount) / NUMBER_OF_COMPUTORS))
+		{
+			state._distributedAmount += (state._earnedAmount - state._distributedAmount) / NUMBER_OF_COMPUTORS;
+		}
+	_
+
 	PRE_ACQUIRE_SHARES
 	_
 
