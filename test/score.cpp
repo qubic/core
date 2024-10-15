@@ -35,9 +35,9 @@ using namespace test_utils;
 
 static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
 static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_random2.csv";
-static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 32; // set to 0 for run all available samples
+static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 0; // set to 0 for run all available samples
 static constexpr bool PRINT_DETAILED_INFO = false;
-static bool gCompareReference = false;
+static bool gCompareReference = true;
 
 // Only run on specific index of samples and setting
 std::vector<unsigned int> filteredSamples;// = { 0 };
@@ -57,13 +57,13 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
         return;
     }
 
-    auto pScore = std::make_unique<ScoreFunction<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1>>();
+    auto pScore = std::make_unique<ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1>>();
     pScore->initMemory();
     pScore->initMiningData(miningSeed);
     int x = 0;
     top_of_stack = (unsigned long long)(&x);
     auto t0 = std::chrono::high_resolution_clock::now();
-    unsigned int score_value = (*pScore)(0, publicKey, miningSeed, nonce);
+    unsigned int score_value = (*pScore)(0, publicKey, nonce);
     auto t1 = std::chrono::high_resolution_clock::now();
     auto d = t1 - t0;
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
@@ -71,7 +71,7 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
     unsigned int refScore = 0;
     if (gCompareReference)
     {
-        ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
+        ScoreReferenceImplementationQiner<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
         score.initMemory();
         score.initMiningData(miningSeed);
         refScore = score(0, publicKey, nonce);
@@ -105,7 +105,6 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
                 << ": NEURON " << kSettings[i][NR_NEURONS]
                 << ", NEIGHBOR " << kSettings[i][NR_NEIGHBOR_NEURONS]
                 << ", DURATIONS " << kSettings[i][DURATIONS] << "]" << std::endl;
-            std::cout << "    stack size: " << pScore->stackSize << std::endl;
             std::cout << "    score " << score_value;
             if (gtIndex >= 0)
             {
@@ -142,6 +141,7 @@ static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigne
 
 void runCommonTests()
 {
+
 #if defined (__AVX512F__) && !GENERIC_K12
     initAVX512KangarooTwelveConstants();
 #endif
