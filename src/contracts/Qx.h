@@ -1056,7 +1056,7 @@ protected:
 
 		if (qpi.distributeDividends((state._earnedAmount - state._distributedAmount) / NUMBER_OF_COMPUTORS))
 		{
-			state._distributedAmount += (state._earnedAmount - state._distributedAmount) / NUMBER_OF_COMPUTORS;
+			state._distributedAmount += ((state._earnedAmount - state._distributedAmount) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS;
 		}
 	_
 
