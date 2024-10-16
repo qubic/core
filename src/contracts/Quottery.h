@@ -561,7 +561,7 @@ public:
             // fee to share holders
             {
                 locals.fee = QPI::div(locals.feeChargedAmount * state.mShareHolderFee, 10000ULL);
-                locals.transferredAmount += locals.fee;//self transfer
+                locals.transferredAmount += locals.fee; // will transfer to shareholders at the end of epoch
                 state.mEarnedAmountForShareHolder += locals.fee;
                 state.mMoneyFlow += locals.fee;
                 state.mMoneyFlowThroughFinalizeBet += locals.fee;
@@ -592,8 +592,14 @@ public:
                         qpi.transfer(state.mBettorID.get(locals.baseId1 + locals.i1), locals.amountPerSlot + locals.profitPerBetSlot);
                         state.mEarnedAmountForBetWinner += (locals.amountPerSlot + locals.profitPerBetSlot);
                         state.mDistributedAmount += (locals.amountPerSlot + locals.profitPerBetSlot);
+                        locals.transferredAmount += (locals.amountPerSlot + locals.profitPerBetSlot);
                     }
                 }
+            }
+            // in a rare case, if no one bet on winning option, burn all of the QUs
+            if (locals.transferredAmount < locals.potAmountTotal)
+            {
+                qpi.burn(locals.potAmountTotal - locals.transferredAmount);
             }
             state.mBetEndTick.set(input.slotId, qpi.tick());
         }
