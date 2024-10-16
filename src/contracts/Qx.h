@@ -1054,9 +1054,9 @@ protected:
 
 	END_TICK
 
-		if (qpi.distributeDividends((state._earnedAmount - state._distributedAmount) / NUMBER_OF_COMPUTORS))
+		if (qpi.distributeDividends(QPI::div((state._earnedAmount - state._distributedAmount), 676ULL)))
 		{
-			state._distributedAmount += ((state._earnedAmount - state._distributedAmount) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS;
+			state._distributedAmount += QPI::div((state._earnedAmount - state._distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
 		}
 	_
 
