@@ -599,6 +599,8 @@ public:
             oldTickBegin = 0;
             oldTickEnd = 0;
         }
+        // Transaction digest look up need to reset at the begining of epoch for pointing to valid current epoch transaction
+        setMem((void*)tickTransactionsDigestPtr, tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), 0);
 
         tickBegin = newInitialTick;
         tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
