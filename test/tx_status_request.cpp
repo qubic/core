@@ -2,7 +2,7 @@
 
 #include "gtest/gtest.h"
 
-#define system systemStructInstance
+#define system qubicSystemStruct
 #define Peer void
 void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data);
 

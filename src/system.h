@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/global_var.h"
 #include "platform/m256.h"
 
 #include "network_messages/special_command.h"
@@ -8,7 +9,7 @@
 
 
 
-static struct System
+struct System
 {
     short version;
     unsigned short epoch;
@@ -35,5 +36,7 @@ static struct System
     } solutions[MAX_NUMBER_OF_SOLUTIONS];
 
     m256i futureComputors[NUMBER_OF_COMPUTORS];
-} system;
+};
 static_assert(sizeof(System) == 20 + 8 + 8 + 8 + 4 + 96 * MAX_NUMBER_OF_SOLUTIONS + 32 * NUMBER_OF_COMPUTORS, "Unexpected size");
+
+GLOBAL_VAR_DECL System system;

@@ -4,6 +4,7 @@
 
 #include "contracts/qpi.h"
 
+#include "platform/global_var.h"
 #include "platform/read_write_lock.h"
 #include "platform/debugging.h"
 #include "platform/memory.h"
@@ -32,22 +33,22 @@ enum ContractError
 
 // Used to store: locals and for first invocation level also input and output
 typedef StackBuffer<unsigned int, 32 * 1024 * 1024> ContractLocalsStack;
-static ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
-static volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
-static volatile long contractLocalsStackLockWaitingCount = 0;
-static long contractLocalsStackLockWaitingCountMax = 0;
+GLOBAL_VAR_DECL ContractLocalsStack contractLocalsStack[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
+GLOBAL_VAR_DECL volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTION_BUFFERS];
+GLOBAL_VAR_DECL volatile long contractLocalsStackLockWaitingCount;
+GLOBAL_VAR_DECL long contractLocalsStackLockWaitingCountMax;
 
 
-static ReadWriteLock contractStateLock[contractCount];
-static unsigned char* contractStates[contractCount];
-static volatile long long contractTotalExecutionTicks[contractCount];
-static unsigned int contractError[contractCount];
+GLOBAL_VAR_DECL ReadWriteLock contractStateLock[contractCount];
+GLOBAL_VAR_DECL unsigned char* contractStates[contractCount];
+GLOBAL_VAR_DECL volatile long long contractTotalExecutionTicks[contractCount];
+GLOBAL_VAR_DECL unsigned int contractError[contractCount];
 
 // TODO: If we ever have parallel procedure calls (of different contracts), we need to make
 // access to contractStateChangeFlags thread-safe
-static unsigned long long* contractStateChangeFlags = NULL;
+GLOBAL_VAR_DECL unsigned long long* contractStateChangeFlags GLOBAL_VAR_INIT(nullptr);
 
-static ContractActionTracker<1024> contractActionTracker;
+GLOBAL_VAR_DECL ContractActionTracker<1024> contractActionTracker;
 
 
 static bool initContractExec()
@@ -70,6 +71,8 @@ static bool initContractExec()
     for (ContractLocalsStack::SizeType i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS; ++i)
         contractLocalsStack[i].init();
     setMem((void*)contractLocalsStackLock, sizeof(contractLocalsStackLock), 0);
+    contractLocalsStackLockWaitingCount = 0;
+    contractLocalsStackLockWaitingCountMax = 0;
 
     setMem((void*)contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
     setMem((void*)contractError, sizeof(contractError), 0);

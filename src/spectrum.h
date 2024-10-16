@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/global_var.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/file_io.h"
@@ -15,22 +16,21 @@
 #include "kangaroo_twelve.h"
 #include "common_buffers.h"
 
-
-static volatile char spectrumLock = 0;
-static ::Entity* spectrum = nullptr;
-static struct SpectrumInfo {
+GLOBAL_VAR_DECL volatile char spectrumLock GLOBAL_VAR_INIT(0);
+GLOBAL_VAR_DECL ::Entity* spectrum GLOBAL_VAR_INIT(nullptr);
+GLOBAL_VAR_DECL struct SpectrumInfo {
     unsigned int numberOfEntities = 0;  // Number of entities in the spectrum hash map, may include entries with balance == 0
     unsigned long long totalAmount = 0; // Total amount of qubics in the spectrum
 } spectrumInfo;
 
-static unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
+GLOBAL_VAR_DECL unsigned int entityCategoryPopulations[48]; // Array size depends on max possible balance
 static constexpr unsigned char entityCategoryCount = sizeof(entityCategoryPopulations) / sizeof(entityCategoryPopulations[0]);
-static unsigned long long dustThresholdBurnAll = 0, dustThresholdBurnHalf = 0;
+GLOBAL_VAR_DECL unsigned long long dustThresholdBurnAll GLOBAL_VAR_INIT(0), dustThresholdBurnHalf GLOBAL_VAR_INIT(0);
 
-static m256i* spectrumDigests = nullptr;
-constexpr unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
+GLOBAL_VAR_DECL m256i* spectrumDigests GLOBAL_VAR_INIT(nullptr);
+static constexpr unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACITY * 2 - 1) * 32ULL;
 
-static unsigned long long spectrumReorgTotalExecutionTicks = 0;
+GLOBAL_VAR_DECL unsigned long long spectrumReorgTotalExecutionTicks GLOBAL_VAR_INIT(0);
 
 
 // Update SpectrumInfo data (exensive, because it iterates the whole spectrum), acquire no lock

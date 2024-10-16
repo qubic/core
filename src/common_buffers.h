@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/global_var.h"
 #include "platform/memory.h"
 
 #include "network_messages/entity.h"
@@ -10,7 +11,8 @@ constexpr unsigned long long spectrumSizeInBytes = SPECTRUM_CAPACITY * sizeof(::
 constexpr unsigned long long universeSizeInBytes = ASSETS_CAPACITY * sizeof(Asset);
 
 // Buffer used for reorganizing spectrum and universe hash maps, currently also used as scratchpad buffer for contracts
-static void* reorgBuffer = nullptr; // Must be large enough to fit any contract, full spectrum, and full universe!
+// Must be large enough to fit any contract, full spectrum, and full universe!
+GLOBAL_VAR_DECL void* reorgBuffer GLOBAL_VAR_INIT(nullptr);
 
 static bool initCommonBuffers()
 {
@@ -30,6 +32,7 @@ static void deinitCommonBuffers()
     if (reorgBuffer)
     {
         freePool(reorgBuffer);
+        reorgBuffer = nullptr;
     }
 }
 
