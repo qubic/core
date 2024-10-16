@@ -158,7 +158,7 @@ public:
         sint32 returnCode;
     };
 
-private:
+protected:
 
     struct RoundInfo {
 
