@@ -61,6 +61,7 @@
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TICK_REQUESTING_PERIOD 500ULL
 #define MAX_NUMBER_EPOCH 1000ULL
+#define INVALIDATED_TICK_DATA (MAX_NUMBER_EPOCH+1)
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
@@ -734,43 +735,46 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
 
                 ts.tickData.acquireLock();
                 TickData& td = ts.tickData.getByTickInCurrentEpoch(request->tickData.tick);
-                if (request->tickData.tick == system.tick + 1 && targetNextTickDataDigestIsKnown)
+                if (td.epoch != INVALIDATED_TICK_DATA)
                 {
-                    if (!isZero(targetNextTickDataDigest))
+                    if (request->tickData.tick == system.tick + 1 && targetNextTickDataDigestIsKnown)
                     {
-                        unsigned char digest[32];
-                        KangarooTwelve(&request->tickData, sizeof(TickData), digest, 32);
-                        if (digest == targetNextTickDataDigest)
+                        if (!isZero(targetNextTickDataDigest))
                         {
-                            bs->CopyMem(&td, &request->tickData, sizeof(TickData));
-                        }
-                    }
-                }
-                else
-                {
-                    if (td.epoch == system.epoch)
-                    {
-                        // Tick data already available. Mark computor as faulty if the data that was sent differs.
-                        if (*((unsigned long long*)&request->tickData.millisecond) != *((unsigned long long*)&td.millisecond))
-                        {
-                            faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
-                        }
-                        else
-                        {
-                            for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                            unsigned char digest[32];
+                            KangarooTwelve(&request->tickData, sizeof(TickData), digest, 32);
+                            if (digest == targetNextTickDataDigest)
                             {
-                                if (request->tickData.transactionDigests[i] != td.transactionDigests[i])
-                                {
-                                    faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
-
-                                    break;
-                                }
+                                bs->CopyMem(&td, &request->tickData, sizeof(TickData));
                             }
                         }
                     }
                     else
                     {
-                        bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                        if (td.epoch == system.epoch)
+                        {
+                            // Tick data already available. Mark computor as faulty if the data that was sent differs.
+                            if (*((unsigned long long*) & request->tickData.millisecond) != *((unsigned long long*) & td.millisecond))
+                            {
+                                faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
+                            }
+                            else
+                            {
+                                for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                                {
+                                    if (request->tickData.transactionDigests[i] != td.transactionDigests[i])
+                                    {
+                                        faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
+
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                        }
                     }
                 }
                 ts.tickData.releaseLock();
@@ -853,7 +857,6 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                             }
                         }
                         ts.tickTransactions.releaseLock();
-
                         break;
                     }
                 }
@@ -994,6 +997,20 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
         }
     }
     enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+}
+
+static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* header)
+{
+    RequestedTransactionInfo* request = header->getPayload<RequestedTransactionInfo>();
+    const Transaction* transaction = ts.transactionsDigestAccess.findTransaction(request->txDigest);
+    if (transaction)
+    {
+        enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+    }
+    else
+    {
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    }
 }
 
 static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
@@ -1337,7 +1354,6 @@ static void requestProcessor(void* ProcedureArgument)
                 requestQueueElementTail++;
 
                 RELEASE(requestQueueTailLock);
-
                 switch (header->type())
                 {
                 case ExchangePublicPeers::type:
@@ -1397,6 +1413,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case REQUEST_TICK_TRANSACTIONS:
                 {
                     processRequestTickTransactions(peer, header);
+                }
+                break;
+
+                case REQUEST_TRANSACTION_INFO:
+                {
+                    processRequestTransactionInfo(peer, header);
                 }
                 break;
 
@@ -2105,6 +2127,11 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
+
+    // Record the tx with digest
+    ts.transactionsDigestAccess.acquireLock();
+    ts.transactionsDigestAccess.insertTransaction(transactionDigest, transaction);
+    ts.transactionsDigestAccess.releaseLock();
 
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
     if (spectrumIndex >= 0)
@@ -3444,7 +3471,7 @@ static void tickProcessor(void*)
             {
                 if (system.tick > latestProcessedTick)
                 {
-                    // LOGIC: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
+                    // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
                     // thus, pausing here and doing the state persisting is the best choice.
                     if (requestPersistingNodeState)
                     {
@@ -3616,7 +3643,7 @@ static void tickProcessor(void*)
                     {
                         // Empty tick
                         ts.tickData.acquireLock();
-                        ts.tickData[nextTickIndex].epoch = 0;
+                        ts.tickData[nextTickIndex].epoch = INVALIDATED_TICK_DATA; // invalidate it and also tell request processor to not update it again
                         ts.tickData.releaseLock();
                         nextTickData.epoch = 0;
                         tickDataSuits = true;
