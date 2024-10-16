@@ -38,7 +38,6 @@ public:
                 contractStates[i] = nullptr;
             }
         }
-        free(contractStates[0]);
     }
 
     void initEmptySpectrum()
