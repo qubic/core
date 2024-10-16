@@ -1365,4 +1365,11 @@ public:
         state.mBurnFee = QUOTTERY_BURN_FEE_;
         state.mGameOperatorId = id(0x63a7317950fa8886ULL, 0x4dbdf78085364aa7ULL, 0x21c6ca41e95bfa65ULL, 0xcbc1886b3ea8e647ULL);
     _
+
+    END_EPOCH
+        if (qpi.distributeDividends(qpi.div(state.mEarnedAmountForShareHolder - state.mPaidAmountForShareHolder, NUMBER_OF_COMPUTORS)))
+        {
+            state.mPaidAmountForShareHolder += qpi.div(state.mEarnedAmountForShareHolder - state.mPaidAmountForShareHolder, NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS;
+        }
+    _
 };
