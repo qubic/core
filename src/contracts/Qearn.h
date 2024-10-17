@@ -439,10 +439,12 @@ protected:
         uint64 AmountOfburn;
         uint64 RewardPercent;
         sint64 divCalcu;
+        uint32 earlyUnlockingPercent;
+        uint32 burnPercent;
         uint32 indexOfinvocator;
         uint32 t;
         uint32 count_Of_last_vacancy;
-        uint32 locked_weeks;
+        uint32 countOfLockedEpochs;
         uint32 startIndex;
         uint32 endIndex;
         
@@ -500,87 +502,87 @@ protected:
             locals.AmountOfUnlocking = input.Amount;
         }
 
+        locals.countOfLockedEpochs = qpi.epoch() - input.Locked_Epoch - 1;
+
+        locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_0_3;
+        locals.burnPercent = QEARN_BURN_PERCENT_0_3;
+
+        if(locals.countOfLockedEpochs >= 4 && locals.countOfLockedEpochs <= 7) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_4_7;
+            locals.burnPercent = QEARN_BURN_PERCENT_4_7;
+        }
+
+        else if(locals.countOfLockedEpochs >= 8 && locals.countOfLockedEpochs <= 11) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_8_11;
+            locals.burnPercent = QEARN_BURN_PERCENT_8_11;
+        }
+
+        else if(locals.countOfLockedEpochs >= 12 && locals.countOfLockedEpochs <= 15) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_12_15;
+            locals.burnPercent = QEARN_BURN_PERCENT_12_15;
+        }
+
+        else if(locals.countOfLockedEpochs >= 16 && locals.countOfLockedEpochs <= 19) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_16_19;
+            locals.burnPercent = QEARN_BURN_PERCENT_16_19;
+        }
+
+        else if(locals.countOfLockedEpochs >= 20 && locals.countOfLockedEpochs <= 23) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_20_23;
+            locals.burnPercent = QEARN_BURN_PERCENT_20_23;
+        }
+
+        else if(locals.countOfLockedEpochs >= 24 && locals.countOfLockedEpochs <= 27) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_24_27;
+            locals.burnPercent = QEARN_BURN_PERCENT_24_27;
+        }
+
+        else if(locals.countOfLockedEpochs >= 28 && locals.countOfLockedEpochs <= 31) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_28_31;
+            locals.burnPercent = QEARN_BURN_PERCENT_28_31;
+        }
+
+        else if(locals.countOfLockedEpochs >= 32 && locals.countOfLockedEpochs <= 35) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_32_35;
+            locals.burnPercent = QEARN_BURN_PERCENT_32_35;
+        }
+
+        else if(locals.countOfLockedEpochs >= 36 && locals.countOfLockedEpochs <= 39) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_36_39;
+            locals.burnPercent = QEARN_BURN_PERCENT_36_39;
+        }
+
+        else if(locals.countOfLockedEpochs >= 40 && locals.countOfLockedEpochs <= 43) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_40_43;
+            locals.burnPercent = QEARN_BURN_PERCENT_40_43;
+        }
+
+        else if(locals.countOfLockedEpochs >= 44 && locals.countOfLockedEpochs <= 47) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_44_47;
+            locals.burnPercent = QEARN_BURN_PERCENT_44_47;
+        }
+
+        else if(locals.countOfLockedEpochs >= 48 && locals.countOfLockedEpochs <= 51) 
+        {
+            locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_48_51;
+            locals.burnPercent = QEARN_BURN_PERCENT_48_51;
+        }
+
         locals.RewardPercent = QPI::div(state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount * 10000000ULL, state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount);
-        locals.locked_weeks = qpi.epoch() - input.Locked_Epoch - 1;
         locals.divCalcu = QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL);
-
-        if(qpi.epoch() - input.Locked_Epoch >= 0 && locals.locked_weeks <= 3) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_0_3, 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_0_3 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 4 && locals.locked_weeks <= 7) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_4_7 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_4_7 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 8 && locals.locked_weeks <= 11) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_8_11 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_8_11 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 12 && locals.locked_weeks <= 15) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_12_15 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_12_15 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 16 && locals.locked_weeks <= 19) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_16_19 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_16_19 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 20 && locals.locked_weeks <= 23) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_20_23 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_20_23 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 24 && locals.locked_weeks <= 27) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_24_27 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_24_27 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 28 && locals.locked_weeks <= 31) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_28_31 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_28_31 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 32 && locals.locked_weeks <= 35) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_32_35 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_32_35 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 36 && locals.locked_weeks <= 39) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_36_39 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_36_39 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 40 && locals.locked_weeks <= 43) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_40_43 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_40_43 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 44 && locals.locked_weeks <= 47) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_44_47 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_44_47 , 10000000ULL);
-        }
-
-        if(locals.locked_weeks >= 48 && locals.locked_weeks <= 51) 
-        {
-            locals.AmountOfReward = QPI::div(locals.divCalcu * QEARN_EARLY_UNLOCKING_PERCENT_48_51 , 10000000ULL);
-            locals.AmountOfburn = QPI::div(locals.divCalcu * QEARN_BURN_PERCENT_48_51 , 10000000ULL);
-        }
+        locals.AmountOfReward = QPI::div(locals.divCalcu * locals.earlyUnlockingPercent * 1ULL , 10000000ULL);
+        locals.AmountOfburn = QPI::div(locals.divCalcu * locals.burnPercent * 1ULL, 10000000ULL);
 
         qpi.transfer(qpi.invocator(), locals.AmountOfUnlocking + locals.AmountOfReward);
         qpi.burn(locals.AmountOfburn);
