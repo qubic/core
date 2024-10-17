@@ -199,8 +199,6 @@ protected:
     array<HistoryInfo, QEARN_MAX_USERS> EarlyUnlocker;
     array<HistoryInfo, QEARN_MAX_USERS> FullyUnlocker;
     
-    uint64 remain_amount;          //  The remain amount boosted by last early unlocker of one round, this amount will put in next round
-
     uint32 _EarlyUnlocked_cnt;
     uint32 _FullyUnlocked_cnt;
 
@@ -608,9 +606,10 @@ protected:
         state.Locker.set(locals.indexOfinvocator, locals.updatedUserInfo);
 
         if(state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount == 0 && input.Locked_Epoch != qpi.epoch()) 
-        {   // The case to be unlocked early all users of one epoch, at this time, boost amount will put in next round.
+        {
             
-            state.remain_amount = state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount;
+            // If all users have unlocked early, burn bonus
+            qpi.burn(state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount);
 
             locals.updatedRoundInfo._Total_Locked_Amount = 0;
             locals.updatedRoundInfo._Epoch_Bonus_Amount = 0;
@@ -705,25 +704,6 @@ protected:
         state._InitialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
         state._CurrentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
 
-        if(locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount > 0) 
-        {
-
-            if(locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount + state.remain_amount > QEARN_MAX_BONUS_AMOUNT) 
-            {
-                qpi.burn(locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount + state.remain_amount - QEARN_MAX_BONUS_AMOUNT);
-                locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount = QEARN_MAX_BONUS_AMOUNT;
-            }
-            else 
-            {
-                locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount += state.remain_amount;
-            }
-
-            state._InitialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
-            state._CurrentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
-
-            state.remain_amount = 0;
-
-        }
 	_
 
     struct END_EPOCH_locals 
