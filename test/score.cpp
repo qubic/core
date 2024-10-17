@@ -37,6 +37,7 @@ static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.
 static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_random2.csv";
 static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 0; // set to 0 for run all available samples
 static constexpr bool PRINT_DETAILED_INFO = false;
+static constexpr int MAX_NUMBER_OF_THREADS = 0; // set 0 for run maximum number of threads of the computer.
 static bool gCompareReference = true;
 
 // Only run on specific index of samples and setting
@@ -57,13 +58,13 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
         return;
     }
 
-    auto pScore = std::make_unique<ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1>>();
+    auto pScore = std::make_unique<ScoreFunction<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1>>();
     pScore->initMemory();
     pScore->initMiningData(miningSeed);
     int x = 0;
     top_of_stack = (unsigned long long)(&x);
     auto t0 = std::chrono::high_resolution_clock::now();
-    unsigned int score_value = (*pScore)(0, publicKey, nonce);
+    unsigned int score_value = (*pScore)(0, publicKey, miningSeed, nonce);
     auto t1 = std::chrono::high_resolution_clock::now();
     auto d = t1 - t0;
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
@@ -71,7 +72,7 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
     unsigned int refScore = 0;
     if (gCompareReference)
     {
-        ScoreReferenceImplementationQiner<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
+        ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
         score.initMemory();
         score.initMiningData(miningSeed);
         refScore = score(0, publicKey, nonce);
@@ -235,6 +236,10 @@ void runCommonTests()
 
     // Run the test
     unsigned int numberOfThreads = PRINT_DETAILED_INFO ? 1 : std::thread::hardware_concurrency();
+    if (MAX_NUMBER_OF_THREADS > 0)
+    {
+        numberOfThreads = numberOfThreads > MAX_NUMBER_OF_THREADS ? MAX_NUMBER_OF_THREADS : numberOfThreads;
+    }
     if (numberOfThreads > 1)
     {
         std::cout << "Compare score only. Lauching test with all available " << numberOfThreads << " threads." << std::endl;
