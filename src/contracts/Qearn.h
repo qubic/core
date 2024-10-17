@@ -450,10 +450,18 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(unlock)
 
-        if(input.Locked_Epoch > QEARN_MAX_EPOCHS || input.Amount < QEARN_MINIMUM_LOCKING_AMOUNT) 
+        if(input.Locked_Epoch > QEARN_MAX_EPOCHS) 
         {
 
             output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
+            return ;
+
+        }
+
+        if(input.Amount < QEARN_MINIMUM_LOCKING_AMOUNT)
+        {
+            
+            output.returnCode = QEARN_INVALID_INPUT_AMOUNT;
             return ;
 
         }
