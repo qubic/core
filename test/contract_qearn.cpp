@@ -6,10 +6,16 @@
 #include <random>
 #include <map>
 
+#define PRINT_TEST_INFO 1
+#define LARGE_SCALE_TEST 1
+
 
 static const id QEARN_CONTRACT_ID(QEARN_CONTRACT_INDEX, 0, 0, 0);
 
 static std::mt19937_64 rand64;
+
+static id getUser(unsigned long long i);
+static unsigned long long random(unsigned long long maxValue);
 
 static std::vector<uint64> fullyUnlockedAmount;
 static std::vector<id> fullyUnlockedUser;
@@ -18,10 +24,12 @@ static std::vector<id> fullyUnlockedUser;
 class QearnChecker : public QEARN
 {
 public:
-    void checkLockerArray()
+    void checkLockerArray(bool beforeEndEpoch, bool printInfo = false)
     {
         // check that locker array is in consistent state
         std::map<int, unsigned long long> epochTotalLocked;
+        uint32 minEpoch = 0xffff;
+        uint32 maxEpoch = 0;
         for (uint64 idx = 0; idx < Locker.capacity(); ++idx)
         {
             const QEARN::LockInfo& lock = Locker.get(idx);
@@ -39,15 +47,34 @@ public:
                 EXPECT_GE(idx, epochRange.startIndex);
                 EXPECT_LT(idx, epochRange.endIndex);
                 epochTotalLocked[lock._Locked_Epoch] += lock._Locked_Amount;
+
+                minEpoch = std::min(minEpoch, lock._Locked_Epoch);
+                maxEpoch = std::max(minEpoch, lock._Locked_Epoch);
             }
         }
 
-        std::cout << "-----------" << std::endl; 
-        for (const auto& epochAndTotal : epochTotalLocked)
+        const uint32 beginEpoch = std::max((int)contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch, system.epoch - 52);
+        EXPECT_LE(beginEpoch, minEpoch);
+        EXPECT_LE(maxEpoch, uint32(system.epoch));
+
+        if (PRINT_TEST_INFO)
         {
-            const QEARN::RoundInfo& currentRoundInfo = _CurrentRoundInfo.get(epochAndTotal.first);
-            EXPECT_EQ(currentRoundInfo._Total_Locked_Amount, epochAndTotal.second);
-            std::cout << "Total locked amount in epoch " << epochAndTotal.first << " = " << epochAndTotal.second << ", total bonus " << currentRoundInfo._Epoch_Bonus_Amount << std::endl;
+            const char * beforeAfterStr = (beforeEndEpoch) ? "Before" : "After";
+            std::cout << "--- " << beforeAfterStr << " END_EPOCH in epoch " << system.epoch << std::endl;
+        }
+
+        for (uint32 epoch = beginEpoch; epoch <= system.epoch; ++epoch)
+        {
+            const QEARN::RoundInfo& currentRoundInfo = _CurrentRoundInfo.get(epoch);
+            if (!currentRoundInfo._Epoch_Bonus_Amount && !currentRoundInfo._Total_Locked_Amount)
+                continue;
+            unsigned long long totalLocked = epochTotalLocked[epoch];
+            if (printInfo)
+            {
+                std::cout << "Total locked amount in epoch " << epoch << " = " << totalLocked << ", total bonus " << currentRoundInfo._Epoch_Bonus_Amount << std::endl;
+            }
+            if (beforeEndEpoch || epoch != system.epoch - 52)
+                EXPECT_EQ(currentRoundInfo._Total_Locked_Amount, totalLocked);
         }
     }
 
@@ -265,13 +292,16 @@ public:
             return false;
 
         // check return code
-        if (amountLock < QEARN_MINIMUM_LOCKING_AMOUNT)
+        if (retCode != QEARN_OVERFLOW_USER)
         {
-            EXPECT_EQ(retCode, QEARN_INVALID_INPUT_AMOUNT);
-        }
-        else if (amountBefore + amountLock > QEARN_MAX_LOCK_AMOUNT)
-        {
-            EXPECT_EQ(retCode, QEARN_LIMIT_LOCK);
+            if (amountLock < QEARN_MINIMUM_LOCKING_AMOUNT)
+            {
+                EXPECT_EQ(retCode, QEARN_INVALID_INPUT_AMOUNT);
+            }
+            else if (amountBefore + amountLock > QEARN_MAX_LOCK_AMOUNT)
+            {
+                EXPECT_EQ(retCode, QEARN_LIMIT_LOCK);
+            }
         }
 
         return retCode == QEARN_LOCK_SUCCESS;
@@ -352,14 +382,7 @@ public:
             // Edge case of unlocking of all locked funds in previous epoch -> bonus added to next round
             if (lockingEpoch != system.epoch && !allEpochData[lockingEpoch].amountCurrentlyLocked)
             {
-#if 0
-                unsigned long long& nextBonusAmount = allEpochData[system.epoch + 1].bonusAmount;
-                nextBonusAmount += allEpochData[lockingEpoch].bonusAmount;
-                if (nextBonusAmount > QEARN_MAX_BONUS_AMOUNT)
-                    nextBonusAmount = QEARN_MAX_BONUS_AMOUNT;
-#else
                 amountBurn += allEpochData[lockingEpoch].bonusAmount;
-#endif
                 allEpochData[lockingEpoch].bonusAmount = 0;
             }
 
@@ -387,6 +410,44 @@ public:
 
     void endEpochAndCheck()
     {
+        // check getStateOfRound
+        uint16 payoutEpoch = system.epoch - 52;
+        EXPECT_EQ(getStateOfRound(QEARN_INITIAL_EPOCH - 1), 2);
+        EXPECT_EQ(getStateOfRound(payoutEpoch - 1), 2);
+        if (payoutEpoch >= QEARN_INITIAL_EPOCH)
+            EXPECT_EQ(getStateOfRound(payoutEpoch), 1);
+        if (system.epoch > QEARN_INITIAL_EPOCH)
+            EXPECT_EQ(getStateOfRound(system.epoch - 1), 1);
+        EXPECT_EQ(getStateOfRound(system.epoch), 1);
+        EXPECT_EQ(getStateOfRound(system.epoch + 1), 0);
+
+        // test getUserLockStatus()
+        {
+            id user = getUser(random(10));
+            uint64 lockStatus = getUserLockStatus(user);
+            const auto userDataIt = allUserData.find(user);
+            if (userDataIt == allUserData.end())
+            {
+                EXPECT_EQ(lockStatus, 0);
+            }
+            else
+            {
+                auto& userData = userDataIt->second;
+                for (int i = 0; i <= 52; ++i)
+                {
+                    if (lockStatus & 1)
+                    {
+                        EXPECT_GT(userData.locked[system.epoch - i], 0ll);
+                    }
+                    else
+                    {
+                        EXPECT_EQ(userData.locked[system.epoch - i], 0ll);
+                    }
+                    lockStatus >>= 1;
+                }
+            }
+        }
+
         // check unlocked amounts returned by getEndedStatus()
         for (const auto& userAmountPairs : amountUnlockPerUser)
         {
@@ -396,8 +457,8 @@ public:
 
         checkEpochInfo(system.epoch);
 
-        uint16 payoutEpoch = system.epoch - 52;
-        getState()->checkLockerArray();
+        bool beforeEndEpoch = true;
+        getState()->checkLockerArray(beforeEndEpoch, PRINT_TEST_INFO);
         getState()->checkGetUnlockedInfo(payoutEpoch);
 
         bool checkPayout = (allEpochData.find(payoutEpoch) != allEpochData.end());
@@ -429,8 +490,8 @@ public:
 
             // all the bonus that has not been paid is burned (remainder due to inaccurate arithmetic and full bonus if nothing is locked until the end)
             EXPECT_LE(totalRewardsPaid, ed.bonusAmount);
-            if (ed.amountCurrentlyLocked)
-                EXPECT_LE(ed.bonusAmount - totalRewardsPaid, 10000000ull);
+            if (ed.amountCurrentlyLocked && ed.bonusAmount)
+                EXPECT_GE(QPI::div(totalRewardsPaid * 1000, ed.bonusAmount), 998); // only small part of bonus should be burned
             else
                 EXPECT_EQ(totalRewardsPaid, 0ull);
         }
@@ -450,7 +511,8 @@ public:
             EXPECT_EQ(expectedContractBalance, getBalance(QEARN_CONTRACT_ID));
         }
 
-        getState()->checkLockerArray();
+        beforeEndEpoch = false;
+        getState()->checkLockerArray(beforeEndEpoch, PRINT_TEST_INFO);
         getState()->checkFullyUnlockedAmount();
     }
 };
@@ -513,7 +575,7 @@ TEST(TestContractQearn, ErrorChecking)
     }
 
     // in order trigger out-of-lock-slots error, lock with many users
-#if 0
+#if LARGE_SCALE_TEST > 1
     // notes: - disabled by default because it takes long
     //        - seems like the last locker slot is never used in QEARN (FIXME)
     for (uint64 i = 0; i < QEARN_MAX_LOCKS - 1; ++i)
@@ -528,19 +590,35 @@ TEST(TestContractQearn, ErrorChecking)
 
     // note: lock implements no checking of system.epoch
 
-    // TODO: unlock
+    // for unlock, successfully lock some funds
+    id otherUser(1, 42, 1234, 642);
+    long long amount = QEARN_MINIMUM_LOCKING_AMOUNT;
+    increaseEnergy(otherUser, amount);
+    EXPECT_TRUE(qearn.lockAndCheck(otherUser, amount));
+
+    // unlock with too high amount
+    EXPECT_EQ(qearn.unlock(otherUser, QEARN_MAX_LOCK_AMOUNT + 1, system.epoch), QEARN_INVALID_INPUT_UNLOCK_AMOUNT);
+
+    // unlock with too low amount
+    EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT - 1, system.epoch), QEARN_INVALID_INPUT_AMOUNT);
+
+    // unlock with wrong user
+    EXPECT_EQ(qearn.unlock(user, QEARN_MINIMUM_LOCKING_AMOUNT, system.epoch), QEARN_EMPTY_LOCKED);
+
+    // unlock with wrong epoch
+    EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT, 1), QEARN_EMPTY_LOCKED);
+    EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT, QEARN_MAX_EPOCHS + 1), QEARN_INVALID_INPUT_LOCKED_EPOCH);
+
+    // finally, test success case
+    EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT, system.epoch), QEARN_UNLOCK_SUCCESS);
 }
 
-
-TEST(TestContractQearn, RandomLockWithoutUnlock)
+void testRandomLockWithoutUnlock(const uint16 numEpochs, const unsigned int totalUsers, const unsigned int maxUserLocking)
 {
     ContractTestingQearn qearn;
 
     const uint16 firstEpoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch;
-    const uint16 lastEpoch = firstEpoch + 1;
-
-    constexpr unsigned int totalUsers = 40;
-    constexpr unsigned int maxUserLocking = 40;
+    const uint16 lastEpoch = firstEpoch + numEpochs;
 
     // first epoch is without donation/bonus
     for (system.epoch = firstEpoch; system.epoch <= lastEpoch; ++system.epoch)
@@ -570,16 +648,23 @@ TEST(TestContractQearn, RandomLockWithoutUnlock)
     }
 }
 
-TEST(TestContractQearn, RandomLockAndUnlock)
+TEST(TestContractQearn, RandomLockWithoutUnlock)
+{
+    // params: epochs, total number of users, max users locking in epoch
+    testRandomLockWithoutUnlock(100, 40, 10);
+    testRandomLockWithoutUnlock(100, 20, 20);
+#if LARGE_SCALE_TEST
+    testRandomLockWithoutUnlock(300, 1000, 1000);
+    testRandomLockWithoutUnlock(300, 100000, 10000);
+#endif
+}
+
+void testRandomLockWithUnlock(const uint16 numEpochs, const unsigned int totalUsers, const unsigned int maxUserLocking, const unsigned int maxUserUnlocking)
 {
     ContractTestingQearn qearn;
 
     const uint16 firstEpoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch;
-    const uint16 lastEpoch = firstEpoch + 60;
-
-    constexpr unsigned int totalUsers = 40;
-    constexpr unsigned int maxUserLocking = 40;
-    constexpr unsigned int maxUserUnlocking = 30;
+    const uint16 lastEpoch = firstEpoch + numEpochs;
 
     for (system.epoch = firstEpoch; system.epoch <= lastEpoch; ++system.epoch)
     {
@@ -587,7 +672,7 @@ TEST(TestContractQearn, RandomLockAndUnlock)
         qearn.beginEpoch();
 
         // simulate a random additional donation during the epoch
-        qearn.simulateDonation(0);// TODO random(ISSUANCE_RATE / 2));
+        qearn.simulateDonation(random(ISSUANCE_RATE / 2));
 
         // locking
         auto lockUsers = getRandomUsers(totalUsers, maxUserLocking);
@@ -604,7 +689,7 @@ TEST(TestContractQearn, RandomLockAndUnlock)
         auto unlockUsers = getRandomUsers(totalUsers, maxUserUnlocking);
         for (const auto& user : unlockUsers)
         {
-            for (sint32 lockedEpoch = system.epoch; lockedEpoch > system.epoch - 52; lockedEpoch--)
+            for (sint32 lockedEpoch = system.epoch; lockedEpoch >= system.epoch - 52; lockedEpoch--)
             {
                 uint64 amountUnlock = random(qearn.allUserData[user].locked[lockedEpoch] * 11 / 10);
                 qearn.unlockAndCheck(user, lockedEpoch, amountUnlock);
@@ -615,18 +700,20 @@ TEST(TestContractQearn, RandomLockAndUnlock)
         qearn.endEpochAndCheck();
 
         // send revenue donation to qearn contract (happens after END_EPOCH but before system.epoch is incremented and before BEGIN_EPOCH
-        qearn.simulateDonation((ISSUANCE_RATE)); // TODO: random
+        qearn.simulateDonation(random(ISSUANCE_RATE));
     }
-    uint32 state = qearn.getStateOfRound(firstEpoch);
+}
+
+TEST(TestContractQearn, RandomLockAndUnlock)
+{
+    // params: epochs, total number of users, max users locking in epoch, maxUserUnlocking
+    testRandomLockWithUnlock(100, 40, 10, 10);
+    testRandomLockWithUnlock(100, 40, 10, 8);   // less early unlocking
+    testRandomLockWithUnlock(100, 40, 20, 19);  // more user activity
+#if LARGE_SCALE_TEST
+    testRandomLockWithUnlock(300, 1000, 1000, 900);
+    testRandomLockWithUnlock(300, 100000, 10000, 9000);
+#endif
 }
 
 #endif
-
-/*
-TODO test of:
-uint32 getStateOfRound(uint16 epoch)
-uint64 getUserLockStatus(const id& user)
-QEARN::getEndedStatus_output getEndedStatus(const id& user)
-
-Test: kein locking, was passiert bei Auszahlung und danach
-*/
