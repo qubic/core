@@ -1185,7 +1185,14 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             case SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST:
             {
                 SpecialCommandToggleMainModeRequestAndResponse* _request = header->getPayload<SpecialCommandToggleMainModeRequestAndResponse>();
-                mainAuxStatus = _request->mainModeFlag;
+                if (requestPersistingNodeState == 1 || persistingNodeStateTickProcWaiting == 1)
+                {
+                    //logToConsole(L"Unable to switch mode because node is saving states.");
+                }
+                else
+                {
+                    mainAuxStatus = _request->mainModeFlag;                    
+                }
                 enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
@@ -5423,11 +5430,18 @@ static void processKeyPresses()
         */
         case 0x16:
         {
-            mainAuxStatus = (mainAuxStatus + 1) & 3;
-            setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
-            appendText(message, L"&");
-            appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
-            logToConsole(message);
+            if (requestPersistingNodeState == 1 || persistingNodeStateTickProcWaiting == 1)
+            {
+                logToConsole(L"Unable to switch mode because node is saving states.");
+            }
+            else
+            {
+                mainAuxStatus = (mainAuxStatus + 1) & 3;
+                setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+                appendText(message, L"&");
+                appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+                logToConsole(message);
+            }
         }
         break;
 
@@ -5902,6 +5916,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 1)
                 {
                     logToConsole(L"Saving node state...");
+                    if (mainAuxStatus & 1)
+                    {
+                        logToConsole(L"To avoid timing error on tickProcessor, your mode is forced to AUX");
+                        mainAuxStatus &= (~1); // set 0 to the first bit
+                    }
                     saveAllNodeStates();
                     requestPersistingNodeState = 0;
                     logToConsole(L"Complete saving all node states");
