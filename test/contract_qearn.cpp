@@ -711,8 +711,8 @@ TEST(TestContractQearn, RandomLockAndUnlock)
     testRandomLockWithUnlock(100, 40, 10, 8);   // less early unlocking
     testRandomLockWithUnlock(100, 40, 20, 19);  // more user activity
 #if LARGE_SCALE_TEST
-    testRandomLockWithUnlock(300, 1000, 1000, 900);
-    testRandomLockWithUnlock(300, 100000, 10000, 9000);
+    testRandomLockWithUnlock(300, 1000, 1000, 800);
+    testRandomLockWithUnlock(300, 100000, 10000, 8000);
 #endif
 }
 
