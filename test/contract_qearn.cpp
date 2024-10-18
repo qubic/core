@@ -1,4 +1,4 @@
-#if 1
+#if 0
 #define NO_UEFI
 
 #include "contract_testing.h"
