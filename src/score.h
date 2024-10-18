@@ -25,7 +25,7 @@ struct ScoreFunction
 {
     static constexpr unsigned long long signOffset = 64;
     static constexpr unsigned long long allNeuronsCount = dataLength + numberOfHiddenNeurons + dataLength;
-    static constexpr long long computeNeuronsCount = numberOfHiddenNeurons + dataLength;
+    static constexpr unsigned long long computeNeuronsCount = numberOfHiddenNeurons + dataLength;
     static constexpr unsigned long long synapseSignsCount = (dataLength + numberOfHiddenNeurons + dataLength) * numberOfNeighborNeurons / 64;
     static constexpr unsigned long long synapseInputCount = synapseSignsCount + maxDuration;
 
