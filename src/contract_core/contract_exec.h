@@ -48,7 +48,7 @@ GLOBAL_VAR_DECL unsigned int contractError[contractCount];
 // access to contractStateChangeFlags thread-safe
 GLOBAL_VAR_DECL unsigned long long* contractStateChangeFlags GLOBAL_VAR_INIT(nullptr);
 
-GLOBAL_VAR_DECL ContractActionTracker<1024> contractActionTracker;
+GLOBAL_VAR_DECL ContractActionTracker<1024*1024> contractActionTracker;
 
 
 static bool initContractExec()
@@ -328,7 +328,7 @@ void QPI::QpiContextFunctionCall::__qpiAbort(unsigned int errorCode) const
     ASSERT(_currentContractIndex < contractCount);
     contractError[_currentContractIndex] = errorCode;
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
+#if !defined(NDEBUG)
     CHAR16 dbgMsgBuf[200];
     setText(dbgMsgBuf, L"__qpiAbort() called in tick ");
     appendNumber(dbgMsgBuf, system.tick, FALSE);
