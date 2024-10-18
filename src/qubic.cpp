@@ -2444,6 +2444,9 @@ static void processTick(unsigned long long processorNumber)
                     unsigned int j = 0;
 					while (j < NUMBER_OF_TRANSACTIONS_PER_TICK)
                     {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                        addDebugMessage(L"txsPool.get() call in processTick()");
+#endif
 						const Transaction* pendingTransaction = txsPool.get(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, j);
 						if (pendingTransaction)
                         {
@@ -3682,6 +3685,9 @@ static void tickProcessor(void*)
                         {
 							for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
                             {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                                addDebugMessage(L"txsPool.get() call in tickProcessor()");
+#endif
 								Transaction* pendingTransaction = txsPool.get(nextTick, i);
 								if (pendingTransaction)
                                 {
