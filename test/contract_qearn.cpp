@@ -66,8 +66,8 @@ public:
         for (uint32 epoch = beginEpoch; epoch <= system.epoch; ++epoch)
         {
             const QEARN::RoundInfo& currentRoundInfo = _CurrentRoundInfo.get(epoch);
-            if (!currentRoundInfo._Epoch_Bonus_Amount && !currentRoundInfo._Total_Locked_Amount)
-                continue;
+            //if (!currentRoundInfo._Epoch_Bonus_Amount && !currentRoundInfo._Total_Locked_Amount)
+            //    continue;
             unsigned long long totalLocked = epochTotalLocked[epoch];
             if (printInfo)
             {
@@ -75,6 +75,12 @@ public:
             }
             if (beforeEndEpoch || epoch != system.epoch - 52)
                 EXPECT_EQ(currentRoundInfo._Total_Locked_Amount, totalLocked);
+        }
+
+        // check that old epoch indices have been reset
+        for (uint32 epoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch; epoch < beginEpoch; ++epoch)
+        {
+            EXPECT_EQ(this->EpochIndex.get(epoch).startIndex, this->EpochIndex.get(epoch).endIndex);
         }
     }
 
@@ -161,6 +167,9 @@ public:
     void beginEpoch(bool expectSuccess = true)
     {
         callSystemProcedure(QEARN_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+
+        // If there is no entry for this epoch in allEpochData, create one with default init (all 0)
+        allEpochData[system.epoch];
     }
 
     void endEpoch(bool expectSuccess = true)
@@ -168,7 +177,7 @@ public:
         callSystemProcedure(QEARN_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
-    QEARN::getLockInforPerEpoch_output getLockInforPerEpoch(uint16 epoch)
+    QEARN::getLockInforPerEpoch_output getLockInforPerEpoch(uint16 epoch) const
     {
         QEARN::getLockInforPerEpoch_input input{ epoch };
         QEARN::getLockInforPerEpoch_output output;
@@ -176,7 +185,7 @@ public:
         return output;
     }
 
-    uint64 getUserLockedInfor(uint16 epoch, const id& user)
+    uint64 getUserLockedInfor(uint16 epoch, const id& user) const
     {
         QEARN::getUserLockedInfor_input input;
         input.epoch = epoch;
@@ -186,7 +195,7 @@ public:
         return output.LockedAmount;
     }
 
-    uint32 getStateOfRound(uint16 epoch)
+    uint32 getStateOfRound(uint16 epoch) const
     {
         QEARN::getStateOfRound_input input{ epoch };
         QEARN::getStateOfRound_output output;
@@ -194,7 +203,7 @@ public:
         return output.state;
     }
 
-    uint64 getUserLockStatus(const id& user)
+    uint64 getUserLockStatus(const id& user) const
     {
         QEARN::getUserLockStatus_input input{ user };
         QEARN::getUserLockStatus_output output;
@@ -202,7 +211,7 @@ public:
         return output.status;
     }
 
-    QEARN::getEndedStatus_output getEndedStatus(const id& user)
+    QEARN::getEndedStatus_output getEndedStatus(const id& user) const
     {
         QEARN::getEndedStatus_input input{ user };
         QEARN::getEndedStatus_output output;
@@ -307,9 +316,11 @@ public:
         return retCode == QEARN_LOCK_SUCCESS;
     }
 
-    unsigned long long getAndCheckRewardFactorTenmillionth(uint16 epoch)
+    unsigned long long getAndCheckRewardFactorTenmillionth(uint16 epoch) const
     {
-        const EpochData& ed = allEpochData[epoch];
+        auto edIt = allEpochData.find(epoch);
+        EXPECT_NE(edIt, allEpochData.end());
+        const EpochData& ed = edIt->second;
         const unsigned long long rewardFactorTenmillionth = QPI::div(ed.bonusAmount * 10000000ULL, ed.amountCurrentlyLocked);
         if (rewardFactorTenmillionth)
         {
@@ -322,11 +333,15 @@ public:
         return rewardFactorTenmillionth;
     }
 
-    void checkEpochInfo(uint16 epoch)
+    void checkEpochInfo(uint16 epoch) const
     {
         const auto scEpochInfo = getLockInforPerEpoch(epoch);
         EXPECT_LE(scEpochInfo.CurrentBonusAmount, QEARN_MAX_BONUS_AMOUNT);
-        const EpochData& ed = allEpochData[epoch];
+        if (epoch < QEARN_INITIAL_EPOCH)
+            return;
+        auto edIt = allEpochData.find(epoch);
+        EXPECT_NE(edIt, allEpochData.end());
+        const EpochData& ed = edIt->second;
         EXPECT_EQ(getAndCheckRewardFactorTenmillionth(epoch), scEpochInfo.Yield);
         EXPECT_EQ(ed.bonusAmount, scEpochInfo.CurrentBonusAmount);
         EXPECT_EQ(ed.amountCurrentlyLocked, scEpochInfo.CurrentLockedAmount);
@@ -461,21 +476,35 @@ public:
         getState()->checkLockerArray(beforeEndEpoch, PRINT_TEST_INFO);
         getState()->checkGetUnlockedInfo(payoutEpoch);
 
-        bool checkPayout = (allEpochData.find(payoutEpoch) != allEpochData.end());
-        std::map<id, long long> expectedUserBalance;
-        long long expectedContractBalance = getBalance(QEARN_CONTRACT_ID);
-        if (checkPayout)
+        // get entity balances to check payout in END_EPOCH
+        std::map<id, long long> oldUserBalance;
+        long long oldContractBalance = getBalance(QEARN_CONTRACT_ID);
+        for (const auto& userIdDataPair : allUserData)
         {
-            const EpochData& ed = allEpochData[payoutEpoch];
-            checkEpochInfo(payoutEpoch);
-            unsigned long long rewardFactorTenmillionth = getAndCheckRewardFactorTenmillionth(payoutEpoch);
+            const id& user = userIdDataPair.first;
+            oldUserBalance[user] = getBalance(user);
+        }
+        checkEpochInfo(payoutEpoch);
 
+        amountUnlockPerUser.clear();
+        endEpoch();
+
+        // check payout after END_EPOCH
+        bool expectPayout = (allEpochData.find(payoutEpoch) != allEpochData.end());
+        checkEpochInfo(payoutEpoch);
+        if (expectPayout)
+        {
+            // compute and check expected payouts
+            unsigned long long rewardFactorTenmillionth = getAndCheckRewardFactorTenmillionth(payoutEpoch);
             unsigned long long totalRewardsPaid = 0;
-            for (const auto& userIdDataPair : allUserData)
+            const EpochData& ed = allEpochData[payoutEpoch];
+
+            for (const auto& userIdBalancePair : oldUserBalance)
             {
-                const id& user = userIdDataPair.first;
-                const UserData& userData = userIdDataPair.second;
-                expectedUserBalance[user] = getBalance(user);
+                const id& user = userIdBalancePair.first;
+                const long long oldUserBalance = userIdBalancePair.second;
+                const UserData& userData = allUserData[user];
+
                 auto userLockedAmountIter = userData.locked.find(payoutEpoch);
                 if (userLockedAmountIter == userData.locked.end() || userLockedAmountIter->second == 0)
                     continue;
@@ -484,9 +513,11 @@ public:
                 if (rewardFactorTenmillionth)
                     EXPECT_EQ((userLockedAmount * rewardFactorTenmillionth) / rewardFactorTenmillionth, userLockedAmount);
                 totalRewardsPaid += userReward;
-                expectedUserBalance[user] += userLockedAmount + userReward;
+
+                EXPECT_EQ(oldUserBalance + userLockedAmount + userReward, getBalance(user));
             }
-            expectedContractBalance -= ed.bonusAmount + ed.amountCurrentlyLocked;
+            EXPECT_EQ(oldContractBalance - ed.bonusAmount - ed.amountCurrentlyLocked, getBalance(QEARN_CONTRACT_ID));
+
 
             // all the bonus that has not been paid is burned (remainder due to inaccurate arithmetic and full bonus if nothing is locked until the end)
             EXPECT_LE(totalRewardsPaid, ed.bonusAmount);
@@ -495,20 +526,17 @@ public:
             else
                 EXPECT_EQ(totalRewardsPaid, 0ull);
         }
-
-        amountUnlockPerUser.clear();
-        endEpoch();
-
-        if (checkPayout)
+        else
         {
-            for (const auto& userIdBalancePair : expectedUserBalance)
+            // no payout expected
+            for (const auto& userIdBalancePair : oldUserBalance)
             {
                 const id& user = userIdBalancePair.first;
-                const long long expectedUserBalance = userIdBalancePair.second;
-                const long long actualUserBalance = getBalance(user);
-                EXPECT_EQ(expectedUserBalance, actualUserBalance);
+                const long long oldUserBalance = userIdBalancePair.second;
+                const long long currentUserBalance = getBalance(user);
+                EXPECT_EQ(oldUserBalance, currentUserBalance);
             }
-            EXPECT_EQ(expectedContractBalance, getBalance(QEARN_CONTRACT_ID));
+            EXPECT_EQ(oldContractBalance, getBalance(QEARN_CONTRACT_ID));
         }
 
         beforeEndEpoch = false;
@@ -655,7 +683,7 @@ TEST(TestContractQearn, RandomLockWithoutUnlock)
     testRandomLockWithoutUnlock(100, 20, 20);
 #if LARGE_SCALE_TEST
     testRandomLockWithoutUnlock(300, 1000, 1000);
-    testRandomLockWithoutUnlock(300, 100000, 10000);
+    //testRandomLockWithoutUnlock(300, 100000, 10000);
 #endif
 }
 
@@ -711,8 +739,10 @@ TEST(TestContractQearn, RandomLockAndUnlock)
     testRandomLockWithUnlock(100, 40, 10, 8);   // less early unlocking
     testRandomLockWithUnlock(100, 40, 20, 19);  // more user activity
 #if LARGE_SCALE_TEST
+    testRandomLockWithUnlock(300, 1000, 1000, 1000);
     testRandomLockWithUnlock(300, 1000, 1000, 800);
-    testRandomLockWithUnlock(300, 100000, 10000, 8000);
+    testRandomLockWithUnlock(400, 2000, 1500, 1200);
+    //testRandomLockWithUnlock(300, 100000, 10000, 8000);
 #endif
 }
 

@@ -53,7 +53,7 @@ public:
         memset(assets, 0, universeSizeInBytes);
     }
 
-    long long getBalance(const id& pubKey)
+    long long getBalance(const id& pubKey) const
     {
         int index = spectrumIndex(pubKey);
         if (index < 0)
@@ -64,7 +64,7 @@ public:
     }
 
     template <typename InputType, typename OutputType>
-    void callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true)
+    void callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true) const
     {
         EXPECT_LT(contractIndex, contractCount);
         EXPECT_NE(contractStates[contractIndex], nullptr);
