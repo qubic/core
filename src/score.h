@@ -14,6 +14,10 @@ unsigned long long top_of_stack;
 #define NOT_CALCULATED -127 //not yet calculated
 #define NULL_INDEX -2
 
+#if !(defined (__AVX512F__) || defined(__AVX2__))
+static_assert(false, "Either AVX2 or AVX512 is required.");
+#endif
+
 template<
     unsigned int dataLength,
     unsigned int numberOfHiddenNeurons,
