@@ -52,25 +52,25 @@ struct QEARN2
 struct QEARN : public ContractBase
 {
 public:
-    struct getLockInforPerEpoch_input {
+    struct getLockInfoPerEpoch_input {
 		uint32 Epoch;                             /* epoch number to get information */
     };
 
-    struct getLockInforPerEpoch_output {
-        uint64 LockedAmount;                      /* initial total locked amount in epoch */
-        uint64 BonusAmount;                       /* initial bonus amount in epoch*/
-        uint64 CurrentLockedAmount;               /* total locked amount in epoch. exactly the amount excluding the amount unlocked early*/
-        uint64 CurrentBonusAmount;                /* bonus amount in epoch excluding the early unlocking */
-        uint64 Yield;                             /* Yield calculated by 10000000 multiple*/
+    struct getLockInfoPerEpoch_output {
+        uint64 lockedAmount;                      /* initial total locked amount in epoch */
+        uint64 bonusAmount;                       /* initial bonus amount in epoch*/
+        uint64 currentLockedAmount;               /* total locked amount in epoch. exactly the amount excluding the amount unlocked early*/
+        uint64 currentBonusAmount;                /* bonus amount in epoch excluding the early unlocking */
+        uint64 yield;                             /* Yield calculated by 10000000 multiple*/
     };
 
-    struct getUserLockedInfor_input {
+    struct getUserLockedInfo_input {
         id user;
         uint32 epoch;
     };
 
-    struct getUserLockedInfor_output {
-        uint64 LockedAmount;                   /* the amount user locked at input.epoch */
+    struct getUserLockedInfo_output {
+        uint64 lockedAmount;                   /* the amount user locked at input.epoch */
     };
 
     /*
@@ -83,7 +83,7 @@ public:
         2 = ended epoch(>52weeks)
     */
     struct getStateOfRound_input {
-        uint32 Epoch;
+        uint32 epoch;
     };
 
     struct getStateOfRound_output {
@@ -136,10 +136,10 @@ public:
     };
 
     struct getEndedStatus_output {
-        uint64 Fully_Unlocked_Amount;
-        uint64 Fully_Rewarded_Amount;
-        uint64 Early_Unlocked_Amount;
-        uint64 Early_Rewarded_Amount;
+        uint64 fullyUnlockedAmount;
+        uint64 fullyRewardedAmount;
+        uint64 earlyUnlockedAmount;
+        uint64 earlyRewardedAmount;
     };
 
 	struct lock_input {	
@@ -150,8 +150,8 @@ public:
     };
 
     struct unlock_input {
-        uint64 Amount;                            /* unlocking amount */	
-        uint32 Locked_Epoch;                      /* locked epoch */
+        uint64 amount;                            /* unlocking amount */	
+        uint32 lockedEpoch;                      /* locked epoch */
     };
 
     struct unlock_output {
@@ -162,13 +162,13 @@ protected:
 
     struct RoundInfo {
 
-        uint64 _Total_Locked_Amount;            // The initial total locked amount in any epoch.  Max Epoch is 65535
-        uint64 _Epoch_Bonus_Amount;             // The initial bonus amount per an epoch.         Max Epoch is 65535 
+        uint64 _totalLockedAmount;            // The initial total locked amount in any epoch.  Max Epoch is 65535
+        uint64 _epochBonusAmount;             // The initial bonus amount per an epoch.         Max Epoch is 65535 
 
     };
 
-    array<RoundInfo, QEARN_MAX_EPOCHS> _InitialRoundInfo;
-    array<RoundInfo, QEARN_MAX_EPOCHS> _CurrentRoundInfo;
+    array<RoundInfo, QEARN_MAX_EPOCHS> _initialRoundInfo;
+    array<RoundInfo, QEARN_MAX_EPOCHS> _currentRoundInfo;
 
     struct EpochIndexInfo {
 
@@ -176,89 +176,89 @@ protected:
         uint32 endIndex;
     };
 
-    array<EpochIndexInfo, QEARN_MAX_EPOCHS> EpochIndex;
+    array<EpochIndexInfo, QEARN_MAX_EPOCHS> _epochIndex;
 
     struct LockInfo {
 
-        uint64 _Locked_Amount;
+        uint64 _lockedAmount;
         id ID;
-        uint32 _Locked_Epoch;
+        uint32 _lockedEpoch;
         
     };
 
-    array<LockInfo, QEARN_MAX_LOCKS> Locker;
+    array<LockInfo, QEARN_MAX_LOCKS> locker;
 
     struct HistoryInfo {
 
-        uint64 _Unlocked_Amount;
-        uint64 _Rewarded_Amount;
-        id _Unlocked_ID;
+        uint64 _unlockedAmount;
+        uint64 _rewardedAmount;
+        id _unlockedID;
 
     };
 
-    array<HistoryInfo, QEARN_MAX_USERS> EarlyUnlocker;
-    array<HistoryInfo, QEARN_MAX_USERS> FullyUnlocker;
+    array<HistoryInfo, QEARN_MAX_USERS> earlyUnlocker;
+    array<HistoryInfo, QEARN_MAX_USERS> fullyUnlocker;
     
-    uint32 _EarlyUnlocked_cnt;
-    uint32 _FullyUnlocked_cnt;
+    uint32 _earlyUnlockedCnt;
+    uint32 _fullyUnlockedCnt;
 
     struct getStateOfRound_locals {
-        uint32 first_epoch;
+        uint32 firstEpoch;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getStateOfRound)
-        if(input.Epoch < QEARN_INITIAL_EPOCH) 
+        if(input.epoch < QEARN_INITIAL_EPOCH) 
         {                                                            // non staking
             output.state = 2; 
             return ;
         }
-        if(input.Epoch > qpi.epoch()) 
+        if(input.epoch > qpi.epoch()) 
         {
             output.state = 0;                                     // opening round, not started yet
         }
-        locals.first_epoch = qpi.epoch() - 52;
-        if(input.Epoch <= qpi.epoch() && input.Epoch >= locals.first_epoch) 
+        locals.firstEpoch = qpi.epoch() - 52;
+        if(input.epoch <= qpi.epoch() && input.epoch >= locals.firstEpoch) 
         {
             output.state = 1;       // running round, available unlocking early
         }
-        if(input.Epoch < locals.first_epoch) 
+        if(input.epoch < locals.firstEpoch) 
         {
             output.state = 2;       // ended round
         }
     _
 
-    PUBLIC_FUNCTION(getLockInforPerEpoch)
+    PUBLIC_FUNCTION(getLockInfoPerEpoch)
 
-        output.BonusAmount = state._InitialRoundInfo.get(input.Epoch)._Epoch_Bonus_Amount;
-        output.LockedAmount = state._InitialRoundInfo.get(input.Epoch)._Total_Locked_Amount;
-        output.CurrentBonusAmount = state._CurrentRoundInfo.get(input.Epoch)._Epoch_Bonus_Amount;
-        output.CurrentLockedAmount = state._CurrentRoundInfo.get(input.Epoch)._Total_Locked_Amount;
-        if(state._CurrentRoundInfo.get(input.Epoch)._Total_Locked_Amount) 
+        output.bonusAmount = state._initialRoundInfo.get(input.Epoch)._epochBonusAmount;
+        output.lockedAmount = state._initialRoundInfo.get(input.Epoch)._totalLockedAmount;
+        output.currentBonusAmount = state._currentRoundInfo.get(input.Epoch)._epochBonusAmount;
+        output.currentLockedAmount = state._currentRoundInfo.get(input.Epoch)._totalLockedAmount;
+        if(state._currentRoundInfo.get(input.Epoch)._totalLockedAmount) 
         {
-            output.Yield = state._CurrentRoundInfo.get(input.Epoch)._Epoch_Bonus_Amount * 10000000ULL / state._CurrentRoundInfo.get(input.Epoch)._Total_Locked_Amount;
+            output.yield = state._currentRoundInfo.get(input.Epoch)._epochBonusAmount * 10000000ULL / state._currentRoundInfo.get(input.Epoch)._totalLockedAmount;
         }
         else 
         {
-            output.Yield = 0ULL;
+            output.yield = 0ULL;
         }
     _
 
-    struct getUserLockedInfor_locals {
+    struct getUserLockedInfo_locals {
         uint32 _t;
         uint32 startIndex;
         uint32 endIndex;
     };
 
-    PUBLIC_FUNCTION_WITH_LOCALS(getUserLockedInfor)
+    PUBLIC_FUNCTION_WITH_LOCALS(getUserLockedInfo)
 
-        locals.startIndex = state.EpochIndex.get(input.epoch).startIndex;
-        locals.endIndex = state.EpochIndex.get(input.epoch).endIndex;
+        locals.startIndex = state._epochIndex.get(input.epoch).startIndex;
+        locals.endIndex = state._epochIndex.get(input.epoch).endIndex;
         
         for(locals._t = locals.startIndex; locals._t < locals.endIndex; locals._t++) 
         {
-            if(state.Locker.get(locals._t).ID == input.user) 
+            if(state.locker.get(locals._t).ID == input.user) 
             {
-                output.LockedAmount = state.Locker.get(locals._t)._Locked_Amount; 
+                output.lockedAmount = state.locker.get(locals._t)._lockedAmount; 
                 return;
             }
         }
@@ -275,14 +275,14 @@ protected:
     PUBLIC_FUNCTION_WITH_LOCALS(getUserLockStatus)
 
         output.status = 0ULL;
-        locals.endIndex = state.EpochIndex.get(qpi.epoch()).endIndex;
+        locals.endIndex = state._epochIndex.get(qpi.epoch()).endIndex;
         
         for(locals._t = 0; locals._t < locals.endIndex; locals._t++) 
         {
-            if(state.Locker.get(locals._t)._Locked_Amount > 0 && state.Locker.get(locals._t).ID == input.user) 
+            if(state.locker.get(locals._t)._lockedAmount > 0 && state.locker.get(locals._t).ID == input.user) 
             {
             
-                locals.lockedWeeks = qpi.epoch() - state.Locker.get(locals._t)._Locked_Epoch;
+                locals.lockedWeeks = qpi.epoch() - state.locker.get(locals._t)._lockedEpoch;
                 locals.bn = 1ULL<<locals.lockedWeeks;
 
                 output.status += locals.bn;
@@ -297,28 +297,28 @@ protected:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getEndedStatus)
 
-        output.Early_Rewarded_Amount = 0;
-        output.Early_Unlocked_Amount = 0;
-        output.Fully_Rewarded_Amount = 0;
-        output.Fully_Unlocked_Amount = 0;
+        output.earlyRewardedAmount = 0;
+        output.earlyUnlockedAmount = 0;
+        output.fullyRewardedAmount = 0;
+        output.fullyUnlockedAmount = 0;
 
-        for(locals._t = 0; locals._t < state._EarlyUnlocked_cnt; locals._t++) 
+        for(locals._t = 0; locals._t < state._earlyUnlockedCnt; locals._t++) 
         {
-            if(state.EarlyUnlocker.get(locals._t)._Unlocked_ID == input.user) 
+            if(state.earlyUnlocker.get(locals._t)._unlockedID == input.user) 
             {
-                output.Early_Rewarded_Amount = state.EarlyUnlocker.get(locals._t)._Rewarded_Amount;
-                output.Early_Unlocked_Amount = state.EarlyUnlocker.get(locals._t)._Unlocked_Amount;
+                output.earlyRewardedAmount = state.earlyUnlocker.get(locals._t)._rewardedAmount;
+                output.earlyUnlockedAmount = state.earlyUnlocker.get(locals._t)._unlockedAmount;
 
                 break ;
             }
         }
 
-        for(locals._t = 0; locals._t < state._FullyUnlocked_cnt; locals._t++) 
+        for(locals._t = 0; locals._t < state._fullyUnlockedCnt; locals._t++) 
         {
-            if(state.FullyUnlocker.get(locals._t)._Unlocked_ID == input.user) 
+            if(state.fullyUnlocker.get(locals._t)._unlockedID == input.user) 
             {
-                output.Fully_Rewarded_Amount = state.FullyUnlocker.get(locals._t)._Rewarded_Amount;
-                output.Fully_Unlocked_Amount = state.FullyUnlocker.get(locals._t)._Unlocked_Amount;
+                output.fullyRewardedAmount = state.fullyUnlocker.get(locals._t)._rewardedAmount;
+                output.fullyUnlockedAmount = state.fullyUnlocker.get(locals._t)._unlockedAmount;
             
                 return ;
             }
@@ -348,14 +348,14 @@ protected:
             return;
         }
 
-        locals.endIndex = state.EpochIndex.get(qpi.epoch()).endIndex;
+        locals.endIndex = state._epochIndex.get(qpi.epoch()).endIndex;
 
-        for(locals.t = state.EpochIndex.get(qpi.epoch()).startIndex ; locals.t < locals.endIndex; locals.t++) 
+        for(locals.t = state._epochIndex.get(qpi.epoch()).startIndex ; locals.t < locals.endIndex; locals.t++) 
         {
 
-            if(state.Locker.get(locals.t).ID == qpi.invocator()) 
+            if(state.locker.get(locals.t).ID == qpi.invocator()) 
             {      // the case to be locked several times at one epoch, at that time, this address already located in state.Locker array, the amount will be increased as current locking amount.
-                if(state.Locker.get(locals.t)._Locked_Amount + qpi.invocationReward() > QEARN_MAX_LOCK_AMOUNT)
+                if(state.locker.get(locals.t)._lockedAmount + qpi.invocationReward() > QEARN_MAX_LOCK_AMOUNT)
                 {
                     output.returnCode = QEARN_LIMIT_LOCK;
                     if(qpi.invocationReward() > 0) 
@@ -365,19 +365,19 @@ protected:
                     return;
                 }
 
-                locals.newLocker._Locked_Amount = state.Locker.get(locals.t)._Locked_Amount + qpi.invocationReward();
-                locals.newLocker._Locked_Epoch = qpi.epoch();
+                locals.newLocker._lockedAmount = state.locker.get(locals.t)._lockedAmount + qpi.invocationReward();
+                locals.newLocker._lockedEpoch = qpi.epoch();
                 locals.newLocker.ID = qpi.invocator();
 
-                state.Locker.set(locals.t, locals.newLocker);
+                state.locker.set(locals.t, locals.newLocker);
 
-                locals.updatedRoundInfo._Total_Locked_Amount = state._InitialRoundInfo.get(qpi.epoch())._Total_Locked_Amount + qpi.invocationReward();
-                locals.updatedRoundInfo._Epoch_Bonus_Amount = state._InitialRoundInfo.get(qpi.epoch())._Epoch_Bonus_Amount;
-                state._InitialRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
+                locals.updatedRoundInfo._totalLockedAmount = state._initialRoundInfo.get(qpi.epoch())._totalLockedAmount + qpi.invocationReward();
+                locals.updatedRoundInfo._epochBonusAmount = state._initialRoundInfo.get(qpi.epoch())._epochBonusAmount;
+                state._initialRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
 
-                locals.updatedRoundInfo._Total_Locked_Amount = state._CurrentRoundInfo.get(qpi.epoch())._Total_Locked_Amount + qpi.invocationReward();
-                locals.updatedRoundInfo._Epoch_Bonus_Amount = state._CurrentRoundInfo.get(qpi.epoch())._Epoch_Bonus_Amount;
-                state._CurrentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
+                locals.updatedRoundInfo._totalLockedAmount = state._currentRoundInfo.get(qpi.epoch())._totalLockedAmount + qpi.invocationReward();
+                locals.updatedRoundInfo._epochBonusAmount = state._currentRoundInfo.get(qpi.epoch())._epochBonusAmount;
+                state._currentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
                 
                 output.returnCode = QEARN_LOCK_SUCCESS;          //  additional locking of this epoch is succeed
                 return ;
@@ -406,22 +406,22 @@ protected:
         }
 
         locals.newLocker.ID = qpi.invocator();
-        locals.newLocker._Locked_Amount = qpi.invocationReward();
-        locals.newLocker._Locked_Epoch = qpi.epoch();
+        locals.newLocker._lockedAmount = qpi.invocationReward();
+        locals.newLocker._lockedEpoch = qpi.epoch();
 
-        state.Locker.set(locals.endIndex, locals.newLocker);
+        state.locker.set(locals.endIndex, locals.newLocker);
 
-        locals.tmpIndex.startIndex = state.EpochIndex.get(qpi.epoch()).startIndex;
+        locals.tmpIndex.startIndex = state._epochIndex.get(qpi.epoch()).startIndex;
         locals.tmpIndex.endIndex = locals.endIndex + 1;
-        state.EpochIndex.set(qpi.epoch(), locals.tmpIndex);
+        state._epochIndex.set(qpi.epoch(), locals.tmpIndex);
 
-        locals.updatedRoundInfo._Total_Locked_Amount = state._InitialRoundInfo.get(qpi.epoch())._Total_Locked_Amount + qpi.invocationReward();
-        locals.updatedRoundInfo._Epoch_Bonus_Amount = state._InitialRoundInfo.get(qpi.epoch())._Epoch_Bonus_Amount;
-        state._InitialRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
+        locals.updatedRoundInfo._totalLockedAmount = state._initialRoundInfo.get(qpi.epoch())._totalLockedAmount + qpi.invocationReward();
+        locals.updatedRoundInfo._epochBonusAmount = state._initialRoundInfo.get(qpi.epoch())._epochBonusAmount;
+        state._initialRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
 
-        locals.updatedRoundInfo._Total_Locked_Amount = state._CurrentRoundInfo.get(qpi.epoch())._Total_Locked_Amount + qpi.invocationReward();
-        locals.updatedRoundInfo._Epoch_Bonus_Amount = state._CurrentRoundInfo.get(qpi.epoch())._Epoch_Bonus_Amount;
-        state._CurrentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
+        locals.updatedRoundInfo._totalLockedAmount = state._currentRoundInfo.get(qpi.epoch())._totalLockedAmount + qpi.invocationReward();
+        locals.updatedRoundInfo._epochBonusAmount = state._currentRoundInfo.get(qpi.epoch())._epochBonusAmount;
+        state._currentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
 
         output.returnCode = QEARN_LOCK_SUCCESS;            //  new locking of this epoch is succeed
     _
@@ -432,16 +432,16 @@ protected:
         LockInfo updatedUserInfo;
         HistoryInfo unlockerInfo;
         
-        uint64 AmountOfUnlocking;
-        uint64 AmountOfReward;
-        uint64 AmountOfburn;
-        uint64 RewardPercent;
+        uint64 amountOfUnlocking;
+        uint64 amountOfReward;
+        uint64 amountOfburn;
+        uint64 rewardPercent;
         sint64 divCalcu;
         uint32 earlyUnlockingPercent;
         uint32 burnPercent;
         uint32 indexOfinvocator;
-        uint32 t;
-        uint32 count_Of_last_vacancy;
+        uint32 _t;
+        uint32 countOfLastVacancy;
         uint32 countOfLockedEpochs;
         uint32 startIndex;
         uint32 endIndex;
@@ -450,7 +450,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(unlock)
 
-        if(input.Locked_Epoch > QEARN_MAX_EPOCHS) 
+        if(input.lockedEpoch > QEARN_MAX_EPOCHS) 
         {
 
             output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
@@ -458,7 +458,7 @@ protected:
 
         }
 
-        if(input.Amount < QEARN_MINIMUM_LOCKING_AMOUNT)
+        if(input.amount < QEARN_MINIMUM_LOCKING_AMOUNT)
         {
             
             output.returnCode = QEARN_INVALID_INPUT_AMOUNT;
@@ -467,15 +467,15 @@ protected:
         }
 
         locals.indexOfinvocator = QEARN_MAX_LOCKS;
-        locals.startIndex = state.EpochIndex.get(input.Locked_Epoch).startIndex;
-        locals.endIndex = state.EpochIndex.get(input.Locked_Epoch).endIndex;
+        locals.startIndex = state._epochIndex.get(input.lockedEpoch).startIndex;
+        locals.endIndex = state._epochIndex.get(input.lockedEpoch).endIndex;
 
-        for(locals.t = locals.startIndex ; locals.t < locals.endIndex; locals.t++) 
+        for(locals._t = locals.startIndex ; locals._t < locals.endIndex; locals._t++) 
         {
 
-            if(state.Locker.get(locals.t).ID == qpi.invocator()) 
+            if(state.locker.get(locals._t).ID == qpi.invocator()) 
             { 
-                if(state.Locker.get(locals.t)._Locked_Amount < input.Amount) 
+                if(state.locker.get(locals._t)._lockedAmount < input.amount) 
                 {
 
                     output.returnCode = QEARN_INVALID_INPUT_UNLOCK_AMOUNT;  //  if the amount to be wanted to unlock is more than locked amount, it should be failed to unlock
@@ -484,7 +484,7 @@ protected:
                 }
                 else 
                 {
-                    locals.indexOfinvocator = locals.t;
+                    locals.indexOfinvocator = locals._t;
                     break;
                 }
             }
@@ -499,16 +499,16 @@ protected:
         }
 
         /* the rest amount after unlocking should be more than MINIMUM_LOCKING_AMOUNT */
-        if(state.Locker.get(locals.indexOfinvocator)._Locked_Amount - input.Amount < QEARN_MINIMUM_LOCKING_AMOUNT) 
+        if(state.locker.get(locals.indexOfinvocator)._lockedAmount - input.amount < QEARN_MINIMUM_LOCKING_AMOUNT) 
         {
-            locals.AmountOfUnlocking = state.Locker.get(locals.indexOfinvocator)._Locked_Amount;
+            locals.amountOfUnlocking = state.locker.get(locals.indexOfinvocator)._lockedAmount;
         }
         else 
         {
-            locals.AmountOfUnlocking = input.Amount;
+            locals.amountOfUnlocking = input.amount;
         }
 
-        locals.countOfLockedEpochs = qpi.epoch() - input.Locked_Epoch - 1;
+        locals.countOfLockedEpochs = qpi.epoch() - input.lockedEpoch - 1;
 
         locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_0_3;
         locals.burnPercent = QEARN_BURN_PERCENT_0_3;
@@ -585,73 +585,73 @@ protected:
             locals.burnPercent = QEARN_BURN_PERCENT_48_51;
         }
 
-        locals.RewardPercent = QPI::div(state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount * 10000000ULL, state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount);
-        locals.divCalcu = QPI::div(locals.RewardPercent * locals.AmountOfUnlocking , 100ULL);
-        locals.AmountOfReward = QPI::div(locals.divCalcu * locals.earlyUnlockingPercent * 1ULL , 10000000ULL);
-        locals.AmountOfburn = QPI::div(locals.divCalcu * locals.burnPercent * 1ULL, 10000000ULL);
+        locals.rewardPercent = QPI::div(state._currentRoundInfo.get(input.lockedEpoch)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(input.lockedEpoch)._totalLockedAmount);
+        locals.divCalcu = QPI::div(locals.rewardPercent * locals.amountOfUnlocking , 100ULL);
+        locals.amountOfReward = QPI::div(locals.divCalcu * locals.earlyUnlockingPercent * 1ULL , 10000000ULL);
+        locals.amountOfburn = QPI::div(locals.divCalcu * locals.burnPercent * 1ULL, 10000000ULL);
 
-        qpi.transfer(qpi.invocator(), locals.AmountOfUnlocking + locals.AmountOfReward);
-        qpi.burn(locals.AmountOfburn);
+        qpi.transfer(qpi.invocator(), locals.amountOfUnlocking + locals.amountOfReward);
+        qpi.burn(locals.amountOfburn);
 
-        locals.updatedRoundInfo._Total_Locked_Amount = state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount - locals.AmountOfUnlocking;
-        locals.updatedRoundInfo._Epoch_Bonus_Amount = state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount - locals.AmountOfReward - locals.AmountOfburn;
+        locals.updatedRoundInfo._totalLockedAmount = state._currentRoundInfo.get(input.lockedEpoch)._totalLockedAmount - locals.amountOfUnlocking;
+        locals.updatedRoundInfo._epochBonusAmount = state._currentRoundInfo.get(input.lockedEpoch)._epochBonusAmount - locals.amountOfReward - locals.amountOfburn;
 
-        state._CurrentRoundInfo.set(input.Locked_Epoch, locals.updatedRoundInfo);
+        state._currentRoundInfo.set(input.lockedEpoch, locals.updatedRoundInfo);
 
-        if(state.Locker.get(locals.indexOfinvocator)._Locked_Amount == locals.AmountOfUnlocking)
+        if(state.locker.get(locals.indexOfinvocator)._lockedAmount == locals.amountOfUnlocking)
         {
             locals.updatedUserInfo.ID = NULL_ID;
-            locals.updatedUserInfo._Locked_Amount = 0;
-            locals.updatedUserInfo._Locked_Epoch = 0;
+            locals.updatedUserInfo._lockedAmount = 0;
+            locals.updatedUserInfo._lockedEpoch = 0;
         }
         else 
         {
             locals.updatedUserInfo.ID = qpi.invocator();
-            locals.updatedUserInfo._Locked_Amount = state.Locker.get(locals.indexOfinvocator)._Locked_Amount - locals.AmountOfUnlocking;
-            locals.updatedUserInfo._Locked_Epoch = state.Locker.get(locals.indexOfinvocator)._Locked_Epoch;
+            locals.updatedUserInfo._lockedAmount = state.locker.get(locals.indexOfinvocator)._lockedAmount - locals.amountOfUnlocking;
+            locals.updatedUserInfo._lockedEpoch = state.locker.get(locals.indexOfinvocator)._lockedEpoch;
         }
 
-        state.Locker.set(locals.indexOfinvocator, locals.updatedUserInfo);
+        state.locker.set(locals.indexOfinvocator, locals.updatedUserInfo);
 
-        if(state._CurrentRoundInfo.get(input.Locked_Epoch)._Total_Locked_Amount == 0 && input.Locked_Epoch != qpi.epoch()) 
+        if(state._currentRoundInfo.get(input.lockedEpoch)._totalLockedAmount == 0 && input.lockedEpoch != qpi.epoch()) 
         {
             
             // If all users have unlocked early, burn bonus
-            qpi.burn(state._CurrentRoundInfo.get(input.Locked_Epoch)._Epoch_Bonus_Amount);
+            qpi.burn(state._currentRoundInfo.get(input.lockedEpoch)._epochBonusAmount);
 
-            locals.updatedRoundInfo._Total_Locked_Amount = 0;
-            locals.updatedRoundInfo._Epoch_Bonus_Amount = 0;
+            locals.updatedRoundInfo._totalLockedAmount = 0;
+            locals.updatedRoundInfo._epochBonusAmount = 0;
 
-            state._CurrentRoundInfo.set(input.Locked_Epoch, locals.updatedRoundInfo);
+            state._currentRoundInfo.set(input.lockedEpoch, locals.updatedRoundInfo);
 
         }
 
-        if(input.Locked_Epoch != qpi.epoch()) 
+        if(input.lockedEpoch != qpi.epoch()) 
         {
 
-            locals.unlockerInfo._Unlocked_ID = qpi.invocator();
+            locals.unlockerInfo._unlockedID = qpi.invocator();
             
-            for(locals.t = 0; locals.t < state._EarlyUnlocked_cnt; locals.t++) 
+            for(locals._t = 0; locals._t < state._earlyUnlockedCnt; locals._t++) 
             {
-                if(state.EarlyUnlocker.get(locals.t)._Unlocked_ID == qpi.invocator()) 
+                if(state.earlyUnlocker.get(locals._t)._unlockedID == qpi.invocator()) 
                 {
 
-                    locals.unlockerInfo._Rewarded_Amount = state.EarlyUnlocker.get(locals.t)._Rewarded_Amount + locals.AmountOfReward;
-                    locals.unlockerInfo._Unlocked_Amount = state.EarlyUnlocker.get(locals.t)._Unlocked_Amount + locals.AmountOfUnlocking;
+                    locals.unlockerInfo._rewardedAmount = state.earlyUnlocker.get(locals._t)._rewardedAmount + locals.amountOfReward;
+                    locals.unlockerInfo._unlockedAmount = state.earlyUnlocker.get(locals._t)._unlockedAmount + locals.amountOfUnlocking;
 
-                    state.EarlyUnlocker.set(locals.t, locals.unlockerInfo);
+                    state.earlyUnlocker.set(locals._t, locals.unlockerInfo);
 
                     break;
                 }
             }
 
-            if(locals.t == state._EarlyUnlocked_cnt && state._EarlyUnlocked_cnt < QEARN_MAX_USERS) 
+            if(locals._t == state._earlyUnlockedCnt && state._earlyUnlockedCnt < QEARN_MAX_USERS) 
             {
-                locals.unlockerInfo._Rewarded_Amount = locals.AmountOfReward;
-                locals.unlockerInfo._Unlocked_Amount = locals.AmountOfUnlocking;
+                locals.unlockerInfo._rewardedAmount = locals.amountOfReward;
+                locals.unlockerInfo._unlockedAmount = locals.amountOfUnlocking;
 
-                state.EarlyUnlocker.set(locals.t, locals.unlockerInfo);
-                state._EarlyUnlocked_cnt++;
+                state.earlyUnlocker.set(locals._t, locals.unlockerInfo);
+                state._earlyUnlockedCnt++;
             }
 
         }
@@ -661,8 +661,8 @@ protected:
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
     
-        REGISTER_USER_FUNCTION(getLockInforPerEpoch, 1);
-        REGISTER_USER_FUNCTION(getUserLockedInfor, 2);
+        REGISTER_USER_FUNCTION(getLockInfoPerEpoch, 1);
+        REGISTER_USER_FUNCTION(getUserLockedInfo, 2);
         REGISTER_USER_FUNCTION(getStateOfRound, 3);
         REGISTER_USER_FUNCTION(getUserLockStatus, 4);
         REGISTER_USER_FUNCTION(getEndedStatus, 5);
@@ -695,22 +695,22 @@ protected:
         locals.locked_epoch = qpi.epoch() - 52;
         for(locals.t = qpi.epoch() - 1; locals.t >= locals.locked_epoch; locals.t--) 
         {
-            locals.pre_epoch_balance += state._CurrentRoundInfo.get(locals.t)._Epoch_Bonus_Amount + state._CurrentRoundInfo.get(locals.t)._Total_Locked_Amount;
+            locals.pre_epoch_balance += state._currentRoundInfo.get(locals.t)._epochBonusAmount + state._currentRoundInfo.get(locals.t)._totalLockedAmount;
         }
 
         if(locals.current_balance - locals.pre_epoch_balance > QEARN_MAX_BONUS_AMOUNT)
         {
             qpi.burn(locals.current_balance - locals.pre_epoch_balance - QEARN_MAX_BONUS_AMOUNT);
-            locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount = QEARN_MAX_BONUS_AMOUNT;
+            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = QEARN_MAX_BONUS_AMOUNT;
         }
         else 
         {
-            locals.INITIALIZE_ROUNDINFO._Epoch_Bonus_Amount = locals.current_balance - locals.pre_epoch_balance;
+            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = locals.current_balance - locals.pre_epoch_balance;
         }
-        locals.INITIALIZE_ROUNDINFO._Total_Locked_Amount = 0;
+        locals.INITIALIZE_ROUNDINFO._totalLockedAmount = 0;
 
-        state._InitialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
-        state._CurrentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
+        state._initialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
+        state._currentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
 
 	_
 
@@ -721,10 +721,10 @@ protected:
         RoundInfo INITIALIZE_ROUNDINFO;
         EpochIndexInfo tmpEpochIndex;
 
-        uint64 _reward_percent;
-        uint64 _reward_amount;
-        uint64 _burn_amount;
-        uint32 locked_epoch;
+        uint64 _rewardPercent;
+        uint64 _rewardAmount;
+        uint64 _burnAmount;
+        uint32 lockedEpoch;
         uint32 startEpoch;
         uint32 _t;
         sint32 st;
@@ -735,53 +735,53 @@ protected:
 
 	END_EPOCH_WITH_LOCALS
 
-        state._EarlyUnlocked_cnt = 0;
-        state._FullyUnlocked_cnt = 0;
-        locals.locked_epoch = qpi.epoch() - 52;
-        locals.endIndex = state.EpochIndex.get(locals.locked_epoch).endIndex;
+        state._earlyUnlockedCnt = 0;
+        state._fullyUnlockedCnt = 0;
+        locals.lockedEpoch = qpi.epoch() - 52;
+        locals.endIndex = state._epochIndex.get(locals.lockedEpoch).endIndex;
         
-        locals._burn_amount = state._CurrentRoundInfo.get(locals.locked_epoch)._Epoch_Bonus_Amount;
+        locals._burnAmount = state._currentRoundInfo.get(locals.lockedEpoch)._epochBonusAmount;
         
-        locals._reward_percent = QPI::div(state._CurrentRoundInfo.get(locals.locked_epoch)._Epoch_Bonus_Amount * 10000000ULL, state._CurrentRoundInfo.get(locals.locked_epoch)._Total_Locked_Amount);
+        locals._rewardPercent = QPI::div(state._currentRoundInfo.get(locals.lockedEpoch)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(locals.lockedEpoch)._totalLockedAmount);
 
-        for(locals._t = state.EpochIndex.get(locals.locked_epoch).startIndex; locals._t < locals.endIndex; locals._t++) 
+        for(locals._t = state._epochIndex.get(locals.lockedEpoch).startIndex; locals._t < locals.endIndex; locals._t++) 
         {
-            if(state.Locker.get(locals._t)._Locked_Amount == 0) 
+            if(state.locker.get(locals._t)._lockedAmount == 0) 
             {
                 continue;
             }
 
-            ASSERT(state.Locker.get(locals._t)._Locked_Epoch == locals.locked_epoch);
+            ASSERT(state.locker.get(locals._t)._lockedEpoch == locals.lockedEpoch);
 
-            locals._reward_amount = QPI::div(state.Locker.get(locals._t)._Locked_Amount * locals._reward_percent, 10000000ULL);
-            qpi.transfer(state.Locker.get(locals._t).ID, locals._reward_amount + state.Locker.get(locals._t)._Locked_Amount);
+            locals._rewardAmount = QPI::div(state.locker.get(locals._t)._lockedAmount * locals._rewardPercent, 10000000ULL);
+            qpi.transfer(state.locker.get(locals._t).ID, locals._rewardAmount + state.locker.get(locals._t)._lockedAmount);
 
-            if(state._FullyUnlocked_cnt < QEARN_MAX_USERS) 
+            if(state._fullyUnlockedCnt < QEARN_MAX_USERS) 
             {
 
-                locals.INITIALIZE_HISTORY._Unlocked_ID = state.Locker.get(locals._t).ID;
-                locals.INITIALIZE_HISTORY._Unlocked_Amount = state.Locker.get(locals._t)._Locked_Amount;
-                locals.INITIALIZE_HISTORY._Rewarded_Amount = locals._reward_amount;
+                locals.INITIALIZE_HISTORY._unlockedID = state.locker.get(locals._t).ID;
+                locals.INITIALIZE_HISTORY._unlockedAmount = state.locker.get(locals._t)._lockedAmount;
+                locals.INITIALIZE_HISTORY._rewardedAmount = locals._rewardAmount;
 
-                state.FullyUnlocker.set(state._FullyUnlocked_cnt, locals.INITIALIZE_HISTORY);
+                state.fullyUnlocker.set(state._fullyUnlockedCnt, locals.INITIALIZE_HISTORY);
 
-                state._FullyUnlocked_cnt++;
+                state._fullyUnlockedCnt++;
             }
 
             locals.INITIALIZE_USER.ID = NULL_ID;
-            locals.INITIALIZE_USER._Locked_Amount = 0;
-            locals.INITIALIZE_USER._Locked_Epoch = 0;
+            locals.INITIALIZE_USER._lockedAmount = 0;
+            locals.INITIALIZE_USER._lockedEpoch = 0;
 
-            state.Locker.set(locals._t, locals.INITIALIZE_USER);
+            state.locker.set(locals._t, locals.INITIALIZE_USER);
 
-            locals._burn_amount -= locals._reward_amount;
+            locals._burnAmount -= locals._rewardAmount;
         }
 
         locals.tmpEpochIndex.startIndex = 0;
         locals.tmpEpochIndex.endIndex = 0;
-        state.EpochIndex.set(locals.locked_epoch, locals.tmpEpochIndex);
+        state._epochIndex.set(locals.lockedEpoch, locals.tmpEpochIndex);
 
-        locals.startEpoch = locals.locked_epoch + 1;
+        locals.startEpoch = locals.lockedEpoch + 1;
         if (locals.startEpoch < QEARN_INITIAL_EPOCH)
             locals.startEpoch = QEARN_INITIAL_EPOCH;
 
@@ -793,20 +793,20 @@ protected:
             // The startIndex is given by the end of the range of the previous epoch, the new endIndex is found in the
             // gap removal process.
             locals.st = locals.tmpEpochIndex.startIndex;
-            locals.en = state.EpochIndex.get(locals._t).endIndex;
+            locals.en = state._epochIndex.get(locals._t).endIndex;
             ASSERT(locals.st <= locals.en);
 
             while(locals.st < locals.en)
             {
                 // try to set locals.st to first empty slot
-                while (state.Locker.get(locals.st)._Locked_Amount && locals.st < locals.en)
+                while (state.locker.get(locals.st)._lockedAmount && locals.st < locals.en)
                 {
                     locals.st++;
                 }
 
                 // try set locals.en to last non-empty slot in epoch
                 --locals.en;
-                while (!state.Locker.get(locals.en)._Locked_Amount && locals.st < locals.en)
+                while (!state.locker.get(locals.en)._lockedAmount && locals.st < locals.en)
                 {
                     locals.en--;
                 }
@@ -820,26 +820,26 @@ protected:
                 }
 
                 // move entry from locals.en to locals.st
-                state.Locker.set(locals.st, state.Locker.get(locals.en));
+                state.locker.set(locals.st, state.locker.get(locals.en));
 
                 // make locals.en slot empty -> locals.en points behind last element again
                 locals.INITIALIZE_USER.ID = NULL_ID;
-                locals.INITIALIZE_USER._Locked_Amount = 0;
-                locals.INITIALIZE_USER._Locked_Epoch = 0;
-                state.Locker.set(locals.en, locals.INITIALIZE_USER);
+                locals.INITIALIZE_USER._lockedAmount = 0;
+                locals.INITIALIZE_USER._lockedEpoch = 0;
+                state.locker.set(locals.en, locals.INITIALIZE_USER);
             }
 
             // update epoch index
             locals.tmpEpochIndex.endIndex = locals.en;
-            state.EpochIndex.set(locals._t, locals.tmpEpochIndex);
+            state._epochIndex.set(locals._t, locals.tmpEpochIndex);
 
             // set start index of next epoch to end index of current epoch
             locals.tmpEpochIndex.startIndex = locals.tmpEpochIndex.endIndex;
         }
 
         locals.tmpEpochIndex.endIndex = locals.tmpEpochIndex.startIndex;
-        state.EpochIndex.set(qpi.epoch() + 1, locals.tmpEpochIndex);
+        state._epochIndex.set(qpi.epoch() + 1, locals.tmpEpochIndex);
 
-        qpi.burn(locals._burn_amount);
+        qpi.burn(locals._burnAmount);
 	_
 };
