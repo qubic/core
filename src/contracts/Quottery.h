@@ -1367,9 +1367,12 @@ public:
     _
 
     END_EPOCH
-        if (qpi.distributeDividends(div(state.mEarnedAmountForShareHolder - state.mPaidAmountForShareHolder, uint64(NUMBER_OF_COMPUTORS))))
+        if ((div(state.mEarnedAmountForShareHolder - state.mPaidAmountForShareHolder, uint64(NUMBER_OF_COMPUTORS)) > 0) && (state.mEarnedAmountForShareHolder > state.mPaidAmountForShareHolder))
         {
-            state.mPaidAmountForShareHolder += div(state.mEarnedAmountForShareHolder - state.mPaidAmountForShareHolder, uint64(NUMBER_OF_COMPUTORS)) * NUMBER_OF_COMPUTORS;
+            if (qpi.distributeDividends(div(state.mEarnedAmountForShareHolder - state.mPaidAmountForShareHolder, uint64(NUMBER_OF_COMPUTORS))))
+            {
+                state.mPaidAmountForShareHolder += div(state.mEarnedAmountForShareHolder - state.mPaidAmountForShareHolder, uint64(NUMBER_OF_COMPUTORS)) * NUMBER_OF_COMPUTORS;
+            }
         }
     _
 };
