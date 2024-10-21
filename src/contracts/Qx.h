@@ -1053,7 +1053,7 @@ protected:
 	_
 
 	END_TICK
-		if (div((state._earnedAmount - state._distributedAmount), 676ULL) > 0)
+		if ((div((state._earnedAmount - state._distributedAmount), 676ULL) > 0) && (state._earnedAmount > state._distributedAmount))
 		{
 			if (qpi.distributeDividends(div((state._earnedAmount - state._distributedAmount), 676ULL)))
 			{
