@@ -6,8 +6,15 @@
 #include <random>
 #include <map>
 
-#define PRINT_TEST_INFO 1
-#define LARGE_SCALE_TEST 1
+#define PRINT_TEST_INFO 0
+
+// test config:
+// - 0 is fastest
+// - 1 to enable more tests with random lock/unlock
+// - 2 to enable even more tests with random lock/unlock
+// - 3 to also check values more often (expensive functions)
+// - 4 to also test out-of-user error
+#define LARGE_SCALE_TEST 0
 
 
 static const id QEARN_CONTRACT_ID(QEARN_CONTRACT_INDEX, 0, 0, 0);
@@ -270,7 +277,12 @@ public:
         checkEpochInfo(system.epoch);
 
         // get amount and balances before action
+#if LARGE_SCALE_TEST >= 3
         uint64 amountBefore = getUserLockedInfor(system.epoch, user);
+        EXPECT_EQ(allUserData[user].locked[system.epoch], amountBefore);
+#else
+        uint64 amountBefore = allUserData[user].locked[system.epoch];
+#endif
         sint64 userBalanceBefore = getBalance(user);
         sint64 contractBalanceBefore = getBalance(QEARN_CONTRACT_ID);
 
@@ -352,8 +364,13 @@ public:
         // make sure that user exists in spectrum
         increaseEnergy(user, 1);
 
-        // get old locked amount 
+        // get old locked amount
+#if LARGE_SCALE_TEST >= 3
         uint64 amountBefore = getUserLockedInfor(lockingEpoch, user);
+        EXPECT_EQ(allUserData[user].locked[lockingEpoch], amountBefore);
+#else
+        uint64 amountBefore = allUserData[user].locked[lockingEpoch];
+#endif
         sint64 userBalanceBefore = getBalance(user);
         sint64 contractBalanceBefore = getBalance(QEARN_CONTRACT_ID);
 
@@ -603,7 +620,7 @@ TEST(TestContractQearn, ErrorChecking)
     }
 
     // in order trigger out-of-lock-slots error, lock with many users
-#if LARGE_SCALE_TEST > 1
+#if LARGE_SCALE_TEST >= 4
     // notes: - disabled by default because it takes long
     //        - seems like the last locker slot is never used in QEARN (FIXME)
     for (uint64 i = 0; i < QEARN_MAX_LOCKS - 1; ++i)
@@ -643,6 +660,7 @@ TEST(TestContractQearn, ErrorChecking)
 
 void testRandomLockWithoutUnlock(const uint16 numEpochs, const unsigned int totalUsers, const unsigned int maxUserLocking)
 {
+    std::cout << "random test without early unlock for " << numEpochs << " epochs with " << totalUsers << " total users and up to " << maxUserLocking << " lock calls per epoch" << std::endl;
     ContractTestingQearn qearn;
 
     const uint16 firstEpoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch;
@@ -681,14 +699,17 @@ TEST(TestContractQearn, RandomLockWithoutUnlock)
     // params: epochs, total number of users, max users locking in epoch
     testRandomLockWithoutUnlock(100, 40, 10);
     testRandomLockWithoutUnlock(100, 20, 20);
-#if LARGE_SCALE_TEST
+#if LARGE_SCALE_TEST >= 1
     testRandomLockWithoutUnlock(300, 1000, 1000);
-    //testRandomLockWithoutUnlock(300, 100000, 10000);
+#endif
+#if LARGE_SCALE_TEST >= 2
+    testRandomLockWithoutUnlock(100, 20000, 10000);
 #endif
 }
 
 void testRandomLockWithUnlock(const uint16 numEpochs, const unsigned int totalUsers, const unsigned int maxUserLocking, const unsigned int maxUserUnlocking)
 {
+    std::cout << "random test with early unlock for " << numEpochs << " epochs with " << totalUsers << " total users, up to " << maxUserLocking << " lock calls (per epoch), and up to " << maxUserUnlocking << " unlock calls (per running round)" << std::endl;
     ContractTestingQearn qearn;
 
     const uint16 firstEpoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch;
@@ -738,11 +759,13 @@ TEST(TestContractQearn, RandomLockAndUnlock)
     testRandomLockWithUnlock(100, 40, 10, 10);
     testRandomLockWithUnlock(100, 40, 10, 8);   // less early unlocking
     testRandomLockWithUnlock(100, 40, 20, 19);  // more user activity
-#if LARGE_SCALE_TEST
+#if LARGE_SCALE_TEST >= 1
     testRandomLockWithUnlock(300, 1000, 1000, 1000);
     testRandomLockWithUnlock(300, 1000, 1000, 800);
+#endif
+#if LARGE_SCALE_TEST >= 2
     testRandomLockWithUnlock(400, 2000, 1500, 1200);
-    //testRandomLockWithUnlock(300, 100000, 10000, 8000);
+    testRandomLockWithUnlock(100, 20000, 10000, 8000);
 #endif
 }
 
