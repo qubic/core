@@ -729,7 +729,6 @@ protected:
         uint32 _t;
         sint32 st;
         sint32 en;
-        uint32 empty_cnt;
         uint32 endIndex;
 
     };
@@ -751,6 +750,8 @@ protected:
             {
                 continue;
             }
+
+            ASSERT(state.Locker.get(locals._t)._Locked_Epoch == locals.locked_epoch);
 
             locals._reward_amount = QPI::div(state.Locker.get(locals._t)._Locked_Amount * locals._reward_percent, 10000000ULL);
             qpi.transfer(state.Locker.get(locals._t).ID, locals._reward_amount + state.Locker.get(locals._t)._Locked_Amount);
@@ -776,89 +777,67 @@ protected:
             locals._burn_amount -= locals._reward_amount;
         }
 
-        locals.st = 0;
+        locals.tmpEpochIndex.startIndex = 0;
+        locals.tmpEpochIndex.endIndex = 0;
+        state.EpochIndex.set(locals.locked_epoch, locals.tmpEpochIndex);
 
-        for(locals._t = 0; locals._t < QEARN_MAX_LOCKS; locals._t++)
-        {
-            if(state.Locker.get(locals._t)._Locked_Epoch) 
-            {
-                locals.startEpoch = state.Locker.get(locals._t)._Locked_Epoch;
-                break;
-            }
-        }
+        locals.startEpoch = locals.locked_epoch + 1;
+        if (locals.startEpoch < QEARN_INITIAL_EPOCH)
+            locals.startEpoch = QEARN_INITIAL_EPOCH;
 
+        // remove all gaps in Locker array (from beginning) and update epochIndex
+        locals.tmpEpochIndex.startIndex = 0;
         for(locals._t = locals.startEpoch; locals._t <= qpi.epoch(); locals._t++)
         {
-            locals.empty_cnt = 0;
-            if(locals._t == locals.startEpoch) 
-            {
-                locals.st = 0;
-            }
-            else 
-            {
-                locals.st = state.EpochIndex.get(locals._t).startIndex;
-            }
-            locals.en = state.EpochIndex.get(locals._t).endIndex - 1;
+            // This for loop iteration moves all elements of one epoch the to start of its range of the Locker array.
+            // The startIndex is given by the end of the range of the previous epoch, the new endIndex is found in the
+            // gap removal process.
+            locals.st = locals.tmpEpochIndex.startIndex;
+            locals.en = state.EpochIndex.get(locals._t).endIndex;
+            ASSERT(locals.st <= locals.en);
 
             while(locals.st < locals.en)
             {
-                while(state.Locker.get(locals.st)._Locked_Amount)
+                // try to set locals.st to first empty slot
+                while (state.Locker.get(locals.st)._Locked_Amount && locals.st < locals.en)
                 {
                     locals.st++;
                 }
 
-                while(!state.Locker.get(locals.en)._Locked_Amount)
+                // try set locals.en to last non-empty slot in epoch
+                --locals.en;
+                while (!state.Locker.get(locals.en)._Locked_Amount && locals.st < locals.en)
                 {
                     locals.en--;
-                    locals.empty_cnt++;
                 }
 
-                if(locals.st > locals.en) break;
+                // if st and en meet, there are no gaps to be closed by moving in this epoch range
+                if (locals.st >= locals.en)
+                {
+                    // make locals.en point behind last element again
+                    ++locals.en;
+                    break;
+                }
 
-                locals.INITIALIZE_USER.ID = state.Locker.get(locals.en).ID;
-                locals.INITIALIZE_USER._Locked_Amount = state.Locker.get(locals.en)._Locked_Amount;
-                locals.INITIALIZE_USER._Locked_Epoch = state.Locker.get(locals.en)._Locked_Epoch;
+                // move entry from locals.en to locals.st
+                state.Locker.set(locals.st, state.Locker.get(locals.en));
 
-                state.Locker.set(locals.st, locals.INITIALIZE_USER);
-
+                // make locals.en slot empty -> locals.en points behind last element again
                 locals.INITIALIZE_USER.ID = NULL_ID;
                 locals.INITIALIZE_USER._Locked_Amount = 0;
                 locals.INITIALIZE_USER._Locked_Epoch = 0;
-
                 state.Locker.set(locals.en, locals.INITIALIZE_USER);
-
-                locals.st++;
-                locals.en--;
-                locals.empty_cnt++;
             }
 
-            if(locals.st == locals.en && !state.Locker.get(locals.st)._Locked_Amount)
-            {
-                locals.empty_cnt++;
-            }
-
-            if(locals._t == locals.startEpoch) 
-            {
-                locals.tmpEpochIndex.startIndex = 0;
-            }
-            else 
-            {
-                locals.tmpEpochIndex.startIndex = state.EpochIndex.get(locals._t).startIndex;
-            }
-            locals.tmpEpochIndex.endIndex = state.EpochIndex.get(locals._t).endIndex - locals.empty_cnt;
-
+            // update epoch index
+            locals.tmpEpochIndex.endIndex = locals.en;
             state.EpochIndex.set(locals._t, locals.tmpEpochIndex);
 
+            // set start index of next epoch to end index of current epoch
             locals.tmpEpochIndex.startIndex = locals.tmpEpochIndex.endIndex;
-            locals.tmpEpochIndex.endIndex = state.EpochIndex.get(locals._t + 1).endIndex;
-
-            state.EpochIndex.set(locals._t + 1, locals.tmpEpochIndex);
-            
         }
 
-        locals.tmpEpochIndex.startIndex = state.EpochIndex.get(qpi.epoch() + 1).startIndex;
         locals.tmpEpochIndex.endIndex = locals.tmpEpochIndex.startIndex;
-
         state.EpochIndex.set(qpi.epoch() + 1, locals.tmpEpochIndex);
 
         qpi.burn(locals._burn_amount);
