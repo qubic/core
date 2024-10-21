@@ -3,6 +3,78 @@
 #include "contracts/qpi.h"
 
 #include "assets/assets.h"
+#include "../spectrum.h"
+
+
+bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare) const
+{
+    if (amountPerShare < 0 || amountPerShare * NUMBER_OF_COMPUTORS > MAX_AMOUNT)
+    {
+        return false;
+    }
+
+    const int index = spectrumIndex(_currentContractId);
+
+    if (index < 0)
+    {
+        return false;
+    }
+
+    const long long remainingAmount = energy(index) - amountPerShare * NUMBER_OF_COMPUTORS;
+
+    if (remainingAmount < 0)
+    {
+        return false;
+    }
+
+    if (decreaseEnergy(index, amountPerShare * NUMBER_OF_COMPUTORS))
+    {
+        ACQUIRE(universeLock);
+
+        for (int issuanceIndex = 0; issuanceIndex < ASSETS_CAPACITY; issuanceIndex++)
+        {
+            if (((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == *((unsigned long long*)contractDescriptions[_currentContractIndex].assetName)
+                && assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
+                && isZero(assets[issuanceIndex].varStruct.issuance.publicKey))
+            {
+                long long shareholderCounter = 0;
+                for (int ownershipIndex = 0; shareholderCounter < NUMBER_OF_COMPUTORS && ownershipIndex < ASSETS_CAPACITY; ownershipIndex++)
+                {
+                    if (assets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
+                        && assets[ownershipIndex].varStruct.ownership.type == OWNERSHIP)
+                    {
+                        long long possessorCounter = 0;
+
+                        for (int possessionIndex = 0; possessorCounter < assets[ownershipIndex].varStruct.ownership.numberOfShares && possessionIndex < ASSETS_CAPACITY; possessionIndex++)
+                        {
+                            if (assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
+                                && assets[possessionIndex].varStruct.possession.type == POSSESSION)
+                            {
+                                possessorCounter += assets[possessionIndex].varStruct.possession.numberOfShares;
+
+                                increaseEnergy(assets[possessionIndex].varStruct.possession.publicKey, amountPerShare * assets[possessionIndex].varStruct.possession.numberOfShares);
+
+                                if (!contractActionTracker.addQuTransfer(_currentContractId, assets[possessionIndex].varStruct.possession.publicKey, amountPerShare * assets[possessionIndex].varStruct.possession.numberOfShares))
+                                    __qpiAbort(ContractErrorTooManyActions);
+
+                                const QuTransfer quTransfer = { _currentContractId , assets[possessionIndex].varStruct.possession.publicKey , amountPerShare * assets[possessionIndex].varStruct.possession.numberOfShares };
+                                logger.logQuTransfer(quTransfer);
+                            }
+                        }
+
+                        shareholderCounter += possessorCounter;
+                    }
+                }
+
+                break;
+            }
+        }
+
+        RELEASE(universeLock);
+    }
+
+    return true;
+}
 
 
 long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, const QPI::id& issuer, signed char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement) const
