@@ -111,24 +111,24 @@ public:
     /*
         getEndedStatus FUNCTION
 
-        output.Early_Rewarded_Amount returns the amount rewarded by unlocking early at current epoch
-        output.Early_Unlocked_Amount returns the amount unlocked by unlocking early at current epoch
-        output.Fully_Rewarded_Amount returns the amount rewarded by unlocking fully at the end of previous epoch
-        output.Fully_Unlocked_Amount returns the amount unlocked by unlocking fully at the end of previous epoch
+        output.earlyRewardedAmount returns the amount rewarded by unlocking early at current epoch
+        output.earlyUnlockedAmount returns the amount unlocked by unlocking early at current epoch
+        output.fullyRewardedAmount returns the amount rewarded by unlocking fully at the end of previous epoch
+        output.fullyUnlockedAmount returns the amount unlocked by unlocking fully at the end of previous epoch
 
         let's assume that current epoch is 170, user unlocked the 15B qu totally at this epoch and he got the 30B qu of reward.
-        in this case, output.Early_Unlocked_Amount = 15B qu, output.Early_Rewarded_Amount = 30B qu
+        in this case, output.earlyUnlockedAmount = 15B qu, output.earlyRewardedAmount = 30B qu
         if this user unlocks 3B qu additionally at this epoch and rewarded 6B qu, 
-        in this case, output.Early_Unlocked_Amount = 18B qu, output.Early_Rewarded_Amount = 36B qu
-        state.EarlyUnlocker array would be initialized at the end of every epoch
+        in this case, output.earlyUnlockedAmount = 18B qu, output.earlyRewardedAmount = 36B qu
+        state.earlyUnlocker array would be initialized at the end of every epoch
 
         let's assume also that current epoch is 170, user got the 15B(locked amount for 52 weeks) + 10B(rewarded amount for 52 weeks) at the end of epoch 169.
-        in this case, output.Fully_Rewarded_Amount = 10B, output.Fully_Unlocked_Amount = 15B
-        state.FullyUnlocker array would be decided with distributions at the end of every epoch
+        in this case, output.fullyRewardedAmount = 10B, output.fullyUnlockedAmount = 15B
+        state.fullyUnlocker array would be decided with distributions at the end of every epoch
 
-        state.EarlyUnlocker, state.FullyUnlocker arrays would be initialized and decided by following expression at the END_EPOCH_WITH_LOCALS function.
-        state._EarlyUnlocked_cnt = 0;
-        state._FullyUnlocked_cnt = 0;
+        state.earlyUnlocker, state.fullyUnlocker arrays would be initialized and decided by following expression at the END_EPOCH_WITH_LOCALS function.
+        state._earlyUnlockedCnt = 0;
+        state._fullyUnlockedCnt = 0;
     */
 
     struct getEndedStatus_input {
