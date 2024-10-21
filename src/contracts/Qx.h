@@ -1053,10 +1053,12 @@ protected:
 	_
 
 	END_TICK
-
-		if (qpi.distributeDividends(div((state._earnedAmount - state._distributedAmount), 676ULL)))
+		if (div((state._earnedAmount - state._distributedAmount), 676ULL) > 0)
 		{
-			state._distributedAmount += div((state._earnedAmount - state._distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
+			if (qpi.distributeDividends(div((state._earnedAmount - state._distributedAmount), 676ULL)))
+			{
+				state._distributedAmount += div((state._earnedAmount - state._distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
+			}
 		}
 	_
 
