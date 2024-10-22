@@ -5901,8 +5901,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 processKeyPresses();
 #if TICK_STORAGE_AUTOSAVE_MODE
-                if ((TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1)) // autosave in aux mode
-                    || TICK_STORAGE_AUTOSAVE_MODE == 2) // autosave in any mode
+                if ((TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1))) // autosave in aux mode
                 {
                     if (system.tick > ts.getPreloadTick()) // check the last saved tick
                     {
@@ -5916,11 +5915,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 1)
                 {
                     logToConsole(L"Saving node state...");
-                    if (mainAuxStatus & 1)
-                    {
-                        logToConsole(L"To avoid timing error on tickProcessor, your mode is forced to AUX");
-                        mainAuxStatus &= (~1); // set 0 to the first bit
-                    }
                     saveAllNodeStates();
                     requestPersistingNodeState = 0;
                     logToConsole(L"Complete saving all node states");
