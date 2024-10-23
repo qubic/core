@@ -1052,6 +1052,16 @@ protected:
 		state._tradeFee = 5000000; // 0.5%
 	_
 
+	END_TICK
+		if ((div((state._earnedAmount - state._distributedAmount), 676ULL) > 0) && (state._earnedAmount > state._distributedAmount))
+		{
+			if (qpi.distributeDividends(div((state._earnedAmount - state._distributedAmount), 676ULL)))
+			{
+				state._distributedAmount += div((state._earnedAmount - state._distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
+			}
+		}
+	_
+
 	PRE_ACQUIRE_SHARES
 	_
 

@@ -49,12 +49,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 223
-#define VERSION_C 1
+#define VERSION_B 224
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 131
-#define TICK 16673000
+#define EPOCH 132
+#define TICK 16780000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -68,11 +68,11 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 static unsigned short REVENUE_FILE_NAME[] = L"revenueScore"; // TODO: for testing purpose, will delete at epoch 111
 
 #define DATA_LENGTH 256
-#define NUMBER_OF_HIDDEN_NEURONS 24000
-#define NUMBER_OF_NEIGHBOR_NEURONS 4000
-#define MAX_DURATION 500
+#define NUMBER_OF_HIDDEN_NEURONS 10000
+#define NUMBER_OF_NEIGHBOR_NEURONS 10000
+#define MAX_DURATION 100000000
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 42
+#define SOLUTION_THRESHOLD_DEFAULT 40
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
