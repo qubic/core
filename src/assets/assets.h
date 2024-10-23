@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/global_var.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/uefi.h"
@@ -16,12 +17,12 @@
 
 
 
-static volatile char universeLock = 0;
-static Asset* assets = NULL;
-static m256i* assetDigests = NULL;
+GLOBAL_VAR_DECL volatile char universeLock GLOBAL_VAR_INIT(0);
+GLOBAL_VAR_DECL Asset* assets GLOBAL_VAR_INIT(nullptr);
+GLOBAL_VAR_DECL m256i* assetDigests GLOBAL_VAR_INIT(nullptr);
 static constexpr unsigned long long assetDigestsSizeInBytes = (ASSETS_CAPACITY * 2 - 1) * 32ULL;
-static unsigned long long* assetChangeFlags = NULL;
-static char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
+GLOBAL_VAR_DECL unsigned long long* assetChangeFlags GLOBAL_VAR_INIT(nullptr);
+static constexpr char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
 static bool initAssets()
 {
@@ -55,7 +56,7 @@ static void deinitAssets()
     }
 }
 
-static long long issueAsset(const m256i& issuerPublicKey, char name[7], char numberOfDecimalPlaces, char unitOfMeasurement[7], long long numberOfShares, unsigned short managingContractIndex,
+static long long issueAsset(const m256i& issuerPublicKey, const char name[7], char numberOfDecimalPlaces, const char unitOfMeasurement[7], long long numberOfShares, unsigned short managingContractIndex,
     int* issuanceIndex, int* ownershipIndex, int* possessionIndex)
 {
     *issuanceIndex = issuerPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);

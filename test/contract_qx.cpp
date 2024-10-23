@@ -4,6 +4,8 @@
 
 #define PRINT_DETAILS 0
 
+static constexpr uint64 QX_ISSUE_ASSET_FEE = 1000000000ull;
+
 std::string assetNameFromInt64(uint64 assetName);
 
 class QxChecker : public QX
@@ -126,7 +128,7 @@ public:
     {
         QX::IssueAsset_input input{ assetName, numberOfShares, unitOfMeasurement, numberOfDecimalPlaces };
         QX::IssueAsset_output output;
-        invokeUserProcedure(QX_CONTRACT_INDEX, 1, input, output, issuer, 1000000000);
+        invokeUserProcedure(QX_CONTRACT_INDEX, 1, input, output, issuer, QX_ISSUE_ASSET_FEE);
         return output.issuedNumberOfShares;
     }
 
@@ -157,6 +159,7 @@ TEST(ContractQx, IssueAsset)
     uint64 assetName = assetNameFromString("QUTIL");
     sint64 numberOfShares = 1000000;
 
+    increaseEnergy(issuer, QX_ISSUE_ASSET_FEE);
     EXPECT_EQ(qx.issueAsset(issuer, assetName, numberOfShares, 0, 0), numberOfShares);
 }
 
