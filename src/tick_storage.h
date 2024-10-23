@@ -83,6 +83,8 @@ private:
     // Tick transaction offsets of previous epoch. Points to tickTransactionOffsetsPtr + tickTransactionOffsetsLengthCurrentEpoch.
     inline static unsigned long long* oldTickTransactionOffsetsPtr = nullptr;
 
+    // Allocated transaction access digest buffer with current epoch transactions.
+    inline static unsigned char* tickTransactionsDigestPtr = nullptr;
 
     // Lock for securing tickData
     inline static volatile char tickDataLock = 0;
@@ -92,6 +94,9 @@ private:
 
     // Lock for securing tickTransactions and tickTransactionOffsets
     inline static volatile char tickTransactionsLock = 0;
+
+    // Lock for securing tickTransactions and tickTransactionsDigestPtr
+    inline static volatile char tickTransactionsDigestAccessLock = 0;
 
 #if TICK_STORAGE_AUTOSAVE_MODE
     struct MetaData {
@@ -440,7 +445,8 @@ public:
         if (!allocatePool(tickDataSize, (void**)&tickDataPtr)
             || !allocatePool(ticksSize, (void**)&ticksPtr)
             || !allocatePool(tickTransactionsSize, (void**)&tickTransactionsPtr)
-            || !allocatePool(tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr))
+            || !allocatePool(tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr)
+            || !allocatePool(tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), (void**)&tickTransactionsDigestPtr))
         {
             logToConsole(L"Failed to allocate tick storage memory!");
             return false;
@@ -460,6 +466,8 @@ public:
         tickEnd = 0;
         oldTickBegin = 0;
         oldTickEnd = 0;
+
+        setMem((void*)tickTransactionsDigestPtr, tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), 0);
 
         return true;
     }
@@ -485,6 +493,11 @@ public:
         if (tickTransactionsPtr)
         {
             freePool(tickTransactionsPtr);
+        }
+
+        if (tickTransactionsDigestPtr)
+        {
+            freePool(tickTransactionsDigestPtr);
         }
     }
 
@@ -586,6 +599,8 @@ public:
             oldTickBegin = 0;
             oldTickEnd = 0;
         }
+        // Transaction digest look up need to reset at the begining of epoch for pointing to valid current epoch transaction
+        setMem((void*)tickTransactionsDigestPtr, tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), 0);
 
         tickBegin = newInitialTick;
         tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
@@ -943,4 +958,79 @@ public:
             return ptr(transactionOffset);
         }
     } tickTransactions;
+
+    // Struct for access the transaction using its digest. It contains the offset in tickTransactionsPtr
+    struct TransactionsDigestAccess
+    {
+        inline static void acquireLock()
+        {
+            ACQUIRE(tickTransactionsDigestAccessLock);
+        }
+
+        inline static void releaseLock()
+        {
+            RELEASE(tickTransactionsDigestAccessLock);
+        }
+
+        struct HashMapEntry
+        {
+            m256i digest; // isZero mean not occupied
+            const Transaction* transaction;
+        };
+        unsigned long long hashFunc(const m256i& digest)
+        {
+            return digest.m256i_u32[7] % tickTransactionOffsetsLengthCurrentEpoch;
+        }
+
+        void insertTransaction(const m256i& digest, const Transaction* transaction)
+        {
+            // Zero digest. No further process
+            if (isZero(digest))
+            {
+                return;
+            }
+
+            HashMapEntry* pHashMap = (HashMapEntry*)tickTransactionsDigestPtr;
+            unsigned long long index = hashFunc(digest);
+            unsigned long long original_index = index;
+            // TODO: check alraeady added tx ?
+            while (!isZero(pHashMap[index].digest))
+            {
+                index = (index + 1) % tickTransactionOffsetsLengthCurrentEpoch;
+                if (index == original_index)
+                {
+                    // Don't have enough place in the table
+                    return;
+                }
+            }
+            pHashMap[index].transaction = transaction;
+            pHashMap[index].digest = digest;
+        }
+
+        const Transaction* findTransaction(const m256i& digest)
+        {
+            // Zero digest. No further process
+            if (isZero(digest))
+            {
+                return NULL;
+            }
+
+            HashMapEntry* pHashMap = (HashMapEntry*)tickTransactionsDigestPtr;
+            unsigned long long index = hashFunc(digest);
+            unsigned long long original_index = index;
+            while (!isZero(pHashMap[index].digest))
+            {
+                if (pHashMap[index].digest == digest)
+                {
+                    return pHashMap[index].transaction;
+                }
+                index = (index + 1) % tickTransactionOffsetsLengthCurrentEpoch;
+                if (index == original_index)
+                {
+                    break;
+                }
+            }
+            return NULL;
+        }
+    } transactionsDigestAccess;
 };

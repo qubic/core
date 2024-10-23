@@ -859,7 +859,6 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                             }
                         }
                         ts.tickTransactions.releaseLock();
-
                         break;
                     }
                 }
@@ -1000,6 +999,20 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
         }
     }
     enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+}
+
+static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* header)
+{
+    RequestedTransactionInfo* request = header->getPayload<RequestedTransactionInfo>();
+    const Transaction* transaction = ts.transactionsDigestAccess.findTransaction(request->txDigest);
+    if (transaction)
+    {
+        enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+    }
+    else
+    {
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    }
 }
 
 static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
@@ -1174,7 +1187,14 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             case SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST:
             {
                 SpecialCommandToggleMainModeRequestAndResponse* _request = header->getPayload<SpecialCommandToggleMainModeRequestAndResponse>();
-                mainAuxStatus = _request->mainModeFlag;
+                if (requestPersistingNodeState == 1 || persistingNodeStateTickProcWaiting == 1)
+                {
+                    //logToConsole(L"Unable to switch mode because node is saving states.");
+                }
+                else
+                {
+                    mainAuxStatus = _request->mainModeFlag;                    
+                }
                 enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
@@ -1343,7 +1363,6 @@ static void requestProcessor(void* ProcedureArgument)
                 requestQueueElementTail++;
 
                 RELEASE(requestQueueTailLock);
-
                 switch (header->type())
                 {
                 case ExchangePublicPeers::type:
@@ -1403,6 +1422,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case REQUEST_TICK_TRANSACTIONS:
                 {
                     processRequestTickTransactions(peer, header);
+                }
+                break;
+
+                case REQUEST_TRANSACTION_INFO:
+                {
+                    processRequestTransactionInfo(peer, header);
                 }
                 break;
 
@@ -2111,6 +2136,11 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
+
+    // Record the tx with digest
+    ts.transactionsDigestAccess.acquireLock();
+    ts.transactionsDigestAccess.insertTransaction(transactionDigest, transaction);
+    ts.transactionsDigestAccess.releaseLock();
 
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
     if (spectrumIndex >= 0)
@@ -5402,11 +5432,18 @@ static void processKeyPresses()
         */
         case 0x16:
         {
-            mainAuxStatus = (mainAuxStatus + 1) & 3;
-            setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
-            appendText(message, L"&");
-            appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
-            logToConsole(message);
+            if (requestPersistingNodeState == 1 || persistingNodeStateTickProcWaiting == 1)
+            {
+                logToConsole(L"Unable to switch mode because node is saving states.");
+            }
+            else
+            {
+                mainAuxStatus = (mainAuxStatus + 1) & 3;
+                setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+                appendText(message, L"&");
+                appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+                logToConsole(message);
+            }
         }
         break;
 
@@ -5866,8 +5903,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 processKeyPresses();
 #if TICK_STORAGE_AUTOSAVE_MODE
-                if ((TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1)) // autosave in aux mode
-                    || TICK_STORAGE_AUTOSAVE_MODE == 2) // autosave in any mode
+                if ((TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1))) // autosave in aux mode
                 {
                     if (system.tick > ts.getPreloadTick()) // check the last saved tick
                     {

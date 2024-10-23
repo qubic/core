@@ -10,21 +10,22 @@ EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
-		LinuxRelease|x64 = LinuxRelease|x64
 		Release|x64 = Release|x64
+		ReleaseAVX512|x64 = ReleaseAVX512|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{6A7C1322-658B-4FD8-8150-A2F88202B57F}.Debug|x64.ActiveCfg = Debug|x64
 		{6A7C1322-658B-4FD8-8150-A2F88202B57F}.Debug|x64.Build.0 = Debug|x64
-		{6A7C1322-658B-4FD8-8150-A2F88202B57F}.LinuxRelease|x64.ActiveCfg = LinuxRelease|x64
-		{6A7C1322-658B-4FD8-8150-A2F88202B57F}.LinuxRelease|x64.Build.0 = LinuxRelease|x64
 		{6A7C1322-658B-4FD8-8150-A2F88202B57F}.Release|x64.ActiveCfg = Release|x64
 		{6A7C1322-658B-4FD8-8150-A2F88202B57F}.Release|x64.Build.0 = Release|x64
+		{6A7C1322-658B-4FD8-8150-A2F88202B57F}.ReleaseAVX512|x64.ActiveCfg = ReleaseAVX512|x64
+		{6A7C1322-658B-4FD8-8150-A2F88202B57F}.ReleaseAVX512|x64.Build.0 = ReleaseAVX512|x64
 		{30E8E249-6B00-4575-BCDF-BE2445D5E099}.Debug|x64.ActiveCfg = Debug|x64
 		{30E8E249-6B00-4575-BCDF-BE2445D5E099}.Debug|x64.Build.0 = Debug|x64
-		{30E8E249-6B00-4575-BCDF-BE2445D5E099}.LinuxRelease|x64.ActiveCfg = Release|x64
 		{30E8E249-6B00-4575-BCDF-BE2445D5E099}.Release|x64.ActiveCfg = Release|x64
 		{30E8E249-6B00-4575-BCDF-BE2445D5E099}.Release|x64.Build.0 = Release|x64
+		{30E8E249-6B00-4575-BCDF-BE2445D5E099}.ReleaseAVX512|x64.ActiveCfg = ReleaseAVX512|x64
+		{30E8E249-6B00-4575-BCDF-BE2445D5E099}.ReleaseAVX512|x64.Build.0 = ReleaseAVX512|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
