@@ -600,6 +600,7 @@ public:
             if (locals.transferredAmount < locals.potAmountTotal)
             {
                 qpi.burn(locals.potAmountTotal - locals.transferredAmount);
+                state.mBurnedAmount += (locals.potAmountTotal - locals.transferredAmount);
             }
             state.mBetEndTick.set(input.slotId, qpi.tick());
         }
