@@ -27,11 +27,14 @@ template<
 >
 struct ScoreFunction
 {
-    static constexpr unsigned long long signOffset = 64;
     static constexpr unsigned long long allNeuronsCount = dataLength + numberOfHiddenNeurons + dataLength;
     static constexpr unsigned long long computeNeuronsCount = numberOfHiddenNeurons + dataLength;
     static constexpr unsigned long long synapseSignsCount = (dataLength + numberOfHiddenNeurons + dataLength) * numberOfNeighborNeurons / 64;
     static constexpr unsigned long long synapseInputCount = synapseSignsCount + maxDuration;
+
+    static_assert(allNeuronsCount < 0xFFFFFFFF, "Current implementation only support MAX_UINT32 neuron");
+    static_assert(numberOfNeighborNeurons < 0x7FFFFFFF, "Current implementation only support MAX_UINT32 number of neighbors");
+    static_assert((allNeuronsCount* numberOfNeighborNeurons) % 64 == 0, "numberOfNeighborNeurons * allNeuronsCount must dividable by 64");
 
     long long miningData[dataLength];
 
@@ -43,6 +46,8 @@ struct ScoreFunction
         unsigned long long Asa, Ase, Asi, Aso, Asu;
         unsigned long long scatteredStates[25];
         int leftByteInCurrentState;
+        unsigned char* _pPoolBuffer;
+        unsigned int _x;
     private:
         void _scatterFromVector() {
             copyToStateScalar(scatteredStates)
@@ -58,7 +63,8 @@ struct ScoreFunction
         }
     public:
         K12EngineX1() {}
-        void initState(const unsigned long long* comp_u64, const unsigned long long* nonce_u64) {
+        void initState(const unsigned long long* comp_u64, const unsigned long long* nonce_u64, unsigned char* pPoolBuffer)
+        {
             Aba = comp_u64[0];
             Abe = comp_u64[1];
             Abi = comp_u64[2];
@@ -69,8 +75,14 @@ struct ScoreFunction
             Agi = nonce_u64[3];
             Ago = Agu = Aka = Ake = Aki = Ako = Aku = Ama = Ame = Ami = Amo = Amu = Asa = Ase = Asi = Aso = Asu = 0;
             leftByteInCurrentState = 0;
+
+            _x = 0;
+            _pPoolBuffer = pPoolBuffer;
+            write(_pPoolBuffer, RANDOM2_POOL_SIZE);
         }
-        void write(unsigned char* out0, int size) {
+
+        void write(unsigned char* out0, int size)
+        {
             unsigned char* s0 = (unsigned char*)scatteredStates;
             if (leftByteInCurrentState) {
                 int copySize = size < leftByteInCurrentState ? size : leftByteInCurrentState;
@@ -89,6 +101,16 @@ struct ScoreFunction
                 leftByteInCurrentState -= copySize;
                 out0 += copySize;
             }
+        }
+
+        unsigned int random2FromPrecomputedPool(unsigned char* output, unsigned long long outputSize)
+        {
+            for (unsigned long long i = 0; i < outputSize; i += 8)
+            {
+                *((unsigned long long*) & output[i]) = *((unsigned long long*) & _pPoolBuffer[_x & (RANDOM2_POOL_ACTUAL_SIZE - 1)]);
+                _x = _x * 1664525 + 1013904223;// https://en.wikipedia.org/wiki/Linear_congruential_generator#Parameters_in_common_use
+            }
+            return _x;
         }
 
         void scatterFromVector() {
@@ -112,6 +134,12 @@ struct ScoreFunction
         }
     };
 
+    struct PoolSynapseData
+    {
+        unsigned int neuronIndex;
+        unsigned int supplierIndexWithSign;
+    };
+
     struct computeBuffer {
         struct Neuron
         {
@@ -119,19 +147,14 @@ struct ScoreFunction
         };
         struct Synapse
         {
-            //unsigned long long signs[(dataLength + numberOfHiddenNeurons + dataLength) * numberOfNeighborNeurons / 64];
-            //unsigned long long sequence[maxDuration];
-            unsigned long long* data;
-
             // Pointer to data
             unsigned long long* signs;
-            unsigned long long* sequence;
         };
         K12EngineX1 k12;
         Neuron _neurons;
         Synapse _synapses;
-
-        unsigned char* _poolBuffer;
+        PoolSynapseData* _poolSynapseData;
+        unsigned char* _poolRandom2Buffer;
 
     } *_computeBuffer = nullptr;
     m256i currentRandomSeed;
@@ -167,9 +190,9 @@ struct ScoreFunction
         {
             for (unsigned int i = 0; i < solutionBufferCount; i++)
             {
-                if (_computeBuffer[i]._poolBuffer)
+                if (_computeBuffer[i]._poolRandom2Buffer)
                 {
-                    freePool(_computeBuffer[i]._poolBuffer);
+                    freePool(_computeBuffer[i]._poolRandom2Buffer);
                 }
 
                 if (_computeBuffer[i]._neurons.input)
@@ -177,10 +200,10 @@ struct ScoreFunction
                     freePool(_computeBuffer[i]._neurons.input);
                     _computeBuffer[i]._neurons.input = nullptr;
                 }
-                if (_computeBuffer[i]._synapses.data)
+                if (_computeBuffer[i]._synapses.signs)
                 {
-                    freePool(_computeBuffer[i]._synapses.data);
-                    _computeBuffer[i]._synapses.data = nullptr;
+                    freePool(_computeBuffer[i]._synapses.signs);
+                    _computeBuffer[i]._synapses.signs = nullptr;
                 }
             }
 
@@ -203,7 +226,7 @@ struct ScoreFunction
             {
                 auto& cb = _computeBuffer[bufId];
 
-                if (!allocatePool(RANDOM2_POOL_SIZE, (void**)&(cb._poolBuffer)))
+                if (!allocatePool(RANDOM2_POOL_SIZE, (void**)&(cb._poolRandom2Buffer)))
                 {
                     logToConsole(L"Failed to allocate memory for score pool buffer!");
                     return false;
@@ -219,29 +242,34 @@ struct ScoreFunction
                     return false;
                 }
 
-                if (!allocatePool(synapseInputCount * sizeof(unsigned long long), (void**)&(cb._synapses.data)))
+                if (!allocatePool(synapseSignsCount * sizeof(unsigned long long), (void**)&(cb._synapses.signs)))
                 {
                     CHAR16 log[256];
                     setText(log, L"Failed to allocate memory for synapses! Try to allocated ");
-                    appendNumber(log, synapseInputCount * sizeof(unsigned long long) / 1024, true);
+                    appendNumber(log, synapseSignsCount * sizeof(unsigned long long) / 1024, true);
                     appendText(log, L" KB");
                     logToConsole(log);
                     return false;
                 }
 
+                if (!allocatePool(RANDOM2_POOL_SIZE * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseData)))
+                {
+                    CHAR16 log[256];
+                    setText(log, L"Failed to allocate memory for pool synapse data! Try to allocated ");
+                    appendNumber(log, RANDOM2_POOL_SIZE * sizeof(PoolSynapseData) / 1024, true);
+                    appendText(log, L" KB");
+                    logToConsole(log);
+                    return false;
+                }
             }
         }
 
         for (int i = 0; i < solutionBufferCount; i++) {
-            setMem(_computeBuffer[i]._synapses.data, sizeof(_computeBuffer[i]._synapses.data[0]) * synapseInputCount, 0);
-            _computeBuffer[i]._synapses.signs = _computeBuffer[i]._synapses.data;
-            _computeBuffer[i]._synapses.sequence = _computeBuffer[i]._synapses.data + synapseSignsCount;
-
+            setMem(_computeBuffer[i]._synapses.signs, sizeof(_computeBuffer[i]._synapses.signs[0]) * synapseSignsCount, 0);
+            setMem(_computeBuffer[i]._poolSynapseData, sizeof(_computeBuffer[i]._poolSynapseData[0]) * RANDOM2_POOL_SIZE, 0);
             setMem(_computeBuffer[i]._neurons.input, sizeof(_computeBuffer[i]._neurons.input[0]) * allNeuronsCount, 0);
             solutionEngineLock[i] = 0;
         }
-
-        static_assert(synapseInputCount * sizeof(*(_computeBuffer->_synapses.data)) % 8 == 0, "Random2 require output size is a multiplier of 8");
 
 #if USE_SCORE_CACHE
         scoreCacheLock = 0;
@@ -298,7 +326,7 @@ struct ScoreFunction
 
     void generateSynapse(computeBuffer& cb, int solutionBufIdx, const m256i& publicKey, const m256i& nonce)
     {
-        random2(&publicKey.m256i_u8[0], &nonce.m256i_u8[0], (unsigned char*)(cb._synapses.data), synapseInputCount * sizeof(cb._synapses.data[0]), cb._poolBuffer);
+        random2(&publicKey.m256i_u8[0], &nonce.m256i_u8[0], (unsigned char*)(cb._synapses.data), synapseInputCount * sizeof(cb._synapses.data[0]), cb._poolRandom2Buffer);
     }
 
     bool isValidScore(unsigned int solutionScore)
@@ -316,23 +344,29 @@ struct ScoreFunction
         const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
 
         unsigned int score = 0;
-        auto& cb = _computeBuffer[solutionBufIdx];
-        auto& synapses = cb._synapses;
+        unsigned int random2XVal = 0;
+        computeBuffer& cb = _computeBuffer[solutionBufIdx];
+        unsigned long long* pSynapseSigns = cb._synapses.signs;
+        PoolSynapseData* pPoolSynapseData = cb._poolSynapseData;
         auto& neurons = cb._neurons;
 
         setMem(neurons.input, sizeof(neurons.input[0]) * allNeuronsCount, 0);
-
-        generateSynapse(cb, solutionBufIdx, publicKey, nonce);
-
         for (int i = 0; i < dataLength; i++)
         {
             neurons.input[i] = (char)miningData[i];
         }
 
-        for (long long tick = 0; tick < maxDuration; tick++)
+        //generateSynapse(cb, solutionBufIdx, publicKey, nonce);
+        cb.k12.initState(&publicKey.m256i_u64[0], &nonce.m256i_u64[0], cb._poolRandom2Buffer);
+
+        random2XVal = cb.k12.random2FromPrecomputedPool((unsigned char*)pSynapseSigns, synapseSignsCount * sizeof(unsigned long long));
+
+        for (unsigned int i = 0; i < RANDOM2_POOL_SIZE; i++)
         {
-            const unsigned long long neuronIndex = dataLength + synapses.sequence[tick] % computeNeuronsCount;
-            const unsigned long long neighborNeuronIndex = (synapses.sequence[tick] / computeNeuronsCount) % numberOfNeighborNeurons;
+            const unsigned int poolIdx = i & (RANDOM2_POOL_ACTUAL_SIZE - 1);
+            const unsigned long long poolValue = *((unsigned long long*) & cb._poolRandom2Buffer[poolIdx]);
+            const unsigned long long neuronIndex = dataLength + poolValue % computeNeuronsCount;
+            const unsigned long long neighborNeuronIndex = (poolValue / computeNeuronsCount) % numberOfNeighborNeurons;
             unsigned long long supplierNeuronIndex;
             if (neighborNeuronIndex < numberOfNeighborNeurons / 2)
             {
@@ -344,18 +378,25 @@ struct ScoreFunction
             }
             const unsigned long long offset = neuronIndex * numberOfNeighborNeurons + neighborNeuronIndex;
 
-            char nnV = 0;
-            //if (!(synapses.signs[offset / 64] & (1ULL << (offset % 64))))
-            if (!(synapses.signs[offset >> 6] & (1ULL << (offset & 63ULL))))
-            {
-                nnV = neurons.input[supplierNeuronIndex];
-            }
-            else
-            {
-                nnV = -neurons.input[supplierNeuronIndex];
-            }
+            unsigned int isPositive = !(pSynapseSigns[offset >> 6] & (1ULL << (offset & 63ULL))) ? 1 : 0;
+
+            pPoolSynapseData[i].neuronIndex = (unsigned int)neuronIndex;
+            pPoolSynapseData[i].supplierIndexWithSign = ((unsigned int)supplierNeuronIndex << 1) | isPositive;
+        }
+
+        for (long long tick = 0; tick < maxDuration; tick++)
+        {
+            PoolSynapseData data = pPoolSynapseData[random2XVal & (RANDOM2_POOL_ACTUAL_SIZE - 1)];
+            unsigned int neuronIndex = data.neuronIndex;
+            unsigned int supplierNeuronIndex = (data.supplierIndexWithSign >> 1);
+            unsigned int sign = (data.supplierIndexWithSign & 1U);
+
+            char nnV = neurons.input[supplierNeuronIndex];
+            nnV = sign ? nnV : -nnV;
             neurons.input[neuronIndex] += nnV;
             clampNeuron(neurons.input[neuronIndex]);
+
+            random2XVal = random2XVal * 1664525 + 1013904223;
         }
 
         score = 0;

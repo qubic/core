@@ -32,7 +32,6 @@ static constexpr unsigned long long kSettings[][MAX_PARAM_TYPE] = {
     {6000, 832, 52158792ULL},
     {6080, 2792, 45545677ULL},
     {6024, 4784, 35247639ULL},
-    {7192, 6475, 17517712ULL},
     {7192, 5184, 32472324ULL},
     {12088, 7864, 22188546ULL},
 
