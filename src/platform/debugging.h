@@ -35,7 +35,11 @@ static void printDebugMessages()
     // Open debug log file and seek to the end of file for appending
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file = nullptr;
-    if (status = root->Open(root, (void**)&file, (CHAR16*)L"debug.log", EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+    if (!root)
+    {
+        logToConsole(L"printDebugMessages() called before filesystem init");
+    }
+    else if (status = root->Open(root, (void**)&file, (CHAR16*)L"debug.log", EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
     {
         logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
         file = nullptr;
