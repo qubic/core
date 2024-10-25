@@ -2085,29 +2085,6 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
-static void processTickTransactionFileHeader(const FileHeaderTransaction* transaction)
-{
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->tick == system.tick);
-
-    // TODO
-}
-
-static void processTickTransactionFileFragment(const FileFragmentTransactionPrefix* transactionPrefix, const FileFragmentTransactionPostfix* transactionPostfix)
-{
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transactionPrefix != nullptr);
-    ASSERT(transactionPostfix != nullptr);
-    ASSERT(transactionPrefix->checkValidity());
-    ASSERT(isZero(transactionPrefix->destinationPublicKey));
-    ASSERT(transactionPrefix->tick == system.tick);
-
-    // TODO
-}
-
 static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
 {
     ASSERT(nextTickData.epoch == system.epoch);
@@ -2184,7 +2161,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
                         && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
                     {
-                        processTickTransactionFileHeader((FileHeaderTransaction*)transaction);
+                        // Do nothing
                     }
                 }
                 break;
@@ -2194,7 +2171,17 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
                         && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
                     {
-                        processTickTransactionFileFragment((FileFragmentTransactionPrefix*)transaction, (FileFragmentTransactionPostfix*)(((char*)transaction) + sizeof(Transaction) + transaction->inputSize));
+                        // Do nothing
+                    }
+                }
+                break;
+
+                case FileTrailerTransaction::transactionType():
+                {
+                    if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
+                        && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
+                    {
+                        // Do nothing
                     }
                 }
                 break;
