@@ -159,6 +159,8 @@ struct __FunctionOrProcedureBeginEndGuard
 #include "qpi_collection_impl.h"
 #include "qpi_trivial_impl.h"
 
+#include "platform/global_var.h"
+
 #include "network_messages/common_def.h"
 
 struct Contract0State
@@ -195,25 +197,25 @@ constexpr struct ContractDescription
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
 
-static EXPAND_PROCEDURE contractExpandProcedures[contractCount];
+GLOBAL_VAR_DECL EXPAND_PROCEDURE contractExpandProcedures[contractCount];
 
 // TODO: all below are filled very sparsely, so a better data structure could save almost all the memory
-static USER_FUNCTION contractUserFunctions[contractCount][65536];
-static unsigned short contractUserFunctionInputSizes[contractCount][65536];
-static unsigned short contractUserFunctionOutputSizes[contractCount][65536];
+GLOBAL_VAR_DECL USER_FUNCTION contractUserFunctions[contractCount][65536];
+GLOBAL_VAR_DECL unsigned short contractUserFunctionInputSizes[contractCount][65536];
+GLOBAL_VAR_DECL unsigned short contractUserFunctionOutputSizes[contractCount][65536];
 // This has been changed to unsigned short to avoid the misalignment issue happening in epochs 109 and 110,
 // probably due to too high numbers in contractUserProcedureLocalsSizes causing stack buffer alloc to fail
 // probably due to buffer overflow that is difficult to reproduce in test net
 // TODO: change back to unsigned int
-static unsigned short contractUserFunctionLocalsSizes[contractCount][65536];
-static USER_PROCEDURE contractUserProcedures[contractCount][65536];
-static unsigned short contractUserProcedureInputSizes[contractCount][65536];
-static unsigned short contractUserProcedureOutputSizes[contractCount][65536];
+GLOBAL_VAR_DECL unsigned short contractUserFunctionLocalsSizes[contractCount][65536];
+GLOBAL_VAR_DECL USER_PROCEDURE contractUserProcedures[contractCount][65536];
+GLOBAL_VAR_DECL unsigned short contractUserProcedureInputSizes[contractCount][65536];
+GLOBAL_VAR_DECL unsigned short contractUserProcedureOutputSizes[contractCount][65536];
 // This has been changed to unsigned short to avoid the misalignment issue happening in epochs 109 and 110,
 // probably due to too high numbers in contractUserProcedureLocalsSizes causing stack buffer alloc to fail
 // probably due to buffer overflow that is difficult to reproduce in test net
 // TODO: change back to unsigned int
-static unsigned short contractUserProcedureLocalsSizes[contractCount][65536];
+GLOBAL_VAR_DECL unsigned short contractUserProcedureLocalsSizes[contractCount][65536];
 
 enum SystemProcedureID
 {
@@ -235,8 +237,8 @@ enum MoreProcedureIDs
     USER_PROCEDURE_CALL = contractSystemProcedureCount + 1,
 };
 
-static SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
-static unsigned short contractSystemProcedureLocalsSizes[contractCount][contractSystemProcedureCount];
+GLOBAL_VAR_DECL SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
+GLOBAL_VAR_DECL unsigned short contractSystemProcedureLocalsSizes[contractCount][contractSystemProcedureCount];
 
 
 #define REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName) { \
