@@ -22,6 +22,7 @@ static void addDebugMessage(const CHAR16* msg)
 static CHAR16 debugMessage[128][16384];
 static int debugMessageCount = 0;
 static char volatile debugLogLock = 0;
+static bool volatile debugLogOnlyMainProcessorRunning = true;
 
 #define WRITE_DEBUG_MESSAGES_TO_FILE 1
 
@@ -110,6 +111,10 @@ static void addDebugMessage(const CHAR16* msg)
         ++debugMessageCount;
     }
     RELEASE(debugLogLock);
+    if (debugLogOnlyMainProcessorRunning)
+    {
+        printDebugMessages();
+    }
 }
 
 // Add a assert message for logging from arbitrary thread
@@ -127,6 +132,10 @@ static void addDebugMessageAssert(const CHAR16* message, const CHAR16* file, con
         ++debugMessageCount;
     }
     RELEASE(debugLogLock);
+    if (debugLogOnlyMainProcessorRunning)
+    {
+        printDebugMessages();
+    }
 }
 
 #endif
