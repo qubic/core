@@ -201,9 +201,7 @@ static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
 static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 static unsigned long long solutionTotalExecutionTicks = 0;
-static unsigned long long K12TotalExecutionTicks = 0;
-static unsigned long long K12StartingExecutionTicks = 0;
-int K12GlobalIndex = 0;
+static unsigned long long K12MeasurementsCount = 0;
 static unsigned long long K12MeasurementsSum = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
@@ -388,15 +386,21 @@ static void getComputerDigest(m256i& digest)
                 // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
                 contractStateLock[digestIndex].acquireRead();
 
-                K12StartingExecutionTicks = __rdtsc();
+                const unsigned long long startTick = __rdtsc();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
-                K12TotalExecutionTicks = __rdtsc() - K12StartingExecutionTicks;
-                if (K12GlobalIndex < 500)
-                {
-                    K12MeasurementsSum += K12TotalExecutionTicks;
-                    K12GlobalIndex++;
-                }
+                const unsigned long long executionTicks = __rdtsc() - startTick;
+
                 contractStateLock[digestIndex].releaseRead();
+
+                // K12 of state is included in contract execution time
+                _interlockedadd64(&contractTotalExecutionTicks[digestIndex], executionTicks);
+
+                // Gather data for comparing different versions of K12
+                if (K12MeasurementsCount < 500)
+                {
+                    K12MeasurementsSum += executionTicks;
+                    K12MeasurementsCount++;
+                }
             }
         }
     }
@@ -5278,7 +5282,7 @@ static void processKeyPresses()
 #else
             appendText(message, L"Generic implementation is ");
 #endif
-            appendNumber(message, K12MeasurementsSum/ K12GlobalIndex, TRUE);
+            appendNumber(message, QPI::div(K12MeasurementsSum, K12MeasurementsCount), TRUE);
             appendText(message, L" ticks.");
             logToConsole(message);
         }
