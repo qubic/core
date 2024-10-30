@@ -1,3 +1,5 @@
+#define SINGLE_COMPILE_UNIT
+
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -199,9 +201,7 @@ static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
 static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 static unsigned long long solutionTotalExecutionTicks = 0;
-static unsigned long long K12TotalExecutionTicks = 0;
-static unsigned long long K12StartingExecutionTicks = 0;
-int K12GlobalIndex = 0;
+static unsigned long long K12MeasurementsCount = 0;
 static unsigned long long K12MeasurementsSum = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
@@ -386,15 +386,21 @@ static void getComputerDigest(m256i& digest)
                 // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
                 contractStateLock[digestIndex].acquireRead();
 
-                K12StartingExecutionTicks = __rdtsc();
+                const unsigned long long startTick = __rdtsc();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
-                K12TotalExecutionTicks = __rdtsc() - K12StartingExecutionTicks;
-                if (K12GlobalIndex < 500)
-                {
-                    K12MeasurementsSum += K12TotalExecutionTicks;
-                    K12GlobalIndex++;
-                }
+                const unsigned long long executionTicks = __rdtsc() - startTick;
+
                 contractStateLock[digestIndex].releaseRead();
+
+                // K12 of state is included in contract execution time
+                _interlockedadd64(&contractTotalExecutionTicks[digestIndex], executionTicks);
+
+                // Gather data for comparing different versions of K12
+                if (K12MeasurementsCount < 500)
+                {
+                    K12MeasurementsSum += executionTicks;
+                    K12MeasurementsCount++;
+                }
             }
         }
     }
@@ -680,37 +686,8 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             }
             else
             {
-                // hot fix: ignore tick 16907116 and tick 16907117
-                bool isOk = true;
-                if (request->tick.tick == 16907116)
-                {
-                    // only accept zero transactionDigest and zero expectedNextTickTransactionDigest
-                    if (isZero(request->tick.transactionDigest) && isZero(request->tick.expectedNextTickTransactionDigest))
-                    {
-                        isOk = true;
-                    }
-                    else
-                    {
-                        isOk = false; // not accept "wrong" votes
-                    }
-                }
-                if (request->tick.tick == 16907117)
-                {
-                    // only accept zero transactionDigest
-                    if (isZero(request->tick.transactionDigest))
-                    {
-                        isOk = true;
-                    }
-                    else
-                    {
-                        isOk = false; // not accept "wrong" votes
-                    }
-                }
-                if (isOk)
-                {
-                    // Copy the sent tick to the tick storage
-                    bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
-                }
+                // Copy the sent tick to the tick storage
+                bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -2112,29 +2089,6 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
-static void processTickTransactionFileHeader(const FileHeaderTransaction* transaction)
-{
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->tick == system.tick);
-
-    // TODO
-}
-
-static void processTickTransactionFileFragment(const FileFragmentTransactionPrefix* transactionPrefix, const FileFragmentTransactionPostfix* transactionPostfix)
-{
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transactionPrefix != nullptr);
-    ASSERT(transactionPostfix != nullptr);
-    ASSERT(transactionPrefix->checkValidity());
-    ASSERT(isZero(transactionPrefix->destinationPublicKey));
-    ASSERT(transactionPrefix->tick == system.tick);
-
-    // TODO
-}
-
 static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
 {
     ASSERT(nextTickData.epoch == system.epoch);
@@ -2211,7 +2165,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
                         && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
                     {
-                        processTickTransactionFileHeader((FileHeaderTransaction*)transaction);
+                        // Do nothing
                     }
                 }
                 break;
@@ -2221,7 +2175,17 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
                         && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
                     {
-                        processTickTransactionFileFragment((FileFragmentTransactionPrefix*)transaction, (FileFragmentTransactionPostfix*)(((char*)transaction) + sizeof(Transaction) + transaction->inputSize));
+                        // Do nothing
+                    }
+                }
+                break;
+
+                case FileTrailerTransaction::transactionType():
+                {
+                    if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
+                        && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
+                    {
+                        // Do nothing
                     }
                 }
                 break;
@@ -3578,22 +3542,6 @@ static void tickProcessor(void*)
                     }
                 }
 
-                // hot fix: ignore tick 16907116 and tick 16907117
-                if (system.tick == 16907115)
-                {
-                    // ignore next tick(16907116)
-                    targetNextTickDataDigest = m256i::zero();
-                    targetNextTickDataDigestIsKnown = true;
-                }
-
-                if (system.tick == 16907116)
-                {
-                    // ignore next tick(16907117)
-                    targetNextTickDataDigest = m256i::zero();
-                    targetNextTickDataDigestIsKnown = true;
-                }
-
-
                 if (!targetNextTickDataDigestIsKnown)
                 {
                     const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
@@ -4031,16 +3979,8 @@ static void tickProcessor(void*)
                         }
                         ::tickNumberOfComputors = tickNumberOfComputors;
                         ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
-                        
-                        // hotfix: 
-                        bool forcingToEndEpoch = false;
-                        if (system.tick == 16908300)
-                        {
-                            forcingToEndEpoch = true;
-                            targetNextTickDataDigestIsKnown = true;
-                            targetNextTickDataDigest = m256i::zero();
-                        }
-                        if (tickNumberOfComputors >= QUORUM || forcingToEndEpoch)
+
+                        if (tickNumberOfComputors >= QUORUM)
                         {
                             if (!targetNextTickDataDigestIsKnown)
                             {
@@ -4112,15 +4052,12 @@ static void tickProcessor(void*)
                                 if (tickDataSuits)
                                 {
                                     const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
-                                    if (
-                                        ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
-                                        || dayIndex > 738570 + system.epoch * 7) || forcingToEndEpoch
-                                        )
+                                    if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
+                                        || dayIndex > 738570 + system.epoch * 7)
                                     {
                                         // start seamless epoch transition
                                         epochTransitionState = 1;
                                         forceSwitchEpoch = false;
-                                        forcingToEndEpoch = false;
                                     }
                                     else
                                     {
@@ -5345,7 +5282,7 @@ static void processKeyPresses()
 #else
             appendText(message, L"Generic implementation is ");
 #endif
-            appendNumber(message, K12MeasurementsSum/ K12GlobalIndex, TRUE);
+            appendNumber(message, QPI::div(K12MeasurementsSum, K12MeasurementsCount), TRUE);
             appendText(message, L" ticks.");
             logToConsole(message);
         }
