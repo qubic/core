@@ -696,8 +696,8 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
                 }
                 if (request->tick.tick == 16907117)
                 {
-                    // only accept zero transactionDigest and zero expectedNextTickTransactionDigest
-                    if (isZero(request->tick.transactionDigest) && isZero(request->tick.expectedNextTickTransactionDigest))
+                    // only accept zero transactionDigest
+                    if (isZero(request->tick.transactionDigest))
                     {
                         isOk = true;
                     }
@@ -3577,6 +3577,22 @@ static void tickProcessor(void*)
                         }
                     }
                 }
+
+                // hot fix: ignore tick 16907116 and tick 16907117
+                if (system.tick == 16907115)
+                {
+                    // ignore next tick(16907116)
+                    targetNextTickDataDigest = m256i::zero();
+                    targetNextTickDataDigestIsKnown = true;
+                }
+
+                if (system.tick == 16907116)
+                {
+                    // ignore next tick(16907117)
+                    targetNextTickDataDigest = m256i::zero();
+                    targetNextTickDataDigestIsKnown = true;
+                }
+
 
                 if (!targetNextTickDataDigestIsKnown)
                 {
