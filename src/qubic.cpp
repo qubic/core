@@ -4031,8 +4031,16 @@ static void tickProcessor(void*)
                         }
                         ::tickNumberOfComputors = tickNumberOfComputors;
                         ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
-
-                        if (tickNumberOfComputors >= QUORUM)
+                        
+                        // hotfix: 
+                        bool forcingToEndEpoch = false;
+                        if (system.tick == 16908300)
+                        {
+                            forcingToEndEpoch = true;
+                            targetNextTickDataDigestIsKnown = true;
+                            targetNextTickDataDigest = m256i::zero();
+                        }
+                        if (tickNumberOfComputors >= QUORUM || forcingToEndEpoch)
                         {
                             if (!targetNextTickDataDigestIsKnown)
                             {
@@ -4104,12 +4112,15 @@ static void tickProcessor(void*)
                                 if (tickDataSuits)
                                 {
                                     const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
-                                    if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
-                                        || dayIndex > 738570 + system.epoch * 7)
+                                    if (
+                                        ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
+                                        || dayIndex > 738570 + system.epoch * 7) || forcingToEndEpoch
+                                        )
                                     {
                                         // start seamless epoch transition
                                         epochTransitionState = 1;
                                         forceSwitchEpoch = false;
+                                        forcingToEndEpoch = false;
                                     }
                                     else
                                     {

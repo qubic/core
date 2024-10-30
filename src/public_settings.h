@@ -50,7 +50,7 @@
 
 #define VERSION_A 1
 #define VERSION_B 224
-#define VERSION_C 3
+#define VERSION_C 4
 
 // Epoch and initial tick for node startup
 #define EPOCH 132
