@@ -4120,6 +4120,7 @@ static void tickProcessor(void*)
                                         // start seamless epoch transition
                                         epochTransitionState = 1;
                                         forceSwitchEpoch = false;
+                                        forcingToEndEpoch = false;
                                     }
                                     else
                                     {
