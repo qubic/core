@@ -4034,7 +4034,7 @@ static void tickProcessor(void*)
                         
                         // hotfix: 
                         bool forcingToEndEpoch = false;
-                        if (system.tick == 16907116)
+                        if (system.tick == 16908300)
                         {
                             forcingToEndEpoch = true;
                             targetNextTickDataDigestIsKnown = true;
