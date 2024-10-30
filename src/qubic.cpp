@@ -686,8 +686,37 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             }
             else
             {
-                // Copy the sent tick to the tick storage
-                bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
+                // hot fix: ignore tick 16907116 and tick 16907117
+                bool isOk = true;
+                if (request->tick.tick == 16907116)
+                {
+                    // only accept zero transactionDigest and zero expectedNextTickTransactionDigest
+                    if (isZero(request->tick.transactionDigest) && isZero(request->tick.expectedNextTickTransactionDigest))
+                    {
+                        isOk = true;
+                    }
+                    else
+                    {
+                        isOk = false; // not accept "wrong" votes
+                    }
+                }
+                if (request->tick.tick == 16907117)
+                {
+                    // only accept zero transactionDigest
+                    if (isZero(request->tick.transactionDigest))
+                    {
+                        isOk = true;
+                    }
+                    else
+                    {
+                        isOk = false; // not accept "wrong" votes
+                    }
+                }
+                if (isOk)
+                {
+                    // Copy the sent tick to the tick storage
+                    bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
+                }
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -3541,6 +3570,22 @@ static void tickProcessor(void*)
                         }
                     }
                 }
+
+                // hot fix: ignore tick 16907116 and tick 16907117
+                if (system.tick == 16907115)
+                {
+                    // ignore next tick(16907116)
+                    targetNextTickDataDigest = m256i::zero();
+                    targetNextTickDataDigestIsKnown = true;
+                }
+
+                if (system.tick == 16907116)
+                {
+                    // ignore next tick(16907117)
+                    targetNextTickDataDigest = m256i::zero();
+                    targetNextTickDataDigestIsKnown = true;
+                }
+
 
                 if (!targetNextTickDataDigestIsKnown)
                 {
