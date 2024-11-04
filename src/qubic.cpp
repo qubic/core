@@ -214,6 +214,7 @@ static m256i initialRandomSeedFromPersistingState;
 static bool loadMiningSeedFromFile = false;
 static bool loadAllNodeStateFromFile = false;
 #if TICK_STORAGE_AUTOSAVE_MODE
+static unsigned int nextPersistingNodeStateTick = 0;
 struct
 {
     Tick etalonTick;
@@ -5276,6 +5277,14 @@ static void processKeyPresses()
             logHealthStatus();
 
 
+#if TICK_STORAGE_AUTOSAVE_MODE
+            setText(message, L"Auto-save enabled in AUX mode: every ");
+            appendNumber(message, TICK_STORAGE_AUTOSAVE_TICK_PERIOD, FALSE);
+            appendText(message, L" ticks, next at tick ");
+            appendNumber(message, nextPersistingNodeStateTick, FALSE);
+            logToConsole(message);
+#endif
+
             setText(message, L"Average K12 duration for  ");
 #if defined (__AVX512F__) && !GENERIC_K12
             appendText(message, L"AVX512 implementation is ");
@@ -5625,12 +5634,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
 #if TICK_STORAGE_AUTOSAVE_MODE
             // Use random tick offset to reduce risk of several nodes doing auto-save in parallel (which can lead to bad topology and misalignment)
-            unsigned int nextAutoSaveTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
-            setText(message, L"Auto-save enabled in AUX mode: triggered every ");
-            appendNumber(message, TICK_STORAGE_AUTOSAVE_TICK_PERIOD, FALSE);
-            appendText(message, L" ticks, first save at tick ");
-            appendNumber(message, nextAutoSaveTick, FALSE);
-            logToConsole(message);
+            nextPersistingNodeStateTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
 #endif
 
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
@@ -5908,9 +5912,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (mainAuxStatus & 1)
                 {
                     // MAIN mode: update auto-save schedule (only run save when switched to AUX mode)
-                    while (system.tick >= nextAutoSaveTick)
+                    while (system.tick >= nextPersistingNodeStateTick)
                     {
-                        nextAutoSaveTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
+                        nextPersistingNodeStateTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
                         nextAutoSaveTickUpdated = true;
                     }
                 }
@@ -5920,12 +5924,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     if (system.tick > ts.getPreloadTick()) // check the last saved tick
                     {
                         // Start auto save if nextAutoSaveTick == system.tick (or if the main loop has missed nextAutoSaveTick)
-                        if (system.tick >= nextAutoSaveTick)
+                        if (system.tick >= nextPersistingNodeStateTick)
                         {
                             requestPersistingNodeState = 1;
-                            while (system.tick >= nextAutoSaveTick)
+                            while (system.tick >= nextPersistingNodeStateTick)
                             {
-                                nextAutoSaveTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
+                                nextPersistingNodeStateTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
                             }
                             nextAutoSaveTickUpdated = true;
                         }
@@ -5948,7 +5952,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (nextAutoSaveTickUpdated)
                 {
                     setText(message, L"Auto-save in AUX mode scheduled for tick ");
-                    appendNumber(message, nextAutoSaveTick, FALSE);
+                    appendNumber(message, nextPersistingNodeStateTick, FALSE);
                     logToConsole(message);
                 }
 #endif
