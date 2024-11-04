@@ -4281,8 +4281,50 @@ static void tickProcessor(void*)
                                     // end current epoch
                                     endEpoch();
 
+                                    m256i tempComputorList[NUMBER_OF_COMPUTORS];
+                                    bool isIndexTaken[NUMBER_OF_COMPUTORS] = {false};
+                                    bool isFComputorUsed[NUMBER_OF_COMPUTORS] = {false};
+                                    // Check if computor is keeping it's status and keep it's index
+                                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                                    {
+                                        for (unsigned int j = 0; j < NUMBER_OF_COMPUTORS; j++)
+                                        {
+                                            if(system.futureComputors[i] == broadcastedComputors.computors.publicKeys[j])
+                                            {
+                                                // Keep index
+                                                tempComputorList[j] = system.futureComputors[i];
+                                                isIndexTaken[j] = true;
+                                                isFComputorUsed[i] = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    // Fill remaining spots
+                                    unsigned int futureComputorIdx = 0;
+                                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                                    {
+                                        if(!isIndexTaken[i]){
+                                            // Find new Computor in futureComputors
+                                            while ( futureComputorIdx < NUMBER_OF_COMPUTORS && isFComputorUsed[futureComputorIdx] != 0)
+                                            {
+                                                futureComputorIdx++;
+                                            }
+                                            if(futureComputorIdx < NUMBER_OF_COMPUTORS)
+                                            {
+                                                tempComputorList[i] = system.futureComputors[futureComputorIdx];
+                                                isFComputorUsed[futureComputorIdx] = true;
+                                                futureComputorIdx++;
+                                            }
+                                            else
+                                            {
+                                                // Handle error; something went wrong
+                                            }
+                                        }
+                                    }
+
                                     // Save Future Computors 
-                                    bs->CopyMem(&selfGeneratedComputors, &system.futureComputors, sizeof(system.futureComputors));
+                                    bs->CopyMem(&selfGeneratedComputors, &tempComputorList, sizeof(system.futureComputors));
                                     useSelfGeneratedComputors = true;
                                     selfGeneratedComputorsIsVerfied = false;
 
