@@ -238,6 +238,11 @@ static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
 
+
+static m256i selfGeneratedComputors[NUMBER_OF_COMPUTORS];
+static bool useSelfGeneratedComputors = false;
+static bool selfGeneratedComputorsIsVerfied = false;
+
 BroadcastFutureTickData broadcastedFutureTickData;
 
 static struct
@@ -611,6 +616,34 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(NULL, header);
             }
 
+            if (useSelfGeneratedComputors)
+            {
+                // Compare received computor list (signed by ARB) and self generated computor list
+                bool listMatches = true;
+
+                for (unsigned int i = 0; i<NUMBER_OF_COMPUTORS; i++)
+                {
+                    if(selfGeneratedComputors[i] != request->computors.publicKeys[i]){
+                        listMatches = false;
+                        break;
+                    }
+                }
+                if (!listMatches)
+                {
+                    //TODO change to proper ERROR
+                    // logToConsole should not be called since we are not in the main thread
+                    // logToConsole(L"Error: Computor list received from ARB does not match self-generated list");
+#ifndef NDEBUG
+                    addDebugMessage(L"Error: Computor list received from ARB does not match self-generated list");
+#endif
+                }
+                else
+                {
+                    selfGeneratedComputorsIsVerfied = true;
+                }
+            }
+            else // No self generated computor list available
+            {
             // Copy computor list
             bs->CopyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
 
@@ -638,6 +671,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
             }
         }
     }
+}
 }
 
 static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
@@ -877,6 +911,7 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
     if (broadcastedComputors.computors.epoch)
     {
+        // To discuss if non verified self generated Computorlist should be broadcasted or not
         enqueueResponse(peer, sizeof(broadcastedComputors), BroadcastComputors::type, header->dejavu(), &broadcastedComputors);
     }
     else
@@ -2738,6 +2773,34 @@ static void beginEpoch()
     // there are many global variables that were init at declaration, may need to re-check all of them again
     resourceTestingDigest = 0;
 
+
+    // Use self generated computor list
+    if (useSelfGeneratedComputors){
+        broadcastedComputors.computors.epoch = system.epoch;
+        bs->CopyMem(&broadcastedComputors.computors.publicKeys, &selfGeneratedComputors, sizeof(selfGeneratedComputors));
+        selfGeneratedComputorsIsVerfied = false;
+        
+        // Update ownComputorIndices and minerPublicKeys
+        numberOfOwnComputorIndices = 0;
+        ACQUIRE(minerScoreArrayLock);
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            minerPublicKeys[i] = selfGeneratedComputors[i];
+
+            for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+            {
+                if (selfGeneratedComputors[i] == computorPublicKeys[j])
+                {
+                    ownComputorIndices[numberOfOwnComputorIndices] = i;
+                    ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
+
+                    break;
+                }
+            }
+        }
+        RELEASE(minerScoreArrayLock);
+    }
+
     numberOfTransactions = 0;
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
@@ -3872,6 +3935,15 @@ static void tickProcessor(void*)
         if (broadcastedComputors.computors.epoch == system.epoch
             && ts.tickInCurrentEpochStorage(nextTick))
         {
+
+#ifndef NDEBUG
+            if(useSelfGeneratedComputors && !selfGeneratedComputorsIsVerfied){
+                CHAR16 msg[60];
+                setText(msg, L"Computor list is self generated and not signed by ARB");
+                addDebugMessage(msg);
+            }
+#endif
+
             const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
             const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
 
@@ -4205,8 +4277,14 @@ static void tickProcessor(void*)
                                         _mm_pause();
                                     }
 
+
                                     // end current epoch
                                     endEpoch();
+
+                                    // Save Future Computors 
+                                    bs->CopyMem(&selfGeneratedComputors, &system.futureComputors, sizeof(system.futureComputors));
+                                    useSelfGeneratedComputors = true;
+                                    selfGeneratedComputorsIsVerfied = false;
 
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;
@@ -4270,8 +4348,8 @@ static void tickProcessor(void*)
                                 }
                                 ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
-                                gTickNumberOfComputors = 0;
-                                gTickTotalNumberOfComputors = 0;
+                                ::tickNumberOfComputors = 0;
+                                ::tickTotalNumberOfComputors = 0;
                                 targetNextTickDataDigestIsKnown = false;
                                 numberOfNextTickTransactions = 0;
                                 numberOfKnownNextTickTransactions = 0;
@@ -5713,6 +5791,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (criticalSituation == 1)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
+                }
+
+                if(useSelfGeneratedComputors && !selfGeneratedComputorsIsVerfied)
+                {
+                    logToConsole(L"Computor list is self generated and not signed by ARB");
                 }
 
                 {
