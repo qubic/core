@@ -5623,9 +5623,18 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
 
+#if TICK_STORAGE_AUTOSAVE_MODE
+            // Use random tick offset to reduce risk of several nodes doing auto-save in parallel (which can lead to bad topology and misalignment)
+            unsigned int nextAutoSaveTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
+            setText(message, L"Auto-save enabled in AUX mode: triggered every ");
+            appendNumber(message, TICK_STORAGE_AUTOSAVE_TICK_PERIOD, FALSE);
+            appendText(message, L" ticks, first save at tick ");
+            appendNumber(message, nextAutoSaveTick, FALSE);
+            logToConsole(message);
+#endif
+
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
-            unsigned int lastSavedTick = system.tick;
             logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
@@ -5893,15 +5902,32 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
                 processKeyPresses();
+
 #if TICK_STORAGE_AUTOSAVE_MODE
-                if ((TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1))) // autosave in aux mode
+                bool nextAutoSaveTickUpdated = false;
+                if (mainAuxStatus & 1)
                 {
+                    // MAIN mode: update auto-save schedule (only run save when switched to AUX mode)
+                    while (system.tick >= nextAutoSaveTick)
+                    {
+                        nextAutoSaveTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
+                        nextAutoSaveTickUpdated = true;
+                    }
+                }
+                else
+                {
+                    // AUX mode
                     if (system.tick > ts.getPreloadTick()) // check the last saved tick
                     {
-                        unsigned int deltaTick = system.tick - lastSavedTick;
-                        if (deltaTick >= TICK_STORAGE_AUTOSAVE_TICK_PERIOD) {
+                        // Start auto save if nextAutoSaveTick == system.tick (or if the main loop has missed nextAutoSaveTick)
+                        if (system.tick >= nextAutoSaveTick)
+                        {
                             requestPersistingNodeState = 1;
-                            lastSavedTick = system.tick;
+                            while (system.tick >= nextAutoSaveTick)
+                            {
+                                nextAutoSaveTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
+                            }
+                            nextAutoSaveTickUpdated = true;
                         }
                     }
                 }
@@ -5911,6 +5937,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     saveAllNodeStates();
                     requestPersistingNodeState = 0;
                     logToConsole(L"Complete saving all node states");
+                }
+                if (nextAutoSaveTickUpdated)
+                {
+                    setText(message, L"Auto-save in AUX mode scheduled for tick ");
+                    appendNumber(message, nextAutoSaveTick, FALSE);
+                    logToConsole(message);
                 }
 #endif
 
