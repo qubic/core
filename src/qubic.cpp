@@ -3912,10 +3912,22 @@ static void tryForceEmptyNextTick()
 // Calculates computor indices during epoche changes.
 // Requalifying computors keept their index
 // New computor obtain one of the free indices
+ // #pragma optimize("", off)  // Turn off all optimizations
 static void calculateComputorIndex(){
-    m256i tempComputorList[NUMBER_OF_COMPUTORS];
-    bool isIndexTaken[NUMBER_OF_COMPUTORS] = {false};
-    bool isFComputorUsed[NUMBER_OF_COMPUTORS] = {false};
+    // m256i tempComputorList[NUMBER_OF_COMPUTORS];
+    // bool isIndexTaken[NUMBER_OF_COMPUTORS] = {false};
+    // bool isFComputorUsed[NUMBER_OF_COMPUTORS] = {false};
+
+    // Use reorg buffer 
+    m256i* tempComputorList = (m256i*)reorgBuffer;
+    bool* isIndexTaken = (bool*)(tempComputorList + (NUMBER_OF_COMPUTORS * sizeof(m256i)));  // Start right after tempComputorList
+    bool* isFComputorUsed = (bool*)(isIndexTaken + NUMBER_OF_COMPUTORS);  // Start after isIndexTaken
+
+    bs->SetMem(tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
+    bs->SetMem(isIndexTaken, NUMBER_OF_COMPUTORS, false);
+    bs->SetMem(isFComputorUsed, NUMBER_OF_COMPUTORS, false);
+
+
     // Check if computor is keeping it's status and keep it's index
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++) {
         for (unsigned int j = 0; j < NUMBER_OF_COMPUTORS; j++) {
@@ -3932,17 +3944,19 @@ static void calculateComputorIndex(){
     // Fill remaining spots
     unsigned int futureComputorIdx = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++) {
-        if (!isIndexTaken[i]) {
+        if (isIndexTaken[i] == 0) {
             // Find new Computor in futureComputors
-            while (futureComputorIdx < NUMBER_OF_COMPUTORS &&
-                   isFComputorUsed[futureComputorIdx] != 0) {
+            while (futureComputorIdx < NUMBER_OF_COMPUTORS){
+                if (isFComputorUsed[futureComputorIdx] == false) {
+                    break;
+                }
                 futureComputorIdx++;
             }
             if (futureComputorIdx < NUMBER_OF_COMPUTORS) {
                 tempComputorList[i] = system.futureComputors[futureComputorIdx];
                 isFComputorUsed[futureComputorIdx] = true;
                 futureComputorIdx++;
-            } else {
+             } else {
                 // Handle error; something went wrong
             }
         }
@@ -3953,7 +3967,7 @@ static void calculateComputorIndex(){
     useSelfGeneratedComputors = true;
     selfGeneratedComputorsIsVerfied = false;
 };
-
+// #pragma optimize("", on)  // Turn on all optimizations
 
 static void tickProcessor(void *) {
         enableAVX();
@@ -4334,6 +4348,7 @@ static void tickProcessor(void *) {
                                     }
                                     epochTransitionState = 2;
 
+                                    calculateComputorIndex();
 #ifndef NDEBUG
                                     addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
 #endif
