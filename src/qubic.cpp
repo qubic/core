@@ -3165,7 +3165,7 @@ static bool saveAllNodeStates()
     appendText(message, directory); appendText(message, L"/");
     appendText(message, UNIVERSE_FILE_NAME);
     logToConsole(message);
-    if (!saveUniverse(directory))
+    if (!saveUniverse(UNIVERSE_FILE_NAME, directory))
     {
         logToConsole(L"Failed to save universe");
         return false;
@@ -3308,7 +3308,7 @@ static bool loadAllNodeStates()
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
-    if (!loadUniverse(directory))
+    if (!loadUniverse(UNIVERSE_FILE_NAME, directory))
     {
         logToConsole(L"Failed to load universe");
         return false;
