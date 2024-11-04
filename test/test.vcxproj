@@ -108,6 +108,7 @@
     <ClInclude Include="score_reference.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="assets.cpp" />
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="contract_core.cpp" />
     <ClCompile Include="contract_qearn.cpp" />

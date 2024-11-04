@@ -48,8 +48,14 @@ namespace QPI
 
 	typedef m256i id;
 
-#define NULL_ID id(0, 0, 0, 0)
+#define NULL_ID id::zero()
 	constexpr sint64 NULL_INDEX = -1;
+
+	// Zero is used to signal don't care in QPI function parameter. This is possible because it does not occur in valid asset records.
+#define ANY_OWNER id::zero()
+#define ANY_POSSESSOR id::zero()
+	constexpr uint16 ANY_OWNERSHIP_MANAGING_CONTRACT = 0;
+	constexpr uint16 ANY_POSSESSION_MANAGING_CONTRACT = 0;
 
 #define _A 0
 #define _B 1

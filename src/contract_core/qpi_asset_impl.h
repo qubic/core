@@ -37,6 +37,7 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
                 && assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
                 && isZero(assets[issuanceIndex].varStruct.issuance.publicKey))
             {
+                // TODO: use list to iterate through owners
                 long long shareholderCounter = 0;
                 for (int ownershipIndex = 0; shareholderCounter < NUMBER_OF_COMPUTORS && ownershipIndex < ASSETS_CAPACITY; ownershipIndex++)
                 {
@@ -45,6 +46,7 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
                     {
                         long long possessorCounter = 0;
 
+                        // TODO: use list to iterate through possessors
                         for (int possessionIndex = 0; possessorCounter < assets[ownershipIndex].varStruct.ownership.numberOfShares && possessionIndex < ASSETS_CAPACITY; possessionIndex++)
                         {
                             if (assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
@@ -138,6 +140,7 @@ long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, cons
 }
 
 
+// generalize to numberOfShares() with allowing wildcards for owner and possessor
 long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex) const
 {
     ACQUIRE(universeLock);

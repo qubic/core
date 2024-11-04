@@ -16,13 +16,105 @@
 #include "common_buffers.h"
 
 
-
+// TODO: move this into AssetStorage class
 GLOBAL_VAR_DECL volatile char universeLock GLOBAL_VAR_INIT(0);
 GLOBAL_VAR_DECL Asset* assets GLOBAL_VAR_INIT(nullptr);
 GLOBAL_VAR_DECL m256i* assetDigests GLOBAL_VAR_INIT(nullptr);
 static constexpr unsigned long long assetDigestsSizeInBytes = (ASSETS_CAPACITY * 2 - 1) * 32ULL;
 GLOBAL_VAR_DECL unsigned long long* assetChangeFlags GLOBAL_VAR_INIT(nullptr);
 static constexpr char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
+
+
+struct AssetStorage
+{
+
+    // TODO: iterators
+public: // TODO: make protected
+    
+
+    static constexpr unsigned int noAssetIndex = 0xffffffff;
+
+    // Lists (single-linked) of
+    // - all issuances,
+    // - all ownerships belonging to each issuance
+    // - all possessions belonging to each ownership
+    struct IndexLists
+    {
+        unsigned int issuancesFirstIdx;
+        unsigned int ownnershipsPossessionsFirstIdx[ASSETS_CAPACITY];
+
+        unsigned int nextIdx[ASSETS_CAPACITY];
+
+        void addIssuance(unsigned int newIssuanceIdx)
+        {
+            // add as first element in linked list of all issuances
+            ASSERT(newIssuanceIdx < ASSETS_CAPACITY);
+            ASSERT(assets[newIssuanceIdx].varStruct.issuance.type == ISSUANCE);
+            ASSERT(issuancesFirstIdx == noAssetIndex || assets[issuancesFirstIdx].varStruct.issuance.type == ISSUANCE);
+            nextIdx[newIssuanceIdx] = issuancesFirstIdx;
+            issuancesFirstIdx = newIssuanceIdx;
+        }
+
+        // Add newOwnershipIdx as first element in linked list of all ownerships of issuanceIdx
+        void addOwnership(unsigned int issuanceIdx, unsigned int newOwnershipIdx)
+        {
+            ASSERT(issuanceIdx < ASSETS_CAPACITY);
+            ASSERT(newOwnershipIdx < ASSETS_CAPACITY);
+            ASSERT(assets[issuanceIdx].varStruct.issuance.type == ISSUANCE);
+            ASSERT(assets[newOwnershipIdx].varStruct.ownership.type == OWNERSHIP);
+            ASSERT(ownnershipsPossessionsFirstIdx[issuanceIdx] == noAssetIndex || assets[ownnershipsPossessionsFirstIdx[issuanceIdx]].varStruct.issuance.type == OWNERSHIP);
+            nextIdx[newOwnershipIdx] = ownnershipsPossessionsFirstIdx[issuanceIdx];
+            ownnershipsPossessionsFirstIdx[issuanceIdx] = newOwnershipIdx;
+        }
+
+        // Add newPossessionIdx as first element in linked list of all possessions of ownershipIdx
+        void addPossession(unsigned int ownershipIdx, unsigned int newPossessionIdx)
+        {
+            ASSERT(ownershipIdx < ASSETS_CAPACITY);
+            ASSERT(newPossessionIdx < ASSETS_CAPACITY);
+            ASSERT(assets[ownershipIdx].varStruct.ownership.type == OWNERSHIP);
+            ASSERT(assets[newPossessionIdx].varStruct.possession.type == POSSESSION);
+            ASSERT(ownnershipsPossessionsFirstIdx[ownershipIdx] == noAssetIndex || assets[ownnershipsPossessionsFirstIdx[ownershipIdx]].varStruct.possession.type == POSSESSION);
+            nextIdx[newPossessionIdx] = ownnershipsPossessionsFirstIdx[ownershipIdx];
+            ownnershipsPossessionsFirstIdx[ownershipIdx] = newPossessionIdx;
+        }
+
+        // Reset lists to empty
+        void reset()
+        {
+            issuancesFirstIdx = noAssetIndex;
+            static_assert(noAssetIndex == 0xffffffff, "Following setMem() expects noAssetIndex == 0xffffffff");
+            setMem(ownnershipsPossessionsFirstIdx, sizeof(ownnershipsPossessionsFirstIdx), 0xff);
+            setMem(nextIdx, sizeof(nextIdx), 0xff);
+        }
+
+        // Rebuild lists from assets array (includes reset)
+        void rebuild()
+        {
+            reset();
+            for (int index = 0; index < ASSETS_CAPACITY; index++)
+            {
+                switch (assets[index].varStruct.issuance.type)
+                {
+                case ISSUANCE:
+                    addIssuance(index);
+                    break;
+                case OWNERSHIP:
+                    addOwnership(assets[index].varStruct.ownership.issuanceIndex, index);
+                    break;
+                case POSSESSION:
+                    addPossession(assets[index].varStruct.possession.ownershipIndex, index);
+                    break;
+                }
+            }
+        }
+    };
+
+    inline static IndexLists indexLists;
+};
+
+GLOBAL_VAR_DECL AssetStorage as;
+
 
 static bool initAssets()
 {
@@ -95,6 +187,10 @@ iteration:
                 assetChangeFlags[*issuanceIndex >> 6] |= (1ULL << (*issuanceIndex & 63));
                 assetChangeFlags[*ownershipIndex >> 6] |= (1ULL << (*ownershipIndex & 63));
                 assetChangeFlags[*possessionIndex >> 6] |= (1ULL << (*possessionIndex & 63));
+
+                as.indexLists.addIssuance(*issuanceIndex);
+                as.indexLists.addOwnership(*issuanceIndex, *ownershipIndex);
+                as.indexLists.addPossession(*issuanceIndex, *ownershipIndex);
 
                 RELEASE(universeLock);
 
@@ -180,6 +276,8 @@ iteration:
             assets[*destinationOwnershipIndex].varStruct.ownership.type = OWNERSHIP;
             assets[*destinationOwnershipIndex].varStruct.ownership.managingContractIndex = assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex;
             assets[*destinationOwnershipIndex].varStruct.ownership.issuanceIndex = assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex;
+
+            as.indexLists.addOwnership(assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex, *destinationOwnershipIndex);
         }
         assets[*destinationOwnershipIndex].varStruct.ownership.numberOfShares += numberOfShares;
 
@@ -199,6 +297,8 @@ iteration:
                 assets[*destinationPossessionIndex].varStruct.possession.type = POSSESSION;
                 assets[*destinationPossessionIndex].varStruct.possession.managingContractIndex = assets[sourcePossessionIndex].varStruct.possession.managingContractIndex;
                 assets[*destinationPossessionIndex].varStruct.possession.ownershipIndex = *destinationOwnershipIndex;
+
+                as.indexLists.addPossession(*destinationOwnershipIndex, *destinationPossessionIndex);
             }
             assets[*destinationPossessionIndex].varStruct.possession.numberOfShares += numberOfShares;
 
@@ -314,6 +414,7 @@ static bool loadUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, CHAR16* di
 
         return false;
     }
+    as.indexLists.rebuild();
     return true;
 }
 
@@ -321,7 +422,7 @@ static void assetsEndEpoch()
 {
     ACQUIRE(universeLock);
 
-    // TODO: comment what is done here
+    // rebuild asset hash map, getting rid of all elements with zero shares
     Asset* reorgAssets = (Asset*)reorgBuffer;
     setMem(reorgAssets, ASSETS_CAPACITY * sizeof(Asset), 0);
     for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
@@ -405,6 +506,8 @@ static void assetsEndEpoch()
     copyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(Asset));
 
     setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
+
+    as.indexLists.rebuild();
 
     RELEASE(universeLock);
 }
