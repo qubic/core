@@ -910,9 +910,8 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 
 static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
-    if (broadcastedComputors.computors.epoch)
+    if (broadcastedComputors.computors.epoch && !selfGeneratedComputors)
     {
-        // To discuss if non verified self generated Computorlist should be broadcasted or not
         enqueueResponse(peer, sizeof(broadcastedComputors), BroadcastComputors::type, header->dejavu(), &broadcastedComputors);
     }
     else
