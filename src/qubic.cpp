@@ -97,7 +97,7 @@ static volatile unsigned char mainAuxStatus = 0;
 static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
 static volatile bool forceSwitchEpoch = false;
-static volatile char criticalSituation = 0;
+static volatile char criticalSituation = 0; //1: Encounterd problem processing transactions; 2: Self-generated computorlist does not match list of ARB;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
 
 static int misalignedState = 0;
@@ -621,7 +621,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 // Compare received computor list (signed by ARB) and self generated computor list
                 bool listMatches = true;
 
-                for (unsigned int i = 0; i<NUMBER_OF_COMPUTORS; i++)
+                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
                     if(selfGeneratedComputors[i] != request->computors.publicKeys[i]){
                         listMatches = false;
@@ -630,10 +630,10 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 }
                 if (!listMatches)
                 {
-                    // Lists do not match
-                    // TODO: Node should stop
+                    // Stop tickProcessor due to missmatch
+                    criticalSituation = 2;
 #ifndef NDEBUG
-                    addDebugMessage(L"Error: Computor list received from ARB does not match self-generated list");
+                    addDebugMessage(L"Error: Computor list received from ARB does not match self-generated list. Raise criticalSituation #2.");
 #endif
                 }
                 else
@@ -641,6 +641,8 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                     // Accept list of arbitrator and mark as signed
                     bs->CopyMem(&broadcastedComputors.computors.signature, request->computors.signature, SIGNATURE_SIZE);
                     useSelfGeneratedComputors = false;
+                    // In case previous computor list of ARB did not match resolve criticalsituation to start ticking again
+                    criticalSituation = 0;
                 }
             }
             else // No self generated computor list available
@@ -3983,6 +3985,10 @@ static void tickProcessor(void *) {
     {
         checkinTime(processorNumber);
 
+        // Stop ticking as long as we are in criticalsituation
+        while (criticalSituation > 0)
+            _mm_pause();
+
         const unsigned long long curTimeTick = __rdtsc();
         const unsigned int nextTick = system.tick + 1;
 
@@ -5847,10 +5853,14 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
                 }
+                else if (criticalSituation == 2)
+                {
+                    logToConsole(L"CRITICAL SITUATION #2: Self-generated computorlist does not match computorlist of ARB");
+                }
 
                 if(useSelfGeneratedComputors)
                 {
-                    logToConsole(L"Computor list is self generated and not signed by ARB");
+                    logToConsole(L"Computorlist is self-generated and not signed by ARB");
                 }
 
                 {
