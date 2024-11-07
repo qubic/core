@@ -161,6 +161,8 @@ TEST(ContractQx, IssueAsset)
 
     increaseEnergy(issuer, QX_ISSUE_ASSET_FEE);
     EXPECT_EQ(qx.issueAsset(issuer, assetName, numberOfShares, 0, 0), numberOfShares);
+
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), numberOfShares);
 }
 
 TEST(ContractQx, BugEntityBidOrders)
