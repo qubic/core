@@ -623,7 +623,8 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 
                 for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
-                    if(selfGeneratedComputors[i] != request->computors.publicKeys[i]){
+                    if (selfGeneratedComputors[i] != request->computors.publicKeys[i])
+                    {
                         listMatches = false;
                         break;
                     }
@@ -639,7 +640,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 else
                 {
                     // Accept list of arbitrator and mark as signed
-                    bs->CopyMem(&broadcastedComputors.computors.signature, request->computors.signature, SIGNATURE_SIZE);
+                    copyMem(&broadcastedComputors.computors.signature, request->computors.signature, SIGNATURE_SIZE);
                     useSelfGeneratedComputors = false;
                     // In case previous computor list of ARB did not match resolve criticalsituation to start ticking again
                     criticalSituation = 0;
@@ -652,29 +653,29 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 
                 // Update ownComputorIndices and minerPublicKeys
                 if (request->computors.epoch == system.epoch)
+                {
+                    numberOfOwnComputorIndices = 0;
+                    ACQUIRE(minerScoreArrayLock);
+                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
-                        numberOfOwnComputorIndices = 0;
-                        ACQUIRE(minerScoreArrayLock);
-                        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                        minerPublicKeys[i] = request->computors.publicKeys[i];
+
+                        for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+                        {
+                            if (request->computors.publicKeys[i] == computorPublicKeys[j])
                             {
-                                minerPublicKeys[i] = request->computors.publicKeys[i];
+                                ownComputorIndices[numberOfOwnComputorIndices] = i;
+                                ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
 
-                                for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
-                                    {
-                                        if (request->computors.publicKeys[i] == computorPublicKeys[j])
-                                            {
-                                                ownComputorIndices[numberOfOwnComputorIndices] = i;
-                                                ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
-
-                                                break;
-                                            }
-                                    }
+                                break;
                             }
-                        RELEASE(minerScoreArrayLock);
+                        }
                     }
+                    RELEASE(minerScoreArrayLock);
+                }
+            }
         }
     }
-}
 }
 
 static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
@@ -2775,12 +2776,12 @@ static void beginEpoch()
     // there are many global variables that were init at declaration, may need to re-check all of them again
     resourceTestingDigest = 0;
 
-
     // Use self generated computor list
-    if (useSelfGeneratedComputors){
+    if (useSelfGeneratedComputors)
+    {
         broadcastedComputors.computors.epoch = system.epoch;
-        bs->CopyMem(&broadcastedComputors.computors.publicKeys, &selfGeneratedComputors, sizeof(selfGeneratedComputors));
-        
+        copyMem(&broadcastedComputors.computors.publicKeys, &selfGeneratedComputors, sizeof(selfGeneratedComputors));
+
         // Update ownComputorIndices and minerPublicKeys
         numberOfOwnComputorIndices = 0;
         ACQUIRE(minerScoreArrayLock);
@@ -3921,15 +3922,17 @@ static void calculateComputorIndex(){
     bool* isIndexTaken = (bool*)(tempComputorList + (NUMBER_OF_COMPUTORS * sizeof(m256i)));  // Start right after tempComputorList
     bool* isFComputorUsed = (bool*)(isIndexTaken + NUMBER_OF_COMPUTORS);  // Start after isIndexTaken
 
-    bs->SetMem(tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
-    bs->SetMem(isIndexTaken, NUMBER_OF_COMPUTORS, false);
-    bs->SetMem(isFComputorUsed, NUMBER_OF_COMPUTORS, false);
-
+    setMem(tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
+    setMem(isIndexTaken, NUMBER_OF_COMPUTORS, false);
+    setMem(isFComputorUsed, NUMBER_OF_COMPUTORS, false);
 
     // Check if computor is keeping it's status and keep it's index
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++) {
-        for (unsigned int j = 0; j < NUMBER_OF_COMPUTORS; j++) {
-            if (system.futureComputors[i] == broadcastedComputors.computors.publicKeys[j]) {
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        for (unsigned int j = 0; j < NUMBER_OF_COMPUTORS; j++)
+        {
+            if (system.futureComputors[i] == broadcastedComputors.computors.publicKeys[j])
+            {
                 // Keep index
                 tempComputorList[j] = system.futureComputors[i];
                 isIndexTaken[j] = true;
@@ -3941,27 +3944,34 @@ static void calculateComputorIndex(){
 
     // Fill remaining spots
     unsigned int futureComputorIdx = 0;
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++) {
-        if (isIndexTaken[i] == 0) {
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        if (isIndexTaken[i])
+        {
             // Find new Computor in futureComputors
-            while (futureComputorIdx < NUMBER_OF_COMPUTORS){
-                if (isFComputorUsed[futureComputorIdx] == false) {
+            while (futureComputorIdx < NUMBER_OF_COMPUTORS)
+            {
+                if (isFComputorUsed[futureComputorIdx] == false)
+                {
                     break;
                 }
                 futureComputorIdx++;
             }
-            if (futureComputorIdx < NUMBER_OF_COMPUTORS) {
+            if (futureComputorIdx < NUMBER_OF_COMPUTORS)
+            {
                 tempComputorList[i] = system.futureComputors[futureComputorIdx];
                 isFComputorUsed[futureComputorIdx] = true;
                 futureComputorIdx++;
-             } else {
+            }
+            else
+            {
                 // Handle error; something went wrong
             }
         }
     }
 
     // Save Future Computors in seperate array as beginEpoche randomly initializes boradcatedComputors
-    bs->CopyMem(&selfGeneratedComputors, &tempComputorList, sizeof(system.futureComputors));
+    copyMem(&selfGeneratedComputors, &tempComputorList, sizeof(system.futureComputors));
     useSelfGeneratedComputors = true;
 };
 // #pragma optimize("", on)  // Turn on all optimizations
@@ -3997,7 +4007,8 @@ static void tickProcessor(void *) {
         {
 
 #ifndef NDEBUG
-            if(useSelfGeneratedComputors){
+            if (useSelfGeneratedComputors)
+            {
                 CHAR16 msg[60];
                 setText(msg, L"Computor list is self generated and not signed by ARB");
                 addDebugMessage(msg);
