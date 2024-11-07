@@ -1605,20 +1605,6 @@ unsigned char QPI::QpiContextFunctionCall::month() const
     return etalonTick.month;
 }
 
-m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
-{
-    int index = spectrumIndex(currentId);
-    while (++index < SPECTRUM_CAPACITY)
-    {
-        const m256i& nextId = spectrum[index].publicKey;
-        if (!isZero(nextId))
-        {
-            return nextId;
-        }
-    }
-
-    return m256i::zero();
-}
 
 int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
 {
