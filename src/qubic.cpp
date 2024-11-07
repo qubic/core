@@ -649,7 +649,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
             else // No self generated computor list available
             {
                 // Copy computor list
-                bs->CopyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+                copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
 
                 // Update ownComputorIndices and minerPublicKeys
                 if (request->computors.epoch == system.epoch)
@@ -3914,13 +3914,12 @@ static void tryForceEmptyNextTick()
 // Calculates computor indices during epoche changes.
 // Requalifying computors keept their index
 // New computor obtain one of the free indices
- // #pragma optimize("", off)  // Turn off all optimizations
-static void calculateComputorIndex(){
-    
-    // Use reorg buffer 
-    m256i* tempComputorList = (m256i*)reorgBuffer;
-    bool* isIndexTaken = (bool*)(tempComputorList + (NUMBER_OF_COMPUTORS * sizeof(m256i)));  // Start right after tempComputorList
-    bool* isFComputorUsed = (bool*)(isIndexTaken + NUMBER_OF_COMPUTORS);  // Start after isIndexTaken
+static void calculateComputorIndex()
+{
+    // Use reorg buffer
+    m256i *tempComputorList = (m256i *)reorgBuffer;
+    bool *isIndexTaken = (bool *)(tempComputorList + (NUMBER_OF_COMPUTORS * sizeof(m256i))); // Start right after tempComputorList
+    bool *isFComputorUsed = (bool *)(isIndexTaken + NUMBER_OF_COMPUTORS);                    // Start after isIndexTaken
 
     setMem(tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
     setMem(isIndexTaken, NUMBER_OF_COMPUTORS, false);
@@ -3974,12 +3973,13 @@ static void calculateComputorIndex(){
     copyMem(&selfGeneratedComputors, &tempComputorList, sizeof(system.futureComputors));
     useSelfGeneratedComputors = true;
 };
-// #pragma optimize("", on)  // Turn on all optimizations
 
-static void tickProcessor(void *) {
-        enableAVX();
-        unsigned long long processorNumber;
-        mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+
+static void tickProcessor(void*)
+{
+    enableAVX();
+    unsigned long long processorNumber;
+    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
 #if !START_NETWORK_FROM_SCRATCH
     // only init first tick if it doesn't load all node states from file
@@ -4347,7 +4347,6 @@ static void tickProcessor(void *) {
                                     {
                                         _mm_pause();
                                     }
-
 
                                     // end current epoch
                                     endEpoch();
@@ -5869,7 +5868,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     logToConsole(L"CRITICAL SITUATION #2: Self-generated computorlist does not match computorlist of ARB");
                 }
 
-                if(useSelfGeneratedComputors)
+                if (useSelfGeneratedComputors)
                 {
                     logToConsole(L"Computorlist is self-generated and not signed by ARB");
                 }
