@@ -6,6 +6,238 @@
 #include "../spectrum.h"
 
 
+// Start iteration with given issuance and given ownership filter (selects first record).
+void QPI::AssetOwnershipIterator::begin(const QPI::AssetIssuanceId& issuance, const QPI::AssetOwnershipSelect& ownership)
+{
+    _issuance = issuance;
+    _issuanceIdx = ::issuanceIndex(issuance.issuer, issuance.assetName);
+    _ownership = ownership;
+    _ownershipIdx = NO_ASSET_INDEX;
+
+    if (_issuanceIdx == NO_ASSET_INDEX)
+        return;
+
+    next();
+}
+
+// Return if iteration with next() has reached end.
+bool QPI::AssetOwnershipIterator::reachedEnd() const
+{
+    ASSERT(!(_issuanceIdx == NO_ASSET_INDEX && _ownershipIdx != NO_ASSET_INDEX));
+    return _ownershipIdx == NO_ASSET_INDEX;
+}
+
+// Step to next ownership record matching filtering criteria.
+bool QPI::AssetOwnershipIterator::next()
+{
+    ASSERT(_issuanceIdx < ASSETS_CAPACITY);
+
+    if (!_ownership.anyOwner)
+    {
+        // searching for specific owner -> use hash map
+        if (_ownershipIdx == NO_ASSET_INDEX)
+        {
+            // get first candidate for ownership of issuance in first call of next()
+            _ownershipIdx = _ownership.owner.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+        }
+        else
+        {
+            // get next candidate in following calls of next()
+            _ownershipIdx = (_ownershipIdx + 1) & (ASSETS_CAPACITY - 1);
+        }
+
+        // search entry in consecutive non-empty fields of hash map
+        while (assets[_ownershipIdx].varStruct.ownership.type != EMPTY)
+        {
+            if (assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP
+                && assets[_ownershipIdx].varStruct.ownership.issuanceIndex == _issuanceIdx
+                && assets[_ownershipIdx].varStruct.ownership.publicKey == _ownership.owner
+                && (_ownership.anyManagingContract || assets[_ownershipIdx].varStruct.ownership.managingContractIndex == _ownership.managingContract))
+            {
+                // found matching entry
+                return true;
+            }
+
+            _ownershipIdx = (_ownershipIdx + 1) & (ASSETS_CAPACITY - 1);
+        }
+
+        // no matching entry found
+        _ownershipIdx = NO_ASSET_INDEX;
+        return false;
+    }
+    else
+    {
+        // owner is unknow -> use index lists instead of hash map to iterate through ownerships belonging to issuance
+        if (_ownershipIdx == NO_ASSET_INDEX)
+        {
+            // get first ownership of issuance
+            _ownershipIdx = as.indexLists.ownnershipsPossessionsFirstIdx[_issuanceIdx];
+            ASSERT(_ownershipIdx == NO_ASSET_INDEX || (_ownershipIdx < ASSETS_CAPACITY && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP));
+        }
+        else
+        {
+            // get next ownership
+            _ownershipIdx = as.indexLists.nextIdx[_ownershipIdx];
+            ASSERT(_ownershipIdx == NO_ASSET_INDEX || (_ownershipIdx < ASSETS_CAPACITY && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP));
+        }
+
+        // if specific managing contract is requested, make sure the ownership matches
+        if (!_ownership.anyManagingContract)
+        {
+            while (_ownershipIdx != NO_ASSET_INDEX
+                && assets[_ownershipIdx].varStruct.ownership.managingContractIndex != _ownership.managingContract)
+            {
+                _ownershipIdx = as.indexLists.nextIdx[_ownershipIdx];
+                ASSERT(_ownershipIdx == NO_ASSET_INDEX || (_ownershipIdx < ASSETS_CAPACITY && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP));
+            }
+        }
+
+        return _ownershipIdx != NO_ASSET_INDEX;
+    }
+}
+
+id QPI::AssetOwnershipIterator::issuer() const
+{
+    ASSERT(_issuanceIdx == NO_ASSET_INDEX || (_issuanceIdx < ASSETS_CAPACITY && assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE));
+    return (_issuanceIdx < ASSETS_CAPACITY) ? assets[_issuanceIdx].varStruct.issuance.publicKey : id::zero();
+}
+
+id QPI::AssetOwnershipIterator::owner() const
+{
+    ASSERT(_ownershipIdx == NO_ASSET_INDEX || (_ownershipIdx < ASSETS_CAPACITY && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP));
+    return (_ownershipIdx < ASSETS_CAPACITY) ? assets[_ownershipIdx].varStruct.ownership.publicKey : id::zero();
+}
+
+sint64 QPI::AssetOwnershipIterator::numberOfOwnedShares() const
+{
+    ASSERT(_ownershipIdx == NO_ASSET_INDEX || (_ownershipIdx < ASSETS_CAPACITY && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP));
+    return (_ownershipIdx < ASSETS_CAPACITY) ? assets[_ownershipIdx].varStruct.ownership.numberOfShares : -1;
+}
+
+
+// Start iteration with given issuance and given ownership + possession filters (selects first record).
+void QPI::AssetPossessionIterator::begin(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership, const AssetPossessionSelect& possession)
+{
+    AssetOwnershipIterator::begin(issuance, ownership);
+
+    _possession = possession;
+    _possessionIdx = NO_ASSET_INDEX;
+
+    if (_issuanceIdx == NO_ASSET_INDEX)
+        return;
+
+    next();
+}
+
+// Return if iteration with next() has reached end.
+bool QPI::AssetPossessionIterator::reachedEnd() const
+{
+    ASSERT(
+        (_possessionIdx != NO_ASSET_INDEX && _ownershipIdx != NO_ASSET_INDEX && _issuanceIdx != NO_ASSET_INDEX) ||
+        (_possessionIdx == NO_ASSET_INDEX && _ownershipIdx != NO_ASSET_INDEX && _issuanceIdx != NO_ASSET_INDEX) ||
+        (_possessionIdx == NO_ASSET_INDEX && _ownershipIdx == NO_ASSET_INDEX && _issuanceIdx != NO_ASSET_INDEX) ||
+        (_possessionIdx == NO_ASSET_INDEX && _ownershipIdx == NO_ASSET_INDEX && _issuanceIdx == NO_ASSET_INDEX)
+    );
+    return _possessionIdx == NO_ASSET_INDEX;
+}
+
+// Step to next possession record matching filtering criteria.
+bool QPI::AssetPossessionIterator::next()
+{
+    ASSERT(_issuanceIdx < ASSETS_CAPACITY && _ownershipIdx < ASSETS_CAPACITY);
+
+    if (!_possession.anyPossessor)
+    {
+        // searching for specific possessor -> use hash map
+
+        // TODO: the common case of specific possessor and don't care about ownership should be optimized from O(N^2) to O(N)
+        do
+        {
+            if (_possessionIdx == NO_ASSET_INDEX)
+            {
+                _possessionIdx = _possession.possessor.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+            }
+            else
+            {
+                _possessionIdx = (_possessionIdx + 1) & (ASSETS_CAPACITY - 1);
+            }
+            while (assets[_possessionIdx].varStruct.possession.type != EMPTY)
+            {
+                if (assets[_possessionIdx].varStruct.possession.type == POSSESSION
+                    && assets[_possessionIdx].varStruct.possession.ownershipIndex == _ownershipIdx
+                    && assets[_possessionIdx].varStruct.possession.publicKey == _possession.possessor
+                    && (_possession.anyManagingContract || assets[_possessionIdx].varStruct.possession.managingContractIndex == _possession.managingContract))
+                {
+                    // found matching entry
+                    return true;
+                }
+
+                _possessionIdx = (_possessionIdx + 1) & (ASSETS_CAPACITY - 1);
+            }
+
+            // no matching entry found
+            _possessionIdx = NO_ASSET_INDEX;
+
+            // retry with next owner
+        } while (AssetOwnershipIterator::next());
+
+        return false;
+    }
+    else
+    {
+        // possessor is unknow -> use index lists instead of hash map to iterate through possessions belonging to ownership
+        do
+        {
+            if (_possessionIdx == NO_ASSET_INDEX)
+            {
+                // get first possession of ownership
+                _possessionIdx = as.indexLists.ownnershipsPossessionsFirstIdx[_ownershipIdx];
+                ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
+            }
+            else
+            {
+                // get next ownership
+                _possessionIdx = as.indexLists.nextIdx[_possessionIdx];
+                ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
+            }
+
+            // if specific managing contract is requested, make sure the possession matches
+            if (!_possession.anyManagingContract)
+            {
+                while (_possessionIdx != NO_ASSET_INDEX
+                    && assets[_possessionIdx].varStruct.possession.managingContractIndex != _possession.managingContract)
+                {
+                    _possessionIdx = as.indexLists.nextIdx[_possessionIdx];
+                    ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
+                }
+            }
+
+            if (_possessionIdx != NO_ASSET_INDEX)
+                return true;
+
+            // no matching entry found -> retry with next owner
+        } while (AssetOwnershipIterator::next());
+
+        return false;
+    }
+}
+
+inline id QPI::AssetPossessionIterator::possessor() const
+{
+    ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
+    return (_possessionIdx < ASSETS_CAPACITY) ? assets[_possessionIdx].varStruct.possession.publicKey : id::zero();
+}
+
+sint64 QPI::AssetPossessionIterator::numberOfPossessedShares() const
+{
+    ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
+    return (_possessionIdx < ASSETS_CAPACITY) ? assets[_possessionIdx].varStruct.possession.numberOfShares : -1;
+}
+
+
+////////////////////////////
+
+
 bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare) const
 {
     if (amountPerShare < 0 || amountPerShare * NUMBER_OF_COMPUTORS > MAX_AMOUNT)

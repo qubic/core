@@ -12,6 +12,8 @@
 #include "contract_core/qpi_asset_impl.h"
 #include "contract_core/qpi_system_impl.h"
 
+#include "test_util.h"
+
 
 class ContractTesting
 {
@@ -51,6 +53,7 @@ public:
     {
         initAssets();
         memset(assets, 0, universeSizeInBytes);
+        as.indexLists.reset();
     }
 
     long long getBalance(const id& pubKey) const
@@ -134,31 +137,4 @@ public:
     contractStates[contractIndex] = (unsigned char*)malloc(size); \
     setMem(contractStates[contractIndex], size, 0); \
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName); \
-}
-
-static std::ostream& operator<<(std::ostream& s, const id& v)
-{
-    CHAR16 identityWchar[61];
-    char identityChar[61];
-    getIdentity(v.m256i_u8, identityWchar, false);
-    size_t size;
-    wcstombs_s(&size, identityChar, identityWchar, 61);
-    s << identityChar;
-    return s;
-}
-
-static uint64 assetNameFromString(const char* assetName)
-{
-    size_t n = strlen(assetName);
-    EXPECT_LE(n, 7);
-    uint64 integer = 0;
-    copyMem(&integer, assetName, n);
-    return integer;
-}
-
-static std::string assetNameFromInt64(uint64 assetName)
-{
-    char buffer[8];
-    copyMem(&buffer, &assetName, sizeof(assetName));
-    return buffer;
 }
