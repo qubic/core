@@ -214,6 +214,7 @@ static m256i initialRandomSeedFromPersistingState;
 static bool loadMiningSeedFromFile = false;
 static bool loadAllNodeStateFromFile = false;
 #if TICK_STORAGE_AUTOSAVE_MODE
+static unsigned int nextPersistingNodeStateTick = 0;
 struct
 {
     Tick etalonTick;
@@ -1604,20 +1605,6 @@ unsigned char QPI::QpiContextFunctionCall::month() const
     return etalonTick.month;
 }
 
-m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
-{
-    int index = spectrumIndex(currentId);
-    while (++index < SPECTRUM_CAPACITY)
-    {
-        const m256i& nextId = spectrum[index].publicKey;
-        if (!isZero(nextId))
-        {
-            return nextId;
-        }
-    }
-
-    return m256i::zero();
-}
 
 int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
 {
@@ -5276,6 +5263,14 @@ static void processKeyPresses()
             logHealthStatus();
 
 
+#if TICK_STORAGE_AUTOSAVE_MODE
+            setText(message, L"Auto-save enabled in AUX mode: every ");
+            appendNumber(message, TICK_STORAGE_AUTOSAVE_TICK_PERIOD, FALSE);
+            appendText(message, L" ticks, next at tick ");
+            appendNumber(message, nextPersistingNodeStateTick, FALSE);
+            logToConsole(message);
+#endif
+
             setText(message, L"Average K12 duration for  ");
 #if defined (__AVX512F__) && !GENERIC_K12
             appendText(message, L"AVX512 implementation is ");
@@ -5623,9 +5618,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
 
+#if TICK_STORAGE_AUTOSAVE_MODE
+            // Use random tick offset to reduce risk of several nodes doing auto-save in parallel (which can lead to bad topology and misalignment)
+            nextPersistingNodeStateTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
+#endif
+
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
-            unsigned int lastSavedTick = system.tick;
             logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
@@ -5893,24 +5892,54 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
                 processKeyPresses();
+
 #if TICK_STORAGE_AUTOSAVE_MODE
-                if ((TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1))) // autosave in aux mode
+                bool nextAutoSaveTickUpdated = false;
+                if (mainAuxStatus & 1)
                 {
+                    // MAIN mode: update auto-save schedule (only run save when switched to AUX mode)
+                    while (system.tick >= nextPersistingNodeStateTick)
+                    {
+                        nextPersistingNodeStateTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
+                        nextAutoSaveTickUpdated = true;
+                    }
+                }
+                else
+                {
+                    // AUX mode
                     if (system.tick > ts.getPreloadTick()) // check the last saved tick
                     {
-                        unsigned int deltaTick = system.tick - lastSavedTick;
-                        if (deltaTick >= TICK_STORAGE_AUTOSAVE_TICK_PERIOD) {
+                        // Start auto save if nextAutoSaveTick == system.tick (or if the main loop has missed nextAutoSaveTick)
+                        if (system.tick >= nextPersistingNodeStateTick)
+                        {
                             requestPersistingNodeState = 1;
-                            lastSavedTick = system.tick;
+                            while (system.tick >= nextPersistingNodeStateTick)
+                            {
+                                nextPersistingNodeStateTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
+                            }
+                            nextAutoSaveTickUpdated = true;
                         }
                     }
                 }
                 if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 1)
                 {
+                    // Saving node state takes a lot of time -> Close peer connections before to signal that
+                    // the peers should connect to another node.
+                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+                    {
+                        closePeer(&peers[i]);
+                    }
+
                     logToConsole(L"Saving node state...");
                     saveAllNodeStates();
                     requestPersistingNodeState = 0;
                     logToConsole(L"Complete saving all node states");
+                }
+                if (nextAutoSaveTickUpdated)
+                {
+                    setText(message, L"Auto-save in AUX mode scheduled for tick ");
+                    appendNumber(message, nextPersistingNodeStateTick, FALSE);
+                    logToConsole(message);
                 }
 #endif
 

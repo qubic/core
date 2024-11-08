@@ -1147,7 +1147,7 @@ namespace QPI
 		uint8 month(
 		) const; // [1..12]
 
-		id nextId(
+		inline id nextId(
 			const id& currentId
 		) const;
 
