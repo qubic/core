@@ -146,3 +146,19 @@ static std::ostream& operator<<(std::ostream& s, const id& v)
     s << identityChar;
     return s;
 }
+
+static uint64 assetNameFromString(const char* assetName)
+{
+    size_t n = strlen(assetName);
+    EXPECT_LE(n, 7);
+    uint64 integer = 0;
+    copyMem(&integer, assetName, n);
+    return integer;
+}
+
+static std::string assetNameFromInt64(uint64 assetName)
+{
+    char buffer[8];
+    copyMem(&buffer, &assetName, sizeof(assetName));
+    return buffer;
+}
