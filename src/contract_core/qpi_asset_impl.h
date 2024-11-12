@@ -372,12 +372,16 @@ long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, cons
 }
 
 
-// generalize to numberOfShares() with allowing wildcards for owner and possessor
+// TODO: remove after testing period, because numberOfShares() can do this and more
 long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex) const
 {
     return ::numberOfPossessedShares(assetName, issuer, owner, possessor, ownershipManagingContractIndex, possessionManagingContractIndex);
 }
 
+sint64 QPI::QpiContextFunctionCall::numberOfShares(const QPI::AssetIssuanceId& issuanceId, const QPI::AssetOwnershipSelect& ownership, const QPI::AssetPossessionSelect& possession) const
+{
+    return ::numberOfShares(issuanceId, ownership, possession);
+}
 
 long long QPI::QpiContextProcedureCall::transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor) const
 {

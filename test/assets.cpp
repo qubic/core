@@ -31,7 +31,7 @@ public:
         as.indexLists.reset();
     }
 
-    static void checkAssetsListsConsistency()
+    static void checkAssetsConsistency(bool printInfo = false)
     {
         // check lists
         std::map<unsigned int, unsigned int> listElementCount;
@@ -42,10 +42,13 @@ public:
             EXPECT_LT(issuanceIdx, ASSETS_CAPACITY);
             EXPECT_EQ(assets[issuanceIdx].varStruct.issuance.type, ISSUANCE);
 
-            char assetName[8];
-            memcpy(assetName, assets[issuanceIdx].varStruct.issuance.name, 7);
-            assetName[7] = 0;
-            std::cout << "asset " << assetName << ": index " << issuanceIdx << std::endl;
+            if (printInfo)
+            {
+                char assetName[8];
+                memcpy(assetName, assets[issuanceIdx].varStruct.issuance.name, 7);
+                assetName[7] = 0;
+                std::cout << "asset " << assetName << " by " << assets[issuanceIdx].varStruct.issuance.publicKey << ": index " << issuanceIdx << std::endl;
+            }
 
             // check all ownerships of issuance
             unsigned int ownershipIdx = indexLists.ownnershipsPossessionsFirstIdx[issuanceIdx];
@@ -85,31 +88,50 @@ public:
         }
 
         // count based on assets array
-        std::map<unsigned int, unsigned int> listElementCountArray;
+        std::map<unsigned int, unsigned int> arrayElementCount;
         for (int index = 0; index < ASSETS_CAPACITY; index++)
         {
             switch (assets[index].varStruct.issuance.type)
             {
             case ISSUANCE:
-                ++listElementCountArray[NO_ASSET_INDEX];
+                ++arrayElementCount[NO_ASSET_INDEX];
                 break;
             case OWNERSHIP:
-                ++listElementCountArray[assets[index].varStruct.ownership.issuanceIndex];
+                ++arrayElementCount[assets[index].varStruct.ownership.issuanceIndex];
                 break;
             case POSSESSION:
-                ++listElementCountArray[assets[index].varStruct.possession.ownershipIndex];
+                ++arrayElementCount[assets[index].varStruct.possession.ownershipIndex];
                 break;
             }
         }
 
         // check that counts match
-        EXPECT_EQ(listElementCount.size(), listElementCountArray.size());
-        for (auto it1 = listElementCount.begin(), it2 = listElementCountArray.begin();
-            it1 != listElementCount.end() && it2 != listElementCountArray.end();
+        EXPECT_EQ(listElementCount.size(), arrayElementCount.size());
+        for (auto it1 = listElementCount.begin(), it2 = arrayElementCount.begin();
+            it1 != listElementCount.end() && it2 != arrayElementCount.end();
             ++it1, ++it2)
         {
             EXPECT_EQ(it1->first, it2->first);
             EXPECT_EQ(it1->second, it2->second);
+        }
+
+        // check that number of owned and possessed shares are equal for each issuance
+        issuanceIdx = indexLists.issuancesFirstIdx;
+        while (issuanceIdx != NO_ASSET_INDEX)
+        {
+            AssetIssuanceId issuanceId(assets[issuanceIdx].varStruct.issuance.publicKey, assetNameFromString(assets[issuanceIdx].varStruct.issuance.name));
+            long long numOfSharesOwned = 0, numOfSharesPossessed = 0;
+            for (AssetOwnershipIterator iter(issuanceId); !iter.reachedEnd(); iter.next())
+            {
+                numOfSharesOwned += iter.numberOfOwnedShares();
+            }
+            for (AssetPossessionIterator iter(issuanceId); !iter.reachedEnd(); iter.next())
+            {
+                numOfSharesPossessed += iter.numberOfPossessedShares();
+            }
+            EXPECT_EQ(numOfSharesPossessed, numOfSharesOwned);
+
+            issuanceIdx = indexLists.nextIdx[issuanceIdx];
         }
     }
 };
@@ -120,7 +142,7 @@ TEST(TestCoreAssets, CheckLoadFile)
     AssetsTest test;
     if (loadUniverse(L"universe.132"))
     {
-        test.checkAssetsListsConsistency();
+        test.checkAssetsConsistency(true);
     }
     else
     {
@@ -135,6 +157,7 @@ struct IssuanceTestData
     unsigned int universeIdx;
     long long numOfShares;
     int numOfOwners;
+    int transferDivisor;
     std::map<m256i, long long> shares;
     std::map<m256i, long long> ownershipIdx;
     std::map<m256i, long long> possessionIdx;
@@ -199,10 +222,12 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
 
 
     IssuanceTestData issuances[] = {
-        { { m256i(1, 2, 3, 4), assetNameFromString("BLUB") }, 1, NO_ASSET_INDEX, 10000, 10 },
-        { { m256i::zero(), assetNameFromString("QX") }, 2, NO_ASSET_INDEX, 676, 20 },
-        { { m256i(1, 2, 3, 4), assetNameFromString("BLA") }, 3, NO_ASSET_INDEX, 123456789, 200 },
-        { { m256i(2, 2, 3, 4), assetNameFromString("BLA") }, 4, NO_ASSET_INDEX, 987654321, 300 },
+        { { m256i(1, 2, 3, 4), assetNameFromString("BLUB") }, 1, NO_ASSET_INDEX, 10000, 10, 30 },
+        { { m256i::zero(), assetNameFromString("QX") }, 2, NO_ASSET_INDEX, 676, 20, 30 },
+        { { m256i(1, 2, 3, 4), assetNameFromString("BLA") }, 3, NO_ASSET_INDEX, 123456789, 200, 30 },
+        { { m256i(2, 2, 3, 4), assetNameFromString("BLA") }, 4, NO_ASSET_INDEX, 987654321, 300, 30 },
+        { { m256i(1234, 2, 3, 4), assetNameFromString("BLA") }, 5, NO_ASSET_INDEX, 9876543210123ll, 676, 30 },
+        { { m256i(1234, 2, 3, 4), assetNameFromString("FOO") }, 6, NO_ASSET_INDEX, 1000000ll, 2, 1 },
     };
     constexpr int issuancesCount = sizeof(issuances) / sizeof(issuances[0]);
 
@@ -214,10 +239,12 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
             issuances[i].numOfShares, issuances[i].managingContract, &issuanceIdx, &firstOwnershipIdx, &firstPossessionIdx), issuances[i].numOfShares);
         issuances[i].universeIdx = issuanceIdx;
 
+        test.checkAssetsConsistency();
+
         long long remainingShares = issuances[i].numOfShares;
         for (int j = 1; j < issuances[i].numOfOwners; ++j)
         {
-            long long sharesToTransfer = remainingShares / 20;
+            long long sharesToTransfer = remainingShares / issuances[i].transferDivisor;
             id destId(j*10, 9, 8, 7);
             int destOwnershipIdx = -1, destPossessionIdx = -1;
             EXPECT_TRUE(transferShareOwnershipAndPossession(firstOwnershipIdx, firstPossessionIdx, destId, sharesToTransfer, &destOwnershipIdx, &destPossessionIdx, false));
@@ -230,6 +257,8 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
         issuances[i].shares[issuances[i].id.issuer] = remainingShares;
         issuances[i].ownershipIdx[issuances[i].id.issuer] = firstOwnershipIdx;
         issuances[i].possessionIdx[issuances[i].id.issuer] = firstPossessionIdx;
+
+        test.checkAssetsConsistency(i == issuancesCount - 1);
     }
 
     {
@@ -334,13 +363,43 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
         }
     }
 
+    {
+        // Test numberOfShares()
+        for (int i = 0; i < issuancesCount; ++i)
+        {
+            // iterate all possession records, compare results of numberOfShares() and numberOfPossessedShares()
+            std::map<m256i, long long> ownedShares;
+            for (AssetPossessionIterator iter(issuances[i].id); !iter.reachedEnd(); iter.next())
+            {
+                long long numOfShares = numberOfShares(issuances[i].id, { iter.owner(), issuances[i].managingContract }, { iter.possessor(), issuances[i].managingContract });
+                EXPECT_EQ(numOfShares, iter.numberOfPossessedShares());
+
+                long long numOfPossessedShares = numberOfPossessedShares(issuances[i].id.assetName, issuances[i].id.issuer, iter.owner(), iter.possessor(), issuances[i].managingContract, issuances[i].managingContract);
+                EXPECT_EQ(numOfShares, numOfPossessedShares);
+
+                ownedShares[iter.owner()] += numOfShares;
+            }
+
+            // iterate all ownership records, compare results of numberOfShares() and numberOfOwnedShares()
+            long long totalShares = 0;
+            for (AssetOwnershipIterator iter(issuances[i].id); !iter.reachedEnd(); iter.next())
+            {
+                long long numOfShares = numberOfShares(issuances[i].id, { iter.owner(), issuances[i].managingContract });
+                EXPECT_EQ(numOfShares, iter.numberOfOwnedShares());
+
+                EXPECT_EQ(numOfShares, ownedShares[iter.owner()]);
+
+                totalShares += numOfShares;
+            }
+
+            EXPECT_EQ(totalShares, numberOfShares(issuances[i].id));
+            EXPECT_EQ(totalShares, issuances[i].numOfShares);
+        }
+    }
 }
 
 /*
 TODO test
-- load
-- qpi.issueAsset
-- qpi.transferOwnershipAndP.
 - end epoch
 
 */

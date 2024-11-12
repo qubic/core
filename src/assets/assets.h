@@ -18,6 +18,14 @@
 #include "common_buffers.h"
 
 
+// CAUTION: Currently, there is no locking of universeLock if contracts use the QPI asset iteration classes directly.
+// This shouldn't be a problem as long as:
+// - write access to assets only happens in contractProcessor(), which runs contract procedures,
+//   or tickProcessor(), which doesn't run in parallel to contractProcessor(),
+//   or during a single-threading phase (node startup); NO WRITING OF ASSETS IN REQUEST PROCESSOR OR MAIN THREAD!
+// - QPI asset iteration classes do not allow writing access to the universe (if this is changed in the future,
+//   note that all write access requires locking universeLock)
+
 // TODO: move this into AssetStorage class
 GLOBAL_VAR_DECL volatile char universeLock GLOBAL_VAR_INIT(0);
 GLOBAL_VAR_DECL Asset* assets GLOBAL_VAR_INIT(nullptr);
@@ -265,6 +273,34 @@ iteration:
 
         goto iteration;
     }
+}
+
+static sint64 numberOfShares(
+    const AssetIssuanceId& issuanceId,
+    const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
+    const AssetPossessionSelect& possession = AssetPossessionSelect::any())
+{
+    ACQUIRE(universeLock);
+
+    sint64 numOfShares = 0;
+    if (possession.anyPossessor && possession.anyManagingContract)
+    {
+        for (AssetOwnershipIterator iter(issuanceId, ownership); !iter.reachedEnd(); iter.next())
+        {
+            numOfShares += iter.numberOfOwnedShares();
+        }
+    }
+    else
+    {
+        for (AssetPossessionIterator iter(issuanceId, ownership, possession); !iter.reachedEnd(); iter.next())
+        {
+            numOfShares += iter.numberOfPossessedShares();
+        }
+    }
+
+    RELEASE(universeLock);
+
+    return numOfShares;
 }
 
 static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int sourcePossessionIndex, const m256i& destinationPublicKey, long long numberOfShares,

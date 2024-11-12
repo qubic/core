@@ -1297,6 +1297,12 @@ namespace QPI
 			uint16 possessionManagingContractIndex
 		) const;
 
+		inline sint64 numberOfShares(
+			const AssetIssuanceId& issuanceId,
+			const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
+			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
+		) const;
+
 		sint32 numberOfTickTransactions(
 		) const;
 
