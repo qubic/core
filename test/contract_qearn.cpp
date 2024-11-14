@@ -117,6 +117,33 @@ public:
             EXPECT_EQ(fullyUnlockedUser[idx], FullyUnlockedInfo._unlockedID);
         }
     }
+    void checkGetUnlockedInfo(uint32 epoch) 
+    {
+        FullyUnlockedAmount.clear();
+        FullyUnlockedUser.clear();
+
+        const QEARN::EpochIndexInfo& epochIndex = EpochIndex.get(epoch);
+        for(uint64 idx = epochIndex.startIndex; idx < epochIndex.endIndex; ++idx)
+        {
+            if(Locker.get(idx)._Locked_Amount != 0)
+            {
+                FullyUnlockedAmount.push_back(Locker.get(idx)._Locked_Amount);
+                FullyUnlockedUser.push_back(Locker.get(idx).ID);
+            }
+        }
+    }
+
+    void checkFullyUnlockedAmount(uint32 epoch)
+    {
+        const QEARN::EpochIndexInfo& epochIndex = EpochIndex.get(epoch);
+        for(uint32 idx = 0; idx < _FullyUnlocked_cnt; idx++)
+        {
+            const QEARN::HistoryInfo& FullyUnlockedInfo = FullyUnlocker.get(idx);
+
+            EXPECT_EQ(FullyUnlockedAmount[idx], FullyUnlockedInfo._Unlocked_Amount);
+            EXPECT_EQ(FullyUnlockedUser[idx], FullyUnlockedInfo._Unlocked_ID);
+        }
+    }
 };
 
 class ContractTestingQearn : protected ContractTesting
