@@ -9,6 +9,7 @@
 #include "contract_core/contract_exec.h"
 
 #include "contract_core/qpi_spectrum_impl.h"
+#include "contract_core/qpi_asset_impl.h"
 #include "contract_core/qpi_system_impl.h"
 
 
@@ -26,6 +27,7 @@ public:
 
     ~ContractTesting()
     {
+        deinitAssets();
         deinitSpectrum();
         deinitCommonBuffers();
         for (unsigned int i = 0; i < contractCount; ++i)
@@ -36,7 +38,6 @@ public:
                 contractStates[i] = nullptr;
             }
         }
-        free(contractStates[0]);
     }
 
     void initEmptySpectrum()
@@ -46,8 +47,24 @@ public:
         updateSpectrumInfo();
     }
 
+    void initEmptyUniverse()
+    {
+        initAssets();
+        memset(assets, 0, universeSizeInBytes);
+    }
+
+    long long getBalance(const id& pubKey) const
+    {
+        int index = spectrumIndex(pubKey);
+        if (index < 0)
+            return 0;
+        long long balance = energy(index);
+        EXPECT_GE(balance, 0ll);
+        return balance;
+    }
+
     template <typename InputType, typename OutputType>
-    void callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true)
+    void callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true) const
     {
         EXPECT_LT(contractIndex, contractCount);
         EXPECT_NE(contractStates[contractIndex], nullptr);
@@ -68,13 +85,18 @@ public:
     }
 
     template <typename InputType, typename OutputType>
-    void invokeUserProcedure(
+    bool invokeUserProcedure(
         unsigned int contractIndex, unsigned short procedureInputType, const InputType& input, OutputType& output,
         const id& user, sint64 amount,
         bool checkInputSize = true, bool expectSuccess = true)
     {
         EXPECT_LT(contractIndex, contractCount);
         EXPECT_NE(contractStates[contractIndex], nullptr);
+        setMemory(output, 0);
+        int userSpectrumIndex = spectrumIndex(user);
+        if (userSpectrumIndex < 0 || !decreaseEnergy(userSpectrumIndex, amount))
+            return false;
+        increaseEnergy(id(contractIndex, 0, 0, 0), amount);
         QpiContextUserProcedureCall qpiContext(contractIndex, user, amount);
         if (checkInputSize)
         {
@@ -89,6 +111,7 @@ public:
         }
         copyMem(&output, qpiContext.outputBuffer, sizeof(output));
         qpiContext.freeBuffer();
+        return true;
     }
 
     void callSystemProcedure(unsigned int contractIndex, SystemProcedureID sysProcId, bool expectSuccess = true)
@@ -111,4 +134,15 @@ public:
     contractStates[contractIndex] = (unsigned char*)malloc(size); \
     setMem(contractStates[contractIndex], size, 0); \
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName); \
+}
+
+static std::ostream& operator<<(std::ostream& s, const id& v)
+{
+    CHAR16 identityWchar[61];
+    char identityChar[61];
+    getIdentity(v.m256i_u8, identityWchar, false);
+    size_t size;
+    wcstombs_s(&size, identityChar, identityWchar, 61);
+    s << identityChar;
+    return s;
 }

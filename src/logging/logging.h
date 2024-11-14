@@ -4,7 +4,7 @@
 #include "platform/concurrency.h"
 #include "platform/time.h"
 #include "platform/memory.h"
-#include "platform/assert.h"
+#include "platform/debugging.h"
 
 #include "network_messages/header.h"
 
@@ -24,6 +24,16 @@ struct Peer;
 #else
 #define ENABLED_LOGGING 0
 #endif
+
+// Logger defines
+#ifndef LOG_BUFFER_SIZE
+#define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
+#endif
+#define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
+#define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
+#define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
+#define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
+#define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
 
 // Fetches log
 struct RequestLog
@@ -72,6 +82,28 @@ struct ResponseLogIdRangeFromTx
     };
 };
 
+// Request logid ranges of all txs from a tick
+struct RequestAllLogIdRangesFromTick
+{
+    unsigned long long passcode[4];
+    unsigned int tick;
+
+    enum {
+        type = 50,
+    };
+};
+
+
+// Response logid ranges of all txs from a tick
+struct ResponseAllLogIdRangesFromTick
+{
+    long long fromLogId[LOG_TX_PER_TICK];
+    long long length[LOG_TX_PER_TICK];
+
+    enum {
+        type = 51,
+    };
+};
 
 #define QU_TRANSFER 0
 #define ASSET_ISSUANCE 1
@@ -230,14 +262,6 @@ struct SpectrumStats
 /*
  * LOGGING IMPLEMENTATION
  */
-#ifndef LOG_BUFFER_SIZE
-#define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
-#endif
-#define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
-#define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
-#define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
-#define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
-#define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
 
 class qLogger
 {
@@ -629,10 +653,14 @@ public:
 #endif
     }
 
-    // Request: ranges of log ID
+    // get logging content from log ID
     static void processRequestLog(Peer* peer, RequestResponseHeader* header);
 
+    // convert from tx id to log ID
     static void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header);
+
+    // get all log ID (mapping to tx id) from a tick
+    static void processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header);
 };
 
 static qLogger logger;

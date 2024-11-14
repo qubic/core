@@ -14,6 +14,9 @@
 #include "tcp4.h"
 #include "kangaroo_twelve.h"
 
+#include "text_output.h"
+
+
 #define DEJAVU_SWAP_LIMIT 1000000
 #define DISSEMINATION_MULTIPLIER 6
 #define NUMBER_OF_OUTGOING_CONNECTIONS 8

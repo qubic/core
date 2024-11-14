@@ -161,7 +161,7 @@ public:
 		sint64 removedNumberOfShares;
 	};
 
-private:
+protected:
 	uint64 _earnedAmount;
 	uint64 _distributedAmount;
 	uint64 _burnedAmount;
@@ -439,7 +439,7 @@ private:
 				locals._elementIndex2++;
 			}
 
-			locals._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
+			locals._elementIndex = state._entityOrders.nextElementIndex(locals._elementIndex);
 		}
 
 		if (locals._elementIndex2 < 256)
@@ -1050,6 +1050,16 @@ private:
 		state._assetIssuanceFee = 1000000000;
 		state._transferFee = 1000000;
 		state._tradeFee = 5000000; // 0.5%
+	_
+
+	END_TICK
+		if ((div((state._earnedAmount - state._distributedAmount), 676ULL) > 0) && (state._earnedAmount > state._distributedAmount))
+		{
+			if (qpi.distributeDividends(div((state._earnedAmount - state._distributedAmount), 676ULL)))
+			{
+				state._distributedAmount += div((state._earnedAmount - state._distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
+			}
+		}
 	_
 
 	PRE_ACQUIRE_SHARES

@@ -1,5 +1,7 @@
 #define NO_UEFI
 
+#define PRINT_TEST_INFO 0
+
 #include "gtest/gtest.h"
 
 // workaround for name clash with stdlib
@@ -12,8 +14,8 @@
 #define LOG_DUST_BURNINGS 1
 #define LOG_SPECTRUM_STATS 1
 
-// reduced size of logging buffer (256 MB instead of 8 GB)
-#define LOG_BUFFER_SIZE 268435456ULL
+// reduced size of logging buffer (512 MB instead of 8 GB)
+#define LOG_BUFFER_SIZE (2*268435456ULL)
 
 // also reduce size of logging tx index by reducing maximum number of ticks per epoch
 #include "../src/public_settings.h"
@@ -105,6 +107,8 @@ static void updateAndPrintEntityCategoryPopulations()
     for (int i = 0; i < entityCategoryCount; ++i)
         sumEntityCategoryPopulations += entityCategoryPopulations[i];
     EXPECT_GE(spectrumInfo.numberOfEntities, sumEntityCategoryPopulations);
+
+#if PRINT_TEST_INFO
     unsigned int zeroBalanceEntities = spectrumInfo.numberOfEntities - sumEntityCategoryPopulations;
     if (zeroBalanceEntities > 0)
         std::cout << "  - bin -1: " << zeroBalanceEntities << " entities with zero balance\n";
@@ -128,6 +132,7 @@ static void updateAndPrintEntityCategoryPopulations()
             std::cout << std::endl;
         }
     }
+#endif
 }
 
 // Spectrum test class for proper init, cleanup, and other repeated tasks
@@ -170,7 +175,9 @@ struct SpectrumTest
         beforeAntiDustSpectrumInfo = checkAndGetInfo();
 
         // Print distribution of entity balances
+#if PRINT_TEST_INFO
         std::cout << "Entity balance distribution before anti-dust:" << std::endl;
+#endif
         updateAndPrintEntityCategoryPopulations();
 
         // Start measuring run-time
@@ -190,7 +197,9 @@ struct SpectrumTest
             << " (" << ((long long)spectrumInfo.totalAmount - (long long)beforeAntiDustSpectrumInfo.totalAmount) * 100ll / beforeAntiDustSpectrumInfo.totalAmount << "% reduction)" << std::endl;
 
         // Print distribution of entity balances
+#if PRINT_TEST_INFO
         std::cout << "Entity balance distribution after anti-dust:" << std::endl;
+#endif
         updateAndPrintEntityCategoryPopulations();
 
         // Anti-dust always cleans up to at least half of the spectrum

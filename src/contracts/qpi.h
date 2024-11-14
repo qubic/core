@@ -1113,7 +1113,7 @@ namespace QPI
 		inline uint16 epoch(
 		) const; // [0..9'999]
 
-		bit getEntity(
+		inline bit getEntity(
 			const id& id,
 			Entity& entity
 		) const; // Returns "true" if the entity has been found, returns "false" otherwise
@@ -1145,7 +1145,7 @@ namespace QPI
 			const id& currentId
 		) const;
 
-		sint64 numberOfPossessedShares(
+		inline sint64 numberOfPossessedShares(
 			uint64 assetName,
 			const id& issuer,
 			const id& owner,
@@ -1182,13 +1182,13 @@ namespace QPI
 		) const;
 
 		// Internal functions, calling not allowed in contracts
-		void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
-		void __qpiFreeLocals() const;
-		const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
-		void __qpiFreeContextOtherContract() const;
-		void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
-		void __qpiReleaseStateForReading(unsigned int contractIndex) const;
-		void __qpiAbort(unsigned int errorCode) const;
+		inline void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
+		inline void __qpiFreeLocals() const;
+		inline const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
+		inline void __qpiFreeContextOtherContract() const;
+		inline void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
+		inline void __qpiReleaseStateForReading(unsigned int contractIndex) const;
+		inline void __qpiAbort(unsigned int errorCode) const;
 
 	protected:
 		// Construction is done in core, not allowed in contracts
@@ -1208,11 +1208,15 @@ namespace QPI
 			uint16 sourcePossessionManagingContractIndex
 		) const;
 
-		sint64 burn(
+		inline sint64 burn(
 			sint64 amount
 		) const;
 
-		sint64 issueAsset(
+		inline bool distributeDividends( //  Attempts to pay dividends
+			sint64 amountPerShare // Total amount will be 676x of this
+		) const; // "true" if the contract has had enough qus, "false" otherwise
+
+		inline sint64 issueAsset(
 			uint64 name,
 			const id& issuer,
 			sint8 numberOfDecimalPlaces,
@@ -1230,12 +1234,12 @@ namespace QPI
 			uint16 destinationPossessionManagingContractIndex
 		) const;
 
-		sint64 transfer( // Attempts to transfer energy from this qubic
+		inline sint64 transfer( // Attempts to transfer energy from this qubic
 			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
 			sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
 		) const; // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
 
-		sint64 transferShareOwnershipAndPossession(
+		inline sint64 transferShareOwnershipAndPossession(
 			uint64 assetName,
 			const id& issuer,
 			const id& owner,
@@ -1252,9 +1256,9 @@ namespace QPI
 
 
 		// Internal functions, calling not allowed in contracts
-		const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
-		void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
-		void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
+		inline const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
+		inline void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
+		inline void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 		template <unsigned int sysProcId, typename InputType, typename OutputType>
 		void __qpiCallSystemProcOfOtherContract(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
 
@@ -1266,8 +1270,8 @@ namespace QPI
 	// QPI available in REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 	struct QpiContextForInit : public QPI::QpiContext
 	{
-		void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short, unsigned int) const;
-		void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		inline void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		inline void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
 
 		// Construction is done in core, not allowed in contracts
 		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}

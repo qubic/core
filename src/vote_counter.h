@@ -90,6 +90,10 @@ public:
 		for (int i = 0; i < NUMBER_OF_COMPUTORS; i++)
 		{
 			buffer[i] = extract10Bit(votePacket, i);
+			if (buffer[i] > NUMBER_OF_COMPUTORS)
+			{
+				return false;
+			}
 			sum += buffer[i];
 		}
 		// check #0: sum of all vote must be >= 675*451 (vote of the tick leader is removed)

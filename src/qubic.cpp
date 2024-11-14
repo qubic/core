@@ -1,3 +1,5 @@
+#define SINGLE_COMPILE_UNIT
+
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -37,7 +39,9 @@
 #include "system.h"
 #include "contract_core/qpi_system_impl.h"
 
-#include "assets.h"
+#include "assets/assets.h"
+#include "assets/net_msg_impl.h"
+#include "contract_core/qpi_asset_impl.h"
 
 #include "spectrum.h"
 #include "contract_core/qpi_spectrum_impl.h"
@@ -59,6 +63,7 @@
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
 #define TICK_REQUESTING_PERIOD 500ULL
 #define MAX_NUMBER_EPOCH 1000ULL
+#define INVALIDATED_TICK_DATA (MAX_NUMBER_EPOCH+1)
 #define MAX_NUMBER_OF_MINERS 8192
 #define NUMBER_OF_MINER_SOLUTION_FLAGS 0x100000000
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
@@ -144,7 +149,7 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static const Transaction* contractProcessorTransaction = 0;
-static int contractProcessorTransactionCanceled = 0;
+static int contractProcessorTransactionMoneyflew = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
@@ -196,9 +201,7 @@ static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
 static int solutionThreshold[MAX_NUMBER_EPOCH] = { -1 };
 static unsigned long long solutionTotalExecutionTicks = 0;
-static unsigned long long K12TotalExecutionTicks = 0;
-static unsigned long long K12StartingExecutionTicks = 0;
-int K12GlobalIndex = 0;
+static unsigned long long K12MeasurementsCount = 0;
 static unsigned long long K12MeasurementsSum = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
@@ -211,6 +214,7 @@ static m256i initialRandomSeedFromPersistingState;
 static bool loadMiningSeedFromFile = false;
 static bool loadAllNodeStateFromFile = false;
 #if TICK_STORAGE_AUTOSAVE_MODE
+static unsigned int nextPersistingNodeStateTick = 0;
 struct
 {
     Tick etalonTick;
@@ -227,6 +231,7 @@ struct
     unsigned long long resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
+    unsigned long long lastLogId;
 } nodeStateBuffer;
 #endif
 static bool saveComputer(CHAR16* directory = NULL);
@@ -382,15 +387,21 @@ static void getComputerDigest(m256i& digest)
                 // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
                 contractStateLock[digestIndex].acquireRead();
 
-                K12StartingExecutionTicks = __rdtsc();
+                const unsigned long long startTick = __rdtsc();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
-                K12TotalExecutionTicks = __rdtsc() - K12StartingExecutionTicks;
-                if (K12GlobalIndex < 500)
-                {
-                    K12MeasurementsSum += K12TotalExecutionTicks;
-                    K12GlobalIndex++;
-                }
+                const unsigned long long executionTicks = __rdtsc() - startTick;
+
                 contractStateLock[digestIndex].releaseRead();
+
+                // K12 of state is included in contract execution time
+                _interlockedadd64(&contractTotalExecutionTicks[digestIndex], executionTicks);
+
+                // Gather data for comparing different versions of K12
+                if (K12MeasurementsCount < 500)
+                {
+                    K12MeasurementsSum += executionTicks;
+                    K12MeasurementsCount++;
+                }
             }
         }
     }
@@ -731,43 +742,46 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
 
                 ts.tickData.acquireLock();
                 TickData& td = ts.tickData.getByTickInCurrentEpoch(request->tickData.tick);
-                if (request->tickData.tick == system.tick + 1 && targetNextTickDataDigestIsKnown)
+                if (td.epoch != INVALIDATED_TICK_DATA)
                 {
-                    if (!isZero(targetNextTickDataDigest))
+                    if (request->tickData.tick == system.tick + 1 && targetNextTickDataDigestIsKnown)
                     {
-                        unsigned char digest[32];
-                        KangarooTwelve(&request->tickData, sizeof(TickData), digest, 32);
-                        if (digest == targetNextTickDataDigest)
+                        if (!isZero(targetNextTickDataDigest))
                         {
-                            bs->CopyMem(&td, &request->tickData, sizeof(TickData));
-                        }
-                    }
-                }
-                else
-                {
-                    if (td.epoch == system.epoch)
-                    {
-                        // Tick data already available. Mark computor as faulty if the data that was sent differs.
-                        if (*((unsigned long long*)&request->tickData.millisecond) != *((unsigned long long*)&td.millisecond))
-                        {
-                            faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
-                        }
-                        else
-                        {
-                            for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                            unsigned char digest[32];
+                            KangarooTwelve(&request->tickData, sizeof(TickData), digest, 32);
+                            if (digest == targetNextTickDataDigest)
                             {
-                                if (request->tickData.transactionDigests[i] != td.transactionDigests[i])
-                                {
-                                    faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
-
-                                    break;
-                                }
+                                bs->CopyMem(&td, &request->tickData, sizeof(TickData));
                             }
                         }
                     }
                     else
                     {
-                        bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                        if (td.epoch == system.epoch)
+                        {
+                            // Tick data already available. Mark computor as faulty if the data that was sent differs.
+                            if (*((unsigned long long*) & request->tickData.millisecond) != *((unsigned long long*) & td.millisecond))
+                            {
+                                faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
+                            }
+                            else
+                            {
+                                for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                                {
+                                    if (request->tickData.transactionDigests[i] != td.transactionDigests[i])
+                                    {
+                                        faultyComputorFlags[request->tickData.computorIndex >> 6] |= (1ULL << (request->tickData.computorIndex & 63));
+
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                        }
                     }
                 }
                 ts.tickData.releaseLock();
@@ -850,7 +864,6 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                             }
                         }
                         ts.tickTransactions.releaseLock();
-
                         break;
                     }
                 }
@@ -991,6 +1004,20 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
         }
     }
     enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+}
+
+static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* header)
+{
+    RequestedTransactionInfo* request = header->getPayload<RequestedTransactionInfo>();
+    const Transaction* transaction = ts.transactionsDigestAccess.findTransaction(request->txDigest);
+    if (transaction)
+    {
+        enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+    }
+    else
+    {
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    }
 }
 
 static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
@@ -1165,7 +1192,14 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             case SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST:
             {
                 SpecialCommandToggleMainModeRequestAndResponse* _request = header->getPayload<SpecialCommandToggleMainModeRequestAndResponse>();
-                mainAuxStatus = _request->mainModeFlag;
+                if (requestPersistingNodeState == 1 || persistingNodeStateTickProcWaiting == 1)
+                {
+                    //logToConsole(L"Unable to switch mode because node is saving states.");
+                }
+                else
+                {
+                    mainAuxStatus = _request->mainModeFlag;                    
+                }
                 enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
@@ -1334,7 +1368,6 @@ static void requestProcessor(void* ProcedureArgument)
                 requestQueueElementTail++;
 
                 RELEASE(requestQueueTailLock);
-
                 switch (header->type())
                 {
                 case ExchangePublicPeers::type:
@@ -1397,6 +1430,12 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case REQUEST_TRANSACTION_INFO:
+                {
+                    processRequestTransactionInfo(peer, header);
+                }
+                break;
+
                 case REQUEST_CURRENT_TICK_INFO:
                 {
                     processRequestCurrentTickInfo(peer, header);
@@ -1448,6 +1487,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case RequestLogIdRangeFromTx::type:
                 {
                     logger.processRequestTxLogInfo(peer, header);
+                }
+                break;
+
+                case RequestAllLogIdRangesFromTick::type:
+                {
+                    logger.processRequestTickTxLogInfo(peer, header);
                 }
                 break;
 
@@ -1545,65 +1590,6 @@ unsigned char QPI::QpiContextFunctionCall::hour() const
     return etalonTick.hour;
 }
 
-long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, const QPI::id& issuer, signed char numberOfDecimalPlaces, long long numberOfShares, unsigned long long unitOfMeasurement) const
-{
-    if (((unsigned char)name) < 'A' || ((unsigned char)name) > 'Z'
-        || name > 0xFFFFFFFFFFFFFF)
-    {
-        return 0;
-    }
-    for (unsigned int i = 1; i < 7; i++)
-    {
-        if (!((unsigned char)(name >> (i * 8))))
-        {
-            while (++i < 7)
-            {
-                if ((unsigned char)(name >> (i * 8)))
-                {
-                    return 0;
-                }
-            }
-
-            break;
-        }
-    }
-    for (unsigned int i = 1; i < 7; i++)
-    {
-        if (!((unsigned char)(name >> (i * 8)))
-            || (((unsigned char)(name >> (i * 8))) >= '0' && ((unsigned char)(name >> (i * 8))) <= '9')
-            || (((unsigned char)(name >> (i * 8))) >= 'A' && ((unsigned char)(name >> (i * 8))) <= 'Z'))
-        {
-            // Do nothing
-        }
-        else
-        {
-            return 0;
-        }
-    }
-
-    if (issuer != _currentContractId && issuer != _invocator)
-    {
-        return 0;
-    }
-
-    if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
-    {
-        return 0;
-    }
-
-    if (unitOfMeasurement > 0xFFFFFFFFFFFFFF)
-    {
-        return 0;
-    }
-
-    char nameBuffer[7] = { char(name), char(name >> 8), char(name >> 16), char(name >> 24), char(name >> 32), char(name >> 40), char(name >> 48) };
-    char unitOfMeasurementBuffer[7] = { char(unitOfMeasurement), char(unitOfMeasurement >> 8), char(unitOfMeasurement >> 16), char(unitOfMeasurement >> 24), char(unitOfMeasurement >> 32), char(unitOfMeasurement >> 40), char(unitOfMeasurement >> 48) };
-    int issuanceIndex, ownershipIndex, possessionIndex;
-    numberOfShares = ::issueAsset(issuer, nameBuffer, numberOfDecimalPlaces, unitOfMeasurementBuffer, numberOfShares, _currentContractIndex, &issuanceIndex, &ownershipIndex, &possessionIndex);
-
-    return numberOfShares;
-}
-
 unsigned short QPI::QpiContextFunctionCall::millisecond() const
 {
     return etalonTick.millisecond;
@@ -1634,85 +1620,6 @@ m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
     return m256i::zero();
 }
 
-long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex) const
-{
-    ACQUIRE(universeLock);
-
-    int issuanceIndex = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-iteration:
-    if (assets[issuanceIndex].varStruct.issuance.type == EMPTY)
-    {
-        RELEASE(universeLock);
-
-        return 0;
-    }
-    else
-    {
-        if (assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
-            && ((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == assetName
-            && assets[issuanceIndex].varStruct.issuance.publicKey == issuer)
-        {
-            int ownershipIndex = owner.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-        iteration2:
-            if (assets[ownershipIndex].varStruct.ownership.type == EMPTY)
-            {
-                RELEASE(universeLock);
-
-                return 0;
-            }
-            else
-            {
-                if (assets[ownershipIndex].varStruct.ownership.type == OWNERSHIP
-                    && assets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
-                    && assets[ownershipIndex].varStruct.ownership.publicKey == owner
-                    && assets[ownershipIndex].varStruct.ownership.managingContractIndex == ownershipManagingContractIndex)
-                {
-                    int possessionIndex = possessor.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-                iteration3:
-                    if (assets[possessionIndex].varStruct.possession.type == EMPTY)
-                    {
-                        RELEASE(universeLock);
-
-                        return 0;
-                    }
-                    else
-                    {
-                        if (assets[possessionIndex].varStruct.possession.type == POSSESSION
-                            && assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
-                            && assets[possessionIndex].varStruct.possession.publicKey == possessor
-                            && assets[possessionIndex].varStruct.possession.managingContractIndex == possessionManagingContractIndex)
-                        {
-                            const long long numberOfPossessedShares = assets[possessionIndex].varStruct.possession.numberOfShares;
-
-                            RELEASE(universeLock);
-
-                            return numberOfPossessedShares;
-                        }
-                        else
-                        {
-                            possessionIndex = (possessionIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                            goto iteration3;
-                        }
-                    }
-                }
-                else
-                {
-                    ownershipIndex = (ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                    goto iteration2;
-                }
-            }
-        }
-        else
-        {
-            issuanceIndex = (issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
-
-            goto iteration;
-        }
-    }
-}
-
 int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
 {
     return -1; // TODO: Return -1 if the current tick is empty, return the number of the transactions in the tick otherwise, including 0
@@ -1733,108 +1640,6 @@ unsigned char QPI::QpiContextFunctionCall::second() const
 bool QPI::QpiContextFunctionCall::signatureValidity(const m256i& entity, const m256i& digest, const array<signed char, 64>& signature) const
 {
     return verify(entity.m256i_u8, digest.m256i_u8, reinterpret_cast<const unsigned char*>(&signature));
-}
-
-long long QPI::QpiContextProcedureCall::transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor) const
-{
-    if (numberOfShares <= 0 || numberOfShares > MAX_AMOUNT)
-    {
-        return -((long long)(MAX_AMOUNT + 1));
-    }
-
-    ACQUIRE(universeLock);
-
-    int issuanceIndex = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-iteration:
-    if (assets[issuanceIndex].varStruct.issuance.type == EMPTY)
-    {
-        RELEASE(universeLock);
-
-        return -numberOfShares;
-    }
-    else
-    {
-        if (assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
-            && ((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == assetName
-            && assets[issuanceIndex].varStruct.issuance.publicKey == issuer)
-        {
-            int ownershipIndex = owner.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-        iteration2:
-            if (assets[ownershipIndex].varStruct.ownership.type == EMPTY)
-            {
-                RELEASE(universeLock);
-
-                return -numberOfShares;
-            }
-            else
-            {
-                if (assets[ownershipIndex].varStruct.ownership.type == OWNERSHIP
-                    && assets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
-                    && assets[ownershipIndex].varStruct.ownership.publicKey == owner
-                    && assets[ownershipIndex].varStruct.ownership.managingContractIndex == _currentContractIndex) // TODO: This condition needs extra attention during refactoring!
-                {
-                    int possessionIndex = possessor.m256i_u32[0] & (ASSETS_CAPACITY - 1);
-                iteration3:
-                    if (assets[possessionIndex].varStruct.possession.type == EMPTY)
-                    {
-                        RELEASE(universeLock);
-
-                        return -numberOfShares;
-                    }
-                    else
-                    {
-                        if (assets[possessionIndex].varStruct.possession.type == POSSESSION
-                            && assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
-                            && assets[possessionIndex].varStruct.possession.publicKey == possessor)
-                        {
-                            if (assets[possessionIndex].varStruct.possession.managingContractIndex == _currentContractIndex) // TODO: This condition needs extra attention during refactoring!
-                            {
-                                if (assets[possessionIndex].varStruct.possession.numberOfShares >= numberOfShares)
-                                {
-                                    int destinationOwnershipIndex, destinationPossessionIndex;
-                                    ::transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwnerAndPossessor, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
-
-                                    RELEASE(universeLock);
-
-                                    return assets[possessionIndex].varStruct.possession.numberOfShares;
-                                }
-                                else
-                                {
-                                    RELEASE(universeLock);
-
-                                    return assets[possessionIndex].varStruct.possession.numberOfShares - numberOfShares;
-                                }
-                            }
-                            else
-                            {
-                                RELEASE(universeLock);
-
-                                return -numberOfShares;
-                            }
-                        }
-                        else
-                        {
-                            possessionIndex = (possessionIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                            goto iteration3;
-                        }
-                    }
-                }
-                else
-                {
-                    ownershipIndex = (ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
-
-                    goto iteration2;
-                }
-            }
-        }
-        else
-        {
-            issuanceIndex = (issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
-
-            goto iteration;
-        }
-    }
 }
 
 unsigned char QPI::QpiContextFunctionCall::year() const
@@ -1946,9 +1751,9 @@ static void contractProcessor(void*)
         qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
 
         if (contractActionTracker.getOverallQuTransferBalance(transaction->sourcePublicKey) == 0)
-            contractProcessorTransactionCanceled = 1;
+            contractProcessorTransactionMoneyflew = 0;
         else
-            contractProcessorTransactionCanceled = 0;
+            contractProcessorTransactionMoneyflew = 1;
         contractProcessorTransaction = 0;
     }
     break;
@@ -2074,11 +1879,11 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
             _mm_pause();
         }
 
-        return !contractProcessorTransactionCanceled;
+        return contractProcessorTransactionMoneyflew;
     }
 
     // if transaction tries to invoke non-registered procedure, transaction amount is not reimbursed
-    return true;
+    return transaction->amount > 0;
 }
 
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
@@ -2285,29 +2090,6 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
-static void processTickTransactionFileHeader(const FileHeaderTransaction* transaction)
-{
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->tick == system.tick);
-
-    // TODO
-}
-
-static void processTickTransactionFileFragment(const FileFragmentTransactionPrefix* transactionPrefix, const FileFragmentTransactionPostfix* transactionPostfix)
-{
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transactionPrefix != nullptr);
-    ASSERT(transactionPostfix != nullptr);
-    ASSERT(transactionPrefix->checkValidity());
-    ASSERT(isZero(transactionPrefix->destinationPublicKey));
-    ASSERT(transactionPrefix->tick == system.tick);
-
-    // TODO
-}
-
 static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
 {
     ASSERT(nextTickData.epoch == system.epoch);
@@ -2336,6 +2118,11 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
+
+    // Record the tx with digest
+    ts.transactionsDigestAccess.acquireLock();
+    ts.transactionsDigestAccess.insertTransaction(transactionDigest, transaction);
+    ts.transactionsDigestAccess.releaseLock();
 
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
     if (spectrumIndex >= 0)
@@ -2379,7 +2166,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
                         && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
                     {
-                        processTickTransactionFileHeader((FileHeaderTransaction*)transaction);
+                        // Do nothing
                     }
                 }
                 break;
@@ -2389,7 +2176,17 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
                         && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
                     {
-                        processTickTransactionFileFragment((FileFragmentTransactionPrefix*)transaction, (FileFragmentTransactionPostfix*)(((char*)transaction) + sizeof(Transaction) + transaction->inputSize));
+                        // Do nothing
+                    }
+                }
+                break;
+
+                case FileTrailerTransaction::transactionType():
+                {
+                    if (transaction->amount >= FileFragmentTransactionPrefix::minAmount()
+                        && transaction->inputSize >= FileFragmentTransactionPrefix::minInputSize())
+                    {
+                        // Do nothing
                     }
                 }
                 break;
@@ -3133,14 +2930,31 @@ static void endEpoch()
 
         // Compute revenue of computors and arbitrator
         long long arbitratorRevenue = ISSUANCE_RATE;
+        constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
+        constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
+        static_assert(MAX_NUMBER_OF_TICKS_PER_EPOCH <= 605020, "Redefine scalingFactor");
+        // maxRevenueScore for 605020 ticks = ((7099 * 605020) / 676) * 605020 * 675
+        constexpr unsigned scalingFactor = 208100; // >= (maxRevenueScore600kTicks / 0xFFFFFFFFFFFFFFFFULL) * issuancePerComputor =(approx)= 208078.5
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
             long long revenue;
             if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
-                revenue = (ISSUANCE_RATE / NUMBER_OF_COMPUTORS);
+                revenue = issuancePerComputor;
             else
-                revenue = (((ISSUANCE_RATE / NUMBER_OF_COMPUTORS) * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+            {
+                if (revenueScore[computorIndex] > scalingThreshold)
+                {
+                    // scale down to prevent overflow, then scale back up after division
+                    unsigned long long scaledRev = revenueScore[computorIndex] / scalingFactor;
+                    revenue = ((issuancePerComputor * scaledRev) / sortedRevenueScore[QUORUM - 1]);
+                    revenue *= scalingFactor;
+                }
+                else
+                {
+                    revenue = ((issuancePerComputor * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+                }
+            }
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
@@ -3352,7 +3166,7 @@ static bool saveAllNodeStates()
     appendText(message, directory); appendText(message, L"/");
     appendText(message, UNIVERSE_FILE_NAME);
     logToConsole(message);
-    if (!saveUniverse(directory))
+    if (!saveUniverse(UNIVERSE_FILE_NAME, directory))
     {
         logToConsole(L"Failed to save universe");
         return false;
@@ -3394,6 +3208,7 @@ static bool saveAllNodeStates()
     nodeStateBuffer.currentRandomSeed = score->currentRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;
+    nodeStateBuffer.lastLogId = logger.logId;
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
@@ -3494,7 +3309,7 @@ static bool loadAllNodeStates()
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
-    if (!loadUniverse(directory))
+    if (!loadUniverse(UNIVERSE_FILE_NAME, directory))
     {
         logToConsole(L"Failed to load universe");
         return false;
@@ -3530,6 +3345,7 @@ static bool loadAllNodeStates()
     numberOfMiners = nodeStateBuffer.numberOfMiners;
     initialRandomSeedFromPersistingState = nodeStateBuffer.currentRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
+    logger.logId = nodeStateBuffer.lastLogId;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
@@ -3656,7 +3472,7 @@ static void tickProcessor(void*)
             {
                 if (system.tick > latestProcessedTick)
                 {
-                    // LOGIC: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
+                    // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
                     // thus, pausing here and doing the state persisting is the best choice.
                     if (requestPersistingNodeState)
                     {
@@ -3828,7 +3644,7 @@ static void tickProcessor(void*)
                     {
                         // Empty tick
                         ts.tickData.acquireLock();
-                        ts.tickData[nextTickIndex].epoch = 0;
+                        ts.tickData[nextTickIndex].epoch = INVALIDATED_TICK_DATA; // invalidate it and also tell request processor to not update it again
                         ts.tickData.releaseLock();
                         nextTickData.epoch = 0;
                         tickDataSuits = true;
@@ -3953,14 +3769,10 @@ static void tickProcessor(void*)
                                         {
                                             if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
                                             {
-                                                unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
-                                                const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
-
-                                                pendingTransaction = (Transaction*)transactionBuffer;
                                                 ts.tickTransactions.acquireLock();
                                                 if (!tsPendingTransactionOffsets[j])
                                                 {
+                                                    const unsigned int transactionSize = pendingTransaction->totalSize();
                                                     if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                                     {
                                                         tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
@@ -3972,6 +3784,8 @@ static void tickProcessor(void*)
 
                                                 numberOfKnownNextTickTransactions++;
                                                 unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+
+                                                break;
                                             }
                                         }
                                     }
@@ -3994,14 +3808,10 @@ static void tickProcessor(void*)
                                         {
                                             if (&entityPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
                                             {
-                                                unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
-                                                const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                bs->CopyMem(transactionBuffer, (void*)pendingTransaction, transactionSize);
-
-                                                pendingTransaction = (Transaction*)transactionBuffer;
                                                 ts.tickTransactions.acquireLock();
                                                 if (!tsPendingTransactionOffsets[j])
                                                 {
+                                                    const unsigned int transactionSize = pendingTransaction->totalSize();
                                                     if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                                     {
                                                         tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
@@ -4013,6 +3823,8 @@ static void tickProcessor(void*)
 
                                                 numberOfKnownNextTickTransactions++;
                                                 unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+
+                                                break;
                                             }
                                         }
                                     }
@@ -5186,10 +4998,6 @@ static void logInfo()
     appendNumber(message, spectrumReorgTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms.");
     logToConsole(message);
-
-    setText(message, L"Entity balance dust threshold: ");
-    appendNumber(message, (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf, TRUE);
-    logToConsole(message);
 }
 
 static void logHealthStatus()
@@ -5464,6 +5272,17 @@ static void processKeyPresses()
 
             logHealthStatus();
 
+            setText(message, L"Entity balance dust threshold: ");
+            appendNumber(message, (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf, TRUE);
+            logToConsole(message);
+
+#if TICK_STORAGE_AUTOSAVE_MODE
+            setText(message, L"Auto-save enabled in AUX mode: every ");
+            appendNumber(message, TICK_STORAGE_AUTOSAVE_TICK_PERIOD, FALSE);
+            appendText(message, L" ticks, next at tick ");
+            appendNumber(message, nextPersistingNodeStateTick, FALSE);
+            logToConsole(message);
+#endif
 
             setText(message, L"Average K12 duration for  ");
 #if defined (__AVX512F__) && !GENERIC_K12
@@ -5471,7 +5290,7 @@ static void processKeyPresses()
 #else
             appendText(message, L"Generic implementation is ");
 #endif
-            appendNumber(message, K12MeasurementsSum/ K12GlobalIndex, TRUE);
+            appendNumber(message, QPI::div(K12MeasurementsSum, K12MeasurementsCount), TRUE);
             appendText(message, L" ticks.");
             logToConsole(message);
         }
@@ -5612,11 +5431,18 @@ static void processKeyPresses()
         */
         case 0x16:
         {
-            mainAuxStatus = (mainAuxStatus + 1) & 3;
-            setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
-            appendText(message, L"&");
-            appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
-            logToConsole(message);
+            if (requestPersistingNodeState == 1 || persistingNodeStateTickProcWaiting == 1)
+            {
+                logToConsole(L"Unable to switch mode because node is saving states.");
+            }
+            else
+            {
+                mainAuxStatus = (mainAuxStatus + 1) & 3;
+                setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+                appendText(message, L"&");
+                appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+                logToConsole(message);
+            }
         }
         break;
 
@@ -5805,9 +5631,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
 
+#if TICK_STORAGE_AUTOSAVE_MODE
+            // Use random tick offset to reduce risk of several nodes doing auto-save in parallel (which can lead to bad topology and misalignment)
+            nextPersistingNodeStateTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
+#endif
+
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
-            unsigned int lastSavedTick = system.tick;
             logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
@@ -6075,25 +5905,54 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
                 processKeyPresses();
+
 #if TICK_STORAGE_AUTOSAVE_MODE
-                if ((TICK_STORAGE_AUTOSAVE_MODE == 1 && !(mainAuxStatus & 1)) // autosave in aux mode
-                    || TICK_STORAGE_AUTOSAVE_MODE == 2) // autosave in any mode
+                bool nextAutoSaveTickUpdated = false;
+                if (mainAuxStatus & 1)
                 {
+                    // MAIN mode: update auto-save schedule (only run save when switched to AUX mode)
+                    while (system.tick >= nextPersistingNodeStateTick)
+                    {
+                        nextPersistingNodeStateTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
+                        nextAutoSaveTickUpdated = true;
+                    }
+                }
+                else
+                {
+                    // AUX mode
                     if (system.tick > ts.getPreloadTick()) // check the last saved tick
                     {
-                        unsigned int deltaTick = system.tick - lastSavedTick;
-                        if (deltaTick >= TICK_STORAGE_AUTOSAVE_TICK_PERIOD) {
+                        // Start auto save if nextAutoSaveTick == system.tick (or if the main loop has missed nextAutoSaveTick)
+                        if (system.tick >= nextPersistingNodeStateTick)
+                        {
                             requestPersistingNodeState = 1;
-                            lastSavedTick = system.tick;
+                            while (system.tick >= nextPersistingNodeStateTick)
+                            {
+                                nextPersistingNodeStateTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
+                            }
+                            nextAutoSaveTickUpdated = true;
                         }
                     }
                 }
                 if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 1)
                 {
+                    // Saving node state takes a lot of time -> Close peer connections before to signal that
+                    // the peers should connect to another node.
+                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+                    {
+                        closePeer(&peers[i]);
+                    }
+
                     logToConsole(L"Saving node state...");
                     saveAllNodeStates();
                     requestPersistingNodeState = 0;
                     logToConsole(L"Complete saving all node states");
+                }
+                if (nextAutoSaveTickUpdated)
+                {
+                    setText(message, L"Auto-save in AUX mode scheduled for tick ");
+                    appendNumber(message, nextPersistingNodeStateTick, FALSE);
+                    logToConsole(message);
                 }
 #endif
 

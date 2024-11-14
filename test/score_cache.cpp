@@ -77,8 +77,8 @@ unsigned int pseudoRandomCacheTest(ScoreCache<cacheCapacity> & cache, unsigned l
         unsigned int idx = cache.getCacheIndex(publicKey, miningSeed, nonce);
         int fetchedScore = cache.tryFetching(publicKey, miningSeed, nonce, idx);
 
-        EXPECT_TRUE(fetchedScore == cache.SCORE_CACHE_COLLISION || fetchedScore > cache.MIN_VALID_SCORE);
-        if (fetchedScore > cache.MIN_VALID_SCORE)
+        EXPECT_TRUE(fetchedScore == cache.SCORE_CACHE_COLLISION || fetchedScore >= cache.MIN_VALID_SCORE);
+        if (fetchedScore >= cache.MIN_VALID_SCORE)
         {
             EXPECT_EQ(fetchedScore, expectedScore);
         }
