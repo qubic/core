@@ -314,7 +314,7 @@ public:
         // check return code
         if (retCode != QEARN_OVERFLOW_USER)
         {
-            if (amountLock < QEARN_MINIMUM_LOCKING_AMOUNT)
+            if (amountLock < QEARN_MINIMUM_LOCKING_AMOUNT || system.epoch < QEARN_INITIAL_EPOCH)
             {
                 EXPECT_EQ(retCode, QEARN_INVALID_INPUT_AMOUNT);
             }
@@ -445,12 +445,10 @@ public:
         uint16 payoutEpoch = system.epoch - 52;
         EXPECT_EQ(getStateOfRound(QEARN_INITIAL_EPOCH - 1), 2);
         EXPECT_EQ(getStateOfRound(payoutEpoch - 1), 2);
-        if (payoutEpoch >= QEARN_INITIAL_EPOCH)
-            EXPECT_EQ(getStateOfRound(payoutEpoch), 1);
-        if (system.epoch > QEARN_INITIAL_EPOCH)
-            EXPECT_EQ(getStateOfRound(system.epoch - 1), 1);
-        EXPECT_EQ(getStateOfRound(system.epoch), 1);
-        EXPECT_EQ(getStateOfRound(system.epoch + 1), 0);
+        EXPECT_EQ(getStateOfRound(payoutEpoch), (payoutEpoch >= QEARN_INITIAL_EPOCH) ? 1 : 2);
+        EXPECT_EQ(getStateOfRound(system.epoch - 1), (system.epoch - 1 >= QEARN_INITIAL_EPOCH) ? 1 : 2);
+        EXPECT_EQ(getStateOfRound(system.epoch), (system.epoch >= QEARN_INITIAL_EPOCH) ? 1 : 2);
+        EXPECT_EQ(getStateOfRound(system.epoch + 1), (system.epoch + 1 >= QEARN_INITIAL_EPOCH) ? 0 : 2);
 
         // test getUserLockStatus()
         {
@@ -591,7 +589,21 @@ TEST(TestContractQearn, ErrorChecking)
     ContractTestingQearn qearn;
     id user(1, 2, 3, 4);
 
-    system.epoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch;
+    system.epoch = QEARN_INITIAL_EPOCH - 1;
+
+    qearn.beginEpoch();
+
+    // special test case: trying to lock/unlock before QEARN_INITIAL_EPOCH must fail
+    {
+        id user2(98765, 43, 2, 1);
+        increaseEnergy(user2, QEARN_MAX_LOCK_AMOUNT);
+        EXPECT_FALSE(qearn.lockAndCheck(user2, QEARN_MAX_LOCK_AMOUNT));
+        EXPECT_EQ(qearn.unlock(user2, QEARN_MAX_LOCK_AMOUNT, system.epoch), QEARN_INVALID_INPUT_LOCKED_EPOCH);
+    }
+
+    qearn.endEpoch();
+
+    system.epoch = QEARN_INITIAL_EPOCH;
 
     qearn.beginEpoch();
 
@@ -599,7 +611,7 @@ TEST(TestContractQearn, ErrorChecking)
     {
         // 1. non-existing entities = invalid ID)
         EXPECT_FALSE(qearn.lockAndCheck(id::zero(), QEARN_MAX_LOCK_AMOUNT, false));
-        EXPECT_FALSE(qearn.lockAndCheck(id(1, 2, 3, 4), QEARN_MAX_LOCK_AMOUNT, false));
+        EXPECT_FALSE(qearn.lockAndCheck(user, QEARN_MAX_LOCK_AMOUNT, false));
 
         // 2. valid ID but negative amount / insufficient balance
         increaseEnergy(user, 1);
@@ -650,7 +662,7 @@ TEST(TestContractQearn, ErrorChecking)
     EXPECT_EQ(qearn.unlock(user, QEARN_MINIMUM_LOCKING_AMOUNT, system.epoch), QEARN_EMPTY_LOCKED);
 
     // unlock with wrong epoch
-    EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT, 1), QEARN_EMPTY_LOCKED);
+    EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT, 1), QEARN_INVALID_INPUT_LOCKED_EPOCH);
     EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT, QEARN_MAX_EPOCHS + 1), QEARN_INVALID_INPUT_LOCKED_EPOCH);
 
     // finally, test success case

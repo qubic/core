@@ -337,7 +337,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(lock)
     
-        if(qpi.invocationReward() < QEARN_MINIMUM_LOCKING_AMOUNT)
+        if (qpi.invocationReward() < QEARN_MINIMUM_LOCKING_AMOUNT || qpi.epoch() < QEARN_INITIAL_EPOCH)
         {
             output.returnCode = QEARN_INVALID_INPUT_AMOUNT;         // if the amount of locking is less than 10M, it should be failed to lock.
             
@@ -450,7 +450,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(unlock)
 
-        if(input.lockedEpoch > QEARN_MAX_EPOCHS) 
+        if (input.lockedEpoch > QEARN_MAX_EPOCHS || input.lockedEpoch < QEARN_INITIAL_EPOCH)
         {
 
             output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
