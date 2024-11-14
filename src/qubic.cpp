@@ -2201,6 +2201,26 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
+                case CustomMiningTasksTransactionPrefix::transactionType():
+                {
+                    if (transaction->amount >= CustomMiningTasksTransactionPrefix::minAmount()
+                        && transaction->inputSize >= CustomMiningTasksTransactionPrefix::minInputSize())
+                    {
+                        // Do nothing
+                    }
+                }
+                break;
+
+                case CustomMiningSolutionTransactionPrefix::transactionType():
+                {
+                    if (transaction->amount >= CustomMiningSolutionTransactionPrefix::minAmount()
+                        && transaction->inputSize >= CustomMiningSolutionTransactionPrefix::minInputSize())
+                    {
+                        // Do nothing
+                    }
+                }
+                break;
+
                 case OracleReplyCommitTransaction::transactionType():
                 {
                     if (computorIndex(transaction->sourcePublicKey) >= 0
