@@ -1270,6 +1270,13 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                     &requestMiningScoreRanking);
             }
             break;
+
+            case SPECIAL_COMMAND_FORCE_SWITCH_EPOCH:
+            {
+                forceSwitchEpoch = true;
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
             }
         }
     }

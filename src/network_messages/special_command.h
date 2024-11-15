@@ -74,4 +74,6 @@ struct SpecialCommandGetMiningScoreRanking
     ScoreRankingEntry rankings[maxNumberOfMiners];
 };
 
+#define SPECIAL_COMMAND_FORCE_SWITCH_EPOCH 15ULL // F7
+
 #pragma pack(pop)
