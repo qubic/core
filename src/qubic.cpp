@@ -3495,54 +3495,114 @@ static void tickProcessor(void*)
 
             updateFutureTickCount();
 
+            if (system.tick > latestProcessedTick)
             {
-                if (system.tick > latestProcessedTick)
+                // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
+                // thus, pausing here and doing the state persisting is the best choice.
+                if (requestPersistingNodeState)
                 {
-                    // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
-                    // thus, pausing here and doing the state persisting is the best choice.
-                    if (requestPersistingNodeState)
-                    {
-                        persistingNodeStateTickProcWaiting = 1;
-                        while (requestPersistingNodeState) _mm_pause();
-                        persistingNodeStateTickProcWaiting = 0;
-                    }
-                    processTick(processorNumber);
-                    latestProcessedTick = system.tick;
+                    persistingNodeStateTickProcWaiting = 1;
+                    while (requestPersistingNodeState) _mm_pause();
+                    persistingNodeStateTickProcWaiting = 0;
                 }
+                processTick(processorNumber);
+                latestProcessedTick = system.tick;
+            }
 
-                if (gFutureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
+            if (gFutureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
+            {
+                const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
+                unsigned int numberOfEmptyNextTickTransactionDigest = 0;
+                unsigned int numberOfUniqueNextTickTransactionDigests = 0;
+                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
-                    const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
-                    unsigned int numberOfEmptyNextTickTransactionDigest = 0;
-                    unsigned int numberOfUniqueNextTickTransactionDigests = 0;
-                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                    if (tsCompTicks[i].epoch == system.epoch)
                     {
-                        if (tsCompTicks[i].epoch == system.epoch)
+                        unsigned int j;
+                        for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
                         {
-                            unsigned int j;
-                            for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
+                            if (tsCompTicks[i].transactionDigest == uniqueNextTickTransactionDigests[j])
                             {
-                                if (tsCompTicks[i].transactionDigest == uniqueNextTickTransactionDigests[j])
-                                {
-                                    break;
-                                }
-                            }
-                            if (j == numberOfUniqueNextTickTransactionDigests)
-                            {
-                                uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].transactionDigest;
-                                uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
-                            }
-                            else
-                            {
-                                uniqueNextTickTransactionDigestCounters[j]++;
-                            }
-
-                            if (isZero(tsCompTicks[i].transactionDigest))
-                            {
-                                numberOfEmptyNextTickTransactionDigest++;
+                                break;
                             }
                         }
+                        if (j == numberOfUniqueNextTickTransactionDigests)
+                        {
+                            uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].transactionDigest;
+                            uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
+                        }
+                        else
+                        {
+                            uniqueNextTickTransactionDigestCounters[j]++;
+                        }
+
+                        if (isZero(tsCompTicks[i].transactionDigest))
+                        {
+                            numberOfEmptyNextTickTransactionDigest++;
+                        }
                     }
+                }
+                unsigned int mostPopularUniqueNextTickTransactionDigestIndex = 0, totalUniqueNextTickTransactionDigestCounter = uniqueNextTickTransactionDigestCounters[0];
+                for (unsigned int i = 1; i < numberOfUniqueNextTickTransactionDigests; i++)
+                {
+                    if (uniqueNextTickTransactionDigestCounters[i] > uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex])
+                    {
+                        mostPopularUniqueNextTickTransactionDigestIndex = i;
+                    }
+                    totalUniqueNextTickTransactionDigestCounter += uniqueNextTickTransactionDigestCounters[i];
+                }
+                if (uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] >= QUORUM)
+                {
+                    targetNextTickDataDigest = uniqueNextTickTransactionDigests[mostPopularUniqueNextTickTransactionDigestIndex];
+                    targetNextTickDataDigestIsKnown = true;
+                }
+                else
+                {
+                    if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
+                        || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
+                    {
+                        // Create empty tick
+                        targetNextTickDataDigest = m256i::zero();
+                        targetNextTickDataDigestIsKnown = true;
+                    }
+                }
+            }
+
+            if (!targetNextTickDataDigestIsKnown)
+            {
+                const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
+                unsigned int numberOfEmptyNextTickTransactionDigest = 0;
+                unsigned int numberOfUniqueNextTickTransactionDigests = 0;
+                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                {
+                    if (tsCompTicks[i].epoch == system.epoch)
+                    {
+                        unsigned int j;
+                        for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
+                        {
+                            if (tsCompTicks[i].expectedNextTickTransactionDigest == uniqueNextTickTransactionDigests[j])
+                            {
+                                break;
+                            }
+                        }
+                        if (j == numberOfUniqueNextTickTransactionDigests)
+                        {
+                            uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].expectedNextTickTransactionDigest;
+                            uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
+                        }
+                        else
+                        {
+                            uniqueNextTickTransactionDigestCounters[j]++;
+                        }
+
+                        if (isZero(tsCompTicks[i].expectedNextTickTransactionDigest))
+                        {
+                            numberOfEmptyNextTickTransactionDigest++;
+                        }
+                    }
+                }
+                if (numberOfUniqueNextTickTransactionDigests)
+                {
                     unsigned int mostPopularUniqueNextTickTransactionDigestIndex = 0, totalUniqueNextTickTransactionDigestCounter = uniqueNextTickTransactionDigestCounters[0];
                     for (unsigned int i = 1; i < numberOfUniqueNextTickTransactionDigests; i++)
                     {
@@ -3562,692 +3622,630 @@ static void tickProcessor(void*)
                         if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
                             || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
                         {
-                            // Create empty tick
                             targetNextTickDataDigest = m256i::zero();
                             targetNextTickDataDigestIsKnown = true;
                         }
                     }
                 }
+            }
 
-                if (!targetNextTickDataDigestIsKnown)
+            ts.tickData.acquireLock();
+            bs->CopyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
+            ts.tickData.releaseLock();
+            if (nextTickData.epoch == system.epoch)
+            {
+                m256i timelockPreimage[3];
+                timelockPreimage[0] = etalonTick.prevSpectrumDigest;
+                timelockPreimage[1] = etalonTick.prevUniverseDigest;
+                timelockPreimage[2] = etalonTick.prevComputerDigest;
+                m256i timelock;
+                KangarooTwelve(timelockPreimage, sizeof(timelockPreimage), &timelock, sizeof(timelock));
+                if (nextTickData.timelock != timelock)
                 {
-                    const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
-                    unsigned int numberOfEmptyNextTickTransactionDigest = 0;
-                    unsigned int numberOfUniqueNextTickTransactionDigests = 0;
-                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                    {
-                        if (tsCompTicks[i].epoch == system.epoch)
-                        {
-                            unsigned int j;
-                            for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
-                            {
-                                if (tsCompTicks[i].expectedNextTickTransactionDigest == uniqueNextTickTransactionDigests[j])
-                                {
-                                    break;
-                                }
-                            }
-                            if (j == numberOfUniqueNextTickTransactionDigests)
-                            {
-                                uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].expectedNextTickTransactionDigest;
-                                uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
-                            }
-                            else
-                            {
-                                uniqueNextTickTransactionDigestCounters[j]++;
-                            }
-
-                            if (isZero(tsCompTicks[i].expectedNextTickTransactionDigest))
-                            {
-                                numberOfEmptyNextTickTransactionDigest++;
-                            }
-                        }
-                    }
-                    if (numberOfUniqueNextTickTransactionDigests)
-                    {
-                        unsigned int mostPopularUniqueNextTickTransactionDigestIndex = 0, totalUniqueNextTickTransactionDigestCounter = uniqueNextTickTransactionDigestCounters[0];
-                        for (unsigned int i = 1; i < numberOfUniqueNextTickTransactionDigests; i++)
-                        {
-                            if (uniqueNextTickTransactionDigestCounters[i] > uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex])
-                            {
-                                mostPopularUniqueNextTickTransactionDigestIndex = i;
-                            }
-                            totalUniqueNextTickTransactionDigestCounter += uniqueNextTickTransactionDigestCounters[i];
-                        }
-                        if (uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] >= QUORUM)
-                        {
-                            targetNextTickDataDigest = uniqueNextTickTransactionDigests[mostPopularUniqueNextTickTransactionDigestIndex];
-                            targetNextTickDataDigestIsKnown = true;
-                        }
-                        else
-                        {
-                            if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
-                                || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
-                            {
-                                targetNextTickDataDigest = m256i::zero();
-                                targetNextTickDataDigestIsKnown = true;
-                            }
-                        }
-                    }
+                    ts.tickData.acquireLock();
+                    ts.tickData[nextTickIndex].epoch = 0;
+                    ts.tickData.releaseLock();
+                    nextTickData.epoch = 0;
                 }
+            }
 
-                ts.tickData.acquireLock();
-                bs->CopyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
-                ts.tickData.releaseLock();
-                if (nextTickData.epoch == system.epoch)
+            bool tickDataSuits;
+            if (!targetNextTickDataDigestIsKnown)
+            {
+                if (nextTickData.epoch != system.epoch
+                    && gFutureTickTotalNumberOfComputors <= NUMBER_OF_COMPUTORS - QUORUM
+                    && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] < TARGET_TICK_DURATION * frequency / 1000)
                 {
-                    m256i timelockPreimage[3];
-                    timelockPreimage[0] = etalonTick.prevSpectrumDigest;
-                    timelockPreimage[1] = etalonTick.prevUniverseDigest;
-                    timelockPreimage[2] = etalonTick.prevComputerDigest;
-                    m256i timelock;
-                    KangarooTwelve(timelockPreimage, sizeof(timelockPreimage), &timelock, sizeof(timelock));
-                    if (nextTickData.timelock != timelock)
-                    {
-                        ts.tickData.acquireLock();
-                        ts.tickData[nextTickIndex].epoch = 0;
-                        ts.tickData.releaseLock();
-                        nextTickData.epoch = 0;
-                    }
+                    tickDataSuits = false;
                 }
-
-                bool tickDataSuits;
-                if (!targetNextTickDataDigestIsKnown)
+                else
                 {
-                    if (nextTickData.epoch != system.epoch
-                        && gFutureTickTotalNumberOfComputors <= NUMBER_OF_COMPUTORS - QUORUM
-                        && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] < TARGET_TICK_DURATION * frequency / 1000)
+                    tickDataSuits = true;
+                }
+            }
+            else
+            {
+                if (isZero(targetNextTickDataDigest))
+                {
+                    // Empty tick
+                    ts.tickData.acquireLock();
+                    ts.tickData[nextTickIndex].epoch = INVALIDATED_TICK_DATA; // invalidate it and also tell request processor to not update it again
+                    ts.tickData.releaseLock();
+                    nextTickData.epoch = 0;
+                    tickDataSuits = true;
+                }
+                else
+                {
+                    // Non-empty tick
+                    if (nextTickData.epoch != system.epoch)
                     {
                         tickDataSuits = false;
                     }
                     else
                     {
-                        tickDataSuits = true;
+                        KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
+                        tickDataSuits = (etalonTick.expectedNextTickTransactionDigest == targetNextTickDataDigest);
                     }
+                }
+            }
+
+            // operator opt to force this node to switch to new epoch
+            // this can fix the problem of weak nodes getting stuck and can't automatically switch to new epoch
+            // due to lack of TRANSACTION data. Below is the explanation:
+            // Assume the network is on transition state, usually we would have 2 set, set A: nodes that successfully
+            // switched the epoch. And set B: nodes that stuck at the last tick of epoch, cannot switch to new epoch.
+            // Let say set A is at (epoch E, tick N) and set B is at (epoch E-1, tick N-1)
+            // Problem with current logic & implementation: set B would never switch to new epoch if operators not pressing F7.
+            // (1) Because of the protocol design, when both set A & B are at epoch E-1, they receive tickData for tickN that is still marked at epoch E-1 (ie: tickData[N].epoch == E-1)
+            // (2) All transactions on tickData[N] are also marked as epoch E-1 (ie: tickData[N].transaction[i].epoch == E-1)
+            // (3) When set A successfully switch to epoch E, they clear that tick data of tick N and all relevant transactions, because they are invalid (wrong epoch number). Tick N and tick N+1 will be empty on new epoch.
+            // (4) set B either can't get tickData of tick N or can't get all transactions of tick N, thus they will get stuck
+            // (*) a node needs to know data and transactions of next tick to continue processing
+            // From (1) (2) (3) (4) => operators of "stuck" nodes must press F7 on this case.
+            // In other words, here is the explanation in timeline:
+            //  - at (epoch E-1, tick N-2), tick leader issues tick data for tick N that's still on epoch E-1
+            //  - at (epoch E-1, tick N-1), network decides to switch epoch. Thus, tickData for (epoch E-1, tick N) is invalid, because tick N is on epoch E.
+            //  - Fast (internet) nodes that get all the data before tick N-1 can switch the epoch, then invalidate and clear tick N data
+            //  - Slow (internet) nodes failed to get the data. Thus, they get stuck and constantly querying other nodes around.
+            // [TODO] possible solutions:
+            // Since we know the first and second ticks of new epoch are always empty, we can pre-check tickData here if it reaches the transition point,
+            // then we can ignore the checking of next tick data/txs and go directly to epoch transition procedure.
+            if (forceSwitchEpoch)
+            {
+                nextTickData.epoch = 0;
+                setMem(nextTickData.transactionDigests, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
+                // first and second tick of an epoch are always empty tick
+                targetNextTickDataDigest = m256i::zero();
+                targetNextTickDataDigestIsKnown = true;
+                tickDataSuits = true;
+            }
+
+            if (!tickDataSuits)
+            {
+                unsigned int tickTotalNumberOfComputors = 0;
+                const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
+                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                {
+                    ts.ticks.acquireLock(i);
+
+                    if (tsCompTicks[i].epoch == system.epoch)
+                    {
+                        tickTotalNumberOfComputors++;
+                    }
+
+                    ts.ticks.releaseLock(i);
+                }
+                ::tickNumberOfComputors = 0;
+                ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
+            }
+            else
+            {
+                numberOfNextTickTransactions = 0;
+                numberOfKnownNextTickTransactions = 0;
+
+                if (nextTickData.epoch == system.epoch)
+                {
+                    nextTickTransactionsSemaphore = 1;
+                    bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0);
+                    unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
+                    bs->SetMem(unknownTransactions, sizeof(unknownTransactions), 0);
+                    const auto* tsNextTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(nextTickIndex);
+                    for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                    {
+                        if (!isZero(nextTickData.transactionDigests[i]))
+                        {
+                            numberOfNextTickTransactions++;
+
+                            ts.tickTransactions.acquireLock();
+
+                            if (tsNextTickTransactionOffsets[i])
+                            {
+                                const Transaction* transaction = ts.tickTransactions(tsNextTickTransactionOffsets[i]);
+                                ASSERT(transaction->checkValidity());
+                                ASSERT(transaction->tick == nextTick);
+                                unsigned char digest[32];
+                                KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
+                                if (digest == nextTickData.transactionDigests[i])
+                                {
+                                    numberOfKnownNextTickTransactions++;
+                                }
+                                else
+                                {
+                                    unknownTransactions[i >> 6] |= (1ULL << (i & 63));
+                                }
+                            }
+                            ts.tickTransactions.releaseLock();
+                        }
+                    }
+                    if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
+                    {
+                        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
+                        {
+                            Transaction* pendingTransaction = (Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE];
+                            if (pendingTransaction->tick == nextTick)
+                            {
+                                ACQUIRE(computorPendingTransactionsLock);
+
+                                ASSERT(pendingTransaction->checkValidity());
+                                auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
+                                for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
+                                {
+                                    if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
+                                    {
+                                        if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
+                                        {
+                                            ts.tickTransactions.acquireLock();
+                                            if (!tsPendingTransactionOffsets[j])
+                                            {
+                                                const unsigned int transactionSize = pendingTransaction->totalSize();
+                                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                                {
+                                                    tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
+                                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                                    ts.nextTickTransactionOffset += transactionSize;
+                                                }
+                                            }
+                                            ts.tickTransactions.releaseLock();
+
+                                            numberOfKnownNextTickTransactions++;
+                                            unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                RELEASE(computorPendingTransactionsLock);
+                            }
+                        }
+                        for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+                        {
+                            Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
+                            if (pendingTransaction->tick == nextTick)
+                            {
+                                ACQUIRE(entityPendingTransactionsLock);
+
+                                ASSERT(pendingTransaction->checkValidity());
+                                auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
+                                for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
+                                {
+                                    if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
+                                    {
+                                        if (&entityPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
+                                        {
+                                            ts.tickTransactions.acquireLock();
+                                            if (!tsPendingTransactionOffsets[j])
+                                            {
+                                                const unsigned int transactionSize = pendingTransaction->totalSize();
+                                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                                {
+                                                    tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
+                                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                                    ts.nextTickTransactionOffset += transactionSize;
+                                                }
+                                            }
+                                            ts.tickTransactions.releaseLock();
+
+                                            numberOfKnownNextTickTransactions++;
+                                            unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                RELEASE(entityPendingTransactionsLock);
+                            }
+                        }
+
+                        for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                        {
+                            if (!(unknownTransactions[i >> 6] & (1ULL << (i & 63))))
+                            {
+                                requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] |= (1 << (i & 7));
+                            }
+                        }
+                    }
+                    nextTickTransactionsSemaphore = 0;
+                }
+
+                if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
+                {
+                    if (!targetNextTickDataDigestIsKnown
+                        && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * 5 * frequency / 1000)
+                    {
+                        ts.tickData.acquireLock();
+                        ts.tickData[nextTickIndex].epoch = 0;
+                        ts.tickData.releaseLock();
+                        nextTickData.epoch = 0;
+
+                        numberOfNextTickTransactions = 0;
+                        numberOfKnownNextTickTransactions = 0;
+                    }
+                }
+
+                if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
+                {
+                    requestedTickTransactions.requestedTickTransactions.tick = nextTick;
                 }
                 else
                 {
-                    if (isZero(targetNextTickDataDigest))
+                    requestedTickTransactions.requestedTickTransactions.tick = 0;
+
+                    if (ts.tickData[currentTickIndex].epoch == system.epoch)
                     {
-                        // Empty tick
-                        ts.tickData.acquireLock();
-                        ts.tickData[nextTickIndex].epoch = INVALIDATED_TICK_DATA; // invalidate it and also tell request processor to not update it again
-                        ts.tickData.releaseLock();
-                        nextTickData.epoch = 0;
-                        tickDataSuits = true;
+                        KangarooTwelve(&ts.tickData[currentTickIndex], sizeof(TickData), &etalonTick.transactionDigest, 32);
                     }
                     else
                     {
-                        // Non-empty tick
-                        if (nextTickData.epoch != system.epoch)
-                        {
-                            tickDataSuits = false;
-                        }
-                        else
+                        etalonTick.transactionDigest = m256i::zero();
+                    }
+
+                    if (nextTickData.epoch == system.epoch)
+                    {
+                        if (!targetNextTickDataDigestIsKnown)
                         {
                             KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
-                            tickDataSuits = (etalonTick.expectedNextTickTransactionDigest == targetNextTickDataDigest);
                         }
                     }
-                }
+                    else
+                    {
+                        etalonTick.expectedNextTickTransactionDigest = m256i::zero();
+                    }
 
-                // operator opt to force this node to switch to new epoch
-                // this can fix the problem of weak nodes getting stuck and can't automatically switch to new epoch
-                // due to lack of TRANSACTION data. Below is the explanation:
-                // Assume the network is on transition state, usually we would have 2 set, set A: nodes that successfully
-                // switched the epoch. And set B: nodes that stuck at the last tick of epoch, cannot switch to new epoch.
-                // Let say set A is at (epoch E, tick N) and set B is at (epoch E-1, tick N-1)
-                // Problem with current logic & implementation: set B would never switch to new epoch if operators not pressing F7.
-                // (1) Because of the protocol design, when both set A & B are at epoch E-1, they receive tickData for tickN that is still marked at epoch E-1 (ie: tickData[N].epoch == E-1)
-                // (2) All transactions on tickData[N] are also marked as epoch E-1 (ie: tickData[N].transaction[i].epoch == E-1)
-                // (3) When set A successfully switch to epoch E, they clear that tick data of tick N and all relevant transactions, because they are invalid (wrong epoch number). Tick N and tick N+1 will be empty on new epoch.
-                // (4) set B either can't get tickData of tick N or can't get all transactions of tick N, thus they will get stuck
-                // (*) a node needs to know data and transactions of next tick to continue processing
-                // From (1) (2) (3) (4) => operators of "stuck" nodes must press F7 on this case.
-                // In other words, here is the explanation in timeline:
-                //  - at (epoch E-1, tick N-2), tick leader issues tick data for tick N that's still on epoch E-1
-                //  - at (epoch E-1, tick N-1), network decides to switch epoch. Thus, tickData for (epoch E-1, tick N) is invalid, because tick N is on epoch E.
-                //  - Fast (internet) nodes that get all the data before tick N-1 can switch the epoch, then invalidate and clear tick N data
-                //  - Slow (internet) nodes failed to get the data. Thus, they get stuck and constantly querying other nodes around.
-                // [TODO] possible solutions:
-                // Since we know the first and second ticks of new epoch are always empty, we can pre-check tickData here if it reaches the transition point,
-                // then we can ignore the checking of next tick data/txs and go directly to epoch transition procedure.
-                if (forceSwitchEpoch)
-                {
-                    nextTickData.epoch = 0;
-                    setMem(nextTickData.transactionDigests, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
-                    // first and second tick of an epoch are always empty tick
-                    targetNextTickDataDigest = m256i::zero();
-                    targetNextTickDataDigestIsKnown = true;
-                    tickDataSuits = true;
-                }
+                    if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
+                    {
+                        if (mainAuxStatus & 1)
+                        {
+                            BroadcastTick broadcastTick;
+                            bs->CopyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
+                            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+                            {
+                                broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
+                                broadcastTick.tick.epoch = system.epoch;
+                                m256i saltedData[2];
+                                saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
+                                saltedData[1].m256i_u64[0] = resourceTestingDigest;
+                                KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &broadcastTick.tick.saltedResourceTestingDigest, sizeof(broadcastTick.tick.saltedResourceTestingDigest));
+                                saltedData[1] = etalonTick.saltedSpectrumDigest;
+                                KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedSpectrumDigest);
+                                saltedData[1] = etalonTick.saltedUniverseDigest;
+                                KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedUniverseDigest);
+                                saltedData[1] = etalonTick.saltedComputerDigest;
+                                KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedComputerDigest);
 
-                if (!tickDataSuits)
-                {
-                    unsigned int tickTotalNumberOfComputors = 0;
+                                unsigned char digest[32];
+                                KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
+                                broadcastTick.tick.computorIndex ^= BroadcastTick::type;
+                                sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
+
+                                enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);
+                                // NOTE: here we don't copy these votes to memory, instead we wait other nodes echoing these votes back because:
+                                // - if own votes don't get echoed back, that indicates this node has internet/topo issue, and need to reissue vote (F9)
+                                // - all votes need to be processed in a single place of code (for further handling)
+                                // - all votes are treated equally (own votes and their votes)
+                            }
+                        }
+
+                        if (system.tick != system.initialTick)
+                        {
+                            system.latestCreatedTick = system.tick;
+                        }
+                    }
+
                     const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
+
+                    unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0;
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
                         ts.ticks.acquireLock(i);
 
-                        if (tsCompTicks[i].epoch == system.epoch)
+                        const Tick* tick = &tsCompTicks[i];
+                        if (tick->epoch == system.epoch)
                         {
                             tickTotalNumberOfComputors++;
+
+                            if (*((unsigned long long*)&tick->millisecond) == *((unsigned long long*)&etalonTick.millisecond)
+                                && tick->prevSpectrumDigest == etalonTick.prevSpectrumDigest
+                                && tick->prevUniverseDigest == etalonTick.prevUniverseDigest
+                                && tick->prevComputerDigest == etalonTick.prevComputerDigest
+                                && tick->transactionDigest == etalonTick.transactionDigest)
+                            {
+                                m256i saltedData[2];
+                                m256i saltedDigest;
+                                saltedData[0] = broadcastedComputors.computors.publicKeys[tick->computorIndex];
+                                saltedData[1].m256i_u64[0] = resourceTestingDigest;
+                                KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &saltedDigest, sizeof(resourceTestingDigest));
+                                if (tick->saltedResourceTestingDigest == saltedDigest.m256i_u64[0])
+                                {
+                                    saltedData[1] = etalonTick.saltedSpectrumDigest;
+                                    KangarooTwelve64To32(saltedData, &saltedDigest);
+                                    if (tick->saltedSpectrumDigest == saltedDigest)
+                                    {
+                                        saltedData[1] = etalonTick.saltedUniverseDigest;
+                                        KangarooTwelve64To32(saltedData, &saltedDigest);
+                                        if (tick->saltedUniverseDigest == saltedDigest)
+                                        {
+                                            saltedData[1] = etalonTick.saltedComputerDigest;
+                                            KangarooTwelve64To32(saltedData, &saltedDigest);
+                                            if (tick->saltedComputerDigest == saltedDigest)
+                                            {
+                                                tickNumberOfComputors++;
+                                                // to avoid submitting invalid votes (eg: all zeroes with valid signature)
+                                                // only count votes that matched etalonTick
+                                                voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         ts.ticks.releaseLock(i);
                     }
-                    ::tickNumberOfComputors = 0;
+                    ::tickNumberOfComputors = tickNumberOfComputors;
                     ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
-                }
-                else
-                {
-                    numberOfNextTickTransactions = 0;
-                    numberOfKnownNextTickTransactions = 0;
 
-                    if (nextTickData.epoch == system.epoch)
+                    if (tickNumberOfComputors >= QUORUM)
                     {
-                        nextTickTransactionsSemaphore = 1;
-                        bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0);
-                        unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
-                        bs->SetMem(unknownTransactions, sizeof(unknownTransactions), 0);
-                        const auto* tsNextTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(nextTickIndex);
-                        for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                        if (!targetNextTickDataDigestIsKnown)
                         {
-                            if (!isZero(nextTickData.transactionDigests[i]))
+                            // auto f5 logic:
+                            // if these conditions are met:
+                            // - this node is on MAIN mode
+                            // - not reach consensus for next tick digest => (!targetNextTickDataDigestIsKnown)
+                            // - 451+ votes agree on the current tick (prev digests, tick data) | aka: tickNumberOfComputors >= QUORUM
+                            // - the network was stuck for a certain time, (10x of target tick duration by default)
+                            // then:
+                            // - randomly (8% chance) force next tick to be empty every sec
+                            // - refresh the network (try to resolve bad topology)
+                            if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
                             {
-                                numberOfNextTickTransactions++;
-
-                                ts.tickTransactions.acquireLock();
-
-                                if (tsNextTickTransactionOffsets[i])
+                                if (emptyTickResolver.tick != system.tick)
                                 {
-                                    const Transaction* transaction = ts.tickTransactions(tsNextTickTransactionOffsets[i]);
-                                    ASSERT(transaction->checkValidity());
-                                    ASSERT(transaction->tick == nextTick);
-                                    unsigned char digest[32];
-                                    KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
-                                    if (digest == nextTickData.transactionDigests[i])
-                                    {
-                                        numberOfKnownNextTickTransactions++;
-                                    }
-                                    else
-                                    {
-                                        unknownTransactions[i >> 6] |= (1ULL << (i & 63));
-                                    }
-                                }
-                                ts.tickTransactions.releaseLock();
-                            }
-                        }
-                        if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
-                        {
-                            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
-                            {
-                                Transaction* pendingTransaction = (Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE];
-                                if (pendingTransaction->tick == nextTick)
-                                {
-                                    ACQUIRE(computorPendingTransactionsLock);
-
-                                    ASSERT(pendingTransaction->checkValidity());
-                                    auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
-                                    for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
-                                    {
-                                        if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
-                                        {
-                                            if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
-                                            {
-                                                ts.tickTransactions.acquireLock();
-                                                if (!tsPendingTransactionOffsets[j])
-                                                {
-                                                    const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                    if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
-                                                    {
-                                                        tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                                        bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
-                                                        ts.nextTickTransactionOffset += transactionSize;
-                                                    }
-                                                }
-                                                ts.tickTransactions.releaseLock();
-
-                                                numberOfKnownNextTickTransactions++;
-                                                unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
-
-                                                break;
-                                            }
-                                        }
-                                    }
-
-                                    RELEASE(computorPendingTransactionsLock);
-                                }
-                            }
-                            for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-                            {
-                                Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
-                                if (pendingTransaction->tick == nextTick)
-                                {
-                                    ACQUIRE(entityPendingTransactionsLock);
-
-                                    ASSERT(pendingTransaction->checkValidity());
-                                    auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
-                                    for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
-                                    {
-                                        if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
-                                        {
-                                            if (&entityPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
-                                            {
-                                                ts.tickTransactions.acquireLock();
-                                                if (!tsPendingTransactionOffsets[j])
-                                                {
-                                                    const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                    if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
-                                                    {
-                                                        tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                                        bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
-                                                        ts.nextTickTransactionOffset += transactionSize;
-                                                    }
-                                                }
-                                                ts.tickTransactions.releaseLock();
-
-                                                numberOfKnownNextTickTransactions++;
-                                                unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
-
-                                                break;
-                                            }
-                                        }
-                                    }
-
-                                    RELEASE(entityPendingTransactionsLock);
-                                }
-                            }
-
-                            for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
-                            {
-                                if (!(unknownTransactions[i >> 6] & (1ULL << (i & 63))))
-                                {
-                                    requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] |= (1 << (i & 7));
-                                }
-                            }
-                        }
-                        nextTickTransactionsSemaphore = 0;
-                    }
-
-                    if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
-                    {
-                        if (!targetNextTickDataDigestIsKnown
-                            && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * 5 * frequency / 1000)
-                        {
-                            ts.tickData.acquireLock();
-                            ts.tickData[nextTickIndex].epoch = 0;
-                            ts.tickData.releaseLock();
-                            nextTickData.epoch = 0;
-
-                            numberOfNextTickTransactions = 0;
-                            numberOfKnownNextTickTransactions = 0;
-                        }
-                    }
-
-                    if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
-                    {
-                        requestedTickTransactions.requestedTickTransactions.tick = nextTick;
-                    }
-                    else
-                    {
-                        requestedTickTransactions.requestedTickTransactions.tick = 0;
-
-                        if (ts.tickData[currentTickIndex].epoch == system.epoch)
-                        {
-                            KangarooTwelve(&ts.tickData[currentTickIndex], sizeof(TickData), &etalonTick.transactionDigest, 32);
-                        }
-                        else
-                        {
-                            etalonTick.transactionDigest = m256i::zero();
-                        }
-
-                        if (nextTickData.epoch == system.epoch)
-                        {
-                            if (!targetNextTickDataDigestIsKnown)
-                            {
-                                KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
-                            }
-                        }
-                        else
-                        {
-                            etalonTick.expectedNextTickTransactionDigest = m256i::zero();
-                        }
-
-                        if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
-                        {
-                            if (mainAuxStatus & 1)
-                            {
-                                BroadcastTick broadcastTick;
-                                bs->CopyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
-                                for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
-                                {
-                                    broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
-                                    broadcastTick.tick.epoch = system.epoch;
-                                    m256i saltedData[2];
-                                    saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
-                                    saltedData[1].m256i_u64[0] = resourceTestingDigest;
-                                    KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &broadcastTick.tick.saltedResourceTestingDigest, sizeof(broadcastTick.tick.saltedResourceTestingDigest));
-                                    saltedData[1] = etalonTick.saltedSpectrumDigest;
-                                    KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedSpectrumDigest);
-                                    saltedData[1] = etalonTick.saltedUniverseDigest;
-                                    KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedUniverseDigest);
-                                    saltedData[1] = etalonTick.saltedComputerDigest;
-                                    KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedComputerDigest);
-
-                                    unsigned char digest[32];
-                                    KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
-                                    broadcastTick.tick.computorIndex ^= BroadcastTick::type;
-                                    sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
-
-                                    enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);
-                                    // NOTE: here we don't copy these votes to memory, instead we wait other nodes echoing these votes back because:
-                                    // - if own votes don't get echoed back, that indicates this node has internet/topo issue, and need to reissue vote (F9)
-                                    // - all votes need to be processed in a single place of code (for further handling)
-                                    // - all votes are treated equally (own votes and their votes)
-                                }
-                            }
-
-                            if (system.tick != system.initialTick)
-                            {
-                                system.latestCreatedTick = system.tick;
-                            }
-                        }
-
-                        const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
-
-                        unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0;
-                        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                        {
-                            ts.ticks.acquireLock(i);
-
-                            const Tick* tick = &tsCompTicks[i];
-                            if (tick->epoch == system.epoch)
-                            {
-                                tickTotalNumberOfComputors++;
-
-                                if (*((unsigned long long*)&tick->millisecond) == *((unsigned long long*)&etalonTick.millisecond)
-                                    && tick->prevSpectrumDigest == etalonTick.prevSpectrumDigest
-                                    && tick->prevUniverseDigest == etalonTick.prevUniverseDigest
-                                    && tick->prevComputerDigest == etalonTick.prevComputerDigest
-                                    && tick->transactionDigest == etalonTick.transactionDigest)
-                                {
-                                    m256i saltedData[2];
-                                    m256i saltedDigest;
-                                    saltedData[0] = broadcastedComputors.computors.publicKeys[tick->computorIndex];
-                                    saltedData[1].m256i_u64[0] = resourceTestingDigest;
-                                    KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &saltedDigest, sizeof(resourceTestingDigest));
-                                    if (tick->saltedResourceTestingDigest == saltedDigest.m256i_u64[0])
-                                    {
-                                        saltedData[1] = etalonTick.saltedSpectrumDigest;
-                                        KangarooTwelve64To32(saltedData, &saltedDigest);
-                                        if (tick->saltedSpectrumDigest == saltedDigest)
-                                        {
-                                            saltedData[1] = etalonTick.saltedUniverseDigest;
-                                            KangarooTwelve64To32(saltedData, &saltedDigest);
-                                            if (tick->saltedUniverseDigest == saltedDigest)
-                                            {
-                                                saltedData[1] = etalonTick.saltedComputerDigest;
-                                                KangarooTwelve64To32(saltedData, &saltedDigest);
-                                                if (tick->saltedComputerDigest == saltedDigest)
-                                                {
-                                                    tickNumberOfComputors++;
-                                                    // to avoid submitting invalid votes (eg: all zeroes with valid signature)
-                                                    // only count votes that matched etalonTick
-                                                    voteCounter.registerNewVote(tick->tick, tick->computorIndex);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            ts.ticks.releaseLock(i);
-                        }
-                        ::tickNumberOfComputors = tickNumberOfComputors;
-                        ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
-
-                        if (tickNumberOfComputors >= QUORUM)
-                        {
-                            if (!targetNextTickDataDigestIsKnown)
-                            {
-                                // auto f5 logic:
-                                // if these conditions are met:
-                                // - this node is on MAIN mode
-                                // - not reach consensus for next tick digest => (!targetNextTickDataDigestIsKnown)
-                                // - 451+ votes agree on the current tick (prev digests, tick data) | aka: tickNumberOfComputors >= QUORUM
-                                // - the network was stuck for a certain time, (10x of target tick duration by default)
-                                // then:
-                                // - randomly (8% chance) force next tick to be empty every sec
-                                // - refresh the network (try to resolve bad topology)
-                                if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
-                                {
-                                    if (emptyTickResolver.tick != system.tick)
-                                    {
-                                        emptyTickResolver.tick = system.tick;
-                                        emptyTickResolver.clock = __rdtsc();
-                                    }
-                                    else
-                                    {
-                                        if (__rdtsc() - emptyTickResolver.clock > frequency * TARGET_TICK_DURATION * AUTO_FORCE_NEXT_TICK_THRESHOLD / 1000)
-                                        {
-                                            if (__rdtsc() - emptyTickResolver.lastTryClock > frequency)
-                                            {
-                                                unsigned int randNumber = random(10000);
-                                                if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
-                                                {
-                                                    forceNextTick = true; // auto-F5
-                                                }
-                                                emptyTickResolver.lastTryClock = __rdtsc();
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (forceNextTick)
-                                {
-                                    targetNextTickDataDigest = m256i::zero();
-                                    targetNextTickDataDigestIsKnown = true;
-                                }
-                            }
-                            forceNextTick = false;
-
-                            if (targetNextTickDataDigestIsKnown)
-                            {
-                                tickDataSuits = false;
-                                if (isZero(targetNextTickDataDigest))
-                                {
-                                    // Empty tick
-                                    ts.tickData.acquireLock();
-                                    ts.tickData[nextTickIndex].epoch = 0;
-                                    ts.tickData.releaseLock();
-                                    nextTickData.epoch = 0;
-                                    tickDataSuits = true;
+                                    emptyTickResolver.tick = system.tick;
+                                    emptyTickResolver.clock = __rdtsc();
                                 }
                                 else
                                 {
-                                    if (nextTickData.epoch != system.epoch)
+                                    if (__rdtsc() - emptyTickResolver.clock > frequency * TARGET_TICK_DURATION * AUTO_FORCE_NEXT_TICK_THRESHOLD / 1000)
                                     {
-                                        tickDataSuits = false;
-                                    }
-                                    else
-                                    {
-                                        KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
-                                        tickDataSuits = (etalonTick.expectedNextTickTransactionDigest == targetNextTickDataDigest);
+                                        if (__rdtsc() - emptyTickResolver.lastTryClock > frequency)
+                                        {
+                                            unsigned int randNumber = random(10000);
+                                            if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
+                                            {
+                                                forceNextTick = true; // auto-F5
+                                            }
+                                            emptyTickResolver.lastTryClock = __rdtsc();
+                                        }
                                     }
                                 }
-                                if (tickDataSuits)
+                            }
+
+                            if (forceNextTick)
+                            {
+                                targetNextTickDataDigest = m256i::zero();
+                                targetNextTickDataDigestIsKnown = true;
+                            }
+                        }
+                        forceNextTick = false;
+
+                        if (targetNextTickDataDigestIsKnown)
+                        {
+                            tickDataSuits = false;
+                            if (isZero(targetNextTickDataDigest))
+                            {
+                                // Empty tick
+                                ts.tickData.acquireLock();
+                                ts.tickData[nextTickIndex].epoch = 0;
+                                ts.tickData.releaseLock();
+                                nextTickData.epoch = 0;
+                                tickDataSuits = true;
+                            }
+                            else
+                            {
+                                if (nextTickData.epoch != system.epoch)
                                 {
-                                    const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
-                                    if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
-                                        || dayIndex > 738570 + system.epoch * 7)
+                                    tickDataSuits = false;
+                                }
+                                else
+                                {
+                                    KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
+                                    tickDataSuits = (etalonTick.expectedNextTickTransactionDigest == targetNextTickDataDigest);
+                                }
+                            }
+                            if (tickDataSuits)
+                            {
+                                const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
+                                if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
+                                    || dayIndex > 738570 + system.epoch * 7)
+                                {
+                                    // start seamless epoch transition
+                                    epochTransitionState = 1;
+                                    forceSwitchEpoch = false;
+                                }
+                                else
+                                {
+                                    // update etalonTick
+                                    etalonTick.tick++;
+                                    ts.tickData.acquireLock();
+                                    const TickData& td = ts.tickData[currentTickIndex];
+                                    if (td.epoch == system.epoch
+                                        && (td.year > etalonTick.year
+                                            || (td.year == etalonTick.year && (td.month > etalonTick.month
+                                                || (td.month == etalonTick.month && (td.day > etalonTick.day
+                                                    || (td.day == etalonTick.day && (td.hour > etalonTick.hour
+                                                        || (td.hour == etalonTick.hour && (td.minute > etalonTick.minute
+                                                            || (td.minute == etalonTick.minute && (td.second > etalonTick.second
+                                                                || (td.second == etalonTick.second && td.millisecond > etalonTick.millisecond)))))))))))))
                                     {
-                                        // start seamless epoch transition
-                                        epochTransitionState = 1;
-                                        forceSwitchEpoch = false;
+                                        etalonTick.millisecond = td.millisecond;
+                                        etalonTick.second = td.second;
+                                        etalonTick.minute = td.minute;
+                                        etalonTick.hour = td.hour;
+                                        etalonTick.day = td.day;
+                                        etalonTick.month = td.month;
+                                        etalonTick.year = td.year;
                                     }
                                     else
                                     {
-                                        // update etalonTick
-                                        etalonTick.tick++;
-                                        ts.tickData.acquireLock();
-                                        const TickData& td = ts.tickData[currentTickIndex];
-                                        if (td.epoch == system.epoch
-                                            && (td.year > etalonTick.year
-                                                || (td.year == etalonTick.year && (td.month > etalonTick.month
-                                                    || (td.month == etalonTick.month && (td.day > etalonTick.day
-                                                        || (td.day == etalonTick.day && (td.hour > etalonTick.hour
-                                                            || (td.hour == etalonTick.hour && (td.minute > etalonTick.minute
-                                                                || (td.minute == etalonTick.minute && (td.second > etalonTick.second
-                                                                    || (td.second == etalonTick.second && td.millisecond > etalonTick.millisecond)))))))))))))
+                                        if (++etalonTick.millisecond > 999)
                                         {
-                                            etalonTick.millisecond = td.millisecond;
-                                            etalonTick.second = td.second;
-                                            etalonTick.minute = td.minute;
-                                            etalonTick.hour = td.hour;
-                                            etalonTick.day = td.day;
-                                            etalonTick.month = td.month;
-                                            etalonTick.year = td.year;
-                                        }
-                                        else
-                                        {
-                                            if (++etalonTick.millisecond > 999)
+                                            etalonTick.millisecond = 0;
+
+                                            if (++etalonTick.second > 59)
                                             {
-                                                etalonTick.millisecond = 0;
+                                                etalonTick.second = 0;
 
-                                                if (++etalonTick.second > 59)
+                                                if (++etalonTick.minute > 59)
                                                 {
-                                                    etalonTick.second = 0;
+                                                    etalonTick.minute = 0;
 
-                                                    if (++etalonTick.minute > 59)
+                                                    if (++etalonTick.hour > 23)
                                                     {
-                                                        etalonTick.minute = 0;
+                                                        etalonTick.hour = 0;
 
-                                                        if (++etalonTick.hour > 23)
+                                                        if (++etalonTick.day > ((etalonTick.month == 1 || etalonTick.month == 3 || etalonTick.month == 5 || etalonTick.month == 7 || etalonTick.month == 8 || etalonTick.month == 10 || etalonTick.month == 12) ? 31 : ((etalonTick.month == 4 || etalonTick.month == 6 || etalonTick.month == 9 || etalonTick.month == 11) ? 30 : ((etalonTick.year & 3) ? 28 : 29))))
                                                         {
-                                                            etalonTick.hour = 0;
+                                                            etalonTick.day = 1;
 
-                                                            if (++etalonTick.day > ((etalonTick.month == 1 || etalonTick.month == 3 || etalonTick.month == 5 || etalonTick.month == 7 || etalonTick.month == 8 || etalonTick.month == 10 || etalonTick.month == 12) ? 31 : ((etalonTick.month == 4 || etalonTick.month == 6 || etalonTick.month == 9 || etalonTick.month == 11) ? 30 : ((etalonTick.year & 3) ? 28 : 29))))
+                                                            if (++etalonTick.month > 12)
                                                             {
-                                                                etalonTick.day = 1;
+                                                                etalonTick.month = 1;
 
-                                                                if (++etalonTick.month > 12)
-                                                                {
-                                                                    etalonTick.month = 1;
-
-                                                                    ++etalonTick.year;
-                                                                }
+                                                                ++etalonTick.year;
                                                             }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                        ts.tickData.releaseLock();
                                     }
-
-                                    system.tick++;
-
-                                    checkAndSwitchMiningPhase();
-
-                                    if (epochTransitionState == 1)
-                                    {
-                                        // seamless epoch transistion
-#ifndef NDEBUG
-                                        addDebugMessage(L"Starting epoch transition");
-                                        {
-                                            CHAR16 dbgMsgBuf[300];
-                                            CHAR16 digestChars[60 + 1];
-                                            getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
-                                            setText(dbgMsgBuf, L"Old mining seed: ");
-                                            appendText(dbgMsgBuf, digestChars);
-                                            addDebugMessage(dbgMsgBuf);
-                                        }
-#endif
-
-                                        // wait until all request processors are in waiting state
-                                        while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
-                                        {
-                                            _mm_pause();
-                                        }
-
-                                        // end current epoch
-                                        endEpoch();
-
-                                        // instruct main loop to save system and wait until it is done
-                                        systemMustBeSaved = true;
-                                        while (systemMustBeSaved)
-                                        {
-                                            _mm_pause();
-                                        }
-                                        epochTransitionState = 2;
-
-#ifndef NDEBUG
-                                        addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
-#endif
-                                        beginEpoch();
-                                        setNewMiningSeed();
-#ifndef NDEBUG
-                                        addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
-                                        {
-                                            CHAR16 dbgMsgBuf[300];
-                                            CHAR16 digestChars[60 + 1];
-                                            getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
-                                            setText(dbgMsgBuf, L"New mining seed: ");
-                                            appendText(dbgMsgBuf, digestChars);
-                                            addDebugMessage(dbgMsgBuf);
-                                        }
-#endif
-
-                                        // Some debug checks that we are ready for the next epoch
-                                        ASSERT(system.numberOfSolutions == 0);
-                                        ASSERT(numberOfMiners == NUMBER_OF_COMPUTORS);
-                                        ASSERT(isZero(system.solutions, sizeof(system.solutions)));
-                                        ASSERT(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
-                                        ASSERT(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
-                                        ASSERT(isZero((void*)minerScores, sizeof(minerScores)));
-                                        ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
-                                        ASSERT(isZero(competitorScores, sizeof(competitorScores)));
-                                        ASSERT(isZero(competitorPublicKeys, sizeof(competitorPublicKeys)));
-                                        ASSERT(isZero(competitorComputorStatuses, sizeof(competitorComputorStatuses)));
-                                        ASSERT(minimumComputorScore == 0 && minimumCandidateScore == 0);
-
-                                        // instruct main loop to save files and wait until it is done
-                                        spectrumMustBeSaved = true;
-                                        universeMustBeSaved = true;
-                                        computerMustBeSaved = true;
-                                        while (computerMustBeSaved || universeMustBeSaved || spectrumMustBeSaved)
-                                        {
-                                            _mm_pause();
-                                        }
-
-                                        // update etalon tick
-                                        etalonTick.epoch++;
-                                        etalonTick.tick++;
-                                        etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
-                                        getUniverseDigest(etalonTick.saltedUniverseDigest);
-                                        getComputerDigest(etalonTick.saltedComputerDigest);
-
-                                        epochTransitionState = 0;
-
-#ifndef NDEBUG
-                                        addDebugMessage(L"Finished epoch transition");
-#endif
-                                    }
-                                    ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
-
-                                    ::tickNumberOfComputors = 0;
-                                    ::tickTotalNumberOfComputors = 0;
-                                    targetNextTickDataDigestIsKnown = false;
-                                    numberOfNextTickTransactions = 0;
-                                    numberOfKnownNextTickTransactions = 0;
-
-                                    for (unsigned int i = 0; i < sizeof(tickTicks) / sizeof(tickTicks[0]) - 1; i++)
-                                    {
-                                        tickTicks[i] = tickTicks[i + 1];
-                                    }
-                                    tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] = __rdtsc();
+                                    ts.tickData.releaseLock();
                                 }
+
+                                system.tick++;
+
+                                checkAndSwitchMiningPhase();
+
+                                if (epochTransitionState == 1)
+                                {
+                                    // seamless epoch transistion
+#ifndef NDEBUG
+                                    addDebugMessage(L"Starting epoch transition");
+                                    {
+                                        CHAR16 dbgMsgBuf[300];
+                                        CHAR16 digestChars[60 + 1];
+                                        getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
+                                        setText(dbgMsgBuf, L"Old mining seed: ");
+                                        appendText(dbgMsgBuf, digestChars);
+                                        addDebugMessage(dbgMsgBuf);
+                                    }
+#endif
+
+                                    // wait until all request processors are in waiting state
+                                    while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
+                                    {
+                                        _mm_pause();
+                                    }
+
+                                    // end current epoch
+                                    endEpoch();
+
+                                    // instruct main loop to save system and wait until it is done
+                                    systemMustBeSaved = true;
+                                    while (systemMustBeSaved)
+                                    {
+                                        _mm_pause();
+                                    }
+                                    epochTransitionState = 2;
+
+#ifndef NDEBUG
+                                    addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
+#endif
+                                    beginEpoch();
+                                    setNewMiningSeed();
+#ifndef NDEBUG
+                                    addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
+                                    {
+                                        CHAR16 dbgMsgBuf[300];
+                                        CHAR16 digestChars[60 + 1];
+                                        getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
+                                        setText(dbgMsgBuf, L"New mining seed: ");
+                                        appendText(dbgMsgBuf, digestChars);
+                                        addDebugMessage(dbgMsgBuf);
+                                    }
+#endif
+
+                                    // Some debug checks that we are ready for the next epoch
+                                    ASSERT(system.numberOfSolutions == 0);
+                                    ASSERT(numberOfMiners == NUMBER_OF_COMPUTORS);
+                                    ASSERT(isZero(system.solutions, sizeof(system.solutions)));
+                                    ASSERT(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
+                                    ASSERT(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
+                                    ASSERT(isZero((void*)minerScores, sizeof(minerScores)));
+                                    ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
+                                    ASSERT(isZero(competitorScores, sizeof(competitorScores)));
+                                    ASSERT(isZero(competitorPublicKeys, sizeof(competitorPublicKeys)));
+                                    ASSERT(isZero(competitorComputorStatuses, sizeof(competitorComputorStatuses)));
+                                    ASSERT(minimumComputorScore == 0 && minimumCandidateScore == 0);
+
+                                    // instruct main loop to save files and wait until it is done
+                                    spectrumMustBeSaved = true;
+                                    universeMustBeSaved = true;
+                                    computerMustBeSaved = true;
+                                    while (computerMustBeSaved || universeMustBeSaved || spectrumMustBeSaved)
+                                    {
+                                        _mm_pause();
+                                    }
+
+                                    // update etalon tick
+                                    etalonTick.epoch++;
+                                    etalonTick.tick++;
+                                    etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+                                    getUniverseDigest(etalonTick.saltedUniverseDigest);
+                                    getComputerDigest(etalonTick.saltedComputerDigest);
+
+                                    epochTransitionState = 0;
+
+#ifndef NDEBUG
+                                    addDebugMessage(L"Finished epoch transition");
+#endif
+                                }
+                                ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
+
+                                ::tickNumberOfComputors = 0;
+                                ::tickTotalNumberOfComputors = 0;
+                                targetNextTickDataDigestIsKnown = false;
+                                numberOfNextTickTransactions = 0;
+                                numberOfKnownNextTickTransactions = 0;
+
+                                for (unsigned int i = 0; i < sizeof(tickTicks) / sizeof(tickTicks[0]) - 1; i++)
+                                {
+                                    tickTicks[i] = tickTicks[i + 1];
+                                }
+                                tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] = __rdtsc();
                             }
                         }
                     }
