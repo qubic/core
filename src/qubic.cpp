@@ -3645,7 +3645,7 @@ static void tickProcessor(void*)
 
             if (!targetNextTickDataDigestIsKnown)
             {
-                
+                findNextTickDataDigestFromCurrentTickVotes();
             }
 
             ts.tickData.acquireLock();
