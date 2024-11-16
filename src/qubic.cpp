@@ -3789,6 +3789,7 @@ static void broadcastTickVotes()
 // count the votes of current tick (system.tick) and compare it with etalonTick
 // tickNumberOfComputors: total number of votes that have matched digests with this node states
 // tickTotalNumberOfComputors: total number of received votes
+// NOTE: this doesn't compare expectedNextTickTransactionDigest
 static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& tickTotalNumberOfComputors)
 {
     const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
@@ -3965,12 +3966,11 @@ static void tickProcessor(void*)
                 }
             }
 
-            bool tickDataSuits;
-            if (!targetNextTickDataDigestIsKnown)
-            {
-                // Next tick digest is still unknown
-                if (nextTickData.epoch != system.epoch
-                    && gFutureTickTotalNumberOfComputors <= NUMBER_OF_COMPUTORS - QUORUM
+            bool tickDataSuits; // a flag to tell if tickData is suitable to be included with this node states
+            if (!targetNextTickDataDigestIsKnown) // Next tick digest is still unknown
+            {   
+                if (nextTickData.epoch != system.epoch // tick data is valid (not yet invalidated)
+                    && gFutureTickTotalNumberOfComputors <= NUMBER_OF_COMPUTORS - QUORUM // future tick vote less than 225
                     && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] < TARGET_TICK_DURATION * frequency / 1000) // tick duration not exceed TARGET_TICK_DURATION
                 {
                     tickDataSuits = false;
@@ -3984,7 +3984,7 @@ static void tickProcessor(void*)
             {
                 if (isZero(targetNextTickDataDigest))
                 {
-                    // Empty tick
+                    // if target next tickdata digest is zero(empty tick) then invalidate the tickData in tickStorage
                     ts.tickData.acquireLock();
                     ts.tickData[nextTickIndex].epoch = INVALIDATED_TICK_DATA; // invalidate it and also tell request processor to not update it again
                     ts.tickData.releaseLock();
@@ -3996,12 +3996,13 @@ static void tickProcessor(void*)
                     // Non-empty tick
                     if (nextTickData.epoch != system.epoch)
                     {
+                        // not yet received or malformed next tick data
                         tickDataSuits = false;
                     }
                     else
                     {
                         KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
-                        tickDataSuits = (etalonTick.expectedNextTickTransactionDigest == targetNextTickDataDigest);
+                        tickDataSuits = (etalonTick.expectedNextTickTransactionDigest == targetNextTickDataDigest); // make sure the digests are matched
                     }
                 }
             }
@@ -4039,12 +4040,15 @@ static void tickProcessor(void*)
 
             if (!tickDataSuits)
             {
-                
+                // if we have problem regarding lacking of tickData, then wait for MAIN loop to fetch those missing data
+                // Here only need to update the stats and rerun the loop again
                 gTickNumberOfComputors = 0;
                 gTickTotalNumberOfComputors = countCurrentTickVote();
             }
             else
             {
+                // tickData is suitable to be included (either non-empty or empty), now we need to verify all transactions in that tickData
+                // The node needs to have all of transactions data
                 numberOfNextTickTransactions = 0;
                 numberOfKnownNextTickTransactions = 0;
 
@@ -4076,6 +4080,7 @@ static void tickProcessor(void*)
                 }
                 else
                 {
+                    // This node has all required transactions
                     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
                     if (ts.tickData[currentTickIndex].epoch == system.epoch)
@@ -4091,6 +4096,8 @@ static void tickProcessor(void*)
                     {
                         if (!targetNextTickDataDigestIsKnown)
                         {
+                            // if this node is faster than most, targetNextTickDataDigest is unknown at this point because of lack of votes
+                            // Thus, expectedNextTickTransactionDigest it not updated yet
                             KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
                         }
                     }
