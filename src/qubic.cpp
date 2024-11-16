@@ -3613,6 +3613,146 @@ static unsigned int countCurrentTickVote()
     return tickTotalNumberOfComputors;
 }
 
+// This function scans through all transactions digest in next tickData
+// and look for those txs in local memory (pending txs). If a transaction doesn't exist, it will try to update requestedTickTransactions
+// I main loop (MAIN thread), it will try to fetch missing txs based on the data inside requestedTickTransactions
+// Current code assumes the limits:
+// - 1 tx per source publickey per tick
+// - 128 txs per computor publickey per tick
+static void prepareNextTickTransactions()
+{
+    const unsigned int nextTick = system.tick + 1;
+    const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
+
+    nextTickTransactionsSemaphore = 1; // signal a flag for displaying on the console log
+    bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0);
+    unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
+    bs->SetMem(unknownTransactions, sizeof(unknownTransactions), 0);
+    const auto* tsNextTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(nextTickIndex);
+    
+    // This function maybe called multiple times per tick due to lack of data (txs or votes)
+    // Here we do a simple pre scan to check txs via tsNextTickTransactionOffsets (already processed - aka already copying from pendingTransaction array to tickTransaction)
+    for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+    {
+        if (!isZero(nextTickData.transactionDigests[i]))
+        {
+            numberOfNextTickTransactions++;
+
+            ts.tickTransactions.acquireLock();
+
+            if (tsNextTickTransactionOffsets[i])
+            {
+                const Transaction* transaction = ts.tickTransactions(tsNextTickTransactionOffsets[i]);
+                ASSERT(transaction->checkValidity());
+                ASSERT(transaction->tick == nextTick);
+                unsigned char digest[32];
+                KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
+                if (digest == nextTickData.transactionDigests[i])
+                {
+                    numberOfKnownNextTickTransactions++;
+                }
+                else
+                {
+                    unknownTransactions[i >> 6] |= (1ULL << (i & 63));
+                }
+            }
+            ts.tickTransactions.releaseLock();
+        }
+    }
+        
+    if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
+    {
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
+        {
+            Transaction* pendingTransaction = (Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE];
+            if (pendingTransaction->tick == nextTick)
+            {
+                ACQUIRE(computorPendingTransactionsLock);
+
+                ASSERT(pendingTransaction->checkValidity());
+                auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
+                for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
+                {
+                    if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
+                    {
+                        if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
+                        {
+                            ts.tickTransactions.acquireLock();
+                            if (!tsPendingTransactionOffsets[j])
+                            {
+                                const unsigned int transactionSize = pendingTransaction->totalSize();
+                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                {
+                                    tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
+                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                    ts.nextTickTransactionOffset += transactionSize;
+                                }
+                            }
+                            ts.tickTransactions.releaseLock();
+
+                            numberOfKnownNextTickTransactions++;
+                            unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+
+                            break;
+                        }
+                    }
+                }
+
+                RELEASE(computorPendingTransactionsLock);
+            }
+        }
+        for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+        {
+            Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
+            if (pendingTransaction->tick == nextTick)
+            {
+                ACQUIRE(entityPendingTransactionsLock);
+
+                ASSERT(pendingTransaction->checkValidity());
+                auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
+                for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
+                {
+                    if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
+                    {
+                        if (&entityPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
+                        {
+                            ts.tickTransactions.acquireLock();
+                            if (!tsPendingTransactionOffsets[j])
+                            {
+                                const unsigned int transactionSize = pendingTransaction->totalSize();
+                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                {
+                                    tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
+                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                    ts.nextTickTransactionOffset += transactionSize;
+                                }
+                            }
+                            ts.tickTransactions.releaseLock();
+
+                            numberOfKnownNextTickTransactions++;
+                            unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
+
+                            break;
+                        }
+                    }
+                }
+
+                RELEASE(entityPendingTransactionsLock);
+            }
+        }
+
+        // Update requestedTickTransactions the list of txs that not exist in memory so the MAIN loop can try to fetch them from peers
+        for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+        {
+            if (!(unknownTransactions[i >> 6] & (1ULL << (i & 63))))
+            {
+                requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] |= (1 << (i & 7));
+            }
+        }
+    }
+    nextTickTransactionsSemaphore = 0;
+}
+
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -3775,128 +3915,7 @@ static void tickProcessor(void*)
 
                 if (nextTickData.epoch == system.epoch)
                 {
-                    nextTickTransactionsSemaphore = 1;
-                    bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0);
-                    unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
-                    bs->SetMem(unknownTransactions, sizeof(unknownTransactions), 0);
-                    const auto* tsNextTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(nextTickIndex);
-                    for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
-                    {
-                        if (!isZero(nextTickData.transactionDigests[i]))
-                        {
-                            numberOfNextTickTransactions++;
-
-                            ts.tickTransactions.acquireLock();
-
-                            if (tsNextTickTransactionOffsets[i])
-                            {
-                                const Transaction* transaction = ts.tickTransactions(tsNextTickTransactionOffsets[i]);
-                                ASSERT(transaction->checkValidity());
-                                ASSERT(transaction->tick == nextTick);
-                                unsigned char digest[32];
-                                KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
-                                if (digest == nextTickData.transactionDigests[i])
-                                {
-                                    numberOfKnownNextTickTransactions++;
-                                }
-                                else
-                                {
-                                    unknownTransactions[i >> 6] |= (1ULL << (i & 63));
-                                }
-                            }
-                            ts.tickTransactions.releaseLock();
-                        }
-                    }
-                    if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
-                    {
-                        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
-                        {
-                            Transaction* pendingTransaction = (Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE];
-                            if (pendingTransaction->tick == nextTick)
-                            {
-                                ACQUIRE(computorPendingTransactionsLock);
-
-                                ASSERT(pendingTransaction->checkValidity());
-                                auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
-                                for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
-                                {
-                                    if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
-                                    {
-                                        if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
-                                        {
-                                            ts.tickTransactions.acquireLock();
-                                            if (!tsPendingTransactionOffsets[j])
-                                            {
-                                                const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
-                                                {
-                                                    tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
-                                                    ts.nextTickTransactionOffset += transactionSize;
-                                                }
-                                            }
-                                            ts.tickTransactions.releaseLock();
-
-                                            numberOfKnownNextTickTransactions++;
-                                            unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
-
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                RELEASE(computorPendingTransactionsLock);
-                            }
-                        }
-                        for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-                        {
-                            Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
-                            if (pendingTransaction->tick == nextTick)
-                            {
-                                ACQUIRE(entityPendingTransactionsLock);
-
-                                ASSERT(pendingTransaction->checkValidity());
-                                auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
-                                for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
-                                {
-                                    if (unknownTransactions[j >> 6] & (1ULL << (j & 63)))
-                                    {
-                                        if (&entityPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
-                                        {
-                                            ts.tickTransactions.acquireLock();
-                                            if (!tsPendingTransactionOffsets[j])
-                                            {
-                                                const unsigned int transactionSize = pendingTransaction->totalSize();
-                                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
-                                                {
-                                                    tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
-                                                    ts.nextTickTransactionOffset += transactionSize;
-                                                }
-                                            }
-                                            ts.tickTransactions.releaseLock();
-
-                                            numberOfKnownNextTickTransactions++;
-                                            unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
-
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                RELEASE(entityPendingTransactionsLock);
-                            }
-                        }
-
-                        for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
-                        {
-                            if (!(unknownTransactions[i >> 6] & (1ULL << (i & 63))))
-                            {
-                                requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] |= (1 << (i & 7));
-                            }
-                        }
-                    }
-                    nextTickTransactionsSemaphore = 0;
+                    prepareNextTickTransactions();
                 }
 
                 if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
@@ -3904,6 +3923,8 @@ static void tickProcessor(void*)
                     if (!targetNextTickDataDigestIsKnown
                         && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * 5 * frequency / 1000)
                     {
+                        // If we don't have enough txs data for the next tick, and next tick digest is unknown (not reach quorum)
+                        // and tick duration exceed 5*TARGET_TICK_DURATION, then this tick is forced to be empty.
                         ts.tickData.acquireLock();
                         ts.tickData[nextTickIndex].epoch = 0;
                         ts.tickData.releaseLock();
