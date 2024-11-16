@@ -119,7 +119,7 @@ static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS]; // scheduled tick 
 #define SOLUTION_OBSOLETE_FLAG -2
 
 static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
-static unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, gFutureTickTotalNumberOfComputors = 0;
+static unsigned int gTickNumberOfComputors = 0, gTickTotalNumberOfComputors = 0, gFutureTickTotalNumberOfComputors = 0;
 static unsigned int nextTickTransactionsSemaphore = 0, numberOfNextTickTransactions = 0, numberOfKnownNextTickTransactions = 0;
 static unsigned short numberOfOwnComputorIndices;
 static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
@@ -305,13 +305,13 @@ static void logToConsole(const CHAR16* message)
     timestampedMessage[12] = ' ';
     timestampedMessage[13] = 0;
 
-    appendNumber(timestampedMessage, tickNumberOfComputors / 100, FALSE);
-    appendNumber(timestampedMessage, (tickNumberOfComputors % 100) / 10, FALSE);
-    appendNumber(timestampedMessage, tickNumberOfComputors % 10, FALSE);
+    appendNumber(timestampedMessage, gTickNumberOfComputors / 100, FALSE);
+    appendNumber(timestampedMessage, (gTickNumberOfComputors % 100) / 10, FALSE);
+    appendNumber(timestampedMessage, gTickNumberOfComputors % 10, FALSE);
     appendText(timestampedMessage, L":");
-    appendNumber(timestampedMessage, (tickTotalNumberOfComputors - tickNumberOfComputors) / 100, FALSE);
-    appendNumber(timestampedMessage, ((tickTotalNumberOfComputors - tickNumberOfComputors) % 100) / 10, FALSE);
-    appendNumber(timestampedMessage, (tickTotalNumberOfComputors - tickNumberOfComputors) % 10, FALSE);
+    appendNumber(timestampedMessage, (gTickTotalNumberOfComputors - gTickNumberOfComputors) / 100, FALSE);
+    appendNumber(timestampedMessage, ((gTickTotalNumberOfComputors - gTickNumberOfComputors) % 100) / 10, FALSE);
+    appendNumber(timestampedMessage, (gTickTotalNumberOfComputors - gTickNumberOfComputors) % 10, FALSE);
     appendText(timestampedMessage, L"(");
     appendNumber(timestampedMessage, gFutureTickTotalNumberOfComputors / 100, FALSE);
     appendNumber(timestampedMessage, (gFutureTickTotalNumberOfComputors % 100) / 10, FALSE);
@@ -1035,8 +1035,8 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
 
         currentTickInfo.epoch = system.epoch;
         currentTickInfo.tick = system.tick;
-        currentTickInfo.numberOfAlignedVotes = tickNumberOfComputors;
-        currentTickInfo.numberOfMisalignedVotes = (tickTotalNumberOfComputors - tickNumberOfComputors);
+        currentTickInfo.numberOfAlignedVotes = gTickNumberOfComputors;
+        currentTickInfo.numberOfMisalignedVotes = (gTickTotalNumberOfComputors - gTickNumberOfComputors);
         currentTickInfo.initialTick = system.initialTick;
     }
     else
@@ -3652,7 +3652,7 @@ static void tickProcessor(void*)
             bs->CopyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
             ts.tickData.releaseLock();
 
-            // This time lock ensure tick data is crafted 2 ticks "ago"
+            // This time lock ensures tickData is crafted 2 ticks "ago"
             if (nextTickData.epoch == system.epoch)
             {
                 m256i timelockPreimage[3];
@@ -3673,9 +3673,10 @@ static void tickProcessor(void*)
             bool tickDataSuits;
             if (!targetNextTickDataDigestIsKnown)
             {
+                // Next tick digest is still unknown
                 if (nextTickData.epoch != system.epoch
                     && gFutureTickTotalNumberOfComputors <= NUMBER_OF_COMPUTORS - QUORUM
-                    && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] < TARGET_TICK_DURATION * frequency / 1000)
+                    && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] < TARGET_TICK_DURATION * frequency / 1000) // tick duration not exceed TARGET_TICK_DURATION
                 {
                     tickDataSuits = false;
                 }
@@ -3756,8 +3757,8 @@ static void tickProcessor(void*)
 
                     ts.ticks.releaseLock(i);
                 }
-                ::tickNumberOfComputors = 0;
-                ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
+                gTickNumberOfComputors = 0;
+                gTickTotalNumberOfComputors = tickTotalNumberOfComputors;
             }
             else
             {
@@ -4024,8 +4025,8 @@ static void tickProcessor(void*)
 
                         ts.ticks.releaseLock(i);
                     }
-                    ::tickNumberOfComputors = tickNumberOfComputors;
-                    ::tickTotalNumberOfComputors = tickTotalNumberOfComputors;
+                    gTickNumberOfComputors = tickNumberOfComputors;
+                    gTickTotalNumberOfComputors = tickTotalNumberOfComputors;
 
                     if (tickNumberOfComputors >= QUORUM)
                     {
@@ -4035,7 +4036,7 @@ static void tickProcessor(void*)
                             // if these conditions are met:
                             // - this node is on MAIN mode
                             // - not reach consensus for next tick digest => (!targetNextTickDataDigestIsKnown)
-                            // - 451+ votes agree on the current tick (prev digests, tick data) | aka: tickNumberOfComputors >= QUORUM
+                            // - 451+ votes agree on the current tick (prev digests, tick data) | aka: gTickNumberOfComputors >= QUORUM
                             // - the network was stuck for a certain time, (10x of target tick duration by default)
                             // then:
                             // - randomly (8% chance) force next tick to be empty every sec
@@ -4256,8 +4257,8 @@ static void tickProcessor(void*)
                                 }
                                 ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
-                                ::tickNumberOfComputors = 0;
-                                ::tickTotalNumberOfComputors = 0;
+                                gTickNumberOfComputors = 0;
+                                gTickTotalNumberOfComputors = 0;
                                 targetNextTickDataDigestIsKnown = false;
                                 numberOfNextTickTransactions = 0;
                                 numberOfKnownNextTickTransactions = 0;
@@ -5830,7 +5831,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     const bool isNewTickPlus1 = true;
                     const bool isNewTickPlus2 = true;
 #endif
-                    if (tickRequestingIndicator == tickTotalNumberOfComputors
+                    if (tickRequestingIndicator == gTickTotalNumberOfComputors
                         && isNewTick)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
@@ -5846,7 +5847,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                         pushToAny(&requestedQuorumTick.header);
                     }
-                    tickRequestingIndicator = tickTotalNumberOfComputors;
+                    tickRequestingIndicator = gTickTotalNumberOfComputors;
                     if (futureTickRequestingIndicator == gFutureTickTotalNumberOfComputors
                         && isNewTickPlus1)
                     {
@@ -6030,7 +6031,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     tickerLoopDenominator = 0;
 
                     // output if misalignment happened
-                    if (tickTotalNumberOfComputors - tickNumberOfComputors >= QUORUM && numberOfKnownNextTickTransactions == numberOfNextTickTransactions)
+                    if (gTickTotalNumberOfComputors - gTickNumberOfComputors >= QUORUM && numberOfKnownNextTickTransactions == numberOfNextTickTransactions)
                     {
                         if (misalignedState == 0)
                         {
