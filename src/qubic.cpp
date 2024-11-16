@@ -3464,10 +3464,11 @@ static void updateFutureTickCount()
     gFutureTickTotalNumberOfComputors = futureTickTotalNumberOfComputors;
 }
 
+// find next tick data digest from next tick votes
 // Scan all tick votes of the next tick (system.tick + 1):
 // if there are 451+ (QUORUM) votes agree on the same transactionDigest - or 226+ (VETO) votes agree on empty tick
-// then next tick digest is known (from the point of view of the node)
-static void findNextTickTransactionDigest()
+// then next tick digest is known (from the point of view of the node) - targetNextTickDataDigest
+static void findNextTickDataDigestFromNextTickVotes()
 {
     const unsigned int nextTick = system.tick + 1;
     const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
@@ -3575,7 +3576,7 @@ static void tickProcessor(void*)
 
             if (gFutureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
             {
-                findNextTickTransactionDigest();
+                findNextTickDataDigestFromNextTickVotes();
             }
 
             if (!targetNextTickDataDigestIsKnown)
