@@ -3841,6 +3841,53 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
     }
 }
 
+// try forcing next tick to be empty after certain amount of time
+static void tryForceEmptyNextTick()
+{
+    if (!targetNextTickDataDigestIsKnown)
+    {
+        // auto f5 logic:
+        // if these conditions are met:
+        // - this node is on MAIN mode
+        // - not reach consensus for next tick digest => (!targetNextTickDataDigestIsKnown)
+        // - 451+ votes agree on the current tick (prev digests, tick data) | aka: gTickNumberOfComputors >= QUORUM
+        // - the network was stuck for a certain time, (10x of target tick duration by default)
+        // then:
+        // - randomly (8% chance) force next tick to be empty every sec
+        // - refresh the network (try to resolve bad topology)
+        if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
+        {
+            if (emptyTickResolver.tick != system.tick)
+            {
+                emptyTickResolver.tick = system.tick;
+                emptyTickResolver.clock = __rdtsc();
+            }
+            else
+            {
+                if (__rdtsc() - emptyTickResolver.clock > frequency * TARGET_TICK_DURATION * AUTO_FORCE_NEXT_TICK_THRESHOLD / 1000)
+                {
+                    if (__rdtsc() - emptyTickResolver.lastTryClock > frequency)
+                    {
+                        unsigned int randNumber = random(10000);
+                        if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
+                        {
+                            forceNextTick = true; // auto-F5
+                        }
+                        emptyTickResolver.lastTryClock = __rdtsc();
+                    }
+                }
+            }
+        }
+
+        if (forceNextTick)
+        {
+            targetNextTickDataDigest = m256i::zero();
+            targetNextTickDataDigestIsKnown = true;
+        }
+    }
+    forceNextTick = false;
+}
+
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -4073,48 +4120,7 @@ static void tickProcessor(void*)
 
                     if (tickNumberOfComputors >= QUORUM)
                     {
-                        if (!targetNextTickDataDigestIsKnown)
-                        {
-                            // auto f5 logic:
-                            // if these conditions are met:
-                            // - this node is on MAIN mode
-                            // - not reach consensus for next tick digest => (!targetNextTickDataDigestIsKnown)
-                            // - 451+ votes agree on the current tick (prev digests, tick data) | aka: gTickNumberOfComputors >= QUORUM
-                            // - the network was stuck for a certain time, (10x of target tick duration by default)
-                            // then:
-                            // - randomly (8% chance) force next tick to be empty every sec
-                            // - refresh the network (try to resolve bad topology)
-                            if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
-                            {
-                                if (emptyTickResolver.tick != system.tick)
-                                {
-                                    emptyTickResolver.tick = system.tick;
-                                    emptyTickResolver.clock = __rdtsc();
-                                }
-                                else
-                                {
-                                    if (__rdtsc() - emptyTickResolver.clock > frequency * TARGET_TICK_DURATION * AUTO_FORCE_NEXT_TICK_THRESHOLD / 1000)
-                                    {
-                                        if (__rdtsc() - emptyTickResolver.lastTryClock > frequency)
-                                        {
-                                            unsigned int randNumber = random(10000);
-                                            if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
-                                            {
-                                                forceNextTick = true; // auto-F5
-                                            }
-                                            emptyTickResolver.lastTryClock = __rdtsc();
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (forceNextTick)
-                            {
-                                targetNextTickDataDigest = m256i::zero();
-                                targetNextTickDataDigestIsKnown = true;
-                            }
-                        }
-                        forceNextTick = false;
+                        tryForceEmptyNextTick();                        
 
                         if (targetNextTickDataDigestIsKnown)
                         {
