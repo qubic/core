@@ -119,7 +119,7 @@ static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS]; // scheduled tick 
 #define SOLUTION_OBSOLETE_FLAG -2
 
 static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
-static unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, futureTickTotalNumberOfComputors = 0;
+static unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0, gFutureTickTotalNumberOfComputors = 0;
 static unsigned int nextTickTransactionsSemaphore = 0, numberOfNextTickTransactions = 0, numberOfKnownNextTickTransactions = 0;
 static unsigned short numberOfOwnComputorIndices;
 static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
@@ -313,9 +313,9 @@ static void logToConsole(const CHAR16* message)
     appendNumber(timestampedMessage, ((tickTotalNumberOfComputors - tickNumberOfComputors) % 100) / 10, FALSE);
     appendNumber(timestampedMessage, (tickTotalNumberOfComputors - tickNumberOfComputors) % 10, FALSE);
     appendText(timestampedMessage, L"(");
-    appendNumber(timestampedMessage, futureTickTotalNumberOfComputors / 100, FALSE);
-    appendNumber(timestampedMessage, (futureTickTotalNumberOfComputors % 100) / 10, FALSE);
-    appendNumber(timestampedMessage, futureTickTotalNumberOfComputors % 10, FALSE);
+    appendNumber(timestampedMessage, gFutureTickTotalNumberOfComputors / 100, FALSE);
+    appendNumber(timestampedMessage, (gFutureTickTotalNumberOfComputors % 100) / 10, FALSE);
+    appendNumber(timestampedMessage, gFutureTickTotalNumberOfComputors % 10, FALSE);
     appendText(timestampedMessage, L").");
     appendNumber(timestampedMessage, system.tick, FALSE);
     appendText(timestampedMessage, L".");
@@ -3486,7 +3486,7 @@ static void tickProcessor(void*)
                         futureTickTotalNumberOfComputors++;
                     }
                 }
-                ::futureTickTotalNumberOfComputors = futureTickTotalNumberOfComputors;
+                gFutureTickTotalNumberOfComputors = futureTickTotalNumberOfComputors;
             }
 
             {
@@ -3504,7 +3504,7 @@ static void tickProcessor(void*)
                     latestProcessedTick = system.tick;
                 }
 
-                if (futureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
+                if (gFutureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
                 {
                     const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
                     unsigned int numberOfEmptyNextTickTransactionDigest = 0;
@@ -3648,7 +3648,7 @@ static void tickProcessor(void*)
                 if (!targetNextTickDataDigestIsKnown)
                 {
                     if (nextTickData.epoch != system.epoch
-                        && futureTickTotalNumberOfComputors <= NUMBER_OF_COMPUTORS - QUORUM
+                        && gFutureTickTotalNumberOfComputors <= NUMBER_OF_COMPUTORS - QUORUM
                         && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] < TARGET_TICK_DURATION * frequency / 1000)
                     {
                         tickDataSuits = false;
@@ -5822,7 +5822,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAny(&requestedQuorumTick.header);
                     }
                     tickRequestingIndicator = tickTotalNumberOfComputors;
-                    if (futureTickRequestingIndicator == futureTickTotalNumberOfComputors
+                    if (futureTickRequestingIndicator == gFutureTickTotalNumberOfComputors
                         && isNewTickPlus1)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
@@ -5838,7 +5838,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                         pushToAny(&requestedQuorumTick.header);
                     }
-                    futureTickRequestingIndicator = futureTickTotalNumberOfComputors;
+                    futureTickRequestingIndicator = gFutureTickTotalNumberOfComputors;
 
                     if ((ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
                         || targetNextTickDataDigestIsKnown)
