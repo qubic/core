@@ -3593,6 +3593,26 @@ static void findNextTickDataDigestFromCurrentTickVotes()
     }
 }
 
+// return number of current tick vote
+static unsigned int countCurrentTickVote()
+{
+    const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
+    unsigned int tickTotalNumberOfComputors = 0;
+    const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        ts.ticks.acquireLock(i);
+
+        if (tsCompTicks[i].epoch == system.epoch)
+        {
+            tickTotalNumberOfComputors++;
+        }
+
+        ts.ticks.releaseLock(i);
+    }
+    return tickTotalNumberOfComputors;
+}
+
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -3744,21 +3764,9 @@ static void tickProcessor(void*)
 
             if (!tickDataSuits)
             {
-                unsigned int tickTotalNumberOfComputors = 0;
-                const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
-                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                {
-                    ts.ticks.acquireLock(i);
-
-                    if (tsCompTicks[i].epoch == system.epoch)
-                    {
-                        tickTotalNumberOfComputors++;
-                    }
-
-                    ts.ticks.releaseLock(i);
-                }
+                
                 gTickNumberOfComputors = 0;
-                gTickTotalNumberOfComputors = tickTotalNumberOfComputors;
+                gTickTotalNumberOfComputors = countCurrentTickVote();
             }
             else
             {
