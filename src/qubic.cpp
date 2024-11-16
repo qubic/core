@@ -3529,6 +3529,70 @@ static void findNextTickDataDigestFromNextTickVotes()
     }
 }
 
+// working the same as findNextTickDataDigestFromNextTickVotes
+// but it will scan current tick (system.tick) votes, instead of next tick
+static void findNextTickDataDigestFromCurrentTickVotes()
+{
+    const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
+    const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
+    unsigned int numberOfEmptyNextTickTransactionDigest = 0;
+    unsigned int numberOfUniqueNextTickTransactionDigests = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        if (tsCompTicks[i].epoch == system.epoch)
+        {
+            unsigned int j;
+            for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
+            {
+                if (tsCompTicks[i].expectedNextTickTransactionDigest == uniqueNextTickTransactionDigests[j])
+                {
+                    break;
+                }
+            }
+            if (j == numberOfUniqueNextTickTransactionDigests)
+            {
+                uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].expectedNextTickTransactionDigest;
+                uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
+            }
+            else
+            {
+                uniqueNextTickTransactionDigestCounters[j]++;
+            }
+
+            if (isZero(tsCompTicks[i].expectedNextTickTransactionDigest))
+            {
+                numberOfEmptyNextTickTransactionDigest++;
+            }
+        }
+    }
+    if (numberOfUniqueNextTickTransactionDigests)
+    {
+        unsigned int mostPopularUniqueNextTickTransactionDigestIndex = 0, totalUniqueNextTickTransactionDigestCounter = uniqueNextTickTransactionDigestCounters[0];
+        for (unsigned int i = 1; i < numberOfUniqueNextTickTransactionDigests; i++)
+        {
+            if (uniqueNextTickTransactionDigestCounters[i] > uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex])
+            {
+                mostPopularUniqueNextTickTransactionDigestIndex = i;
+            }
+            totalUniqueNextTickTransactionDigestCounter += uniqueNextTickTransactionDigestCounters[i];
+        }
+        if (uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] >= QUORUM)
+        {
+            targetNextTickDataDigest = uniqueNextTickTransactionDigests[mostPopularUniqueNextTickTransactionDigestIndex];
+            targetNextTickDataDigestIsKnown = true;
+        }
+        else
+        {
+            if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
+                || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
+            {
+                targetNextTickDataDigest = m256i::zero();
+                targetNextTickDataDigestIsKnown = true;
+            }
+        }
+    }
+}
+
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -3581,63 +3645,7 @@ static void tickProcessor(void*)
 
             if (!targetNextTickDataDigestIsKnown)
             {
-                const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
-                unsigned int numberOfEmptyNextTickTransactionDigest = 0;
-                unsigned int numberOfUniqueNextTickTransactionDigests = 0;
-                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                {
-                    if (tsCompTicks[i].epoch == system.epoch)
-                    {
-                        unsigned int j;
-                        for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
-                        {
-                            if (tsCompTicks[i].expectedNextTickTransactionDigest == uniqueNextTickTransactionDigests[j])
-                            {
-                                break;
-                            }
-                        }
-                        if (j == numberOfUniqueNextTickTransactionDigests)
-                        {
-                            uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].expectedNextTickTransactionDigest;
-                            uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
-                        }
-                        else
-                        {
-                            uniqueNextTickTransactionDigestCounters[j]++;
-                        }
-
-                        if (isZero(tsCompTicks[i].expectedNextTickTransactionDigest))
-                        {
-                            numberOfEmptyNextTickTransactionDigest++;
-                        }
-                    }
-                }
-                if (numberOfUniqueNextTickTransactionDigests)
-                {
-                    unsigned int mostPopularUniqueNextTickTransactionDigestIndex = 0, totalUniqueNextTickTransactionDigestCounter = uniqueNextTickTransactionDigestCounters[0];
-                    for (unsigned int i = 1; i < numberOfUniqueNextTickTransactionDigests; i++)
-                    {
-                        if (uniqueNextTickTransactionDigestCounters[i] > uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex])
-                        {
-                            mostPopularUniqueNextTickTransactionDigestIndex = i;
-                        }
-                        totalUniqueNextTickTransactionDigestCounter += uniqueNextTickTransactionDigestCounters[i];
-                    }
-                    if (uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] >= QUORUM)
-                    {
-                        targetNextTickDataDigest = uniqueNextTickTransactionDigests[mostPopularUniqueNextTickTransactionDigestIndex];
-                        targetNextTickDataDigestIsKnown = true;
-                    }
-                    else
-                    {
-                        if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
-                            || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
-                        {
-                            targetNextTickDataDigest = m256i::zero();
-                            targetNextTickDataDigestIsKnown = true;
-                        }
-                    }
-                }
+                
             }
 
             ts.tickData.acquireLock();
