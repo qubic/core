@@ -3464,6 +3464,70 @@ static void updateFutureTickCount()
     gFutureTickTotalNumberOfComputors = futureTickTotalNumberOfComputors;
 }
 
+// Scan all tick votes of the next tick (system.tick + 1):
+// if there are 451+ (QUORUM) votes agree on the same transactionDigest - or 226+ (VETO) votes agree on empty tick
+// then next tick digest is known (from the point of view of the node)
+static void findNextTickTransactionDigest()
+{
+    const unsigned int nextTick = system.tick + 1;
+    const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
+    const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
+    unsigned int numberOfEmptyNextTickTransactionDigest = 0;
+    unsigned int numberOfUniqueNextTickTransactionDigests = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        if (tsCompTicks[i].epoch == system.epoch)
+        {
+            unsigned int j;
+            for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
+            {
+                if (tsCompTicks[i].transactionDigest == uniqueNextTickTransactionDigests[j])
+                {
+                    break;
+                }
+            }
+            if (j == numberOfUniqueNextTickTransactionDigests)
+            {
+                uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].transactionDigest;
+                uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
+            }
+            else
+            {
+                uniqueNextTickTransactionDigestCounters[j]++;
+            }
+
+            if (isZero(tsCompTicks[i].transactionDigest))
+            {
+                numberOfEmptyNextTickTransactionDigest++;
+            }
+        }
+    }
+    unsigned int mostPopularUniqueNextTickTransactionDigestIndex = 0, totalUniqueNextTickTransactionDigestCounter = uniqueNextTickTransactionDigestCounters[0];
+    for (unsigned int i = 1; i < numberOfUniqueNextTickTransactionDigests; i++)
+    {
+        if (uniqueNextTickTransactionDigestCounters[i] > uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex])
+        {
+            mostPopularUniqueNextTickTransactionDigestIndex = i;
+        }
+        totalUniqueNextTickTransactionDigestCounter += uniqueNextTickTransactionDigestCounters[i];
+    }
+    if (uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] >= QUORUM)
+    {
+        targetNextTickDataDigest = uniqueNextTickTransactionDigests[mostPopularUniqueNextTickTransactionDigestIndex];
+        targetNextTickDataDigestIsKnown = true;
+    }
+    else
+    {
+        if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
+            || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
+        {
+            // Create empty tick
+            targetNextTickDataDigest = m256i::zero();
+            targetNextTickDataDigestIsKnown = true;
+        }
+    }
+}
+
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -3511,61 +3575,7 @@ static void tickProcessor(void*)
 
             if (gFutureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
             {
-                const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
-                unsigned int numberOfEmptyNextTickTransactionDigest = 0;
-                unsigned int numberOfUniqueNextTickTransactionDigests = 0;
-                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                {
-                    if (tsCompTicks[i].epoch == system.epoch)
-                    {
-                        unsigned int j;
-                        for (j = 0; j < numberOfUniqueNextTickTransactionDigests; j++)
-                        {
-                            if (tsCompTicks[i].transactionDigest == uniqueNextTickTransactionDigests[j])
-                            {
-                                break;
-                            }
-                        }
-                        if (j == numberOfUniqueNextTickTransactionDigests)
-                        {
-                            uniqueNextTickTransactionDigests[numberOfUniqueNextTickTransactionDigests] = tsCompTicks[i].transactionDigest;
-                            uniqueNextTickTransactionDigestCounters[numberOfUniqueNextTickTransactionDigests++] = 1;
-                        }
-                        else
-                        {
-                            uniqueNextTickTransactionDigestCounters[j]++;
-                        }
-
-                        if (isZero(tsCompTicks[i].transactionDigest))
-                        {
-                            numberOfEmptyNextTickTransactionDigest++;
-                        }
-                    }
-                }
-                unsigned int mostPopularUniqueNextTickTransactionDigestIndex = 0, totalUniqueNextTickTransactionDigestCounter = uniqueNextTickTransactionDigestCounters[0];
-                for (unsigned int i = 1; i < numberOfUniqueNextTickTransactionDigests; i++)
-                {
-                    if (uniqueNextTickTransactionDigestCounters[i] > uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex])
-                    {
-                        mostPopularUniqueNextTickTransactionDigestIndex = i;
-                    }
-                    totalUniqueNextTickTransactionDigestCounter += uniqueNextTickTransactionDigestCounters[i];
-                }
-                if (uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] >= QUORUM)
-                {
-                    targetNextTickDataDigest = uniqueNextTickTransactionDigests[mostPopularUniqueNextTickTransactionDigestIndex];
-                    targetNextTickDataDigestIsKnown = true;
-                }
-                else
-                {
-                    if (numberOfEmptyNextTickTransactionDigest > NUMBER_OF_COMPUTORS - QUORUM
-                        || uniqueNextTickTransactionDigestCounters[mostPopularUniqueNextTickTransactionDigestIndex] + (NUMBER_OF_COMPUTORS - totalUniqueNextTickTransactionDigestCounter) < QUORUM)
-                    {
-                        // Create empty tick
-                        targetNextTickDataDigest = m256i::zero();
-                        targetNextTickDataDigestIsKnown = true;
-                    }
-                }
+                findNextTickTransactionDigest();
             }
 
             if (!targetNextTickDataDigestIsKnown)
