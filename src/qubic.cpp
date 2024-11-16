@@ -3447,6 +3447,23 @@ static bool loadAllNodeStates()
 
 #endif
 
+// Count the number of future tick vote (system.tick + 1) and then update it to gFutureTickTotalNumberOfComputors
+static void updateFutureTickCount()
+{
+    const unsigned int nextTick = system.tick + 1;
+    const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
+    const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
+    unsigned int futureTickTotalNumberOfComputors = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        if (tsCompTicks[i].epoch == system.epoch)
+        {
+            futureTickTotalNumberOfComputors++;
+        }
+    }
+    gFutureTickTotalNumberOfComputors = futureTickTotalNumberOfComputors;
+}
+
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -3476,18 +3493,7 @@ static void tickProcessor(void*)
             const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
             const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
 
-            {
-                const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
-                unsigned int futureTickTotalNumberOfComputors = 0;
-                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                {
-                    if (tsCompTicks[i].epoch == system.epoch)
-                    {
-                        futureTickTotalNumberOfComputors++;
-                    }
-                }
-                gFutureTickTotalNumberOfComputors = futureTickTotalNumberOfComputors;
-            }
+            updateFutureTickCount();
 
             {
                 if (system.tick > latestProcessedTick)
