@@ -913,7 +913,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 
 static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
-    if (broadcastedComputors.computors.epoch && !selfGeneratedComputors)
+    if (broadcastedComputors.computors.epoch && !useSelfGeneratedComputors)
     {
         enqueueResponse(peer, sizeof(broadcastedComputors), BroadcastComputors::type, header->dejavu(), &broadcastedComputors);
     }
@@ -1968,6 +1968,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     minerScores[numberOfMiners++] = 1;
                 }
 
+                // Sort minerPublicKeys according to minderScores
                 const m256i tmpPublicKey = minerPublicKeys[minerIndex];
                 const unsigned int tmpScore = minerScores[minerIndex];
                 while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
@@ -2780,7 +2781,7 @@ static void beginEpoch()
     if (useSelfGeneratedComputors)
     {
         broadcastedComputors.computors.epoch = system.epoch;
-        copyMem(&broadcastedComputors.computors.publicKeys, &selfGeneratedComputors, sizeof(selfGeneratedComputors));
+        copyMem(&broadcastedComputors.computors.publicKeys, selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i));
 
         // Update ownComputorIndices and minerPublicKeys
         numberOfOwnComputorIndices = 0;
@@ -3924,6 +3925,7 @@ static void calculateComputorIndex()
     setMem(tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
     setMem(isIndexTaken, NUMBER_OF_COMPUTORS, false);
     setMem(isFComputorUsed, NUMBER_OF_COMPUTORS, false);
+    setMem(selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
 
     // Check if computor is keeping it's status and keep it's index
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -3945,7 +3947,7 @@ static void calculateComputorIndex()
     unsigned int futureComputorIdx = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        if (isIndexTaken[i])
+        if (!isIndexTaken[i])
         {
             // Find new Computor in futureComputors
             while (futureComputorIdx < NUMBER_OF_COMPUTORS)
@@ -3970,7 +3972,8 @@ static void calculateComputorIndex()
     }
 
     // Save Future Computors in seperate array as beginEpoche randomly initializes boradcatedComputors
-    copyMem(&selfGeneratedComputors, &tempComputorList, sizeof(system.futureComputors));
+    copyMem(selfGeneratedComputors, tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i));
+
     useSelfGeneratedComputors = true;
 };
 
@@ -4389,7 +4392,9 @@ static void tickProcessor(void*)
                                     ASSERT(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
                                     ASSERT(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
                                     ASSERT(isZero((void*)minerScores, sizeof(minerScores)));
-                                    ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
+                                    if(!useSelfGeneratedComputors){
+                                        ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
+                                    }
                                     ASSERT(isZero(competitorScores, sizeof(competitorScores)));
                                     ASSERT(isZero(competitorPublicKeys, sizeof(competitorPublicKeys)));
                                     ASSERT(isZero(competitorComputorStatuses, sizeof(competitorComputorStatuses)));
@@ -5868,10 +5873,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     logToConsole(L"CRITICAL SITUATION #2: Self-generated computorlist does not match computorlist of ARB");
                 }
 
-                if (useSelfGeneratedComputors)
-                {
-                    logToConsole(L"Computorlist is self-generated and not signed by ARB");
-                }
 
                 {
                     // TODO: remove later
@@ -6210,6 +6211,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                     tickerLoopNumerator = 0;
                     tickerLoopDenominator = 0;
+
+                    if (useSelfGeneratedComputors)
+                    {
+                        logToConsole(L"Computorlist is self-generated and not signed by ARB");
+                    }
 
                     // output if misalignment happened
                     if (gTickTotalNumberOfComputors - gTickNumberOfComputors >= QUORUM && numberOfKnownNextTickTransactions == numberOfNextTickTransactions)

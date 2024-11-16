@@ -58,7 +58,7 @@ unsigned long long GetFreeRAMSize()
 
     if (status != EFI_SUCCESS)
     {
-        if (NULL != MemoryMap)
+        if (nullptr != MemoryMap) 
         {
             freePool(MemoryMap);
         }
