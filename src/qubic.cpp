@@ -3753,6 +3753,94 @@ static void prepareNextTickTransactions()
     nextTickTransactionsSemaphore = 0;
 }
 
+// broadcast all tickVotes from all IDs in this node
+static void broadcastTickVotes()
+{
+    BroadcastTick broadcastTick;
+    bs->CopyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
+    for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+    {
+        broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
+        broadcastTick.tick.epoch = system.epoch;
+        m256i saltedData[2];
+        saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
+        saltedData[1].m256i_u64[0] = resourceTestingDigest;
+        KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &broadcastTick.tick.saltedResourceTestingDigest, sizeof(broadcastTick.tick.saltedResourceTestingDigest));
+        saltedData[1] = etalonTick.saltedSpectrumDigest;
+        KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedSpectrumDigest);
+        saltedData[1] = etalonTick.saltedUniverseDigest;
+        KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedUniverseDigest);
+        saltedData[1] = etalonTick.saltedComputerDigest;
+        KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedComputerDigest);
+
+        unsigned char digest[32];
+        KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
+        broadcastTick.tick.computorIndex ^= BroadcastTick::type;
+        sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
+
+        enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);
+        // NOTE: here we don't copy these votes to memory, instead we wait other nodes echoing these votes back because:
+        // - if own votes don't get echoed back, that indicates this node has internet/topo issue, and need to reissue vote (F9)
+        // - all votes need to be processed in a single place of code (for further handling)
+        // - all votes are treated equally (own votes and their votes)
+    }
+}
+
+// count the votes of current tick (system.tick) and compare it with etalonTick
+// tickNumberOfComputors: total number of votes that have matched digests with this node states
+// tickTotalNumberOfComputors: total number of received votes
+static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& tickTotalNumberOfComputors)
+{
+    const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
+    const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        ts.ticks.acquireLock(i);
+
+        const Tick* tick = &tsCompTicks[i];
+        if (tick->epoch == system.epoch)
+        {
+            tickTotalNumberOfComputors++;
+
+            if (*((unsigned long long*) & tick->millisecond) == *((unsigned long long*) & etalonTick.millisecond)
+                && tick->prevSpectrumDigest == etalonTick.prevSpectrumDigest
+                && tick->prevUniverseDigest == etalonTick.prevUniverseDigest
+                && tick->prevComputerDigest == etalonTick.prevComputerDigest
+                && tick->transactionDigest == etalonTick.transactionDigest)
+            {
+                m256i saltedData[2];
+                m256i saltedDigest;
+                saltedData[0] = broadcastedComputors.computors.publicKeys[tick->computorIndex];
+                saltedData[1].m256i_u64[0] = resourceTestingDigest;
+                KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &saltedDigest, sizeof(resourceTestingDigest));
+                if (tick->saltedResourceTestingDigest == saltedDigest.m256i_u64[0])
+                {
+                    saltedData[1] = etalonTick.saltedSpectrumDigest;
+                    KangarooTwelve64To32(saltedData, &saltedDigest);
+                    if (tick->saltedSpectrumDigest == saltedDigest)
+                    {
+                        saltedData[1] = etalonTick.saltedUniverseDigest;
+                        KangarooTwelve64To32(saltedData, &saltedDigest);
+                        if (tick->saltedUniverseDigest == saltedDigest)
+                        {
+                            saltedData[1] = etalonTick.saltedComputerDigest;
+                            KangarooTwelve64To32(saltedData, &saltedDigest);
+                            if (tick->saltedComputerDigest == saltedDigest)
+                            {
+                                tickNumberOfComputors++;
+                                // to avoid submitting invalid votes (eg: all zeroes with valid signature)
+                                // only count votes that matched etalonTick
+                                voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ts.ticks.releaseLock(i);
+    }
+}
+
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -3968,34 +4056,7 @@ static void tickProcessor(void*)
                     {
                         if (mainAuxStatus & 1)
                         {
-                            BroadcastTick broadcastTick;
-                            bs->CopyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
-                            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
-                            {
-                                broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
-                                broadcastTick.tick.epoch = system.epoch;
-                                m256i saltedData[2];
-                                saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
-                                saltedData[1].m256i_u64[0] = resourceTestingDigest;
-                                KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &broadcastTick.tick.saltedResourceTestingDigest, sizeof(broadcastTick.tick.saltedResourceTestingDigest));
-                                saltedData[1] = etalonTick.saltedSpectrumDigest;
-                                KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedSpectrumDigest);
-                                saltedData[1] = etalonTick.saltedUniverseDigest;
-                                KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedUniverseDigest);
-                                saltedData[1] = etalonTick.saltedComputerDigest;
-                                KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedComputerDigest);
-
-                                unsigned char digest[32];
-                                KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
-                                broadcastTick.tick.computorIndex ^= BroadcastTick::type;
-                                sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
-
-                                enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);
-                                // NOTE: here we don't copy these votes to memory, instead we wait other nodes echoing these votes back because:
-                                // - if own votes don't get echoed back, that indicates this node has internet/topo issue, and need to reissue vote (F9)
-                                // - all votes need to be processed in a single place of code (for further handling)
-                                // - all votes are treated equally (own votes and their votes)
-                            }
+                            broadcastTickVotes();
                         }
 
                         if (system.tick != system.initialTick)
@@ -4004,56 +4065,9 @@ static void tickProcessor(void*)
                         }
                     }
 
-                    const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
-
                     unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0;
-                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                    {
-                        ts.ticks.acquireLock(i);
-
-                        const Tick* tick = &tsCompTicks[i];
-                        if (tick->epoch == system.epoch)
-                        {
-                            tickTotalNumberOfComputors++;
-
-                            if (*((unsigned long long*)&tick->millisecond) == *((unsigned long long*)&etalonTick.millisecond)
-                                && tick->prevSpectrumDigest == etalonTick.prevSpectrumDigest
-                                && tick->prevUniverseDigest == etalonTick.prevUniverseDigest
-                                && tick->prevComputerDigest == etalonTick.prevComputerDigest
-                                && tick->transactionDigest == etalonTick.transactionDigest)
-                            {
-                                m256i saltedData[2];
-                                m256i saltedDigest;
-                                saltedData[0] = broadcastedComputors.computors.publicKeys[tick->computorIndex];
-                                saltedData[1].m256i_u64[0] = resourceTestingDigest;
-                                KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &saltedDigest, sizeof(resourceTestingDigest));
-                                if (tick->saltedResourceTestingDigest == saltedDigest.m256i_u64[0])
-                                {
-                                    saltedData[1] = etalonTick.saltedSpectrumDigest;
-                                    KangarooTwelve64To32(saltedData, &saltedDigest);
-                                    if (tick->saltedSpectrumDigest == saltedDigest)
-                                    {
-                                        saltedData[1] = etalonTick.saltedUniverseDigest;
-                                        KangarooTwelve64To32(saltedData, &saltedDigest);
-                                        if (tick->saltedUniverseDigest == saltedDigest)
-                                        {
-                                            saltedData[1] = etalonTick.saltedComputerDigest;
-                                            KangarooTwelve64To32(saltedData, &saltedDigest);
-                                            if (tick->saltedComputerDigest == saltedDigest)
-                                            {
-                                                tickNumberOfComputors++;
-                                                // to avoid submitting invalid votes (eg: all zeroes with valid signature)
-                                                // only count votes that matched etalonTick
-                                                voteCounter.registerNewVote(tick->tick, tick->computorIndex);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        ts.ticks.releaseLock(i);
-                    }
+                    updateVotesCount(tickNumberOfComputors, tickTotalNumberOfComputors);
+                    
                     gTickNumberOfComputors = tickNumberOfComputors;
                     gTickTotalNumberOfComputors = tickTotalNumberOfComputors;
 
