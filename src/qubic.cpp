@@ -3651,6 +3651,8 @@ static void tickProcessor(void*)
             ts.tickData.acquireLock();
             bs->CopyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
             ts.tickData.releaseLock();
+
+            // This time lock ensure tick data is crafted 2 ticks "ago"
             if (nextTickData.epoch == system.epoch)
             {
                 m256i timelockPreimage[3];
