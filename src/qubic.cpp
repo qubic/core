@@ -4290,8 +4290,18 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
             long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
             if (loadedSize != contractDescriptions[contractIndex].stateSize)
             {
-                logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
-                return false;
+                if (system.epoch < contractDescriptions[contractIndex].constructionEpoch && contractDescriptions[contractIndex].stateSize >= sizeof(IPO))
+                {
+                    setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+                    appendText(message, L"(");
+                    appendText(message, CONTRACT_FILE_NAME);
+                    appendText(message, L" not loaded but initialized with zeros for IPO) ");
+                }
+                else
+                {
+                    logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+                    return false;
+                }
             }
             else
             {
