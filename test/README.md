@@ -2,7 +2,7 @@
 Importance Levels:
 - **High**: the networks and node can't function properly, need to fix asap or we should not release.
 
-- **Medium**: Funds are cryptographically secured but extra serivces don't work as expected (moneyFlew, state save/load features). These services can be turned off temporarily.
+- **Medium**: Funds are cryptographically secured but extra services don't work as expected (moneyFlew, state save/load features). These services can be turned off temporarily.
 
 - **Low**: Not really harmful, eg: display error. Can be fixed later
 
@@ -26,7 +26,7 @@ Consensus algo (tick processors):
 
 Extra services:
 - [High] The tx add on (moneyflew)
-- [Medium] The node is able to save ticks data and reload when reseting.
+- [Medium] The node is able to save ticks data and reload when resetting.
 - [Medium] All loggings work as expected. Including: qu transfer, share transfer, contract message, burning loggings
 
 

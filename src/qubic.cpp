@@ -1,5 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
+//#define NO_QEARN
+
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -1268,6 +1270,13 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                     &requestMiningScoreRanking);
             }
             break;
+
+            case SPECIAL_COMMAND_FORCE_SWITCH_EPOCH:
+            {
+                forceSwitchEpoch = true;
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
             }
         }
     }
@@ -1737,6 +1746,7 @@ static void contractProcessor(void*)
     }
     break;
 
+    // TODO: rename to invoke (with option to have amount)
     case USER_PROCEDURE_CALL:
     {
         const Transaction* transaction = contractProcessorTransaction;
@@ -2201,6 +2211,26 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
+                case CustomMiningTasksTransactionPrefix::transactionType():
+                {
+                    if (transaction->amount >= CustomMiningTasksTransactionPrefix::minAmount()
+                        && transaction->inputSize >= CustomMiningTasksTransactionPrefix::minInputSize())
+                    {
+                        // Do nothing
+                    }
+                }
+                break;
+
+                case CustomMiningSolutionTransactionPrefix::transactionType():
+                {
+                    if (transaction->amount >= CustomMiningSolutionTransactionPrefix::minAmount()
+                        && transaction->inputSize >= CustomMiningSolutionTransactionPrefix::minInputSize())
+                    {
+                        // Do nothing
+                    }
+                }
+                break;
+
                 case OracleReplyCommitTransaction::transactionType():
                 {
                     if (computorIndex(transaction->sourcePublicKey) >= 0
@@ -2294,7 +2324,7 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick); // reset here to persist the data when we do seamless transition
+        logger.reset(system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
@@ -2926,7 +2956,7 @@ static void endEpoch()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
         qpiContext.call(5, "", 0);
         ASSERT(qpiContext.outputSize == sizeof(GQMPROP::RevenueDonationT));
-        GQMPROP::RevenueDonationT* emissionDist = (GQMPROP::RevenueDonationT*)qpiContext.outputBuffer;
+        const GQMPROP::RevenueDonationT* emissionDist = (GQMPROP::RevenueDonationT*)qpiContext.outputBuffer;
 
         // Compute revenue of computors and arbitrator
         long long arbitratorRevenue = ISSUANCE_RATE;
@@ -2969,7 +2999,7 @@ static void endEpoch()
                 if (rdEntry.millionthAmount > 0 && rdEntry.millionthAmount <= 1000000 && system.epoch >= rdEntry.firstEpoch)
                 {
                     // Compute donation and update revenue
-                    long long donation = revenue * rdEntry.millionthAmount / 1000000;
+                    const long long donation = revenue * rdEntry.millionthAmount / 1000000;
                     revenue -= donation;
 
                     // Generate revenue donation
@@ -3166,7 +3196,7 @@ static bool saveAllNodeStates()
     appendText(message, directory); appendText(message, L"/");
     appendText(message, UNIVERSE_FILE_NAME);
     logToConsole(message);
-    if (!saveUniverse(directory))
+    if (!saveUniverse(UNIVERSE_FILE_NAME, directory))
     {
         logToConsole(L"Failed to save universe");
         return false;
@@ -3309,7 +3339,7 @@ static bool loadAllNodeStates()
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
-    if (!loadUniverse(directory))
+    if (!loadUniverse(UNIVERSE_FILE_NAME, directory))
     {
         logToConsole(L"Failed to load universe");
         return false;
@@ -4270,8 +4300,18 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
             long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
             if (loadedSize != contractDescriptions[contractIndex].stateSize)
             {
-                logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
-                return false;
+                if (system.epoch < contractDescriptions[contractIndex].constructionEpoch && contractDescriptions[contractIndex].stateSize >= sizeof(IPO))
+                {
+                    setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+                    appendText(message, L"(");
+                    appendText(message, CONTRACT_FILE_NAME);
+                    appendText(message, L" not loaded but initialized with zeros for IPO) ");
+                }
+                else
+                {
+                    logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
+                    return false;
+                }
             }
             else
             {
@@ -4998,10 +5038,6 @@ static void logInfo()
     appendNumber(message, spectrumReorgTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms.");
     logToConsole(message);
-
-    setText(message, L"Entity balance dust threshold: ");
-    appendNumber(message, (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf, TRUE);
-    logToConsole(message);
 }
 
 static void logHealthStatus()
@@ -5276,6 +5312,9 @@ static void processKeyPresses()
 
             logHealthStatus();
 
+            setText(message, L"Entity balance dust threshold: ");
+            appendNumber(message, (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf, TRUE);
+            logToConsole(message);
 
 #if TICK_STORAGE_AUTOSAVE_MODE
             setText(message, L"Auto-save enabled in AUX mode: every ");

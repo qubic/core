@@ -113,7 +113,8 @@ long long QPI::QpiContextProcedureCall::issueAsset(unsigned long long name, cons
         }
     }
 
-    if (issuer != _currentContractId && issuer != _invocator)
+    // Any time an asset is issued via QPI either invocator or contract can be the issuer. Zero is prohibited in this case.
+    if (isZero(issuer) || (issuer != _currentContractId && issuer != _invocator))
     {
         return 0;
     }

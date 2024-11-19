@@ -56,4 +56,18 @@ Mandatory update releases like adding SC or IPO should be published before Sunda
 
 TODO
 
+## Version naming scheme
 
+`vX.Y.Z`
+
+Starting with `v1.225.0` naming follows this scheme:
+
+If two versions' `X`s and `Y`s are the same, the versions are compatible and can tick together. `Z` is incremented for changes that do not break compatibility.
+
+If `X` or `Y` change, compatibility is broken and computor operators MUST update their nodes.
+
+Examples changes that require increment of `X` or `Y`:
+
+- adding a contract
+- changing a contract procedure
+- anything that may influence digests

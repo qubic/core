@@ -1342,6 +1342,7 @@ T genNumber(
     return val;
 }
 
+// TODO: move all performance tests into a separate project!?
 template <unsigned long long capacity>
 QPI::uint64 testCollectionPerformance(
     QPI::collection<QPI::uint64, capacity>& coll,
