@@ -1347,7 +1347,7 @@ namespace QPI
 	// QPI procedures available to contract procedures (not to contract functions)
 	struct QpiContextProcedureCall : public QPI::QpiContextFunctionCall
 	{
-		bool acquireShares(
+		inline bool acquireShares(
 			uint64 assetName,
 			const id& issuer,
 			const id& owner,
@@ -1373,7 +1373,7 @@ namespace QPI
 			uint64 unitOfMeasurement
 		) const; // Returns number of shares or 0 on error
 
-		bool releaseShares(
+		inline bool releaseShares(
 			uint64 assetName,
 			const id& issuer,
 			const id& owner,
