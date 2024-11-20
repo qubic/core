@@ -650,6 +650,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
             {
                 // Copy computor list
                 copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+                copyMem(system.futureComputors, broadcastedComputors.computors.publicKeys, NUMBER_OF_COMPUTORS * sizeof(m256i));
 
                 // Update ownComputorIndices and minerPublicKeys
                 if (request->computors.epoch == system.epoch)
@@ -2782,6 +2783,7 @@ static void beginEpoch()
     {
         broadcastedComputors.computors.epoch = system.epoch;
         copyMem(&broadcastedComputors.computors.publicKeys, selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i));
+        copyMem(system.futureComputors, broadcastedComputors.computors.publicKeys, NUMBER_OF_COMPUTORS * sizeof(m256i));
 
         // Update ownComputorIndices and minerPublicKeys
         numberOfOwnComputorIndices = 0;
