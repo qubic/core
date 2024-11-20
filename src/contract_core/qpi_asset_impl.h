@@ -72,13 +72,19 @@ bool QPI::AssetOwnershipIterator::next()
         {
             // get first ownership of issuance
             _ownershipIdx = as.indexLists.ownnershipsPossessionsFirstIdx[_issuanceIdx];
-            ASSERT(_ownershipIdx == NO_ASSET_INDEX || (_ownershipIdx < ASSETS_CAPACITY && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP));
+            ASSERT(_ownershipIdx == NO_ASSET_INDEX
+                || (_ownershipIdx < ASSETS_CAPACITY
+                    && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP
+                    && assets[_ownershipIdx].varStruct.ownership.issuanceIndex == _issuanceIdx));
         }
         else
         {
             // get next ownership
             _ownershipIdx = as.indexLists.nextIdx[_ownershipIdx];
-            ASSERT(_ownershipIdx == NO_ASSET_INDEX || (_ownershipIdx < ASSETS_CAPACITY && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP));
+            ASSERT(_ownershipIdx == NO_ASSET_INDEX
+                || (_ownershipIdx < ASSETS_CAPACITY
+                    && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP
+                    && assets[_ownershipIdx].varStruct.ownership.issuanceIndex == _issuanceIdx));
         }
 
         // if specific managing contract is requested, make sure the ownership matches
@@ -88,7 +94,10 @@ bool QPI::AssetOwnershipIterator::next()
                 && assets[_ownershipIdx].varStruct.ownership.managingContractIndex != _ownership.managingContract)
             {
                 _ownershipIdx = as.indexLists.nextIdx[_ownershipIdx];
-                ASSERT(_ownershipIdx == NO_ASSET_INDEX || (_ownershipIdx < ASSETS_CAPACITY && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP));
+                ASSERT(_ownershipIdx == NO_ASSET_INDEX
+                    || (_ownershipIdx < ASSETS_CAPACITY
+                        && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP
+                        && assets[_ownershipIdx].varStruct.ownership.issuanceIndex == _issuanceIdx));
             }
         }
 
@@ -180,8 +189,6 @@ bool QPI::AssetPossessionIterator::next()
 
             // retry with next owner
         } while (AssetOwnershipIterator::next());
-
-        return false;
     }
     else
     {
@@ -192,13 +199,19 @@ bool QPI::AssetPossessionIterator::next()
             {
                 // get first possession of ownership
                 _possessionIdx = as.indexLists.ownnershipsPossessionsFirstIdx[_ownershipIdx];
-                ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
+                ASSERT(_possessionIdx == NO_ASSET_INDEX
+                    || (_possessionIdx < ASSETS_CAPACITY
+                        && assets[_possessionIdx].varStruct.possession.type == POSSESSION
+                        && assets[_possessionIdx].varStruct.possession.ownershipIndex == _ownershipIdx));
             }
             else
             {
                 // get next ownership
                 _possessionIdx = as.indexLists.nextIdx[_possessionIdx];
-                ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
+                ASSERT(_possessionIdx == NO_ASSET_INDEX
+                    || (_possessionIdx < ASSETS_CAPACITY
+                        && assets[_possessionIdx].varStruct.possession.type == POSSESSION
+                        && assets[_possessionIdx].varStruct.possession.ownershipIndex == _ownershipIdx));
             }
 
             // if specific managing contract is requested, make sure the possession matches
@@ -208,7 +221,10 @@ bool QPI::AssetPossessionIterator::next()
                     && assets[_possessionIdx].varStruct.possession.managingContractIndex != _possession.managingContract)
                 {
                     _possessionIdx = as.indexLists.nextIdx[_possessionIdx];
-                    ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
+                    ASSERT(_possessionIdx == NO_ASSET_INDEX
+                        || (_possessionIdx < ASSETS_CAPACITY
+                            && assets[_possessionIdx].varStruct.possession.type == POSSESSION
+                            && assets[_possessionIdx].varStruct.possession.ownershipIndex == _ownershipIdx));
                 }
             }
 
@@ -217,9 +233,11 @@ bool QPI::AssetPossessionIterator::next()
 
             // no matching entry found -> retry with next owner
         } while (AssetOwnershipIterator::next());
-
-        return false;
     }
+
+    ASSERT(_ownershipIdx == NO_ASSET_INDEX && _possessionIdx == NO_ASSET_INDEX);
+
+    return false;
 }
 
 inline id QPI::AssetPossessionIterator::possessor() const
