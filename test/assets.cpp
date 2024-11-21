@@ -18,10 +18,12 @@ public:
     AssetsTest()
     {
         initAssets();
+        initCommonBuffers();
     }
 
     ~AssetsTest()
     {
+        deinitCommonBuffers();
         deinitAssets();
     }
 
@@ -41,14 +43,6 @@ public:
             // check issuance
             EXPECT_LT(issuanceIdx, ASSETS_CAPACITY);
             EXPECT_EQ(assets[issuanceIdx].varStruct.issuance.type, ISSUANCE);
-
-            if (printInfo)
-            {
-                char assetName[8];
-                memcpy(assetName, assets[issuanceIdx].varStruct.issuance.name, 7);
-                assetName[7] = 0;
-                std::cout << "asset " << assetName << " by " << assets[issuanceIdx].varStruct.issuance.publicKey << ": index " << issuanceIdx << std::endl;
-            }
 
             // check all ownerships of issuance
             unsigned int ownershipIdx = indexLists.ownnershipsPossessionsFirstIdx[issuanceIdx];
@@ -94,6 +88,13 @@ public:
             switch (assets[index].varStruct.issuance.type)
             {
             case ISSUANCE:
+                if (printInfo)
+                {
+                    char assetName[8];
+                    memcpy(assetName, assets[index].varStruct.issuance.name, 7);
+                    assetName[7] = 0;
+                    std::cout << "asset " << assetName << " by " << assets[index].varStruct.issuance.publicKey << ": index " << index << std::endl;
+                }
                 ++arrayElementCount[NO_ASSET_INDEX];
                 break;
             case OWNERSHIP:
@@ -140,7 +141,7 @@ public:
 TEST(TestCoreAssets, CheckLoadFile)
 {
     AssetsTest test;
-    if (loadUniverse(L"universe.132"))
+    if (loadUniverse(L"universe.136"))
     {
         test.checkAssetsConsistency(true);
     }
@@ -220,7 +221,6 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
     AssetsTest test;
     test.clearUniverse();
 
-
     IssuanceTestData issuances[] = {
         { { m256i(1, 2, 3, 4), assetNameFromString("BLUB") }, 1, NO_ASSET_INDEX, 10000, 10, 30 },
         { { m256i::zero(), assetNameFromString("QX") }, 2, NO_ASSET_INDEX, 676, 20, 30 },
@@ -230,6 +230,15 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
         { { m256i(1234, 2, 3, 4), assetNameFromString("FOO") }, 6, NO_ASSET_INDEX, 1000000ll, 2, 1 },
     };
     constexpr int issuancesCount = sizeof(issuances) / sizeof(issuances[0]);
+
+    // With empty universe, all iterators should stop right after init
+    for (int i = 0; i < issuancesCount; ++i)
+    {
+        AssetOwnershipIterator iterO(issuances[i].id);
+        EXPECT_TRUE(iterO.reachedEnd());
+        AssetOwnershipIterator iterP(issuances[i].id);
+        EXPECT_TRUE(iterP.reachedEnd());
+    }
 
     // Build universe with multiple owners / possessor per issuance
     for (int i = 0; i < issuancesCount; ++i)
@@ -396,6 +405,10 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
             EXPECT_EQ(totalShares, issuances[i].numOfShares);
         }
     }
+
+    // check consistency after rebuild/cleanup of hash map
+    assetsEndEpoch();
+    test.checkAssetsConsistency();
 }
 
 /*
