@@ -24,6 +24,7 @@
 #include "platform/time.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
+#include "platform/memory_util.h"
 
 #include "platform/custom_stack.h"
 
@@ -4425,23 +4426,6 @@ static bool saveSystem(CHAR16* directory)
 }
 
 
-
-static bool allocPoolWithErrorLog(const EFI_MEMORY_TYPE poolType, const CHAR16* name, const unsigned long long size, void** buffer)
-    {
-    EFI_STATUS status;
-    if (status = bs->AllocatePool(poolType, size, buffer))
-    {
-        setText(message, L"EFI_BOOT_SERVICES.AllocatePool() fails for ");
-        appendText(message, name);
-        appendText(message, L" with size ");
-        appendNumber(message, size, TRUE);
-        logStatusAndMemInfoToConsole(message, status, __LINE__, size);
-        return false;
-    }
-    return true;
-}
-
-
 static bool initialize()
 {
     enableAVX();
@@ -4496,14 +4480,14 @@ static bool initialize()
     {
         if (!ts.init())
             return false;
-        if (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE,(void**)&entityPendingTransactions) ||
-            !allocPoolWithErrorLog(EfiRuntimeServicesData, L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * 32ULL,(void**)&entityPendingTransactions))
+        if (!allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE,(void**)&entityPendingTransactions) ||
+            !allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * 32ULL,(void**)&entityPendingTransactions))
         {
             return false;
         }
 
-        if (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE, (void**)&computorPendingTransactions) ||
-            !allocPoolWithErrorLog(EfiRuntimeServicesData, L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL, (void**)&computorPendingTransactionDigests))
+        if (!allocPoolWithErrorLog(L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE, (void**)&computorPendingTransactions) ||
+            !allocPoolWithErrorLog(L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL, (void**)&computorPendingTransactionDigests))
         {
             return false;
         }
@@ -4525,20 +4509,20 @@ static bool initialize()
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
-            if (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"contractStates",  size, (void**)&contractStates[contractIndex]))
+            if (!allocPoolWithErrorLog(L"contractStates",  size, (void**)&contractStates[contractIndex]))
             {
                 return false;
             }
         }
 
-        if (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"score", sizeof(*score), (void**)&score))
+        if (!allocPoolWithErrorLog(L"score", sizeof(*score), (void**)&score))
         {
             return false;
         }
         setMem(score, sizeof(*score), 0);
 
         bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
-        if (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
+        if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
         {
             return false;
         }
@@ -4684,16 +4668,16 @@ static bool initialize()
     score->loadScoreCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
-    if ((!allocPoolWithErrorLog(EfiRuntimeServicesData, L"dejavu0", 536870912, (void**)&dejavu0)) ||
-        (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"dejavu1", 536870912, (void**)&dejavu1)))
+    if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0)) ||
+        (!allocPoolWithErrorLog(L"dejavu1", 536870912, (void**)&dejavu1)))
     {
         return false;
     }
     bs->SetMem((void*)dejavu0, 536870912, 0);
     bs->SetMem((void*)dejavu1, 536870912, 0);
 
-    if ((!allocPoolWithErrorLog(EfiRuntimeServicesData, L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer)) ||
-        (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer)))
+    if ((!allocPoolWithErrorLog(L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer)) ||
+        (!allocPoolWithErrorLog(L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer)))
     {
         return false;
     }
@@ -4702,9 +4686,9 @@ static bool initialize()
     {
         peers[i].receiveData.FragmentCount = 1;
         peers[i].transmitData.FragmentCount = 1;
-        if ((!allocPoolWithErrorLog(EfiRuntimeServicesData, L"receiveBuffer", BUFFER_SIZE, &peers[i].receiveBuffer))  ||
-            (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"FragmentBuffer", BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer)) ||
-            (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"dataToTransmit", BUFFER_SIZE, (void**)&peers[i].dataToTransmit)))
+        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE, &peers[i].receiveBuffer))  ||
+            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer)) ||
+            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE, (void**)&peers[i].dataToTransmit)))
         {
             return false;
         }
@@ -5586,7 +5570,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             mpServicesProtocol->GetProcessorInfo(mpServicesProtocol, i, &processorInformation);
             if (processorInformation.StatusFlag == (PROCESSOR_ENABLED_BIT | PROCESSOR_HEALTH_STATUS_BIT))
             {
-                if (!allocPoolWithErrorLog(EfiRuntimeServicesData, L"", BUFFER_SIZE, &processors[numberOfProcessors].buffer))
+                CHAR16 errMsg[60];
+                setText(errMsg, L"processor[");
+                appendNumber(errMsg, i, false);
+                appendText(errMsg, L"].buffer");
+                if (!allocPoolWithErrorLog(errMsg, BUFFER_SIZE, &processors[numberOfProcessors].buffer))
                 {
                     numberOfProcessors = 0;
 
