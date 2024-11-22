@@ -56,16 +56,6 @@ public:
         as.indexLists.reset();
     }
 
-    long long getBalance(const id& pubKey) const
-    {
-        int index = spectrumIndex(pubKey);
-        if (index < 0)
-            return 0;
-        long long balance = energy(index);
-        EXPECT_GE(balance, 0ll);
-        return balance;
-    }
-
     template <typename InputType, typename OutputType>
     void callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true) const
     {
@@ -137,4 +127,14 @@ public:
     contractStates[contractIndex] = (unsigned char*)malloc(size); \
     setMem(contractStates[contractIndex], size, 0); \
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName); \
+}
+
+static inline long long getBalance(const id& pubKey)
+{
+    int index = spectrumIndex(pubKey);
+    if (index < 0)
+        return 0;
+    long long balance = energy(index);
+    EXPECT_GE(balance, 0ll);
+    return balance;
 }
