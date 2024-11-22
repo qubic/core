@@ -9,6 +9,8 @@
 
 #include "network_messages/assets.h"
 
+#include "contract_core/contract_def.h"
+
 #include "public_settings.h"
 #include "logging/logging.h"
 #include "kangaroo_twelve.h"
@@ -16,13 +18,144 @@
 #include "common_buffers.h"
 
 
+// CAUTION: Currently, there is no locking of universeLock if contracts use the QPI asset iteration classes directly.
+// This shouldn't be a problem as long as:
+// - write access to assets only happens in contractProcessor(), which runs contract procedures,
+//   or tickProcessor(), which doesn't run in parallel to contractProcessor(),
+//   or during a single-threading phase (node startup); NO WRITING OF ASSETS IN REQUEST PROCESSOR OR MAIN THREAD!
+// - QPI asset iteration classes do not allow writing access to the universe (if this is changed in the future,
+//   note that all write access requires locking universeLock)
 
+// TODO: move this into AssetStorage class
 GLOBAL_VAR_DECL volatile char universeLock GLOBAL_VAR_INIT(0);
 GLOBAL_VAR_DECL Asset* assets GLOBAL_VAR_INIT(nullptr);
 GLOBAL_VAR_DECL m256i* assetDigests GLOBAL_VAR_INIT(nullptr);
 static constexpr unsigned long long assetDigestsSizeInBytes = (ASSETS_CAPACITY * 2 - 1) * 32ULL;
 GLOBAL_VAR_DECL unsigned long long* assetChangeFlags GLOBAL_VAR_INIT(nullptr);
 static constexpr char CONTRACT_ASSET_UNIT_OF_MEASUREMENT[7] = { 0, 0, 0, 0, 0, 0, 0 };
+
+static constexpr unsigned int NO_ASSET_INDEX = 0xffffffff;
+
+
+struct AssetStorage
+{
+
+    // TODO: iterators / filters
+    // class for iterating issuance
+    // class for selecting issuance
+    // class for selecting / iterating ownership with given issuance
+    // class for selecting / iterating possession with given issuance and potentially given ownership
+
+public: // TODO: make protected
+    
+
+
+    // Lists (single-linked) of
+    // - all issuances,
+    // - all ownerships belonging to each issuance
+    // - all possessions belonging to each ownership
+    struct IndexLists
+    {
+        unsigned int issuancesFirstIdx;
+        unsigned int ownnershipsPossessionsFirstIdx[ASSETS_CAPACITY];
+
+        unsigned int nextIdx[ASSETS_CAPACITY];
+
+        void addIssuance(unsigned int newIssuanceIdx)
+        {
+            // add as first element in linked list of all issuances
+            ASSERT(newIssuanceIdx < ASSETS_CAPACITY);
+            ASSERT(assets[newIssuanceIdx].varStruct.issuance.type == ISSUANCE);
+            ASSERT(issuancesFirstIdx == NO_ASSET_INDEX || assets[issuancesFirstIdx].varStruct.issuance.type == ISSUANCE);
+            nextIdx[newIssuanceIdx] = issuancesFirstIdx;
+            issuancesFirstIdx = newIssuanceIdx;
+        }
+
+        // Add newOwnershipIdx as first element in linked list of all ownerships of issuanceIdx
+        void addOwnership(unsigned int issuanceIdx, unsigned int newOwnershipIdx)
+        {
+            ASSERT(issuanceIdx < ASSETS_CAPACITY);
+            ASSERT(newOwnershipIdx < ASSETS_CAPACITY);
+            ASSERT(assets[issuanceIdx].varStruct.issuance.type == ISSUANCE);
+            ASSERT(assets[newOwnershipIdx].varStruct.ownership.type == OWNERSHIP);
+            ASSERT(ownnershipsPossessionsFirstIdx[issuanceIdx] == NO_ASSET_INDEX || assets[ownnershipsPossessionsFirstIdx[issuanceIdx]].varStruct.issuance.type == OWNERSHIP);
+            nextIdx[newOwnershipIdx] = ownnershipsPossessionsFirstIdx[issuanceIdx];
+            ownnershipsPossessionsFirstIdx[issuanceIdx] = newOwnershipIdx;
+        }
+
+        // Add newPossessionIdx as first element in linked list of all possessions of ownershipIdx
+        void addPossession(unsigned int ownershipIdx, unsigned int newPossessionIdx)
+        {
+            ASSERT(ownershipIdx < ASSETS_CAPACITY);
+            ASSERT(newPossessionIdx < ASSETS_CAPACITY);
+            ASSERT(assets[ownershipIdx].varStruct.ownership.type == OWNERSHIP);
+            ASSERT(assets[newPossessionIdx].varStruct.possession.type == POSSESSION);
+            ASSERT(ownnershipsPossessionsFirstIdx[ownershipIdx] == NO_ASSET_INDEX || assets[ownnershipsPossessionsFirstIdx[ownershipIdx]].varStruct.possession.type == POSSESSION);
+            nextIdx[newPossessionIdx] = ownnershipsPossessionsFirstIdx[ownershipIdx];
+            ownnershipsPossessionsFirstIdx[ownershipIdx] = newPossessionIdx;
+        }
+
+        // Reset lists to empty
+        void reset()
+        {
+            issuancesFirstIdx = NO_ASSET_INDEX;
+            static_assert(NO_ASSET_INDEX == 0xffffffff, "Following setMem() expects NO_ASSET_INDEX == 0xffffffff");
+            setMem(ownnershipsPossessionsFirstIdx, sizeof(ownnershipsPossessionsFirstIdx), 0xff);
+            setMem(nextIdx, sizeof(nextIdx), 0xff);
+        }
+
+        // Rebuild lists from assets array (includes reset)
+        void rebuild()
+        {
+            reset();
+            for (int index = 0; index < ASSETS_CAPACITY; index++)
+            {
+                switch (assets[index].varStruct.issuance.type)
+                {
+                case ISSUANCE:
+                    addIssuance(index);
+                    break;
+                case OWNERSHIP:
+                    addOwnership(assets[index].varStruct.ownership.issuanceIndex, index);
+                    break;
+                case POSSESSION:
+                    addPossession(assets[index].varStruct.possession.ownershipIndex, index);
+                    break;
+                }
+            }
+        }
+    };
+
+    inline static IndexLists indexLists;
+};
+
+GLOBAL_VAR_DECL AssetStorage as;
+
+
+// Return index of issuance in assets array / universe or NO_ASSET_INDEX is not found.
+static unsigned int issuanceIndex(const m256i& issuer, unsigned long long assetName)
+{
+    unsigned int idx = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+    while (assets[idx].varStruct.issuance.type != EMPTY)
+    {
+        if (assets[idx].varStruct.issuance.type == ISSUANCE
+            && ((*((unsigned long long*)assets[idx].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == assetName
+            && assets[idx].varStruct.issuance.publicKey == issuer)
+        {
+            // found matching entry
+            return idx;
+        }
+
+        idx = (idx + 1) & (ASSETS_CAPACITY - 1);
+    }
+
+    // no matching entry found
+    return NO_ASSET_INDEX;
+}
+
+
+
+
 
 static bool initAssets()
 {
@@ -96,6 +229,10 @@ iteration:
                 assetChangeFlags[*ownershipIndex >> 6] |= (1ULL << (*ownershipIndex & 63));
                 assetChangeFlags[*possessionIndex >> 6] |= (1ULL << (*possessionIndex & 63));
 
+                as.indexLists.addIssuance(*issuanceIndex);
+                as.indexLists.addOwnership(*issuanceIndex, *ownershipIndex);
+                as.indexLists.addPossession(*ownershipIndex, *possessionIndex);
+
                 RELEASE(universeLock);
 
                 AssetIssuance assetIssuance;
@@ -138,11 +275,39 @@ iteration:
     }
 }
 
+static sint64 numberOfShares(
+    const AssetIssuanceId& issuanceId,
+    const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
+    const AssetPossessionSelect& possession = AssetPossessionSelect::any())
+{
+    ACQUIRE(universeLock);
+
+    sint64 numOfShares = 0;
+    if (possession.anyPossessor && possession.anyManagingContract)
+    {
+        for (AssetOwnershipIterator iter(issuanceId, ownership); !iter.reachedEnd(); iter.next())
+        {
+            numOfShares += iter.numberOfOwnedShares();
+        }
+    }
+    else
+    {
+        for (AssetPossessionIterator iter(issuanceId, ownership, possession); !iter.reachedEnd(); iter.next())
+        {
+            numOfShares += iter.numberOfPossessedShares();
+        }
+    }
+
+    RELEASE(universeLock);
+
+    return numOfShares;
+}
+
 static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int sourcePossessionIndex, const m256i& destinationPublicKey, long long numberOfShares,
     int* destinationOwnershipIndex, int* destinationPossessionIndex,
     bool lock)
 {
-    if (numberOfShares <= 0)
+    if (numberOfShares <= 0 || isZero(destinationPublicKey))
     {
         return false;
     }
@@ -180,6 +345,8 @@ iteration:
             assets[*destinationOwnershipIndex].varStruct.ownership.type = OWNERSHIP;
             assets[*destinationOwnershipIndex].varStruct.ownership.managingContractIndex = assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex;
             assets[*destinationOwnershipIndex].varStruct.ownership.issuanceIndex = assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex;
+
+            as.indexLists.addOwnership(assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex, *destinationOwnershipIndex);
         }
         assets[*destinationOwnershipIndex].varStruct.ownership.numberOfShares += numberOfShares;
 
@@ -199,6 +366,8 @@ iteration:
                 assets[*destinationPossessionIndex].varStruct.possession.type = POSSESSION;
                 assets[*destinationPossessionIndex].varStruct.possession.managingContractIndex = assets[sourcePossessionIndex].varStruct.possession.managingContractIndex;
                 assets[*destinationPossessionIndex].varStruct.possession.ownershipIndex = *destinationOwnershipIndex;
+
+                as.indexLists.addPossession(*destinationOwnershipIndex, *destinationPossessionIndex);
             }
             assets[*destinationPossessionIndex].varStruct.possession.numberOfShares += numberOfShares;
 
@@ -246,6 +415,85 @@ iteration:
         *destinationOwnershipIndex = (*destinationOwnershipIndex + 1) & (ASSETS_CAPACITY - 1);
 
         goto iteration;
+    }
+}
+
+static long long numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex)
+{
+    ACQUIRE(universeLock);
+
+    int issuanceIndex = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+iteration:
+    if (assets[issuanceIndex].varStruct.issuance.type == EMPTY)
+    {
+        RELEASE(universeLock);
+
+        return 0;
+    }
+    else
+    {
+        if (assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
+            && ((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == assetName
+            && assets[issuanceIndex].varStruct.issuance.publicKey == issuer)
+        {
+            int ownershipIndex = owner.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+        iteration2:
+            if (assets[ownershipIndex].varStruct.ownership.type == EMPTY)
+            {
+                RELEASE(universeLock);
+
+                return 0;
+            }
+            else
+            {
+                if (assets[ownershipIndex].varStruct.ownership.type == OWNERSHIP
+                    && assets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
+                    && assets[ownershipIndex].varStruct.ownership.publicKey == owner
+                    && assets[ownershipIndex].varStruct.ownership.managingContractIndex == ownershipManagingContractIndex)
+                {
+                    int possessionIndex = possessor.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+                iteration3:
+                    if (assets[possessionIndex].varStruct.possession.type == EMPTY)
+                    {
+                        RELEASE(universeLock);
+
+                        return 0;
+                    }
+                    else
+                    {
+                        if (assets[possessionIndex].varStruct.possession.type == POSSESSION
+                            && assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
+                            && assets[possessionIndex].varStruct.possession.publicKey == possessor
+                            && assets[possessionIndex].varStruct.possession.managingContractIndex == possessionManagingContractIndex)
+                        {
+                            const long long numberOfPossessedShares = assets[possessionIndex].varStruct.possession.numberOfShares;
+
+                            RELEASE(universeLock);
+
+                            return numberOfPossessedShares;
+                        }
+                        else
+                        {
+                            possessionIndex = (possessionIndex + 1) & (ASSETS_CAPACITY - 1);
+
+                            goto iteration3;
+                        }
+                    }
+                }
+                else
+                {
+                    ownershipIndex = (ownershipIndex + 1) & (ASSETS_CAPACITY - 1);
+
+                    goto iteration2;
+                }
+            }
+        }
+        else
+        {
+            issuanceIndex = (issuanceIndex + 1) & (ASSETS_CAPACITY - 1);
+
+            goto iteration;
+        }
     }
 }
 
@@ -314,6 +562,7 @@ static bool loadUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, CHAR16* di
 
         return false;
     }
+    as.indexLists.rebuild();
     return true;
 }
 
@@ -321,7 +570,7 @@ static void assetsEndEpoch()
 {
     ACQUIRE(universeLock);
 
-    // TODO: comment what is done here
+    // rebuild asset hash map, getting rid of all elements with zero shares
     Asset* reorgAssets = (Asset*)reorgBuffer;
     setMem(reorgAssets, ASSETS_CAPACITY * sizeof(Asset), 0);
     for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
@@ -405,6 +654,8 @@ static void assetsEndEpoch()
     copyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(Asset));
 
     setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
+
+    as.indexLists.rebuild();
 
     RELEASE(universeLock);
 }

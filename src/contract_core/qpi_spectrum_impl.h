@@ -108,3 +108,18 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
 
     return remainingAmount;
 }
+
+m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
+{
+    int index = spectrumIndex(currentId);
+    while (++index < SPECTRUM_CAPACITY)
+    {
+        const m256i& nextId = spectrum[index].publicKey;
+        if (!isZero(nextId))
+        {
+            return nextId;
+        }
+    }
+
+    return m256i::zero();
+}

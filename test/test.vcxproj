@@ -106,8 +106,10 @@
     <ClInclude Include="contract_testing.h" />
     <ClInclude Include="score_params.h" />
     <ClInclude Include="score_reference.h" />
+    <ClInclude Include="test_util.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="assets.cpp" />
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="contract_core.cpp" />
     <ClCompile Include="contract_qearn.cpp" />

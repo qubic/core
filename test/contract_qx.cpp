@@ -135,21 +135,6 @@ public:
     // TODO: add other procedures
 };
 
-uint64 assetNameFromString(const char * assetName)
-{
-    size_t n = strlen(assetName);
-    EXPECT_LE(n, 7);
-    uint64 integer = 0;
-    copyMem(&integer, assetName, n);
-    return integer;
-}
-
-std::string assetNameFromInt64(uint64 assetName)
-{
-    char buffer[8];
-    copyMem(&buffer, &assetName, sizeof(assetName));
-    return buffer;
-}
 
 TEST(ContractQx, IssueAsset)
 {
@@ -161,6 +146,8 @@ TEST(ContractQx, IssueAsset)
 
     increaseEnergy(issuer, QX_ISSUE_ASSET_FEE);
     EXPECT_EQ(qx.issueAsset(issuer, assetName, numberOfShares, 0, 0), numberOfShares);
+
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), numberOfShares);
 }
 
 TEST(ContractQx, BugEntityBidOrders)

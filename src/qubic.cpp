@@ -1541,42 +1541,6 @@ QPI::id QPI::QpiContextFunctionCall::arbitrator() const
     return arbitratorPublicKey;
 }
 
-bool QPI::QpiContextProcedureCall::acquireShares(uint64 assetName, const id& issuer, const id& owner, const id& possessor, sint64 numberOfShares, uint16 sourceOwnershipManagingContractIndex, uint16 sourcePossessionManagingContractIndex) const
-{
-    // Just examples, to make it compile, move these to parameter list
-    unsigned int contractIndex = QX_CONTRACT_INDEX;
-    QPI::sint64 invocationReward = 10;
-
-    if (contractIndex >= contractCount)
-        return false;
-    if (invocationReward < 0)
-        return false;
-    // ...
-
-    // TODO: Init input
-    QPI::PreManagementRightsTransfer_input pre_input;
-    // output is zeroed in __qpiCallSystemProcOfOtherContract
-    QPI::PreManagementRightsTransfer_output pre_output;
-
-    // Call PRE_ACQUIRE_SHARES in other contract after transferring invocationReward
-    __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(contractIndex, pre_input, pre_output, invocationReward);
-
-    if (pre_output.ok)
-    {
-        // TODO: transfer
-
-        // TODO: init input
-        QPI::PostManagementRightsTransfer_input post_input;
-        // Output is unused, but needed for generalized interface
-        QPI::NoData post_output;
-
-        // Call POST_ACQUIRE_SHARES in other contract without transferring an invocationReward
-        __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(contractIndex, post_input, post_output, 0);
-    }
-
-    return pre_output.ok;
-}
-
 QPI::id QPI::QpiContextFunctionCall::computor(unsigned short computorIndex) const
 {
     return broadcastedComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
@@ -1612,31 +1576,10 @@ unsigned char QPI::QpiContextFunctionCall::month() const
     return etalonTick.month;
 }
 
-m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
-{
-    int index = spectrumIndex(currentId);
-    while (++index < SPECTRUM_CAPACITY)
-    {
-        const m256i& nextId = spectrum[index].publicKey;
-        if (!isZero(nextId))
-        {
-            return nextId;
-        }
-    }
-
-    return m256i::zero();
-}
 
 int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
 {
     return -1; // TODO: Return -1 if the current tick is empty, return the number of the transactions in the tick otherwise, including 0
-}
-
-bool QPI::QpiContextProcedureCall::releaseShares(uint64 assetName, const id& issuer, const id& owner, const id& possessor, sint64 numberOfShares, uint16 destinationOwnershipManagingContractIndex, uint16 destinationPossessionManagingContractIndex) const
-{
-    // TODO
-
-    return false;
 }
 
 unsigned char QPI::QpiContextFunctionCall::second() const
