@@ -53,16 +53,6 @@ public:
         memset(assets, 0, universeSizeInBytes);
     }
 
-    long long getBalance(const id& pubKey) const
-    {
-        int index = spectrumIndex(pubKey);
-        if (index < 0)
-            return 0;
-        long long balance = energy(index);
-        EXPECT_GE(balance, 0ll);
-        return balance;
-    }
-
     template <typename InputType, typename OutputType>
     void callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true) const
     {
@@ -145,4 +135,14 @@ static std::ostream& operator<<(std::ostream& s, const id& v)
     wcstombs_s(&size, identityChar, identityWchar, 61);
     s << identityChar;
     return s;
+}
+
+static inline long long getBalance(const id& pubKey)
+{
+    int index = spectrumIndex(pubKey);
+    if (index < 0)
+        return 0;
+    long long balance = energy(index);
+    EXPECT_GE(balance, 0ll);
+    return balance;
 }
