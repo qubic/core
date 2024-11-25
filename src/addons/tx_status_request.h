@@ -6,7 +6,7 @@
 
 #include "../platform/m256.h"
 #include "../platform/debugging.h"
-#include "../platform/memory.h"
+#include "../platform/memory_util.h"
 
 #include "../network_messages/header.h"
 
@@ -74,10 +74,10 @@ static RespondTxStatus* tickTxStatusStorage = NULL;
 static bool initTxStatusRequestAddOn()
 {
     // Allocate pool to store confirmed TX's
-    if (!allocatePool(confirmedTxLength * sizeof(ConfirmedTx), (void**)&confirmedTx))
+    if (!allocPoolWithErrorLog(L"confirmedTx", confirmedTxLength * sizeof(ConfirmedTx), (void**)&confirmedTx))
         return false;
     // allocate tickTxStatus responses storage
-    if (!allocatePool(MAX_NUMBER_OF_PROCESSORS * sizeof(RespondTxStatus), (void**)&tickTxStatusStorage))
+    if (!allocPoolWithErrorLog(L"tickTxStatusStorage", MAX_NUMBER_OF_PROCESSORS * sizeof(RespondTxStatus), (void**)&tickTxStatusStorage))
         return false;
     txStatusData.confirmedTxPreviousEpochBeginTick = 0;
     txStatusData.confirmedTxCurrentEpochBeginTick = 0;

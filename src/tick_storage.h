@@ -3,7 +3,7 @@
 #include "network_messages/tick.h"
 #include "network_messages/transactions.h"
 
-#include "platform/memory.h"
+#include "platform/memory_util.h"
 #include "platform/concurrency.h"
 #include "platform/console_logging.h"
 #include "platform/debugging.h"
@@ -442,11 +442,11 @@ public:
     static bool init()
     {
         // TODO: allocate everything with one continuous buffer
-        if (!allocatePool(tickDataSize, (void**)&tickDataPtr)
-            || !allocatePool(ticksSize, (void**)&ticksPtr)
-            || !allocatePool(tickTransactionsSize, (void**)&tickTransactionsPtr)
-            || !allocatePool(tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr)
-            || !allocatePool(tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), (void**)&tickTransactionsDigestPtr))
+        if (!allocPoolWithErrorLog(L"tickDataPtr ", tickDataSize, (void**)&tickDataPtr)
+             || !allocPoolWithErrorLog(L"tickPtr", ticksSize, (void**)&ticksPtr)
+             || !allocPoolWithErrorLog(L"tickTransactionPtr", tickTransactionsSize, (void**)&tickTransactionsPtr)
+             || !allocPoolWithErrorLog(L"tickTransactionOffset", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr)
+             || !allocPoolWithErrorLog(L"tickTransactionsDigestPtr", tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), (void**)&tickTransactionsDigestPtr))
         {
             logToConsole(L"Failed to allocate tick storage memory!");
             return false;

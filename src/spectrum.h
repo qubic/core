@@ -410,8 +410,8 @@ static bool saveSpectrum(const CHAR16* fileName = SPECTRUM_FILE_NAME, const CHAR
 
 static bool initSpectrum()
 {
-    if (!allocatePool(spectrumSizeInBytes, (void**)&spectrum)
-        || !allocatePool(spectrumDigestsSizeInByte, (void**)&spectrumDigests))
+    if (!allocPoolWithErrorLog(L"spectrum", spectrumSizeInBytes, (void**)&spectrum)
+        || !allocPoolWithErrorLog(L"spectrumDigests", spectrumDigestsSizeInByte, (void**)&spectrumDigests))
     {
         logToConsole(L"Failed to allocate spectrum memory!");
         return false;

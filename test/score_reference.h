@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../src/platform/memory.h"
+#include "../src/platform/memory_util.h"
 #include "../src/four_q.h"
 
 ////////// Original (reference) scoring algorithm \\\\\\\\\\
@@ -55,11 +56,11 @@ struct ScoreReferenceImplementation
     {
         for (int i = 0; i < solutionBufferCount; i++)
         {
-            allocatePool(RANDOM2_POOL_SIZE, (void**)&(_poolBuffer[i]));
+            allocPoolWithErrorLog(L"poolBuffer", RANDOM2_POOL_SIZE, (void**)&(_poolBuffer[i]));
 
-            allocatePool(sizeof(long long) * neuronsCount, (void**)(&(_neurons[i].input)));
+            allocPoolWithErrorLog(L"neurons[i].input", sizeof(long long) * neuronsCount, (void**)(&(_neurons[i].input)));
 
-            allocatePool(sizeof(unsigned long long) * synapseInputCount, (void**)(&(_synapses[i].data)));
+            allocPoolWithErrorLog(L"synapses[i].data", sizeof(unsigned long long) * synapseInputCount, (void**)(&(_synapses[i].data)));
             _synapses[i].signs = _synapses[i].data;
             _synapses[i].sequence = _synapses[i].data + synapseSignsCount;
             _synapses[i].skipTicksNumber = _synapses[i].data + synapseSignsCount + maxDuration;

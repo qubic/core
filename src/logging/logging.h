@@ -3,7 +3,7 @@
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/time.h"
-#include "platform/memory.h"
+#include "platform/memory_util.h"
 #include "platform/debugging.h"
 
 #include "network_messages/header.h"
@@ -444,7 +444,7 @@ public:
 #if ENABLED_LOGGING
         if (logBuffer == NULL)
         {
-            if (!allocatePool(LOG_BUFFER_SIZE, (void**)&logBuffer))
+            if (!allocPoolWithErrorLog(L"logBuffer", LOG_BUFFER_SIZE, (void**)&logBuffer))
             {
                 logToConsole(L"Failed to allocate logging buffer!");
 
@@ -454,7 +454,7 @@ public:
 
         if (mapTxToLogId == NULL)
         {
-            if (!allocatePool(LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
+            if (!allocPoolWithErrorLog(L"mapTxToLogId", LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
             {
                 logToConsole(L"Failed to allocate logging buffer!");
 
@@ -464,7 +464,7 @@ public:
 
         if (mapLogIdToBufferIndex == NULL)
         {
-            if (!allocatePool(LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
+            if (!allocPoolWithErrorLog(L"mapLogIdToBufferIndex", LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
             {
                 logToConsole(L"Failed to allocate logging buffer!");
 

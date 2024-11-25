@@ -5570,11 +5570,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             mpServicesProtocol->GetProcessorInfo(mpServicesProtocol, i, &processorInformation);
             if (processorInformation.StatusFlag == (PROCESSOR_ENABLED_BIT | PROCESSOR_HEALTH_STATUS_BIT))
             {
-                CHAR16 errMsg[60];
-                setText(errMsg, L"processor[");
-                appendNumber(errMsg, i, false);
-                appendText(errMsg, L"].buffer");
-                if (!allocPoolWithErrorLog(errMsg, BUFFER_SIZE, &processors[numberOfProcessors].buffer))
+                if (!allocPoolWithErrorLog(L"processor[i]", BUFFER_SIZE, &processors[numberOfProcessors].buffer))
                 {
                     numberOfProcessors = 0;
 

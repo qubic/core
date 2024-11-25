@@ -1,12 +1,12 @@
 #pragma once
 
-#include "memory.h"
+#include "memory_util.h"
 #include "debugging.h"
 
 typedef unsigned int CustomStackSizeType;
 typedef EFI_AP_PROCEDURE CustomStackProcessorFunc;
 
-// Function call stack with custom size that can be used for running a function on it. Memory is allocated with allocatePool().
+// Function call stack with custom size that can be used for running a function on it. Memory is allocated with allocPoolWithErrorLog().
 class CustomStack
 {
 public:
@@ -30,7 +30,7 @@ public:
     {
         free();
 
-        if (!allocatePool(size, (void**)&stackBottom))
+        if (!allocPoolWithErrorLog(L"stackBottom", size, (void**)&stackBottom))
             return false;
 
         stackTop = stackBottom + size;
