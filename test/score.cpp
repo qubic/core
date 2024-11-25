@@ -38,10 +38,10 @@ static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_v3.csv";
 static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 32; // set to 0 for run all available samples
 static constexpr bool PRINT_DETAILED_INFO = false;
 static constexpr int MAX_NUMBER_OF_THREADS = 0; // set 0 for run maximum number of threads of the computer.
-static bool gCompareReference = false;
+static bool gCompareReference = true;
 
 // Only run on specific index of samples and setting
-std::vector<unsigned int> filteredSamples;// = { 0 };
+std::vector<unsigned int> filteredSamples = { 0 };
 std::vector<unsigned int> filteredSettings;// = { 0,1 };
 
 std::vector<std::vector<unsigned int>> gScoresGroundTruth;
@@ -58,7 +58,7 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
         return;
     }
 
-    auto pScore = std::make_unique<ScoreFunction<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1>>();
+    auto pScore = std::make_unique<ScoreFunction<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], kSettings[i][NR_OPTIMIZATION_STEPS], 1>>();
     pScore->initMemory();
     pScore->initMiningData(miningSeed);
     int x = 0;
@@ -72,7 +72,7 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
     unsigned int refScore = 0;
     if (gCompareReference)
     {
-        ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
+        ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], kSettings[i][NR_OPTIMIZATION_STEPS], 1> score;
         score.initMemory();
         score.initMiningData(miningSeed);
         refScore = score(0, publicKey, nonce);
@@ -105,7 +105,9 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
                 << "; setting " << i
                 << ": NEURON " << kSettings[i][NR_NEURONS]
                 << ", NEIGHBOR " << kSettings[i][NR_NEIGHBOR_NEURONS]
-                << ", DURATIONS " << kSettings[i][DURATIONS] << "]" << std::endl;
+                << ", DURATIONS " << kSettings[i][DURATIONS]
+                << ", OPT_STEPS " << kSettings[i][NR_OPTIMIZATION_STEPS]
+                << "]" << std::endl;
             std::cout << "    score " << score_value;
             if (gtIndex >= 0)
             {
@@ -174,64 +176,68 @@ void runCommonTests()
     }
 
     // Reading the header of score and verification
-    auto scoreHeader = scoresString[0];
-    std::cout << "Testing " << numberOfGeneratedSetting << " param combinations on " << scoreHeader.size() << " ground truth settings." << std::endl;
-    for (unsigned long long i = 0; i < numberOfGeneratedSetting; ++i)
+    if (!gCompareReference)
     {
-        long long foundIndex = -1;
-
-        for (unsigned long long gtIdx = 0; gtIdx < scoreHeader.size(); ++gtIdx)
+        auto scoreHeader = scoresString[0];
+        std::cout << "Testing " << numberOfGeneratedSetting << " param combinations on " << scoreHeader.size() << " ground truth settings." << std::endl;
+        for (unsigned long long i = 0; i < numberOfGeneratedSetting; ++i)
         {
-            auto scoresSettingHeader = convertULLFromString(scoreHeader[gtIdx]);
+            long long foundIndex = -1;
 
-            // Check matching between number of parameters types
-            if (scoresSettingHeader.size() != score_params::MAX_PARAM_TYPE)
+            for (unsigned long long gtIdx = 0; gtIdx < scoreHeader.size(); ++gtIdx)
             {
-                std::cout << "Mismatched the number of params (NEURONS, DURATION ...) and MAX_PARAM_TYPE" << std::endl;
-                EXPECT_EQ(scoresSettingHeader.size(), score_params::MAX_PARAM_TYPE);
-                return;
-            }
+                auto scoresSettingHeader = convertULLFromString(scoreHeader[gtIdx]);
 
-            // Check the value matching between ground truth file and score params
-            // Only record the current available score params
-            int count = 0;
-            for (unsigned long long j = 0; j < score_params::MAX_PARAM_TYPE; ++j)
-            {
-                if (scoresSettingHeader[j] == score_params::kSettings[i][j])
+                // Check matching between number of parameters types
+                if (scoresSettingHeader.size() != score_params::MAX_PARAM_TYPE)
                 {
-                    count++;
+                    std::cout << "Mismatched the number of params (NEURONS, DURATION ...) and MAX_PARAM_TYPE" << std::endl;
+                    EXPECT_EQ(scoresSettingHeader.size(), score_params::MAX_PARAM_TYPE);
+                    return;
+                }
+
+                // Check the value matching between ground truth file and score params
+                // Only record the current available score params
+                int count = 0;
+                for (unsigned long long j = 0; j < score_params::MAX_PARAM_TYPE; ++j)
+                {
+                    if (scoresSettingHeader[j] == score_params::kSettings[i][j])
+                    {
+                        count++;
+                    }
+                }
+                if (count == score_params::MAX_PARAM_TYPE)
+                {
+                    foundIndex = gtIdx;
+                    break;
                 }
             }
-            if (count == score_params::MAX_PARAM_TYPE)
+            if (foundIndex >= 0)
             {
-                foundIndex = gtIdx;
-                break;
+                gScoreIndexMap[i] = foundIndex;
             }
         }
-        if (foundIndex >= 0)
+        // In case of number of setting is lower than the ground truth. Consider we are in experiement, still run but expect the test failed
+        if (gScoreIndexMap.size() < numberOfGeneratedSetting)
         {
-            gScoreIndexMap[i] = foundIndex;
+            std::cout << "WARNING: Number of provided ground truth settings is lower than tested settings. Only test with available ones."
+                << std::endl;
+            EXPECT_EQ(gScoreIndexMap.size(), numberOfGeneratedSetting);
         }
-    }
-    // In case of number of setting is lower than the ground truth. Consider we are in experiement, still run but expect the test failed
-    if (gScoreIndexMap.size() < numberOfGeneratedSetting && !gCompareReference)
-    {
-        std::cout << "WARNING: Number of provided ground truth settings is lower than tested settings. Only test with available ones." 
-                  << std::endl;
-        EXPECT_EQ(gScoreIndexMap.size(), numberOfGeneratedSetting);
-    }
 
-    // Read the groudtruth scores and init result scores
-    numberOfSamples = std::min(numberOfSamples, scoresString.size() - 1);
-    gScoresGroundTruth.resize(numberOfSamples);
-    for (size_t i = 0; i < numberOfSamples; ++i)
-    {
-       auto scoresStr = scoresString[i + 1];
-       size_t scoreSize = scoresStr.size();
-       for (size_t j = 0; j < scoreSize; ++j)
-       {
-           gScoresGroundTruth[i].push_back(std::stoi(scoresStr[j]));
-       }
+
+        // Read the groudtruth scores and init result scores
+        numberOfSamples = std::min(numberOfSamples, scoresString.size() - 1);
+        gScoresGroundTruth.resize(numberOfSamples);
+        for (size_t i = 0; i < numberOfSamples; ++i)
+        {
+            auto scoresStr = scoresString[i + 1];
+            size_t scoreSize = scoresStr.size();
+            for (size_t j = 0; j < scoreSize; ++j)
+            {
+                gScoresGroundTruth[i].push_back(std::stoi(scoresStr[j]));
+            }
+        }
     }
 
     // Run the test
