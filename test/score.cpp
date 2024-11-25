@@ -34,14 +34,14 @@ using namespace test_utils;
 
 
 static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
-static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_v3.csv";
+static const std::string COMMON_TEST_SCORES_FILE_NAME = "data/scores_v4.csv";
 static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 32; // set to 0 for run all available samples
 static constexpr bool PRINT_DETAILED_INFO = false;
 static constexpr int MAX_NUMBER_OF_THREADS = 0; // set 0 for run maximum number of threads of the computer.
-static bool gCompareReference = true;
+static bool gCompareReference = false;
 
 // Only run on specific index of samples and setting
-std::vector<unsigned int> filteredSamples = { 0 };
+std::vector<unsigned int> filteredSamples; //= { 0 };
 std::vector<unsigned int> filteredSettings;// = { 0,1 };
 
 std::vector<std::vector<unsigned int>> gScoresGroundTruth;
