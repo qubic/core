@@ -5966,7 +5966,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                         // send RequestComputors message at beginning of epoch
                         if (!broadcastedComputors.computors.epoch
-                            || broadcastedComputors.computors.epoch != system.epoch)
+                            || broadcastedComputors.computors.epoch != system.epoch
+                            || useSelfGeneratedComputors)
                         {
                             requestedComputors.header.randomizeDejavu();
                             bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
