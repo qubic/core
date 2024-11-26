@@ -1315,6 +1315,12 @@ static void checkAndSwitchMiningPhase()
     }
 }
 
+// Disabling the optimizer for requestProcessor() is a workaround introduced to solve an issue
+// that has been observed in testnets/2024-11-23-release-227-qvault.
+// In this test, the processors calling requestProcessor() were stuck before entering the function.
+// Probably, this was caused by a bug in the optimizer, because disabling the optimizer solved the
+// problem.
+#pragma optimize("", off)
 static void requestProcessor(void* ProcedureArgument)
 {
     enableAVX();
@@ -1534,7 +1540,7 @@ static void requestProcessor(void* ProcedureArgument)
         }
     }
 }
-
+#pragma optimize("", on)
 
 QPI::id QPI::QpiContextFunctionCall::arbitrator() const
 {
