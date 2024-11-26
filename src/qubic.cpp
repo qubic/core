@@ -464,22 +464,13 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 {
     BroadcastMessage* request = header->getPayload<BroadcastMessage>();
     if (header->size() <= sizeof(RequestResponseHeader) + sizeof(BroadcastMessage) + MAX_MESSAGE_PAYLOAD_SIZE + SIGNATURE_SIZE
-        && header->size() >= sizeof(RequestResponseHeader) + sizeof(BroadcastMessage) + SIGNATURE_SIZE)
+        && header->size() >= sizeof(RequestResponseHeader) + sizeof(BroadcastMessage) + SIGNATURE_SIZE
+        && !isZero(request->sourcePublicKey))
     {
         const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
-
-        bool ok;
-        if (isZero(request->sourcePublicKey))
-        {
-            ok = true;
-        }
-        else
-        {
-            m256i digest;
-            KangarooTwelve(request, messageSize - SIGNATURE_SIZE, &digest, sizeof(digest));
-            ok = verify(request->sourcePublicKey.m256i_u8, digest.m256i_u8, (((const unsigned char*)request) + (messageSize - SIGNATURE_SIZE)));
-        }
-        if (ok)
+        m256i digest;
+        KangarooTwelve(request, messageSize - SIGNATURE_SIZE, &digest, sizeof(digest));
+        if (verify(request->sourcePublicKey.m256i_u8, digest.m256i_u8, (((const unsigned char*)request) + (messageSize - SIGNATURE_SIZE))))
         {
             if (header->isDejavuZero())
             {
@@ -490,95 +481,104 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                 }
             }
 
-            for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+            if (isZero(request->destinationPublicKey))
             {
-                if (request->destinationPublicKey == computorPublicKeys[i])
+                if (request->sourcePublicKey == arbitratorPublicKey)
                 {
-                    const unsigned int messagePayloadSize = messageSize - sizeof(BroadcastMessage) - SIGNATURE_SIZE;
-                    if (messagePayloadSize)
+                    // See CustomMiningTaskMessage structure
+                }
+                else
+                {
+                    for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
                     {
-                        unsigned char sharedKeyAndGammingNonce[64];
+                        if (request->destinationPublicKey == computorPublicKeys[i])
+                        {
+                            // See CustomMiningSolutionMessage structure
 
-                        if (isZero(request->sourcePublicKey))
-                        {
-                            bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                            break;
                         }
-                        else
+                    }
+                }
+            }
+            else
+            {
+                for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+                {
+                    if (request->destinationPublicKey == computorPublicKeys[i])
+                    {
+                        const unsigned int messagePayloadSize = messageSize - sizeof(BroadcastMessage) - SIGNATURE_SIZE;
+                        if (messagePayloadSize)
                         {
+                            unsigned char sharedKeyAndGammingNonce[64];
                             if (!getSharedKey(computorPrivateKeys[i].m256i_u8, request->sourcePublicKey.m256i_u8, sharedKeyAndGammingNonce))
                             {
-                                ok = false;
-                            }
-                        }
-
-                        if (ok)
-                        {
-                            bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
-                            unsigned char gammingKey[32];
-                            KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
-                            bs->SetMem(sharedKeyAndGammingNonce, 32, 0); // Zero the shared key in case stack content could be leaked later
-                            unsigned char gamma[MAX_MESSAGE_PAYLOAD_SIZE];
-                            KangarooTwelve(gammingKey, sizeof(gammingKey), gamma, messagePayloadSize);
-                            for (unsigned int j = 0; j < messagePayloadSize; j++)
-                            {
-                                ((unsigned char*)request)[sizeof(BroadcastMessage) + j] ^= gamma[j];
-                            }
-
-                            switch (gammingKey[0])
-                            {
-                            case MESSAGE_TYPE_SOLUTION:
-                            {
-                                if (messagePayloadSize >= 32 + 32)
+                                bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                                unsigned char gammingKey[32];
+                                KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
+                                bs->SetMem(sharedKeyAndGammingNonce, 32, 0); // Zero the shared key in case stack content could be leaked later
+                                unsigned char gamma[MAX_MESSAGE_PAYLOAD_SIZE];
+                                KangarooTwelve(gammingKey, sizeof(gammingKey), gamma, messagePayloadSize);
+                                for (unsigned int j = 0; j < messagePayloadSize; j++)
                                 {
-                                    const m256i& solution_miningSeed = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
-                                    const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage) + 32);
-                                    unsigned int k;
-                                    for (k = 0; k < system.numberOfSolutions; k++)
+                                    ((unsigned char*)request)[sizeof(BroadcastMessage) + j] ^= gamma[j];
+                                }
+
+                                switch (gammingKey[0])
+                                {
+                                case MESSAGE_TYPE_SOLUTION:
+                                {
+                                    if (messagePayloadSize >= 32 + 32)
                                     {
-                                        if (solution_nonce == system.solutions[k].nonce
-                                            && solution_miningSeed == system.solutions[k].miningSeed
-                                            && request->destinationPublicKey == system.solutions[k].computorPublicKey)
+                                        const m256i& solution_miningSeed = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
+                                        const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage) + 32);
+                                        unsigned int k;
+                                        for (k = 0; k < system.numberOfSolutions; k++)
                                         {
-                                            break;
+                                            if (solution_nonce == system.solutions[k].nonce
+                                                && solution_miningSeed == system.solutions[k].miningSeed
+                                                && request->destinationPublicKey == system.solutions[k].computorPublicKey)
+                                            {
+                                                break;
+                                            }
                                         }
-                                    }
-                                    if (k == system.numberOfSolutions)
-                                    {
-                                        unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
-                                        const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
-                                        if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                            && score->isValidScore(solutionScore)
-                                            && score->isGoodScore(solutionScore, threshold))
+                                        if (k == system.numberOfSolutions)
                                         {
-                                            ACQUIRE(solutionsLock);
-
-                                            for (k = 0; k < system.numberOfSolutions; k++)
+                                            unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
+                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+                                            if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
+                                                && score->isValidScore(solutionScore)
+                                                && score->isGoodScore(solutionScore, threshold))
                                             {
-                                                if (solution_nonce == system.solutions[k].nonce
-                                                    && solution_miningSeed == system.solutions[k].miningSeed
-                                                    && request->destinationPublicKey == system.solutions[k].computorPublicKey)
+                                                ACQUIRE(solutionsLock);
+
+                                                for (k = 0; k < system.numberOfSolutions; k++)
                                                 {
-                                                    break;
+                                                    if (solution_nonce == system.solutions[k].nonce
+                                                        && solution_miningSeed == system.solutions[k].miningSeed
+                                                        && request->destinationPublicKey == system.solutions[k].computorPublicKey)
+                                                    {
+                                                        break;
+                                                    }
                                                 }
-                                            }
-                                            if (k == system.numberOfSolutions)
-                                            {
-                                                system.solutions[system.numberOfSolutions].computorPublicKey = request->destinationPublicKey;
-                                                system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
-                                                system.solutions[system.numberOfSolutions++].nonce = solution_nonce;
-                                            }
+                                                if (k == system.numberOfSolutions)
+                                                {
+                                                    system.solutions[system.numberOfSolutions].computorPublicKey = request->destinationPublicKey;
+                                                    system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
+                                                    system.solutions[system.numberOfSolutions++].nonce = solution_nonce;
+                                                }
 
-                                            RELEASE(solutionsLock);
+                                                RELEASE(solutionsLock);
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            break;
+                                break;
+                                }
                             }
                         }
-                    }
 
-                    break;
+                        break;
+                    }
                 }
             }
         }
@@ -2155,26 +2155,6 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                         && transaction->inputSize >= MiningSolutionTransaction::minInputSize())
                     {
                         processTickTransactionSolution((MiningSolutionTransaction*)transaction, processorNumber);
-                    }
-                }
-                break;
-
-                case CustomMiningTasksTransactionPrefix::transactionType():
-                {
-                    if (transaction->amount >= CustomMiningTasksTransactionPrefix::minAmount()
-                        && transaction->inputSize >= CustomMiningTasksTransactionPrefix::minInputSize())
-                    {
-                        // Do nothing
-                    }
-                }
-                break;
-
-                case CustomMiningSolutionTransactionPrefix::transactionType():
-                {
-                    if (transaction->amount >= CustomMiningSolutionTransactionPrefix::minAmount()
-                        && transaction->inputSize >= CustomMiningSolutionTransactionPrefix::minInputSize())
-                    {
-                        // Do nothing
                     }
                 }
                 break;
