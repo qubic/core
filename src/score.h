@@ -155,6 +155,7 @@ struct ScoreFunction
         Neuron _neurons;
         Synapse _synapses;
         PoolSynapseData* _poolSynapseData;
+        PoolSynapseData* _poolSynapseTickData;
         unsigned char* _poolRandom2Buffer;
 
         // Save skipped ticks
@@ -234,6 +235,18 @@ struct ScoreFunction
                     freePool(_computeBuffer[i]._skipTicksMap);
                     _computeBuffer[i]._skipTicksMap = nullptr;
                 }
+
+                if (_computeBuffer[i]._poolSynapseTickData)
+                {
+                    freePool(_computeBuffer[i]._poolSynapseTickData);
+                    _computeBuffer[i]._poolSynapseTickData = nullptr;
+                }
+
+                if (_computeBuffer[i]._poolSynapseData)
+                {
+                    freePool(_computeBuffer[i]._poolSynapseData);
+                    _computeBuffer[i]._poolSynapseData = nullptr;
+                }
             }
 
             freePool(_computeBuffer);
@@ -286,6 +299,16 @@ struct ScoreFunction
                     CHAR16 log[256];
                     setText(log, L"Failed to allocate memory for pool synapse data! Try to allocated ");
                     appendNumber(log, RANDOM2_POOL_SIZE * sizeof(PoolSynapseData) / 1024, true);
+                    appendText(log, L" KB");
+                    logToConsole(log);
+                    return false;
+                }
+
+                if (!allocatePool(maxDuration * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseTickData)))
+                {
+                    CHAR16 log[256];
+                    setText(log, L"Failed to allocate memory for pool synapse data! Try to allocated ");
+                    appendNumber(log, maxDuration * sizeof(PoolSynapseData) / 1024, true);
                     appendText(log, L" KB");
                     logToConsole(log);
                     return false;
@@ -414,6 +437,7 @@ struct ScoreFunction
         computeBuffer& cb = _computeBuffer[solutionBufIdx];
         unsigned long long* pSynapseSigns = cb._synapses.signs;
         PoolSynapseData* pPoolSynapseData = cb._poolSynapseData;
+        PoolSynapseData* pPoolSynapseTick = cb._poolSynapseTickData;
         auto& neurons = cb._neurons;
 
         setMem(neurons.input, sizeof(neurons.input[0]) * allNeuronsCount, 0);
@@ -455,6 +479,12 @@ struct ScoreFunction
         for (long long tick = 0; tick < maxDuration; tick++)
         {
             PoolSynapseData data = pPoolSynapseData[random2XVal & (RANDOM2_POOL_ACTUAL_SIZE - 1)];
+            pPoolSynapseTick[tick] = data;
+            random2XVal = random2XVal * 1664525 + 1013904223;
+        }
+        for (long long tick = 0; tick < maxDuration; tick++)
+        {
+            PoolSynapseData data = pPoolSynapseTick[tick];
             unsigned int neuronIndex = data.neuronIndex;
             unsigned int supplierNeuronIndex = (data.supplierIndexWithSign >> 1);
             unsigned int sign = (data.supplierIndexWithSign & 1U);
@@ -463,8 +493,6 @@ struct ScoreFunction
             nnV = sign ? nnV : -nnV;
             neurons.input[neuronIndex] += nnV;
             clampNeuron(neurons.input[neuronIndex]);
-
-            random2XVal = random2XVal * 1664525 + 1013904223;
         }
 
         score = 0;
@@ -489,6 +517,7 @@ struct ScoreFunction
             ticksNumbers[tick] = tick;
         }
         setMem(skipTicksMap, maxDuration, 0);
+
         for (long long l = 0; l < numberOfOptimizationSteps - 1; l++)
         {
             const unsigned int poolIdx = random2XValOpt & (RANDOM2_POOL_ACTUAL_SIZE - 1);
@@ -526,7 +555,7 @@ struct ScoreFunction
                 // Tick not on the list, accumulate as normal
                 if (skipTicksMap[tick] == 0)
                 {
-                    PoolSynapseData data = pPoolSynapseData[random2XVal & (RANDOM2_POOL_ACTUAL_SIZE - 1)];
+                    PoolSynapseData data = pPoolSynapseTick[tick];
                     unsigned int neuronIndex = data.neuronIndex;
                     unsigned int supplierNeuronIndex = (data.supplierIndexWithSign >> 1);
                     unsigned int sign = (data.supplierIndexWithSign & 1U);
@@ -536,8 +565,6 @@ struct ScoreFunction
                     neurons.input[neuronIndex] += nnV;
                     clampNeuron(neurons.input[neuronIndex]);
                 }
-
-                random2XVal = random2XVal * 1664525 + 1013904223;
             }
 
             // Calculate the score
