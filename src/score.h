@@ -489,11 +489,6 @@ struct ScoreFunction
             ticksNumbers[tick] = tick;
         }
         setMem(skipTicksMap, maxDuration, 0);
-
-        for (long long l = 0; l < numberOfOptimizationSteps - 1; l++)
-        {
-            skipTicks[l] = -1LL;
-        }
         for (long long l = 0; l < numberOfOptimizationSteps - 1; l++)
         {
             const unsigned int poolIdx = random2XValOpt & (RANDOM2_POOL_ACTUAL_SIZE - 1);

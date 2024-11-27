@@ -190,6 +190,7 @@ static ScoreFunction<
     NUMBER_OF_HIDDEN_NEURONS, 
     NUMBER_OF_NEIGHBOR_NEURONS,
     MAX_DURATION,
+    NUMBER_OF_OPTIMIZATION_STEPS,
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static volatile char solutionsLock = 0;
