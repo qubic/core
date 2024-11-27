@@ -145,12 +145,22 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#ifndef NO_QEARN
 #define QEARN_CONTRACT_INDEX 9
 #define CONTRACT_INDEX QEARN_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QEARN
 #define CONTRACT_STATE2_TYPE QEARN2
 #include "contracts/Qearn.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#ifndef NO_QVAULT
+#define QVAULT_CONTRACT_INDEX 10
+#define CONTRACT_INDEX QVAULT_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QVAULT
+#define CONTRACT_STATE2_TYPE QVAULT2
+#include "contracts/QVAULT.h"
 #endif
 
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
@@ -204,8 +214,9 @@ constexpr struct ContractDescription
     {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
     {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
-#ifndef NO_QEARN
     {"QEARN", 137, 10000, sizeof(QEARN)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
+#ifndef NO_QVAULT
+    {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
 #endif
 };
 
@@ -291,7 +302,8 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(GQMPROP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(SWATCH);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(CCF);
-#ifndef NO_QEARN
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QEARN);
+#ifndef NO_QVAULT
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QVAULT);
 #endif
 }

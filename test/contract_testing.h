@@ -12,6 +12,8 @@
 #include "contract_core/qpi_asset_impl.h"
 #include "contract_core/qpi_system_impl.h"
 
+#include "test_util.h"
+
 
 class ContractTesting
 {
@@ -51,16 +53,7 @@ public:
     {
         initAssets();
         memset(assets, 0, universeSizeInBytes);
-    }
-
-    long long getBalance(const id& pubKey) const
-    {
-        int index = spectrumIndex(pubKey);
-        if (index < 0)
-            return 0;
-        long long balance = energy(index);
-        EXPECT_GE(balance, 0ll);
-        return balance;
+        as.indexLists.reset();
     }
 
     template <typename InputType, typename OutputType>
@@ -136,13 +129,12 @@ public:
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName); \
 }
 
-static std::ostream& operator<<(std::ostream& s, const id& v)
+static inline long long getBalance(const id& pubKey)
 {
-    CHAR16 identityWchar[61];
-    char identityChar[61];
-    getIdentity(v.m256i_u8, identityWchar, false);
-    size_t size;
-    wcstombs_s(&size, identityChar, identityWchar, 61);
-    s << identityChar;
-    return s;
+    int index = spectrumIndex(pubKey);
+    if (index < 0)
+        return 0;
+    long long balance = energy(index);
+    EXPECT_GE(balance, 0ll);
+    return balance;
 }
