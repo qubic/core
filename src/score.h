@@ -170,6 +170,8 @@ struct ScoreFunction
 
     } *_computeBuffer = nullptr;
     m256i currentRandomSeed;
+    unsigned int randomXNeuronStart;
+    unsigned int randomXOpStart;
 
     volatile char solutionEngineLock[solutionBufferCount];
 
@@ -356,6 +358,18 @@ struct ScoreFunction
             solutionEngineLock[i] = 0;
         }
 
+        unsigned int x = 0;
+        for (unsigned long long i = 0; i < synapseSignsCount; i++)
+        {
+            x = x * 1664525 + 1013904223;
+        }
+        randomXNeuronStart = x;
+        for (unsigned long long i = 0; i < maxDuration; i++)
+        {
+            x = x * 1664525 + 1013904223;
+        }
+        randomXOpStart = x;
+
 #if USE_SCORE_CACHE
         scoreCacheLock = 0;
         setMem(&scoreCache, sizeof(scoreCache), 0);
@@ -432,8 +446,6 @@ struct ScoreFunction
         unsigned int random2XVal = 0;
         unsigned int random2XValOpt = 0;
 
-        unsigned int random2XValNeuronStart = 0;
-
         computeBuffer& cb = _computeBuffer[solutionBufIdx];
         unsigned long long* pSynapseSigns = cb._synapses.signs;
         PoolSynapseData* pPoolSynapseData = cb._poolSynapseData;
@@ -448,8 +460,7 @@ struct ScoreFunction
 
         //generateSynapse(cb, solutionBufIdx, publicKey, nonce);
         cb.k12.initState(&publicKey.m256i_u64[0], &nonce.m256i_u64[0], cb._poolRandom2Buffer);
-
-        random2XValNeuronStart = cb.k12.random2FromPrecomputedPool((unsigned char*)pSynapseSigns, synapseSignsCount * sizeof(unsigned long long));
+        cb.k12.random2FromPrecomputedPool((unsigned char*)pSynapseSigns, synapseSignsCount * sizeof(unsigned long long));
 
         for (unsigned int i = 0; i < RANDOM2_POOL_SIZE; i++)
         {
@@ -475,7 +486,7 @@ struct ScoreFunction
         }
 
         // First run to get the score
-        random2XVal = random2XValNeuronStart;
+        random2XVal = randomXNeuronStart;
         for (long long tick = 0; tick < maxDuration; tick++)
         {
             PoolSynapseData data = pPoolSynapseData[random2XVal & (RANDOM2_POOL_ACTUAL_SIZE - 1)];
@@ -505,8 +516,6 @@ struct ScoreFunction
         }
 
         // Next run for optimization steps
-        random2XValOpt = random2XVal;
-
         // Generate a list of possible skip ticks
         long long* skipTicks = cb._skipTicks;
         unsigned char* skipTicksMap = cb._skipTicksMap;
@@ -518,6 +527,7 @@ struct ScoreFunction
         }
         setMem(skipTicksMap, maxDuration, 0);
 
+        random2XValOpt = randomXOpStart;
         for (long long l = 0; l < numberOfOptimizationSteps - 1; l++)
         {
             const unsigned int poolIdx = random2XValOpt & (RANDOM2_POOL_ACTUAL_SIZE - 1);
@@ -539,7 +549,6 @@ struct ScoreFunction
         for (long long l = 0; l < numberOfOptimizationSteps - 1; l++)
         {
             // Reset neuron values
-            random2XVal = random2XValNeuronStart;
             setMem(neurons.input, sizeof(neurons.input[0]) * allNeuronsCount, 0);
             for (int i = 0; i < dataLength; i++)
             {
