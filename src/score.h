@@ -434,7 +434,7 @@ struct ScoreFunction
     }
     bool isGoodScore(unsigned int solutionScore, int threshold)
     {
-        return (threshold <= (DATA_LENGTH / 3)) && ((solutionScore >= (unsigned int)((DATA_LENGTH / 3) + threshold)) || (solutionScore <= (unsigned int)((DATA_LENGTH / 3) - threshold)));
+        return (threshold <= DATA_LENGTH) && (solutionScore >= (unsigned int)threshold);
     }
 
     // Compute score
