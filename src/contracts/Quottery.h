@@ -1313,7 +1313,7 @@ public:
             return;
         }
 
-        diffDateInSecond(locals.curDate, locals.endDate, locals.i0, locals.u64_0, locals.u64_1, locals.duration);
+        diffDateInSecond(locals.endDate, locals.curDate, locals.i0, locals.u64_0, locals.u64_1, locals.duration);
         locals.duration = div(locals.duration, 3600ULL * 24);
         if (locals.duration < 2)
         {
