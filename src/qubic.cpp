@@ -2238,6 +2238,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     }
 }
 
+#pragma optimize("", off)
 static void processTick(unsigned long long processorNumber)
 {
     if (system.tick > system.initialTick)
@@ -2666,6 +2667,8 @@ static void processTick(unsigned long long processorNumber)
     if ((system.tick & 7) == 0)
         updateAndAnalzeEntityCategoryPopulations();
 }
+
+#pragma optimize("", on)
 
 static void beginEpoch()
 {
