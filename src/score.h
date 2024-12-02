@@ -258,6 +258,7 @@ struct ScoreFunction
 
     bool initMemory()
     {
+        CHAR16 log[256];
         if (_computeBuffer == nullptr)
         {
             if (!allocatePool(sizeof(computeBuffer) * solutionBufferCount, (void**)&_computeBuffer))
@@ -278,7 +279,6 @@ struct ScoreFunction
 
                 if (!allocatePool(allNeuronsCount, (void**)&(cb._neurons.input)))
                 {
-                    CHAR16 log[256];
                     setText(log, L"Failed to allocate memory for neurons! Try to allocated ");
                     appendNumber(log, allNeuronsCount / 1024, true);
                     appendText(log, L" KB");
@@ -288,7 +288,6 @@ struct ScoreFunction
 
                 if (!allocatePool(synapseSignsCount * sizeof(unsigned long long), (void**)&(cb._synapses.signs)))
                 {
-                    CHAR16 log[256];
                     setText(log, L"Failed to allocate memory for synapses! Try to allocated ");
                     appendNumber(log, synapseSignsCount * sizeof(unsigned long long) / 1024, true);
                     appendText(log, L" KB");
@@ -298,7 +297,6 @@ struct ScoreFunction
 
                 if (!allocatePool(RANDOM2_POOL_SIZE * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseData)))
                 {
-                    CHAR16 log[256];
                     setText(log, L"Failed to allocate memory for pool synapse data! Try to allocated ");
                     appendNumber(log, RANDOM2_POOL_SIZE * sizeof(PoolSynapseData) / 1024, true);
                     appendText(log, L" KB");
@@ -308,7 +306,6 @@ struct ScoreFunction
 
                 if (!allocatePool(maxDuration * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseTickData)))
                 {
-                    CHAR16 log[256];
                     setText(log, L"Failed to allocate memory for pool synapse data! Try to allocated ");
                     appendNumber(log, maxDuration * sizeof(PoolSynapseData) / 1024, true);
                     appendText(log, L" KB");
@@ -318,7 +315,6 @@ struct ScoreFunction
 
                 if (!allocatePool(numberOfOptimizationSteps * sizeof(long long), (void**)&(cb._skipTicks)))
                 {
-                    CHAR16 log[256];
                     setText(log, L"Failed to allocate memory for skip ticks buffer! Try to allocated ");
                     appendNumber(log, numberOfOptimizationSteps * sizeof(long long) / 1024, true);
                     appendText(log, L" KB");
@@ -328,7 +324,6 @@ struct ScoreFunction
 
                 if (!allocatePool(maxDuration * sizeof(long long), (void**)&(cb._ticksNumbers)))
                 {
-                    CHAR16 log[256];
                     setText(log, L"Failed to allocate memory for ticks number buffer! Try to allocated ");
                     appendNumber(log, maxDuration * sizeof(long long) / 1024, true);
                     appendText(log, L" KB");
@@ -338,7 +333,6 @@ struct ScoreFunction
 
                 if (!allocatePool(maxDuration, (void**)&(cb._skipTicksMap)))
                 {
-                    CHAR16 log[256];
                     setText(log, L"Failed to allocate memory for ticks map buffer! Try to allocated ");
                     appendNumber(log, maxDuration / 1024, true);
                     appendText(log, L" KB");
@@ -351,10 +345,11 @@ struct ScoreFunction
         for (int i = 0; i < solutionBufferCount; i++) {
             setMem(_computeBuffer[i]._synapses.signs, sizeof(_computeBuffer[i]._synapses.signs[0]) * synapseSignsCount, 0);
             setMem(_computeBuffer[i]._poolSynapseData, sizeof(_computeBuffer[i]._poolSynapseData[0]) * RANDOM2_POOL_SIZE, 0);
+            setMem(_computeBuffer[i]._poolSynapseTickData, sizeof(_computeBuffer[i]._poolSynapseTickData[0]) * maxDuration, 0);
             setMem(_computeBuffer[i]._neurons.input, sizeof(_computeBuffer[i]._neurons.input[0]) * allNeuronsCount, 0);
             setMem(_computeBuffer[i]._ticksNumbers, sizeof(_computeBuffer[i]._ticksNumbers[0]) * maxDuration, 0);
             setMem(_computeBuffer[i]._skipTicks, sizeof(_computeBuffer[i]._skipTicks[0]) * numberOfOptimizationSteps, 0);
-            setMem(_computeBuffer[i]._skipTicksMap, sizeof(_computeBuffer[i]._skipTicksMap[0]) * numberOfOptimizationSteps, 0);
+            setMem(_computeBuffer[i]._skipTicksMap, sizeof(_computeBuffer[i]._skipTicksMap[0]) * maxDuration, 0);
             solutionEngineLock[i] = 0;
         }
 
