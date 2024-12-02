@@ -914,7 +914,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 
 static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
-    if (broadcastedComputors.computors.epoch && !useSelfGeneratedComputors)
+    if (broadcastedComputors.computors.epoch)
     {
         enqueueResponse(peer, sizeof(broadcastedComputors), BroadcastComputors::type, header->dejavu(), &broadcastedComputors);
     }
