@@ -4426,8 +4426,8 @@ static void tickProcessor(void*)
                                 }
                                 ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
-                                ::tickNumberOfComputors = 0;
-                                ::tickTotalNumberOfComputors = 0;
+                                gTickNumberOfComputors = 0;
+                                gTickTotalNumberOfComputors = 0;
                                 targetNextTickDataDigestIsKnown = false;
                                 numberOfNextTickTransactions = 0;
                                 numberOfKnownNextTickTransactions = 0;
