@@ -1052,6 +1052,13 @@ protected:
 		state._tradeFee = 5000000; // 0.5%
 	_
 
+	BEGIN_EPOCH
+
+		// TODO: Remove this and the following 2 lines after epoch 138 has begun
+		state._transferFee = 100;
+		state._tradeFee = 3000000; // 0.3%
+	_
+
 	END_TICK
 		if ((div((state._earnedAmount - state._distributedAmount), 676ULL) > 0) && (state._earnedAmount > state._distributedAmount))
 		{
