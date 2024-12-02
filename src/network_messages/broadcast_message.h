@@ -20,27 +20,3 @@ struct BroadcastMessage
 };
 
 static_assert(sizeof(BroadcastMessage) == 32 + 32 + 32, "Something is wrong with the struct size.");
-
-struct CustomMiningTaskMessage
-{
-    m256i sourcePublicKey;
-    m256i zero;
-    m256i gammingNonce;
-
-    m256i codeFileTrailerDigest;
-    m256i dataFileTrailerDigest;
-
-    // Task payload
-};
-
-struct CustomMiningSolutionMessage
-{
-    m256i sourcePublicKey;
-    m256i zero;
-    m256i gammingNonce;
-
-    m256i codeFileTrailerDigest;
-    m256i dataFileTrailerDigest;
-
-    // Solution payload
-};
