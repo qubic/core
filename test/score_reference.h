@@ -174,7 +174,7 @@ struct ScoreReferenceImplementation
 
                 // Skip recorded skipped ticks
                 bool tickShouldBeSkipped = false;
-                for (long long tickIdx = 0; tickIdx < numberOfSkippedTicks; tickIdx++)
+                for (unsigned long long tickIdx = 0; tickIdx < numberOfSkippedTicks; tickIdx++)
                 {
                     if (skipTicks[tickIdx] == tick)
                     {
