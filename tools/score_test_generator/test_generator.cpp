@@ -28,7 +28,7 @@ std::vector<std::vector<unsigned long long>> scoreProcessingTimes;
 template <unsigned long long i>
 static void processElement(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int threadId, bool writeFile)
 {
-    ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], 1> score;
+    ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], kSettings[i][NR_OPTIMIZATION_STEPS], 1> score;
     score.initMemory();
     score.initMiningData(miningSeed);
 
@@ -277,7 +277,8 @@ void generateScore(
         processingTime = processingTime / totalSamples;
         std::cout << "Setting " << j << ", NEURON " << kSettings[j][NR_NEURONS]
             << ", NEIGHBOR " << kSettings[j][NR_NEIGHBOR_NEURONS]
-            << ", DURATION " << kSettings[j][DURATIONS] 
+            << ", DURATION " << kSettings[j][DURATIONS]
+            << ", OPT_STEPS " << kSettings[j][NR_OPTIMIZATION_STEPS]
             << ": time " << processingTime << " ms"
             << std::endl;
     }
