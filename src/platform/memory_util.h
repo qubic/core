@@ -28,7 +28,8 @@ static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long s
     EFI_STATUS status;
     CHAR16 message[512];
     constexpr EFI_MEMORY_TYPE poolType = EfiRuntimeServicesData;
-    if (status = bs->AllocatePool(poolType, size, buffer))
+    status = bs->AllocatePool(poolType, size, buffer);
+    if (status != EFI_SUCCESS)
     {
         setText(message, L"EFI_BOOT_SERVICES.AllocatePool() fails for ");
         appendText(message, name);
@@ -37,6 +38,15 @@ static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long s
         logStatusAndMemInfoToConsole(message, status, __LINE__, size);
         return false;
     }
+#if !defined(NDEBUG)
+    else {
+        setText(message, L"EFI_BOOT_SERVICES.AllocatePool() completed for ");
+        appendText(message, name);
+        appendText(message, L" with size ");
+        appendNumber(message, size, TRUE);
+        logStatusAndMemInfoToConsole(message, status, __LINE__, size);
+            }
+#endif
     return true;
 }
 
