@@ -1,7 +1,5 @@
 #define SINGLE_COMPILE_UNIT
 
-//#define NO_QVAULT
-
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -190,6 +188,7 @@ static ScoreFunction<
     NUMBER_OF_HIDDEN_NEURONS, 
     NUMBER_OF_NEIGHBOR_NEURONS,
     MAX_DURATION,
+    NUMBER_OF_OPTIMIZATION_STEPS,
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static volatile char solutionsLock = 0;
@@ -2237,6 +2236,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     }
 }
 
+#pragma optimize("", off)
 static void processTick(unsigned long long processorNumber)
 {
     if (system.tick > system.initialTick)
@@ -2665,6 +2665,8 @@ static void processTick(unsigned long long processorNumber)
     if ((system.tick & 7) == 0)
         updateAndAnalzeEntityCategoryPopulations();
 }
+
+#pragma optimize("", on)
 
 static void beginEpoch()
 {
