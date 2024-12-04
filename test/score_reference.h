@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../src/platform/memory.h"
 #include "../src/platform/memory_util.h"
 #include "../src/four_q.h"
 
@@ -65,9 +64,9 @@ struct ScoreReferenceImplementation
             _synapses[i].sequence = _synapses[i].data + synapseSignsCount;
             _synapses[i].skipTicksNumber = _synapses[i].data + synapseSignsCount + maxDuration;
 
-            
-            allocatePool(sizeof(long long) * numberOfOptimizationSteps, (void**)&(_skipTicks[i]));
-            allocatePool(sizeof(long long) * maxDuration, (void**)&(_ticksNumbers[i]));
+
+            allocPoolWithErrorLog(L"skipTicks[i]", sizeof(long long) * numberOfOptimizationSteps, (void**)&(_skipTicks[i]));
+            allocPoolWithErrorLog(L"ticksNumbers[i]", sizeof(long long) * maxDuration, (void**)&(_ticksNumbers[i]));
         }
 
         static_assert(synapseInputCount * sizeof(*(_synapses->data)) % 8 == 0, "Random2 require output size is a multiplier of 8");

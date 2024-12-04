@@ -448,7 +448,6 @@ public:
              || !allocPoolWithErrorLog(L"tickTransactionOffset", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr)
              || !allocPoolWithErrorLog(L"tickTransactionsDigestPtr", tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), (void**)&tickTransactionsDigestPtr))
         {
-            logToConsole(L"Failed to allocate tick storage memory!");
             return false;
         }
 

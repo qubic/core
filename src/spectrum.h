@@ -413,7 +413,6 @@ static bool initSpectrum()
     if (!allocPoolWithErrorLog(L"spectrum", spectrumSizeInBytes, (void**)&spectrum)
         || !allocPoolWithErrorLog(L"spectrumDigests", spectrumDigestsSizeInByte, (void**)&spectrumDigests))
     {
-        logToConsole(L"Failed to allocate spectrum memory!");
         return false;
     }
 

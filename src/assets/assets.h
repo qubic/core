@@ -163,7 +163,6 @@ static bool initAssets()
         || !allocPoolWithErrorLog(L"assetDigests", assetDigestsSizeInBytes, (void**)&assetDigests)
         || !allocPoolWithErrorLog(L"assetChangeFlags", ASSETS_CAPACITY / 8, (void**)&assetChangeFlags))
     {
-        logToConsole(L"Failed to allocate asset buffers!");
         return false;
     }
     setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);

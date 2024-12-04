@@ -446,8 +446,6 @@ public:
         {
             if (!allocPoolWithErrorLog(L"logBuffer", LOG_BUFFER_SIZE, (void**)&logBuffer))
             {
-                logToConsole(L"Failed to allocate logging buffer!");
-
                 return false;
             }
         }
@@ -456,8 +454,6 @@ public:
         {
             if (!allocPoolWithErrorLog(L"mapTxToLogId", LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
             {
-                logToConsole(L"Failed to allocate logging buffer!");
-
                 return false;
             }
         }
@@ -466,8 +462,6 @@ public:
         {
             if (!allocPoolWithErrorLog(L"mapLogIdToBufferIndex", LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
             {
-                logToConsole(L"Failed to allocate logging buffer!");
-
                 return false;
             }
         }

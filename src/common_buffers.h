@@ -20,7 +20,6 @@ static bool initCommonBuffers()
     constexpr unsigned long long reorgBufferSize = (spectrumSizeInBytes >= universeSizeInBytes) ? spectrumSizeInBytes : universeSizeInBytes;
     if (!allocPoolWithErrorLog(L"reorgBuffer", reorgBufferSize, (void**)&reorgBuffer))
     {
-        logToConsole(L"Failed to allocate common buffers!");
         return false;
     }
 
