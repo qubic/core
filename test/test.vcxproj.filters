@@ -22,6 +22,7 @@
     <ClCompile Include="contract_qvault.cpp" />
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="assets.cpp" />
+    <ClCompile Include="contract_msvault.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
