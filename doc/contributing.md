@@ -17,6 +17,7 @@ For big changes, such as adding a smart contract, we recommend to discuss with o
 10. If the PR reviewer requests further changes, push them to your branch. The PR will be updated automatically.
 11. When your PR is approved and merged, you can pull the changes from upstream to your local repo and delete your extra branch.
 
+For developing a smart contract, also see [contracts.md](contracts.md).
 
 ## Development workflow / branches
 

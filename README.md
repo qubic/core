@@ -142,4 +142,5 @@ We cannot support you in any case. You are welcome to provide updates, bug fixes
 
 ## More Documentation
 - [How to contribute](doc/contributing.md)
+- [Developing a smart contract ](doc/contracts.md)
 - [Qubic protocol](doc/protocol.md)
