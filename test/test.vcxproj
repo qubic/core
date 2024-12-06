@@ -112,6 +112,7 @@
     <ClCompile Include="assets.cpp" />
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="contract_core.cpp" />
+    <ClCompile Include="contract_msvault.cpp" />
     <ClCompile Include="contract_qearn.cpp" />
     <ClCompile Include="contract_qx.cpp" />
     <ClCompile Include="contract_qvault.cpp" />
