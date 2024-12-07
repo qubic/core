@@ -181,8 +181,6 @@ static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
 static int nSolutionProcessorIDs = 0;
 
-
-
 static ScoreFunction<
     DATA_LENGTH,
     NUMBER_OF_HIDDEN_NEURONS, 
@@ -510,7 +508,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                         if (messagePayloadSize)
                         {
                             unsigned char sharedKeyAndGammingNonce[64];
-                            if (!getSharedKey(computorPrivateKeys[i].m256i_u8, request->sourcePublicKey.m256i_u8, sharedKeyAndGammingNonce))
+                            if (getSharedKey(computorPrivateKeys[i].m256i_u8, request->sourcePublicKey.m256i_u8, sharedKeyAndGammingNonce))
                             {
                                 bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                                 unsigned char gammingKey[32];
@@ -529,6 +527,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 {
                                     if (messagePayloadSize >= 32 + 32)
                                     {
+
                                         const m256i& solution_miningSeed = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
                                         const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage) + 32);
                                         unsigned int k;
