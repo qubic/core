@@ -503,7 +503,7 @@ struct ScoreFunction
         }
     }
 
-    unsigned int computeSkipTicksNeurons(const PoolSynapseData* pPoolSynapseTick, const unsigned char* skipTicksMap, computeBuffer::Neuron& neurons)
+    unsigned int computeSkipTicksNeurons(const PoolSynapseData* pPoolSynapseTick, const unsigned char* skipTicksMap, long long skipTick, unsigned int score, computeBuffer::Neuron& neurons)
     {
         // Reset neuron values
         setMem(neurons.input, sizeof(neurons.input[0]) * allNeuronsCount, 0);
@@ -513,6 +513,7 @@ struct ScoreFunction
         }
 
         // Compute
+        bool shouldBreak = false;
         for (long long tick = 0; tick < maxDuration; tick++)
         {
             // Tick not on the list, accumulate as normal
@@ -528,6 +529,33 @@ struct ScoreFunction
                 neurons.input[neuronIndex] += nnV;
                 clampNeuron(neurons.input[neuronIndex]);
             }
+
+            // For the new skip tick , check if skip vs no skip have impact on neuron value
+            // if not, can break early because score should be the same
+            if (tick == skipTick)
+            {
+                PoolSynapseData data = pPoolSynapseTick[tick];
+                unsigned int neuronIndex = data.neuronIndex;
+                unsigned int supplierNeuronIndex = (data.supplierIndexWithSign >> 1);
+                unsigned int sign = (data.supplierIndexWithSign & 1U);
+
+                char nnV = neurons.input[supplierNeuronIndex];
+                nnV = sign ? nnV : -nnV;
+
+                char val = neurons.input[neuronIndex];
+                val += nnV;
+                clampNeuron(val);
+                if (val == neurons.input[neuronIndex])
+                {
+                    shouldBreak = true;
+                    break;
+                }
+            }
+        }
+        // The score is kept as it is
+        if (shouldBreak)
+        {
+            return score;
         }
 
         // Calculate the score
@@ -572,7 +600,7 @@ struct ScoreFunction
 
             // Set the skip tick on and calculate the neurons with additional skip tick
             cb._skipTicksMap[skipTick] = 1;
-            unsigned int currentScore = computeSkipTicksNeurons(pPoolSynapseTick, cb._skipTicksMap, neurons);
+            unsigned int currentScore = computeSkipTicksNeurons(pPoolSynapseTick, cb._skipTicksMap, skipTick, score, neurons);
 
             // Check if this tick is good to skip
             if (currentScore >= score)
