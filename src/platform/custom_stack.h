@@ -30,7 +30,7 @@ public:
     {
         free();
 
-        if (!allocPoolWithErrorLog(L"stackBottom", size, (void**)&stackBottom))
+        if (!allocPoolWithErrorLog(L"stackBottom", size, (void**)&stackBottom, __LINE__))
             return false;
 
         stackTop = stackBottom + size;

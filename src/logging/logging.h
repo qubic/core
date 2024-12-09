@@ -444,7 +444,7 @@ public:
 #if ENABLED_LOGGING
         if (logBuffer == NULL)
         {
-            if (!allocPoolWithErrorLog(L"logBuffer", LOG_BUFFER_SIZE, (void**)&logBuffer))
+            if (!allocPoolWithErrorLog(L"logBuffer", LOG_BUFFER_SIZE, (void**)&logBuffer, __LINE__))
             {
                 return false;
             }
@@ -452,7 +452,7 @@ public:
 
         if (mapTxToLogId == NULL)
         {
-            if (!allocPoolWithErrorLog(L"mapTxToLogId", LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
+            if (!allocPoolWithErrorLog(L"mapTxToLogId", LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId, __LINE__))
             {
                 return false;
             }
@@ -460,7 +460,7 @@ public:
 
         if (mapLogIdToBufferIndex == NULL)
         {
-            if (!allocPoolWithErrorLog(L"mapLogIdToBufferIndex", LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
+            if (!allocPoolWithErrorLog(L"mapLogIdToBufferIndex", LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex, __LINE__))
             {
                 return false;
             }

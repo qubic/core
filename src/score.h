@@ -278,7 +278,7 @@ struct ScoreFunction
     {
         if (_computeBuffer == nullptr)
         {
-            if (!allocPoolWithErrorLog(L"computeBuffer (score solution buffer)", sizeof(computeBuffer) * solutionBufferCount, (void**)&_computeBuffer))
+            if (!allocPoolWithErrorLog(L"computeBuffer (score solution buffer)", sizeof(computeBuffer) * solutionBufferCount, (void**)&_computeBuffer, __LINE__))
             {
                 return false;
             }
@@ -287,42 +287,42 @@ struct ScoreFunction
             {
                 auto& cb = _computeBuffer[bufId];
 
-                if (!allocPoolWithErrorLog(L"poolRandom2Buffer (score pool buffer)", RANDOM2_POOL_SIZE, (void**)&(cb._poolRandom2Buffer)))
+                if (!allocPoolWithErrorLog(L"poolRandom2Buffer (score pool buffer)", RANDOM2_POOL_SIZE, (void**)&(cb._poolRandom2Buffer), __LINE__))
                 {
                     return false;
                 }
 
-                if (!allocPoolWithErrorLog(L"neurons.input", allNeuronsCount, (void**)&(cb._neurons.input)))
+                if (!allocPoolWithErrorLog(L"neurons.input", allNeuronsCount, (void**)&(cb._neurons.input), __LINE__))
                 {
                     return false;
                 }
 
-                if (!allocPoolWithErrorLog(L"synapses.signs", synapseSignsCount * sizeof(unsigned long long), (void**)&(cb._synapses.signs)))
+                if (!allocPoolWithErrorLog(L"synapses.signs", synapseSignsCount * sizeof(unsigned long long), (void**)&(cb._synapses.signs), __LINE__))
                 {
                     return false;
                 }
 
-                if (!allocPoolWithErrorLog(L"poolSynapseData", RANDOM2_POOL_SIZE * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseData)))
+                if (!allocPoolWithErrorLog(L"poolSynapseData", RANDOM2_POOL_SIZE * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseData), __LINE__))
                 {
                     return false;
                 }
 
-                if (!allocPoolWithErrorLog(L"poolSynapseTickData", maxDuration * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseTickData)))
+                if (!allocPoolWithErrorLog(L"poolSynapseTickData", maxDuration * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseTickData), __LINE__))
                 {
                     return false;
                 }
 
-                if (!allocPoolWithErrorLog(L"skipTicks", numberOfOptimizationSteps * sizeof(long long), (void**)&(cb._skipTicks)))
+                if (!allocPoolWithErrorLog(L"skipTicks", numberOfOptimizationSteps * sizeof(long long), (void**)&(cb._skipTicks), __LINE__))
                 {
                     return false;
                 }
 
-                if (!allocPoolWithErrorLog(L"ticksNumbers", maxDuration * sizeof(long long), (void**)&(cb._ticksNumbers)))
+                if (!allocPoolWithErrorLog(L"ticksNumbers", maxDuration * sizeof(long long), (void**)&(cb._ticksNumbers), __LINE__))
                 {
                     return false;
                 }
 
-                if (!allocPoolWithErrorLog(L"skipTicksMap", maxDuration, (void**)&(cb._skipTicksMap)))
+                if (!allocPoolWithErrorLog(L"skipTicksMap", maxDuration, (void**)&(cb._skipTicksMap), __LINE__))
                 {
                     return false;
                 }

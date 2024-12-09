@@ -18,7 +18,7 @@ static bool initCommonBuffers()
 {
     // TODO: check that max contract state size does not exceed size of spectrum or universe
     constexpr unsigned long long reorgBufferSize = (spectrumSizeInBytes >= universeSizeInBytes) ? spectrumSizeInBytes : universeSizeInBytes;
-    if (!allocPoolWithErrorLog(L"reorgBuffer", reorgBufferSize, (void**)&reorgBuffer))
+    if (!allocPoolWithErrorLog(L"reorgBuffer", reorgBufferSize, (void**)&reorgBuffer, __LINE__))
     {
         return false;
     }

@@ -81,7 +81,7 @@ static bool initContractExec()
         contractStateLock[i].reset();
     }
 
-    if (!allocPoolWithErrorLog(L"contractStateChangeFlags", MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags))
+    if (!allocPoolWithErrorLog(L"contractStateChangeFlags", MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags, __LINE__))
     {
         return false;
     }

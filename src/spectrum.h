@@ -410,8 +410,8 @@ static bool saveSpectrum(const CHAR16* fileName = SPECTRUM_FILE_NAME, const CHAR
 
 static bool initSpectrum()
 {
-    if (!allocPoolWithErrorLog(L"spectrum", spectrumSizeInBytes, (void**)&spectrum)
-        || !allocPoolWithErrorLog(L"spectrumDigests", spectrumDigestsSizeInByte, (void**)&spectrumDigests))
+    if (!allocPoolWithErrorLog(L"spectrum", spectrumSizeInBytes, (void**)&spectrum, __LINE__)
+        || !allocPoolWithErrorLog(L"spectrumDigests", spectrumDigestsSizeInByte, (void**)&spectrumDigests, __LINE__))
     {
         return false;
     }

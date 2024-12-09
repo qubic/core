@@ -10,12 +10,12 @@
 #include <cstdbool>
 #include <cstdio>
 
-static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long size, void** buffer) 
+static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long size, void** buffer, const int LINE) 
 {
     *buffer = malloc(size);
     if (*buffer == nullptr)
     {
-        printf("Memory allocation failed for %ls\n", name);
+        printf("Memory allocation failed for %ls on line %u\n", name, LINE);
         return false;
     }
     return true;
@@ -23,11 +23,18 @@ static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long 
 
 #else
 
-static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long size, void** buffer)
+static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long size, void** buffer, const int LINE)
     {
     EFI_STATUS status;
     CHAR16 message[512];
     constexpr EFI_MEMORY_TYPE poolType = EfiRuntimeServicesData;
+
+    // Check for invalid input
+    if (buffer == nullptr || size == 0) {
+        logStatusAndMemInfoToConsole(L"Invalid buffer pointer or size", EFI_INVALID_PARAMETER, __LINE__, size);
+        return false;
+    }
+
     status = bs->AllocatePool(poolType, size, buffer);
     if (status != EFI_SUCCESS)
     {
@@ -35,7 +42,7 @@ static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long s
         appendText(message, name);
         appendText(message, L" with size ");
         appendNumber(message, size, TRUE);
-        logStatusAndMemInfoToConsole(message, status, __LINE__, size);
+        logStatusAndMemInfoToConsole(message, status, LINE, size);
         return false;
     }
 #if !defined(NDEBUG)
@@ -44,9 +51,13 @@ static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long s
         appendText(message, name);
         appendText(message, L" with size ");
         appendNumber(message, size, TRUE);
-        logStatusAndMemInfoToConsole(message, status, __LINE__, size);
+        logStatusAndMemInfoToConsole(message, status, LINE, size);
             }
 #endif
+    // Zero out allocated memory
+    if (*buffer != nullptr) {
+        setMem(*buffer, size, 0);
+    }
     return true;
 }
 

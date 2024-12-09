@@ -4480,14 +4480,14 @@ static bool initialize()
     {
         if (!ts.init())
             return false;
-        if (!allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE,(void**)&entityPendingTransactions) ||
-            !allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * 32ULL,(void**)&entityPendingTransactionDigests ))
+        if (!allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE,(void**)&entityPendingTransactions, __LINE__) ||
+            !allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * 32ULL,(void**)&entityPendingTransactionDigests , __LINE__))
         {
             return false;
         }
 
-        if (!allocPoolWithErrorLog(L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE, (void**)&computorPendingTransactions) ||
-            !allocPoolWithErrorLog(L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL, (void**)&computorPendingTransactionDigests))
+        if (!allocPoolWithErrorLog(L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE, (void**)&computorPendingTransactions, __LINE__) ||
+            !allocPoolWithErrorLog(L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL, (void**)&computorPendingTransactionDigests, __LINE__))
         {
             return false;
         }
@@ -4509,20 +4509,20 @@ static bool initialize()
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
-            if (!allocPoolWithErrorLog(L"contractStates",  size, (void**)&contractStates[contractIndex]))
+            if (!allocPoolWithErrorLog(L"contractStates",  size, (void**)&contractStates[contractIndex], __LINE__))
             {
                 return false;
             }
         }
 
-        if (!allocPoolWithErrorLog(L"score", sizeof(*score), (void**)&score))
+        if (!allocPoolWithErrorLog(L"score", sizeof(*score), (void**)&score, __LINE__))
         {
             return false;
         }
         setMem(score, sizeof(*score), 0);
 
         bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
-        if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
+        if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags, __LINE__))
         {
             return false;
         }
@@ -4668,16 +4668,16 @@ static bool initialize()
     score->loadScoreCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
-    if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0)) ||
-        (!allocPoolWithErrorLog(L"dejavu1", 536870912, (void**)&dejavu1)))
+    if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
+        (!allocPoolWithErrorLog(L"dejavu1", 536870912, (void**)&dejavu1, __LINE__)))
     {
         return false;
     }
     bs->SetMem((void*)dejavu0, 536870912, 0);
     bs->SetMem((void*)dejavu1, 536870912, 0);
 
-    if ((!allocPoolWithErrorLog(L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer)) ||
-        (!allocPoolWithErrorLog(L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer)))
+    if ((!allocPoolWithErrorLog(L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer, __LINE__)) ||
+        (!allocPoolWithErrorLog(L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer, __LINE__)))
     {
         return false;
     }
@@ -4686,9 +4686,9 @@ static bool initialize()
     {
         peers[i].receiveData.FragmentCount = 1;
         peers[i].transmitData.FragmentCount = 1;
-        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE, &peers[i].receiveBuffer))  ||
-            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer)) ||
-            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE, (void**)&peers[i].dataToTransmit)))
+        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE, &peers[i].receiveBuffer, __LINE__))  ||
+            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer, __LINE__)) ||
+            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE, (void**)&peers[i].dataToTransmit, __LINE__)))
         {
             return false;
         }
@@ -5570,7 +5570,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             mpServicesProtocol->GetProcessorInfo(mpServicesProtocol, i, &processorInformation);
             if (processorInformation.StatusFlag == (PROCESSOR_ENABLED_BIT | PROCESSOR_HEALTH_STATUS_BIT))
             {
-                if (!allocPoolWithErrorLog(L"processor[i]", BUFFER_SIZE, &processors[numberOfProcessors].buffer))
+                if (!allocPoolWithErrorLog(L"processor[i]", BUFFER_SIZE, &processors[numberOfProcessors].buffer, __LINE__))
                 {
                     numberOfProcessors = 0;
 
