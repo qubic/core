@@ -409,23 +409,41 @@ public:
         bit isManager = false;
         CALL(isManager, NoData{}, isManager);
         if (!isManager) {
+            LOG_INFO(EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::orderNotFound,
+                input.orderId,
+                0, // No amount involved
+                '\0'
+                });
             output.status = 1; // Error
-            copyMemory(output.message, "Only managers can refund orders");
             return;
         }
 
         // Retrieve the order
         BridgeOrder order;
         if (!state.orders.get(input.orderId, order)) {
+            LOG_INFO(EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::invalidOrderState,
+                input.orderId,
+                0, // No amount involved
+                '\0'
+                });
             output.status = 1; // Error
-            copyMemory(output.message, "Order not found");
             return;
         }
 
         // Check the status
         if (order.status != 0) { // Ensure it's not already completed or refunded
+            LOG_INFO(EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::transferFailed,
+                input.orderId,
+                order.amount,
+                '\0'
+                });
             output.status = 2; // Error
-            copyMemory(output.message, "Order not in a valid state for refund");
             return;
         }
 
@@ -435,37 +453,66 @@ public:
         order.status = 2; // Refunded
         state.orders.set(order.orderId, order);
 
+        LOG_INFO(EthBridgeLogger{
+            CONTRACT_INDEX,
+            0, // No error
+            input.orderId,
+            order.amount,
+            '\0'
+            });
         output.status = 0; // Success
-        copyMemory(output.message, "Order refunded successfully");
     _
 
     // Transfer tokens to the contract
     PUBLIC_PROCEDURE_WITH_LOCALS(transferToContract)
 
         if (input.amount == 0) {
+            LOG_INFO(EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::invalidAmount,
+                0, // No order ID
+                input.amount,
+                '\0'
+                });
             output.status = 1; // Error
-            copyMemory(output.message, "Amount must be greater than 0");
             return;
         }
 
         if (state.userBalances.get(qpi.invocator(), 0) < input.amount) {
+            LOG_INFO(EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::insufficientLockedTokens,
+                0, // No order ID
+                input.amount,
+                '\0'
+                });
             output.status = 3; // Error
-            copyMemory(output.message, "Insufficient balance for transfer");
             return;
         }
         else {
 
             if (qpi.transfer(SELF, input.amount) < 0) {
                 output.status = 2; // Error
-                copyMemory(output.message, "Transfer failed");
+                LOG_INFO(EthBridgeLogger{
+                    CONTRACT_INDEX,
+                    EthBridgeError::transferFailed,
+                    0, // No order ID
+                    input.amount,
+                    '\0'
+                    });
                 return;
             }
 
             // Update the total received tokens
             state.totalReceivedTokens += input.amount;
-
+            LOG_INFO(EthBridgeLogger{
+                CONTRACT_INDEX,
+                0, // No error
+                0, // No order ID
+                input.amount,
+                '\0'
+                });
             output.status = 0; // Success
-            copyMemory(output.message, "Tokens transferred successfully");
         }
     _
 
