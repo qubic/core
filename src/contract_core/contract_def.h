@@ -161,6 +161,16 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE QVAULT2
 #include "contracts/QVAULT.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define ETHBRIDGE_CONTRACT_INDEX 11
+#define CONTRACT_INDEX ETHBRIDGE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE ETHBRIDGE
+#define CONTRACT_STATE2_TYPE ETHBRIDGE2
+#include "contracts/EthBridge.h"
+
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
 
 #undef INITIALIZE
