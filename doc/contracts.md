@@ -60,7 +60,6 @@ In order to develop a contract, follow these steps:
       For example, your contract does not need to be prepared for 1 Million users right from the beginning.
       The size of data structures can be increased later with `EXPAND` events.
       Currently, the contract state size is limited to 1 GB.
-    - Until the QPI and the Qubic protocol are fully implemented, changing the code of a contract is possible even after the IPO.
     - See more details about how to develop the contract [below](#procedures-and-functions).
 5. Implement tests in GoogleTest framework:
     - Create a file for your tests in the directory `test`.
@@ -79,7 +78,7 @@ Each contract must be validated with the following steps:
    (Currently, this tool has not been implemented yet. Thus, this check needs to be done during the review in point 3.)
 2. The features of the contract have to be extensively tested with automated tests implemented within the Qubic Core's GoogleTest framework.
 3. The contract and testing code must be reviewed by at least one of the Qubic Core devs, ensuring it meets high quality standards.
-4. After fully integrating the contract in the Qubic Core, the features of the contract must be tested in a test network with multiple nodes, showing that the contract works well in practice and that the nodes run stable with the contract.
+4. Before integrating the contract in the official Qubic Core release, the features of the contract must be tested in a test network with multiple nodes, showing that the contract works well in practice and that the nodes run stable with the contract.
 
 After going through this validation process, a contract can be integrated in official releases of the Qubic Core code.
 
@@ -225,7 +224,7 @@ Strings `"` and chars `'` are forbidden, because they can be used to jump to ran
 
 Variadic arguments are prohibited (character combination `...`).
 
-Double underscores `__` must not be used in a contract, because these are reserved for internal functions that are prohibited to be used directly.
+Double underscores `__` must not be used in a contract, because these are reserved for internal functions and compiler macros that are prohibited to be used directly.
 For similar reasons, `::`, `QpiContext`, and `const_cast` are prohibited too.
 
 The keywords `typedef` and `union` are prohibited to make the code easier to read and prevent tricking code audits.
