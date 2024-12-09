@@ -19,7 +19,7 @@ namespace QPI
 	%
 	'
 	* not as multiplication operator
-	..
+	...
 	/ as division operator
 	::
 	[
