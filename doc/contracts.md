@@ -128,8 +128,8 @@ It is sent as the response message, answering `RequestContractFunction`.
 
 A `PUBLIC` function can be called by other contracts with larger contract index, a `PRIVATE` function cannot be called by other contracts.
 
-In order to make the function available for external requests through the `RequestContractFunction` notwork message, you need to call `REGISTER_USER_FUNCTION([NAME], [INPUT_TYPE]);` in the contract initialization procedure `REGISTER_USER_FUNCTIONS_AND_PROCEDURES`.
-`[INPUT_TYPE]` is an integer in greater or equal to 1 and less or equal to 65535, which identifies the function to call in the `RequestContractFunction` message (`inputType` member).
+In order to make the function available for external requests through the `RequestContractFunction` network message, you need to call `REGISTER_USER_FUNCTION([NAME], [INPUT_TYPE]);` in the contract initialization procedure `REGISTER_USER_FUNCTIONS_AND_PROCEDURES`.
+`[INPUT_TYPE]` is an integer greater or equal to 1 and less or equal to 65535, which identifies the function to call in the `RequestContractFunction` message (`inputType` member).
 If the `inputSize` member in `RequestContractFunction` does not match `sizeof([NAME]_input)`, the input data is either cut off or padded with zeros.
 
 The contract state is passed to the function as a const reference named `state`.
@@ -155,7 +155,7 @@ It is returned if the procedure is invoked from another procedure, but unused if
 A `PUBLIC` procedure can be called by other contracts with larger contract index, a `PRIVATE` procedure cannot be called by other contracts.
 
 In order to make the function available for invocation by transactions, you need to call `REGISTER_USER_PROCEDURE([NAME], [INPUT_TYPE]);` in the contract initialization procedure `REGISTER_USER_FUNCTIONS_AND_PROCEDURES`.
-`[INPUT_TYPE]` is an integer in greater or equal to 1 and less or equal to 65535, which identifies the procedure to call in the `Transaction` (`inputType` member).
+`[INPUT_TYPE]` is an integer greater or equal to 1 and less or equal to 65535, which identifies the procedure to call in the `Transaction` (`inputType` member).
 `REGISTER_USER_PROCEDURE` has its own set of input types, so the same input type number may be used for both `REGISTER_USER_PROCEDURE` and `REGISTER_USER_FUNCTION` (for example there may be one function with input type 1 and one procedure with input type 1).
 If the `inputSize` member in `Transaction` does not match `sizeof([NAME]_input)`, the input data is either cut off or padded with zeros.
 
