@@ -139,21 +139,22 @@ private:
     uint32 sourceChain;                            // Source chain identifier
 
     // Internal methods for admin/manager permissions        
-    typedef QPI::id isAdmin_input;
+    typedef id isAdmin_input;
     typedef bit isAdmin_output;
 
    PRIVATE_FUNCTION(isAdmin)
-        output = (qpi.invocator() == state.admin);
+       output = (qpi.invocator() == state.admin);
     _
 
    typedef id isManager_input;
    typedef bit isManager_output;
    struct isManager_locals {
-       QPI::bit managerStatus;  
+       bit managerStatus;  
    };
-   PRIVATE_FUNCTION(isManager)
+   PRIVATE_FUNCTION_WITH_LOCALS(isManager)
        locals.managerStatus = false;
-       output = state.managers.get(qpi.invocator(), locals.managerStatus);
+       state.managers.get(qpi.invocator(), locals.managerStatus);
+       output = locals.managerStatus;
     _
 
 
@@ -325,7 +326,7 @@ public:
         EthBridgeLogger log;
     };
 
-    PUBLIC_PROCEDURE(removeManager)
+    PUBLIC_PROCEDURE_WITH_LOCALS(removeManager)
 
         if (qpi.invocator() != state.admin) {
             locals.log = EthBridgeLogger{
@@ -376,10 +377,11 @@ public:
 
     // Complete an order and release tokens
     PUBLIC_PROCEDURE_WITH_LOCALS(completeOrder)
+        isManager_input invocatorAddress = qpi.invocator();
         isManager_output isManagerOperating = false;
-        CALL(isManager, NoData{}, isManagerOperating);
+        CALL(isManager, invocatorAddress, isManagerOperating);
 
-        if (!isManager) {
+        if (!isManagerOperating) {
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
                 EthBridgeError::onlyManagersCanCompleteOrders,
@@ -492,10 +494,10 @@ public:
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(refundOrder)
-
-        bit isManagerOperating;
-        CALL(isManager, qpi.invocator(), isManagerOperating);
-        if (!isManager) {
+        id invocatorAddress = qpi.invocator();
+        bit isManagerOperating = false;
+        CALL(isManager, invocatorAddress, isManagerOperating);
+        if (!isManagerOperating) {
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
                 EthBridgeError::orderNotFound,
@@ -613,6 +615,9 @@ public:
         REGISTER_USER_PROCEDURE(completeOrder, 6);
         REGISTER_USER_PROCEDURE(refundOrder, 7);
         REGISTER_USER_PROCEDURE(transferToContract, 8);
+
+        REGISTER_USER_FUNCTION(isAdmin, 9);
+        REGISTER_USER_FUNCTION(isManager, 10);
     _
 
     // Initialize the contract
