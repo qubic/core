@@ -465,18 +465,47 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
         && header->size() >= sizeof(RequestResponseHeader) + sizeof(BroadcastMessage) + SIGNATURE_SIZE
         && !isZero(request->sourcePublicKey))
     {
+        // Old logic for solution message
+        // *sourcePublicKey == NULL
+        //  - Broadcast message if sourcePublicKey's balance >= MESSAGE_DISSEMINATION_THRESHOLD and isDejavuZero()
+        //  - destPubKey is in computor list. If not-> exit
+        //     + sharedKey - not secret ,32 first bytes is zeros, 32 last bytes is from message
+        //  - sharedKey is used for decrypting message and further process
+        // *sourcePublicKey != NULL
+        //  - Verify message signature with sourcePublicKey. If not -> exit
+        //  - Broadcast message if sourcePublicKey's balance >= MESSAGE_DISSEMINATION_THRESHOLD and isDejavuZero()
+        //  - destPubKey is in computor list. If not-> exit
+        //     + sharedKey - secret, get from computor private key & sourcePublicKey
+        //  - sharedKey is used for decrypting message and further process
+        // ************************************************************************************
+        // New one for solution message: sourcePublicKey always != NULL
+        // - Verify message signature with sourcePublicKey. If not -> exit
+        // - Broadcast message if sourcePublicKey balance >= MESSAGE_DISSEMINATION_THRESHOLD and isDejavuZero()
+        // - destPubKey is in computor list. If not -> exit
+        // - sourcePublicKey != computorPublicKey
+        //     + Check sourcePublicKey balance >= MESSAGE_DISSEMINATION_THRESHOLD. If not -> exit
+        //     + sharedKey - not secret ,32 first bytes is zeros, 32 last bytes is from message
+        // - sourcePublicKey == computorPublicKey
+        //     + sharedKey - secret ,get from computor private key & sourcePublicKey
+        // - sharedKey is used for decrypting message and further process
         const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
+        bool ok = true;
         m256i digest;
         KangarooTwelve(request, messageSize - SIGNATURE_SIZE, &digest, sizeof(digest));
         if (verify(request->sourcePublicKey.m256i_u8, digest.m256i_u8, (((const unsigned char*)request) + (messageSize - SIGNATURE_SIZE))))
         {
-            if (header->isDejavuZero())
+            // Balance checking
+            bool hasEnoughBalance = false;
+            const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
+            if (spectrumIndex >= 0 && energy(spectrumIndex) >= MESSAGE_DISSEMINATION_THRESHOLD)
             {
-                const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
-                if (spectrumIndex >= 0 && energy(spectrumIndex) >= MESSAGE_DISSEMINATION_THRESHOLD)
-                {
-                    enqueueResponse(NULL, header);
-                }
+                hasEnoughBalance = true;
+            }
+
+            // Broadcast if balance is enough
+            if (hasEnoughBalance && header->isDejavuZero())
+            {
+                enqueueResponse(NULL, header);
             }
 
             if (isZero(request->destinationPublicKey))
@@ -508,7 +537,29 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                         if (messagePayloadSize)
                         {
                             unsigned char sharedKeyAndGammingNonce[64];
-                            if (getSharedKey(computorPrivateKeys[i].m256i_u8, request->sourcePublicKey.m256i_u8, sharedKeyAndGammingNonce))
+                            // sourcePublicKey != computorPublicKeys, 
+                            if (request->sourcePublicKey != computorPublicKeys[i])
+                            {
+                                // Signing pubkey is not in the computor list. Only process if it has enough QUS
+                                if (!hasEnoughBalance)
+                                {
+                                    ok = false;
+                                }
+                                else
+                                {
+                                    // it is an un-encrypted message, all zeros for first 32 bytes sharedKey
+                                    bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                                }
+                            }
+                            else // sourcePublicKey == computorPublicKeys, it is an encrypted message, don't care about balance
+                            {
+                                if (!getSharedKey(computorPrivateKeys[i].m256i_u8, request->sourcePublicKey.m256i_u8, sharedKeyAndGammingNonce))
+                                {
+                                    ok = false;
+                                }
+                            }
+
+                            if (ok)
                             {
                                 bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                                 unsigned char gammingKey[32];
