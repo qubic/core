@@ -494,6 +494,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
         KangarooTwelve(request, messageSize - SIGNATURE_SIZE, &digest, sizeof(digest));
         if (verify(request->sourcePublicKey.m256i_u8, digest.m256i_u8, (((const unsigned char*)request) + (messageSize - SIGNATURE_SIZE))))
         {
+
             // Balance checking
             bool hasEnoughBalance = false;
             const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
@@ -502,8 +503,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                 hasEnoughBalance = true;
             }
 
-            // Broadcast if balance is enough
-            if (hasEnoughBalance && header->isDejavuZero())
+            // Broadcast message if balance is enough or this message has been signed by a computor
+            if ((hasEnoughBalance || computorIndex(request->sourcePublicKey) >=0 ) && header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
             }
@@ -537,7 +538,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                         if (messagePayloadSize)
                         {
                             unsigned char sharedKeyAndGammingNonce[64];
-                            // sourcePublicKey != computorPublicKeys, 
+                            // sourcePublicKey != computorPublicKeys
                             if (request->sourcePublicKey != computorPublicKeys[i])
                             {
                                 // Signing pubkey is not in the computor list. Only process if it has enough QUS
@@ -551,7 +552,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
                                 }
                             }
-                            else // sourcePublicKey == computorPublicKeys, it is an encrypted message, don't care about balance
+                            else // sourcePublicKey == computorPublicKeys, it is an encrypted message, don't care about balance, just process it
                             {
                                 if (!getSharedKey(computorPrivateKeys[i].m256i_u8, request->sourcePublicKey.m256i_u8, sharedKeyAndGammingNonce))
                                 {
