@@ -386,6 +386,7 @@ public:
         EthBridgeLogger log;
         id invocatorAddress;
         bit isManagerOperating;
+        BridgeOrder order;
     };
 
     // Complete an order and release tokens
@@ -394,6 +395,7 @@ public:
         locals.isManagerOperating = false;
         CALL(isManager, locals.invocatorAddress, locals.isManagerOperating);
 
+        //Check if the order is handled by a manager
         if (!locals.isManagerOperating) {
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
@@ -408,8 +410,7 @@ public:
         }
 
         // Retrieve the order
-        BridgeOrder order;
-        if (!state.orders.get(input.orderId, order)) {
+        if (!state.orders.get(input.orderId, locals.order)) {
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
                 EthBridgeError::invalidOrderState,
@@ -423,7 +424,7 @@ public:
         }
 
         // Check the status
-        if (order.status != 0) { // Ensure it's not already completed or refunded
+        if (locals.order.status != 0) { // Ensure it's not already completed or refunded
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
                 EthBridgeError::invalidOrderState,
@@ -437,14 +438,14 @@ public:
         }
 
         // Handle order based on transfer direction
-        if (order.fromQubicToEthereum) {
+        if (locals.order.fromQubicToEthereum) {
             // Ensure sufficient tokens were transferred to the contract
-            if (state.totalReceivedTokens < order.amount) {
+            if (state.totalReceivedTokens - state.lockedTokens < locals.order.amount) {
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
                     EthBridgeError::insufficientLockedTokens,
                     input.orderId,
-                    order.amount,
+                    locals.order.amount,
                     0
                 };
                 LOG_INFO(locals.log);
@@ -452,16 +453,19 @@ public:
                 return;
             }
 
-            state.lockedTokens += order.amount;
+            state.lockedTokens += locals.order.amount; //increase the amount of locked tokens
+            state.totalReceivedTokens -= locals.order.amount; //decrease the amount of no-locked (received) tokens
+            LOG_INFO("Locked Tokens Balance: ", state.lockedTokens);
+            LOG_INFO("Total Received Tokens Balance: ", state.lockedTokens);
         }
         else {
             // Ensure sufficient tokens are locked for the order
-            if (state.lockedTokens < order.amount) {
+            if (state.lockedTokens < locals.order.amount) {
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
                     EthBridgeError::insufficientLockedTokens,
                     input.orderId,
-                    order.amount,
+                    locals.order.amount,
                     0
                 };
                 LOG_INFO(locals.log);
@@ -470,12 +474,12 @@ public:
             }
 
             // Transfer tokens back to the user
-            if (qpi.transfer(order.qubicSender, order.amount) < 0) {
+            if (qpi.transfer(locals.order.qubicSender, locals.order.amount) < 0) {
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
                     EthBridgeError::transferFailed,
                     input.orderId,
-                    order.amount,
+                    locals.order.amount,
                     0
                 };
                 LOG_INFO(locals.log);
@@ -483,19 +487,20 @@ public:
                 return;
             }
 
-            state.lockedTokens -= order.amount;
+            state.lockedTokens -= locals.order.amount;
+            LOG_INFO("Locked Tokens Balance: ", state.lockedTokens);
         }
 
         // Mark the order as completed
-        order.status = 1; // Completed
-        state.orders.set(order.orderId, order);
+        locals.order.status = 1; // Completed
+        state.orders.set(locals.order.orderId, locals.order);
 
         output.status = 0; // Success
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
             0, // No error
             input.orderId,
-            order.amount,
+            locals.order.amount,
             0
         };
         LOG_INFO(locals.log);
@@ -505,13 +510,15 @@ public:
     struct refundOrder_locals {
         EthBridgeLogger log;
         id invocatorAddress;
-        bit isManagerOperating
+        bit isManagerOperating;
+        BridgeOrder order;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(refundOrder)
         locals.invocatorAddress = qpi.invocator();
         locals.isManagerOperating = false;
         CALL(isManager, locals.invocatorAddress, locals.isManagerOperating);
+        //Check if the order is handled by a manager
         if (!locals.isManagerOperating) {
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
@@ -526,8 +533,7 @@ public:
         }
 
         // Retrieve the order
-        BridgeOrder order;
-        if (!state.orders.get(input.orderId, order)) {
+        if (!state.orders.get(input.orderId, locals.order)) {
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
                 EthBridgeError::invalidOrderState,
@@ -541,12 +547,12 @@ public:
         }
 
         // Check the status
-        if (order.status != 0) { // Ensure it's not already completed or refunded
+        if (locals.order.status != 0) { // Ensure it's not already completed or refunded
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
                 EthBridgeError::transferFailed,
                 input.orderId,
-                order.amount,
+                locals.order.amount,
                 0
             };
             LOG_INFO(locals.log);
@@ -555,16 +561,16 @@ public:
         }
 
         // Update the status and refund tokens
-        qpi.transfer(order.qubicSender, order.amount);
-        state.lockedTokens -= order.amount;
-        order.status = 2; // Refunded
-        state.orders.set(order.orderId, order);
+        qpi.transfer(locals.order.qubicSender, locals.order.amount);
+        state.lockedTokens -= locals.order.amount;
+        locals.order.status = 2; // Refunded
+        state.orders.set(locals.order.orderId, locals.order);
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
             0, // No error
             input.orderId,
-            order.amount,
+            locals.order.amount,
             0
         };
         LOG_INFO(locals.log);
@@ -607,6 +613,8 @@ public:
 
         // Update the total received tokens
         state.totalReceivedTokens += input.amount;
+        LOG_INFO("Total Tokens received: ", state.totalReceivedTokens);
+
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
             0, // No error
