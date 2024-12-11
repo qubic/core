@@ -112,21 +112,21 @@ public:
         uint32 _errorCode;       // Error code
         uint64 _orderId;         // Order ID if applicable
         uint64 _amount;          // Amount involved in the operation
-        uint32 _terminator;        // Marks the end of the logged data
+        char _terminator;        // Marks the end of the logged data
     };
 
     struct AddressChangeLogger {
-        uint32 contractIndex;
-        uint8 eventCode;        // Event code 'adminchanged'
-        id newAdminAddress;     // New admin address
-        uint32 terminator;
+        uint32 _contractIndex;
+        uint8 _eventCode;        // Event code 'adminchanged'
+        id _newAdminAddress;     // New admin address
+        char _terminator;
     };
 
     struct TokensLogger {
-        uint32 contractIndex;
-        uint64 lockedTokens;   // Balance tokens locked
-        uint64 totalReceivedTokens; //Balance total receivedTokens
-        uint32 terminator;
+        uint32 _contractIndex;
+        uint64 _lockedTokens;   // Balance tokens locked
+        uint64 _totalReceivedTokens; //Balance total receivedTokens
+        char _terminator;
     };
 
     // Enum for error codes
