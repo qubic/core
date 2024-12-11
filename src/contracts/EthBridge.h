@@ -282,6 +282,9 @@ public:
         }
 
         state.admin = input.address;
+        //Logging the admin address has changed
+        LOG_INFO("Admin address changed to: ", input.address);
+
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
             0, // No error
@@ -313,6 +316,9 @@ public:
         }
 
         state.managers.set(input.address, 1); // Add manager
+        //Logging new manager has been added
+        LOG_INFO("New manager added: ", input.address);
+
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
             0, // No error
@@ -345,6 +351,9 @@ public:
         }
 
         state.managers.removeByKey(input.address); // Remove manager
+        //Logging a former manager has been removed
+        LOG_INFO("Manager removed: ", input.address);
+
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
             0, // No error
