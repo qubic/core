@@ -465,29 +465,6 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
         && header->size() >= sizeof(RequestResponseHeader) + sizeof(BroadcastMessage) + SIGNATURE_SIZE
         && !isZero(request->sourcePublicKey))
     {
-        // Old logic for solution message
-        // *sourcePublicKey == NULL
-        //  - Broadcast message if sourcePublicKey's balance >= MESSAGE_DISSEMINATION_THRESHOLD and isDejavuZero()
-        //  - destPubKey is in computor list. If not-> exit
-        //     + sharedKey - not secret ,32 first bytes is zeros, 32 last bytes is from message
-        //  - sharedKey is used for decrypting message and further process
-        // *sourcePublicKey != NULL
-        //  - Verify message signature with sourcePublicKey. If not -> exit
-        //  - Broadcast message if sourcePublicKey's balance >= MESSAGE_DISSEMINATION_THRESHOLD and isDejavuZero()
-        //  - destPubKey is in computor list. If not-> exit
-        //     + sharedKey - secret, get from computor private key & sourcePublicKey
-        //  - sharedKey is used for decrypting message and further process
-        // ************************************************************************************
-        // New one for solution message: sourcePublicKey always != NULL
-        // - Verify message signature with sourcePublicKey. If not -> exit
-        // - Broadcast message if sourcePublicKey balance >= MESSAGE_DISSEMINATION_THRESHOLD and isDejavuZero()
-        // - destPubKey is in computor list. If not -> exit
-        // - sourcePublicKey != computorPublicKey
-        //     + Check sourcePublicKey balance >= MESSAGE_DISSEMINATION_THRESHOLD. If not -> exit
-        //     + sharedKey - not secret ,32 first bytes is zeros, 32 last bytes is from message
-        // - sourcePublicKey == computorPublicKey
-        //     + sharedKey - secret ,get from computor private key & sourcePublicKey
-        // - sharedKey is used for decrypting message and further process
         const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
         bool ok = true;
         m256i digest;
@@ -552,8 +529,9 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
                                 }
                             }
-                            else // sourcePublicKey == computorPublicKeys, it is an encrypted message, don't care about balance, just process it
+                            else
                             {
+                                // sourcePublicKey == computorPublicKeys, it is an encrypted message, get sharedKey.
                                 if (!getSharedKey(computorPrivateKeys[i].m256i_u8, request->sourcePublicKey.m256i_u8, sharedKeyAndGammingNonce))
                                 {
                                     ok = false;

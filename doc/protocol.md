@@ -26,6 +26,42 @@ If an outgoing connection to a non-verified peer is accepted and an `ExchangePub
 If a protocol violation is detected at any moment during communication (allowing to assume the remote end runs something else, not Qubic node), then the IP is removed even if it is verified.
 An IP is only removed from the list of peers if the list still has at least 10 entries afterwards and if it is not in the initial `knownPublicPeers`.
 
+# Broadcast Message
+
+Defined in https://github.com/qubic/core/blob/main/src/network_messages/broadcast_message.h
+
+```
+struct BroadcastMessage
+{
+    m256i sourcePublicKey;
+    m256i destinationPublicKey;
+    m256i gammingNonce;
+
+    enum {
+        type = 1,
+    };
+};
+```
+
+- SourcePublicKey must not be NULL.
+- The message signature must be verified with SourcePublicKey.
+- SourcePublicKey's balance must be greater than MESSAGE_DISSEMINATION_THRESHOLD or SourcePublicKey is a computor's public key, and the message is broadcasted.
+- destinationPublicKey needs to be in the computorPublicKeys of the node:
+  - If sourcePublicKey is the same as computorPublicKey:
+    - computorPrivateKeys and sourcePublicKey are used to generate sharedKey.
+    - sharedKey is used for generating gammingKey.
+  - If sourcePublicKey is not the same as computorPublicKey, its balance must be greater than MESSAGE_DISSEMINATION_THRESHOLD.
+    - gammingKey can be extracted from the message.
+    - gammingKey is used for decrypting the message's payload.
+- The first byte of gammingKey (gammingKey[0]) is used to define the message type.
+
+The message is processed as follows, depending on the message type:
+
+## MESSAGE_TYPE_SOLUTION
+- Payload size check.
+- Solution mining seed is extracted from the first 32 bytes of the payload.
+- Solution nonce is extracted from the next 32 bytes of the payload.
+- The solution will be verified and recorded if it does not already exist in the current node.
 
 ## ...
 
