@@ -106,13 +106,27 @@ public:
         OrderResponse order;                 // Updated response format
     };
 
-    // Logger structure
+    // Logger structures
     struct EthBridgeLogger {
         uint32 _contractIndex;   // Index of the contract
         uint32 _errorCode;       // Error code
         uint64 _orderId;         // Order ID if applicable
         uint64 _amount;          // Amount involved in the operation
-        char _terminator;        // Marks the end of the logged data
+        uint32 _terminator;        // Marks the end of the logged data
+    };
+
+    struct AddressChangeLogger {
+        uint32 contractIndex;
+        uint8 eventCode;        // Event code 'adminchanged'
+        id newAdminAddress;     // New admin address
+        uint32 terminator;
+    };
+
+    struct TokensLogger {
+        uint32 contractIndex;
+        uint64 lockedTokens;   // Balance tokens locked
+        uint64 totalReceivedTokens; //Balance total receivedTokens
+        uint32 terminator;
     };
 
     // Enum for error codes
@@ -264,6 +278,7 @@ public:
     // Admin Functions
     struct setAdmin_locals {
         EthBridgeLogger log;
+        AddressChangeLogger adminLog;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(setAdmin)
@@ -283,7 +298,14 @@ public:
 
         state.admin = input.address;
         //Logging the admin address has changed
-        LOG_INFO("Admin address changed to: ", input.address);
+        locals.adminLog = AddressChangeLogger{
+            CONTRACT_INDEX,
+            1, // Event code "Admin Changed"
+            input.address,
+            0
+        };
+
+        LOG_INFO(locals.adminLog);
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
@@ -298,6 +320,7 @@ public:
     
     struct addManager_locals {
         EthBridgeLogger log;
+        AddressChangeLogger managerLog;
     };
 
    PUBLIC_PROCEDURE_WITH_LOCALS(addManager)
@@ -317,7 +340,14 @@ public:
 
         state.managers.set(input.address, 1); // Add manager
         //Logging new manager has been added
-        LOG_INFO("New manager added: ", input.address);
+        locals.managerLog = AddressChangeLogger{
+            CONTRACT_INDEX,
+            2, // Event code "Manager added"
+            input.address,
+            0
+        };
+
+        LOG_INFO(locals.managerLog);
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
@@ -332,6 +362,7 @@ public:
 
     struct removeManager_locals {
         EthBridgeLogger log;
+        AddressChangeLogger managerLog;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(removeManager)
@@ -351,8 +382,16 @@ public:
         }
 
         state.managers.removeByKey(input.address); // Remove manager
-        //Logging a former manager has been removed
-        LOG_INFO("Manager removed: ", input.address);
+        //Logging a manager has been removed
+        state.managers.set(input.address, 1); // Add manager
+        locals.managerLog = AddressChangeLogger{
+            CONTRACT_INDEX,
+            2, // Event code "Manager remove"
+            input.address,
+            0
+        };
+
+        LOG_INFO(locals.managerLog);
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
@@ -387,6 +426,7 @@ public:
         id invocatorAddress;
         bit isManagerOperating;
         BridgeOrder order;
+        TokensLogger logTokens;
     };
 
     // Complete an order and release tokens
@@ -455,8 +495,14 @@ public:
 
             state.lockedTokens += locals.order.amount; //increase the amount of locked tokens
             state.totalReceivedTokens -= locals.order.amount; //decrease the amount of no-locked (received) tokens
-            LOG_INFO("Locked Tokens Balance: ", state.lockedTokens);
-            LOG_INFO("Total Received Tokens Balance: ", state.lockedTokens);
+            locals.logTokens = TokensLogger{
+                CONTRACT_INDEX,
+                state.lockedTokens,
+                state.totalReceivedTokens,
+                0
+            };
+
+            LOG_INFO(locals.logTokens);
         }
         else {
             // Ensure sufficient tokens are locked for the order
@@ -488,7 +534,14 @@ public:
             }
 
             state.lockedTokens -= locals.order.amount;
-            LOG_INFO("Locked Tokens Balance: ", state.lockedTokens);
+            locals.logTokens = TokensLogger{
+                CONTRACT_INDEX,
+                state.lockedTokens,
+                state.totalReceivedTokens,
+                0
+            };
+
+            LOG_INFO(locals.logTokens);
         }
 
         // Mark the order as completed
@@ -580,6 +633,7 @@ public:
     // Transfer tokens to the contract
     struct transferToContract_locals {
         EthBridgeLogger log;
+        TokensLogger logTokens;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(transferToContract)
@@ -613,7 +667,14 @@ public:
 
         // Update the total received tokens
         state.totalReceivedTokens += input.amount;
-        LOG_INFO("Total Tokens received: ", state.totalReceivedTokens);
+        locals.logTokens = TokensLogger{
+            CONTRACT_INDEX,
+            state.lockedTokens,
+            state.totalReceivedTokens,
+            0
+        };
+
+        LOG_INFO(locals.logTokens);
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
