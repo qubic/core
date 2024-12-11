@@ -26,7 +26,7 @@ If an outgoing connection to a non-verified peer is accepted and an `ExchangePub
 If a protocol violation is detected at any moment during communication (allowing to assume the remote end runs something else, not Qubic node), then the IP is removed even if it is verified.
 An IP is only removed from the list of peers if the list still has at least 10 entries afterwards and if it is not in the initial `knownPublicPeers`.
 
-# Broadcast Message
+## Broadcast Message
 
 Defined in https://github.com/qubic/core/blob/main/src/network_messages/broadcast_message.h
 
@@ -57,7 +57,7 @@ struct BroadcastMessage
 
 The message is processed as follows, depending on the message type:
 
-## MESSAGE_TYPE_SOLUTION
+### MESSAGE_TYPE_SOLUTION
 - Payload size check.
 - Solution mining seed is extracted from the first 32 bytes of the payload.
 - Solution nonce is extracted from the next 32 bytes of the payload.
