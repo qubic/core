@@ -2,7 +2,7 @@ struct OracleReplyCommitTransaction : public Transaction
 {
 	static constexpr unsigned char transactionType()
 	{
-		return 8; // TODO: Set actual value
+		return 6; // TODO: Set actual value
 	}
 
 	unsigned long long queryIndex;
@@ -15,7 +15,7 @@ struct OracleReplyRevealTransactionPrefix : public Transaction
 {
 	static constexpr unsigned char transactionType()
 	{
-		return 9; // TODO: Set actual value
+		return 7; // TODO: Set actual value
 	}
 
 	unsigned long long queryIndex;
