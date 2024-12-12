@@ -8,14 +8,13 @@
 // "A General Message type used to send/receive messages from/to peers." -> right?
 // What the the gammingNonce about exactly?
 // Which other message types are planned next to MESSAGE_TYPE_SOLUTION?
-// 
+//
 // MESSAGE_TYPE_SOLUTION
 //  sourcePublicKey Must not be NULL_ID. It can be a signing public key or a computor/candidate public key.
 //  destinationPublicKey Public key of a computor/candidate controlled by a node.
 //  gammingNonce There are two cases:
 //  - If sourcePublicKey is just a signing pubkey: the first 32 bytes are zeros, and the last 32 bytes are taken from the message.
 //  - If sourcePublicKey is a public key of a computor: the message is encrypted.
-//  destPubKey Public key of a computor/candidate controlled by nodes.
 struct BroadcastMessage
 {
     m256i sourcePublicKey;

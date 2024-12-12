@@ -45,7 +45,7 @@ struct BroadcastMessage
 
 - SourcePublicKey must not be NULL.
 - The message signature must be verified with SourcePublicKey.
-- SourcePublicKey's balance must be greater than MESSAGE_DISSEMINATION_THRESHOLD or SourcePublicKey is a computor's public key, and the message is broadcasted.
+- The message is broadcasted if sourcePublicKey's balance is greater than MESSAGE_DISSEMINATION_THRESHOLD or sourcePublicKey is a computor's public key.
 - destinationPublicKey needs to be in the computorPublicKeys of the node:
   - If sourcePublicKey is the same as computorPublicKey:
     - computorPrivateKeys and sourcePublicKey are used to generate sharedKey.
