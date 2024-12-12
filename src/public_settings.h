@@ -49,12 +49,13 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 228
+#define VERSION_B 229
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
 #define EPOCH 136
 #define TICK 17420000
+
 
 // random seed is now obtained from spectrumDigests
 
