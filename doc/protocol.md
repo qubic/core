@@ -45,12 +45,12 @@ struct BroadcastMessage
 
 - SourcePublicKey must not be NULL.
 - The message signature must be verified with SourcePublicKey.
-- The message is broadcasted if sourcePublicKey's balance is greater than MESSAGE_DISSEMINATION_THRESHOLD or sourcePublicKey is a computor's public key.
+- The message is broadcasted if sourcePublicKey's balance is greater than or equal MESSAGE_DISSEMINATION_THRESHOLD or sourcePublicKey is a computor's public key.
 - destinationPublicKey needs to be in the computorPublicKeys of the node:
   - If sourcePublicKey is the same as computorPublicKey:
     - computorPrivateKeys and sourcePublicKey are used to generate sharedKey.
     - sharedKey is used for generating gammingKey.
-  - If sourcePublicKey is not the same as computorPublicKey, its balance must be greater than MESSAGE_DISSEMINATION_THRESHOLD.
+  - If sourcePublicKey is not the same as computorPublicKey, its balance must be greater than or equal MESSAGE_DISSEMINATION_THRESHOLD.
     - gammingKey can be extracted from the message.
     - gammingKey is used for decrypting the message's payload.
 - The first byte of gammingKey (gammingKey[0]) is used to define the message type.
