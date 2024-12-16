@@ -158,6 +158,19 @@ public:
         sint32 returnCode;
     };
 
+    struct getStatsPerEpoch_input {
+        uint32 epoch;
+    };
+
+    struct getStatsPerEpoch_output {
+
+        uint64 earlyUnlockedAmount;
+        uint64 earlyUnlockedPercent;
+        uint64 totalLockedAmount;
+        uint64 averageAPY;
+
+    };
+
 protected:
 
     struct RoundInfo {
@@ -241,6 +254,35 @@ protected:
         {
             output.yield = 0ULL;
         }
+    _
+
+    struct getStatsPerEpoch_locals 
+    {
+        uint32 cnt, _t;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getStatsPerEpoch)
+
+        output.earlyUnlockedAmount = state._initialRoundInfo.get(input.epoch)._totalLockedAmount - state._currentRoundInfo.get(input.epoch)._totalLockedAmount;
+        output.earlyUnlockedPercent = QPI::div(output.earlyUnlockedAmount * 10000ULL, state._initialRoundInfo.get(input.epoch)._totalLockedAmount);
+
+        output.totalLockedAmount = 0;
+        output.averageAPY = 0;
+        locals.cnt = 0;
+        for(locals._t = qpi.epoch(); locals._t >= qpi.epoch() - 52; locals._t--)
+        {
+            if(state._currentRoundInfo.get(locals._t)._totalLockedAmount == 0)
+            {
+                continue;
+            }
+
+            locals.cnt++;
+            output.totalLockedAmount += state._currentRoundInfo.get(locals._t)._totalLockedAmount;
+            output.averageAPY += QPI::div(state._currentRoundInfo.get(locals._t)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(locals._t)._totalLockedAmount);
+        }
+
+        output.averageAPY = QPI::div(output.averageAPY, locals.cnt * 1ULL);
+
     _
 
     struct getUserLockedInfo_locals {
@@ -598,6 +640,14 @@ protected:
 
         state._currentRoundInfo.set(input.lockedEpoch, locals.updatedRoundInfo);
 
+        if(qpi.epoch() == input.lockedEpoch)
+        {
+            locals.updatedRoundInfo._totalLockedAmount = state._initialRoundInfo.get(input.lockedEpoch)._totalLockedAmount - locals.amountOfUnlocking;
+            locals.updatedRoundInfo._epochBonusAmount = state._initialRoundInfo.get(input.lockedEpoch)._epochBonusAmount;
+            
+            state._initialRoundInfo.set(input.lockedEpoch, locals.updatedRoundInfo);
+        }
+
         if(state.locker.get(locals.indexOfinvocator)._lockedAmount == locals.amountOfUnlocking)
         {
             locals.updatedUserInfo.ID = NULL_ID;
@@ -666,6 +716,7 @@ protected:
         REGISTER_USER_FUNCTION(getStateOfRound, 3);
         REGISTER_USER_FUNCTION(getUserLockStatus, 4);
         REGISTER_USER_FUNCTION(getEndedStatus, 5);
+        REGISTER_USER_FUNCTION(getStatsPerEpoch, 6);
 
         REGISTER_USER_PROCEDURE(lock, 1);
 		REGISTER_USER_PROCEDURE(unlock, 2);
@@ -712,6 +763,10 @@ protected:
         state._initialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
         state._currentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
 
+        locals.INITIALIZE_ROUNDINFO._epochBonusAmount = state._initialRoundInfo.get(138)._epochBonusAmount;
+        locals.INITIALIZE_ROUNDINFO._totalLockedAmount = 6924939374040;
+
+        state._initialRoundInfo.set(138, locals.INITIALIZE_ROUNDINFO);
 	_
 
     struct END_EPOCH_locals 
