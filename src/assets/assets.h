@@ -159,10 +159,11 @@ static unsigned int issuanceIndex(const m256i& issuer, unsigned long long assetN
 
 static bool initAssets()
 {
-    if (!allocPoolWithErrorLog(L"assets", ASSETS_CAPACITY * sizeof(Asset), (void**)&assets, __LINE__)
-        || !allocPoolWithErrorLog(L"assetDigests", assetDigestsSizeInBytes, (void**)&assetDigests, __LINE__)
-        || !allocPoolWithErrorLog(L"assetChangeFlags", ASSETS_CAPACITY / 8, (void**)&assetChangeFlags, __LINE__))
+    if (!allocatePool(ASSETS_CAPACITY * sizeof(Asset), (void**)&assets)
+        || !allocatePool(assetDigestsSizeInBytes, (void**)&assetDigests)
+        || !allocatePool(ASSETS_CAPACITY / 8, (void**)&assetChangeFlags))
     {
+        logToConsole(L"Failed to allocate asset buffers!");
         return false;
     }
     setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);

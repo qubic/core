@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../src/platform/memory_util.h"
+#include "../src/platform/memory.h"
 #include "../src/four_q.h"
 
 ////////// Original (reference) scoring algorithm \\\\\\\\\\
@@ -55,18 +55,18 @@ struct ScoreReferenceImplementation
     {
         for (int i = 0; i < solutionBufferCount; i++)
         {
-            allocPoolWithErrorLog(L"poolBuffer", RANDOM2_POOL_SIZE, (void**)&(_poolBuffer[i]), __LINE__);
+            allocatePool(RANDOM2_POOL_SIZE, (void**)&(_poolBuffer[i]));
 
-            allocPoolWithErrorLog(L"neurons[i].input", sizeof(long long) * neuronsCount, (void**)(&(_neurons[i].input)), __LINE__);
+            allocatePool(sizeof(long long) * neuronsCount, (void**)(&(_neurons[i].input)));
 
-            allocPoolWithErrorLog(L"synapses[i].data", sizeof(unsigned long long) * synapseInputCount, (void**)(&(_synapses[i].data)), __LINE__);
+            allocatePool(sizeof(unsigned long long) * synapseInputCount, (void**)(&(_synapses[i].data)));
             _synapses[i].signs = _synapses[i].data;
             _synapses[i].sequence = _synapses[i].data + synapseSignsCount;
             _synapses[i].skipTicksNumber = _synapses[i].data + synapseSignsCount + maxDuration;
 
-
-            allocPoolWithErrorLog(L"skipTicks[i]", sizeof(long long) * numberOfOptimizationSteps, (void**)&(_skipTicks[i]), __LINE__);
-            allocPoolWithErrorLog(L"ticksNumbers[i]", sizeof(long long) * maxDuration, (void**)&(_ticksNumbers[i]), __LINE__);
+            
+            allocatePool(sizeof(long long) * numberOfOptimizationSteps, (void**)&(_skipTicks[i]));
+            allocatePool(sizeof(long long) * maxDuration, (void**)&(_ticksNumbers[i]));
         }
 
         static_assert(synapseInputCount * sizeof(*(_synapses->data)) % 8 == 0, "Random2 require output size is a multiplier of 8");

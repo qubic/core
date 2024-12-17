@@ -1,7 +1,7 @@
 #pragma once
 
 #include "platform/global_var.h"
-#include "platform/memory_util.h"
+#include "platform/memory.h"
 
 #include "network_messages/entity.h"
 #include "network_messages/assets.h"
@@ -18,8 +18,9 @@ static bool initCommonBuffers()
 {
     // TODO: check that max contract state size does not exceed size of spectrum or universe
     constexpr unsigned long long reorgBufferSize = (spectrumSizeInBytes >= universeSizeInBytes) ? spectrumSizeInBytes : universeSizeInBytes;
-    if (!allocPoolWithErrorLog(L"reorgBuffer", reorgBufferSize, (void**)&reorgBuffer, __LINE__))
+    if (!allocatePool(reorgBufferSize, (void**)&reorgBuffer))
     {
+        logToConsole(L"Failed to allocate common buffers!");
         return false;
     }
 
