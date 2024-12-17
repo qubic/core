@@ -233,6 +233,7 @@ public:
     };
     struct getReleaseStatus_output
     {
+        bit status;
         array<uint64, MSVAULT_MAX_OWNERS> amounts;
         array<id, MSVAULT_MAX_OWNERS> destinations;
     };
@@ -252,6 +253,7 @@ public:
     };
     struct getBalanceOf_output
     {
+        bit status;
         sint64 balance;
     };
     struct getBalanceOf_locals
@@ -269,6 +271,7 @@ public:
     };
     struct getVaultName_output
     {
+        bit status;
         id vaultName;
     };
     struct getVaultName_locals
@@ -630,28 +633,19 @@ protected:
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getReleaseStatus)
+        output.status = false;
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
         if (!locals.iv_out.result)
         {
-            for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i++)
-            {
-                output.amounts.set(locals.i, 0);
-                output.destinations.set(locals.i, NULL_ID);
-            }
-            return;
+            return; // output.status = false
         }
 
         locals.vault = state.vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
-            for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i++)
-            {
-                output.amounts.set(locals.i, 0);
-                output.destinations.set(locals.i, NULL_ID);
-            }
-            return;
+            return; // output.status = false
         }
 
         for (locals.i = 0; locals.i < locals.vault.numberOfOwners; locals.i++)
@@ -659,44 +653,45 @@ protected:
             output.amounts.set(locals.i, locals.vault.releaseAmounts.get(locals.i));
             output.destinations.set(locals.i, locals.vault.releaseDestinations.get(locals.i));
         }
+        output.status = true;
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getBalanceOf)
+        output.status = false;
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
         if (!locals.iv_out.result)
         {
-            output.balance = 0;
-            return;
+            return; // output.status = false
         }
 
         locals.vault = state.vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
-            output.balance = 0;
-            return;
+            return; // output.status = false
         }
         output.balance = locals.vault.balance;
+        output.status = true;
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaultName)
+        output.status = false;
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
         if (!locals.iv_out.result)
         {
-            output.vaultName = NULL_ID;
-            return;
+            return; // output.status = false
         }
 
         locals.vault = state.vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
-            output.vaultName = NULL_ID;
-            return;
+            return; // output.status = false
         }
         output.vaultName = locals.vault.vaultName;
+        output.status = true;
     _
 
     PUBLIC_FUNCTION(getRevenueInfo)
