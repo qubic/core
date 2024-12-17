@@ -271,6 +271,10 @@ protected:
         locals.cnt = 0;
         for(locals._t = qpi.epoch(); locals._t >= qpi.epoch() - 52; locals._t--)
         {
+            if(locals._t < QEARN_INITIAL_EPOCH)
+            {
+                break;
+            }
             if(state._currentRoundInfo.get(locals._t)._totalLockedAmount == 0)
             {
                 continue;
@@ -763,6 +767,13 @@ protected:
         state._initialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
         state._currentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
 
+        /*
+            the initial total locked amount should exclude the amount that locked on initial epoch but it didn't exclude that amount before. 
+            so now it is updated.
+            I recorded the initial total locked amount of epoch 138 with 6924939374040.
+            once the epoch 139 is finished, I will also update the initial total locked amount of epoch 139.
+            this line will be deleted at epoch 140 or 141 at least.
+        */
         locals.INITIALIZE_ROUNDINFO._epochBonusAmount = state._initialRoundInfo.get(138)._epochBonusAmount;
         locals.INITIALIZE_ROUNDINFO._totalLockedAmount = 6924939374040;
 
