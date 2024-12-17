@@ -4,6 +4,9 @@
 
 using namespace QPI;
 
+struct ETHBRIDGE2 
+{
+};
 
 struct ETHBRIDGE : public ContractBase {
 
@@ -111,7 +114,7 @@ public:
     };
 
     struct getAdminID_output {
-        id address;
+        uint64 idOutput;
     };
 
     // Logger structures
@@ -697,9 +700,8 @@ public:
     _
 
     PUBLIC_FUNCTION(getAdminID)
-        output.address = state.admin;
+        output.idOutput = 0;
     _
-
     // Register Functions and Procedures
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_PROCEDURE(createOrder, 1);
@@ -718,7 +720,6 @@ public:
         REGISTER_USER_FUNCTION(getTotalReceivedTokens, 11);
         REGISTER_USER_FUNCTION(getAdminID, 12);
         _
-
 
     // Initialize the contract
     INITIALIZE
