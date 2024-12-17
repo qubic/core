@@ -104,6 +104,7 @@ public:
         sint32 i;
     };
 
+    // Procedures and functions' structs
     struct registerVault_input
     {
         uint16 vaultType;
@@ -289,6 +290,34 @@ public:
         uint32 numberOfActiveVaults;
         uint64 totalRevenue;
         uint64 totalDistributedToShareholders;
+    };
+
+    struct getFees_input 
+    {
+    };
+    struct getFees_output
+    {
+        uint64 registeringFee;
+        uint64 releaseFee;
+        uint64 releaseResetFee;
+        uint64 holdingFee;
+        uint64 depositFee; // currently always 0
+    };
+
+    struct BEGIN_EPOCH_locals
+    {
+        uint64 i;
+        resetReleaseRequests_input rr_in;
+        resetReleaseRequests_output rr_out;
+        resetReleaseRequests_locals rr_locals;
+        Vault v;
+    };
+
+
+    struct END_EPOCH_locals
+    {
+        uint64 i;
+        Vault v;
     };
 
 protected:
@@ -700,20 +729,19 @@ protected:
         output.totalDistributedToShareholders = state.totalDistributedToShareholders;
     _
 
+    PUBLIC_FUNCTION(getFees)
+        output.registeringFee = MSVAULT_REGISTERING_FEE;
+        output.releaseFee = MSVAULT_RELEASE_FEE;
+        output.releaseResetFee = MSVAULT_RELEASE_RESET_FEE;
+        output.holdingFee = MSVAULT_HOLDING_FEE;
+        output.depositFee = 0; // currently always 0, but we still need to return it for viewing purpose
+    _
+
     INITIALIZE
         state.numberOfActiveVaults = 0;
         state.totalRevenue = 0;
         state.totalDistributedToShareholders = 0;
     _
-
-    struct BEGIN_EPOCH_locals
-    {
-        uint64 i;
-        resetReleaseRequests_input rr_in;
-        resetReleaseRequests_output rr_out;
-        resetReleaseRequests_locals rr_locals;
-        Vault v;
-    };
 
     BEGIN_EPOCH_WITH_LOCALS
         for (locals.i = 0; locals.i < MSVAULT_MAX_VAULTS; locals.i++)
@@ -728,12 +756,6 @@ protected:
             }
         }
     _
-
-    struct END_EPOCH_locals
-    {
-        uint64 i;
-        Vault v;
-    };
 
     END_EPOCH_WITH_LOCALS
         for (locals.i = 0; locals.i < MSVAULT_MAX_VAULTS; locals.i++)
@@ -780,5 +802,6 @@ protected:
         REGISTER_USER_FUNCTION(getBalanceOf, 7);
         REGISTER_USER_FUNCTION(getVaultName, 8);
         REGISTER_USER_FUNCTION(getRevenueInfo, 9);
+        REGISTER_USER_FUNCTION(getFees, 10);
     _
 };
