@@ -32,7 +32,7 @@ struct MSVAULT : public ContractBase
 
     struct MSVaultLogger
     {
-        unsigned int _contractIndex;
+        uint32 _contractIndex;
         // 1: Invalid vault ID or vault inactive
         // 2: Caller not an owner
         // 3: Invalid parameters (e.g., amount=0, destination=NULL_ID)
@@ -40,12 +40,12 @@ struct MSVAULT : public ContractBase
         // 5: Insufficient balance
         // 6: Release not fully approved
         // 7: Reset release requests successful
-        unsigned int _type; 
+        uint32 _type; 
         uint64 vaultID; 
         id ownerID;
         uint64 amount;
         id destination;
-        char _terminator;
+        sint8 _terminator;
     };
 
     array<Vault, MAX_VAULTS> vaults;
@@ -112,6 +112,7 @@ struct MSVAULT : public ContractBase
         uint16 i, j;
         sint32 slotIndex;
         Vault newVault;
+        Vault tempVault;
 
         resetReleaseRequests_input rr_in;
         resetReleaseRequests_output rr_out;
@@ -150,6 +151,9 @@ struct MSVAULT : public ContractBase
         bit releaseApproved;
         uint16 requiredApprovals;
         uint16 i;
+
+        uint64 calc;
+        uint64 divResult;
 
         isOwnerOfVault_input io_in;
         isOwnerOfVault_output io_out;
@@ -309,8 +313,8 @@ struct MSVAULT : public ContractBase
         locals.slotIndex = -1;
         for (locals.i = 0; locals.i < MAX_VAULTS; locals.i++)
         {
-            Vault tempVault = state.vaults.get(locals.i);
-            if (!tempVault.isActive && tempVault.numberOfOwners == 0 && tempVault.balance == 0)
+            locals.tempVault = state.vaults.get(locals.i);
+            if (!locals.tempVault.isActive && locals.tempVault.numberOfOwners == 0 && locals.tempVault.balance == 0)
             {
                 locals.slotIndex = (sint32)locals.i;
                 break;
@@ -375,18 +379,17 @@ struct MSVAULT : public ContractBase
         }
         state.totalRevenue += RELEASE_FEE;
 
-        MSVaultLogger loggerMsg;
-        loggerMsg._contractIndex = CONTRACT_INDEX;
-        loggerMsg._type = 0;
-        loggerMsg.vaultID = input.vaultID;
-        loggerMsg.ownerID = qpi.invocator();
-        loggerMsg.amount = input.amount;
-        loggerMsg.destination = input.destination;
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger._type = 0;
+        locals.logger.vaultID = input.vaultID;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.amount = input.amount;
+        locals.logger.destination = input.destination;
 
         if (input.vaultID >= MAX_VAULTS)
         {
-            loggerMsg._type = 1;
-            LOG_INFO(loggerMsg);
+            locals.logger._type = 1;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -394,8 +397,8 @@ struct MSVAULT : public ContractBase
 
         if (!locals.vault.isActive)
         {
-            loggerMsg._type = 1;
-            LOG_INFO(loggerMsg);
+            locals.logger._type = 1;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -404,15 +407,15 @@ struct MSVAULT : public ContractBase
         isOwnerOfVault(qpi, state, locals.io_in, locals.io_out, locals.io_locals);
         if (!locals.io_out.result)
         {
-            loggerMsg._type = 2;
-            LOG_INFO(loggerMsg);
+            locals.logger._type = 2;
+            LOG_INFO(locals.logger);
             return;
         }
 
         if (input.amount == 0 || input.destination == NULL_ID)
         {
-            loggerMsg._type = 3;
-            LOG_INFO(loggerMsg);
+            locals.logger._type = 3;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -438,17 +441,21 @@ struct MSVAULT : public ContractBase
         locals.releaseApproved = false;
         if (locals.vault.vaultType == VAULT_TYPE_QUORUM)
         {
-            uint64 calc = ((uint64)locals.totalOwners * 2ULL) + 2ULL;
-            uint64 divResult = QPI::div(calc, 3ULL);
-            locals.requiredApprovals = (uint16)divResult;
+            locals.calc = ((uint64)locals.totalOwners * 2ULL) + 2ULL;
+            locals.divResult = QPI::div(locals.calc, 3ULL);
+            locals.requiredApprovals = (uint16)locals.divResult;
 
             if (locals.approvals >= locals.requiredApprovals)
+            {
                 locals.releaseApproved = true;
+            }
         }
         else if (locals.vault.vaultType == VAULT_TYPE_TWO_OUT_OF_X)
         {
             if (locals.approvals >= 2)
+            {
                 locals.releaseApproved = true;
+            }
         }
 
         if (locals.releaseApproved)
@@ -464,20 +471,20 @@ struct MSVAULT : public ContractBase
 
                 state.vaults.set(input.vaultID, locals.vault);
 
-                loggerMsg._type = 4;
-                LOG_INFO(loggerMsg);
+                locals.logger._type = 4;
+                LOG_INFO(locals.logger);
             }
             else
             {
-                loggerMsg._type = 5;
-                LOG_INFO(loggerMsg);
+                locals.logger._type = 5;
+                LOG_INFO(locals.logger);
             }
         }
         else
         {
             state.vaults.set(input.vaultID, locals.vault);
-            loggerMsg._type = 6;
-            LOG_INFO(loggerMsg);
+            locals.logger._type = 6;
+            LOG_INFO(locals.logger);
         }
     _
 
@@ -488,18 +495,17 @@ struct MSVAULT : public ContractBase
         }
         state.totalRevenue += RELEASE_RESET_FEE;
 
-        MSVaultLogger loggerMsg;
-        loggerMsg._contractIndex = CONTRACT_INDEX;
-        loggerMsg._type = 0;
-        loggerMsg.vaultID = input.vaultID;
-        loggerMsg.ownerID = qpi.invocator();
-        loggerMsg.amount = 0;
-        loggerMsg.destination = NULL_ID;
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger._type = 0;
+        locals.logger.vaultID = input.vaultID;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.amount = 0;
+        locals.logger.destination = NULL_ID;
 
         if (input.vaultID >= MAX_VAULTS)
         {
-            loggerMsg._type = 1; 
-            LOG_INFO(loggerMsg);
+            locals.logger._type = 1;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -507,8 +513,8 @@ struct MSVAULT : public ContractBase
 
         if (!locals.vault.isActive)
         {
-            loggerMsg._type = 1; 
-            LOG_INFO(loggerMsg);
+            locals.logger._type = 1;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -517,8 +523,8 @@ struct MSVAULT : public ContractBase
         isOwnerOfVault(qpi, state, locals.io_in, locals.io_out, locals.io_locals);
         if (!locals.io_out.result)
         {
-            loggerMsg._type = 2; 
-            LOG_INFO(loggerMsg);
+            locals.logger._type = 2;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -532,8 +538,8 @@ struct MSVAULT : public ContractBase
 
         state.vaults.set(input.vaultID, locals.vault);
 
-        loggerMsg._type = 7;
-        LOG_INFO(loggerMsg);
+        locals.logger._type = 7;
+        LOG_INFO(locals.logger);
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaults)
@@ -541,15 +547,15 @@ struct MSVAULT : public ContractBase
         locals.count = 0;
         for (locals.i = 0; locals.i < 1024; locals.i++)
         {
-            Vault v = state.vaults.get(locals.i);
-            if (v.isActive)
+            locals.v = state.vaults.get(locals.i);
+            if (locals.v.isActive)
             {
-                for (locals.j = 0; locals.j < v.numberOfOwners; locals.j++)
+                for (locals.j = 0; locals.j < locals.v.numberOfOwners; locals.j++)
                 {
-                    if (v.owners.get(locals.j) == input.publicKey)
+                    if (locals.v.owners.get(locals.j) == input.publicKey)
                     {
                         output.vaultIDs.set(locals.count, (uint64)locals.i);
-                        output.vaultNames.set(locals.count, v.vaultName);
+                        output.vaultNames.set(locals.count, locals.v.vaultName);
                         locals.count++;
                         break;
                     }
@@ -570,8 +576,8 @@ struct MSVAULT : public ContractBase
             return;
         }
 
-        Vault v = state.vaults.get(input.vaultID);
-        if (!v.isActive)
+        locals.vault = state.vaults.get(input.vaultID);
+        if (!locals.vault.isActive)
         {
             for (locals.i = 0; locals.i < MAX_OWNERS; locals.i++)
             {
@@ -581,10 +587,10 @@ struct MSVAULT : public ContractBase
             return;
         }
 
-        for (locals.i = 0; locals.i < v.numberOfOwners; locals.i++)
+        for (locals.i = 0; locals.i < locals.vault.numberOfOwners; locals.i++)
         {
-            output.amounts.set(locals.i, v.releaseAmounts.get(locals.i));
-            output.destinations.set(locals.i, v.releaseDestinations.get(locals.i));
+            output.amounts.set(locals.i, locals.vault.releaseAmounts.get(locals.i));
+            output.destinations.set(locals.i, locals.vault.releaseDestinations.get(locals.i));
         }
     _
 
@@ -638,18 +644,19 @@ struct MSVAULT : public ContractBase
         resetReleaseRequests_input rr_in;
         resetReleaseRequests_output rr_out;
         resetReleaseRequests_locals rr_locals;
+        Vault v;
     };
 
     BEGIN_EPOCH_WITH_LOCALS
         for (locals.i = 0; locals.i < MAX_VAULTS; locals.i++)
         {
-            Vault v = state.vaults.get(locals.i);
-            if (v.isActive)
+            locals.v = state.vaults.get(locals.i);
+            if (locals.v.isActive)
             {
-                locals.rr_in.vault = v;
+                locals.rr_in.vault = locals.v;
                 resetReleaseRequests(qpi, state, locals.rr_in, locals.rr_out, locals.rr_locals);
-                v = locals.rr_out.vault;
-                state.vaults.set(locals.i, v);
+                locals.v = locals.rr_out.vault;
+                state.vaults.set(locals.i, locals.v);
             }
         }
     _
@@ -657,27 +664,28 @@ struct MSVAULT : public ContractBase
     struct END_EPOCH_locals
     {
         uint64 i;
+        Vault v;
     };
 
     END_EPOCH_WITH_LOCALS
         for (locals.i = 0; locals.i < MAX_VAULTS; locals.i++)
         {
-            Vault v = state.vaults.get(locals.i);
-            if (v.isActive)
+            locals.v = state.vaults.get(locals.i);
+            if (locals.v.isActive)
             {
-                if (v.balance >= (sint64)HOLDING_FEE)
+                if (locals.v.balance >= (sint64)HOLDING_FEE)
                 {
                     // pay the holding fee
-                    v.balance -= (sint64)HOLDING_FEE;
+                    locals.v.balance -= (sint64)HOLDING_FEE;
                     state.totalRevenue += HOLDING_FEE;
-                    state.vaults.set(locals.i, v);
+                    state.vaults.set(locals.i, locals.v);
                 }
                 else
                 {
                     // ,ot enough funds to pay holding fee
-                    v.isActive = false;
+                    locals.v.isActive = false;
                     state.numberOfActiveVaults--;
-                    state.vaults.set(locals.i, v);
+                    state.vaults.set(locals.i, locals.v);
                 }
             }
         }
