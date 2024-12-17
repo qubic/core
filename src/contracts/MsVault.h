@@ -353,9 +353,9 @@ protected:
 
         state.numberOfActiveVaults++;
         state.totalRevenue += MSVAULT_REGISTERING_FEE;
-    _
+        _
 
-    PUBLIC_PROCEDURE_WITH_LOCALS(deposit)
+        PUBLIC_PROCEDURE_WITH_LOCALS(deposit)
         if (input.vaultId >= MSVAULT_MAX_VAULTS)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -420,6 +420,13 @@ protected:
             return;
         }
 
+        if (locals.vault.balance < (sint64)input.amount)
+        {
+            locals.logger._type = 5;
+            LOG_INFO(locals.logger);
+            return;
+        }
+
         locals.fi_in.vault = locals.vault;
         locals.fi_in.ownerID = qpi.invocator();
         findOwnerIndexInVault(qpi, state, locals.fi_in, locals.fi_out, locals.fi_locals);
@@ -461,6 +468,7 @@ protected:
 
         if (locals.releaseApproved)
         {
+            // Still need to re-check the balance before releasing funds
             if (locals.vault.balance >= (sint64)input.amount)
             {
                 qpi.transfer(input.destination, input.amount);
