@@ -3,11 +3,6 @@
 #include "contract_testing.h"
 #include "test_util.h"
 
-static constexpr uint64 MSVAULT_REGISTERING_FEE = 10000ULL;
-static constexpr uint64 MSVAULT_DEPOSIT_FEE = 0ULL;
-static constexpr uint64 MSVAULT_RELEASE_FEE = 1000ULL;
-static constexpr uint64 MSVAULT_RESET_FEE = 500ULL;
-
 static const id OWNER1 = ID(_T, _K, _U, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
 static const id OWNER2 = ID(_F, _X, _J, _F, _B, _T, _J, _M, _Y, _F, _J, _H, _P, _B, _X, _C, _D, _Q, _T, _L, _Y, _U, _K, _G, _M, _H, _B, _B, _Z, _A, _A, _F, _T, _I, _C, _W, _U, _K, _R, _B, _M, _E, _K, _Y, _N, _U, _P, _M, _R, _M, _B, _D, _N, _D, _R, _G);
 static const id OWNER3 = ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D);
@@ -28,7 +23,7 @@ public:
     void registerVault(uint16 vaultType, id vaultName, const std::vector<id>& owners, uint64 fee)
     {
         MSVAULT::registerVault_input input;
-        for (uint16 i = 0; i < MAX_OWNERS; i++)
+        for (uint16 i = 0; i < MSVAULT_MAX_OWNERS; i++)
         {
             input.owners.set(i, (i < owners.size()) ? owners[i] : NULL_ID);
         }
@@ -59,7 +54,7 @@ public:
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 3, input, relOut, owner, fee);
     }
 
-    void resetRelease(uint64 vaultID, const id& owner, uint64 fee = MSVAULT_RESET_FEE)
+    void resetRelease(uint64 vaultID, const id& owner, uint64 fee = MSVAULT_RELEASE_RESET_FEE)
     {
         MSVAULT::resetRelease_input input;
         input.vaultID = vaultID;
@@ -134,7 +129,7 @@ TEST(ContractMsVault, RegisterVault_InsufficientFee)
 
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
     // Attempt with insufficient fee
-    msVault.registerVault(VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, 5000ULL);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, 5000ULL);
 
     // No new vault should be created
     auto vaultsO1After = msVault.getVaults(OWNER1);
@@ -148,7 +143,7 @@ TEST(ContractMsVault, RegisterVault_OneOwner)
     auto vaultsO1Before = msVault.getVaults(OWNER1);
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
     // Only one owner
-    msVault.registerVault(VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1 }, MSVAULT_REGISTERING_FEE);
 
     // Should fail, no new vault
     auto vaultsO1After = msVault.getVaults(OWNER1);
@@ -162,7 +157,7 @@ TEST(ContractMsVault, RegisterVault_Success)
     auto vaultsO1Before = msVault.getVaults(OWNER1);
 
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
-    msVault.registerVault(VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1After = msVault.getVaults(OWNER1);
     EXPECT_EQ(static_cast<unsigned int>((unsigned)vaultsO1After.numberOfVaults),
@@ -187,7 +182,7 @@ TEST(ContractMsVault, GetVaultName)
 
     auto vaultsO1Before = msVault.getVaults(OWNER1);
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
-    msVault.registerVault(VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1After = msVault.getVaults(OWNER1);
     EXPECT_EQ(static_cast<unsigned int>(vaultsO1After.numberOfVaults),
@@ -218,7 +213,7 @@ TEST(ContractMsVault, Deposit_Success)
 
     auto vaultsO1Before = msVault.getVaults(OWNER1);
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
-    msVault.registerVault(VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1After = msVault.getVaults(OWNER1);
     uint64 vaultID = vaultsO1After.vaultIDs.get(vaultsO1Before.numberOfVaults);
@@ -234,7 +229,7 @@ TEST(ContractMsVault, ReleaseTo_NonOwner)
     ContractTestingMsVault msVault;
 
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
-    msVault.registerVault(VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
 
@@ -255,7 +250,7 @@ TEST(ContractMsVault, ReleaseTo_InvalidParams)
     ContractTestingMsVault msVault;
 
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
-    msVault.registerVault(VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
@@ -280,7 +275,7 @@ TEST(ContractMsVault, ReleaseTo_PartialApproval)
 
     increaseEnergy(OWNER1, 100000ULL);
     increaseEnergy(OWNER3, 100000ULL);
-    msVault.registerVault(VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
@@ -302,7 +297,7 @@ TEST(ContractMsVault, ReleaseTo_FullApproval)
     increaseEnergy(OWNER2, 100000ULL);
     increaseEnergy(OWNER3, 100000ULL);
 
-    msVault.registerVault(VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
@@ -328,7 +323,7 @@ TEST(ContractMsVault, ReleaseTo_InsufficientBalance)
     increaseEnergy(OWNER2, 100000ULL);
     increaseEnergy(OWNER3, 100000ULL);
 
-    msVault.registerVault(VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
@@ -352,7 +347,7 @@ TEST(ContractMsVault, ResetRelease_NonOwner)
     increaseEnergy(OWNER2, 100000ULL);
     increaseEnergy(OWNER3, 100000ULL);
 
-    msVault.registerVault(VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
@@ -378,7 +373,7 @@ TEST(ContractMsVault, ResetRelease_Success)
     increaseEnergy(OWNER2, 100000ULL);
     increaseEnergy(OWNER3, 100000ULL);
 
-    msVault.registerVault(VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
@@ -409,8 +404,8 @@ TEST(ContractMsVault, GetVaults_Multiple)
 
     auto vaultsForOwner2Before = msVault.getVaults(OWNER2);
 
-    msVault.registerVault(VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
-    msVault.registerVault(VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    msVault.registerVault(MSVAULT_VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsForOwner2After = msVault.getVaults(OWNER2);
     EXPECT_GE(static_cast<unsigned int>((unsigned)vaultsForOwner2After.numberOfVaults),
