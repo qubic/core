@@ -49,6 +49,18 @@ public:
         sint8 _terminator;
     };
 
+    struct isValidVaultId_input
+    {
+        uint64 vaultId;
+    };
+    struct isValidVaultId_output
+    {
+        bit result;
+    };
+    struct isValidVaultId_locals
+    {
+    };
+
     struct findOwnerIndexInVault_input
     {
         Vault vault;
@@ -124,6 +136,9 @@ public:
     struct deposit_locals
     {
         Vault vault;
+        isValidVaultId_input iv_in;
+        isValidVaultId_output iv_out;
+        isValidVaultId_locals iv_locals;
     };
 
     struct releaseTo_input
@@ -161,6 +176,10 @@ public:
         resetReleaseRequests_input rr_in;
         resetReleaseRequests_output rr_out;
         resetReleaseRequests_locals rr_locals;
+
+        isValidVaultId_input iv_in;
+        isValidVaultId_output iv_out;
+        isValidVaultId_locals iv_locals;
     };
 
     struct resetRelease_input
@@ -185,6 +204,10 @@ public:
         findOwnerIndexInVault_locals fi_locals;
 
         bit found;
+
+        isValidVaultId_input iv_in;
+        isValidVaultId_output iv_out;
+        isValidVaultId_locals iv_locals;
     };
 
     struct getVaults_input
@@ -217,6 +240,10 @@ public:
     {
         Vault vault;
         uint16 i;
+
+        isValidVaultId_input iv_in;
+        isValidVaultId_output iv_out;
+        isValidVaultId_locals iv_locals;
     };
 
     struct getBalanceOf_input
@@ -230,6 +257,10 @@ public:
     struct getBalanceOf_locals
     {
         Vault vault;
+
+        isValidVaultId_input iv_in;
+        isValidVaultId_output iv_out;
+        isValidVaultId_locals iv_locals;
     };
 
     struct getVaultName_input
@@ -243,6 +274,10 @@ public:
     struct getVaultName_locals
     {
         Vault vault;
+
+        isValidVaultId_input iv_in;
+        isValidVaultId_output iv_out;
+        isValidVaultId_locals iv_locals;
     };
 
     struct getRevenueInfo_input {};
@@ -262,6 +297,17 @@ protected:
     uint64 totalDistributedToShareholders;
 
     // Helper Functions
+    PRIVATE_FUNCTION_WITH_LOCALS(isValidVaultId)
+        if (input.vaultId < MSVAULT_MAX_VAULTS)
+        {
+            output.result = true;
+        }
+        else
+        {
+            output.result = false;
+        }
+    _
+
     PRIVATE_FUNCTION_WITH_LOCALS(findOwnerIndexInVault)
         output.index = -1;
         for (locals.i = 0; locals.i < input.vault.numberOfOwners; locals.i++)
@@ -353,10 +399,13 @@ protected:
 
         state.numberOfActiveVaults++;
         state.totalRevenue += MSVAULT_REGISTERING_FEE;
-        _
+    _
 
-        PUBLIC_PROCEDURE_WITH_LOCALS(deposit)
-        if (input.vaultId >= MSVAULT_MAX_VAULTS)
+    PUBLIC_PROCEDURE_WITH_LOCALS(deposit)
+        locals.iv_in.vaultId = input.vaultId;
+        isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
+
+        if (!locals.iv_out.result)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -387,7 +436,10 @@ protected:
         locals.logger.amount = input.amount;
         locals.logger.destination = input.destination;
 
-        if (input.vaultId >= MSVAULT_MAX_VAULTS)
+        locals.iv_in.vaultId = input.vaultId;
+        isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
+
+        if (!locals.iv_out.result)
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
@@ -511,7 +563,10 @@ protected:
         locals.logger.amount = 0;
         locals.logger.destination = NULL_ID;
 
-        if (input.vaultId >= MSVAULT_MAX_VAULTS)
+        locals.iv_in.vaultId = input.vaultId;
+        isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
+
+        if (!locals.iv_out.result)
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
@@ -575,7 +630,10 @@ protected:
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getReleaseStatus)
-        if (input.vaultId >= MSVAULT_MAX_VAULTS)
+        locals.iv_in.vaultId = input.vaultId;
+        isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
+
+        if (!locals.iv_out.result)
         {
             for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i++)
             {
@@ -604,7 +662,10 @@ protected:
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getBalanceOf)
-        if (input.vaultId >= MSVAULT_MAX_VAULTS)
+        locals.iv_in.vaultId = input.vaultId;
+        isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
+
+        if (!locals.iv_out.result)
         {
             output.balance = 0;
             return;
@@ -620,7 +681,10 @@ protected:
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaultName)
-        if (input.vaultId >= MSVAULT_MAX_VAULTS)
+        locals.iv_in.vaultId = input.vaultId;
+        isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
+
+        if (!locals.iv_out.result)
         {
             output.vaultName = NULL_ID;
             return;
