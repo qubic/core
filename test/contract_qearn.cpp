@@ -225,6 +225,14 @@ public:
         return output;
     }
 
+    QEARN::getStatsPerEpoch_output getStatsPerEpoch(uint16 epoch) const
+    {
+        QEARN::getStatsPerEpoch_input input{ epoch };
+        QEARN::getStatsPerEpoch_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 6, input, output);
+        return output;
+    }
+
     sint32 lock(const id& user, long long amount, bool expectSuccess = true)
     {
         QEARN::lock_input input;
@@ -252,6 +260,8 @@ public:
 
     struct EpochData
     {
+        unsigned long long initialBonusAmount;
+        unsigned long long initialTotalLockedAmount;
         unsigned long long bonusAmount;
         unsigned long long amountCurrentlyLocked;
     };
@@ -300,6 +310,7 @@ public:
 
             allUserData[user].locked[system.epoch] += amountLock;
             allEpochData[system.epoch].amountCurrentlyLocked += amountLock;
+            allEpochData[system.epoch].initialTotalLockedAmount += amountLock;
         }
         else
         {
@@ -356,6 +367,40 @@ public:
         EXPECT_EQ(getAndCheckRewardFactorTenmillionth(epoch), scEpochInfo.yield);
         EXPECT_EQ(ed.bonusAmount, scEpochInfo.currentBonusAmount);
         EXPECT_EQ(ed.amountCurrentlyLocked, scEpochInfo.currentLockedAmount);
+
+        const auto scStatsInfo = getStatsPerEpoch(epoch);
+        /*
+            we can't test at epoch 138 because the value of state in QEarn SC was assigned by hardcoding.
+            To test the epoch 138, please remove the line 777~780 in QEarn SC.
+        */
+        if(epoch != 138)    
+        {
+            EXPECT_EQ(scStatsInfo.earlyUnlockedAmount, ed.initialTotalLockedAmount - ed.amountCurrentlyLocked);
+            EXPECT_EQ(scStatsInfo.earlyUnlockedPercent, QPI::div((ed.initialTotalLockedAmount - ed.amountCurrentlyLocked) * 10000, ed.initialTotalLockedAmount));
+        }
+        uint64 totalLockedInSC = 0;
+        uint64 averageAPY = 0;
+        uint32 cnt = 0;
+        for(uint16 t = system.epoch; t >= system.epoch - 52; t--)
+        {
+            auto preEdIt = allEpochData.find(t);
+            const EpochData& preED = preEdIt->second;
+            if (t < QEARN_INITIAL_EPOCH)
+            {
+                break;
+            }
+            if(preED.amountCurrentlyLocked == 0)
+            {
+                continue;
+            }
+
+            cnt++;
+            totalLockedInSC += preED.amountCurrentlyLocked;
+            EXPECT_EQ(getLockInfoPerEpoch(t).currentLockedAmount, preED.amountCurrentlyLocked);
+            averageAPY += QPI::div(preED.bonusAmount * 10000000ULL, preED.amountCurrentlyLocked);
+        }
+        EXPECT_EQ(scStatsInfo.totalLockedAmount, totalLockedInSC);
+        EXPECT_EQ(scStatsInfo.averageAPY, QPI::div(averageAPY, cnt * 1ULL));
     }
 
     bool unlockAndCheck(const id& user, uint16 lockingEpoch, uint64 amountUnlock, bool expectSuccess = true)
@@ -407,6 +452,10 @@ public:
             }
 
             allUserData[user].locked[lockingEpoch] -= amountUnlocked;
+            if(system.epoch == lockingEpoch)
+            {
+                allEpochData[lockingEpoch].initialTotalLockedAmount -= amountUnlocked;
+            }
             allEpochData[lockingEpoch].amountCurrentlyLocked -= amountUnlocked;
             allEpochData[lockingEpoch].bonusAmount -= amountReward + amountBurn;
 
