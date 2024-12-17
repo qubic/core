@@ -726,7 +726,7 @@ public:
         state.lockedTokens = 0;
         state.totalReceivedTokens = 0;
         state.transactionFee = 1000;
-        state.admin = qpi.invocator(); //If this fails, set a predetermined address
+        state.admin = ID(_P, _H, _O, _Y, _R, _V, _A, _K, _J, _X, _M, _L, _R, _B, _B, _I, _R, _I, _P, _D, _I, _B, _M, _H, _D, _H, _U, _A, _Z, _B, _Q, _K, _N, _B, _J, _T, _R, _D, _S, _P, _G, _C, _L, _Z, _C, _Q, _W, _A, _K, _C, _F, _Q, _J, _K, _K, _E);
         state.managers.reset(); // Initialize managers list
         state.sourceChain = 0; //Arbitrary numb. No-EVM chain
     _
