@@ -42,7 +42,7 @@ public:
         // 6: Release not fully approved
         // 7: Reset release requests successful
         uint32 _type; 
-        uint64 vaultID; 
+        uint64 vaultId; 
         id ownerID;
         uint64 amount;
         id destination;
@@ -116,7 +116,7 @@ public:
 
     struct deposit_input
     {
-        uint64 vaultID;
+        uint64 vaultId;
     };
     struct deposit_output
     {
@@ -128,7 +128,7 @@ public:
 
     struct releaseTo_input
     {
-        uint64 vaultID;
+        uint64 vaultId;
         uint64 amount;
         id destination;
     };
@@ -165,7 +165,7 @@ public:
 
     struct resetRelease_input
     {
-        uint64 vaultID;
+        uint64 vaultId;
     };
     struct resetRelease_output
     {
@@ -194,7 +194,7 @@ public:
     struct getVaults_output
     {
         uint16 numberOfVaults;
-        array<uint64, 1024> vaultIDs;
+        array<uint64, 1024> vaultIds;
         array<id, 1024> vaultNames;
     };
     struct getVaults_locals
@@ -206,7 +206,7 @@ public:
 
     struct getReleaseStatus_input
     {
-        uint64 vaultID;
+        uint64 vaultId;
     };
     struct getReleaseStatus_output
     {
@@ -221,7 +221,7 @@ public:
 
     struct getBalanceOf_input
     {
-        uint64 vaultID;
+        uint64 vaultId;
     };
     struct getBalanceOf_output
     {
@@ -234,7 +234,7 @@ public:
 
     struct getVaultName_input
     {
-        uint64 vaultID;
+        uint64 vaultId;
     };
     struct getVaultName_output
     {
@@ -356,13 +356,13 @@ protected:
     _
 
     PUBLIC_PROCEDURE_WITH_LOCALS(deposit)
-        if (input.vaultID >= MSVAULT_MAX_VAULTS)
+        if (input.vaultId >= MSVAULT_MAX_VAULTS)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
-        locals.vault = state.vaults.get(input.vaultID);
+        locals.vault = state.vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -370,7 +370,7 @@ protected:
         }
 
         locals.vault.balance += qpi.invocationReward();
-        state.vaults.set(input.vaultID, locals.vault);
+        state.vaults.set(input.vaultId, locals.vault);
     _
 
     PUBLIC_PROCEDURE_WITH_LOCALS(releaseTo)
@@ -382,19 +382,19 @@ protected:
 
         locals.logger._contractIndex = CONTRACT_INDEX;
         locals.logger._type = 0;
-        locals.logger.vaultID = input.vaultID;
+        locals.logger.vaultId = input.vaultId;
         locals.logger.ownerID = qpi.invocator();
         locals.logger.amount = input.amount;
         locals.logger.destination = input.destination;
 
-        if (input.vaultID >= MSVAULT_MAX_VAULTS)
+        if (input.vaultId >= MSVAULT_MAX_VAULTS)
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
             return;
         }
 
-        locals.vault = state.vaults.get(input.vaultID);
+        locals.vault = state.vaults.get(input.vaultId);
 
         if (!locals.vault.isActive)
         {
@@ -470,7 +470,7 @@ protected:
                 resetReleaseRequests(qpi, state, locals.rr_in, locals.rr_out, locals.rr_locals);
                 locals.vault = locals.rr_out.vault;
 
-                state.vaults.set(input.vaultID, locals.vault);
+                state.vaults.set(input.vaultId, locals.vault);
 
                 locals.logger._type = 4;
                 LOG_INFO(locals.logger);
@@ -483,7 +483,7 @@ protected:
         }
         else
         {
-            state.vaults.set(input.vaultID, locals.vault);
+            state.vaults.set(input.vaultId, locals.vault);
             locals.logger._type = 6;
             LOG_INFO(locals.logger);
         }
@@ -498,19 +498,19 @@ protected:
 
         locals.logger._contractIndex = CONTRACT_INDEX;
         locals.logger._type = 0;
-        locals.logger.vaultID = input.vaultID;
+        locals.logger.vaultId = input.vaultId;
         locals.logger.ownerID = qpi.invocator();
         locals.logger.amount = 0;
         locals.logger.destination = NULL_ID;
 
-        if (input.vaultID >= MSVAULT_MAX_VAULTS)
+        if (input.vaultId >= MSVAULT_MAX_VAULTS)
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
             return;
         }
 
-        locals.vault = state.vaults.get(input.vaultID);
+        locals.vault = state.vaults.get(input.vaultId);
 
         if (!locals.vault.isActive)
         {
@@ -537,7 +537,7 @@ protected:
         locals.vault.releaseAmounts.set(locals.ownerIndex, 0);
         locals.vault.releaseDestinations.set(locals.ownerIndex, NULL_ID);
 
-        state.vaults.set(input.vaultID, locals.vault);
+        state.vaults.set(input.vaultId, locals.vault);
 
         locals.logger._type = 7;
         LOG_INFO(locals.logger);
@@ -555,7 +555,7 @@ protected:
                 {
                     if (locals.v.owners.get(locals.j) == input.publicKey)
                     {
-                        output.vaultIDs.set(locals.count, (uint64)locals.i);
+                        output.vaultIds.set(locals.count, (uint64)locals.i);
                         output.vaultNames.set(locals.count, locals.v.vaultName);
                         locals.count++;
                         break;
@@ -567,7 +567,7 @@ protected:
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getReleaseStatus)
-        if (input.vaultID >= MSVAULT_MAX_VAULTS)
+        if (input.vaultId >= MSVAULT_MAX_VAULTS)
         {
             for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i++)
             {
@@ -577,7 +577,7 @@ protected:
             return;
         }
 
-        locals.vault = state.vaults.get(input.vaultID);
+        locals.vault = state.vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
             for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i++)
@@ -596,13 +596,13 @@ protected:
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getBalanceOf)
-        if (input.vaultID >= MSVAULT_MAX_VAULTS)
+        if (input.vaultId >= MSVAULT_MAX_VAULTS)
         {
             output.balance = 0;
             return;
         }
 
-        locals.vault = state.vaults.get(input.vaultID);
+        locals.vault = state.vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
             output.balance = 0;
@@ -612,13 +612,13 @@ protected:
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaultName)
-        if (input.vaultID >= MSVAULT_MAX_VAULTS)
+        if (input.vaultId >= MSVAULT_MAX_VAULTS)
         {
             output.vaultName = NULL_ID;
             return;
         }
 
-        locals.vault = state.vaults.get(input.vaultID);
+        locals.vault = state.vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
             output.vaultName = NULL_ID;

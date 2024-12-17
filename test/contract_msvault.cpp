@@ -33,19 +33,19 @@ public:
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 1, input, regOut, owners[0], fee);
     }
 
-    void deposit(uint64 vaultID, uint64 amount, const id& from)
+    void deposit(uint64 vaultId, uint64 amount, const id& from)
     {
         MSVAULT::deposit_input input;
-        input.vaultID = vaultID;
+        input.vaultId = vaultId;
         increaseEnergy(from, amount);
         MSVAULT::deposit_output depOut;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 2, input, depOut, from, amount);
     }
 
-    void releaseTo(uint64 vaultID, uint64 amount, const id& destination, const id& owner, uint64 fee = MSVAULT_RELEASE_FEE)
+    void releaseTo(uint64 vaultId, uint64 amount, const id& destination, const id& owner, uint64 fee = MSVAULT_RELEASE_FEE)
     {
         MSVAULT::releaseTo_input input;
-        input.vaultID = vaultID;
+        input.vaultId = vaultId;
         input.amount = amount;
         input.destination = destination;
 
@@ -54,21 +54,21 @@ public:
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 3, input, relOut, owner, fee);
     }
 
-    void resetRelease(uint64 vaultID, const id& owner, uint64 fee = MSVAULT_RELEASE_RESET_FEE)
+    void resetRelease(uint64 vaultId, const id& owner, uint64 fee = MSVAULT_RELEASE_RESET_FEE)
     {
         MSVAULT::resetRelease_input input;
-        input.vaultID = vaultID;
+        input.vaultId = vaultId;
 
         increaseEnergy(owner, fee);
         MSVAULT::resetRelease_output rstOut;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 4, input, rstOut, owner, fee);
     }
 
-    MSVAULT::getVaultName_output getVaultName(uint64 vaultID) const
+    MSVAULT::getVaultName_output getVaultName(uint64 vaultId) const
     {
         MSVAULT::getVaultName_input input;
         MSVAULT::getVaultName_output output;
-        input.vaultID = vaultID;
+        input.vaultId = vaultId;
         callFunction(MSVAULT_CONTRACT_INDEX, 8, input, output);
         return output;
     }
@@ -82,20 +82,20 @@ public:
         return output;
     }
 
-    MSVAULT::getBalanceOf_output getBalanceOf(uint64 vaultID) const
+    MSVAULT::getBalanceOf_output getBalanceOf(uint64 vaultId) const
     {
         MSVAULT::getBalanceOf_input input;
         MSVAULT::getBalanceOf_output output;
-        input.vaultID = vaultID;
+        input.vaultId = vaultId;
         callFunction(MSVAULT_CONTRACT_INDEX, 7, input, output);
         return output;
     }
 
-    MSVAULT::getReleaseStatus_output getReleaseStatus(uint64 vaultID) const
+    MSVAULT::getReleaseStatus_output getReleaseStatus(uint64 vaultId) const
     {
         MSVAULT::getReleaseStatus_input input;
         MSVAULT::getReleaseStatus_output output;
-        input.vaultID = vaultID;
+        input.vaultId = vaultId;
         callFunction(MSVAULT_CONTRACT_INDEX, 6, input, output);
         return output;
     }
@@ -109,12 +109,12 @@ public:
     }
 
     // Helper: find newly created vault by difference
-    sint64 findNewVaultIdAfterRegister(const id& owner, uint16 prevCount)
+    sint64 findNewvaultIdAfterRegister(const id& owner, uint16 prevCount)
     {
         auto vaultsAfter = getVaults(owner);
         if (vaultsAfter.numberOfVaults == prevCount + 1)
         {
-            return (sint64)vaultsAfter.vaultIDs.get(prevCount);
+            return (sint64)vaultsAfter.vaultIds.get(prevCount);
         }
         return -1;
     }
@@ -163,10 +163,10 @@ TEST(ContractMsVault, RegisterVault_Success)
     EXPECT_EQ(static_cast<unsigned int>((unsigned)vaultsO1After.numberOfVaults),
         static_cast<unsigned int>((unsigned)(vaultsO1Before.numberOfVaults + 1)));
 
-    // Extract the new vaultID
-    uint64 vaultID = vaultsO1After.vaultIDs.get(vaultsO1Before.numberOfVaults);
+    // Extract the new vaultId
+    uint64 vaultId = vaultsO1After.vaultIds.get(vaultsO1Before.numberOfVaults);
     // Check vault name
-    auto nameOut = msVault.getVaultName(vaultID);
+    auto nameOut = msVault.getVaultName(vaultId);
     EXPECT_EQ(nameOut.vaultName, TEST_VAULT_NAME);
 
     // Check revenue info
@@ -187,9 +187,9 @@ TEST(ContractMsVault, GetVaultName)
     auto vaultsO1After = msVault.getVaults(OWNER1);
     EXPECT_EQ(static_cast<unsigned int>(vaultsO1After.numberOfVaults),
         static_cast<unsigned int>(vaultsO1Before.numberOfVaults + 1));
-    uint64 vaultID = vaultsO1After.vaultIDs.get(vaultsO1Before.numberOfVaults);
+    uint64 vaultId = vaultsO1After.vaultIds.get(vaultsO1Before.numberOfVaults);
 
-    auto nameOut = msVault.getVaultName(vaultID);
+    auto nameOut = msVault.getVaultName(vaultId);
     EXPECT_EQ(nameOut.vaultName, TEST_VAULT_NAME);
 
     auto invalidNameOut = msVault.getVaultName(9999ULL);
@@ -216,11 +216,11 @@ TEST(ContractMsVault, Deposit_Success)
     msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1After = msVault.getVaults(OWNER1);
-    uint64 vaultID = vaultsO1After.vaultIDs.get(vaultsO1Before.numberOfVaults);
+    uint64 vaultId = vaultsO1After.vaultIds.get(vaultsO1Before.numberOfVaults);
 
-    auto balBefore = msVault.getBalanceOf(vaultID);
-    msVault.deposit(vaultID, 10000ULL, OWNER1);
-    auto balAfter = msVault.getBalanceOf(vaultID);
+    auto balBefore = msVault.getBalanceOf(vaultId);
+    msVault.deposit(vaultId, 10000ULL, OWNER1);
+    auto balAfter = msVault.getBalanceOf(vaultId);
     EXPECT_EQ(balAfter.balance, balBefore.balance + 10000ULL);
 }
 
@@ -231,14 +231,14 @@ TEST(ContractMsVault, ReleaseTo_NonOwner)
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
     msVault.registerVault(MSVAULT_VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
     auto vaultsO1 = msVault.getVaults(OWNER1);
-    uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultID, 10000ULL, OWNER1);
-    auto releaseStatusBefore = msVault.getReleaseStatus(vaultID);
+    msVault.deposit(vaultId, 10000ULL, OWNER1);
+    auto releaseStatusBefore = msVault.getReleaseStatus(vaultId);
 
     // Non-owner attempt release
-    msVault.releaseTo(vaultID, 5000ULL, OWNER3, OWNER3);
-    auto releaseStatusAfter = msVault.getReleaseStatus(vaultID);
+    msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER3);
+    auto releaseStatusAfter = msVault.getReleaseStatus(vaultId);
 
     // No approvals should be set
     EXPECT_EQ(releaseStatusAfter.amounts.get(0), releaseStatusBefore.amounts.get(0));
@@ -253,19 +253,19 @@ TEST(ContractMsVault, ReleaseTo_InvalidParams)
     msVault.registerVault(MSVAULT_VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
-    uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultID, 10000ULL, OWNER1);
+    msVault.deposit(vaultId, 10000ULL, OWNER1);
 
-    auto releaseStatusBefore = msVault.getReleaseStatus(vaultID);
+    auto releaseStatusBefore = msVault.getReleaseStatus(vaultId);
     // amount=0
-    msVault.releaseTo(vaultID, 0ULL, OWNER2, OWNER1);
-    auto releaseStatusAfter1 = msVault.getReleaseStatus(vaultID);
+    msVault.releaseTo(vaultId, 0ULL, OWNER2, OWNER1);
+    auto releaseStatusAfter1 = msVault.getReleaseStatus(vaultId);
     EXPECT_EQ(releaseStatusAfter1.amounts.get(0), releaseStatusBefore.amounts.get(0));
 
     // destination NULL_ID
-    msVault.releaseTo(vaultID, 5000ULL, NULL_ID, OWNER1);
-    auto releaseStatusAfter2 = msVault.getReleaseStatus(vaultID);
+    msVault.releaseTo(vaultId, 5000ULL, NULL_ID, OWNER1);
+    auto releaseStatusAfter2 = msVault.getReleaseStatus(vaultId);
     EXPECT_EQ(releaseStatusAfter2.amounts.get(0), releaseStatusBefore.amounts.get(0));
 }
 
@@ -278,12 +278,12 @@ TEST(ContractMsVault, ReleaseTo_PartialApproval)
     msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
-    uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultID, 15000ULL, OWNER1);
-    msVault.releaseTo(vaultID, 5000ULL, OWNER3, OWNER1);
+    msVault.deposit(vaultId, 15000ULL, OWNER1);
+    msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER1);
 
-    auto status = msVault.getReleaseStatus(vaultID);
+    auto status = msVault.getReleaseStatus(vaultId);
     // Partial approval means just first owner sets the request
     EXPECT_EQ(status.amounts.get(0), 5000ULL);
     EXPECT_EQ(status.destinations.get(0), OWNER3);
@@ -300,18 +300,18 @@ TEST(ContractMsVault, ReleaseTo_FullApproval)
     msVault.registerVault(MSVAULT_VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
-    uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultID, 10000ULL, OWNER1);
+    msVault.deposit(vaultId, 10000ULL, OWNER1);
 
     // OWNER1 requests 5000 Qubics to OWNER3
-    msVault.releaseTo(vaultID, 5000ULL, OWNER3, OWNER1);
+    msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER1);
     // Not approved yet
 
-    msVault.releaseTo(vaultID, 5000ULL, OWNER3, OWNER2); // second approval
+    msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER2); // second approval
 
     // After full approval, amount should be released
-    auto bal = msVault.getBalanceOf(vaultID);
+    auto bal = msVault.getBalanceOf(vaultId);
     EXPECT_EQ(bal.balance, 10000ULL - 5000ULL);
 }
 
@@ -326,16 +326,16 @@ TEST(ContractMsVault, ReleaseTo_InsufficientBalance)
     msVault.registerVault(MSVAULT_VAULT_TYPE_TWO_OUT_OF_X, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
-    uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultID, 10000ULL, OWNER1);
+    msVault.deposit(vaultId, 10000ULL, OWNER1);
 
-    auto balBefore = msVault.getBalanceOf(vaultID);
+    auto balBefore = msVault.getBalanceOf(vaultId);
     // Attempt to release more than balance
-    msVault.releaseTo(vaultID, 20000ULL, OWNER3, OWNER1);
+    msVault.releaseTo(vaultId, 20000ULL, OWNER3, OWNER1);
 
     // Should fail, balance no change
-    auto balAfter = msVault.getBalanceOf(vaultID);
+    auto balAfter = msVault.getBalanceOf(vaultId);
     EXPECT_EQ(balAfter.balance, balBefore.balance);
 }
 
@@ -350,15 +350,15 @@ TEST(ContractMsVault, ResetRelease_NonOwner)
     msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
-    uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultID, 5000ULL, OWNER1);
+    msVault.deposit(vaultId, 5000ULL, OWNER1);
 
-    msVault.releaseTo(vaultID, 2000ULL, OWNER2, OWNER1);
+    msVault.releaseTo(vaultId, 2000ULL, OWNER2, OWNER1);
 
-    auto statusBefore = msVault.getReleaseStatus(vaultID);
-    msVault.resetRelease(vaultID, OWNER3); // Non owner tries to reset
-    auto statusAfter = msVault.getReleaseStatus(vaultID);
+    auto statusBefore = msVault.getReleaseStatus(vaultId);
+    msVault.resetRelease(vaultId, OWNER3); // Non owner tries to reset
+    auto statusAfter = msVault.getReleaseStatus(vaultId);
 
     // No change in release requests
     EXPECT_EQ(statusAfter.amounts.get(0), statusBefore.amounts.get(0));
@@ -376,16 +376,16 @@ TEST(ContractMsVault, ResetRelease_Success)
     msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
-    uint64 vaultID = vaultsO1.vaultIDs.get(vaultsO1.numberOfVaults - 1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultID, 5000ULL, OWNER1);
+    msVault.deposit(vaultId, 5000ULL, OWNER1);
 
     // OWNER2 requests a releaseTo
-    msVault.releaseTo(vaultID, 2000ULL, OWNER1, OWNER2);
+    msVault.releaseTo(vaultId, 2000ULL, OWNER1, OWNER2);
     // Now reset by OWNER2
-    msVault.resetRelease(vaultID, OWNER2);
+    msVault.resetRelease(vaultId, OWNER2);
 
-    auto status = msVault.getReleaseStatus(vaultID);
+    auto status = msVault.getReleaseStatus(vaultId);
     // All cleared
     for (uint16 i = 0; i < 3; i++)
     {
