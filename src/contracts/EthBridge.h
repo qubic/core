@@ -106,6 +106,14 @@ public:
         OrderResponse order;                 // Updated response format
     };
 
+    struct getAdminID_input {
+        uint8 idInput;
+    };
+
+    struct getAdminID_output {
+        id address;
+    };
+
     // Logger structures
     struct EthBridgeLogger {
         uint32 _contractIndex;   // Index of the contract
@@ -165,6 +173,7 @@ private:
    struct isManager_locals {
        bit managerStatus;  
    };
+
    PRIVATE_FUNCTION_WITH_LOCALS(isManager)
        locals.managerStatus = false;
        state.managers.get(qpi.invocator(), locals.managerStatus);
@@ -238,8 +247,8 @@ public:
         BridgeOrder order;
         OrderResponse orderResp;
     };
-    PUBLIC_FUNCTION_WITH_LOCALS(getOrder)
 
+    PUBLIC_FUNCTION_WITH_LOCALS(getOrder)
 
         if (!state.orders.get(input.orderId, locals.order)) {
             locals.log = EthBridgeLogger{
@@ -687,6 +696,10 @@ public:
         output.status = 0; // Success
     _
 
+    PUBLIC_FUNCTION(getAdminID)
+        output.address = state.admin;
+    _
+
     // Register Functions and Procedures
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_PROCEDURE(createOrder, 1);
@@ -702,7 +715,10 @@ public:
 
         REGISTER_USER_FUNCTION(isAdmin, 9);
         REGISTER_USER_FUNCTION(isManager, 10);
-    _
+        REGISTER_USER_FUNCTION(getTotalReceivedTokens, 11);
+        REGISTER_USER_FUNCTION(getAdminID, 12);
+        _
+
 
     // Initialize the contract
     INITIALIZE
@@ -710,7 +726,6 @@ public:
         state.lockedTokens = 0;
         state.totalReceivedTokens = 0;
         state.transactionFee = 1000;
-        // Let's try to set admin as the contract creator, not the contract owner
         state.admin = qpi.invocator(); //If this fails, set a predetermined address
         state.managers.reset(); // Initialize managers list
         state.sourceChain = 0; //Arbitrary numb. No-EVM chain

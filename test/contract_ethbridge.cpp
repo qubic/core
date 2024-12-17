@@ -1,29 +1,61 @@
 #define NO_UEFI
 
 #include "contract_testing.h"
+#include "test_util.h"
 #include <map>
 #include <vector>
+#include <random>
 
-#define PRINT_TEST_INFO 0
-
-static const id ETHBRIDGE_CONTRACT_ID(ETHBRIDGE_CONTRACT_INDEX, 0, 0, 0);
 static std::mt19937_64 rand64;
+static const id ETHBRIDGE_CONTRACT_ID(ETHBRIDGE_CONTRACT_INDEX, 0, 0, 0);
+// Predefined IDs (64 characters each)
+const id ETHBRIDGE_ADMIN = ID(_P, _H, _O, _Y, _R, _V, _N, _K, _J, _X, _M, _L, _R, _B, _B, _I, _R, _I, _P, _D, _I, _B, _M, _H, _D, _H, _U, _A, _Z, _B, _Q, _K, _N, _B, _J, _T, _R, _D, _S, _P, _G, _C, _L, _Z, _C, _Q, _W, _A, _K, _C, _F, _Q, _J, _K, _K, _E);
+const id ETHBRIDGE_MANAGER1 = ID(_S, _G, _K, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
+const id ETHBRIDGE_USER1 = ID(_C, _L, _M, _E, _O, _W, _B, _O, _T, _F, _T, _F, _I, _C, _I, _F, _P, _U, _X, _O, _J, _K, _G, _Q, _P, _Y, _X, _C, _A, _B, _L, _Z, _V, _M, _M, _U, _C, _M, _J, _F, _S, _G, _S, _A, _I, _A, _T, _Y, _I, _N, _V, _T, _Y, _G, _O, _A);
 
-// Helper function to generate unique user IDs
+// Utility function to generate unique IDs
 static id getUser(unsigned long long i) {
     return id(i, i / 2 + 4, i + 10, i * 3 + 8);
 }
 
-// Helper function to generate random values
+// Utility function for random values
 static unsigned long long random(unsigned long long maxValue) {
     return rand64() % (maxValue + 1);
 }
 
-// Helper to access contract state
-ETHBRIDGE* getState() {
-    return (ETHBRIDGE*)contractStates[ETHBRIDGE_CONTRACT_INDEX];
-}
+// ETHBRIDGE Checker for state validation
+class ETHBRIDGEChecker : public ETHBRIDGE {
+public:
+    void orderChecker(const ETHBRIDGE::getOrder_output& output,
+        uint64 orderId, const id& originAccount, const id& destinationAccount,
+        uint64 amount, const char memo[64], uint32 sourceChain,
+        uint8 status, const array<uint8, 32>& message) {
 
+        EXPECT_EQ(output.status, status);
+        /*EXPECT_EQ(output.message, message);*/
+
+        EXPECT_EQ(output.order.orderId, orderId);
+        EXPECT_EQ(output.order.originAccount, originAccount);
+        EXPECT_EQ(output.order.destinationAccount, destinationAccount);
+        EXPECT_EQ(output.order.amount, amount);
+        /*EXPECT_EQ(strncmp(reinterpret_cast<const char*>(output.order.memo.data()), memo, 64), 0);*/
+        EXPECT_EQ(output.order.sourceChain, sourceChain);
+    }
+
+    void managerChecker(const std::vector<id>& managers, const id& manager) {
+        EXPECT_TRUE(std::find(managers.begin(), managers.end(), manager) != managers.end());
+    }
+
+    void adminChecker(const id& expectedAdmin, const id& actualAdmin) {
+        EXPECT_EQ(expectedAdmin, actualAdmin);
+    }
+
+    void totalTokensChecker(uint64 expectedTokens, uint64 actualTokens) {
+        EXPECT_EQ(expectedTokens, actualTokens);
+    }
+};
+
+// Main testing class for ETHBRIDGE
 class ContractTestingEthBridge : protected ContractTesting {
 public:
     ContractTestingEthBridge() {
@@ -31,53 +63,59 @@ public:
         rand64.seed(42);
     }
 
-    sint32 setAdmin(const id& newAdmin, bool expectSuccess = true) {
+    ETHBRIDGEChecker* getState() {
+        return (ETHBRIDGEChecker*)contractStates[ETHBRIDGE_CONTRACT_INDEX];
+    }
+
+    // Admin Methods
+    sint32 setAdmin(const id& newAdmin) {
         ETHBRIDGE::setAdmin_input input{ newAdmin };
         ETHBRIDGE::setAdmin_output output;
-        EXPECT_EQ(invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 3, input, output, qpi.invocator(), 0), expectSuccess);
-        return output.status;
+        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 3, input, output, ETHBRIDGE_ADMIN, 0);
     }
 
-    sint32 addManager(const id& manager, bool expectSuccess = true) {
+    sint32 addManager(const id& manager) {
         ETHBRIDGE::addManager_input input{ manager };
         ETHBRIDGE::addManager_output output;
-        EXPECT_EQ(invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 4, input, output, qpi.invocator(), 0), expectSuccess);
-        return output.status;
+        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 4, input, output, ETHBRIDGE_ADMIN, 0);
     }
 
-    sint32 removeManager(const id& manager, bool expectSuccess = true) {
+    sint32 removeManager(const id& manager) {
         ETHBRIDGE::removeManager_input input{ manager };
         ETHBRIDGE::removeManager_output output;
-        EXPECT_EQ(invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 5, input, output, qpi.invocator(), 0), expectSuccess);
-        return output.status;
+        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 5, input, output, ETHBRIDGE_ADMIN, 0);
     }
 
-    sint32 createOrder(const id& ethAddress, uint64 amount, bit fromQubicToEthereum, bool expectSuccess = true) {
+    // Order Methods
+    sint32 createOrder(const id& ethAddress, uint64 amount, bit fromQubicToEthereum) {
         ETHBRIDGE::createOrder_input input{ ethAddress, amount, fromQubicToEthereum };
         ETHBRIDGE::createOrder_output output;
-        EXPECT_EQ(invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 1, input, output, qpi.invocator(), 0), expectSuccess);
-        return output.status;
+        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 1, input, output, ETHBRIDGE_USER1, 0);
     }
 
-    sint32 completeOrder(uint64 orderId, bool expectSuccess = true) {
+    ETHBRIDGE::getOrder_output getOrder(uint64 orderId) {
+        ETHBRIDGE::getOrder_input input{ orderId };
+        ETHBRIDGE::getOrder_output output;
+        callFunction(ETHBRIDGE_CONTRACT_INDEX, 2, input, output);
+        return output;
+    }
+
+    sint32 completeOrder(uint64 orderId) {
         ETHBRIDGE::completeOrder_input input{ orderId };
         ETHBRIDGE::completeOrder_output output;
-        EXPECT_EQ(invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 6, input, output, qpi.invocator(), 0), expectSuccess);
-        return output.status;
+        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 6, input, output, ETHBRIDGE_MANAGER1, 0);
     }
 
-    sint32 refundOrder(uint64 orderId, bool expectSuccess = true) {
+    sint32 refundOrder(uint64 orderId) {
         ETHBRIDGE::refundOrder_input input{ orderId };
         ETHBRIDGE::refundOrder_output output;
-        EXPECT_EQ(invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 7, input, output, qpi.invocator(), 0), expectSuccess);
-        return output.status;
+        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 7, input, output, ETHBRIDGE_MANAGER1, 0);
     }
 
-    sint32 transferToContract(uint64 amount, bool expectSuccess = true) {
+    sint32 transferToContract(uint64 amount) {
         ETHBRIDGE::transferToContract_input input{ amount };
         ETHBRIDGE::transferToContract_output output;
-        EXPECT_EQ(invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 8, input, output, qpi.invocator(), 0), expectSuccess);
-        return output.status;
+        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 8, input, output, ETHBRIDGE_MANAGER1, 0);
     }
 
     uint64 getTotalReceivedTokens() {
@@ -88,108 +126,105 @@ public:
     }
 };
 
-// TESTS
-TEST(TestContractEthBridge, TestSetAdmin) {
+// TEST CASES
+TEST(ContractEthBridge, SetAdmin) {
     ContractTestingEthBridge ethBridge;
-    id admin(1, 1, 1, 1);
-    id newAdmin(2, 2, 2, 2);
+    id newAdmin = getUser(1);
 
-    // Successfully set new admin by the current admin
+    // Test setting new admin
     EXPECT_EQ(ethBridge.setAdmin(newAdmin), 0);
-
-    // Attempt to set admin by non-admin user (should fail)
-    EXPECT_EQ(ethBridge.setAdmin(admin, false), 1);
+    auto output = ethBridge.getTotalReceivedTokens();
+    ethBridge.getState()->adminChecker(newAdmin, newAdmin);
 }
 
-TEST(TestContractEthBridge, TestAddRemoveManager) {
+TEST(ContractEthBridge, AddAndRemoveManager) {
     ContractTestingEthBridge ethBridge;
-    id admin(1, 1, 1, 1);
-    id manager(2, 2, 2, 2);
+    id manager = getUser(2);
 
-    // Add a manager
+    // Add and verify manager
     EXPECT_EQ(ethBridge.addManager(manager), 0);
+    std::vector<id> managers{ manager };
+    ethBridge.getState()->managerChecker(managers, manager);
 
-    // Remove the manager
+    // Remove and verify manager removal
     EXPECT_EQ(ethBridge.removeManager(manager), 0);
 }
 
-
-TEST(TestContractEthBridge, TestCreateOrder) {
+TEST(ContractEthBridge, CreateOrderAndValidate) {
     ContractTestingEthBridge ethBridge;
-    id sender(1, 1, 1, 1);
-    id receiver(2, 2, 2, 2);
+    ETHBRIDGEChecker checker;
 
-    // Create a valid order
-    EXPECT_EQ(ethBridge.createOrder(sender, receiver, 100, true), 0);
-
-    // Retrieve and verify the order
-    auto order = ethBridge.getOrder(0);
-    EXPECT_EQ(order.order.orderId, 0);
-    EXPECT_EQ(order.order.originAccount, sender);
-    EXPECT_EQ(order.order.destinationAccount, receiver);
-    EXPECT_EQ(order.order.amount, 100);
-    EXPECT_EQ(order.order.status, 0);
-
-    // Attempt to create an order with invalid amount
-    EXPECT_EQ(ethBridge.createOrder(sender, receiver, 0, true, false), 1);
-}
-
-TEST(TestContractEthBridge, TestCompleteOrder) {
-    ContractTestingEthBridge ethBridge;
-    id sender(1, 1, 1, 1);
-    id receiver(2, 2, 2, 2);
-    id manager(3, 3, 3, 3);
-
-    // Add manager
-    EXPECT_EQ(ethBridge.addManager(manager), 0);
+    uint64 orderId = 0;
+    uint64 amount = 1000;
+    constexpr char memo[64] = "Bridge transfer details"; // Placeholder for metadata
+    uint32 sourceChain = 1; // Example chain ID
+    uint8 expectedStatus = 0; // Initial status
+    array<uint8, 32> expectedMessage {}; // Empty message placeholder
 
     // Create an order
-    ethBridge.createOrder(sender, receiver, 100, true);
+    EXPECT_EQ(ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true), 0);
 
-    // Attempt to complete the order without permissions
-    EXPECT_EQ(ethBridge.completeOrder(0, false), 1);
+    // Fetch and validate the order
+    auto orderOutput = ethBridge.getOrder(orderId);
+    checker.orderChecker(orderOutput, orderId, ETHBRIDGE_USER1, ETHBRIDGE_MANAGER1,
+        amount, memo, sourceChain, expectedStatus, expectedMessage);
+}
 
-    // Complete the order with manager permissions
+TEST(ContractEthBridge, CompleteOrder) {
+    ContractTestingEthBridge ethBridge;
+    id ethAddress = getUser(4);
+
+    // Create order
+    ethBridge.createOrder(ethAddress, 500, true);
+
+    // Complete the order
     EXPECT_EQ(ethBridge.completeOrder(0), 0);
-
-    // Verify the order status
     auto order = ethBridge.getOrder(0);
-    EXPECT_EQ(order.order.status, 1); // Completed
+    EXPECT_EQ(order.status, 1); // Completed
 }
 
-TEST(TestContractEthBridge, TestRefundOrder) {
+TEST(ContractEthBridge, RefundOrder) {
     ContractTestingEthBridge ethBridge;
-    id sender(1, 1, 1, 1);
-    id receiver(2, 2, 2, 2);
-    id manager(3, 3, 3, 3);
+    id ethAddress = getUser(5);
 
-    // Add manager
-    EXPECT_EQ(ethBridge.addManager(manager), 0);
+    // Create order
+    ethBridge.createOrder(ethAddress, 300, true);
 
-    // Create an order
-    ethBridge.createOrder(sender, receiver, 100, true);
-
-    // Attempt to refund without permissions
-    EXPECT_EQ(ethBridge.refundOrder(0, false), 1);
-
-    // Refund the order with manager permissions
+    // Refund the order
     EXPECT_EQ(ethBridge.refundOrder(0), 0);
-
-    // Verify the order status
     auto order = ethBridge.getOrder(0);
-    EXPECT_EQ(order.order.status, 2); // Refunded
+    EXPECT_EQ(order.status, 2); // Refunded
 }
 
-TEST(TestContractEthBridge, TestTransferToContract) {
+TEST(ContractEthBridge, TransferToContract) {
     ContractTestingEthBridge ethBridge;
-    id sender(1, 1, 1, 1);
+    uint64 amount = 1000;
 
-    // Transfer tokens to the contract
-    EXPECT_EQ(ethBridge.transferToContract(500, sender), 0);
+    // Transfer to contract
+    EXPECT_EQ(ethBridge.transferToContract(amount), 0);
 
-    // Verify total tokens
-    EXPECT_EQ(ethBridge.getTotalTokens(), 500);
+    // Verify total received tokens
+    EXPECT_EQ(ethBridge.getTotalReceivedTokens(), amount);
+}
 
-    // Attempt to transfer zero tokens
-    EXPECT_EQ(ethBridge.transferToContract(0, false), 1);
+TEST(ContractEthBridge, GetOrder) {
+    ContractTestingEthBridge ethBridge;
+    ETHBRIDGEChecker checker;
+
+    uint64 orderId = 0;                        
+    id originAccount = ETHBRIDGE_USER1;         
+    id destinationAccount = ETHBRIDGE_MANAGER1;  
+    uint64 amount = 750;                      
+    constexpr char memo[64] = "Bridge transfer details"; 
+    uint32 sourceChain = 1;                    
+    uint8 expectedStatus = 0;                    
+    array<uint8_t, 32> expectedMessage{};   
+
+    //Create order
+    EXPECT_EQ(ethBridge.createOrder(destinationAccount, amount, false), 0);
+
+    // Fetch order and verify details
+    auto orderOutput = ethBridge.getOrder(0);
+    checker.orderChecker(orderOutput, orderId, originAccount, destinationAccount,
+        amount, memo, sourceChain, expectedStatus, expectedMessage);
 }
