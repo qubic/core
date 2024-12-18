@@ -371,7 +371,7 @@ public:
         const auto scStatsInfo = getStatsPerEpoch(epoch);
         /*
             we can't test at epoch 139 because the value of state in QEarn SC was assigned by hardcoding.
-            To test the epoch 139, please remove the line 777~780 in QEarn SC.
+            To test the epoch 139, please remove the line 776~779 in QEarn SC.
         */
         if(epoch != 139)    
         {

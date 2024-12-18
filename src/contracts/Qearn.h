@@ -269,6 +269,7 @@ protected:
         output.totalLockedAmount = 0;
         output.averageAPY = 0;
         locals.cnt = 0;
+
         for(locals._t = qpi.epoch() - 1; locals._t >= qpi.epoch() - 52; locals._t--)
         {
             if(locals._t < QEARN_INITIAL_EPOCH)
