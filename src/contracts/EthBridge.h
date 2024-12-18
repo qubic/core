@@ -154,12 +154,12 @@ public:
 
 private:
     // Contract State
-    QPI::HashMap<uint64, BridgeOrder, 256> orders; // Storage for orders (fixed size)
+    array<BridgeOrder, 256> orders;      // Storage for orders (fixed size)
     uint64 nextOrderId;                            // Counter for order IDs
     uint64 lockedTokens;                           // Total locked tokens in the contract (balance)
     uint64 transactionFee;                         // Fee for creating an order
     id admin;                                      // Admin address
-    QPI::HashMap<id, bit, 16> managers;            // Managers list
+    array<id, 16> managers;            // Managers list
     uint64 totalReceivedTokens;                    // Total tokens received
     uint32 sourceChain;                            // Source chain identifier
 
@@ -171,18 +171,18 @@ private:
        output = (qpi.invocator() == state.admin);
     _
 
-   typedef id isManager_input;
-   typedef bit isManager_output;
-   struct isManager_locals {
-       bit managerStatus;  
-   };
+    typedef id isManager_input;
+    typedef bit isManager_output;
 
-   PRIVATE_FUNCTION_WITH_LOCALS(isManager)
-       locals.managerStatus = false;
-       state.managers.get(qpi.invocator(), locals.managerStatus);
-       output = locals.managerStatus;
+    PRIVATE_FUNCTION(isManager)
+        for (uint64 i = 0; i < state.managers.capacity(); ++i) {
+            if (state.managers.get(i) == input) {
+                output = true;
+                return;
+            }
+        }
+        output = false;
     _
-
 
 public:
     // Create a new order and lock tokens
@@ -230,18 +230,22 @@ public:
         locals.newOrder.fromQubicToEthereum = input.fromQubicToEthereum;
 
         // Store the order
-        state.orders.set(locals.newOrder.orderId, locals.newOrder);
+        for (uint64 i = 0; i < state.orders.capacity(); ++i) {
+            if (state.orders.get(i).status == 255) { // Empty slot
+                state.orders.set(i, locals.newOrder);
 
-        locals.log = EthBridgeLogger{
-            CONTRACT_INDEX,
-            0, // No error
-            locals.newOrder.orderId,
-            input.amount,
-            0
-        };
-        LOG_INFO(locals.log);
-
-        output.status = 0; // Success
+                locals.log = EthBridgeLogger{
+                    CONTRACT_INDEX,
+                    0,
+                    locals.newOrder.orderId,
+                    input.amount,
+                    0
+                };
+                LOG_INFO(locals.log);
+                output.status = 0; // Success
+                return;
+            }
+        }
     _
 
     // Retrieve an order
@@ -252,39 +256,42 @@ public:
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getOrder)
+        for (uint64 i = 0; i < state.orders.capacity(); ++i) {
+            locals.order = state.orders.get(i);
+            if (locals.order.orderId == input.orderId && locals.order.status != 255) {
+                // Populate OrderResponse with BridgeOrder data
+                locals.orderResp.orderId = locals.order.orderId;
+                locals.orderResp.originAccount = locals.order.qubicSender;
+                locals.orderResp.destinationAccount = locals.order.ethAddress;
+                locals.orderResp.amount = locals.order.amount;
+                constexpr char placeholderMemo[64] = "Bridge transfer details"; // Placeholder for metadata
+                locals.orderResp.sourceChain = state.sourceChain;
 
-        if (!state.orders.get(input.orderId, locals.order)) {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::orderNotFound,
-                input.orderId,
-                0, // No amount involved in this operation
-                0
-            };
-            LOG_INFO(locals.log);
-            output.status = 1; // Error
-            return;
+                locals.log = EthBridgeLogger{
+                    CONTRACT_INDEX,
+                    0, // No error
+                    locals.order.orderId,
+                    locals.order.amount,
+                    0
+                };
+                LOG_INFO(locals.log);
+
+                output.status = 0; // Success
+                output.order = locals.orderResp;
+                return;
+            }
         }
 
-
-        // Populate OrderResponse with BridgeOrder data
-        locals.orderResp.orderId = locals.order.orderId;
-        locals.orderResp.originAccount = locals.order.qubicSender;
-        locals.orderResp.destinationAccount = locals.order.ethAddress;
-        locals.orderResp.amount = locals.order.amount;
-        constexpr char placeholderMemo[64] = "Bridge transfer details"; // Placeholder for metadata
-        locals.orderResp.sourceChain = state.sourceChain;
-
+        // If order not found
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
-            0, // No error
-            locals.order.orderId,
-            locals.order.amount,
+            EthBridgeError::orderNotFound,
+            input.orderId,
+            0, // No amount involved
             0
         };
         LOG_INFO(locals.log);
-        output.status = 0; // Success
-        output.order = locals.orderResp;
+        output.status = 1; // Error
     _
 
     // Admin Functions
@@ -350,16 +357,21 @@ public:
             return;
         }
 
-        state.managers.set(input.address, 1); // Add manager
-        //Logging new manager has been added
-        locals.managerLog = AddressChangeLogger{
-            CONTRACT_INDEX,
-            2, // Event code "Manager added"
-            input.address,
-            0
-        };
+       for (uint64 i = 0; i < state.managers.capacity(); ++i) {
+           if (state.managers.get(i) == NULL_ID) { // Slot vacío
+               state.managers.set(i, input.address);
 
-        LOG_INFO(locals.managerLog);
+               locals.managerLog = AddressChangeLogger{
+                   CONTRACT_INDEX,
+                   2, // Manager added
+                   input.address,
+                   0
+               };
+               LOG_INFO(locals.managerLog);
+               output.status = 0; // Success
+               return;
+           }
+       }
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
@@ -393,17 +405,21 @@ public:
             return;
         }
 
-        state.managers.removeByKey(input.address); // Remove manager
-        //Logging a manager has been removed
-        state.managers.set(input.address, 1); // Add manager
-        locals.managerLog = AddressChangeLogger{
-            CONTRACT_INDEX,
-            2, // Event code "Manager remove"
-            input.address,
-            0
-        };
+        for (uint64 i = 0; i < state.managers.capacity(); ++i) {
+            if (state.managers.get(i) == input.address) {
+                state.managers.set(i, NULL_ID);
 
-        LOG_INFO(locals.managerLog);
+                locals.managerLog = AddressChangeLogger{
+                    CONTRACT_INDEX,
+                    3, // Manager removed
+                    input.address,
+                    0
+                };
+                LOG_INFO(locals.managerLog);
+                output.status = 0; // Success
+                return;
+            }
+        }
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
@@ -437,6 +453,7 @@ public:
         EthBridgeLogger log;
         id invocatorAddress;
         bit isManagerOperating;
+        bit orderFound;
         BridgeOrder order;
         TokensLogger logTokens;
     };
@@ -448,44 +465,41 @@ public:
         CALL(isManager, locals.invocatorAddress, locals.isManagerOperating);
 
         //Check if the order is handled by a manager
-        if (!locals.isManagerOperating) {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::onlyManagersCanCompleteOrders,
-                input.orderId,
-                0,
-                0
-            };
-            LOG_INFO(locals.log);
-            output.status = 1; // Error
-            return;
+        locals.orderFound = false;
+        for (uint64 i = 0; i < state.orders.capacity(); ++i) {
+            if (state.orders.get(i).orderId == input.orderId) {
+                locals.order = state.orders.get(i);
+                locals.orderFound = true;
+                break;
+            }
         }
 
-        // Retrieve the order
-        if (!state.orders.get(input.orderId, locals.order)) {
+        // Order nor found
+        if (!locals.orderFound) {
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
-                EthBridgeError::invalidOrderState,
-                input.orderId,
-                0,
-                0
-            };
-            LOG_INFO(locals.log);
-            output.status = 1; // Error
-            return;
-        }
-
-        // Check the status
-        if (locals.order.status != 0) { // Ensure it's not already completed or refunded
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::invalidOrderState,
+                EthBridgeError::orderNotFound,
                 input.orderId,
                 0,
                 0
             };
             LOG_INFO(locals.log);
             output.status = 2; // Error
+            return;
+        }
+
+        // Check order status
+        // All orders status are 0 when created
+        if (locals.order.status != 0) { //Check it is not completed or refunded already
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::invalidOrderState,
+                input.orderId,
+                0,
+                0
+            };
+            LOG_INFO(locals.log);
+            output.status = 3; // Error
             return;
         }
 
@@ -576,6 +590,7 @@ public:
         EthBridgeLogger log;
         id invocatorAddress;
         bit isManagerOperating;
+        bit orderFound;
         BridgeOrder order;
     };
 
@@ -598,30 +613,42 @@ public:
         }
 
         // Retrieve the order
-        if (!state.orders.get(input.orderId, locals.order)) {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::invalidOrderState,
-                input.orderId,
-                0, // No amount involved
-                0
-            };
-            LOG_INFO(locals.log);
-            output.status = 1; // Error
-            return;
+        //Check if the order is handled by a manager
+        locals.orderFound = false;
+        for (uint64 i = 0; i < state.orders.capacity(); ++i) {
+            if (state.orders.get(i).orderId == input.orderId) {
+                locals.order = state.orders.get(i);
+                locals.orderFound = true;
+                break;
+            }
         }
 
-        // Check the status
-        if (locals.order.status != 0) { // Ensure it's not already completed or refunded
+        // Order nor found
+        if (!locals.orderFound) {
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
-                EthBridgeError::transferFailed,
+                EthBridgeError::orderNotFound,
                 input.orderId,
-                locals.order.amount,
+                0,
                 0
             };
             LOG_INFO(locals.log);
             output.status = 2; // Error
+            return;
+        }
+
+        // Check order status
+        // All orders status are 0 when created
+        if (locals.order.status != 0) { //Check it is not completed or refunded already
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::invalidOrderState,
+                input.orderId,
+                0,
+                0
+            };
+            LOG_INFO(locals.log);
+            output.status = 3; // Error
             return;
         }
 
@@ -728,7 +755,6 @@ public:
         state.totalReceivedTokens = 0;
         state.transactionFee = 1000;
         state.admin = ID(_P, _H, _O, _Y, _R, _V, _A, _K, _J, _X, _M, _L, _R, _B, _B, _I, _R, _I, _P, _D, _I, _B, _M, _H, _D, _H, _U, _A, _Z, _B, _Q, _K, _N, _B, _J, _T, _R, _D, _S, _P, _G, _C, _L, _Z, _C, _Q, _W, _A, _K, _C, _F, _Q, _J, _K, _K, _E);
-        state.managers.reset(); // Initialize managers list
         state.sourceChain = 0; //Arbitrary numb. No-EVM chain
     _
 };
