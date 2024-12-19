@@ -8,6 +8,7 @@
 #include "assets/assets.h"
 #include "contract_core/contract_exec.h"
 #include "contract_core/qpi_asset_impl.h"
+#include "logging/logging.h"
 
 #include "test_util.h"
 
@@ -19,12 +20,14 @@ public:
     {
         initAssets();
         initCommonBuffers();
+        qLogger::initLogging();
     }
 
     ~AssetsTest()
     {
         deinitCommonBuffers();
         deinitAssets();
+        qLogger::deinitLogging();
     }
 
     static void clearUniverse()
