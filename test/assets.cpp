@@ -5,6 +5,9 @@
 // workaround for name clash with stdlib
 #define system qubicSystemStruct
 
+// reduced size of logging buffer (512 MB instead of 8 GB)
+#define LOG_BUFFER_SIZE (2*268435456ULL)
+
 #include "assets/assets.h"
 #include "contract_core/contract_exec.h"
 #include "contract_core/qpi_asset_impl.h"

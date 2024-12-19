@@ -1,9 +1,9 @@
 #define NO_UEFI
 
-#include "contract_testing.h"
-
 #include <random>
 #include <map>
+
+#include "contract_testing.h"
 
 #define PRINT_TEST_INFO 0
 
@@ -132,6 +132,7 @@ public:
     {
         INIT_CONTRACT(QEARN);
         initEmptySpectrum();
+        qLogger::initLogging();
         rand64.seed(42);
 
         for (unsigned int epChanges = 0; epChanges <= 52; ++epChanges)
@@ -163,6 +164,11 @@ public:
             else
                 epochChangesToUnlockParams.push_back(UnlockTableEntry{ 100, 0 });
         }
+    }
+
+    ~ContractTestingQearn()
+    {
+        qLogger::deinitLogging();
     }
 
     QearnChecker* getState()
