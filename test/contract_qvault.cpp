@@ -1,10 +1,9 @@
 #define NO_UEFI
 
-#include "contract_testing.h"
-#include "test_util.h"
 #include <map>
-
 #include <random>
+
+#include "contract_testing.h"
 
 static std::mt19937_64 rand64;
 static constexpr uint64 QVAULT_QCAP_MAX_HOLDERS = 131072;
@@ -263,6 +262,12 @@ public:
         callSystemProcedure(QVAULT_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
+        qLogger::initLogging();
+    }
+
+    ~ContractTestingQvault()
+    {
+        qLogger::deinitLogging();
     }
 
     QVAULTChecker* getState()

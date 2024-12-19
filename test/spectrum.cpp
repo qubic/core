@@ -7,6 +7,8 @@
 // workaround for name clash with stdlib
 #define system qubicSystemStruct
 
+#include "logging/logging.h"
+
 // enable some logging for testing
 #include "../src/private_settings.h"
 #undef LOG_DUST_BURNINGS
