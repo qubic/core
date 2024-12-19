@@ -16,12 +16,12 @@ static void addDebugMessage(const CHAR16* msg)
 #elif defined(NDEBUG)
 
 // static void addDebugMessage(const CHAR16* msg){} // empty impl
-
 #else
 
 static CHAR16 debugMessage[128][16384];
 static int debugMessageCount = 0;
 static char volatile debugLogLock = 0;
+static bool volatile debugLogOnlyMainProcessorRunning = true;
 
 #define WRITE_DEBUG_MESSAGES_TO_FILE 1
 
@@ -35,7 +35,11 @@ static void printDebugMessages()
     // Open debug log file and seek to the end of file for appending
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file = nullptr;
-    if (status = root->Open(root, (void**)&file, (CHAR16*)L"debug.log", EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+    if (!root)
+    {
+        logToConsole(L"printDebugMessages() called before filesystem init");
+    }
+    else if (status = root->Open(root, (void**)&file, (CHAR16*)L"debug.log", EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
     {
         logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
         file = nullptr;
@@ -106,6 +110,12 @@ static void addDebugMessage(const CHAR16* msg)
         ++debugMessageCount;
     }
     RELEASE(debugLogLock);
+    if (debugLogOnlyMainProcessorRunning)
+    {
+        debugLogOnlyMainProcessorRunning = false;
+        printDebugMessages();
+        debugLogOnlyMainProcessorRunning = true;
+    }
 }
 
 // Add a assert message for logging from arbitrary thread
@@ -123,6 +133,12 @@ static void addDebugMessageAssert(const CHAR16* message, const CHAR16* file, con
         ++debugMessageCount;
     }
     RELEASE(debugLogLock);
+    if (debugLogOnlyMainProcessorRunning)
+    {
+        debugLogOnlyMainProcessorRunning = false;
+        printDebugMessages();
+        debugLogOnlyMainProcessorRunning = true;
+    }
 }
 
 #endif
