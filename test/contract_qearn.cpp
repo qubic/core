@@ -376,10 +376,10 @@ public:
 
         const auto scStatsInfo = getStatsPerEpoch(epoch);
         /*
-            we can't test at epoch 138 because the value of state in QEarn SC was assigned by hardcoding.
-            To test the epoch 138, please remove the line 777~780 in QEarn SC.
+            we can't test at epoch 139 because the value of state in QEarn SC was assigned by hardcoding.
+            To test the epoch 139, please remove the line 776~779 in QEarn SC.
         */
-        if(epoch != 138)    
+        if(epoch != 139)    
         {
             EXPECT_EQ(scStatsInfo.earlyUnlockedAmount, ed.initialTotalLockedAmount - ed.amountCurrentlyLocked);
             EXPECT_EQ(scStatsInfo.earlyUnlockedPercent, QPI::div((ed.initialTotalLockedAmount - ed.amountCurrentlyLocked) * 10000, ed.initialTotalLockedAmount));
