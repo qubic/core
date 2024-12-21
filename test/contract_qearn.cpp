@@ -387,7 +387,7 @@ public:
         uint64 totalLockedInSC = 0;
         uint64 averageAPY = 0;
         uint32 cnt = 0;
-        for(uint16 t = system.epoch - 1U; t >= system.epoch - 52U; t--)
+        for(uint16 t = system.epoch; t >= system.epoch - 52; t--)
         {
             auto preEdIt = allEpochData.find(t);
             const EpochData& preED = preEdIt->second;
