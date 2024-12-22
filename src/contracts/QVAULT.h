@@ -3,7 +3,10 @@ using namespace QPI;
 constexpr uint64 QVAULT_MAX_REINVEST_AMOUNT = 100000000000ULL;
 constexpr uint64 QVAULT_QCAP_ASSETNAME = 1346454353;
 constexpr uint64 QVAULT_QCAP_MAX_SUPPLY = 21000000;
+constexpr uint64 QVAULT_INITIAL_EPOCH = 138;
+constexpr uint64 QVAULT_QVAULT_MAX_SUPPLY = 676;
 constexpr uint32 QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES = 16;
+constexpr uint32 QVAULT_MAX_EPOCHS = 4096;
 
 struct QVAULT2
 {
@@ -208,7 +211,52 @@ public:
     {
     };
 
+    struct getNumberOfAsset_input
+    {
+        uint64 assetName;
+		id issuer;
+        uint32 ownershipManagingContractIndex;
+    };
+
+    struct getNumberOfAsset_output
+    {
+        sint64 numberOfAssetPossessed;
+    };
+
+    struct getStatsPerEpoch_input
+    {
+        uint32 epoch;
+    };
+
+    struct getStatsPerEpoch_output
+    {
+        uint64 totalRevenue;
+        uint64 revenueOfQcapHolders;
+        uint64 revenueOfOneQcap;
+        uint64 revenueOfQvaultHolders;
+        uint64 revenueOfOneQvault;
+        uint64 revenueOfReinvesting;
+        uint64 revenueOfDevTeam;
+        uint64 percentOfReinvested;
+        uint64 percentOfDistributed;
+        uint64 percentOfDevTeam;
+        uint64 percentOfQvaultShareholders;
+    };
+
 protected:
+
+    struct StatsInfo
+    {
+        uint64 totalRevenue;
+        uint64 revenueOfQcapHolders;
+        uint64 revenueOfOneQcap;
+        uint64 revenueOfQvaultHolders;
+        uint64 revenueOfOneQvault;
+        uint64 revenueOfReinvesting;
+        uint64 revenueOfDevTeam;
+    };
+
+    array<StatsInfo, QVAULT_MAX_EPOCHS> _allEpochStats;
 
     id QCAP_ISSUER;
     id authAddress1, authAddress2, authAddress3, newAuthAddress1, newAuthAddress2, newAuthAddress3;
@@ -559,9 +607,37 @@ protected:
 
     _
 
+    PUBLIC_FUNCTION(getNumberOfAsset)
+
+        output.numberOfAssetPossessed = qpi.numberOfPossessedShares(input.assetName, input.issuer, SELF, SELF, input.ownershipManagingContractIndex, input.ownershipManagingContractIndex);
+
+    _
+
+    PUBLIC_FUNCTION(getStatsPerEpoch)
+
+        if(input.epoch < QVAULT_INITIAL_EPOCH || input.epoch >= QVAULT_MAX_EPOCHS)
+        {
+            return ;
+        }
+
+        output.totalRevenue = state._allEpochStats.get(input.epoch).totalRevenue;
+        output.revenueOfQcapHolders = state._allEpochStats.get(input.epoch).revenueOfQcapHolders;
+        output.revenueOfOneQcap = state._allEpochStats.get(input.epoch).revenueOfOneQcap;
+        output.revenueOfQvaultHolders = state._allEpochStats.get(input.epoch).revenueOfQvaultHolders;
+        output.revenueOfOneQvault = state._allEpochStats.get(input.epoch).revenueOfOneQvault;
+        output.revenueOfDevTeam = state._allEpochStats.get(input.epoch).revenueOfDevTeam;
+        output.revenueOfReinvesting = state._allEpochStats.get(input.epoch).revenueOfReinvesting;
+        output.percentOfDistributed = QPI::div(output.revenueOfQcapHolders * 100000ULL, output.totalRevenue);
+        output.percentOfQvaultShareholders = QPI::div(output.revenueOfQvaultHolders * 100000ULL, output.totalRevenue);
+        output.percentOfDevTeam = QPI::div(output.revenueOfDevTeam * 100000ULL, output.totalRevenue);
+        output.percentOfReinvested = QPI::div(output.revenueOfReinvesting * 100000ULL, output.totalRevenue);
+    _
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 
         REGISTER_USER_FUNCTION(getData, 1);
+        REGISTER_USER_FUNCTION(getNumberOfAsset, 2);
+        REGISTER_USER_FUNCTION(getStatsPerEpoch, 3);
 
         REGISTER_USER_PROCEDURE(submitAuthAddress, 1);
         REGISTER_USER_PROCEDURE(changeAuthAddress, 2);
@@ -604,6 +680,7 @@ protected:
 
     struct END_EPOCH_locals 
     {
+        StatsInfo statsOfEpoch;
         ::Entity entity;
         AssetPossessionIterator iter;
         AssetIssuanceId QCAPId;
@@ -646,6 +723,16 @@ protected:
         {
             locals.circulatedSupply -= qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, state.bannedAddress.get(locals._t), state.bannedAddress.get(locals._t), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
         }
+
+        locals.statsOfEpoch.totalRevenue = locals.revenue;
+        locals.statsOfEpoch.revenueOfQcapHolders = locals.paymentForQCAPHolders;
+        locals.statsOfEpoch.revenueOfOneQcap = div(locals.paymentForQCAPHolders, locals.circulatedSupply);
+        locals.statsOfEpoch.revenueOfQvaultHolders = locals.paymentForShareholders;
+        locals.statsOfEpoch.revenueOfOneQvault = div(locals.paymentForShareholders, 676ULL);
+        locals.statsOfEpoch.revenueOfDevTeam = locals.paymentForDevelopment;
+        locals.statsOfEpoch.revenueOfReinvesting = locals.paymentForReinvest;
+
+        state._allEpochStats.set(qpi.epoch(), locals.statsOfEpoch);
 
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
         locals.QCAPId.issuer = state.QCAP_ISSUER;
