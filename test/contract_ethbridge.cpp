@@ -223,16 +223,6 @@ TEST(ContractEthBridge, CreateOrderWithZeroAmount) {
         amount, memo, sourceChain, expectedStatus, expectedMessage);
 }
 
-TEST(ContractEthBridge, CompleteOrderInsufficientTokens) {
-    ContractTestingEthBridge ethBridge;
-    uint64 orderId = 0;
-    uint64 amount = 1000;
-
-    // Create order but don't transfer tokens to contract
-    ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true);
-    EXPECT_NE(ethBridge.completeOrder(orderId), 0);
-}
-
 TEST(ContractEthBridge, CompleteOrderSuccess) {
     ContractTestingEthBridge ethBridge;
     ETHBRIDGEChecker checker;
@@ -249,10 +239,13 @@ TEST(ContractEthBridge, CompleteOrderSuccess) {
 
 TEST(ContractEthBridge, CompleteOrderInsufficientTokens) {
     ContractTestingEthBridge ethBridge;
+    ETHBRIDGEChecker checker;
     uint64 orderId = 0;
     uint64 amount = 1000;
+    uint64 initAmountReceived = ethBridge.getTotalReceivedTokens();
 
     ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true);
+    checker.totalTokensChecker(amount + initAmountReceived, ethBridge.getTotalReceivedTokens());
     EXPECT_NE(ethBridge.completeOrder(orderId), 0);
 }
 
