@@ -137,7 +137,7 @@ public:
 // TEST CASES
 TEST(ContractEthBridge, SetAdmin) {
     ContractTestingEthBridge ethBridge;
-    id newAdmin = getUser(1);
+    id newAdmin = ETHBRIDGE_USER1;
 
     // Test setting new admin
     EXPECT_EQ(ethBridge.setAdmin(newAdmin), 0);
@@ -147,7 +147,7 @@ TEST(ContractEthBridge, SetAdmin) {
 
 TEST(ContractEthBridge, AddAndRemoveManager) {
     ContractTestingEthBridge ethBridge;
-    id manager = getUser(2);
+    id manager = ETHBRIDGE_MANAGER1;
 
     // Add and verify manager
     EXPECT_EQ(ethBridge.addManager(manager), 0);
