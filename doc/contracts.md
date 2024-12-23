@@ -2,6 +2,13 @@
 
 For a general introduction to Smart Contracts in Qubic, we recommend to read [the Qubic Docs](https://docs.qubic.org/learn/smart-contracts).
 
+1.  [Overview](#overview)
+2.  [Development](#development)
+3.  [Review and tests](#review-and-tests)
+4.  [Procedures and Functions](#procedures-and-functions)
+5.  [Restrictions of C++ Language Features](#restrictions-of-c-language-features)
+6.  [General Change Management](#general-change-management)
+
 ## Overview
 
 In Qubic, smart contracts are implemented in a restricted variant of C++ and compiled into the Qubic Core executable.
@@ -233,3 +240,13 @@ Global variables are not permitted.
 Global constants must begin with the name of the contract state struct.
 
 There is a limit for recursion and depth of nested contract function / procedure calls (the limit is 10 at the moment).
+
+## General Change Management
+Smart Contract code in Qubic is generally immutable. This ensures stable quality and security accross the network.
+However there are situation where you want to change your SC.
+
+### Bugfix
+A bugfix is possible at any time. It can be applied during the epoch (if no state is changed) or must be coordinated with an epoch update.
+
+### New Features
+If you want to add new features, this needs to be approved by the computors again. Please refer to the [Deployment](#deployment) for the needed steps. The IPO is not anymore needed for an update of your SC.
