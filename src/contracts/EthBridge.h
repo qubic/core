@@ -1,5 +1,4 @@
 #pragma once
-
 #include "qpi.h"
 
 using namespace QPI;
@@ -116,7 +115,6 @@ public:
     };
 
     struct getAdminID_input {
-        uint8 idInput;
     };
 
     struct getAdminID_output {
@@ -124,7 +122,6 @@ public:
     };
 
     struct getInvocatorID_input {
-        uint8 idInput;
     };
 
     struct getInvocatorID_output {
@@ -778,7 +775,7 @@ public:
         state.lockedTokens = 0;
         state.totalReceivedTokens = 0;
         state.transactionFee = 1000;
-        state.admin = ID(_P, _X, _A, _B, _Y, _V, _D, _P, _J, _R, _R, _D, _K, _E, _L, _E, _Y, _S, _H, _Z, _W, _J, _C, _B, _E, _F, _J, _C, _N, _E, _R, _N, _K, _K, _U, _W, _X, _H, _A, _N, _C, _D, _P, _Q, _E, _F, _G, _D, _I, _U, _G, _U, _G, _A, _U, _B, _B, _C, _Y, _K);
+        state.admin = qpi.invocator();
         state.sourceChain = 0; //Arbitrary numb. No-EVM chain
     _
 };
