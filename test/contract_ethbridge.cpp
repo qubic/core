@@ -8,10 +8,11 @@
 
 static std::mt19937_64 rand64;
 static const id ETHBRIDGE_CONTRACT_ID(ETHBRIDGE_CONTRACT_INDEX, 0, 0, 0);
-// Predefined IDs (64 characters each)
-const id ETHBRIDGE_ADMIN = ID(_P, _H, _O, _Y, _R, _V, _N, _K, _J, _X, _M, _L, _R, _B, _B, _I, _R, _I, _P, _D, _I, _B, _M, _H, _D, _H, _U, _A, _Z, _B, _Q, _K, _N, _B, _J, _T, _R, _D, _S, _P, _G, _C, _L, _Z, _C, _Q, _W, _A, _K, _C, _F, _Q, _J, _K, _K, _E);
-const id ETHBRIDGE_MANAGER1 = ID(_S, _G, _K, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
-const id ETHBRIDGE_USER1 = ID(_C, _L, _M, _E, _O, _W, _B, _O, _T, _F, _T, _F, _I, _C, _I, _F, _P, _U, _X, _O, _J, _K, _G, _Q, _P, _Y, _X, _C, _A, _B, _L, _Z, _V, _M, _M, _U, _C, _M, _J, _F, _S, _G, _S, _A, _I, _A, _T, _Y, _I, _N, _V, _T, _Y, _G, _O, _A);
+// Predefined IDs (55 characters each)
+const id ETHBRIDGE_ADMIN = ID(_P, _X, _A, _B, _Y, _V, _D, _P, _J, _R, _R, _D, _K, _E, _L, _E, _Y, _S, _H, _Z, _W, _J, _C, _B, _E, _F, _J, _C, _N, _E, _R, _N, _K, _K, _U, _W, _X, _H, _A, _N, _C, _D, _P, _Q, _E, _F, _G, _D, _I, _U, _G, _U, _G, _A, _U, _B, _B, _C, _Y, _K);
+const id ETHBRIDGE_MANAGER1 = ID(_F, _P, _O, _B, _X, _D, _X, _M, _C, _S, _N, _Z, _L, _C, _F, _W, _I, _E, _R, _C, _Y, _W, _Y, _S, _Q, _B, _L, _D, _P, _X, _R, _M, _H, _S, _D, _K, _V, _I, _F, _M, _T, _E, _S, _I, _U, _G, _N, _F, _L, _A, _Z, _L, _D, _L, _T, _D, _Y, _M, _G, _F);
+const id ETHBRIDGE_USER1 = ID(_W, _D, _N, _G, _K, _C, _G, _N, _A, _T, _A, _N, _C, _E, _G, _B, _Y, _W, _A, _D, _J, _Q, _S, _A, _M, _W, _P, _A, _H, _Y, _S, _M, _E, _C, _K, _F, _G, _J, _F, _I, _C, _E, _T, _K, _G, _Y, _D, _X, _Z, _Q, _G, _H, _Z, _K, _H, _B, _T, _L, _H, _F);
+const id ADDRESS2 = ID(_R, _G, _I, _C, _M, _Q, _T, _X, _U, _R, _X, _I, _I, _G, _G, _B, _B, _M, _G, _R, _I, _J, _Q, _A, _C, _I, _W, _A, _H, _M, _A, _A, _C, _L, _J, _T, _R, _G, _H, _I, _P, _A, _I, _S, _C, _V, _C, _P, _N, _L, _O, _E, _S, _M, _I, _H, _Q, _O, _C, _B);
 
 // Utility function to generate unique IDs
 static id getUser(unsigned long long i) {
@@ -121,8 +122,15 @@ public:
     uint64 getTotalReceivedTokens() {
         ETHBRIDGE::getTotalReceivedTokens_input input{};
         ETHBRIDGE::getTotalReceivedTokens_output output;
-        callFunction(ETHBRIDGE_CONTRACT_INDEX, 2, input, output);
+        callFunction(ETHBRIDGE_CONTRACT_INDEX, 11, input, output);
         return output.totalTokens;
+    }
+
+    uint64 getTotalLockedTokens() {
+        ETHBRIDGE::getTotalLockedTokens_input input{};
+        ETHBRIDGE::getTotalLockedTokens_output output;
+        callFunction(ETHBRIDGE_CONTRACT_INDEX, 14, input, output);
+        return output.totalLockedTokens;
     }
 };
 
@@ -150,6 +158,17 @@ TEST(ContractEthBridge, AddAndRemoveManager) {
     EXPECT_EQ(ethBridge.removeManager(manager), 0);
 }
 
+TEST(ContractEthBridge, AddManagerThatAlreadyExists) {
+    ContractTestingEthBridge ethBridge;
+    ethBridge.addManager(ETHBRIDGE_MANAGER1);
+    EXPECT_NE(ethBridge.addManager(ETHBRIDGE_MANAGER1), 0);
+}
+
+TEST(ContractEthBridge, RemoveManagerDoesNotExist) {
+    ContractTestingEthBridge ethBridge;
+    EXPECT_NE(ethBridge.removeManager(ADDRESS2), 0);
+}
+
 TEST(ContractEthBridge, CreateOrderAndValidate) {
     ContractTestingEthBridge ethBridge;
     ETHBRIDGEChecker checker;
@@ -170,30 +189,124 @@ TEST(ContractEthBridge, CreateOrderAndValidate) {
         amount, memo, sourceChain, expectedStatus, expectedMessage);
 }
 
-TEST(ContractEthBridge, CompleteOrder) {
+TEST(ContractEthBridge, CreateOrderNoManager) {
     ContractTestingEthBridge ethBridge;
-    id ethAddress = getUser(4);
+    ETHBRIDGEChecker checker;
 
-    // Create order
-    ethBridge.createOrder(ethAddress, 500, true);
+    uint64 orderId = 0;
+    uint64 amount = 1000;
+    constexpr char memo[64] = "Bridge transfer details";
+    uint32 sourceChain = 1;
+    uint8 expectedStatus = 1;
+    array<uint8, 32> expectedMessage{};
 
-    // Complete the order
-    EXPECT_EQ(ethBridge.completeOrder(0), 0);
-    auto order = ethBridge.getOrder(0);
-    EXPECT_EQ(order.status, 1); // Completed
+    EXPECT_NE(ethBridge.createOrder(ADDRESS2, amount, true), 0);
+    auto orderOutput = ethBridge.getOrder(orderId);
+    checker.orderChecker(orderOutput, orderId, ETHBRIDGE_USER1, ADDRESS2,
+        amount, memo, sourceChain, expectedStatus, expectedMessage);
 }
 
-TEST(ContractEthBridge, RefundOrder) {
+TEST(ContractEthBridge, CreateOrderWithZeroAmount) {
     ContractTestingEthBridge ethBridge;
-    id ethAddress = getUser(5);
+    ETHBRIDGEChecker checker;
 
-    // Create order
-    ethBridge.createOrder(ethAddress, 300, true);
+    uint64 orderId = 0;
+    uint64 amount = 0;
+    constexpr char memo[64] = "Bridge transfer details";
+    uint32 sourceChain = 1;
+    uint8 expectedStatus = 1;
+    array<uint8, 32> expectedMessage{};
 
-    // Refund the order
-    EXPECT_EQ(ethBridge.refundOrder(0), 0);
-    auto order = ethBridge.getOrder(0);
-    EXPECT_EQ(order.status, 2); // Refunded
+    EXPECT_NE(ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true), 0);
+    auto orderOutput = ethBridge.getOrder(orderId);
+    checker.orderChecker(orderOutput, orderId, ETHBRIDGE_USER1, ETHBRIDGE_MANAGER1,
+        amount, memo, sourceChain, expectedStatus, expectedMessage);
+}
+
+TEST(ContractEthBridge, CompleteOrderInsufficientTokens) {
+    ContractTestingEthBridge ethBridge;
+    uint64 orderId = 0;
+    uint64 amount = 1000;
+
+    // Create order but don't transfer tokens to contract
+    ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true);
+    EXPECT_NE(ethBridge.completeOrder(orderId), 0);
+}
+
+TEST(ContractEthBridge, CompleteOrderSuccess) {
+    ContractTestingEthBridge ethBridge;
+    ETHBRIDGEChecker checker;
+
+    uint64 orderId = 0;
+    uint64 amount = 1000;
+    uint64 initAmountLocked = ethBridge.getTotalLockedTokens();
+
+    ethBridge.transferToContract(amount);
+    ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true);
+    EXPECT_EQ(ethBridge.completeOrder(orderId), 0);
+    checker.totalTokensChecker(amount + initAmountLocked, ethBridge.getTotalLockedTokens());
+}
+
+TEST(ContractEthBridge, CompleteOrderInsufficientTokens) {
+    ContractTestingEthBridge ethBridge;
+    uint64 orderId = 0;
+    uint64 amount = 1000;
+
+    ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true);
+    EXPECT_NE(ethBridge.completeOrder(orderId), 0);
+}
+
+TEST(ContractEthBridge, CompleteOrderBalanceCheck) {
+    ContractTestingEthBridge ethBridge;
+    ETHBRIDGEChecker checker;
+
+    uint64 orderId = 0;
+    uint64 amount = 1000;
+    uint64 initAmountLocked = ethBridge.getTotalLockedTokens();
+
+    // Transfer tokens and create order
+    ethBridge.transferToContract(amount);
+    ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true);
+    EXPECT_EQ(ethBridge.completeOrder(orderId), 0);
+
+    checker.totalTokensChecker(amount + initAmountLocked, ethBridge.getTotalLockedTokens());
+}
+
+
+TEST(ContractEthBridge, RefundOrderSuccess) {
+    ContractTestingEthBridge ethBridge;
+    ETHBRIDGEChecker checker;
+
+    uint64 orderId = 0;
+    uint64 amount = 1000;
+    uint64 initAmountLocked = ethBridge.getTotalLockedTokens();
+
+    ethBridge.transferToContract(amount);
+    ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true);
+    EXPECT_EQ(ethBridge.completeOrder(orderId), 0); //Completed
+    checker.totalTokensChecker(initAmountLocked + amount, ethBridge.getTotalLockedTokens());
+
+    EXPECT_EQ(ethBridge.refundOrder(orderId), 0); //Refund
+    checker.totalTokensChecker(initAmountLocked, ethBridge.getTotalLockedTokens());
+}
+
+TEST(ContractEthBridge, RefundOrderAlreadyRefunded) {
+    ContractTestingEthBridge ethBridge;
+    uint64 orderId = 0;
+    uint64 amount = 1000;
+  
+    ethBridge.createOrder(ETHBRIDGE_MANAGER1, amount, true);
+    ethBridge.transferToContract(amount);
+    EXPECT_EQ(ethBridge.completeOrder(orderId), 0);
+
+    EXPECT_EQ(ethBridge.refundOrder(orderId), 0); //first refund
+    EXPECT_NE(ethBridge.refundOrder(orderId), 0); //second refund 
+}
+
+TEST(ContractEthBridge, RefundOrderNoManager) {
+    ContractTestingEthBridge ethBridge;
+    ethBridge.createOrder(ETHBRIDGE_MANAGER1, 500, true);
+    EXPECT_FALSE(ethBridge.refundOrder(0), 0);
 }
 
 TEST(ContractEthBridge, TransferToContract) {

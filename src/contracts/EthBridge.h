@@ -58,11 +58,17 @@ public:
     };
 
     struct getTotalReceivedTokens_input {
-        uint64 amount;
     };
 
     struct getTotalReceivedTokens_output {
         uint64 totalTokens;
+    };
+
+    struct getTotalLockedTokens_input {
+    };
+
+    struct getTotalLockedTokens_output {
+        uint64 totalLockedTokens;
     };
 
     struct completeOrder_input {
@@ -115,6 +121,14 @@ public:
 
     struct getAdminID_output {
         id adminId;
+    };
+
+    struct getInvocatorID_input {
+        uint8 idInput;
+    };
+
+    struct getInvocatorID_output {
+        id invocatorId;
     };
 
     // Logger structures
@@ -449,6 +463,10 @@ public:
         output.totalTokens = state.totalReceivedTokens;
     _
 
+    PUBLIC_FUNCTION(getTotalLockedTokens)
+        output.totalLockedTokens = state.lockedTokens;
+    _
+
     struct completeOrder_locals {
         EthBridgeLogger log;
         id invocatorAddress;
@@ -729,6 +747,10 @@ public:
     PUBLIC_FUNCTION(getAdminID)
         output.adminId = state.admin;
     _
+
+    PUBLIC_FUNCTION(getInvocatorID)
+        output.invocatorId = qpi.invocator();
+    _
     // Register Functions and Procedures
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_PROCEDURE(createOrder, 1);
@@ -746,6 +768,8 @@ public:
         REGISTER_USER_FUNCTION(isManager, 10);
         REGISTER_USER_FUNCTION(getTotalReceivedTokens, 11);
         REGISTER_USER_FUNCTION(getAdminID, 12);
+        REGISTER_USER_FUNCTION(getInvocatorID, 13)
+        REGISTER_USER_FUNCTION(getTotalLockedTokens, 14);
         _
 
     // Initialize the contract
@@ -754,7 +778,7 @@ public:
         state.lockedTokens = 0;
         state.totalReceivedTokens = 0;
         state.transactionFee = 1000;
-        state.admin = qpi.invocator(); // ID(_P, _H, _O, _Y, _R, _V, _A, _K, _J, _X, _M, _L, _R, _B, _B, _I, _R, _I, _P, _D, _I, _B, _M, _H, _D, _H, _U, _A, _Z, _B, _Q, _K, _N, _B, _J, _T, _R, _D, _S, _P, _G, _C, _L, _Z, _C, _Q, _W, _A, _K, _C, _F, _Q, _J, _K, _K, _E);
+        state.admin = qpi.invocator(); 
         state.sourceChain = 0; //Arbitrary numb. No-EVM chain
     _
 };
