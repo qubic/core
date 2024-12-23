@@ -277,7 +277,8 @@ public:
     inline static BlobInfo* mapLogIdToBufferIndex = NULL;
     inline static unsigned long long logBufferTail;
     inline static unsigned long long logId;
-    inline static unsigned int tickBegin;
+    inline static unsigned int tickBegin; // initial tick of the epoch
+    inline static unsigned int tickLoadedFrom; // tick that this node load from (save/load state feature)
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
     inline static BlobInfo currentTxInfo;
@@ -497,7 +498,7 @@ public:
 #endif
     }
 
-    static void reset(unsigned int _tickBegin)
+    static void reset(unsigned int _tickBegin, unsigned int _tickLoadedFrom)
     {
 #if ENABLED_LOGGING
         logBuf.init();
@@ -505,6 +506,7 @@ public:
         logBufferTail = 0;
         logId = 0;
         tickBegin = _tickBegin;
+        tickLoadedFrom = _tickLoadedFrom;
 #endif
     }
 
