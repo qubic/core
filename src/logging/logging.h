@@ -472,7 +472,7 @@ public:
                 return false;
             }
         }
-        reset(0);
+        reset(0, 0);
 #endif
         return true;
     }
