@@ -2282,7 +2282,7 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
+        logger.reset(system.initialTick, system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
@@ -3410,7 +3410,7 @@ static bool loadAllNodeStates()
 
 #if ENABLED_LOGGING
     logToConsole(L"Initializing logger");
-    logger.reset(system.initialTick); // initialize the logger
+    logger.reset(system.initialTick, system.tick); // initialize the logger
 #endif
     return true;
 }
