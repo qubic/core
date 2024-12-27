@@ -94,6 +94,12 @@ public:
         initEmptyUniverse();
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
+        qLogger::initLogging();
+    }
+
+    ~ContractTestingQx()
+    {
+        qLogger::deinitLogging();
     }
 
     QxChecker* getState()
