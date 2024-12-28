@@ -27,6 +27,7 @@
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
     <ClInclude Include="contracts\math_lib.h" />
+    <ClInclude Include="contracts\MsVault.h" />
     <ClInclude Include="contracts\MyLastMatch.h" />
     <ClInclude Include="contracts\qpi.h" />
     <ClInclude Include="contracts\Quottery.h" />
