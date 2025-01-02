@@ -43,6 +43,11 @@ echo -e "o\nY\nd\nn\n\n\n+200G\n\nt\n\nef00\nw\nY" | gdisk /dev/sda
 /contract0003.XXX
 /contract0004.XXX
 /contract0005.XXX
+/contract0006.XXX
+/contract0007.XXX
+/contract0008.XXX
+/contract0009.XXX
+/contract0010.XXX
 /spectrum.XXX
 /system
 /universe.XXX
@@ -57,6 +62,11 @@ echo -e "o\nY\nd\nn\n\n\n+200G\n\nt\n\nef00\nw\nY" | gdisk /dev/sda
 - contract0003.XXX => must be the current contract #3 file. XXX must be replaced with the current epoch. (e.g. `contract0003.114`). Data from Random.
 - contract0004.XXX => must be the current contract #4 file. XXX must be replaced with the current epoch. (e.g. `contract0004.114`). Data from QUtil.
 - contract0005.XXX => must be the current contract #5 file. XXX must be replaced with the current epoch. (e.g. `contract0005.114`). Data from MyLastMatch.
+- contract0006.XXX => must be the current contract #6 file. XXX must be replaced with the current epoch. (e.g. `contract0006.114`). Data from GQMPROPO.
+- contract0007.XXX => must be the current contract #7 file. XXX must be replaced with the current epoch. (e.g. `contract0007.114`). Data from Swatch.
+- contract0008.XXX => must be the current contract #8 file. XXX must be replaced with the current epoch. (e.g. `contract0008.114`). Data from CCF.
+- contract0009.XXX => must be the current contract #9 file. XXX must be replaced with the current epoch. (e.g. `contract0009.114`). Data from QEarn.
+- contract0010.XXX => must be the current contract #10 file. XXX must be replaced with the current epoch. (e.g. `contract0010.114`). Data from QVault.
 - Other contract files with the same format as above. For now, we have 6 contracts.
 - universe.XXX => must be the current universe file. XXX must be replaced with the current epoch. (e.g `universe.114`)
 - spectrum.XXX => must be the current spectrum file. XXX must be replaced with the current epoch. (e.g `spectrum.114`)
