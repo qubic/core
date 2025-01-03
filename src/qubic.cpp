@@ -4471,7 +4471,10 @@ static bool initialize()
     requestedTickTransactions.header.setType(REQUEST_TICK_TRANSACTIONS);
     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
-    if (!initFilesystem())
+    EFI_GUID mpServiceProtocolGuid = EFI_MP_SERVICES_PROTOCOL_GUID;
+    bs->LocateProtocol(&mpServiceProtocolGuid, NULL, (void**)&mpServicesProtocol);
+
+    if (!initFilesystem(mpServicesProtocol))
         return false;
 
     EFI_STATUS status;
@@ -4788,6 +4791,8 @@ static void deinitialize()
     deinitCommonBuffers();
 
     logger.deinitLogging();
+
+    deInitFileSystem();
 
 #if ADDON_TX_STATUS_REQUEST
     deinitTxStatusRequestAddOn();
@@ -5575,8 +5580,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         EFI_STATUS status;
 
         unsigned int computingProcessorNumber;
-        EFI_GUID mpServiceProtocolGuid = EFI_MP_SERVICES_PROTOCOL_GUID;
-        bs->LocateProtocol(&mpServiceProtocolGuid, NULL, (void**)&mpServicesProtocol);
         unsigned long long numberOfAllProcessors, numberOfEnabledProcessors;
         mpServicesProtocol->GetNumberOfProcessors(mpServicesProtocol, &numberOfAllProcessors, &numberOfEnabledProcessors);
         mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
@@ -6107,6 +6110,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #if !defined(NDEBUG)
                 printDebugMessages();
 #endif
+                // Flush the file system
+                flushAsyncFileIOBuffer();
             }
 
             saveSystem();
