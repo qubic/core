@@ -50,11 +50,11 @@
 
 #define VERSION_A 1
 #define VERSION_B 230
-#define VERSION_C 1
+#define VERSION_C 2
 
 // Epoch and initial tick for node startup
-#define EPOCH 141
-#define TICK 18017311
+#define EPOCH 142
+#define TICK 18168941
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
