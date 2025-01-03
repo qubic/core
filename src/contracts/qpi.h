@@ -5,6 +5,9 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
+// swap_uint128
+#include "../platform/swap_uint128.h"
+
 // ASSERT can be used to support debugging and speed-up development
 #include "../platform/assert.h"
 
@@ -46,6 +49,7 @@ namespace QPI
 	typedef signed long long sint64;
 	typedef unsigned long long uint64;
 
+	typedef uint128_t uint128;
 	typedef m256i id;
 
 #define NULL_ID id::zero()
@@ -1301,6 +1305,11 @@ namespace QPI
 			const AssetIssuanceId& issuanceId,
 			const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
+		) const;
+
+		inline bool isAssetIssued(
+			const m256i& id,
+			unsigned long long assetName
 		) const;
 
 		sint32 numberOfTickTransactions(
