@@ -1,4 +1,8 @@
 /packages/
+.vscode/
 .vs/
 x64/
 ~AutoRecover.*.vcxproj
+
+.DS_Store
+tmp

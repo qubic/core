@@ -546,3 +546,9 @@ iteration:
         }
     }
 }
+
+bool QPI::QpiContextFunctionCall::isAssetIssued(const m256i& issuer, unsigned long long assetName) const
+{
+    bool res = ::issuanceIndex(issuer, assetName) != NO_ASSET_INDEX;
+    return res;
+}
