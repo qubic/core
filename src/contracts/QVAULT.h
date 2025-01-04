@@ -214,7 +214,7 @@ public:
     struct getNumberOfAsset_input
     {
         uint64 assetName;
-		id issuer;
+	    id issuer;
         uint32 ownershipManagingContractIndex;
     };
 
@@ -712,7 +712,7 @@ protected:
             locals.paymentForReinvest = QVAULT_MAX_REINVEST_AMOUNT;
         }
 
-        qpi.distributeDividends(div(locals.paymentForShareholders, 676ULL));
+        qpi.distributeDividends(div(locals.paymentForShareholders, NUMBER_OF_COMPUTORS * 1ULL));
         qpi.transfer(state.adminAddress, locals.paymentForDevelopment);
         qpi.transfer(state.reinvestingAddress, locals.paymentForReinvest);
         qpi.burn(locals.amountOfBurn);
@@ -728,7 +728,7 @@ protected:
         locals.statsOfEpoch.revenueOfQcapHolders = locals.paymentForQCAPHolders;
         locals.statsOfEpoch.revenueOfOneQcap = div(locals.paymentForQCAPHolders, locals.circulatedSupply);
         locals.statsOfEpoch.revenueOfQvaultHolders = locals.paymentForShareholders;
-        locals.statsOfEpoch.revenueOfOneQvault = div(locals.paymentForShareholders, 676ULL);
+        locals.statsOfEpoch.revenueOfOneQvault = div(locals.paymentForShareholders, NUMBER_OF_COMPUTORS * 1ULL);
         locals.statsOfEpoch.revenueOfDevTeam = locals.paymentForDevelopment;
         locals.statsOfEpoch.revenueOfReinvesting = locals.paymentForReinvest;
 
