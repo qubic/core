@@ -206,6 +206,9 @@ static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 
 
+static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0 };
+
+
 // variables and declare for persisting state
 static volatile int requestPersistingNodeState = 0;
 static volatile int persistingNodeStateTickProcWaiting = 0;
@@ -494,11 +497,19 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                 }
                 else
                 {
-                    for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
-                        if (request->destinationPublicKey == computorPublicKeys[i])
+                        if (request->sourcePublicKey == broadcastedComputors.computors.publicKeys[i])
                         {
-                            // See CustomMiningSolutionMessage structure
+                            unsigned char sharedKeyAndGammingNonce[64];
+                            bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                            bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                            unsigned char gammingKey[32];
+                            KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
+                            if (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
+                            {
+                                customMiningMessageCounters[i]++;
+                            }
 
                             break;
                         }
@@ -5399,6 +5410,19 @@ static void processKeyPresses()
             appendText(message, L", min candidate score = ");
             appendNumber(message, minimumCandidateScore, TRUE);
             appendText(message, L").");
+            logToConsole(message);
+
+            setText(message, L"Custom mining solution counters:");
+            const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                appendText(message, L" ");
+                appendText(message, alphabet[i / 26]);
+                appendText(message, alphabet[i % 26]);
+                appendText(message, L"=");
+                appendNumber(message, customMiningMessageCounters[i], FALSE);
+            }
+            appendText(message, L".");
             logToConsole(message);
         }
         break;

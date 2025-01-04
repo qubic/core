@@ -3,6 +3,8 @@
 #include "common_def.h"
 
 #define MESSAGE_TYPE_SOLUTION 0
+#define MESSAGE_TYPE_CUSTOM_MINING_TASK 1
+#define MESSAGE_TYPE_CUSTOM_MINING_SOLUTION 2
 
 // TODO: documentation needed:
 // "A General Message type used to send/receive messages from/to peers." -> right?
@@ -45,9 +47,6 @@ struct CustomMiningSolutionMessage
     m256i sourcePublicKey;
     m256i zero;
     m256i gammingNonce;
-
-    m256i codeFileTrailerDigest;
-    m256i dataFileTrailerDigest;
 
     // Solution payload
 };
