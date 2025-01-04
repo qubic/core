@@ -772,7 +772,7 @@ protected:
             the initial total locked amount should exclude the amount that locked on initial epoch but it didn't exclude that amount before. 
             so now it is updated.
             I recorded the initial total locked amount of epoch 139 with 1834842583179.
-            this line will be deleted at epoch 141 at least.
+            This updates should be deployed on mainnet to chnage the initial infos of epoch 139. it will be deleted an epoch after deployment on mainnet.
         */
         locals.INITIALIZE_ROUNDINFO._epochBonusAmount = state._initialRoundInfo.get(139)._epochBonusAmount;
         locals.INITIALIZE_ROUNDINFO._totalLockedAmount = 1834842583179;
