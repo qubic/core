@@ -249,6 +249,26 @@ public:
         EXPECT_EQ(output.unbannedAddress2, unbannedAddress2);
         EXPECT_EQ(output.unbannedAddress3, unbannedAddress3);
     }
+
+    void getNumberOfAssetChecker(const getNumberOfAsset_output& output)
+    {
+        EXPECT_EQ(output.numberOfAssetPossessed, QVAULT_QCAP_MAX_SUPPLY);
+    }
+
+    void getStatsPerEpochChecker(const getStatsPerEpoch_output& output)
+    {
+        EXPECT_EQ(output.totalRevenue, _allEpochStats.get(system.epoch).totalRevenue);
+        EXPECT_EQ(output.revenueOfQcapHolders, _allEpochStats.get(system.epoch).revenueOfQcapHolders);
+        EXPECT_EQ(output.revenueOfQvaultHolders, _allEpochStats.get(system.epoch).revenueOfQvaultHolders);
+        EXPECT_EQ(output.revenueOfOneQcap, _allEpochStats.get(system.epoch).revenueOfOneQcap);
+        EXPECT_EQ(output.revenueOfOneQvault, _allEpochStats.get(system.epoch).revenueOfOneQvault);
+        EXPECT_EQ(output.revenueOfDevTeam, _allEpochStats.get(system.epoch).revenueOfDevTeam);
+        EXPECT_EQ(output.revenueOfReinvesting, _allEpochStats.get(system.epoch).revenueOfReinvesting);
+        EXPECT_EQ(output.percentOfDistributed, QPI::div(_allEpochStats.get(system.epoch).revenueOfQcapHolders * 100000ULL, _allEpochStats.get(system.epoch).totalRevenue));
+        EXPECT_EQ(output.percentOfQvaultShareholders, QPI::div(_allEpochStats.get(system.epoch).revenueOfQvaultHolders * 100000ULL, _allEpochStats.get(system.epoch).totalRevenue));
+        EXPECT_EQ(output.percentOfReinvested, QPI::div(_allEpochStats.get(system.epoch).revenueOfReinvesting * 100000ULL, _allEpochStats.get(system.epoch).totalRevenue));
+        EXPECT_EQ(output.percentOfDevTeam, QPI::div(_allEpochStats.get(system.epoch).revenueOfDevTeam * 100000ULL, _allEpochStats.get(system.epoch).totalRevenue));
+    }
 };
 
 class ContractTestingQvault : protected ContractTesting
@@ -286,6 +306,30 @@ public:
         QVAULT::getData_output output;
 
         callFunction(QVAULT_CONTRACT_INDEX, 1, input, output);
+        return output;
+    }
+
+    QVAULT::getNumberOfAsset_output getNumberOfAsset(uint64 assetName, id issuer, uint32 ownershipManagingContractIndex) const
+    { 
+        QVAULT::getNumberOfAsset_input input;
+        QVAULT::getNumberOfAsset_output output;
+
+        input.assetName = assetName;
+        input.issuer = issuer;
+        input.ownershipManagingContractIndex = ownershipManagingContractIndex;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 2, input, output);
+        return output;
+    }
+
+    QVAULT::getStatsPerEpoch_output getStatsPerEpoch(uint16 epoch) const
+    {
+        QVAULT::getStatsPerEpoch_input input;
+        QVAULT::getStatsPerEpoch_output output;
+        
+        input.epoch = epoch;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 3, input, output);
         return output;
     }
 
@@ -500,6 +544,8 @@ TEST(ContractQvault, END_EPOCH)
     uint64 revenue = random(QVAULT_MIN_REVENUE, QVAULT_MAX_REVENUE);
     increaseEnergy(QVAULT_CONTRACT_ID, revenue);
     qvault.endEpoch();
+    auto output = qvault.getStatsPerEpoch(system.epoch);
+    qvault.getState()->getStatsPerEpochChecker(output);
     qvault.getState()->endEpochChecker(revenue, QCAPHolders);
 }
 
@@ -877,4 +923,20 @@ TEST(ContractQvault, getData)
 
     output = qvault.getData();
     qvault.getState()->getDataChecker(output);
+}
+
+TEST(ContractQvault, getNumberOfAsset)
+{
+    ContractTestingQvault qvault;
+
+    id issuer = QVAULT_QCAP_ISSUER;
+    uint64 assetName = assetNameFromString("QCAP");
+    sint64 numberOfShares = QVAULT_QCAP_MAX_SUPPLY;
+
+    increaseEnergy(issuer, QVAULT_ISSUE_ASSET_FEE + QVAULT_TOKEN_TRANSFER_FEE);
+    EXPECT_EQ(qvault.issueAsset(issuer, assetName, numberOfShares, 0, 0), numberOfShares);
+    EXPECT_EQ(qvault.TransferShareOwnershipAndPossession(issuer, assetName, numberOfShares, QVAULT_CONTRACT_ID), numberOfShares);
+
+    auto output = qvault.getNumberOfAsset(assetName, issuer, 1);
+    qvault.getState()->getNumberOfAssetChecker(output);
 }
