@@ -214,7 +214,7 @@ public:
     struct getNumberOfAsset_input
     {
         uint64 assetName;
-	    id issuer;
+	id issuer;
         uint32 ownershipManagingContractIndex;
     };
 
