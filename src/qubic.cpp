@@ -653,7 +653,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 
                 for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
-                    if (selfGeneratedComputors[i] != request->computors.publicKeys[i])
+                    if (broadcastedComputors.computors.publicKeys[i] != request->computors.publicKeys[i])
                     {
                         listMatches = false;
                         break;
