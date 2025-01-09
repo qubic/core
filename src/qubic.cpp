@@ -97,7 +97,7 @@ static volatile unsigned char mainAuxStatus = 0;
 static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
 static volatile bool forceSwitchEpoch = false;
-static volatile char criticalSituation = 0;
+static volatile char criticalSituation = 0; //1: Encounterd problem processing transactions; 2: Self-generated computorlist does not match list of ARB;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
 
 static int misalignedState = 0;
@@ -239,6 +239,10 @@ struct
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+
+
+static m256i selfGeneratedComputors[NUMBER_OF_COMPUTORS];
+static bool useSelfGeneratedComputors = false;
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -631,7 +635,8 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 
     // Only accept computor list from current epoch (important in seamless epoch transition if this node is
     // lagging behind the others that already switched epoch).
-    if (request->computors.epoch == system.epoch && request->computors.epoch > broadcastedComputors.computors.epoch)
+    // Only accept a new list once per epoch except when we are using a self-generated computor list
+    if (request->computors.epoch == system.epoch && (request->computors.epoch > broadcastedComputors.computors.epoch || useSelfGeneratedComputors))
     {
         // Verify that all addresses are non-zeroes. Otherwise, discard it even if ARB broadcasted it.
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -652,30 +657,64 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(NULL, header);
             }
 
-            // Copy computor list
-            bs->CopyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
-
-            // Update ownComputorIndices and minerPublicKeys
-            if (request->computors.epoch == system.epoch)
+            if (useSelfGeneratedComputors)
             {
-                numberOfOwnComputorIndices = 0;
-                ACQUIRE(minerScoreArrayLock);
+                // Compare received computor list (signed by ARB) and self generated computor list
+                bool listMatches = true;
+
                 for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
-                    minerPublicKeys[i] = request->computors.publicKeys[i];
-
-                    for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+                    if (selfGeneratedComputors[i] != request->computors.publicKeys[i])
                     {
-                        if (request->computors.publicKeys[i] == computorPublicKeys[j])
-                        {
-                            ownComputorIndices[numberOfOwnComputorIndices] = i;
-                            ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
-
-                            break;
-                        }
+                        listMatches = false;
+                        break;
                     }
                 }
-                RELEASE(minerScoreArrayLock);
+                if (!listMatches)
+                {
+                    // Stop tickProcessor due to missmatch
+                    criticalSituation = 2;
+#ifndef NDEBUG
+                    addDebugMessage(L"Error: Computor list received from ARB does not match self-generated list. Raise criticalSituation #2.");
+#endif
+                }
+                else
+                {
+                    // Accept list of arbitrator and mark as signed
+                    copyMem(&broadcastedComputors.computors.signature, request->computors.signature, SIGNATURE_SIZE);
+                    useSelfGeneratedComputors = false;
+                    // In case previous computor list of ARB did not match resolve criticalsituation to start ticking again
+                    criticalSituation = 0;
+                }
+            }
+            else // No self generated computor list available
+            {
+                // Copy computor list
+                copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+                copyMem(system.futureComputors, broadcastedComputors.computors.publicKeys, NUMBER_OF_COMPUTORS * sizeof(m256i));
+
+                // Update ownComputorIndices and minerPublicKeys
+                if (request->computors.epoch == system.epoch)
+                {
+                    numberOfOwnComputorIndices = 0;
+                    ACQUIRE(minerScoreArrayLock);
+                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                    {
+                        minerPublicKeys[i] = request->computors.publicKeys[i];
+
+                        for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+                        {
+                            if (request->computors.publicKeys[i] == computorPublicKeys[j])
+                            {
+                                ownComputorIndices[numberOfOwnComputorIndices] = i;
+                                ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
+
+                                break;
+                            }
+                        }
+                    }
+                    RELEASE(minerScoreArrayLock);
+                }
             }
         }
     }
@@ -1971,6 +2010,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     minerScores[numberOfMiners++] = 1;
                 }
 
+                // Sort minerPublicKeys according to minderScores
                 const m256i tmpPublicKey = minerPublicKeys[minerIndex];
                 const unsigned int tmpScore = minerScores[minerIndex];
                 while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
@@ -2761,6 +2801,34 @@ static void beginEpoch()
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
     resourceTestingDigest = 0;
+
+    // Use self generated computor list
+    if (useSelfGeneratedComputors)
+    {
+        broadcastedComputors.computors.epoch = system.epoch;
+        copyMem(&broadcastedComputors.computors.publicKeys, selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i));
+        copyMem(system.futureComputors, broadcastedComputors.computors.publicKeys, NUMBER_OF_COMPUTORS * sizeof(m256i));
+
+        // Update ownComputorIndices and minerPublicKeys
+        numberOfOwnComputorIndices = 0;
+        ACQUIRE(minerScoreArrayLock);
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            minerPublicKeys[i] = selfGeneratedComputors[i];
+
+            for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+            {
+                if (selfGeneratedComputors[i] == computorPublicKeys[j])
+                {
+                    ownComputorIndices[numberOfOwnComputorIndices] = i;
+                    ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
+
+                    break;
+                }
+            }
+        }
+        RELEASE(minerScoreArrayLock);
+    }
 
     numberOfTransactions = 0;
 #if TICK_STORAGE_AUTOSAVE_MODE
@@ -4548,6 +4616,72 @@ static void tryForceEmptyNextTick()
     forceNextTick = false;
 }
 
+// Calculates computor indices during epoche changes.
+// Requalifying computors keept their index
+// New computor obtain one of the free indices
+static void calculateComputorIndex()
+{
+    // Use reorg buffer
+    m256i *tempComputorList = (m256i *)reorgBuffer;
+    bool *isIndexTaken = (bool *)(tempComputorList + (NUMBER_OF_COMPUTORS * sizeof(m256i))); // Start right after tempComputorList
+    bool *isFComputorUsed = (bool *)(isIndexTaken + NUMBER_OF_COMPUTORS);                    // Start after isIndexTaken
+
+    setMem(tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
+    setMem(isIndexTaken, NUMBER_OF_COMPUTORS, false);
+    setMem(isFComputorUsed, NUMBER_OF_COMPUTORS, false);
+    setMem(selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
+
+    // Check if computor is keeping it's status and keep it's index
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        for (unsigned int j = 0; j < NUMBER_OF_COMPUTORS; j++)
+        {
+            if (system.futureComputors[i] == broadcastedComputors.computors.publicKeys[j])
+            {
+                // Keep index
+                tempComputorList[j] = system.futureComputors[i];
+                isIndexTaken[j] = true;
+                isFComputorUsed[i] = true;
+                break;
+            }
+        }
+    }
+
+    // Fill remaining spots
+    unsigned int futureComputorIdx = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        if (!isIndexTaken[i])
+        {
+            // Find new Computor in futureComputors
+            while (futureComputorIdx < NUMBER_OF_COMPUTORS)
+            {
+                if (isFComputorUsed[futureComputorIdx] == false)
+                {
+                    break;
+                }
+                futureComputorIdx++;
+            }
+            if (futureComputorIdx < NUMBER_OF_COMPUTORS)
+            {
+                tempComputorList[i] = system.futureComputors[futureComputorIdx];
+                isFComputorUsed[futureComputorIdx] = true;
+                futureComputorIdx++;
+            }
+            else
+            {
+                // Handle error; something went wrong
+            }
+        }
+    }
+
+    // Save Future Computors in seperate array as beginEpoche randomly initializes boradcatedComputors
+    copyMem(selfGeneratedComputors, tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i));
+
+    useSelfGeneratedComputors = true;
+};
+
+
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -4568,12 +4702,26 @@ static void tickProcessor(void*)
     {
         checkinTime(processorNumber);
 
+        // Stop ticking as long as we are in criticalsituation
+        while (criticalSituation > 0)
+            _mm_pause();
+
         const unsigned long long curTimeTick = __rdtsc();
         const unsigned int nextTick = system.tick + 1;
 
         if (broadcastedComputors.computors.epoch == system.epoch
             && ts.tickInCurrentEpochStorage(nextTick))
         {
+
+#ifndef NDEBUG
+            if (useSelfGeneratedComputors)
+            {
+                CHAR16 msg[60];
+                setText(msg, L"Computor list is self generated and not signed by ARB");
+                addDebugMessage(msg);
+            }
+#endif
+
             const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
             const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
 
@@ -4919,6 +5067,12 @@ static void tickProcessor(void*)
                                     epochTransitionState = 2;
 
 #ifndef NDEBUG
+                                    addDebugMessage(L"Calculate computor list"); // TODO: remove after testing
+#endif
+                                    calculateComputorIndex();
+
+
+#ifndef NDEBUG
                                     addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
 #endif
                                     beginEpoch();
@@ -4942,7 +5096,9 @@ static void tickProcessor(void*)
                                     ASSERT(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
                                     ASSERT(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
                                     ASSERT(isZero((void*)minerScores, sizeof(minerScores)));
-                                    ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
+                                    if(!useSelfGeneratedComputors){
+                                        ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
+                                    }
                                     ASSERT(isZero(competitorScores, sizeof(competitorScores)));
                                     ASSERT(isZero(competitorPublicKeys, sizeof(competitorPublicKeys)));
                                     ASSERT(isZero(competitorComputorStatuses, sizeof(competitorComputorStatuses)));
@@ -6433,6 +6589,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
                 }
+                else if (criticalSituation == 2)
+                {
+                    logToConsole(L"CRITICAL SITUATION #2: Self-generated computorlist does not match computorlist of ARB");
+                }
+
 
                 {
                     // TODO: remove later
@@ -6524,7 +6685,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                         // send RequestComputors message at beginning of epoch
                         if (!broadcastedComputors.computors.epoch
-                            || broadcastedComputors.computors.epoch != system.epoch)
+                            || broadcastedComputors.computors.epoch != system.epoch
+                            || useSelfGeneratedComputors)
                         {
                             requestedComputors.header.randomizeDejavu();
                             bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
@@ -6771,6 +6933,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                     tickerLoopNumerator = 0;
                     tickerLoopDenominator = 0;
+
+                    if (useSelfGeneratedComputors)
+                    {
+                        logToConsole(L"Computorlist is self-generated and not signed by ARB");
+                    }
 
                     // output if misalignment happened
                     if (gTickTotalNumberOfComputors - gTickNumberOfComputors >= QUORUM && numberOfKnownNextTickTransactions == numberOfNextTickTransactions)
