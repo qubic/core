@@ -4024,15 +4024,6 @@ static void tickProcessor(void*)
             && ts.tickInCurrentEpochStorage(nextTick))
         {
 
-#ifndef NDEBUG
-            if (useSelfGeneratedComputors)
-            {
-                CHAR16 msg[60];
-                setText(msg, L"Computor list is self generated and not signed by ARB");
-                addDebugMessage(msg);
-            }
-#endif
-
             const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
             const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
 
