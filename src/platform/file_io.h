@@ -304,6 +304,8 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
 #endif
 }
 
+#pragma optimize("", off)
+
 struct FileItem
 {
     enum ItemState
@@ -702,6 +704,8 @@ private:
     LoadFileItemStorage<ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS> mFileBlockingReadQueue;
 };
 
+#pragma optimize("", on)
+
 // Asynchorous save file
 // This function can be called from any thread and have blocking and non blocking mode
 // - Blocking mode: to avoid lock and the actual save happen, flushAsyncFileIOBuffer must be called in main thread
@@ -859,6 +863,8 @@ static bool initFilesystem(EFI_MP_SERVICES_PROTOCOL* pServiceProtocol = NULL)
 #endif
 }
 
+#pragma optimize("", off)
+
 static void deInitFileSystem()
 {
     if (gAsyncFileIO)
@@ -876,6 +882,7 @@ static void flushAsyncFileIOBuffer()
         gAsyncFileIO->flush();
     }
 }
+#pragma optimize("", on)
 
 // add epoch number as an extension to a filename
 static void addEpochToFileName(unsigned short* filename, int nameSize, short epoch)
