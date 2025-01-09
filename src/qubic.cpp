@@ -661,7 +661,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 }
                 if (!listMatches)
                 {
-                    // Stop tickProcessor due to missmatch
+                    // Stop tickProcessor due to mismatch
                     criticalSituation = 2;
 #ifndef NDEBUG
                     addDebugMessage(L"Error: Computor list received from ARB does not match self-generated list. Raise criticalSituation #2.");
@@ -1999,7 +1999,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     minerScores[numberOfMiners++] = 1;
                 }
 
-                // Sort minerPublicKeys according to minderScores
+                // Sort minerPublicKeys according to minerScores
                 const m256i tmpPublicKey = minerPublicKeys[minerIndex];
                 const unsigned int tmpScore = minerScores[minerIndex];
                 while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
@@ -3927,9 +3927,9 @@ static void tryForceEmptyNextTick()
     forceNextTick = false;
 }
 
-// Calculates computor indices during epoche changes.
-// Requalifying computors keept their index
-// New computor obtain one of the free indices
+// Calculates computor indices during epoch changes.
+// Requalifying computors keep their index
+// New computors obtain one of the free indices
 static void calculateComputorIndex()
 {
     // Use reorg buffer
@@ -3942,7 +3942,7 @@ static void calculateComputorIndex()
     setMem(isFComputorUsed, NUMBER_OF_COMPUTORS, false);
     setMem(selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
 
-    // Check if computor is keeping it's status and keep it's index
+    // Check if computor is keeping its status and keep its index
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
         for (unsigned int j = 0; j < NUMBER_OF_COMPUTORS; j++)
@@ -3986,7 +3986,7 @@ static void calculateComputorIndex()
         }
     }
 
-    // Save Future Computors in seperate array as beginEpoche randomly initializes boradcatedComputors
+    // Save Future Computors in seperate array as beginEpoch randomly initializes broadcastedComputors
     copyMem(selfGeneratedComputors, tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i));
 
     useSelfGeneratedComputors = true;
