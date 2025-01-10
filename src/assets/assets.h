@@ -276,7 +276,7 @@ iteration:
 }
 
 static sint64 numberOfShares(
-    const AssetIssuanceId& issuanceId,
+    const Asset& issuanceId,
     const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
     const AssetPossessionSelect& possession = AssetPossessionSelect::any())
 {

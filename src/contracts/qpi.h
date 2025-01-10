@@ -593,7 +593,7 @@ namespace QPI
 	//////////
 
 
-	struct AssetIssuanceId
+	struct Asset
 	{
 		id issuer;
 		uint64 assetName;
@@ -650,7 +650,7 @@ namespace QPI
 	class AssetOwnershipIterator
 	{
 	protected:
-		AssetIssuanceId _issuance;
+		Asset _issuance;
 		unsigned int _issuanceIdx;
 		AssetOwnershipSelect _ownership;
 		unsigned int _ownershipIdx;
@@ -661,13 +661,13 @@ namespace QPI
 		}
 
 	public:
-		AssetOwnershipIterator(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any())
+		AssetOwnershipIterator(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any())
 		{
 			begin(issuance, ownership);
 		}
 
 		// Start iteration with given issuance and given ownership filter (selects first record).
-		inline void begin(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any());
+		inline void begin(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any());
 
 		// Return if iteration with next() has reached end.
 		inline bool reachedEnd() const;
@@ -709,13 +709,13 @@ namespace QPI
 		unsigned int _possessionIdx;
 
 	public:
-		AssetPossessionIterator(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any())
+		AssetPossessionIterator(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any())
 		{
 			begin(issuance, ownership, possession);
 		}
 
 		// Start iteration with given issuance and given ownership + possession filters (selects first record).
-		inline void begin(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any());
+		inline void begin(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any());
 
 		// Return if iteration with next() has reached end.
 		inline bool reachedEnd() const;
@@ -1298,7 +1298,7 @@ namespace QPI
 		) const;
 
 		inline sint64 numberOfShares(
-			const AssetIssuanceId& issuanceId,
+			const Asset& issuanceId,
 			const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
 		) const;

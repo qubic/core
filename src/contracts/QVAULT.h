@@ -606,7 +606,7 @@ protected:
     {
         ::Entity entity;
         AssetPossessionIterator iter;
-        AssetIssuanceId QCAPId;
+        Asset QCAPId;
         uint64 revenue;
         uint64 paymentForShareholders;
         uint64 paymentForQCAPHolders;
