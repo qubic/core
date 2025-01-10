@@ -865,41 +865,6 @@ protected:
 
         state._initialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
         state._currentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
-
-        /*
-            We did not save the metrics data for epoch 138, 139, 140, 141, 142, 143.
-            So we need to save the data in here. This initialize lines should be removed after releasing surely.
-            If this lines are not removed after releasing, the value of metrics will be mistaken because the value of metrics are increse by unlocking.
-        */
-        locals.INITIALIZE_STATS.burnedAmount = div((state._initialRoundInfo.get(138)._epochBonusAmount - state._currentRoundInfo.get(138)._epochBonusAmount), QEARN_BURN_PERCENT_4_7 + QEARN_EARLY_UNLOCKING_PERCENT_4_7) * QEARN_BURN_PERCENT_4_7;
-        locals.INITIALIZE_STATS.rewardedAmount = div((state._initialRoundInfo.get(138)._epochBonusAmount - state._currentRoundInfo.get(138)._epochBonusAmount), QEARN_BURN_PERCENT_4_7 + QEARN_EARLY_UNLOCKING_PERCENT_4_7) * QEARN_EARLY_UNLOCKING_PERCENT_4_7;
-        locals.INITIALIZE_STATS.boostedAmount = div((state._initialRoundInfo.get(138)._epochBonusAmount - state._currentRoundInfo.get(138)._epochBonusAmount), QEARN_BURN_PERCENT_4_7 + QEARN_EARLY_UNLOCKING_PERCENT_4_7) * (100 - QEARN_BURN_PERCENT_4_7 - QEARN_EARLY_UNLOCKING_PERCENT_4_7);
-
-        state.statsInfo.set(138, locals.INITIALIZE_STATS);
-
-        locals.INITIALIZE_STATS.burnedAmount = 0;
-        locals.INITIALIZE_STATS.rewardedAmount = 0;
-        locals.INITIALIZE_STATS.boostedAmount = QPI::div(QPI::div(state._currentRoundInfo.get(139)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(139)._totalLockedAmount) * (state._initialRoundInfo.get(139)._totalLockedAmount - state._currentRoundInfo.get(139)._totalLockedAmount), 10000000ULL);
-
-        state.statsInfo.set(139, locals.INITIALIZE_STATS);
-
-        locals.INITIALIZE_STATS.burnedAmount = 0;
-        locals.INITIALIZE_STATS.rewardedAmount = 0;
-        locals.INITIALIZE_STATS.boostedAmount = QPI::div(QPI::div(state._currentRoundInfo.get(140)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(140)._totalLockedAmount) * (state._initialRoundInfo.get(140)._totalLockedAmount - state._currentRoundInfo.get(140)._totalLockedAmount), 10000000ULL);
-
-        state.statsInfo.set(140, locals.INITIALIZE_STATS);
-
-        locals.INITIALIZE_STATS.burnedAmount = 0;
-        locals.INITIALIZE_STATS.rewardedAmount = 0;
-        locals.INITIALIZE_STATS.boostedAmount = QPI::div(QPI::div(state._currentRoundInfo.get(141)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(141)._totalLockedAmount) * (state._initialRoundInfo.get(141)._totalLockedAmount - state._currentRoundInfo.get(141)._totalLockedAmount), 10000000ULL);
-
-        state.statsInfo.set(141, locals.INITIALIZE_STATS);
-
-        locals.INITIALIZE_STATS.burnedAmount = 0;
-        locals.INITIALIZE_STATS.rewardedAmount = 0;
-        locals.INITIALIZE_STATS.boostedAmount = QPI::div(QPI::div(state._currentRoundInfo.get(142)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(142)._totalLockedAmount) * (state._initialRoundInfo.get(142)._totalLockedAmount - state._currentRoundInfo.get(142)._totalLockedAmount), 10000000ULL);
-
-        state.statsInfo.set(142, locals.INITIALIZE_STATS);
 	_
 
     struct END_EPOCH_locals 
