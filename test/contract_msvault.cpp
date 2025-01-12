@@ -16,6 +16,7 @@ public:
     {
         initEmptySpectrum();
         initEmptyUniverse();
+        qLogger::initLogging();
         INIT_CONTRACT(MSVAULT);
         callSystemProcedure(MSVAULT_CONTRACT_INDEX, INITIALIZE);
     }
@@ -127,6 +128,11 @@ public:
             return (sint64)vaultsAfter.vaultIds.get(prevCount);
         }
         return -1;
+    }
+
+    ~ContractTestingMsVault()
+    {
+        qLogger::deinitLogging();
     }
 };
 
