@@ -20,6 +20,16 @@ public:
         callSystemProcedure(MSVAULT_CONTRACT_INDEX, INITIALIZE);
     }
 
+    void beginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(MSVAULT_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
+    void endEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(MSVAULT_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+    }
+
     void registerVault(uint16 vaultType, id vaultName, const std::vector<id>& owners, uint64 fee)
     {
         MSVAULT::registerVault_input input;
@@ -174,6 +184,9 @@ TEST(ContractMsVault, RegisterVault_Success)
     // At least one vault active, revenue should have increased
     EXPECT_GE(revenue.numberOfActiveVaults, 1U);
     EXPECT_GE(revenue.totalRevenue, MSVAULT_REGISTERING_FEE);
+
+    auto balance = msVault.getBalanceOf(vaultId);
+    EXPECT_EQ(balance.balance, 0U);
 }
 
 TEST(ContractMsVault, GetVaultName)
@@ -410,4 +423,53 @@ TEST(ContractMsVault, GetVaults_Multiple)
     auto vaultsForOwner2After = msVault.getVaults(OWNER2);
     EXPECT_GE(static_cast<unsigned int>((unsigned)vaultsForOwner2After.numberOfVaults),
         static_cast<unsigned int>((unsigned)(vaultsForOwner2Before.numberOfVaults + 2U)));
+}
+
+TEST(ContractMsVault, GetRevenue)
+{
+    ContractTestingMsVault msVault;
+    msVault.beginEpoch();
+
+    auto revenueOutput = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueOutput.totalRevenue, 0U);
+    EXPECT_EQ(revenueOutput.totalDistributedToShareholders, 0U);
+    EXPECT_EQ(revenueOutput.numberOfActiveVaults, 0U);
+
+    increaseEnergy(OWNER1, 100000ULL);
+    increaseEnergy(OWNER2, 100000ULL);
+    increaseEnergy(OWNER3, 100000ULL);
+
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+
+    msVault.endEpoch();
+
+    msVault.beginEpoch();
+
+    revenueOutput = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueOutput.totalRevenue, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(revenueOutput.totalDistributedToShareholders, ((int)MSVAULT_REGISTERING_FEE / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS);
+    EXPECT_EQ(revenueOutput.numberOfActiveVaults, 0U);
+
+    increaseEnergy(OWNER1, 100000ULL);
+    increaseEnergy(OWNER2, 100000ULL);
+    increaseEnergy(OWNER3, 100000ULL);
+
+    msVault.registerVault(MSVAULT_VAULT_TYPE_QUORUM, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+
+    auto vaultsO1 = msVault.getVaults(OWNER1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
+
+    msVault.deposit(vaultId, 50000ULL, OWNER1);
+
+    msVault.endEpoch();
+
+    msVault.beginEpoch();
+
+    revenueOutput = msVault.getRevenueInfo();
+
+    auto total_revenue = MSVAULT_REGISTERING_FEE * 2 + MSVAULT_HOLDING_FEE;
+    EXPECT_EQ(revenueOutput.totalRevenue, total_revenue);
+    EXPECT_EQ(revenueOutput.totalDistributedToShareholders, ((int)(total_revenue) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS);
+    EXPECT_EQ(revenueOutput.numberOfActiveVaults, 1U);
+
 }
