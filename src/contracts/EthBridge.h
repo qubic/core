@@ -163,12 +163,12 @@ public:
     };
 
 
-private:
+protected:
     // Contract State
     array<BridgeOrder, 256> orders;      // Storage for orders (fixed size)
     uint64 nextOrderId;                            // Counter for order IDs
     uint64 lockedTokens;                           // Total locked tokens in the contract (balance)
-    uint64 transactionFee;                         // Fee for creating an order
+    uint32 transactionFee;                         // Fee for creating an order
     id admin;                                      // Admin address
     array<id, 16> managers;            // Managers list
     uint64 totalReceivedTokens;                    // Total tokens received
@@ -200,9 +200,27 @@ public:
     struct createOrder_locals {
         BridgeOrder newOrder;
         EthBridgeLogger log;
+        id invocatorAddress;
+        bit isManagerOperating;
     };
 
-    PUBLIC_PROCEDURE_WITH_LOCALS(createOrder)
+    PUBLIC_PROCEDURE_WITH_LOCALS(createOrder) //transaction fee
+        locals.invocatorAddress = qpi.invocator();
+        locals.isManagerOperating = false;
+        CALL(isManager, locals.invocatorAddress, locals.isManagerOperating);
+        //Check if the order is handled by a manager
+        if (!locals.isManagerOperating) {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::orderNotFound,
+                input.orderId,
+                0, // No amount involved
+                0
+            };
+            LOG_INFO(locals.log);
+            output.status = 1; // Error
+            return;
+        }
 
         // Validate the input 
         if (input.amount == 0) {
@@ -667,12 +685,51 @@ public:
             return;
         }
 
-        // Update the status and refund tokens
+        // Check Qubic to Ethereum direction, update status and refund tokens
+        if (locals.order.fromQubicToEthereum) {
+            // Ensure sufficient locked tokens for refund
+            if (state.lockedTokens < locals.order.amount) {
+                locals.log = EthBridgeLogger{
+                    CONTRACT_INDEX,
+                    EthBridgeError::insufficientLockedTokens,
+                    input.orderId,
+                    locals.order.amount,
+                    0
+                };
+                LOG_INFO(locals.log);
+                output.status = 4; // Error
+                return;
+            }
+
+            // Unlock tokens by decreasing lockedTokens
+            state.lockedTokens -= locals.order.amount;
+        }
+        else {
+            // Ethereum to Qubic direction
+            // Ensure sufficient received tokens for refund
+            if (state.totalReceivedTokens < locals.order.amount) {
+                locals.log = EthBridgeLogger{
+                    CONTRACT_INDEX,
+                    EthBridgeError::insufficientLockedTokens,
+                    input.orderId,
+                    locals.order.amount,
+                    0
+                };
+                LOG_INFO(locals.log);
+                output.status = 5; // Error
+                return;
+            }
+
+            // Deduct from total received tokens (if refund is successful)
+            state.totalReceivedTokens -= locals.order.amount;
+        }
+
+        // Transfer tokens back to sender
         qpi.transfer(locals.order.qubicSender, locals.order.amount);
-        state.lockedTokens -= locals.order.amount;
         locals.order.status = 2; // Refunded
         state.orders.set(locals.order.orderId, locals.order);
 
+        // Log success
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
             0, // No error
@@ -775,7 +832,7 @@ public:
         state.lockedTokens = 0;
         state.totalReceivedTokens = 0;
         state.transactionFee = 1000;
-        state.admin = qpi.invocator();
-        state.sourceChain = 0; //Arbitrary numb. No-EVM chain
+        state.admin = ID(_P, _X, _A, _B, _Y, _V, _D, _P, _J, _R, _R, _D, _K, _E, _L, _E, _Y, _S, _H, _Z, _W, _J, _C, _B, _E, _F, _J, _C, _N, _E, _R, _N, _K, _K, _U, _W, _X, _H, _A, _N, _C, _D, _P, _Q, _E, _F, _G, _D, _I, _U, _G, _U, _G, _A, _U, _B, _B, _C, _Y, _K);
+        state.sourceChain = 0; // No-EVM chain
     _
 };
