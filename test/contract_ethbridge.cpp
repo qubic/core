@@ -60,7 +60,17 @@ public:
 class ContractTestingEthBridge : protected ContractTesting {
 public:
     ContractTestingEthBridge() {
+        initEmptySpectrum();
         INIT_CONTRACT(ETHBRIDGE);
+        callSystemProcedure(ETHBRIDGE_CONTRACT_INDEX, INITIALIZE);
+        qLogger::initLogging();
+
+        //increasing energy of each user (100 QU) so procedures can be invoke
+        increaseEnergy(ETHBRIDGE_ADMIN, 100);
+        increaseEnergy(ETHBRIDGE_MANAGER1, 100);
+        increaseEnergy(ETHBRIDGE_USER1, 100);
+        increaseEnergy(ADDRESS2, 100);
+
         rand64.seed(42);
     }
 
@@ -72,26 +82,38 @@ public:
     sint32 setAdmin(const id& newAdmin) {
         ETHBRIDGE::setAdmin_input input{ newAdmin };
         ETHBRIDGE::setAdmin_output output;
-        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 3, input, output, ETHBRIDGE_ADMIN, 0);
+        bool success = invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 3, input, output, ETHBRIDGE_ADMIN, 0);
+        if (success && output.status != 0)
+            success = false;
+        return success;
     }
 
     sint32 addManager(const id& manager) {
         ETHBRIDGE::addManager_input input{ manager };
         ETHBRIDGE::addManager_output output;
-        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 4, input, output, ETHBRIDGE_ADMIN, 0);
+        bool success = invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 4, input, output, ETHBRIDGE_ADMIN, 0);
+        if (success && output.status != 0)
+            success = false;
+        return success;
     }
 
     sint32 removeManager(const id& manager) {
         ETHBRIDGE::removeManager_input input{ manager };
         ETHBRIDGE::removeManager_output output;
-        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 5, input, output, ETHBRIDGE_ADMIN, 0);
+        bool success = invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 5, input, output, ETHBRIDGE_ADMIN, 0);
+        if (success && output.status != 0)
+            success = false;
+        return success;
     }
 
     // Order Methods
     sint32 createOrder(const id& ethAddress, uint64 amount, bit fromQubicToEthereum) {
         ETHBRIDGE::createOrder_input input{ ethAddress, amount, fromQubicToEthereum };
         ETHBRIDGE::createOrder_output output;
-        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 1, input, output, ETHBRIDGE_USER1, 0);
+        bool success = invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 1, input, output, ETHBRIDGE_USER1, 0);
+        if (success && output.status != 0)
+            success = false;
+        return success;
     }
 
     ETHBRIDGE::getOrder_output getOrder(uint64 orderId) {
@@ -104,19 +126,28 @@ public:
     sint32 completeOrder(uint64 orderId) {
         ETHBRIDGE::completeOrder_input input{ orderId };
         ETHBRIDGE::completeOrder_output output;
-        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 6, input, output, ETHBRIDGE_MANAGER1, 0);
+        bool success = invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 6, input, output, ETHBRIDGE_MANAGER1, 0);
+        if (success && output.status != 0)
+            success = false;
+        return success;
     }
 
     sint32 refundOrder(uint64 orderId) {
         ETHBRIDGE::refundOrder_input input{ orderId };
         ETHBRIDGE::refundOrder_output output;
-        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 7, input, output, ETHBRIDGE_MANAGER1, 0);
+        bool success = invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 7, input, output, ETHBRIDGE_MANAGER1, 0);
+        if (success && output.status != 0)
+            success = false;
+        return success;
     }
 
     sint32 transferToContract(uint64 amount) {
         ETHBRIDGE::transferToContract_input input{ amount };
         ETHBRIDGE::transferToContract_output output;
-        return invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 8, input, output, ETHBRIDGE_MANAGER1, 0);
+        bool success = invokeUserProcedure(ETHBRIDGE_CONTRACT_INDEX, 8, input, output, ETHBRIDGE_MANAGER1, 0);
+        if (success && output.status != 0)
+            success = false;
+        return success;
     }
 
     uint64 getTotalReceivedTokens() {
