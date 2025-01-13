@@ -123,6 +123,12 @@ sint64 QPI::AssetOwnershipIterator::numberOfOwnedShares() const
     return (_ownershipIdx < ASSETS_CAPACITY) ? assets[_ownershipIdx].varStruct.ownership.numberOfShares : -1;
 }
 
+uint16 QPI::AssetOwnershipIterator::ownershipManagingContract() const
+{
+    ASSERT(_ownershipIdx == NO_ASSET_INDEX || (_ownershipIdx < ASSETS_CAPACITY && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP));
+    return (_ownershipIdx < ASSETS_CAPACITY) ? assets[_ownershipIdx].varStruct.ownership.managingContractIndex : 0;
+}
+
 
 // Start iteration with given issuance and given ownership + possession filters (selects first record).
 void QPI::AssetPossessionIterator::begin(const Asset& issuance, const AssetOwnershipSelect& ownership, const AssetPossessionSelect& possession)
@@ -250,6 +256,12 @@ sint64 QPI::AssetPossessionIterator::numberOfPossessedShares() const
 {
     ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
     return (_possessionIdx < ASSETS_CAPACITY) ? assets[_possessionIdx].varStruct.possession.numberOfShares : -1;
+}
+
+uint16 QPI::AssetPossessionIterator::possessionManagingContract() const
+{
+    ASSERT(_possessionIdx == NO_ASSET_INDEX || (_possessionIdx < ASSETS_CAPACITY && assets[_possessionIdx].varStruct.possession.type == POSSESSION));
+    return (_possessionIdx < ASSETS_CAPACITY) ? assets[_possessionIdx].varStruct.possession.managingContractIndex : 0;
 }
 
 

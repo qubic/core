@@ -684,6 +684,8 @@ namespace QPI
 		// Number of shares in current ownership record
 		inline sint64 numberOfOwnedShares() const;
 
+		// Contract index of contract having management rights (can transfer ownership)
+		inline uint16 ownershipManagingContract() const;
 
 		// Index of issuance in universe. Should not be used by contracts, because it may change between contract calls.
 		// Constant not changed by next(). NO_ASSET_INDEX if issuance has not been found.
@@ -723,14 +725,21 @@ namespace QPI
 		// Step to next possession record matching filtering criteria.
 		inline bool next();
 
+		// Owner of current record
 		inline id possessor() const;
 
+		// Number of shares in current possession record
 		inline sint64 numberOfPossessedShares() const;
 
+		// Index of possession record in universe. Should not be used by contracts, because it may change between contract calls.
+		// Changed by next(). NO_ASSET_INDEX if no (more) matching ownership has not been found.
 		inline unsigned int possessionIndex() const
 		{
 			return _possessionIdx;
 		}
+
+		// Contract index of contract having management rights (can transfer possession)
+		inline uint16 possessionManagingContract() const;
 	};
 
 	//////////
