@@ -180,8 +180,8 @@ protected:
 
     };
 
-    array<RoundInfo, QEARN_MAX_EPOCHS> _initialRoundInfo;
-    array<RoundInfo, QEARN_MAX_EPOCHS> _currentRoundInfo;
+    Array<RoundInfo, QEARN_MAX_EPOCHS> _initialRoundInfo;
+    Array<RoundInfo, QEARN_MAX_EPOCHS> _currentRoundInfo;
 
     struct EpochIndexInfo {
 
@@ -189,7 +189,7 @@ protected:
         uint32 endIndex;
     };
 
-    array<EpochIndexInfo, QEARN_MAX_EPOCHS> _epochIndex;
+    Array<EpochIndexInfo, QEARN_MAX_EPOCHS> _epochIndex;
 
     struct LockInfo {
 
@@ -199,7 +199,7 @@ protected:
         
     };
 
-    array<LockInfo, QEARN_MAX_LOCKS> locker;
+    Array<LockInfo, QEARN_MAX_LOCKS> locker;
 
     struct HistoryInfo {
 
@@ -209,8 +209,8 @@ protected:
 
     };
 
-    array<HistoryInfo, QEARN_MAX_USERS> earlyUnlocker;
-    array<HistoryInfo, QEARN_MAX_USERS> fullyUnlocker;
+    Array<HistoryInfo, QEARN_MAX_USERS> earlyUnlocker;
+    Array<HistoryInfo, QEARN_MAX_USERS> fullyUnlocker;
     
     uint32 _earlyUnlockedCnt;
     uint32 _fullyUnlockedCnt;

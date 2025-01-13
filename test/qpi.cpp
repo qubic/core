@@ -28,7 +28,7 @@ TEST(TestCoreQPI, Array)
 {
     //QPI::array<int, 0> mustFail; // should raise compile error
 
-    QPI::array<QPI::uint8, 4> uint8_4;
+    QPI::Array<QPI::uint8, 4> uint8_4;
     EXPECT_EQ(uint8_4.capacity(), 4);
     //uint8_4.setMem(QPI::id(1, 2, 3, 4)); // should raise compile error
     uint8_4.setAll(2);
@@ -58,13 +58,13 @@ TEST(TestCoreQPI, Array)
     EXPECT_TRUE(isArraySorted(uint8_4));
     EXPECT_TRUE(isArraySortedWithoutDuplicates(uint8_4));
 
-    QPI::array<QPI::uint64, 4> uint64_4;
+    QPI::Array<QPI::uint64, 4> uint64_4;
     uint64_4.setMem(QPI::id(101, 102, 103, 104));
     for (int i = 0; i < uint64_4.capacity(); ++i)
         EXPECT_EQ(uint64_4.get(i), i + 101);
     //uint64_4.setMem(uint8_4); // should raise compile error
 
-    QPI::array<QPI::uint16, 2> uint16_2;
+    QPI::Array<QPI::uint16, 2> uint16_2;
     EXPECT_EQ(uint8_4.capacity(), 4);
     //uint16_2.setMem(QPI::id(1, 2, 3, 4)); // should raise compile error
     uint16_2.setAll(12345);
@@ -81,9 +81,9 @@ TEST(TestCoreQPI, Array)
 
 TEST(TestCoreQPI, BitArray)
 {
-    //QPI::bit_array<0> mustFail;
+    //QPI::BitArray<0> mustFail;
 
-    QPI::bit_array<1> b1;
+    QPI::BitArray<1> b1;
     EXPECT_EQ(b1.capacity(), 1);
     b1.setAll(0);
     EXPECT_EQ(b1.get(0), 0);
@@ -98,7 +98,7 @@ TEST(TestCoreQPI, BitArray)
     b1.set(0, true);
     EXPECT_EQ(b1.get(0), 1);
 
-    QPI::bit_array<64> b64;
+    QPI::BitArray<64> b64;
     EXPECT_EQ(b64.capacity(), 64);
     b64.setMem(0x11llu);
     EXPECT_EQ(b64.get(0), 1);
@@ -109,7 +109,7 @@ TEST(TestCoreQPI, BitArray)
     EXPECT_EQ(b64.get(5), 0);
     EXPECT_EQ(b64.get(6), 0);
     EXPECT_EQ(b64.get(7), 0);
-    QPI::array<QPI::uint64, 1> llu1;
+    QPI::Array<QPI::uint64, 1> llu1;
     llu1.setMem(b64);
     EXPECT_EQ(llu1.get(0), 0x11llu);
     b64.setAll(0);
@@ -119,11 +119,11 @@ TEST(TestCoreQPI, BitArray)
     llu1.setMem(b64);
     EXPECT_EQ(llu1.get(0), 0xffffffffffffffffllu);
 
-    //QPI::bit_array<96> b96; // must trigger compile error
+    //QPI::BitArray<96> b96; // must trigger compile error
 
-    QPI::bit_array<128> b128;
+    QPI::BitArray<128> b128;
     EXPECT_EQ(b128.capacity(), 128);
-    QPI::array<QPI::uint64, 2> llu2;
+    QPI::Array<QPI::uint64, 2> llu2;
     llu2.setAll(0x4llu);
     EXPECT_EQ(llu2.get(0), 0x4llu);
     EXPECT_EQ(llu2.get(1), 0x4llu);

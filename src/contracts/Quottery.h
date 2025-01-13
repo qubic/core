@@ -135,7 +135,7 @@ public:
     };
     struct getBetOptionDetail_output
     {
-        array<id, 1024> bettor;
+        Array<id, 1024> bettor;
     };
     struct getActiveBet_input
     {
@@ -143,7 +143,7 @@ public:
     struct getActiveBet_output
     {
         uint32 count;
-        array<uint32, 1024> activeBetId;
+        Array<uint32, 1024> activeBetId;
     };
     struct getBetByCreator_input
     {
@@ -152,7 +152,7 @@ public:
     struct getBetByCreator_output
     {
         uint32 count;
-        array<uint32, 1024> betId;
+        Array<uint32, 1024> betId;
     };
     struct cancelBet_input
     {
@@ -201,27 +201,27 @@ public:
     /**************************************/
     /************CONTRACT STATES***********/
     /**************************************/
-    array<uint32, QUOTTERY_MAX_BET> mBetID;
-    array<id, QUOTTERY_MAX_BET> mCreator;
-    array<id, QUOTTERY_MAX_BET> mBetDesc;
-    array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mOptionDesc;
-    array<uint64, QUOTTERY_MAX_BET> mBetAmountPerSlot;
-    array<uint32, QUOTTERY_MAX_BET> mMaxNumberOfBetSlotPerOption;
-    array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_ORACLE_PROVIDER> mOracleProvider;
-    array<uint32, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mOracleFees;
-    array<uint32, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mCurrentBetState;
-    array<uint8, QUOTTERY_MAX_BET> mNumberOption;
-    array<uint32, QUOTTERY_MAX_BET> mOpenDate;
-    array<uint32, QUOTTERY_MAX_BET> mCloseDate;
-    array<uint32, QUOTTERY_MAX_BET> mEndDate;
-    array<bit, QUOTTERY_MAX_BET> mIsOccupied;
-    array<uint32, QUOTTERY_MAX_BET> mBetEndTick;
+    Array<uint32, QUOTTERY_MAX_BET> mBetID;
+    Array<id, QUOTTERY_MAX_BET> mCreator;
+    Array<id, QUOTTERY_MAX_BET> mBetDesc;
+    Array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mOptionDesc;
+    Array<uint64, QUOTTERY_MAX_BET> mBetAmountPerSlot;
+    Array<uint32, QUOTTERY_MAX_BET> mMaxNumberOfBetSlotPerOption;
+    Array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_ORACLE_PROVIDER> mOracleProvider;
+    Array<uint32, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mOracleFees;
+    Array<uint32, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mCurrentBetState;
+    Array<uint8, QUOTTERY_MAX_BET> mNumberOption;
+    Array<uint32, QUOTTERY_MAX_BET> mOpenDate;
+    Array<uint32, QUOTTERY_MAX_BET> mCloseDate;
+    Array<uint32, QUOTTERY_MAX_BET> mEndDate;
+    Array<bit, QUOTTERY_MAX_BET> mIsOccupied;
+    Array<uint32, QUOTTERY_MAX_BET> mBetEndTick;
     //bettor info:
-    array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION> mBettorID;
-    array<uint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION> mBettorBetOption;
+    Array<id, QUOTTERY_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION> mBettorID;
+    Array<uint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET* QUOTTERY_MAX_OPTION> mBettorBetOption;
     // bet result:
-    array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultWonOption;
-    array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultOPId;
+    Array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultWonOption;
+    Array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultOPId;
 
     //static assert for developing:
     static_assert(sizeof(mBetID) == (sizeof(uint32) * QUOTTERY_MAX_BET), "bet id array");

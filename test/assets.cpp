@@ -126,7 +126,7 @@ public:
         issuanceIdx = indexLists.issuancesFirstIdx;
         while (issuanceIdx != NO_ASSET_INDEX)
         {
-            AssetIssuanceId issuanceId(assets[issuanceIdx].varStruct.issuance.publicKey, assetNameFromString(assets[issuanceIdx].varStruct.issuance.name));
+            Asset issuanceId(assets[issuanceIdx].varStruct.issuance.publicKey, assetNameFromString(assets[issuanceIdx].varStruct.issuance.name));
             long long numOfSharesOwned = 0, numOfSharesPossessed = 0;
             for (AssetOwnershipIterator iter(issuanceId); !iter.reachedEnd(); iter.next())
             {
@@ -159,7 +159,7 @@ TEST(TestCoreAssets, CheckLoadFile)
 
 struct IssuanceTestData
 {
-    AssetIssuanceId id;
+    Asset id;
     unsigned short managingContract;
     unsigned int universeIdx;
     long long numOfShares;

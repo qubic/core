@@ -216,7 +216,7 @@ protected:
     id adminAddress, newAdminAddress1, newAdminAddress2, newAdminAddress3;
     id bannedAddress1, bannedAddress2, bannedAddress3;
     id unbannedAddress1, unbannedAddress2, unbannedAddress3;
-    array<id, QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES> bannedAddress;
+    Array<id, QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES> bannedAddress;
     uint32 numberOfBannedAddress;
     uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille, burnPermille;
     uint32 newQCAPHolderPermille1, newReinvestingPermille1, newDevPermille1;
@@ -606,7 +606,7 @@ protected:
     {
         ::Entity entity;
         AssetPossessionIterator iter;
-        AssetIssuanceId QCAPId;
+        Asset QCAPId;
         uint64 revenue;
         uint64 paymentForShareholders;
         uint64 paymentForQCAPHolders;
