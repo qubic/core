@@ -257,14 +257,21 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
         { { m256i(1234, 2, 3, 4), assetNameFromString("FOO") }, 6, NO_ASSET_INDEX, 1000000ll, 2, 1 },
     };
     constexpr int issuancesCount = sizeof(issuances) / sizeof(issuances[0]);
+    m256i unusedPublicKey(9876, 4321, 0, 13579);
 
     // With empty universe, all iterators should stop right after init
     for (int i = 0; i < issuancesCount; ++i)
     {
         AssetOwnershipIterator iterO(issuances[i].id);
         EXPECT_TRUE(iterO.reachedEnd());
+        EXPECT_EQ(iterO.issuanceIndex(), NO_ASSET_INDEX);
+        EXPECT_EQ(iterO.ownershipIndex(), NO_ASSET_INDEX);
+        EXPECT_EQ(iterO.issuanceIndex(), NO_ASSET_INDEX);
         AssetOwnershipIterator iterP(issuances[i].id);
         EXPECT_TRUE(iterP.reachedEnd());
+        EXPECT_EQ(iterP.issuanceIndex(), NO_ASSET_INDEX);
+        EXPECT_EQ(iterP.ownershipIndex(), NO_ASSET_INDEX);
+        EXPECT_EQ(iterP.issuanceIndex(), NO_ASSET_INDEX);
     }
 
     // Build universe with multiple owners / possessor per issuance
@@ -360,6 +367,18 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
             EXPECT_EQ(shares.size(), 0);
             EXPECT_EQ(ownershipIdx.size(), 0);
         }
+
+        // Test ownership iterator with unused key
+        iter.begin({ unusedPublicKey, assetNameFromString("UNUSED") });
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect::byOwner(unusedPublicKey));
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect::byManagingContract(12345));
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect{ id(10, 9, 8, 7), 12345 });
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect{ unusedPublicKey, 1 });
+        EXPECT_TRUE(iter.reachedEnd());
     }
 
     {
@@ -402,6 +421,26 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
                 EXPECT_TRUE(iter.reachedEnd());
             }
         }
+
+        // Test possession iterator with unused key
+        iter.begin({ unusedPublicKey, assetNameFromString("UNUSED") });
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect::byOwner(unusedPublicKey));
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect::byManagingContract(12345));
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect{ id(10, 9, 8, 7), 12345 });
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect{ unusedPublicKey, 1 });
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(unusedPublicKey));
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect::any(), AssetPossessionSelect::byManagingContract(12345));
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect::any(), AssetPossessionSelect{ id(10, 9, 8, 7), 12345 });
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(issuances[0].id, AssetOwnershipSelect::any(), AssetPossessionSelect{ unusedPublicKey, 1 });
+        EXPECT_TRUE(iter.reachedEnd());
     }
 
     {

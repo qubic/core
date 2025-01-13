@@ -138,7 +138,7 @@ void QPI::AssetPossessionIterator::begin(const Asset& issuance, const AssetOwner
     _possession = possession;
     _possessionIdx = NO_ASSET_INDEX;
 
-    if (_issuanceIdx == NO_ASSET_INDEX)
+    if (_issuanceIdx == NO_ASSET_INDEX || _ownershipIdx == NO_ASSET_INDEX)
         return;
 
     next();
