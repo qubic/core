@@ -116,7 +116,7 @@
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contracts\QVAULT.h">
-       <Filter>contracts</Filter>
+      <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
@@ -210,6 +210,9 @@
     </ClInclude>
     <ClInclude Include="platform\global_var.h">
       <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\Qearn_old.h">
+      <Filter>contracts</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
