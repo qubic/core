@@ -31,7 +31,7 @@ struct GQMPROP : public ContractBase
 		uint16 firstEpoch;
 	};
 
-	typedef array<RevenueDonationEntry, 128> RevenueDonationT;
+	typedef Array<RevenueDonationEntry, 128> RevenueDonationT;
 
 private:
 	//----------------------------------------------------------------------------
@@ -125,7 +125,7 @@ public:
 	struct GetProposalIndices_output
 	{
 		uint16 numOfIndices;		// Number of valid entries in indices. Call again if it is 64.
-		array<uint16, 64> indices;	// Requested proposal indices. Valid entries are in range 0 ... (numOfIndices - 1).
+		Array<uint16, 64> indices;	// Requested proposal indices. Valid entries are in range 0 ... (numOfIndices - 1).
 	};
 
 	PUBLIC_FUNCTION(GetProposalIndices)

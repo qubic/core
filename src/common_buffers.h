@@ -8,7 +8,7 @@
 
 
 constexpr unsigned long long spectrumSizeInBytes = SPECTRUM_CAPACITY * sizeof(::Entity);
-constexpr unsigned long long universeSizeInBytes = ASSETS_CAPACITY * sizeof(Asset);
+constexpr unsigned long long universeSizeInBytes = ASSETS_CAPACITY * sizeof(AssetRecord);
 
 // Buffer used for reorganizing spectrum and universe hash maps, currently also used as scratchpad buffer for contracts
 // Must be large enough to fit any contract, full spectrum, and full universe!
