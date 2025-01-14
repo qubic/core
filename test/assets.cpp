@@ -51,7 +51,7 @@ public:
             EXPECT_EQ(assets[issuanceIdx].varStruct.issuance.type, ISSUANCE);
 
             // check all ownerships of issuance
-            unsigned int ownershipIdx = indexLists.ownnershipsPossessionsFirstIdx[issuanceIdx];
+            unsigned int ownershipIdx = indexLists.ownershipsPossessionsFirstIdx[issuanceIdx];
             while (ownershipIdx != NO_ASSET_INDEX)
             {
                 // check ownership
@@ -59,7 +59,7 @@ public:
                 EXPECT_EQ(assets[ownershipIdx].varStruct.issuance.type, OWNERSHIP);
 
                 // check all possessions of ownership
-                unsigned int possessionIdx = indexLists.ownnershipsPossessionsFirstIdx[ownershipIdx];
+                unsigned int possessionIdx = indexLists.ownershipsPossessionsFirstIdx[ownershipIdx];
                 while (possessionIdx != NO_ASSET_INDEX)
                 {
                     // check possession

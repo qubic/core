@@ -57,7 +57,7 @@ public: // TODO: make protected
     struct IndexLists
     {
         unsigned int issuancesFirstIdx;
-        unsigned int ownnershipsPossessionsFirstIdx[ASSETS_CAPACITY];
+        unsigned int ownershipsPossessionsFirstIdx[ASSETS_CAPACITY];
 
         unsigned int nextIdx[ASSETS_CAPACITY];
 
@@ -78,9 +78,9 @@ public: // TODO: make protected
             ASSERT(newOwnershipIdx < ASSETS_CAPACITY);
             ASSERT(assets[issuanceIdx].varStruct.issuance.type == ISSUANCE);
             ASSERT(assets[newOwnershipIdx].varStruct.ownership.type == OWNERSHIP);
-            ASSERT(ownnershipsPossessionsFirstIdx[issuanceIdx] == NO_ASSET_INDEX || assets[ownnershipsPossessionsFirstIdx[issuanceIdx]].varStruct.issuance.type == OWNERSHIP);
-            nextIdx[newOwnershipIdx] = ownnershipsPossessionsFirstIdx[issuanceIdx];
-            ownnershipsPossessionsFirstIdx[issuanceIdx] = newOwnershipIdx;
+            ASSERT(ownershipsPossessionsFirstIdx[issuanceIdx] == NO_ASSET_INDEX || assets[ownershipsPossessionsFirstIdx[issuanceIdx]].varStruct.issuance.type == OWNERSHIP);
+            nextIdx[newOwnershipIdx] = ownershipsPossessionsFirstIdx[issuanceIdx];
+            ownershipsPossessionsFirstIdx[issuanceIdx] = newOwnershipIdx;
         }
 
         // Add newPossessionIdx as first element in linked list of all possessions of ownershipIdx
@@ -90,9 +90,9 @@ public: // TODO: make protected
             ASSERT(newPossessionIdx < ASSETS_CAPACITY);
             ASSERT(assets[ownershipIdx].varStruct.ownership.type == OWNERSHIP);
             ASSERT(assets[newPossessionIdx].varStruct.possession.type == POSSESSION);
-            ASSERT(ownnershipsPossessionsFirstIdx[ownershipIdx] == NO_ASSET_INDEX || assets[ownnershipsPossessionsFirstIdx[ownershipIdx]].varStruct.possession.type == POSSESSION);
-            nextIdx[newPossessionIdx] = ownnershipsPossessionsFirstIdx[ownershipIdx];
-            ownnershipsPossessionsFirstIdx[ownershipIdx] = newPossessionIdx;
+            ASSERT(ownershipsPossessionsFirstIdx[ownershipIdx] == NO_ASSET_INDEX || assets[ownershipsPossessionsFirstIdx[ownershipIdx]].varStruct.possession.type == POSSESSION);
+            nextIdx[newPossessionIdx] = ownershipsPossessionsFirstIdx[ownershipIdx];
+            ownershipsPossessionsFirstIdx[ownershipIdx] = newPossessionIdx;
         }
 
         // Reset lists to empty
@@ -100,7 +100,7 @@ public: // TODO: make protected
         {
             issuancesFirstIdx = NO_ASSET_INDEX;
             static_assert(NO_ASSET_INDEX == 0xffffffff, "Following setMem() expects NO_ASSET_INDEX == 0xffffffff");
-            setMem(ownnershipsPossessionsFirstIdx, sizeof(ownnershipsPossessionsFirstIdx), 0xff);
+            setMem(ownershipsPossessionsFirstIdx, sizeof(ownershipsPossessionsFirstIdx), 0xff);
             setMem(nextIdx, sizeof(nextIdx), 0xff);
         }
 

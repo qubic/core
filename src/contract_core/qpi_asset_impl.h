@@ -71,7 +71,7 @@ bool QPI::AssetOwnershipIterator::next()
         if (_ownershipIdx == NO_ASSET_INDEX)
         {
             // get first ownership of issuance
-            _ownershipIdx = as.indexLists.ownnershipsPossessionsFirstIdx[_issuanceIdx];
+            _ownershipIdx = as.indexLists.ownershipsPossessionsFirstIdx[_issuanceIdx];
             ASSERT(_ownershipIdx == NO_ASSET_INDEX
                 || (_ownershipIdx < ASSETS_CAPACITY
                     && assets[_ownershipIdx].varStruct.ownership.type == OWNERSHIP
@@ -204,7 +204,7 @@ bool QPI::AssetPossessionIterator::next()
             if (_possessionIdx == NO_ASSET_INDEX)
             {
                 // get first possession of ownership
-                _possessionIdx = as.indexLists.ownnershipsPossessionsFirstIdx[_ownershipIdx];
+                _possessionIdx = as.indexLists.ownershipsPossessionsFirstIdx[_ownershipIdx];
                 ASSERT(_possessionIdx == NO_ASSET_INDEX
                     || (_possessionIdx < ASSETS_CAPACITY
                         && assets[_possessionIdx].varStruct.possession.type == POSSESSION
