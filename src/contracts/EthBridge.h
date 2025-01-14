@@ -159,7 +159,8 @@ public:
         orderNotFound = 4,
         invalidOrderState = 5,
         insufficientLockedTokens = 6,
-        transferFailed = 7
+        transferFailed = 7,
+        managerAlreadyExists = 8
     };
 
 
@@ -208,16 +209,9 @@ public:
         locals.invocatorAddress = qpi.invocator();
         locals.isManagerOperating = false;
         CALL(isManager, locals.invocatorAddress, locals.isManagerOperating);
+
         //Check if the order is handled by a manager
         if (!locals.isManagerOperating) {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::orderNotFound,
-                input.orderId,
-                0, // No amount involved
-                0
-            };
-            LOG_INFO(locals.log);
             output.status = 1; // Error
             return;
         }
@@ -369,6 +363,7 @@ public:
     struct addManager_locals {
         EthBridgeLogger log;
         AddressChangeLogger managerLog;
+        bit isAlreadyManager;
     };
 
    PUBLIC_PROCEDURE_WITH_LOCALS(addManager)
@@ -386,8 +381,25 @@ public:
             return;
         }
 
+       // Check if the address is an existing manager already
+       CALL(isManager, input.address, locals.isAlreadyManager);
+
+       if (locals.isAlreadyManager) {
+           locals.log = EthBridgeLogger{
+               CONTRACT_INDEX,
+               EthBridgeError::managerAlreadyExists, 
+               0, // No order ID involved
+               0, // No amount involved
+               0
+           };
+           LOG_INFO(locals.log);
+           output.status = 2; // Error
+           return;
+       }
+
+       //If not, add the manager
        for (uint64 i = 0; i < state.managers.capacity(); ++i) {
-           if (state.managers.get(i) == NULL_ID) { // Slot vacío
+           if (state.managers.get(i) == NULL_ID) { // empty slot
                state.managers.set(i, input.address);
 
                locals.managerLog = AddressChangeLogger{
