@@ -276,7 +276,7 @@ iteration:
 }
 
 static sint64 numberOfShares(
-    const Asset& issuanceId,
+    const Asset& asset,
     const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
     const AssetPossessionSelect& possession = AssetPossessionSelect::any())
 {
@@ -285,14 +285,14 @@ static sint64 numberOfShares(
     sint64 numOfShares = 0;
     if (possession.anyPossessor && possession.anyManagingContract)
     {
-        for (AssetOwnershipIterator iter(issuanceId, ownership); !iter.reachedEnd(); iter.next())
+        for (AssetOwnershipIterator iter(asset, ownership); !iter.reachedEnd(); iter.next())
         {
             numOfShares += iter.numberOfOwnedShares();
         }
     }
     else
     {
-        for (AssetPossessionIterator iter(issuanceId, ownership, possession); !iter.reachedEnd(); iter.next())
+        for (AssetPossessionIterator iter(asset, ownership, possession); !iter.reachedEnd(); iter.next())
         {
             numOfShares += iter.numberOfPossessedShares();
         }

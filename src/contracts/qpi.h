@@ -1307,7 +1307,7 @@ namespace QPI
 		) const;
 
 		inline sint64 numberOfShares(
-			const Asset& issuanceId,
+			const Asset& asset,
 			const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
 		) const;

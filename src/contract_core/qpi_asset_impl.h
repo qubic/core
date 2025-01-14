@@ -445,9 +445,9 @@ long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long lon
     return ::numberOfPossessedShares(assetName, issuer, owner, possessor, ownershipManagingContractIndex, possessionManagingContractIndex);
 }
 
-sint64 QPI::QpiContextFunctionCall::numberOfShares(const QPI::Asset& issuanceId, const QPI::AssetOwnershipSelect& ownership, const QPI::AssetPossessionSelect& possession) const
+sint64 QPI::QpiContextFunctionCall::numberOfShares(const QPI::Asset& asset, const QPI::AssetOwnershipSelect& ownership, const QPI::AssetPossessionSelect& possession) const
 {
-    return ::numberOfShares(issuanceId, ownership, possession);
+    return ::numberOfShares(asset, ownership, possession);
 }
 
 bool QPI::QpiContextProcedureCall::releaseShares(uint64 assetName, const id& issuer, const id& owner, const id& possessor, sint64 numberOfShares, uint16 destinationOwnershipManagingContractIndex, uint16 destinationPossessionManagingContractIndex) const
