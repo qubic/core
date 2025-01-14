@@ -1625,17 +1625,17 @@ namespace QPI
 
 	#define REGISTER_USER_FUNCTION(userFunction, inputType) \
 		static_assert(__is_function_##userFunction, #userFunction " is procedure"); \
-		static_assert(inputType >= 1 && inputType <= 65536, "inputType must be >= 1 and <= 65536"); \
-		static_assert(sizeof(userFunction##_output) <= 65536, #userFunction "_output size too large"); \
-		static_assert(sizeof(userFunction##_input) <= 65536, #userFunction "_input size too large"); \
+		static_assert(inputType >= 1 && inputType <= 65535, "inputType must be >= 1 and <= 65535"); \
+		static_assert(sizeof(userFunction##_output) <= 65535, #userFunction "_output size too large"); \
+		static_assert(sizeof(userFunction##_input) <= 65535, #userFunction "_input size too large"); \
 		static_assert(sizeof(userFunction##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userFunction "_locals size too large"); \
 		qpi.__registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output), sizeof(userFunction##_locals));
 
 	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) \
 		static_assert(!__is_function_##userProcedure, #userProcedure " is function"); \
-		static_assert(inputType >= 1 && inputType <= 65536, "inputType must be >= 1 and <= 65536"); \
-		static_assert(sizeof(userProcedure##_output) <= 65536, #userProcedure "_output size too large"); \
-		static_assert(sizeof(userProcedure##_input) <= 65536, #userProcedure "_input size too large"); \
+		static_assert(inputType >= 1 && inputType <= 65535, "inputType must be >= 1 and <= 65535"); \
+		static_assert(sizeof(userProcedure##_output) <= 65535, #userProcedure "_output size too large"); \
+		static_assert(sizeof(userProcedure##_input) <= 65535, #userProcedure "_input size too large"); \
 		static_assert(sizeof(userProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userProcedure "_locals size too large"); \
 		qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
 
