@@ -268,8 +268,12 @@ uint16 QPI::AssetPossessionIterator::possessionManagingContract() const
 ////////////////////////////
 
 
-bool QPI::QpiContextProcedureCall::acquireShares(uint64 assetName, const id& issuer, const id& owner, const id& possessor, sint64 numberOfShares, uint16 sourceOwnershipManagingContractIndex, uint16 sourcePossessionManagingContractIndex) const
+sint64 QPI::QpiContextProcedureCall::acquireShares(
+    const Asset& asset, const id& owner, const id& possessor, sint64 numberOfShares,
+    uint16 sourceOwnershipManagingContractIndex, uint16 sourcePossessionManagingContractIndex,
+    sint64 offeredTransferFee) const
 {
+    /*
     // Just examples, to make it compile, move these to parameter list
     unsigned int contractIndex = QX_CONTRACT_INDEX;
     QPI::sint64 invocationReward = 10;
@@ -302,6 +306,8 @@ bool QPI::QpiContextProcedureCall::acquireShares(uint64 assetName, const id& iss
     }
 
     return pre_output.ok;
+    */
+    return INVALID_AMOUNT;
 }
 
 
@@ -450,11 +456,79 @@ sint64 QPI::QpiContextFunctionCall::numberOfShares(const QPI::Asset& asset, cons
     return ::numberOfShares(asset, ownership, possession);
 }
 
-bool QPI::QpiContextProcedureCall::releaseShares(uint64 assetName, const id& issuer, const id& owner, const id& possessor, sint64 numberOfShares, uint16 destinationOwnershipManagingContractIndex, uint16 destinationPossessionManagingContractIndex) const
+sint64 QPI::QpiContextProcedureCall::releaseShares(
+    const Asset& asset, const id& owner, const id& possessor, sint64 numberOfShares,
+    uint16 destinationOwnershipManagingContractIndex, uint16 destinationPossessionManagingContractIndex,
+    sint64 offeredTransferFee) const
 {
-    // TODO
+    // check for unsupported cases
+    if (destinationOwnershipManagingContractIndex != destinationPossessionManagingContractIndex
+        || owner != possessor)
+    {
+        return INVALID_AMOUNT;
+    }
 
-    return false;
+    // check for invalid inputs
+    if (destinationOwnershipManagingContractIndex == _currentContractIndex
+        || destinationOwnershipManagingContractIndex == 0
+        || destinationOwnershipManagingContractIndex >= contractCount
+        || numberOfShares <= 0
+        || offeredTransferFee < 0)
+    {
+        return INVALID_AMOUNT;
+    }
+
+    // currently, only contract with index that fits into 16 bits can be managing contract
+    if (this->_currentContractIndex > 0xffffu)
+    {
+        return INVALID_AMOUNT;
+    }
+    uint16 currentContractIndex = static_cast<uint16>(this->_currentContractIndex);
+
+    // find records in universe of given asset, owner, and possessor that are under management of contract
+    AssetPossessionIterator it(asset, AssetOwnershipSelect{ owner, currentContractIndex }, AssetPossessionSelect{ possessor, currentContractIndex });
+    ASSERT(it.reachedEnd());
+
+    // check that number of shares is sufficient
+    sint64 possessedSharesUnderManagement = it.numberOfPossessedShares();
+    if (possessedSharesUnderManagement < numberOfShares)
+    {
+        return INVALID_AMOUNT;
+    }
+
+    // Run PRE_RELEASE_SHARES callback in other contract (without invocation reward)
+    QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee };
+    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
+    __qpiCallSystemProcOfOtherContract<PRE_RELEASE_SHARES>(destinationOwnershipManagingContractIndex, pre_input, pre_output, 0);
+    if (!pre_output.allowTransfer || pre_output.requestedFee < 0 || pre_output.requestedFee > MAX_AMOUNT)
+    {
+        return INVALID_AMOUNT;
+    }
+    if (pre_output.requestedFee > offeredTransferFee)
+    {
+        return -pre_output.requestedFee;
+    }
+
+    // transfer requested fee
+    if (transfer(id(destinationOwnershipManagingContractIndex, 0, 0, 0), pre_output.requestedFee) < 0)
+    {
+        return -pre_output.requestedFee;
+    }
+
+    // transfer management rights
+    if (!transferShareManagementRights(it.ownershipIndex(), it.possessionIndex(),
+        destinationOwnershipManagingContractIndex, destinationPossessionManagingContractIndex,
+        numberOfShares, nullptr, nullptr, true))
+    {
+        return INVALID_AMOUNT;
+    }
+
+    // Call POST_RELEASE_SHARES in other contract (without invocation reward)
+    QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee };
+    QPI::NoData post_output;
+    __qpiCallSystemProcOfOtherContract<POST_RELEASE_SHARES>(destinationOwnershipManagingContractIndex, post_input, post_output, 0);
+
+    return pre_output.requestedFee;
 }
 
 long long QPI::QpiContextProcedureCall::transferShareOwnershipAndPossession(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, long long numberOfShares, const m256i& newOwnerAndPossessor) const

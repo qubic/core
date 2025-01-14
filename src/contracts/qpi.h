@@ -51,6 +51,8 @@ namespace QPI
 #define NULL_ID id::zero()
 	constexpr sint64 NULL_INDEX = -1;
 
+	constexpr sint64 INVALID_AMOUNT = 0x8000000000000000;
+
 #define _A 0
 #define _B 1
 #define _C 2
@@ -1356,15 +1358,15 @@ namespace QPI
 	// QPI procedures available to contract procedures (not to contract functions)
 	struct QpiContextProcedureCall : public QPI::QpiContextFunctionCall
 	{
-		inline bool acquireShares(
-			uint64 assetName,
-			const id& issuer,
+		inline sint64 acquireShares(
+			const Asset& asset,
 			const id& owner,
 			const id& possessor,
 			sint64 numberOfShares,
 			uint16 sourceOwnershipManagingContractIndex,
-			uint16 sourcePossessionManagingContractIndex
-		) const;
+			uint16 sourcePossessionManagingContractIndex,
+			sint64 offeredTransferFee
+		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
 
 		inline sint64 burn(
 			sint64 amount
@@ -1382,15 +1384,15 @@ namespace QPI
 			uint64 unitOfMeasurement
 		) const; // Returns number of shares or 0 on error
 
-		inline bool releaseShares(
-			uint64 assetName,
-			const id& issuer,
+		inline sint64 releaseShares(
+			const Asset& asset,
 			const id& owner,
 			const id& possessor,
 			sint64 numberOfShares,
 			uint16 destinationOwnershipManagingContractIndex,
-			uint16 destinationPossessionManagingContractIndex
-		) const;
+			uint16 destinationPossessionManagingContractIndex,
+			sint64 offeredTransferFee
+		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
 
 		inline sint64 transfer( // Attempts to transfer energy from this qubic
 			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
@@ -1441,27 +1443,28 @@ namespace QPI
 	// Management rights transfer: pre-transfer input
 	struct PreManagementRightsTransfer_input
 	{
-		uint64 assetName;
-		id issuer;
+		Asset asset;
 		id owner;
 		id possessor;
 		sint64 numberOfShares;
+		sint64 offeredFee;
 	};
 
-	// Management rights transfer: pre-transfer output
+	// Management rights transfer: pre-transfer output (default is all-zeroed = don't allow transfer)
 	struct PreManagementRightsTransfer_output
 	{
-		bool ok;
+		bool allowTransfer;
+		sint64 requestedFee;
 	};
 
 	// Management rights transfer: post-transfer input
 	struct PostManagementRightsTransfer_input
 	{
-		uint64 assetName;
-		id issuer;
+		Asset asset;
 		id owner;
 		id possessor;
 		sint64 numberOfShares;
+		sint64 receivedFee;
 	};
 
 	//////////

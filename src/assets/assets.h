@@ -303,6 +303,147 @@ static sint64 numberOfShares(
     return numOfShares;
 }
 
+// Transfer asset management rights, creating new ownership and possession records in the universe.
+// A nullptr may be passed as destinationOwnershipIndexPtr and destinationPossessionIndexPtr if this
+// info is not needed by the calling function.
+static bool transferShareManagementRights(int sourceOwnershipIndex, int sourcePossessionIndex,
+    unsigned short destinationOwnershipManagingContractIndex,
+    unsigned short destinationPossessionManagingContractIndex,
+    long long numberOfShares,
+    int* destinationOwnershipIndexPtr, int* destinationPossessionIndexPtr,
+    bool lock)
+{
+    if (numberOfShares <= 0)
+    {
+        return false;
+    }
+
+    if (lock)
+    {
+        ACQUIRE(universeLock);
+    }
+
+    if (assets[sourceOwnershipIndex].varStruct.ownership.type != OWNERSHIP || assets[sourceOwnershipIndex].varStruct.ownership.numberOfShares < numberOfShares
+        || assets[sourcePossessionIndex].varStruct.possession.type != POSSESSION || assets[sourcePossessionIndex].varStruct.possession.numberOfShares < numberOfShares
+        || assets[sourcePossessionIndex].varStruct.possession.ownershipIndex != sourceOwnershipIndex)
+    {
+        if (lock)
+        {
+            RELEASE(universeLock);
+        }
+
+        return false;
+    }
+
+    const m256i& ownershipPublicKey = assets[sourceOwnershipIndex].varStruct.ownership.publicKey;
+    const m256i& possessionPublicKey = assets[sourcePossessionIndex].varStruct.possession.publicKey;
+    const int issuanceIndex = assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex;
+
+    int destinationOwnershipIndex = ownershipPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+iteration:
+    if (assets[destinationOwnershipIndex].varStruct.ownership.type == EMPTY
+        || (assets[destinationOwnershipIndex].varStruct.ownership.type == OWNERSHIP
+            && assets[destinationOwnershipIndex].varStruct.ownership.managingContractIndex == destinationOwnershipManagingContractIndex
+            && assets[destinationOwnershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
+            && assets[destinationOwnershipIndex].varStruct.ownership.publicKey == ownershipPublicKey))
+    {
+        // found empty slot for ownership record or existing record to update
+        assets[sourceOwnershipIndex].varStruct.ownership.numberOfShares -= numberOfShares;
+
+        if (assets[destinationOwnershipIndex].varStruct.ownership.type == EMPTY)
+        {
+            assets[destinationOwnershipIndex].varStruct.ownership.publicKey = ownershipPublicKey;
+            assets[destinationOwnershipIndex].varStruct.ownership.type = OWNERSHIP;
+            assets[destinationOwnershipIndex].varStruct.ownership.managingContractIndex = destinationOwnershipManagingContractIndex;
+            assets[destinationOwnershipIndex].varStruct.ownership.issuanceIndex = issuanceIndex;
+
+            as.indexLists.addOwnership(issuanceIndex, destinationOwnershipIndex);
+        }
+        assets[destinationOwnershipIndex].varStruct.ownership.numberOfShares += numberOfShares;
+
+        int destinationPossessionIndex = possessionPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+    iteration2:
+        if (assets[destinationPossessionIndex].varStruct.possession.type == EMPTY
+            || (assets[destinationPossessionIndex].varStruct.possession.type == POSSESSION
+                && assets[destinationPossessionIndex].varStruct.possession.managingContractIndex == destinationPossessionManagingContractIndex
+                && assets[destinationPossessionIndex].varStruct.possession.ownershipIndex == destinationOwnershipIndex
+                && assets[destinationPossessionIndex].varStruct.possession.publicKey == possessionPublicKey))
+        {
+            // found empty slot for poss possession or existing record to update
+            assets[sourcePossessionIndex].varStruct.possession.numberOfShares -= numberOfShares;
+
+            if (assets[destinationPossessionIndex].varStruct.possession.type == EMPTY)
+            {
+                assets[destinationPossessionIndex].varStruct.possession.publicKey = possessionPublicKey;
+                assets[destinationPossessionIndex].varStruct.possession.type = POSSESSION;
+                assets[destinationPossessionIndex].varStruct.possession.managingContractIndex = destinationPossessionManagingContractIndex;
+                assets[destinationPossessionIndex].varStruct.possession.ownershipIndex = destinationOwnershipIndex;
+
+                as.indexLists.addPossession(destinationOwnershipIndex, destinationPossessionIndex);
+            }
+            assets[destinationPossessionIndex].varStruct.possession.numberOfShares += numberOfShares;
+
+            assetChangeFlags[sourceOwnershipIndex >> 6] |= (1ULL << (sourceOwnershipIndex & 63));
+            assetChangeFlags[sourcePossessionIndex >> 6] |= (1ULL << (sourcePossessionIndex & 63));
+            assetChangeFlags[destinationOwnershipIndex >> 6] |= (1ULL << (destinationOwnershipIndex & 63));
+            assetChangeFlags[destinationPossessionIndex >> 6] |= (1ULL << (destinationPossessionIndex & 63));
+
+            if (lock)
+            {
+                RELEASE(universeLock);
+            }
+
+            AssetOwnershipManagingContractChange logOM;
+            logOM.ownershipPublicKey = ownershipPublicKey;
+            logOM.issuerPublicKey = assets[issuanceIndex].varStruct.issuance.publicKey;
+            logOM.sourceContractIndex = assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex;
+            logOM.destinationContractIndex = destinationOwnershipManagingContractIndex;
+            logOM.numberOfShares = numberOfShares;
+            *((unsigned long long*) & logOM.assetName) = *((unsigned long long*) & assets[issuanceIndex].varStruct.issuance.name); // Order must be preserved!
+            logOM.numberOfDecimalPlaces = assets[issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
+            *((unsigned long long*) & logOM.unitOfMeasurement) = *((unsigned long long*) & assets[issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
+            logger.logAssetOwnershipManagingContractChange(logOM);
+
+            AssetPossessionManagingContractChange logPM;
+            logPM.possessionPublicKey = possessionPublicKey;
+            logPM.ownershipPublicKey = ownershipPublicKey;
+            logPM.issuerPublicKey = assets[issuanceIndex].varStruct.issuance.publicKey;
+            logOM.sourceContractIndex = assets[sourcePossessionIndex].varStruct.ownership.managingContractIndex;
+            logOM.destinationContractIndex = destinationPossessionManagingContractIndex;
+            logPM.numberOfShares = numberOfShares;
+            *((unsigned long long*) & logPM.assetName) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
+            logPM.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
+            *((unsigned long long*) & logPM.unitOfMeasurement) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
+            logger.logAssetPossessionManagingContractChange(logPM);
+
+            if (destinationOwnershipIndexPtr)
+            {
+                *destinationOwnershipIndexPtr = destinationOwnershipIndex;
+            }
+            if (destinationPossessionIndexPtr)
+            {
+                *destinationPossessionIndexPtr = destinationPossessionIndex;
+            }
+
+            return true;
+        }
+        else
+        {
+            // try next slot for finding new possession record
+            destinationPossessionIndex = (destinationPossessionIndex + 1) & (ASSETS_CAPACITY - 1);
+
+            goto iteration2;
+        }
+    }
+    else
+    {
+        // try next slot for finding new ownership record
+        destinationOwnershipIndex = (destinationOwnershipIndex + 1) & (ASSETS_CAPACITY - 1);
+
+        goto iteration;
+    }
+}
+
 static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int sourcePossessionIndex, const m256i& destinationPublicKey, long long numberOfShares,
     int* destinationOwnershipIndex, int* destinationPossessionIndex,
     bool lock)

@@ -484,11 +484,102 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
     test.checkAssetsConsistency();
 }
 
-/*
-TODO test
-- end epoch
+TEST(TestCoreAssets, AssetTransferShareManagementRights)
+{
+    AssetsTest test;
+    test.clearUniverse();
 
-*/
+    IssuanceTestData issuances[] = {
+        { { m256i(1, 2, 3, 4), assetNameFromString("BLUB") }, 1, NO_ASSET_INDEX, 10000, 10, 30 },
+        { { m256i::zero(), assetNameFromString("QX") }, 1, NO_ASSET_INDEX, 676, 20, 30 },
+        { { m256i(1, 2, 3, 4), assetNameFromString("BLA") }, 1, NO_ASSET_INDEX, 123456789, 200, 30 },
+        { { m256i(2, 2, 3, 4), assetNameFromString("BLA") }, 1, NO_ASSET_INDEX, 987654321, 300, 30 },
+        { { m256i(1234, 2, 3, 4), assetNameFromString("BLA") }, 1, NO_ASSET_INDEX, 9876543210123ll, 676, 30 },
+        { { m256i(1234, 2, 3, 4), assetNameFromString("FOO") }, 1, NO_ASSET_INDEX, 1000000ll, 2, 1 },
+    };
+    constexpr int issuancesCount = sizeof(issuances) / sizeof(issuances[0]);
+
+    // Build universe with multiple managing contracts per issuance
+    for (int i = 0; i < issuancesCount; ++i)
+    {
+        int firstOwnershipIdx = -1, firstPossessionIdx = -1, issuanceIdx = -1;
+        EXPECT_EQ(issueAsset(issuances[i].id.issuer, assetNameFromInt64(issuances[i].id.assetName).c_str(), 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT,
+            issuances[i].numOfShares, issuances[i].managingContract, &issuanceIdx, &firstOwnershipIdx, &firstPossessionIdx), issuances[i].numOfShares);
+        issuances[i].universeIdx = issuanceIdx;
+
+        test.checkAssetsConsistency();
+
+        long long remainingShares = issuances[i].numOfShares;
+        for (int j = 1; j < issuances[i].numOfOwners; ++j)
+        {
+            long long sharesToTransfer = remainingShares / issuances[i].transferDivisor;
+            unsigned int destContractIdx = j % 15;
+            int destOwnershipIdx = -1, destPossessionIdx = -1;
+            EXPECT_TRUE(transferShareManagementRights(firstOwnershipIdx, firstPossessionIdx,
+                destContractIdx, destContractIdx, sharesToTransfer, &destOwnershipIdx, &destPossessionIdx, false));
+            AssetSharesKey key{ issuances[i].id.issuer, destContractIdx };
+            issuances[i].shares[key] += sharesToTransfer;
+            issuances[i].ownershipIdx[key] = destOwnershipIdx;
+            issuances[i].possessionIdx[key] = destPossessionIdx;
+            remainingShares -= sharesToTransfer;
+        }
+
+        AssetSharesKey key{ issuances[i].id.issuer, issuances[i].managingContract };
+        issuances[i].shares[key] += remainingShares;
+        issuances[i].ownershipIdx[key] = firstOwnershipIdx;
+        issuances[i].possessionIdx[key] = firstPossessionIdx;
+
+        test.checkAssetsConsistency(i == issuancesCount - 1);
+    }
+
+    {
+        // Test iterating all possessions with AssetPossessionIterator (also tests reusing iter)
+        AssetPossessionIterator iter(issuances[0].id);
+        for (int i = 0; i < issuancesCount; ++i)
+        {
+            std::map<AssetSharesKey, long long> shares = issuances[i].shares;
+            std::map<AssetSharesKey, long long> possessionIdx = issuances[i].possessionIdx;
+
+            if (i > 0)
+            {
+                iter.begin(issuances[i].id);
+            }
+
+            while (!iter.reachedEnd())
+            {
+                issuances[i].checkPossessionAndOwnershipAndIssuance(iter);
+                AssetSharesKey key{ iter.possessor(), iter.possessionManagingContract() };
+                shares.erase(key);
+                possessionIdx.erase(key);
+                bool hasNext = iter.next();
+                EXPECT_EQ(hasNext, !iter.reachedEnd());
+            }
+
+            EXPECT_EQ(shares.size(), 0);
+            EXPECT_EQ(possessionIdx.size(), 0);
+        }
+
+        // Test iterating possessions with specific possessor (different managing contracts)
+        for (int i = 0; i < issuancesCount; ++i)
+        {
+            iter.begin(issuances[i].id, AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(issuances[i].id.issuer));
+            EXPECT_FALSE(iter.reachedEnd());
+            while (!iter.reachedEnd())
+            {
+                issuances[i].checkPossessionAndOwnershipAndIssuance(iter);
+                AssetSharesKey key{ iter.possessor(), iter.possessionManagingContract() };
+                EXPECT_NE(issuances[i].ownershipIdx.find(key), issuances[i].ownershipIdx.end());
+                EXPECT_EQ(iter.ownershipIndex(), issuances[i].ownershipIdx[key]);
+                EXPECT_EQ(iter.possessionIndex(), issuances[i].possessionIdx[key]);
+                EXPECT_EQ((int)iter.ownershipManagingContract(), (int)iter.possessionManagingContract());
+                EXPECT_EQ(iter.numberOfOwnedShares(), iter.numberOfPossessedShares());
+                EXPECT_EQ(iter.numberOfPossessedShares(), issuances[i].shares[key]);
+                bool hasNext = iter.next();
+                EXPECT_EQ(hasNext, !iter.reachedEnd());
+            }
+        }
+    }
+}
 
 
 
