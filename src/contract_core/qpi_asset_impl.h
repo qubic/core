@@ -487,7 +487,6 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
 
     // find records in universe of given asset, owner, and possessor that are under management of contract
     AssetPossessionIterator it(asset, AssetOwnershipSelect{ owner, currentContractIndex }, AssetPossessionSelect{ possessor, currentContractIndex });
-    ASSERT(it.reachedEnd());
 
     // check that number of shares is sufficient
     sint64 possessedSharesUnderManagement = it.numberOfPossessedShares();
@@ -496,7 +495,7 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
         return INVALID_AMOUNT;
     }
 
-    // Run PRE_RELEASE_SHARES callback in other contract (without invocation reward)
+    // run PRE_RELEASE_SHARES callback in other contract (without invocation reward)
     QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee };
     QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
     __qpiCallSystemProcOfOtherContract<PRE_RELEASE_SHARES>(destinationOwnershipManagingContractIndex, pre_input, pre_output, 0);
@@ -512,7 +511,7 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
     // transfer requested fee
     if (transfer(id(destinationOwnershipManagingContractIndex, 0, 0, 0), pre_output.requestedFee) < 0)
     {
-        return -pre_output.requestedFee;
+        return (pre_output.requestedFee) ? -pre_output.requestedFee : INVALID_AMOUNT;
     }
 
     // transfer management rights
@@ -523,10 +522,13 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
         return INVALID_AMOUNT;
     }
 
-    // Call POST_RELEASE_SHARES in other contract (without invocation reward)
+    // run POST_RELEASE_SHARES in other contract (without invocation reward)
     QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee };
     QPI::NoData post_output;
     __qpiCallSystemProcOfOtherContract<POST_RELEASE_SHARES>(destinationOwnershipManagingContractIndex, post_input, post_output, 0);
+
+    // bug check: no other record matches filter criteria
+    ASSERT(!it.next());
 
     return pre_output.requestedFee;
 }
