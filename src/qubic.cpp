@@ -105,6 +105,7 @@ static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, uni
 static int misalignedState = 0;
 
 static volatile unsigned char epochTransitionState = 0;
+static volatile unsigned char epochTransitionCleanMemoryFlag = 1;
 static volatile long epochTransitionWaitingRequestProcessors = 0;
 
 static m256i operatorPublicKey;
@@ -241,6 +242,12 @@ struct
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+
+#if ENABLED_LOGGING
+#define PAUSE_BEFORE_CLEAR_MEMORY 1 // Requiring operators to press F10 to clear memory (before switching epoch)
+#else
+#define PAUSE_BEFORE_CLEAR_MEMORY 0
+#endif
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -4890,18 +4897,6 @@ static void tickProcessor(void*)
 
                                 if (epochTransitionState == 1)
                                 {
-                                    // seamless epoch transistion
-#ifndef NDEBUG
-                                    addDebugMessage(L"Starting epoch transition");
-                                    {
-                                        CHAR16 dbgMsgBuf[300];
-                                        CHAR16 digestChars[60 + 1];
-                                        getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
-                                        setText(dbgMsgBuf, L"Old mining seed: ");
-                                        appendText(dbgMsgBuf, digestChars);
-                                        addDebugMessage(dbgMsgBuf);
-                                    }
-#endif
 
                                     // wait until all request processors are in waiting state
                                     while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
@@ -4920,22 +4915,15 @@ static void tickProcessor(void*)
                                     }
                                     epochTransitionState = 2;
 
-#ifndef NDEBUG
-                                    addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
+#if PAUSE_BEFORE_CLEAR_MEMORY
+                                    epochTransitionCleanMemoryFlag = 0;
+                                    while (epochTransitionCleanMemoryFlag == 0) // wait until operator flip this flag to 1 to continue the beginEpoch procedures
+                                    {
+                                        _mm_pause();
+                                    }
 #endif
                                     beginEpoch();
                                     setNewMiningSeed();
-#ifndef NDEBUG
-                                    addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
-                                    {
-                                        CHAR16 dbgMsgBuf[300];
-                                        CHAR16 digestChars[60 + 1];
-                                        getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
-                                        setText(dbgMsgBuf, L"New mining seed: ");
-                                        appendText(dbgMsgBuf, digestChars);
-                                        addDebugMessage(dbgMsgBuf);
-                                    }
-#endif
 
                                     // Some debug checks that we are ready for the next epoch
                                     ASSERT(system.numberOfSolutions == 0);
@@ -4967,10 +4955,6 @@ static void tickProcessor(void*)
                                     getComputerDigest(etalonTick.saltedComputerDigest);
 
                                     epochTransitionState = 0;
-
-#ifndef NDEBUG
-                                    addDebugMessage(L"Finished epoch transition");
-#endif
                                 }
                                 ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
@@ -6196,6 +6180,18 @@ static void processKeyPresses()
         break;
 
         /*
+        * F10 Key
+        * By Pressing the F10 Key epochTransitionCleanMemoryFlag is set to 1
+        * Allowing the node to clean memory and continue switching to new epoch
+        */
+        case 0x14:
+        {
+            logToConsole(L"Pressed F10 key: epochTransitionCleanMemoryFlag => 1");
+            epochTransitionCleanMemoryFlag = 1;
+        }
+        break;
+
+        /*
         * F11 Key
         * By Pressing the F11 Key the node can switch between static and dynamic network mode
         * static: incoming connections are blocked and peer list will not be altered
@@ -6794,6 +6790,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         misalignedState = 0;
                     }
+
+#if PAUSE_BEFORE_CLEAR_MEMORY
+                    if (epochTransitionCleanMemoryFlag == 0)
+                    {
+                        logToConsole(L"Please press F10 to clear all memory on RAM and continue epoch transition procedure!");
+                    }
+#endif
 
 #if !defined(NDEBUG)
                     if (system.tick % 1000 == 0)
