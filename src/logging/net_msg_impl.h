@@ -72,7 +72,7 @@ void qLogger::processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
         && request->passcode[2] == logReaderPasscodes[2]
         && request->passcode[3] == logReaderPasscodes[3]
         && request->tick < system.tick
-        && request->tick >= system.initialTick
+        && request->tick >= tickBegin
         )
     {
         ResponseLogIdRangeFromTx resp;
@@ -104,7 +104,7 @@ void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* hea
         && request->passcode[2] == logReaderPasscodes[2]
         && request->passcode[3] == logReaderPasscodes[3]
         && request->tick < system.tick
-        && request->tick >= system.initialTick
+        && request->tick >= tickBegin
         )
     {
         ResponseAllLogIdRangesFromTick resp;
