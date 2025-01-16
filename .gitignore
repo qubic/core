@@ -1,4 +1,10 @@
 /packages/
+/.vscode/
+/old/
+/notes/
 .vs/
 x64/
 ~AutoRecover.*.vcxproj
+/test/spectrum.*
+/test/universe.*
+/test/contract0???.???
