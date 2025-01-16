@@ -399,9 +399,7 @@ iteration:
             logOM.sourceContractIndex = assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex;
             logOM.destinationContractIndex = destinationOwnershipManagingContractIndex;
             logOM.numberOfShares = numberOfShares;
-            *((unsigned long long*) & logOM.assetName) = *((unsigned long long*) & assets[issuanceIndex].varStruct.issuance.name); // Order must be preserved!
-            logOM.numberOfDecimalPlaces = assets[issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
-            *((unsigned long long*) & logOM.unitOfMeasurement) = *((unsigned long long*) & assets[issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
+            *((unsigned long long*) & logOM.assetName) = *((unsigned long long*) & assets[issuanceIndex].varStruct.issuance.name); // possible with 7 byte array, because it is followed by memory reserved for terminator byte
             logger.logAssetOwnershipManagingContractChange(logOM);
 
             AssetPossessionManagingContractChange logPM;
@@ -411,9 +409,7 @@ iteration:
             logOM.sourceContractIndex = assets[sourcePossessionIndex].varStruct.ownership.managingContractIndex;
             logOM.destinationContractIndex = destinationPossessionManagingContractIndex;
             logPM.numberOfShares = numberOfShares;
-            *((unsigned long long*) & logPM.assetName) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
-            logPM.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
-            *((unsigned long long*) & logPM.unitOfMeasurement) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
+            *((unsigned long long*) & logPM.assetName) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name);  // possible with 7 byte array, because it is followed by memory reserved for terminator byte
             logger.logAssetPossessionManagingContractChange(logPM);
 
             if (destinationOwnershipIndexPtr)

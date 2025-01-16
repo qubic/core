@@ -176,9 +176,6 @@ struct AssetOwnershipManagingContractChange
     unsigned int destinationContractIndex;
     long long numberOfShares;
     char assetName[7];
-    // TODO: remove?
-    char numberOfDecimalPlaces;
-    char unitOfMeasurement[7];
 
     char _terminator; // Only data before "_terminator" are logged
 };
@@ -192,9 +189,6 @@ struct AssetPossessionManagingContractChange
     unsigned int destinationContractIndex;
     long long numberOfShares;
     char assetName[7];
-    // TODO: remove?
-    char numberOfDecimalPlaces;
-    char unitOfMeasurement[7];
 
     char _terminator; // Only data before "_terminator" are logged
 };
