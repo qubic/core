@@ -3019,6 +3019,14 @@ static void endEpoch()
 
     assetsEndEpoch();
 
+#if PAUSE_BEFORE_CLEAR_MEMORY
+    epochTransitionCleanMemoryFlag = 0;
+    while (epochTransitionCleanMemoryFlag == 0) // wait until operator flip this flag to 1 to continue the beginEpoch procedures
+    {
+        _mm_pause();
+    }
+#endif
+
     system.epoch++;
     system.initialTick = system.tick;
 
@@ -4915,13 +4923,6 @@ static void tickProcessor(void*)
                                     }
                                     epochTransitionState = 2;
 
-#if PAUSE_BEFORE_CLEAR_MEMORY
-                                    epochTransitionCleanMemoryFlag = 0;
-                                    while (epochTransitionCleanMemoryFlag == 0) // wait until operator flip this flag to 1 to continue the beginEpoch procedures
-                                    {
-                                        _mm_pause();
-                                    }
-#endif
                                     beginEpoch();
                                     setNewMiningSeed();
 
