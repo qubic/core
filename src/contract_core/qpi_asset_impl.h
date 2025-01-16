@@ -496,7 +496,7 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
     }
 
     // run PRE_RELEASE_SHARES callback in other contract (without invocation reward)
-    QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee };
+    QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee, currentContractIndex };
     QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
     __qpiCallSystemProcOfOtherContract<PRE_RELEASE_SHARES>(destinationOwnershipManagingContractIndex, pre_input, pre_output, 0);
     if (!pre_output.allowTransfer || pre_output.requestedFee < 0 || pre_output.requestedFee > MAX_AMOUNT)

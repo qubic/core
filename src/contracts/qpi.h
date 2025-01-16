@@ -1448,6 +1448,7 @@ namespace QPI
 		id possessor;
 		sint64 numberOfShares;
 		sint64 offeredFee;
+		uint16 otherContractIndex;
 	};
 
 	// Management rights transfer: pre-transfer output (default is all-zeroed = don't allow transfer)
