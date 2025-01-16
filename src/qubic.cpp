@@ -2693,6 +2693,7 @@ static void processTick(unsigned long long processorNumber)
     // Update entity category populations and dust thresholds each 8 ticks
     if ((system.tick & 7) == 0)
         updateAndAnalzeEntityCategoryPopulations();
+    logger.updateTick(system.tick);
 }
 
 #pragma optimize("", on)
@@ -3019,9 +3020,24 @@ static void endEpoch()
 
     assetsEndEpoch();
 
+    logger.updateTick(system.tick);
 #if PAUSE_BEFORE_CLEAR_MEMORY
+    // re-open request processors for other services to query
+    epochTransitionState = 0;
+    while (epochTransitionWaitingRequestProcessors != 0)
+    {
+        _mm_pause();
+    }
+
     epochTransitionCleanMemoryFlag = 0;
     while (epochTransitionCleanMemoryFlag == 0) // wait until operator flip this flag to 1 to continue the beginEpoch procedures
+    {
+        _mm_pause();
+    }
+
+    // close all request processors
+    epochTransitionState = 1;
+    while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
     {
         _mm_pause();
     }

@@ -279,6 +279,7 @@ public:
     inline static unsigned long long logId;
     inline static unsigned int tickBegin; // initial tick of the epoch
     inline static unsigned int tickLoadedFrom; // tick that this node load from (save/load state feature)
+    inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
     inline static BlobInfo currentTxInfo;
@@ -505,9 +506,15 @@ public:
         tx.init();
         logBufferTail = 0;
         logId = 0;
-        tickBegin = _tickBegin;
+        lastUpdatedTick = 0;
+        tickBegin = _tickBegin;        
         tickLoadedFrom = _tickLoadedFrom;
 #endif
+    }
+
+    static void updateTick(unsigned int _tick)
+    {
+        lastUpdatedTick = _tick;
     }
 
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
