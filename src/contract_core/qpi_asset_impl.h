@@ -273,41 +273,78 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
     uint16 sourceOwnershipManagingContractIndex, uint16 sourcePossessionManagingContractIndex,
     sint64 offeredTransferFee) const
 {
-    /*
-    // Just examples, to make it compile, move these to parameter list
-    unsigned int contractIndex = QX_CONTRACT_INDEX;
-    QPI::sint64 invocationReward = 10;
-
-    if (contractIndex >= contractCount)
-        return false;
-    if (invocationReward < 0)
-        return false;
-    // ...
-
-    // TODO: Init input
-    QPI::PreManagementRightsTransfer_input pre_input;
-    // output is zeroed in __qpiCallSystemProcOfOtherContract
-    QPI::PreManagementRightsTransfer_output pre_output;
-
-    // Call PRE_ACQUIRE_SHARES in other contract after transferring invocationReward
-    __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(contractIndex, pre_input, pre_output, invocationReward);
-
-    if (pre_output.ok)
+    // check for unsupported cases
+    if (sourceOwnershipManagingContractIndex != sourcePossessionManagingContractIndex
+        || owner != possessor)
     {
-        // TODO: transfer
-
-        // TODO: init input
-        QPI::PostManagementRightsTransfer_input post_input;
-        // Output is unused, but needed for generalized interface
-        QPI::NoData post_output;
-
-        // Call POST_ACQUIRE_SHARES in other contract without transferring an invocationReward
-        __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(contractIndex, post_input, post_output, 0);
+        return INVALID_AMOUNT;
     }
 
-    return pre_output.ok;
-    */
-    return INVALID_AMOUNT;
+    // check for invalid inputs
+    if (sourcePossessionManagingContractIndex == _currentContractIndex
+        || sourcePossessionManagingContractIndex == 0
+        || sourcePossessionManagingContractIndex >= contractCount
+        || numberOfShares <= 0
+        || offeredTransferFee < 0)
+    {
+        return INVALID_AMOUNT;
+    }
+
+    // currently, only contract with index that fits into 16 bits can be managing contract
+    if (this->_currentContractIndex > 0xffffu)
+    {
+        return INVALID_AMOUNT;
+    }
+    uint16 currentContractIndex = static_cast<uint16>(this->_currentContractIndex);
+
+    // find records in universe of given asset, owner, and possessor that are under management of contract
+    AssetPossessionIterator it(asset,
+        AssetOwnershipSelect{ owner, sourceOwnershipManagingContractIndex },
+        AssetPossessionSelect{ possessor, sourcePossessionManagingContractIndex });
+
+    // check that number of shares is sufficient
+    sint64 possessedSharesUnderManagement = it.numberOfPossessedShares();
+    if (possessedSharesUnderManagement < numberOfShares)
+    {
+        return INVALID_AMOUNT;
+    }
+
+    // run PRE_ACQUIRE_SHARES callback in other contract (without invocation reward)
+    QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee, currentContractIndex };
+    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
+    __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(sourceOwnershipManagingContractIndex, pre_input, pre_output, 0);
+    if (!pre_output.allowTransfer || pre_output.requestedFee < 0 || pre_output.requestedFee > MAX_AMOUNT)
+    {
+        return INVALID_AMOUNT;
+    }
+    if (pre_output.requestedFee > offeredTransferFee)
+    {
+        return -pre_output.requestedFee;
+    }
+
+    // transfer requested fee
+    if (transfer(id(sourceOwnershipManagingContractIndex, 0, 0, 0), pre_output.requestedFee) < 0)
+    {
+        return (pre_output.requestedFee) ? -pre_output.requestedFee : INVALID_AMOUNT;
+    }
+
+    // transfer management rights
+    if (!transferShareManagementRights(it.ownershipIndex(), it.possessionIndex(),
+            currentContractIndex, currentContractIndex,
+            numberOfShares, nullptr, nullptr, true))
+    {
+        return INVALID_AMOUNT;
+    }
+
+    // run POST_ACQUIRE_SHARES in other contract (without invocation reward)
+    QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee };
+    QPI::NoData post_output;
+    __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(sourceOwnershipManagingContractIndex, post_input, post_output, 0);
+
+    // bug check: no other record matches filter criteria
+    ASSERT(!it.next());
+
+    return pre_output.requestedFee;
 }
 
 
