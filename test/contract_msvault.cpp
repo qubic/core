@@ -31,10 +31,10 @@ public:
         callSystemProcedure(MSVAULT_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
-    void registerVault(uint16 vaultType, id vaultName, const std::vector<id>& owners, uint64 fee)
+    void registerVault(uint64 vaultType, id vaultName, const std::vector<id>& owners, uint64 fee)
     {
         MSVAULT::registerVault_input input;
-        for (uint16 i = 0; i < MSVAULT_MAX_OWNERS; i++)
+        for (uint64 i = 0; i < MSVAULT_MAX_OWNERS; i++)
         {
             input.owners.set(i, (i < owners.size()) ? owners[i] : NULL_ID);
         }
@@ -120,12 +120,12 @@ public:
     }
 
     // Helper: find newly created vault by difference
-    sint64 findNewvaultIdAfterRegister(const id& owner, uint16 prevCount)
+    uint64 findNewvaultIdAfterRegister(const id& owner, uint64 prevCount)
     {
         auto vaultsAfter = getVaults(owner);
         if (vaultsAfter.numberOfVaults == prevCount + 1)
         {
-            return (sint64)vaultsAfter.vaultIds.get(prevCount);
+            return (uint64)vaultsAfter.vaultIds.get(prevCount);
         }
         return -1;
     }

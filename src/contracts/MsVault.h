@@ -1,7 +1,7 @@
 using namespace QPI;
 
-constexpr uint16 MSVAULT_MAX_OWNERS = 16;
-constexpr uint16 MSVAULT_MAX_COOWNER = 8;
+constexpr uint64 MSVAULT_MAX_OWNERS = 16;
+constexpr uint64 MSVAULT_MAX_COOWNER = 8;
 constexpr uint64 MSVAULT_INITIAL_MAX_VAULTS = 2048ULL;
 constexpr uint64 MSVAULT_MAX_VAULTS = MSVAULT_INITIAL_MAX_VAULTS * X_MULTIPLIER;
 
@@ -10,8 +10,8 @@ constexpr uint64 MSVAULT_RELEASE_FEE = 1000ULL;
 constexpr uint64 MSVAULT_RELEASE_RESET_FEE = 500ULL;
 constexpr uint64 MSVAULT_HOLDING_FEE = 100ULL;
 
-constexpr uint16 MSVAULT_VAULT_TYPE_QUORUM = 1;
-constexpr uint16 MSVAULT_VAULT_TYPE_TWO_OUT_OF_X = 2;
+constexpr uint64 MSVAULT_VAULT_TYPE_QUORUM = 1;
+constexpr uint64 MSVAULT_VAULT_TYPE_TWO_OUT_OF_X = 2;
 
 struct MSVAULT2
 {
@@ -22,11 +22,11 @@ struct MSVAULT : public ContractBase
 public:
     struct Vault
     {
-        uint16 vaultType;
+        uint64 vaultType;
         id vaultName;
         array<id, MSVAULT_MAX_OWNERS> owners;
         uint16 numberOfOwners;
-        sint64 balance;
+        uint64 balance;
         bit isActive;
         array<uint64, MSVAULT_MAX_OWNERS> releaseAmounts;
         array<id, MSVAULT_MAX_OWNERS> releaseDestinations;
@@ -102,7 +102,7 @@ public:
     };
     struct resetReleaseRequests_locals
     {
-        sint32 i;
+        uint64 i;
     };
 
     // Procedures and functions' structs
@@ -117,11 +117,12 @@ public:
     };
     struct registerVault_locals
     {
-        uint16 ownerCount;
-        uint16 i;
-        uint16 j;
-        uint16 k;
-        sint64 count;
+        uint64 ownerCount;
+        uint64 i;
+        sint64 ii;
+        uint64 j;
+        uint64 k;
+        uint64 count;
         sint64 slotIndex;
         Vault newVault;
         Vault tempVault;
@@ -162,11 +163,11 @@ public:
         MSVaultLogger logger;
 
         sint64 ownerIndex;
-        uint16 approvals;
-        uint16 totalOwners;
+        uint64 approvals;
+        uint64 totalOwners;
         bit releaseApproved;
-        uint16 requiredApprovals;
-        uint16 i;
+        uint64 requiredApprovals;
+        uint64 i;
 
         uint64 calc;
         uint64 divResult;
@@ -246,7 +247,7 @@ public:
     struct getReleaseStatus_locals
     {
         Vault vault;
-        uint16 i;
+        uint64 i;
 
         isValidVaultId_input iv_in;
         isValidVaultId_output iv_out;
@@ -292,7 +293,7 @@ public:
     struct getRevenueInfo_input {};
     struct getRevenueInfo_output
     {
-        uint32 numberOfActiveVaults;
+        uint64 numberOfActiveVaults;
         uint64 totalRevenue;
         uint64 totalDistributedToShareholders;
     };
@@ -331,7 +332,7 @@ protected:
     // Contract states
     array<Vault, MSVAULT_MAX_VAULTS> vaults;
 
-    uint32 numberOfActiveVaults;
+    uint64 numberOfActiveVaults;
     uint64 totalRevenue;
     uint64 totalDistributedToShareholders;
 
@@ -400,12 +401,12 @@ protected:
 
         // Find empty slot
         locals.slotIndex = -1;
-        for (locals.i = 0; locals.i < MSVAULT_MAX_VAULTS; locals.i++)
+        for (locals.ii = 0; locals.ii < MSVAULT_MAX_VAULTS; locals.ii++)
         {
-            locals.tempVault = state.vaults.get(locals.i);
+            locals.tempVault = state.vaults.get(locals.ii);
             if (!locals.tempVault.isActive && locals.tempVault.numberOfOwners == 0 && locals.tempVault.balance == 0)
             {
-                locals.slotIndex = (sint64)locals.i;
+                locals.slotIndex = locals.ii;
                 break;
             }
         }
@@ -441,9 +442,9 @@ protected:
             }
         }
 
-        locals.newVault.vaultType = (uint16)input.vaultType;
+        locals.newVault.vaultType = input.vaultType;
         locals.newVault.vaultName = input.vaultName;
-        locals.newVault.numberOfOwners = locals.ownerCount;
+        locals.newVault.numberOfOwners = (uint16)locals.ownerCount;
         locals.newVault.balance = 0;
         locals.newVault.isActive = true;
 
@@ -538,7 +539,7 @@ protected:
             return;
         }
 
-        if (locals.vault.balance < (sint64)input.amount)
+        if (locals.vault.balance < input.amount)
         {
             locals.logger._type = 5;
             LOG_INFO(locals.logger);
@@ -567,9 +568,9 @@ protected:
         locals.releaseApproved = false;
         if (locals.vault.vaultType == MSVAULT_VAULT_TYPE_QUORUM)
         {
-            locals.calc = ((uint64)locals.totalOwners * 2ULL) + 2ULL;
+            locals.calc = (locals.totalOwners * 2ULL) + 2ULL;
             locals.divResult = QPI::div(locals.calc, 3ULL);
-            locals.requiredApprovals = (uint16)locals.divResult;
+            locals.requiredApprovals = locals.divResult;
 
             if (locals.approvals >= locals.requiredApprovals)
             {
@@ -587,10 +588,10 @@ protected:
         if (locals.releaseApproved)
         {
             // Still need to re-check the balance before releasing funds
-            if (locals.vault.balance >= (sint64)input.amount)
+            if (locals.vault.balance >= input.amount)
             {
                 qpi.transfer(input.destination, input.amount);
-                locals.vault.balance -= (sint64)input.amount;
+                locals.vault.balance -= input.amount;
 
                 locals.rr_in.vault = locals.vault;
                 resetReleaseRequests(qpi, state, locals.rr_in, locals.rr_out, locals.rr_locals);
@@ -772,7 +773,7 @@ protected:
     _
 
     INITIALIZE
-        state.numberOfActiveVaults = 0;
+        state.numberOfActiveVaults = 0ULL;
         state.totalRevenue = 0ULL;
         state.totalDistributedToShareholders = 0ULL;
     _
@@ -797,10 +798,10 @@ protected:
             locals.v = state.vaults.get(locals.i);
             if (locals.v.isActive)
             {
-                if (locals.v.balance >= (sint64)MSVAULT_HOLDING_FEE)
+                if (locals.v.balance >= MSVAULT_HOLDING_FEE)
                 {
                     // pay the holding fee
-                    locals.v.balance -= (sint64)MSVAULT_HOLDING_FEE;
+                    locals.v.balance -= MSVAULT_HOLDING_FEE;
                     state.totalRevenue += MSVAULT_HOLDING_FEE;
                     state.vaults.set(locals.i, locals.v);
                 }
@@ -829,12 +830,12 @@ protected:
         }
 
         {
-            locals.amountToDistribute = QPI::div(state.totalRevenue - state.totalDistributedToShareholders, (uint64)NUMBER_OF_COMPUTORS);
+            locals.amountToDistribute = QPI::div<uint64>(state.totalRevenue - state.totalDistributedToShareholders, NUMBER_OF_COMPUTORS);
             if (locals.amountToDistribute > 0 && state.totalRevenue > state.totalDistributedToShareholders)
             {
                 if (qpi.distributeDividends(locals.amountToDistribute))
                 {
-                    state.totalDistributedToShareholders += (uint64)locals.amountToDistribute * (uint64)NUMBER_OF_COMPUTORS;
+                    state.totalDistributedToShareholders += locals.amountToDistribute * NUMBER_OF_COMPUTORS;
                 }
             }
         }
