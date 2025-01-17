@@ -10,7 +10,7 @@
 
 #include "../src/platform/file_io.h"
 
-static constexpr unsigned long long THREAD_COUNT = 8;
+static constexpr unsigned long long THREAD_COUNT = 4;
 static constexpr unsigned long long MEM_BUFFER_SIZE = 52ULL * 1024ULL * 1024ULL;
 std::mutex gMessageLock;
 
@@ -49,7 +49,8 @@ class FileSystemWrapper
 public:
     FileSystemWrapper()
     {
-        bool sts = initFilesystem(NULL);
+        initFilesystem();
+        registerAsynFileIO(NULL);
     }
     ~FileSystemWrapper()
     {
@@ -141,7 +142,7 @@ bool runAsyncSaveFile(int id, bool blocking = true, bool largeFile = false)
         if (sts <= 0)
         {
             std::lock_guard<std::mutex> lock(gMessageLock);
-            std::cout << "saveFile failed with size " << MEM_BUFFER_SIZE * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
+            std::cout << "runAsyncSaveFile::saveFile failed with size " << MEM_BUFFER_SIZE * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
             sts = false;
         }
     }
@@ -162,7 +163,7 @@ bool runAsyncSaveFile(int id, bool blocking = true, bool largeFile = false)
             if (sts <= 0)
             {
                 std::lock_guard<std::mutex> lock(gMessageLock);
-                std::cout << "saveFile failed with size " << dataCount * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
+                std::cout << "runAsyncSaveFile::saveFile failed with size " << dataCount * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
                 sts = false;
                 break;
             }
@@ -190,7 +191,7 @@ bool prepareAsyncLoadFile(bool largeFile = false)
             if (sts <= 0)
             {
                 std::lock_guard<std::mutex> lock(gMessageLock);
-                std::cout << "saveFile failed with size " << MEM_BUFFER_SIZE * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
+                std::cout << "prepareAsyncLoadFile::saveFile failed with size " << MEM_BUFFER_SIZE * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
                 sts = false;
             }
         }
@@ -211,7 +212,7 @@ bool prepareAsyncLoadFile(bool largeFile = false)
                 if (sts <= 0)
                 {
                     std::lock_guard<std::mutex> lock(gMessageLock);
-                    std::cout << "saveFile failed with size " << dataCount * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
+                    std::cout << "prepareAsyncLoadFile::saveFile failed with size " << dataCount * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
                     sts = false;
                     break;
                 }
@@ -234,13 +235,13 @@ bool runAsyncLoadFile(int id, bool largeFile = false)
         if (sts <= 0)
         {
             std::lock_guard<std::mutex> lock(gMessageLock);
-            std::cout << "saveFile failed with size " << MEM_BUFFER_SIZE * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
+            std::cout << "runAsyncLoadFile::loadFile failed with size " << MEM_BUFFER_SIZE * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
             sts = false;
         }
     }
     else
     {
-        // Try to save the files
+        // Try to load the files
         for (int i = 0; i < sizeof(threadData[id].dataPos) / sizeof(threadData[id].dataPos[0]); i++)
         {
             unsigned long long dataStart = threadData[id].dataPos[i][0];
@@ -255,7 +256,7 @@ bool runAsyncLoadFile(int id, bool largeFile = false)
             if (sts <= 0)
             {
                 std::lock_guard<std::mutex> lock(gMessageLock);
-                std::cout << "saveFile failed with size " << dataCount * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
+                std::cout << "runAsyncLoadFile::loadFile failed with size " << dataCount * sizeof(unsigned int) / 1024 << " KB. Error " << sts << std::endl;
                 sts = false;
                 break;
             }

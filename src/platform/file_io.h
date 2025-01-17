@@ -23,7 +23,7 @@
 // Can set by zeros to save memory and don't use non-block save
 static constexpr unsigned long long ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE = 8 * 1024 * 1024 * 1024ULL; // Set 0 if don't need non-blocking save
 static constexpr int ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS_2FACTOR = 10;
-static constexpr int ASYNC_FILE_IO_MAX_QUEUE_ITEMS_2FACTOR = 3;
+static constexpr int ASYNC_FILE_IO_MAX_QUEUE_ITEMS_2FACTOR = 4;
 static constexpr int ASYNC_FILE_IO_MAX_FILE_NAME = 64;
 static constexpr int ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS = (1ULL << ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS_2FACTOR);
 static constexpr int ASYNC_FILE_IO_MAX_QUEUE_ITEMS = (1ULL << ASYNC_FILE_IO_MAX_QUEUE_ITEMS_2FACTOR);
@@ -739,11 +739,9 @@ static long long asyncLoad(const CHAR16* fileName, unsigned long long totalSize,
     return 0;
 }
 
-static bool initFilesystem(EFI_MP_SERVICES_PROTOCOL* pServiceProtocol = NULL)
+static bool initFilesystem()
 {
 #ifdef NO_UEFI
-    allocatePool(sizeof(AsyncFileIO), (void**)(&gAsyncFileIO));
-    gAsyncFileIO->init(pServiceProtocol, ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE);
     return true;
 #else
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* simpleFileSystemProtocol = NULL;
@@ -852,15 +850,15 @@ static bool initFilesystem(EFI_MP_SERVICES_PROTOCOL* pServiceProtocol = NULL)
         return false;
     }
 
-    if (NULL != pServiceProtocol)
-    {
-        allocatePool(sizeof(AsyncFileIO), (void**)(&gAsyncFileIO));
-        gAsyncFileIO->init(pServiceProtocol, ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE);
-    }
-
-
     return true;
 #endif
+}
+
+static void registerAsynFileIO(EFI_MP_SERVICES_PROTOCOL* pServiceProtocol)
+{
+    allocatePool(sizeof(AsyncFileIO), (void**)(&gAsyncFileIO));
+    setMem(gAsyncFileIO, sizeof(AsyncFileIO), 0);
+    gAsyncFileIO->init(pServiceProtocol, ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE);
 }
 
 #pragma optimize("", off)

@@ -4471,10 +4471,7 @@ static bool initialize()
     requestedTickTransactions.header.setType(REQUEST_TICK_TRANSACTIONS);
     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
-    EFI_GUID mpServiceProtocolGuid = EFI_MP_SERVICES_PROTOCOL_GUID;
-    bs->LocateProtocol(&mpServiceProtocolGuid, NULL, (void**)&mpServicesProtocol);
-
-    if (!initFilesystem(mpServicesProtocol))
+    if (!initFilesystem())
         return false;
 
     EFI_STATUS status;
@@ -5580,9 +5577,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         EFI_STATUS status;
 
         unsigned int computingProcessorNumber;
+        EFI_GUID mpServiceProtocolGuid = EFI_MP_SERVICES_PROTOCOL_GUID;
+        bs->LocateProtocol(&mpServiceProtocolGuid, NULL, (void**)&mpServicesProtocol);
         unsigned long long numberOfAllProcessors, numberOfEnabledProcessors;
         mpServicesProtocol->GetNumberOfProcessors(mpServicesProtocol, &numberOfAllProcessors, &numberOfEnabledProcessors);
         mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
+
+        registerAsynFileIO(mpServicesProtocol);
         
         // Initialize resource management
         // ASSUMPTION: - each processor (CPU core) is bound to different functional thread.
