@@ -7,7 +7,7 @@
 
 
 // Start iteration with given issuance and given ownership filter (selects first record).
-void QPI::AssetOwnershipIterator::begin(const QPI::AssetIssuanceId& issuance, const QPI::AssetOwnershipSelect& ownership)
+void QPI::AssetOwnershipIterator::begin(const QPI::Asset& issuance, const QPI::AssetOwnershipSelect& ownership)
 {
     _issuance = issuance;
     _issuanceIdx = ::issuanceIndex(issuance.issuer, issuance.assetName);
@@ -125,7 +125,7 @@ sint64 QPI::AssetOwnershipIterator::numberOfOwnedShares() const
 
 
 // Start iteration with given issuance and given ownership + possession filters (selects first record).
-void QPI::AssetPossessionIterator::begin(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership, const AssetPossessionSelect& possession)
+void QPI::AssetPossessionIterator::begin(const Asset& issuance, const AssetOwnershipSelect& ownership, const AssetPossessionSelect& possession)
 {
     AssetOwnershipIterator::begin(issuance, ownership);
 
@@ -433,7 +433,7 @@ long long QPI::QpiContextFunctionCall::numberOfPossessedShares(unsigned long lon
     return ::numberOfPossessedShares(assetName, issuer, owner, possessor, ownershipManagingContractIndex, possessionManagingContractIndex);
 }
 
-sint64 QPI::QpiContextFunctionCall::numberOfShares(const QPI::AssetIssuanceId& issuanceId, const QPI::AssetOwnershipSelect& ownership, const QPI::AssetPossessionSelect& possession) const
+sint64 QPI::QpiContextFunctionCall::numberOfShares(const QPI::Asset& issuanceId, const QPI::AssetOwnershipSelect& ownership, const QPI::AssetPossessionSelect& possession) const
 {
     return ::numberOfShares(issuanceId, ownership, possession);
 }

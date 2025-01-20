@@ -10,7 +10,7 @@ Qubic Node Source Code - this repository contains the source code of a full qubi
 ## Prerequisites
 To run a qubic node, you need the following spec:
 - Bare Metal Server/Computer with at least 8 Cores (high CPU frequency with AVX2 support). AVX-512 support is recommended; check supported CPUs [here](https://www.epey.co.uk/cpu/e/YTozOntpOjUwOTc7YToxOntpOjA7czo2OiI0Mjg1NzUiO31pOjUwOTk7YToyOntpOjA7czoxOiI4IjtpOjE7czoyOiIzMiI7fWk6NTA4ODthOjY6e2k6MDtzOjY6IjQ1NjE1MCI7aToxO3M6NzoiMjM4Nzg2MSI7aToyO3M6NzoiMTkzOTE5OSI7aTozO3M6NzoiMTUwMjg4MyI7aTo0O3M6NzoiMjA2Nzk5MyI7aTo1O3M6NzoiMjE5OTc1OSI7fX1fYjowOw==/)
-- At least 500GB of RAM
+- At least 2TB of RAM
 - 1Gb/s synchronous internet connection
 - A USB Stick or SSD/HD attached to the Computer (via NVMe M.2 or USB)
 - UEFI Bios 
@@ -62,11 +62,11 @@ echo -e "o\nY\nd\nn\n\n\n+200G\n\nt\n\nef00\nw\nY" | gdisk /dev/sda
 - contract0003.XXX => must be the current contract #3 file. XXX must be replaced with the current epoch. (e.g. `contract0003.114`). Data from Random.
 - contract0004.XXX => must be the current contract #4 file. XXX must be replaced with the current epoch. (e.g. `contract0004.114`). Data from QUtil.
 - contract0005.XXX => must be the current contract #5 file. XXX must be replaced with the current epoch. (e.g. `contract0005.114`). Data from MyLastMatch.
-- contract0006.XXX => must be the current contract #5 file. XXX must be replaced with the current epoch. (e.g. `contract0005.114`). Data from GQMPROPO.
-- contract0007.XXX => must be the current contract #5 file. XXX must be replaced with the current epoch. (e.g. `contract0005.114`). Data from Swatch.
-- contract0008.XXX => must be the current contract #5 file. XXX must be replaced with the current epoch. (e.g. `contract0005.114`). Data from CCF.
-- contract0009.XXX => must be the current contract #5 file. XXX must be replaced with the current epoch. (e.g. `contract0005.114`). Data from QEarn.
-- contract0010.XXX => must be the current contract #5 file. XXX must be replaced with the current epoch. (e.g. `contract0005.114`). Data from QVault.
+- contract0006.XXX => must be the current contract #6 file. XXX must be replaced with the current epoch. (e.g. `contract0006.114`). Data from GQMPROPO.
+- contract0007.XXX => must be the current contract #7 file. XXX must be replaced with the current epoch. (e.g. `contract0007.114`). Data from Swatch.
+- contract0008.XXX => must be the current contract #8 file. XXX must be replaced with the current epoch. (e.g. `contract0008.114`). Data from CCF.
+- contract0009.XXX => must be the current contract #9 file. XXX must be replaced with the current epoch. (e.g. `contract0009.114`). Data from QEarn.
+- contract0010.XXX => must be the current contract #10 file. XXX must be replaced with the current epoch. (e.g. `contract0010.114`). Data from QVault.
 - Other contract files with the same format as above. For now, we have 6 contracts.
 - universe.XXX => must be the current universe file. XXX must be replaced with the current epoch. (e.g `universe.114`)
 - spectrum.XXX => must be the current spectrum file. XXX must be replaced with the current epoch. (e.g `spectrum.114`)

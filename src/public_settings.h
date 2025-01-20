@@ -23,7 +23,7 @@
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
-#define TARGET_TICK_DURATION 1000
+#define TARGET_TICK_DURATION 1500
 #define TRANSACTION_SPARSENESS 1
 
 // Below are 2 variables that are used for auto-F5 feature:
@@ -49,12 +49,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 229
+#define VERSION_B 232
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 139
-#define TICK 17720000
+#define EPOCH 144
+#define TICK 18480000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -69,9 +69,9 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define NUMBER_OF_HIDDEN_NEURONS 3000
 #define NUMBER_OF_NEIGHBOR_NEURONS 3000
 #define MAX_DURATION 9000000
-#define NUMBER_OF_OPTIMIZATION_STEPS 30
+#define NUMBER_OF_OPTIMIZATION_STEPS 60
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 134
+#define SOLUTION_THRESHOLD_DEFAULT 136
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 

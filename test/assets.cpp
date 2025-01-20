@@ -5,9 +5,13 @@
 // workaround for name clash with stdlib
 #define system qubicSystemStruct
 
+// reduced size of logging buffer (512 MB instead of 8 GB)
+#define LOG_BUFFER_SIZE (2*268435456ULL)
+
 #include "assets/assets.h"
 #include "contract_core/contract_exec.h"
 #include "contract_core/qpi_asset_impl.h"
+#include "logging/logging.h"
 
 #include "test_util.h"
 
@@ -19,12 +23,14 @@ public:
     {
         initAssets();
         initCommonBuffers();
+        qLogger::initLogging();
     }
 
     ~AssetsTest()
     {
         deinitCommonBuffers();
         deinitAssets();
+        qLogger::deinitLogging();
     }
 
     static void clearUniverse()
@@ -120,7 +126,7 @@ public:
         issuanceIdx = indexLists.issuancesFirstIdx;
         while (issuanceIdx != NO_ASSET_INDEX)
         {
-            AssetIssuanceId issuanceId(assets[issuanceIdx].varStruct.issuance.publicKey, assetNameFromString(assets[issuanceIdx].varStruct.issuance.name));
+            Asset issuanceId(assets[issuanceIdx].varStruct.issuance.publicKey, assetNameFromString(assets[issuanceIdx].varStruct.issuance.name));
             long long numOfSharesOwned = 0, numOfSharesPossessed = 0;
             for (AssetOwnershipIterator iter(issuanceId); !iter.reachedEnd(); iter.next())
             {
@@ -153,7 +159,7 @@ TEST(TestCoreAssets, CheckLoadFile)
 
 struct IssuanceTestData
 {
-    AssetIssuanceId id;
+    Asset id;
     unsigned short managingContract;
     unsigned int universeIdx;
     long long numOfShares;

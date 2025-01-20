@@ -6,6 +6,7 @@
 #include "platform/uefi.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
+#include "platform/memory_util.h"
 
 #include "network_messages/assets.h"
 
@@ -28,7 +29,7 @@
 
 // TODO: move this into AssetStorage class
 GLOBAL_VAR_DECL volatile char universeLock GLOBAL_VAR_INIT(0);
-GLOBAL_VAR_DECL Asset* assets GLOBAL_VAR_INIT(nullptr);
+GLOBAL_VAR_DECL AssetRecord* assets GLOBAL_VAR_INIT(nullptr);
 GLOBAL_VAR_DECL m256i* assetDigests GLOBAL_VAR_INIT(nullptr);
 static constexpr unsigned long long assetDigestsSizeInBytes = (ASSETS_CAPACITY * 2 - 1) * 32ULL;
 GLOBAL_VAR_DECL unsigned long long* assetChangeFlags GLOBAL_VAR_INIT(nullptr);
@@ -159,9 +160,9 @@ static unsigned int issuanceIndex(const m256i& issuer, unsigned long long assetN
 
 static bool initAssets()
 {
-    if (!allocPoolWithErrorLog(L"assets", ASSETS_CAPACITY * sizeof(Asset), (void**)&assets, __LINE__)
-        || !allocPoolWithErrorLog(L"assetDigests", assetDigestsSizeInBytes, (void**)&assetDigests, __LINE__)
-        || !allocPoolWithErrorLog(L"assetChangeFlags", ASSETS_CAPACITY / 8, (void**)&assetChangeFlags, __LINE__))
+    if (!allocatePoolWithError(L"assets", ASSETS_CAPACITY * sizeof(AssetRecord), (void**)&assets, __LINE__)
+        || !allocatePoolWithErrrLog(L"assetDigets", assetDigestsSizeInBytes, (void**)&assetDigests, __LINE__)
+        || !allocatePoolWithErrorLog(L"assetChangeFlags", ASSETS_CAPACITY / 8, (void**)&assetChangeFlags), __LINE__)
     {
         return false;
     }
@@ -275,7 +276,7 @@ iteration:
 }
 
 static sint64 numberOfShares(
-    const AssetIssuanceId& issuanceId,
+    const Asset& issuanceId,
     const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
     const AssetPossessionSelect& possession = AssetPossessionSelect::any())
 {
@@ -504,7 +505,7 @@ static void getUniverseDigest(m256i& digest)
     {
         if (assetChangeFlags[digestIndex >> 6] & (1ULL << (digestIndex & 63)))
         {
-            KangarooTwelve(&assets[digestIndex], sizeof(Asset), &assetDigests[digestIndex], 32);
+            KangarooTwelve(&assets[digestIndex], sizeof(AssetRecord), &assetDigests[digestIndex], 32);
         }
     }
     unsigned int previousLevelBeginning = 0;
@@ -537,10 +538,10 @@ static bool saveUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, const CHAR
     const unsigned long long beginningTick = __rdtsc();
 
     ACQUIRE(universeLock);
-    long long savedSize = save(fileName, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets, directory);
+    long long savedSize = save(fileName, ASSETS_CAPACITY * sizeof(AssetRecord), (unsigned char*)assets, directory);
     RELEASE(universeLock);
 
-    if (savedSize == ASSETS_CAPACITY * sizeof(Asset))
+    if (savedSize == ASSETS_CAPACITY * sizeof(AssetRecord))
     {
         setNumber(message, savedSize, TRUE);
         appendText(message, L" bytes of the universe data are saved (");
@@ -554,8 +555,8 @@ static bool saveUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, const CHAR
 
 static bool loadUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, CHAR16* directory = NULL)
 {
-    long long loadedSize = load(fileName, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets, directory);
-    if (loadedSize != ASSETS_CAPACITY * sizeof(Asset))
+    long long loadedSize = load(fileName, ASSETS_CAPACITY * sizeof(AssetRecord), (unsigned char*)assets, directory);
+    if (loadedSize != ASSETS_CAPACITY * sizeof(AssetRecord))
     {
         logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
 
@@ -570,8 +571,8 @@ static void assetsEndEpoch()
     ACQUIRE(universeLock);
 
     // rebuild asset hash map, getting rid of all elements with zero shares
-    Asset* reorgAssets = (Asset*)reorgBuffer;
-    setMem(reorgAssets, ASSETS_CAPACITY * sizeof(Asset), 0);
+    AssetRecord* reorgAssets = (AssetRecord*)reorgBuffer;
+    setMem(reorgAssets, ASSETS_CAPACITY * sizeof(AssetRecord), 0);
     for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
     {
         if (assets[i].varStruct.possession.type == POSSESSION
@@ -590,7 +591,7 @@ static void assetsEndEpoch()
             {
                 if (reorgAssets[issuanceIndex].varStruct.issuance.type == EMPTY)
                 {
-                    copyMem(&reorgAssets[issuanceIndex], &assets[oldIssuanceIndex], sizeof(Asset));
+                    copyMem(&reorgAssets[issuanceIndex], &assets[oldIssuanceIndex], sizeof(AssetRecord));
                 }
 
                 const m256i& ownerPublicKey = assets[oldOwnershipIndex].varStruct.ownership.publicKey;
@@ -650,7 +651,7 @@ static void assetsEndEpoch()
             }
         }
     }
-    copyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(Asset));
+    copyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(AssetRecord));
 
     setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
 
