@@ -116,11 +116,11 @@ namespace QPI
 
 	// Array of L bits encoded in array of uint64 (overall size is at least 8 bytes, L must be 2^N)
 	template <uint64 L>
-	struct bit_array
+	struct BitArray
 	{
 	private:
 		static_assert(L && !(L & (L - 1)),
-			"The capacity of the bit_array must be 2^N."
+			"The capacity of the BitArray must be 2^N."
 			);
 
 		static constexpr uint64 _bits = L;
@@ -175,23 +175,23 @@ namespace QPI
 	};
 
 	// Bit array convenience definitions
-	typedef bit_array<2> bit_2;
-	typedef bit_array<4> bit_4;
-	typedef bit_array<8> bit_8;
-	typedef bit_array<16> bit_16;
-	typedef bit_array<32> bit_32;
-	typedef bit_array<64> bit_64;
-	typedef bit_array<128> bit_128;
-	typedef bit_array<256> bit_256;
-	typedef bit_array<512> bit_512;
-	typedef bit_array<1024> bit_1024;
-	typedef bit_array<2048> bit_2048;
-	typedef bit_array<4096> bit_4096;
+	typedef BitArray<2> bit_2;
+	typedef BitArray<4> bit_4;
+	typedef BitArray<8> bit_8;
+	typedef BitArray<16> bit_16;
+	typedef BitArray<32> bit_32;
+	typedef BitArray<64> bit_64;
+	typedef BitArray<128> bit_128;
+	typedef BitArray<256> bit_256;
+	typedef BitArray<512> bit_512;
+	typedef BitArray<1024> bit_1024;
+	typedef BitArray<2048> bit_2048;
+	typedef BitArray<4096> bit_4096;
 
 
 	// Array of L elements of type T (L must be 2^N)
 	template <typename T, uint64 L>
-	struct array
+	struct Array
 	{
 	private:
 		static_assert(L && !(L & (L - 1)),
@@ -266,49 +266,49 @@ namespace QPI
 	};
 	
 	// Array convenience definitions
-	typedef array<sint8, 2> sint8_2;
-	typedef array<sint8, 4> sint8_4;
-	typedef array<sint8, 8> sint8_8;
+	typedef Array<sint8, 2> sint8_2;
+	typedef Array<sint8, 4> sint8_4;
+	typedef Array<sint8, 8> sint8_8;
 
-	typedef array<uint8, 2> uint8_2;
-	typedef array<uint8, 4> uint8_4;
-	typedef array<uint8, 8> uint8_8;
+	typedef Array<uint8, 2> uint8_2;
+	typedef Array<uint8, 4> uint8_4;
+	typedef Array<uint8, 8> uint8_8;
 
-	typedef array<sint16, 2> sint16_2;
-	typedef array<sint16, 4> sint16_4;
-	typedef array<sint16, 8> sint16_8;
+	typedef Array<sint16, 2> sint16_2;
+	typedef Array<sint16, 4> sint16_4;
+	typedef Array<sint16, 8> sint16_8;
 
-	typedef array<uint16, 2> uint16_2;
-	typedef array<uint16, 4> uint16_4;
-	typedef array<uint16, 8> uint16_8;
+	typedef Array<uint16, 2> uint16_2;
+	typedef Array<uint16, 4> uint16_4;
+	typedef Array<uint16, 8> uint16_8;
 
-	typedef array<sint32, 2> sint32_2;
-	typedef array<sint32, 4> sint32_4;
-	typedef array<sint32, 8> sint32_8;
+	typedef Array<sint32, 2> sint32_2;
+	typedef Array<sint32, 4> sint32_4;
+	typedef Array<sint32, 8> sint32_8;
 
-	typedef array<uint32, 2> uint32_2;
-	typedef array<uint32, 4> uint32_4;
-	typedef array<uint32, 8> uint32_8;
+	typedef Array<uint32, 2> uint32_2;
+	typedef Array<uint32, 4> uint32_4;
+	typedef Array<uint32, 8> uint32_8;
 
-	typedef array<sint64, 2> sint64_2;
-	typedef array<sint64, 4> sint64_4;
-	typedef array<sint64, 8> sint64_8;
+	typedef Array<sint64, 2> sint64_2;
+	typedef Array<sint64, 4> sint64_4;
+	typedef Array<sint64, 8> sint64_8;
 
-	typedef array<uint64, 2> uint64_2;
-	typedef array<uint64, 4> uint64_4;
-	typedef array<uint64, 8> uint64_8;
+	typedef Array<uint64, 2> uint64_2;
+	typedef Array<uint64, 4> uint64_4;
+	typedef Array<uint64, 8> uint64_8;
 
-	typedef array<id, 2> id_2;
-	typedef array<id, 8> id_4;
-	typedef array<id, 8> id_8;
+	typedef Array<id, 2> id_2;
+	typedef Array<id, 8> id_4;
+	typedef Array<id, 8> id_8;
 
 	// Check if array is sorted in given range (duplicates allowed). Returns false if range is invalid.
 	template <typename T, uint64 L>
-	bool isArraySorted(const array<T, L>& array, uint64 beginIdx = 0, uint64 endIdx = L);
+	bool isArraySorted(const Array<T, L>& Array, uint64 beginIdx = 0, uint64 endIdx = L);
 
 	// Check if array is sorted without duplicates in given range. Returns false if range is invalid.
 	template <typename T, uint64 L>
-	bool isArraySortedWithoutDuplicates(const array<T, L>& array, uint64 beginIdx = 0, uint64 endIdx = L);
+	bool isArraySortedWithoutDuplicates(const Array<T, L>& Array, uint64 beginIdx = 0, uint64 endIdx = L);
 
 
 	// Hash function class to be used with the hash map.
@@ -402,11 +402,11 @@ namespace QPI
 	// Collection of priority queues of elements with type T and total element capacity L.
 	// Each ID pov (point of view) has an own queue.
 	template <typename T, uint64 L>
-	struct collection
+	struct Collection
 	{
 	private:
 		static_assert(L && !(L & (L - 1)),
-			"The capacity of the collection must be 2^N."
+			"The capacity of the Collection must be 2^N."
 			);
 		static constexpr sint64 _nEncodedFlags = L > 32 ? 32 : L;
 
@@ -593,7 +593,7 @@ namespace QPI
 	//////////
 
 
-	struct AssetIssuanceId
+	struct Asset
 	{
 		id issuer;
 		uint64 assetName;
@@ -650,7 +650,7 @@ namespace QPI
 	class AssetOwnershipIterator
 	{
 	protected:
-		AssetIssuanceId _issuance;
+		Asset _issuance;
 		unsigned int _issuanceIdx;
 		AssetOwnershipSelect _ownership;
 		unsigned int _ownershipIdx;
@@ -661,13 +661,13 @@ namespace QPI
 		}
 
 	public:
-		AssetOwnershipIterator(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any())
+		AssetOwnershipIterator(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any())
 		{
 			begin(issuance, ownership);
 		}
 
 		// Start iteration with given issuance and given ownership filter (selects first record).
-		inline void begin(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any());
+		inline void begin(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any());
 
 		// Return if iteration with next() has reached end.
 		inline bool reachedEnd() const;
@@ -709,13 +709,13 @@ namespace QPI
 		unsigned int _possessionIdx;
 
 	public:
-		AssetPossessionIterator(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any())
+		AssetPossessionIterator(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any())
 		{
 			begin(issuance, ownership, possession);
 		}
 
 		// Start iteration with given issuance and given ownership + possession filters (selects first record).
-		inline void begin(const AssetIssuanceId& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any());
+		inline void begin(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any());
 
 		// Return if iteration with next() has reached end.
 		inline bool reachedEnd() const;
@@ -782,7 +782,7 @@ namespace QPI
 		union
 		{
 			// Number of votes for different options (0 = no change, 1 to N = yes to specific proposed value)
-			array<uint32, 8> optionVoteCount;
+			Array<uint32, 8> optionVoteCount;
 
 			// Scalar voting result (currently only for proposalType VariableScalarMean, mean value of all valid votes)
 			sint64 scalarVotingResult;
@@ -876,7 +876,7 @@ namespace QPI
 	struct ProposalDataV1
 	{
 		// URL explaining proposal, zero-terminated string.
-		array<uint8, 256> url;	
+		Array<uint8, 256> url;	
 		
 		// Epoch, when proposal is active. For setProposal(), 0 means to clear proposal and non-zero means the current epoch.
 		uint16 epoch;
@@ -894,14 +894,14 @@ namespace QPI
 			struct Transfer
 			{
 				id destination;
-				array<sint64, 4> amounts;   // N first amounts are the proposed options (non-negative, sorted without duplicates), rest zero
+				Array<sint64, 4> amounts;   // N first amounts are the proposed options (non-negative, sorted without duplicates), rest zero
 			} transfer;
 
 			// Used if type class is Variable and type is not VariableScalarMean
 			struct VariableOptions
 			{
 				uint64 variable;            // For identifying variable (interpreted by contract only)
-				array<sint64, 4> values;    // N first amounts are proposed options sorted without duplicates, rest zero
+				Array<sint64, 4> values;    // N first amounts are proposed options sorted without duplicates, rest zero
 			} variableOptions;
 
 			// Used if type is VariableScalarMean
@@ -980,7 +980,7 @@ namespace QPI
 	struct ProposalDataYesNo
 	{
 		// URL explaining proposal, zero-terminated string.
-		array<uint8, 256> url;
+		Array<uint8, 256> url;
 
 		// Epoch, when proposal is active. For setProposal(), 0 means to clear proposal and non-zero means the current epoch.
 		uint16 epoch;
@@ -1298,7 +1298,7 @@ namespace QPI
 		) const;
 
 		inline sint64 numberOfShares(
-			const AssetIssuanceId& issuanceId,
+			const Asset& issuanceId,
 			const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
 		) const;
@@ -1315,7 +1315,7 @@ namespace QPI
 		bit signatureValidity(
 			const id& entity,
 			const id& digest,
-			const array<sint8, 64>& signature
+			const Array<sint8, 64>& signature
 		) const;
 
 		inline uint32 tick(

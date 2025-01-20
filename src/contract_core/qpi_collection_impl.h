@@ -1,4 +1,4 @@
-// Implements functions of QPI::collection in order to:
+// Implements functions of QPI::Collection in order to:
 // 1. keep setMem() and copyMem() unavailable to contracts
 // 2. keep QPI file smaller and easier to read for contract devs
 // CAUTION: Include this AFTER the contract implementations!
@@ -11,7 +11,7 @@
 namespace QPI
 {
 	template <typename T, uint64 L>
-	void collection<T, L>::_softReset()
+	void Collection<T, L>::_softReset()
 	{
 		setMem(_povs, sizeof(_povs), 0);
 		setMem(_povOccupationFlags, sizeof(_povOccupationFlags), 0);
@@ -20,7 +20,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_povIndex(const id& pov) const
+	sint64 Collection<T, L>::_povIndex(const id& pov) const
 	{
 		sint64 povIndex = pov.u64._0 & (L - 1);
 		for (sint64 counter = 0; counter < L; counter += 32)
@@ -46,7 +46,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_headIndex(const sint64 povIndex, const sint64 maxPriority) const
+	sint64 Collection<T, L>::_headIndex(const sint64 povIndex, const sint64 maxPriority) const
 	{
 		// with current code path, pov is not empty here
 		const auto& pov = _povs[povIndex];
@@ -95,7 +95,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_tailIndex(const sint64 povIndex, const sint64 minPriority) const
+	sint64 Collection<T, L>::_tailIndex(const sint64 povIndex, const sint64 minPriority) const
 	{
 		// with current code path, pov is not empty here
 		const auto& pov = _povs[povIndex];
@@ -145,7 +145,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_searchElement(const sint64 bstRootIndex,
+	sint64 Collection<T, L>::_searchElement(const sint64 bstRootIndex,
 		const sint64 priority, int* pIterationsCount) const
 	{
 		sint64 idx = bstRootIndex;
@@ -183,7 +183,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_addPovElement(const sint64 povIndex, const T value, const sint64 priority)
+	sint64 Collection<T, L>::_addPovElement(const sint64 povIndex, const T value, const sint64 priority)
 	{
 		const sint64 newElementIdx = _population++;
 		auto& newElement = _elements[newElementIdx].init(value, priority, povIndex);
@@ -230,7 +230,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	uint64 collection<T, L>::_getSortedElements(const sint64 rootIdx, sint64* sortedElementIndices) const
+	uint64 Collection<T, L>::_getSortedElements(const sint64 rootIdx, sint64* sortedElementIndices) const
 	{
 		uint64 count = 0;
 		sint64 elementIdx = rootIdx;
@@ -269,7 +269,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	inline void collection<T, L>::_set(sint64_4& vec, sint64 v0, sint64 v1, sint64 v2, sint64 v3) const
+	inline void Collection<T, L>::_set(sint64_4& vec, sint64 v0, sint64 v1, sint64 v2, sint64 v3) const
 	{
 		vec.set(0, v0);
 		vec.set(1, v1);
@@ -278,7 +278,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_rebuild(sint64 rootIdx)
+	sint64 Collection<T, L>::_rebuild(sint64 rootIdx)
 	{
 		auto* sortedElementIndices = reinterpret_cast<sint64*>(::__scratchpad());
 		if (sortedElementIndices == NULL)
@@ -364,7 +364,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_getMostLeft(sint64 elementIdx) const
+	sint64 Collection<T, L>::_getMostLeft(sint64 elementIdx) const
 	{
 		while (_elements[elementIdx].bstLeftIndex != NULL_INDEX)
 		{
@@ -374,7 +374,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_getMostRight(sint64 elementIdx) const
+	sint64 Collection<T, L>::_getMostRight(sint64 elementIdx) const
 	{
 		while (_elements[elementIdx].bstRightIndex != NULL_INDEX)
 		{
@@ -384,7 +384,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_previousElementIndex(sint64 elementIdx) const
+	sint64 Collection<T, L>::_previousElementIndex(sint64 elementIdx) const
 	{
 		elementIdx &= (L - 1);
 		if (uint64(elementIdx) < _population)
@@ -415,7 +415,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::_nextElementIndex(sint64 elementIdx) const
+	sint64 Collection<T, L>::_nextElementIndex(sint64 elementIdx) const
 	{
 		elementIdx &= (L - 1);
 		if (uint64(elementIdx) < _population)
@@ -446,7 +446,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	bool collection<T, L>::_updateParent(const sint64 elementIdx, const sint64 newElementIdx)
+	bool Collection<T, L>::_updateParent(const sint64 elementIdx, const sint64 newElementIdx)
 	{
 		if (elementIdx != NULL_INDEX)
 		{
@@ -473,7 +473,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	void collection<T, L>::_moveElement(const sint64 srcIdx, const sint64 dstIdx)
+	void Collection<T, L>::_moveElement(const sint64 srcIdx, const sint64 dstIdx)
 	{
 		copyMem(&_elements[dstIdx], &_elements[srcIdx], sizeof(_elements[0]));
 
@@ -516,7 +516,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	uint64 collection<T, L>::_getEncodedPovOccupationFlags(const uint64* povOccupationFlags, const sint64 povIndex) const
+	uint64 Collection<T, L>::_getEncodedPovOccupationFlags(const uint64* povOccupationFlags, const sint64 povIndex) const
 	{
 		const sint64 offset = (povIndex & 31) << 1;
 		uint64 flags = povOccupationFlags[povIndex >> 5] >> offset;
@@ -528,7 +528,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::add(const id& pov, T element, sint64 priority)
+	sint64 Collection<T, L>::add(const id& pov, T element, sint64 priority)
 	{
 		if (_population < capacity() && _markRemovalCounter < capacity())
 		{
@@ -562,12 +562,12 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	void collection<T, L>::cleanup()
+	void Collection<T, L>::cleanup()
 	{
 		// _povs gets occupied over time with entries of type 3 which means they are marked for cleanup.
-		// Once cleanup is called it's necessary to remove all these type 3 entries by reconstructing a fresh collection residing in scratchpad buffer.
+		// Once cleanup is called it's necessary to remove all these type 3 entries by reconstructing a fresh Collection residing in scratchpad buffer.
 		// The _elements array is not reorganized by the cleanup (only references to _povs are updated).
-		// Cleanup() called for a collection having only type 3 entries in _povs must give the result equal to reset() memory content wise.
+		// Cleanup() called for a Collection having only type 3 entries in _povs must give the result equal to reset() memory content wise.
 
 		// Quick check to cleanup
 		if (!_markRemovalCounter)
@@ -575,7 +575,7 @@ namespace QPI
 			return;
 		}
 
-		// Speedup case of empty collection but existed marked for removal povs
+		// Speedup case of empty Collection but existed marked for removal povs
 		if (!population())
 		{
 			_softReset();
@@ -590,7 +590,7 @@ namespace QPI
 		setMem(::__scratchpad(), sizeof(_povs) + sizeof(_povOccupationFlags), 0);
 		uint64 newPopulation = 0;
 
-		// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new collection's pov buffers and
+		// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new Collection's pov buffers and
 		// update povIndex in elements belonging to pov.
 		constexpr uint64 oldPovIndexGroupCount = (L >> 5) ? (L >> 5) : 1;
 		for (sint64 oldPovIndexGroup = 0; oldPovIndexGroup < oldPovIndexGroupCount; oldPovIndexGroup++)
@@ -603,7 +603,7 @@ namespace QPI
 			for (maskBits >>= oldPovIndexOffset;
 				oldPovIndexOffset < oldPovIndexOffsetEnd; oldPovIndexOffset += 2, maskBits >>= 2)
 			{
-				// Only add pov to new collection that are occupied and not marked for removal
+				// Only add pov to new Collection that are occupied and not marked for removal
 				if (maskBits & 3ULL)
 				{
 					// find empty position in new pov hash map
@@ -674,13 +674,13 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	inline T collection<T, L>::element(sint64 elementIndex) const
+	inline T Collection<T, L>::element(sint64 elementIndex) const
 	{
 		return _elements[elementIndex & (L - 1)].value;
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::headIndex(const id& pov) const
+	sint64 Collection<T, L>::headIndex(const id& pov) const
 	{
 		const sint64 povIndex = _povIndex(pov);
 
@@ -688,7 +688,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::headIndex(const id& pov, sint64 maxPriority) const
+	sint64 Collection<T, L>::headIndex(const id& pov, sint64 maxPriority) const
 	{
 		const sint64 povIndex = _povIndex(pov);
 		if (povIndex < 0)
@@ -700,19 +700,19 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::nextElementIndex(sint64 elementIndex) const
+	sint64 Collection<T, L>::nextElementIndex(sint64 elementIndex) const
 	{
 		return _nextElementIndex(elementIndex);
 	}
 
 	template <typename T, uint64 L>
-	inline uint64 collection<T, L>::population() const
+	inline uint64 Collection<T, L>::population() const
 	{
 		return _population;
 	}
 
 	template <typename T, uint64 L>
-	uint64 collection<T, L>::population(const id& pov) const
+	uint64 Collection<T, L>::population(const id& pov) const
 	{
 		const sint64 povIndex = _povIndex(pov);
 
@@ -720,25 +720,25 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	id collection<T, L>::pov(sint64 elementIndex) const
+	id Collection<T, L>::pov(sint64 elementIndex) const
 	{
 		return _povs[_elements[elementIndex & (L - 1)].povIndex].value;
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::prevElementIndex(sint64 elementIndex) const
+	sint64 Collection<T, L>::prevElementIndex(sint64 elementIndex) const
 	{
 		return _previousElementIndex(elementIndex);
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::priority(sint64 elementIndex) const
+	sint64 Collection<T, L>::priority(sint64 elementIndex) const
 	{
 		return _elements[elementIndex & (L - 1)].priority;
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::remove(sint64 elementIdx)
+	sint64 Collection<T, L>::remove(sint64 elementIdx)
 	{
 		sint64 nextElementIdxOfRemoved = NULL_INDEX;
 		elementIdx &= (L - 1);
@@ -853,7 +853,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	void collection<T, L>::replace(sint64 oldElementIndex, const T& newElement)
+	void Collection<T, L>::replace(sint64 oldElementIndex, const T& newElement)
 	{
 		if (uint64(oldElementIndex) < _population)
 		{
@@ -862,13 +862,13 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	void collection<T, L>::reset()
+	void Collection<T, L>::reset()
 	{
 		setMem(this, sizeof(*this), 0);
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::tailIndex(const id& pov) const
+	sint64 Collection<T, L>::tailIndex(const id& pov) const
 	{
 		const sint64 povIndex = _povIndex(pov);
 
@@ -876,7 +876,7 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
-	sint64 collection<T, L>::tailIndex(const id& pov, sint64 minPriority) const
+	sint64 Collection<T, L>::tailIndex(const id& pov, sint64 minPriority) const
 	{
 		const sint64 povIndex = _povIndex(pov);
 		if (povIndex < 0)

@@ -32,7 +32,7 @@ public:
 			sint64 numberOfShares;
 		};
 
-		array<Order, 256> orders;
+		Array<Order, 256> orders;
 	};
 
 	struct AssetBidOrders_input
@@ -50,7 +50,7 @@ public:
 			sint64 numberOfShares;
 		};
 
-		array<Order, 256> orders;
+		Array<Order, 256> orders;
 	};
 
 	struct EntityAskOrders_input
@@ -68,7 +68,7 @@ public:
 			sint64 numberOfShares;
 		};
 
-		array<Order, 256> orders;
+		Array<Order, 256> orders;
 	};
 
 	struct EntityBidOrders_input
@@ -86,7 +86,7 @@ public:
 			sint64 numberOfShares;
 		};
 
-		array<Order, 256> orders;
+		Array<Order, 256> orders;
 	};
 
 	struct IssueAsset_input
@@ -175,7 +175,7 @@ protected:
 		id entity;
 		sint64 numberOfShares;
 	};
-	collection<_AssetOrder, 2097152 * X_MULTIPLIER> _assetOrders;
+	Collection<_AssetOrder, 2097152 * X_MULTIPLIER> _assetOrders;
 
 	struct _EntityOrder
 	{
@@ -183,7 +183,7 @@ protected:
 		uint64 assetName;
 		sint64 numberOfShares;
 	};
-	collection<_EntityOrder, 2097152 * X_MULTIPLIER> _entityOrders;
+	Collection<_EntityOrder, 2097152 * X_MULTIPLIER> _entityOrders;
 
 	// TODO: change to "locals" variables and remove from state? -> every func/proc can define struct of "locals" that is passed as an argument (stored on stack structure per processor)
 	sint64 _elementIndex, _elementIndex2;

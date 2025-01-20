@@ -49,12 +49,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 231
+#define VERSION_B 232
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 143
-#define TICK 18330000
+#define EPOCH 144
+#define TICK 18480000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
@@ -71,7 +71,7 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 #define MAX_DURATION 9000000
 #define NUMBER_OF_OPTIMIZATION_STEPS 60
 #define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 135
+#define SOLUTION_THRESHOLD_DEFAULT 136
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
