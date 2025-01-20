@@ -4,7 +4,7 @@
 #include "platform/uefi.h"
 #include "memory.h"
 
-#if defined(NO_UEFI)
+#ifdef NO_UEFI
 
 #include <cstdlib>
 #include <cstdbool>
@@ -45,7 +45,7 @@ static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long s
         logStatusAndMemInfoToConsole(message, status, LINE, size);
         return false;
     }
-#if !defined(NDEBUG)
+#ifndef NDEBUG
     else {
         setText(message, L"EFI_BOOT_SERVICES.AllocatePool() completed for ");
         appendText(message, name);
