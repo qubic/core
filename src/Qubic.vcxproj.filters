@@ -217,6 +217,9 @@
     <ClInclude Include="contracts\TestExampleA.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\TestExampleB.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

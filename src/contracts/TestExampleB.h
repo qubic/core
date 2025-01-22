@@ -1,10 +1,10 @@
 using namespace QPI;
 
-struct TESTEXA2
+struct TESTEXB2
 {
 };
 
-struct TESTEXA : public ContractBase
+struct TESTEXB : public ContractBase
 {
 	struct IssueAsset_input
 	{
@@ -101,7 +101,7 @@ protected:
 
 	PUBLIC_PROCEDURE(SetPreAcquireSharesOutput)
         state.preAcquireSharesOutput = input;
-    _
+_
 
 	PUBLIC_PROCEDURE(AcquireShareManagementRights)
 		if (qpi.acquireShares(input.asset, input.ownerAndPossessor, input.ownerAndPossessor, input.numberOfShares,
@@ -111,7 +111,7 @@ protected:
 			output.transferredNumberOfShares = input.numberOfShares;
 		}
 
-	_
+    _
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
@@ -137,13 +137,13 @@ protected:
 		// management rights is risky
 		if (qpi.originator() == input.owner)
 		{
-			output = state.preAcquireSharesOutput;
+            output = state.preAcquireSharesOutput;
 		}
-		state.prevPreAcquireSharesInput = input;
+        state.prevPreAcquireSharesInput = input;
 	_
 
 	POST_ACQUIRE_SHARES
-		state.postAcquireShareCounter++;
-		state.prevPostAcquireSharesInput = input;
-	_
+        state.postAcquireShareCounter++;
+        state.prevPostAcquireSharesInput = input;
+    _
 };
