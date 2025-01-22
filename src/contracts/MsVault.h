@@ -827,17 +827,6 @@ protected:
     _
 
     BEGIN_EPOCH_WITH_LOCALS
-        for (locals.i = 0ULL; locals.i < MSVAULT_MAX_VAULTS; locals.i++)
-        {
-            locals.v = state.vaults.get(locals.i);
-            if (locals.v.isActive)
-            {
-                locals.rr_in.vault = locals.v;
-                resetReleaseRequests(qpi, state, locals.rr_in, locals.rr_out, locals.rr_locals);
-                locals.v = locals.rr_out.vault;
-                state.vaults.set(locals.i, locals.v);
-            }
-        }
     _
 
     END_EPOCH_WITH_LOCALS
