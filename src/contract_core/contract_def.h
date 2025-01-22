@@ -149,11 +149,7 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_INDEX QEARN_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QEARN
 #define CONTRACT_STATE2_TYPE QEARN2
-#ifdef QEARN_UPDATE
 #include "contracts/Qearn.h"
-#else
-#include "contracts/Qearn_old.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
