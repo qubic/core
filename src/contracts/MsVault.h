@@ -310,6 +310,26 @@ public:
         uint64 depositFee; // currently always 0
     };
 
+    struct getVaultOwners_input
+    {
+        uint64 vaultId;
+    };
+    struct getVaultOwners_locals
+    {
+        isValidVaultId_input iv_in;
+        isValidVaultId_output iv_out;
+        isValidVaultId_locals iv_locals;
+
+        Vault v;
+        uint64 i;
+    };
+    struct getVaultOwners_output
+    {
+        bit status;
+        uint64 numberOfOwners;
+        array<id, MSVAULT_MAX_OWNERS> owners;
+    };
+
     struct BEGIN_EPOCH_locals
     {
         uint64 i;
@@ -772,6 +792,34 @@ protected:
         output.depositFee = 0ULL; // currently always 0, but we still need to return it for viewing purpose
     _
 
+    PUBLIC_FUNCTION_WITH_LOCALS(getVaultOwners)
+        output.status = 0;
+        output.numberOfOwners = 0;
+
+        locals.iv_in.vaultId = input.vaultId;
+        isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
+        if (!locals.iv_out.result)
+        {
+            return;
+        }
+
+        locals.v = state.vaults.get(input.vaultId);
+
+        if (!locals.v.isActive)
+        {
+            return;
+        }
+
+        output.numberOfOwners = locals.v.numberOfOwners;
+
+        for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i++)
+        {
+            output.owners.set(locals.i, locals.v.owners.get(locals.i));
+        }
+
+        output.status = 1;
+    _
+
     INITIALIZE
         state.numberOfActiveVaults = 0ULL;
         state.totalRevenue = 0ULL;
@@ -852,5 +900,6 @@ protected:
         REGISTER_USER_FUNCTION(getVaultName, 8);
         REGISTER_USER_FUNCTION(getRevenueInfo, 9);
         REGISTER_USER_FUNCTION(getFees, 10);
+        REGISTER_USER_FUNCTION(getVaultOwners, 11);
     _
 };
