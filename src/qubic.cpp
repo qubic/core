@@ -642,8 +642,9 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 
     // Only accept computor list from current epoch (important in seamless epoch transition if this node is
     // lagging behind the others that already switched epoch).
-    // Only accept a new list once per epoch except when we are using a self-generated computor list
-    if (request->computors.epoch == system.epoch && (request->computors.epoch > broadcastedComputors.computors.epoch || useSelfGeneratedComputors))
+    // Only accept a new list once per epoch
+    // If we are in a critical Situation 2 (ARB List does not match self Computed one) manuel intervention is needed.
+    if (request->computors.epoch == system.epoch && (request->computors.epoch > broadcastedComputors.computors.epoch || useSelfGeneratedComputors) && !(criticalSituation == 2))
     {
         // Verify that all addresses are non-zeroes. Otherwise, discard it even if ARB broadcasted it.
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -690,8 +691,6 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                     // Accept list of arbitrator and mark as signed
                     copyMem(&broadcastedComputors.computors.signature, request->computors.signature, SIGNATURE_SIZE);
                     useSelfGeneratedComputors = false;
-                    // In case previous computor list of ARB did not match resolve criticalsituation to start ticking again
-                    criticalSituation = 0;
                 }
             }
             else // No self generated computor list available
@@ -6560,7 +6559,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
                 else if (criticalSituation == 2)
                 {
-                    logToConsole(L"CRITICAL SITUATION #2: Self-generated computorlist does not match computorlist of ARB");
+                    logToConsole(L"CRITICAL SITUATION #2: Self-generated computorlist does not match computorlist of ARB, manual intervention is needed!");
                 }
 
 
