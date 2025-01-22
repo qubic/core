@@ -1466,6 +1466,7 @@ namespace QPI
 		id possessor;
 		sint64 numberOfShares;
 		sint64 receivedFee;
+		uint16 otherContractIndex;
 	};
 
 	//////////

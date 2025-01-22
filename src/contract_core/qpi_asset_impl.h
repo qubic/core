@@ -337,7 +337,7 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
     }
 
     // run POST_ACQUIRE_SHARES in other contract (without invocation reward)
-    QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee };
+    QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee, currentContractIndex };
     QPI::NoData post_output;
     __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(sourceOwnershipManagingContractIndex, post_input, post_output, 0);
 
@@ -553,14 +553,14 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
 
     // transfer management rights
     if (!transferShareManagementRights(it.ownershipIndex(), it.possessionIndex(),
-        destinationOwnershipManagingContractIndex, destinationPossessionManagingContractIndex,
-        numberOfShares, nullptr, nullptr, true))
+            destinationOwnershipManagingContractIndex, destinationPossessionManagingContractIndex,
+            numberOfShares, nullptr, nullptr, true))
     {
         return INVALID_AMOUNT;
     }
 
     // run POST_RELEASE_SHARES in other contract (without invocation reward)
-    QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee };
+    QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee, currentContractIndex };
     QPI::NoData post_output;
     __qpiCallSystemProcOfOtherContract<POST_RELEASE_SHARES>(destinationOwnershipManagingContractIndex, post_input, post_output, 0);
 
