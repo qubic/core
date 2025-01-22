@@ -1,7 +1,5 @@
 #define SINGLE_COMPILE_UNIT
 
-#define QEARN_UPDATE
-
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -26,6 +24,7 @@
 #include "platform/time.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
+#include "platform/memory_util.h"
 
 #include "platform/custom_stack.h"
 
@@ -105,6 +104,7 @@ static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, uni
 static int misalignedState = 0;
 
 static volatile unsigned char epochTransitionState = 0;
+static volatile unsigned char epochTransitionCleanMemoryFlag = 1;
 static volatile long epochTransitionWaitingRequestProcessors = 0;
 
 static m256i operatorPublicKey;
@@ -242,9 +242,14 @@ static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
 
-
 static m256i selfGeneratedComputors[NUMBER_OF_COMPUTORS];
 static bool useSelfGeneratedComputors = false;
+
+#if ENABLED_LOGGING
+#define PAUSE_BEFORE_CLEAR_MEMORY 1 // Requiring operators to press F10 to clear memory (before switching epoch)
+#else
+#define PAUSE_BEFORE_CLEAR_MEMORY 0
+#endif
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
@@ -2726,6 +2731,7 @@ static void processTick(unsigned long long processorNumber)
     // Update entity category populations and dust thresholds each 8 ticks
     if ((system.tick & 7) == 0)
         updateAndAnalzeEntityCategoryPopulations();
+    logger.updateTick(system.tick);
 }
 
 #pragma optimize("", on)
@@ -3079,6 +3085,29 @@ static void endEpoch()
     }
 
     assetsEndEpoch();
+
+    logger.updateTick(system.tick);
+#if PAUSE_BEFORE_CLEAR_MEMORY
+    // re-open request processors for other services to query
+    epochTransitionState = 0;
+    while (epochTransitionWaitingRequestProcessors != 0)
+    {
+        _mm_pause();
+    }
+
+    epochTransitionCleanMemoryFlag = 0;
+    while (epochTransitionCleanMemoryFlag == 0) // wait until operator flip this flag to 1 to continue the beginEpoch procedures
+    {
+        _mm_pause();
+    }
+
+    // close all request processors
+    epochTransitionState = 1;
+    while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
+    {
+        _mm_pause();
+    }
+#endif
 
     system.epoch++;
     system.initialTick = system.tick;
@@ -5029,18 +5058,6 @@ static void tickProcessor(void*)
 
                                 if (epochTransitionState == 1)
                                 {
-                                    // seamless epoch transistion
-#ifndef NDEBUG
-                                    addDebugMessage(L"Starting epoch transition");
-                                    {
-                                        CHAR16 dbgMsgBuf[300];
-                                        CHAR16 digestChars[60 + 1];
-                                        getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
-                                        setText(dbgMsgBuf, L"Old mining seed: ");
-                                        appendText(dbgMsgBuf, digestChars);
-                                        addDebugMessage(dbgMsgBuf);
-                                    }
-#endif
 
                                     // wait until all request processors are in waiting state
                                     while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
@@ -5065,22 +5082,8 @@ static void tickProcessor(void*)
                                     calculateComputorIndex();
 
 
-#ifndef NDEBUG
-                                    addDebugMessage(L"Calling beginEpoch1of2()"); // TODO: remove after testing
-#endif
                                     beginEpoch();
                                     setNewMiningSeed();
-#ifndef NDEBUG
-                                    addDebugMessage(L"Finished beginEpoch2of2()"); // TODO: remove after testing
-                                    {
-                                        CHAR16 dbgMsgBuf[300];
-                                        CHAR16 digestChars[60 + 1];
-                                        getIdentity(score->currentRandomSeed.m256i_u8, digestChars, true);
-                                        setText(dbgMsgBuf, L"New mining seed: ");
-                                        appendText(dbgMsgBuf, digestChars);
-                                        addDebugMessage(dbgMsgBuf);
-                                    }
-#endif
 
                                     // Some debug checks that we are ready for the next epoch
                                     ASSERT(system.numberOfSolutions == 0);
@@ -5114,10 +5117,6 @@ static void tickProcessor(void*)
                                     getComputerDigest(etalonTick.saltedComputerDigest);
 
                                     epochTransitionState = 0;
-
-#ifndef NDEBUG
-                                    addDebugMessage(L"Finished epoch transition");
-#endif
                                 }
                                 ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
@@ -5262,6 +5261,7 @@ static bool saveSystem(CHAR16* directory)
     return false;
 }
 
+
 static bool initialize()
 {
     enableAVX();
@@ -5316,29 +5316,21 @@ static bool initialize()
     {
         if (!ts.init())
             return false;
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE, (void**)&entityPendingTransactions))
+        if (!allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE,(void**)&entityPendingTransactions, __LINE__) ||
+            !allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * 32ULL,(void**)&entityPendingTransactionDigests , __LINE__))
         {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE);
             return false;
         }
-        else if (status = bs->AllocatePool(EfiRuntimeServicesData, SPECTRUM_CAPACITY * 32ULL, (void**)&entityPendingTransactionDigests))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, SPECTRUM_CAPACITY * 32ULL);
 
+        if (!allocPoolWithErrorLog(L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE, (void**)&computorPendingTransactions, __LINE__) ||
+            !allocPoolWithErrorLog(L"computorPendingTransactions buffer", NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL, (void**)&computorPendingTransactionDigests, __LINE__))
+        {
             return false;
         }
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE, (void**)&computorPendingTransactions))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE);
-            return false;
-        }
-        else if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL, (void**)&computorPendingTransactionDigests))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL);
+        
 
-            return false;
-        }
         bs->SetMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
+
 
         if (!initSpectrum())
             return false;
@@ -5353,26 +5345,21 @@ static bool initialize()
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
-            if (status = bs->AllocatePool(EfiRuntimeServicesData, size, (void**)&contractStates[contractIndex]))
+            if (!allocPoolWithErrorLog(L"contractStates",  size, (void**)&contractStates[contractIndex], __LINE__))
             {
-                logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, size);
-
                 return false;
             }
         }
 
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, sizeof(*score), (void**)&score))
+        if (!allocPoolWithErrorLog(L"score", sizeof(*score), (void**)&score, __LINE__))
         {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, sizeof(*score));
             return false;
         }
         setMem(score, sizeof(*score), 0);
 
         bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags))
+        if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags, __LINE__))
         {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, NUMBER_OF_MINER_SOLUTION_FLAGS / 8);
-
             return false;
         }
 
@@ -5517,25 +5504,17 @@ static bool initialize()
     score->loadScoreCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
-    if ((status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu0))
-        || (status = bs->AllocatePool(EfiRuntimeServicesData, 536870912, (void**)&dejavu1)))
+    if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
+        (!allocPoolWithErrorLog(L"dejavu1", 536870912, (void**)&dejavu1, __LINE__)))
     {
-        logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, 536870912);
-
         return false;
     }
     bs->SetMem((void*)dejavu0, 536870912, 0);
     bs->SetMem((void*)dejavu1, 536870912, 0);
 
-    if (status = bs->AllocatePool(EfiRuntimeServicesData, REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer))
+    if ((!allocPoolWithErrorLog(L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer, __LINE__)) ||
+        (!allocPoolWithErrorLog(L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer, __LINE__)))
     {
-        logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, REQUEST_QUEUE_BUFFER_SIZE);
-        return false;
-    }
-    else if (status = bs->AllocatePool(EfiRuntimeServicesData, RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer))
-    {
-        logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, RESPONSE_QUEUE_BUFFER_SIZE);
-
         return false;
     }
 
@@ -5543,24 +5522,13 @@ static bool initialize()
     {
         peers[i].receiveData.FragmentCount = 1;
         peers[i].transmitData.FragmentCount = 1;
-        if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &peers[i].receiveBuffer))
+        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE, &peers[i].receiveBuffer, __LINE__))  ||
+            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer, __LINE__)) ||
+            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE, (void**)&peers[i].dataToTransmit, __LINE__)))
         {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
-
             return false;
         }
-        else if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
 
-            return false;
-        }
-        else if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, (void**)&peers[i].dataToTransmit))
-        {
-            logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
-
-            return false;
-        }
         if ((status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].connectAcceptToken.CompletionToken.Event))
             || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
             || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
@@ -6343,6 +6311,18 @@ static void processKeyPresses()
         break;
 
         /*
+        * F10 Key
+        * By Pressing the F10 Key epochTransitionCleanMemoryFlag is set to 1
+        * Allowing the node to clean memory and continue switching to new epoch
+        */
+        case 0x14:
+        {
+            logToConsole(L"Pressed F10 key: epochTransitionCleanMemoryFlag => 1");
+            epochTransitionCleanMemoryFlag = 1;
+        }
+        break;
+
+        /*
         * F11 Key
         * By Pressing the F11 Key the node can switch between static and dynamic network mode
         * static: incoming connections are blocked and peer list will not be altered
@@ -6423,8 +6403,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     {
         logToConsole(L"Setting up multiprocessing ...");
 
-        EFI_STATUS status;
-
         unsigned int computingProcessorNumber;
         EFI_GUID mpServiceProtocolGuid = EFI_MP_SERVICES_PROTOCOL_GUID;
         bs->LocateProtocol(&mpServiceProtocolGuid, NULL, (void**)&mpServicesProtocol);
@@ -6453,10 +6431,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             mpServicesProtocol->GetProcessorInfo(mpServicesProtocol, i, &processorInformation);
             if (processorInformation.StatusFlag == (PROCESSOR_ENABLED_BIT | PROCESSOR_HEALTH_STATUS_BIT))
             {
-                if (status = bs->AllocatePool(EfiRuntimeServicesData, BUFFER_SIZE, &processors[numberOfProcessors].buffer))
+                if (!allocPoolWithErrorLog(L"processor[i]", BUFFER_SIZE, &processors[numberOfProcessors].buffer, __LINE__))
                 {
-                    logStatusAndMemInfoToConsole(L"EFI_BOOT_SERVICES.AllocatePool() fails", status, __LINE__, BUFFER_SIZE);
-
                     numberOfProcessors = 0;
 
                     break;
@@ -6952,6 +6928,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         misalignedState = 0;
                     }
+
+#if PAUSE_BEFORE_CLEAR_MEMORY
+                    if (epochTransitionCleanMemoryFlag == 0)
+                    {
+                        logToConsole(L"Please press F10 to clear all memory on RAM and continue epoch transition procedure!");
+                    }
+#endif
 
 #if !defined(NDEBUG)
                     if (system.tick % 1000 == 0)

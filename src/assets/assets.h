@@ -6,6 +6,7 @@
 #include "platform/uefi.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
+#include "platform/memory_util.h"
 
 #include "network_messages/assets.h"
 
@@ -159,11 +160,10 @@ static unsigned int issuanceIndex(const m256i& issuer, unsigned long long assetN
 
 static bool initAssets()
 {
-    if (!allocatePool(ASSETS_CAPACITY * sizeof(AssetRecord), (void**)&assets)
-        || !allocatePool(assetDigestsSizeInBytes, (void**)&assetDigests)
-        || !allocatePool(ASSETS_CAPACITY / 8, (void**)&assetChangeFlags))
+    if (!allocPoolWithErrorLog(L"assets", ASSETS_CAPACITY * sizeof(AssetRecord), (void**)&assets, __LINE__)
+        || !allocPoolWithErrorLog(L"assetDigets", assetDigestsSizeInBytes, (void**)&assetDigests, __LINE__)
+        || !allocPoolWithErrorLog(L"assetChangeFlags", ASSETS_CAPACITY / 8, (void**)&assetChangeFlags, __LINE__))
     {
-        logToConsole(L"Failed to allocate asset buffers!");
         return false;
     }
     setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);

@@ -2,7 +2,7 @@
 #ifdef NO_UEFI
 unsigned long long top_of_stack;
 #endif
-#include "platform/memory.h"
+#include "platform/memory_util.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "public_settings.h"
@@ -316,9 +316,8 @@ struct ScoreFunction
     {
         if (_computeBuffer == nullptr)
         {
-            if (!allocatePool(sizeof(computeBuffer) * solutionBufferCount, (void**)&_computeBuffer))
+            if (!allocPoolWithErrorLog(L"computeBuffer (score solution buffer)", sizeof(computeBuffer) * solutionBufferCount, (void**)&_computeBuffer, __LINE__))
             {
-                logToConsole(L"Failed to allocate memory for score solution buffer!");
                 return false;
             }
 
@@ -326,75 +325,63 @@ struct ScoreFunction
             {
                 auto& cb = _computeBuffer[bufId];
 
-                if (!allocatePool(RANDOM2_POOL_SIZE, (void**)&(cb._poolRandom2Buffer)))
+                if (!allocPoolWithErrorLog(L"poolRandom2Buffer (score pool buffer)", RANDOM2_POOL_SIZE, (void**)&(cb._poolRandom2Buffer), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for score pool buffer!");
                     return false;
                 }
 
-                if (!allocatePool((maxDuration + BATCH_SIZE - 1) / BATCH_SIZE, (void**)&(cb._parBatches)))
+                if (!allocPoolWithErrorLog(L"_parBatches", (maxDuration + BATCH_SIZE - 1) / BATCH_SIZE, (void**)&(cb._parBatches), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for _parBatches! Try to allocated ");
                     return false;
                 }
 
-                if (!allocatePool(allNeuronsCount * sizeof(neuron_t), (void**)&(cb._neurons.input)))
+                if (!allocPoolWithErrorLog(L"neurons.input", allNeuronsCount * sizeof(neuron_t), (void**)&(cb._neurons.input), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for neurons! Try to allocated ");
                     return false;
                 }
 
-                if (!allocatePool(synapseSignsCount * sizeof(unsigned long long), (void**)&(cb._synapses.signs)))
+                if (!allocPoolWithErrorLog(L"synapses.signs", synapseSignsCount * sizeof(unsigned long long), (void**)&(cb._synapses.signs), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for synapses! Try to allocated ");
                     return false;
                 }
 
-                if (!allocatePool(RANDOM2_POOL_SIZE * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseData)))
+                if (!allocPoolWithErrorLog(L"poolSynapseData", RANDOM2_POOL_SIZE * sizeof(PoolSynapseData), (void**)&(cb._poolSynapseData), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for pool synapse data!");
                     return false;
                 }
 
-                if (!allocatePool(numberOfOptimizationSteps * sizeof(long long), (void**)&(cb._skipTicks)))
+                if (!allocPoolWithErrorLog(L"skipTicks", numberOfOptimizationSteps * sizeof(long long), (void**)&(cb._skipTicks), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for skip ticks buffer!");
                     return false;
                 }
 
-                if (!allocatePool(maxDuration * sizeof(long long), (void**)&(cb._ticksNumbers)))
+                if (!allocPoolWithErrorLog(L"ticksNumbers", maxDuration * sizeof(long long), (void**)&(cb._ticksNumbers), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for ticks number buffer!");
                     return false;
                 }
 
-                if (!allocatePool(maxDuration, (void**)&(cb._skipTicksMap)))
+                if (!allocPoolWithErrorLog(L"skipTicksMap", maxDuration, (void**)&(cb._skipTicksMap), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for ticks map buffer!");
                     return false;
                 }
 
-                if (!allocatePool(maxDuration, (void**)&(cb._prvCachedNeurons)))
+                if (!allocPoolWithErrorLog(L"prev cached neurons", maxDuration, (void**)&(cb._prvCachedNeurons), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for prev cached neurons!");
                     return false;
                 }
 
-                if (!allocatePool(maxDuration, (void**)&(cb._curCachedNeurons)))
+                if (!allocPoolWithErrorLog(L"cached neurons", maxDuration, (void**)&(cb._curCachedNeurons), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for cur cached neurons!");
                     return false;
                 }
 
-                if (!allocatePool(maxDuration * sizeof(unsigned short), (void**)&(cb._poolNeuronIndices)))
+                if (!allocPoolWithErrorLog(L"_poolNeuronIndices", maxDuration * sizeof(unsigned short), (void**)&(cb._poolNeuronIndices), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for _poolNeuronIndices!");
                     return false;
                 }
 
-                if (!allocatePool(maxDuration * sizeof(unsigned short), (void**)&(cb._poolsupplierIndexWithSign)))
+                if (!allocPoolWithErrorLog(L"_poolsupplierIndexWithSign", maxDuration * sizeof(unsigned short), (void**)&(cb._poolsupplierIndexWithSign), __LINE__))
                 {
-                    logToConsole(L"Failed to allocate memory for _poolsupplierIndexWithSign!");
                     return false;
                 }
             }

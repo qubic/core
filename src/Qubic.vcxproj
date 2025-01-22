@@ -23,7 +23,6 @@
     <ClInclude Include="assets\net_msg_impl.h" />
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
-    <ClInclude Include="contracts\Qearn_old.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
@@ -86,6 +85,7 @@
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />
+    <ClInclude Include="platform\memory-util.h" />
     <ClInclude Include="score_cache.h" />
     <ClInclude Include="spectrum.h" />
     <ClInclude Include="system.h" />
