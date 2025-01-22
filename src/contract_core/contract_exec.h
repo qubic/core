@@ -81,9 +81,8 @@ static bool initContractExec()
         contractStateLock[i].reset();
     }
 
-    if (!allocatePool(MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags))
+    if (!allocPoolWithErrorLog(L"contractStateChangeFlags", MAX_NUMBER_OF_CONTRACTS / 8, (void**)&contractStateChangeFlags, __LINE__))
     {
-        logToConsole(L"Failed to allocate contractStateChangeFlags!");
         return false;
     }
     setMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);

@@ -3,7 +3,7 @@
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/time.h"
-#include "platform/memory.h"
+#include "platform/memory_util.h"
 #include "platform/debugging.h"
 
 #include "network_messages/header.h"
@@ -279,6 +279,7 @@ public:
     inline static unsigned long long logId;
     inline static unsigned int tickBegin; // initial tick of the epoch
     inline static unsigned int tickLoadedFrom; // tick that this node load from (save/load state feature)
+    inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
     inline static BlobInfo currentTxInfo;
@@ -445,30 +446,24 @@ public:
 #if ENABLED_LOGGING
         if (logBuffer == NULL)
         {
-            if (!allocatePool(LOG_BUFFER_SIZE, (void**)&logBuffer))
+            if (!allocPoolWithErrorLog(L"logBuffer", LOG_BUFFER_SIZE, (void**)&logBuffer, __LINE__))
             {
-                logToConsole(L"Failed to allocate logging buffer!");
-
                 return false;
             }
         }
 
         if (mapTxToLogId == NULL)
         {
-            if (!allocatePool(LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
+            if (!allocPoolWithErrorLog(L"mapTxToLogId", LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId, __LINE__))
             {
-                logToConsole(L"Failed to allocate logging buffer!");
-
                 return false;
             }
         }
 
         if (mapLogIdToBufferIndex == NULL)
         {
-            if (!allocatePool(LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
+            if (!allocPoolWithErrorLog(L"mapLogIdToBufferIndex", LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex, __LINE__))
             {
-                logToConsole(L"Failed to allocate logging buffer!");
-
                 return false;
             }
         }
@@ -505,9 +500,15 @@ public:
         tx.init();
         logBufferTail = 0;
         logId = 0;
-        tickBegin = _tickBegin;
+        lastUpdatedTick = 0;
+        tickBegin = _tickBegin;        
         tickLoadedFrom = _tickLoadedFrom;
 #endif
+    }
+
+    static void updateTick(unsigned int _tick)
+    {
+        lastUpdatedTick = _tick;
     }
 
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
