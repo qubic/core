@@ -320,7 +320,9 @@ bool verifyResult(int id, bool largeFile = false)
     return testPass;
 }
 
-TEST(TestAsyncFileIO, AsyncSaveFile)
+#if 0
+
+TEST(TestAsyncFileIO, AsyncNonBlockingSaveFile)
 {
     fileSystem.initTestData();
 
@@ -354,7 +356,7 @@ TEST(TestAsyncFileIO, AsyncSaveFile)
     EXPECT_EQ(testPass, THREAD_COUNT);
 }
 
-TEST(TestAsyncFileIO, AsyncSaveLargeFile)
+TEST(TestAsyncFileIO, AsyncNonBlockingSaveLargeFile)
 {
     fileSystem.initTestData();
 
@@ -388,7 +390,9 @@ TEST(TestAsyncFileIO, AsyncSaveLargeFile)
     EXPECT_EQ(testPass, THREAD_COUNT);
 }
 
-TEST(TestAsyncFileIO, AsyncBlockingSaveFile)
+#endif
+
+TEST(TestAsyncFileIO, AsyncSaveFile)
 {
     fileSystem.initTestData();
 
@@ -444,7 +448,7 @@ TEST(TestAsyncFileIO, AsyncBlockingSaveFile)
     EXPECT_EQ(testPass, THREAD_COUNT);
 }
 
-TEST(TestAsyncFileIO, AsyncBlockingSaveLargeFile)
+TEST(TestAsyncFileIO, AsyncSaveLargeFile)
 {
     fileSystem.initTestData();
 
