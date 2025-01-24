@@ -24,12 +24,12 @@ public:
     {
         uint64 vaultType;
         id vaultName;
-        array<id, MSVAULT_MAX_OWNERS> owners;
+        Array<id, MSVAULT_MAX_OWNERS> owners;
         uint16 numberOfOwners;
         uint64 balance;
         bit isActive;
-        array<uint64, MSVAULT_MAX_OWNERS> releaseAmounts;
-        array<id, MSVAULT_MAX_OWNERS> releaseDestinations;
+        Array<uint64, MSVAULT_MAX_OWNERS> releaseAmounts;
+        Array<id, MSVAULT_MAX_OWNERS> releaseDestinations;
     };
 
     struct MSVaultLogger
@@ -109,7 +109,7 @@ public:
     struct registerVault_input
     {
         id vaultName;
-        array<id, MSVAULT_MAX_OWNERS> owners;
+        Array<id, MSVAULT_MAX_OWNERS> owners;
         uint64 vaultType;
     };
     struct registerVault_output
@@ -224,8 +224,8 @@ public:
     struct getVaults_output
     {
         uint64 numberOfVaults;
-        array<uint64, MSVAULT_MAX_COOWNER> vaultIds;
-        array<id, MSVAULT_MAX_COOWNER> vaultNames;
+        Array<uint64, MSVAULT_MAX_COOWNER> vaultIds;
+        Array<id, MSVAULT_MAX_COOWNER> vaultNames;
     };
     struct getVaults_locals
     {
@@ -241,8 +241,8 @@ public:
     struct getReleaseStatus_output
     {
         bit status;
-        array<uint64, MSVAULT_MAX_OWNERS> amounts;
-        array<id, MSVAULT_MAX_OWNERS> destinations;
+        Array<uint64, MSVAULT_MAX_OWNERS> amounts;
+        Array<id, MSVAULT_MAX_OWNERS> destinations;
     };
     struct getReleaseStatus_locals
     {
@@ -327,7 +327,7 @@ public:
     {
         bit status;
         uint64 numberOfOwners;
-        array<id, MSVAULT_MAX_OWNERS> owners;
+        Array<id, MSVAULT_MAX_OWNERS> owners;
     };
 
     struct BEGIN_EPOCH_locals
@@ -350,7 +350,7 @@ public:
 
 protected:
     // Contract states
-    array<Vault, MSVAULT_MAX_VAULTS> vaults;
+    Array<Vault, MSVAULT_MAX_VAULTS> vaults;
 
     uint64 numberOfActiveVaults;
     uint64 totalRevenue;
