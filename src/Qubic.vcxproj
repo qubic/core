@@ -81,7 +81,7 @@
     <ClInclude Include="platform\random.h" />
     <ClInclude Include="platform\read_write_lock.h" />
     <ClInclude Include="platform\stack_size_tracker.h" />
-    <ClInclude Include="platform\swap_uint128.h" />
+    <ClInclude Include="platform\uint128.h" />
     <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="platform\global_var.h" />
     <ClInclude Include="score.h" />

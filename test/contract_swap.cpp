@@ -43,6 +43,8 @@ public:
         initEmptyUniverse();
         INIT_CONTRACT(QSWAP);
         callSystemProcedure(QSWAP_CONTRACT_INDEX, INITIALIZE);
+        INIT_CONTRACT(QX);
+        callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
     }
 
     QswapChecker* getState()

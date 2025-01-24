@@ -1,34 +1,28 @@
 #pragma once
 
-#include <unordered_set>
-
-typedef unsigned long long SwapUint64;
-
 // baseed on https://github.com/calccrypto/uint128_t/blob/master/uint128_t.cpp
-
 
 class uint128_t{
 public:
-    SwapUint64 low;
-    SwapUint64 high;
+	uint64_t low;
+	uint64_t high;
 
-    uint128_t(SwapUint64 n){
-        low = n;
-        high = 0;
-    };
+	uint128_t(uint64_t n){
+		low = n;
+		high = 0;
+	};
 
+	uint128_t(uint64_t i_high, uint64_t i_low){
+		high = i_high;
+		low = i_low;
+	}
 
-    uint128_t(SwapUint64 i_high, SwapUint64 i_low){
-        high = i_high;
-        low = i_low;
-    }
-
-    // transfrom
-    operator bool() const {
+	// transfrom
+	operator bool() const {
 		return (bool) (high | low);
-    }
+	}
 
-    // compare
+	// compare
 	bool operator==(const uint128_t & rhs) const{
 		return ((high == rhs.high) && (low == rhs.low));
 	}
@@ -58,9 +52,9 @@ public:
 	}
 
 	uint128_t operator<<(const uint128_t & rhs) const{
-		const SwapUint64 shift = rhs.low;
+		const uint64_t shift = rhs.low;
 		if (((bool) rhs.high) || (shift >= 128)){
-			return uint128_t(0);
+			return uint128_t(0, 0);
 		}
 		else if (shift == 64){
 			return uint128_t(low, 0);
@@ -75,7 +69,7 @@ public:
 			return uint128_t(low << (shift - 64), 0);
 		}
 		else{
-			return uint128_t(0);
+			return uint128_t(0, 0);
 		}
 	}
 
@@ -85,9 +79,9 @@ public:
 	}
 
 	uint128_t operator>>(const uint128_t & rhs) const{
-		const SwapUint64 shift = rhs.low;
+		const uint64_t shift = rhs.low;
 		if (((bool) rhs.high) || (shift >= 128)){
-			return uint128_t(0);
+			return uint128_t(0, 0);
 		}
 		else if (shift == 64){
 			return uint128_t(0, high);
@@ -102,7 +96,7 @@ public:
 			return uint128_t(0, (high >> (shift - 64)));
 		}
 		else{
-			return uint128_t(0);
+			return uint128_t(0, 0);
 		}
 	}
 
@@ -116,26 +110,32 @@ public:
 	}
 
 	uint128_t operator&(const int & rhs) const{
-		return (*this) & uint128_t(rhs);
+		return (*this) & uint128_t(0, rhs);
+	}
+
+	uint128_t & operator&=(const uint128_t & rhs){
+		high &= rhs.high;
+		low &= rhs.low;
+		return *this;
 	}
 
 	uint128_t operator>>(const unsigned int & rhs) const{
-		return *this >> uint128_t(rhs);
+		return *this >> uint128_t(0, rhs);
 	}
 
-    // bits
+	// bits
 	uint8_t bits() const{
 		uint8_t out = 0;
 		if (high){
 			out = 64;
-			SwapUint64 up = high;
+			uint64_t up = high;
 			while (up){
 				up >>= 1;
 				out++;
 			}
 		}
 		else{
-			SwapUint64 inner_low = low;
+			uint64_t inner_low = low;
 			while (inner_low){
 				inner_low >>= 1;
 				out++;
@@ -144,7 +144,7 @@ public:
 		return out;
 	}
 
-    // calculation
+	// calculation
 	uint128_t operator+(const uint128_t & rhs) const{
 		return uint128_t(high + rhs.high+ ((low+ rhs.low) < low), low + rhs.low);
 	}
@@ -165,29 +165,28 @@ public:
 	}
 
 	uint128_t & operator++(){
-		return *this += uint128_t(1);
+		return *this += uint128_t(0, 1);
 	}
 
-    //std::pair <uint128_t, uint128_t> divmod(const uint128_t & lhs, const uint128_t & rhs) const;
 	std::pair <uint128_t, uint128_t> divmod(const uint128_t & lhs, const uint128_t & rhs) const{
 		// Save some calculations /////////////////////
 		//if (rhs == uint128_0){
-		//    throw std::domain_error("Error: division or modulus by 0");
+		//	throw std::domain_error("Error: division or modulus by 0");
 		//}
-		if (rhs == uint128_t(1)){
-			return std::pair <uint128_t, uint128_t> (lhs, uint128_t(0));
+		if (rhs == uint128_t(0, 1)){
+			return std::pair <uint128_t, uint128_t> (lhs, uint128_t(0, 0));
 		}
 		else if (lhs == rhs){
-			return std::pair <uint128_t, uint128_t> (uint128_t(1), uint128_t(0));
+			return std::pair <uint128_t, uint128_t> (uint128_t(0, 1), uint128_t(0, 0));
 		}
-		else if ((lhs == uint128_t(0)) || (lhs < rhs)){
-			return std::pair <uint128_t, uint128_t> (uint128_t(0), lhs);
+		else if ((lhs == uint128_t(0, 0)) || (lhs < rhs)){
+			return std::pair <uint128_t, uint128_t> (uint128_t(0, 0), lhs);
 		}
 
-		std::pair <uint128_t, uint128_t> qr (uint128_t(0), uint128_t(0));
+		std::pair <uint128_t, uint128_t> qr (uint128_t(0, 0), uint128_t(0, 0));
 		for(uint8_t x = lhs.bits(); x > 0; x--){
-			qr.first  <<= uint128_t(1);
-			qr.second <<= uint128_t(1);
+			qr.first  <<= uint128_t(0, 1);
+			qr.second <<= uint128_t(0, 1);
 
 			if ((lhs >> (x - 1U)) & 1){
 				++qr.second;
@@ -207,10 +206,10 @@ public:
 
 	uint128_t operator*(const uint128_t& rhs) const{
 		// split values into 4 32-bit parts
-		SwapUint64 top[4] = {high >> 32, high & 0xffffffff, low >> 32, low & 0xffffffff};
+		uint64_t top[4] = {high >> 32, high & 0xffffffff, low >> 32, low & 0xffffffff};
 
-		SwapUint64 bottom[4] = {rhs.high >> 32, rhs.high & 0xffffffff, rhs.low >> 32, rhs.low & 0xffffffff};
-		SwapUint64 products[4][4];
+		uint64_t bottom[4] = {rhs.high >> 32, rhs.high & 0xffffffff, rhs.low >> 32, rhs.low & 0xffffffff};
+		uint64_t products[4][4];
 
 		// multiply each component of the values
 		for(int y = 3; y > -1; y--){
@@ -220,10 +219,10 @@ public:
 		}
 
 		// first row
-		SwapUint64 fourth32 = (products[0][3] & 0xffffffff);
-		SwapUint64 third32  = (products[0][2] & 0xffffffff) + (products[0][3] >> 32);
-		SwapUint64 second32 = (products[0][1] & 0xffffffff) + (products[0][2] >> 32);
-		SwapUint64 first32  = (products[0][0] & 0xffffffff) + (products[0][1] >> 32);
+		uint64_t fourth32 = (products[0][3] & 0xffffffff);
+		uint64_t third32  = (products[0][2] & 0xffffffff) + (products[0][3] >> 32);
+		uint64_t second32 = (products[0][1] & 0xffffffff) + (products[0][2] >> 32);
+		uint64_t first32  = (products[0][0] & 0xffffffff) + (products[0][1] >> 32);
 
 		// second row
 		third32  += (products[1][3] & 0xffffffff);
@@ -254,4 +253,3 @@ public:
 		return uint128_t((first32<<32|second32), (third32<<32|fourth32));
 	}
 };
-

@@ -5,4 +5,5 @@ x64/
 ~AutoRecover.*.vcxproj
 
 .DS_Store
+.clang-format
 tmp
