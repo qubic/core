@@ -175,7 +175,7 @@ struct SpectrumTest : public LoggingTest
             << beforeAntiDustSpectrumInfo.numberOfEntities << " -> " << spectrumInfo.numberOfEntities
             << " (to " << spectrumInfo.numberOfEntities * 100llu / SPECTRUM_CAPACITY
             << "% of capacity);  total amount " << beforeAntiDustSpectrumInfo.totalAmount << " -> " << spectrumInfo.totalAmount
-            << " (" << ((long long)spectrumInfo.totalAmount - (long long)beforeAntiDustSpectrumInfo.totalAmount) * 100ll / beforeAntiDustSpectrumInfo.totalAmount << "% reduction)" << std::endl;
+            << " (" << float(((long long)spectrumInfo.totalAmount - (long long)beforeAntiDustSpectrumInfo.totalAmount) * 10000ll / (long long)beforeAntiDustSpectrumInfo.totalAmount) / 100.0f << "% reduction)" << std::endl;
 
         // Print distribution of entity balances
 #if PRINT_TEST_INFO
