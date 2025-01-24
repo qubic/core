@@ -273,6 +273,12 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
     uint16 sourceOwnershipManagingContractIndex, uint16 sourcePossessionManagingContractIndex,
     sint64 offeredTransferFee) const
 {
+    // prevent nested calling of management rights transfer from callbacks
+    if (contractCallbacksRunning & ContractCallbackManagementRightsTransfer)
+    {
+        return INVALID_AMOUNT;
+    }
+
     // check for unsupported cases
     if (sourceOwnershipManagingContractIndex != sourcePossessionManagingContractIndex
         || owner != possessor)
@@ -498,6 +504,12 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
     uint16 destinationOwnershipManagingContractIndex, uint16 destinationPossessionManagingContractIndex,
     sint64 offeredTransferFee) const
 {
+    // prevent nested calling of management rights transfer from callbacks
+    if (contractCallbacksRunning & ContractCallbackManagementRightsTransfer)
+    {
+        return INVALID_AMOUNT;
+    }
+
     // check for unsupported cases
     if (destinationOwnershipManagingContractIndex != destinationPossessionManagingContractIndex
         || owner != possessor)

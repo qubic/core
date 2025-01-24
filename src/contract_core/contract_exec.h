@@ -48,6 +48,14 @@ GLOBAL_VAR_DECL unsigned int contractError[contractCount];
 // access to contractStateChangeFlags thread-safe
 GLOBAL_VAR_DECL unsigned long long* contractStateChangeFlags GLOBAL_VAR_INIT(nullptr);
 
+GLOBAL_VAR_DECL unsigned int contractCallbacksRunning;
+enum ContractCallbacksRunningFlags
+{
+    NoContractCallback = 0,
+    ContractCallbackManagementRightsTransfer = 1,
+};
+
+
 GLOBAL_VAR_DECL ContractActionTracker<1024*1024> contractActionTracker;
 
 
@@ -86,6 +94,8 @@ static bool initContractExec()
         return false;
     }
     setMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);
+
+    contractCallbacksRunning = NoContractCallback;
 
     return true;
 }
@@ -276,7 +286,7 @@ void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int cont
     contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
 }
 
-// Used to call a special system procedure of another contract from within a contract /for example in asset management rights transfer
+// Used to call a special system procedure of another contract from within a contract for example in asset management rights transfer
 template <unsigned int sysProcId, typename InputType, typename OutputType>
 void QPI::QpiContextProcedureCall::__qpiCallSystemProcOfOtherContract(unsigned int otherContractIndex, InputType& input, OutputType& output, QPI::sint64 invocationReward) const
 {
@@ -303,6 +313,7 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProcOfOtherContract(unsigned i
 
     // Create context for other contract and lock state for writing
     const QpiContextProcedureCall& otherContractContext = __qpiConstructContextOtherContractProcedureCall(otherContractIndex, invocationReward);
+    // FIXME: State of A may already be locked for writing when A -> B -> release to A from B, or A -> B -> C -> A etc
     void* otherContractState = __qpiAcquireStateForWriting(otherContractIndex);
 
     // Alloc locals
@@ -312,8 +323,19 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProcOfOtherContract(unsigned i
         __qpiAbort(ContractErrorAllocLocalsFailed);
     setMem(localsBuffer, localsSize, 0);
 
+    // Set flags of callbacks currently running (to prevent nested calling of QPI functions)
+    auto contractCallbacksRunningBefore = contractCallbacksRunning;
+    if (sysProcId == PRE_RELEASE_SHARES || sysProcId == PRE_ACQUIRE_SHARES
+        || sysProcId == POST_RELEASE_SHARES || sysProcId == POST_ACQUIRE_SHARES)
+    {
+        contractCallbacksRunning |= ContractCallbackManagementRightsTransfer;
+    }
+
     // Run procedure
     contractSystemProcedures[otherContractIndex][sysProcId](otherContractContext, otherContractState, &input, &output, localsBuffer);
+
+    // Restore flags of callbacks currently running
+    contractCallbacksRunning = contractCallbacksRunningBefore;
 
     // Release lock and free context and locals
     contractLocalsStack[_stackIndex].free();
