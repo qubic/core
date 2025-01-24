@@ -315,10 +315,10 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
         return INVALID_AMOUNT;
     }
 
-    // run PRE_ACQUIRE_SHARES callback in other contract (without invocation reward)
+    // run PRE_RELEASE_SHARES callback in other contract (without invocation reward)
     QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee, currentContractIndex };
     QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
-    __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(sourceOwnershipManagingContractIndex, pre_input, pre_output, 0);
+    __qpiCallSystemProcOfOtherContract<PRE_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, pre_input, pre_output, 0);
     if (!pre_output.allowTransfer || pre_output.requestedFee < 0 || pre_output.requestedFee > MAX_AMOUNT)
     {
         return INVALID_AMOUNT;
@@ -342,10 +342,10 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
         return INVALID_AMOUNT;
     }
 
-    // run POST_ACQUIRE_SHARES in other contract (without invocation reward)
+    // run POST_RELEASE_SHARES in other contract (without invocation reward)
     QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee, currentContractIndex };
     QPI::NoData post_output;
-    __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(sourceOwnershipManagingContractIndex, post_input, post_output, 0);
+    __qpiCallSystemProcOfOtherContract<POST_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, post_input, post_output, 0);
 
     // bug check: no other record matches filter criteria
     ASSERT(!it.next());
@@ -544,10 +544,10 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
         return INVALID_AMOUNT;
     }
 
-    // run PRE_RELEASE_SHARES callback in other contract (without invocation reward)
+    // run PRE_ACQUIRE_SHARES callback in other contract (without invocation reward)
     QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee, currentContractIndex };
     QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
-    __qpiCallSystemProcOfOtherContract<PRE_RELEASE_SHARES>(destinationOwnershipManagingContractIndex, pre_input, pre_output, 0);
+    __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, pre_input, pre_output, 0);
     if (!pre_output.allowTransfer || pre_output.requestedFee < 0 || pre_output.requestedFee > MAX_AMOUNT)
     {
         return INVALID_AMOUNT;
@@ -571,10 +571,10 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
         return INVALID_AMOUNT;
     }
 
-    // run POST_RELEASE_SHARES in other contract (without invocation reward)
+    // run POST_ACQUIRE_SHARES in other contract (without invocation reward)
     QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee, currentContractIndex };
     QPI::NoData post_output;
-    __qpiCallSystemProcOfOtherContract<POST_RELEASE_SHARES>(destinationOwnershipManagingContractIndex, post_input, post_output, 0);
+    __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, post_input, post_output, 0);
 
     // bug check: no other record matches filter criteria
     ASSERT(!it.next());

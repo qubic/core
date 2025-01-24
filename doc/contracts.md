@@ -185,10 +185,10 @@ They are defined with the following macros:
 3. `END_EPOCH`: Called after each epoch, after the last `END_TICK` but before (1) contract shares are generated in case of IPO, (2) revenue and revenue donations are distributed, and (3) the epoch counter is incremented and the next epoch's initial tick is set.
 4. `BEGIN_TICK`: Called before a tick is processed, that is before the transactions of the tick are executed.
 5. `END_TICK`: Called after finishing to execute all transactions of a tick.
-6. `PRE_RELEASE_SHARES`: Called before asset management rights transfer by `qpi.releaseShare()`. Not fully implemented yet.
-7. `PRE_ACQUIRE_SHARES`: Called before asset management rights transfer by `qpi.acquireShare()`. Not fully implemented yet.
-8. `POST_RELEASE_SHARES`: Called after asset management rights transfer by `qpi.releaseShare()`. Not fully implemented yet.
-9. `POST_ACQUIRE_SHARES`: Called after asset management rights transfer by `qpi.acquireShare()`. Not fully implemented yet.
+6. `PRE_RELEASE_SHARES`: Called before asset management rights are transferred from this contract to another contract that called `qpi.acquireShare()`.
+7. `PRE_ACQUIRE_SHARES`: Called before asset management rights are transferred to this contract from another contract that called `qpi.releaseShare()`.
+8. `POST_RELEASE_SHARES`: Called after asset management rights were transferred from this contract to another contract that called `qpi.acquireShare()`
+9. `POST_ACQUIRE_SHARES`: Called after asset management rights were transferred to this contract from another contract that called `qpi.releaseShare()`.
 
 System procedures 1 to 5 have no input and output.
 

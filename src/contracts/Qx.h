@@ -1113,22 +1113,24 @@ protected:
 		}
 	_
 
-	PRE_ACQUIRE_SHARES
-		// called when another contract wants to acquire asset management rights from QX
+	PRE_RELEASE_SHARES
+		// system procedure called before releasing asset management rights
+		// when another contract wants to acquire asset management rights from QX
 		// -> always reject (default); rights can only be transferred upon user request via TransferShareManagementRights
 	_
 
-	POST_ACQUIRE_SHARES
+	POST_RELEASE_SHARES
 	_
 
-	PRE_RELEASE_SHARES
-		// called when another contract wants to release asset management rights to QX
+	PRE_ACQUIRE_SHARES
+		// system procedure called before acquiring asset management rights
+		// when another contract wants to release asset management rights to QX
 		// -> always accept given the fee is paid
 		output.requestedFee = state._transferFee;
 		output.allowTransfer = true;
 	_
 
-	POST_RELEASE_SHARES
+	POST_ACQUIRE_SHARES
 	_
 };
 
