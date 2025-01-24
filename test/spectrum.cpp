@@ -4,26 +4,8 @@
 
 #include "gtest/gtest.h"
 
-// workaround for name clash with stdlib
-#define system qubicSystemStruct
-
-// enable some logging for testing
-#include "private_settings.h"
-#undef LOG_DUST_BURNINGS
-#undef LOG_SPECTRUM_STATS
-#define LOG_DUST_BURNINGS 1
-#define LOG_SPECTRUM_STATS 1
-
-// reduced size of logging buffer (512 MB instead of 8 GB)
-#define LOG_BUFFER_SIZE (2*268435456ULL)
-
-// also reduce size of logging tx index by reducing maximum number of ticks per epoch
-#include "public_settings.h"
-#undef MAX_NUMBER_OF_TICKS_PER_EPOCH
-#define MAX_NUMBER_OF_TICKS_PER_EPOCH 3000
-
+#include "logging_test.h"
 #include "spectrum.h"
-#include "logging/logging.h"
 
 #include <chrono>
 #include <random>
@@ -137,7 +119,7 @@ static void updateAndPrintEntityCategoryPopulations()
 }
 
 // Spectrum test class for proper init, cleanup, and other repeated tasks
-struct SpectrumTest
+struct SpectrumTest : public LoggingTest
 {
     SpectrumInfo beforeAntiDustSpectrumInfo;
     std::chrono::steady_clock::time_point beforeAntiDustTimestamp;
@@ -154,12 +136,10 @@ struct SpectrumTest
         system.tick = 15700000;
         clearSpectrum();
         antiDustCornerCase = false;
-        EXPECT_TRUE(logger.initLogging());
     }
 
     ~SpectrumTest()
     {
-        logger.deinitLogging();
         deinitSpectrum();
         deinitCommonBuffers();
     }
