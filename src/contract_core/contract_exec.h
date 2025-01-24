@@ -204,7 +204,7 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
         __qpiAbort(ContractErrorAllocContextOtherFunctionCallFailed);
     }
     QpiContextFunctionCall& newContext = *reinterpret_cast<QpiContextFunctionCall*>(buffer);
-    newContext.init(otherContractIndex, _originator, _currentContractId, _invocationReward);
+    newContext.init(otherContractIndex, _originator, _currentContractId, _invocationReward, _stackIndex);
     return newContext;
 }
 
@@ -234,7 +234,7 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructConte
     QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
     if (transfer(QPI::id(otherContractIndex, 0, 0, 0), invocationReward) < 0)
         invocationReward = 0;
-    newContext.init(otherContractIndex, _originator, _currentContractId, invocationReward);
+    newContext.init(otherContractIndex, _originator, _currentContractId, invocationReward, _stackIndex);
     return newContext;
 }
 

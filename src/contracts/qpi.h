@@ -1221,7 +1221,8 @@ namespace QPI
 			unsigned int contractIndex,
 			const m256i& originator,
 			const m256i& invocator,
-			long long invocationReward
+			long long invocationReward,
+			int stackIndex = -1
 		) {
 			ASSERT(invocationReward >= 0);
 			_currentContractIndex = contractIndex;
@@ -1229,7 +1230,7 @@ namespace QPI
 			_originator = originator;
 			_invocator = invocator;
 			_invocationReward = invocationReward;
-			_stackIndex = -1;
+			_stackIndex = stackIndex;
 		}
 
 		unsigned int _currentContractIndex;
