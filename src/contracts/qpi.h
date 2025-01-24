@@ -5,8 +5,8 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
-// swap_uint128
-#include "../platform/swap_uint128.h"
+// uint128
+#include "../platform/uint128.h"
 
 // ASSERT can be used to support debugging and speed-up development
 #include "../platform/assert.h"
@@ -571,7 +571,7 @@ namespace QPI
 	template <typename T>
 	inline static T div(T a, T b)
 	{
-		return b ? (a / b) : 0;
+		return b ? (a / b) : T(0);
 	}
 
 	// Return remainder of dividing a by b, but return 0 if b is 0 (requires modulo % operator)

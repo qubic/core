@@ -4,9 +4,9 @@ using namespace QPI;
 constexpr uint64 QSWAP_INITIAL_MAX_POOL = 16;
 constexpr uint64 QSWAP_MAX_POOL = QSWAP_INITIAL_MAX_POOL * X_MULTIPLIER;
 constexpr uint64 QSWAP_MAX_USER_PER_POOL = 16;
-constexpr sint64 MIN_LIQUDITY = 1000;
-constexpr uint32 SWAP_FEE_BASE = 10000;
-constexpr uint32 PROTOCOL_FEE_BASE = 100;
+constexpr sint64 QSWAP_MIN_LIQUDITY = 1000;
+constexpr uint32 QSWAP_SWAP_FEE_BASE = 10000;
+constexpr uint32 QSWAP_PROTOCOL_FEE_BASE = 100;
 
 struct QSWAP2 
 {
@@ -38,46 +38,58 @@ protected:
 	array<PoolBasicState, QSWAP_MAX_POOL> mPoolBasicStates;
 	collection<LiqudityInfo, QSWAP_MAX_POOL * QSWAP_MAX_USER_PER_POOL > mLiquditys;
 
-    inline static sint64 min(sint64 a, sint64 b) {
-        return (a < b) ? a : b;
-    }
+	inline static sint64 min(sint64 a, sint64 b) {
+		return (a < b) ? a : b;
+	}
 
-    inline static sint64 sqrt(sint64 a, sint64 b) {
+	// find the sqrt of a*b
+	inline static sint64 sqrt(sint64 a, sint64 b) {
 		if (a == b) { return a; }
 
 		uint128 prod = uint128(a) * uint128(b);
 
-        uint128 z = (prod + uint128_t(1)) / uint128_t(2);
+		// (prod + 1) / 2;
+		uint128 z = QPI::div(prod+uint128(1), uint128(2));
 		uint128_t y = prod;
 
 		while(z < y){
 			y = z;
-			z = (prod / z + z) / uint128(2);
+			// (prod / z + z) / 2;
+			z = QPI::div((QPI::div(prod, z) + z), uint128(2));
 		}
 
 		return sint64(y.low);
-    }
+	}
 
 	inline static sint64 quoteEquivalentAmountB(sint64 amountADesired, sint64 reserveA, sint64 reserveB) {
-		uint128 res = uint128(amountADesired) * uint128(reserveB) / uint128(reserveA);
+		// amountDesired * reserveB / reserveA
+		uint128 res = QPI::div(uint128(amountADesired) * uint128(reserveB), uint128(reserveA));
 		return sint64(res.low);
 	}
 
 	// https://github.com/Uniswap/v2-periphery/blob/master/contracts/libraries/UniswapV2Library.sol#L43 
 	// x = reserveOut * amountIn * (1-fee) / (reserveIn + amountIn * (1-fee))
 	inline static sint64 getAmountOutTakeFeeFromInToken(sint64 amountIn, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
-		uint128 amountInWithFee = uint128(amountIn) * uint128(SWAP_FEE_BASE - fee);
+		uint128 amountInWithFee = uint128(amountIn) * uint128(QSWAP_SWAP_FEE_BASE - fee);
 		uint128 numerator = uint128(reserveOut) * amountInWithFee;
-        uint128 denominator = uint128(reserveIn) * uint128(SWAP_FEE_BASE) + amountInWithFee;
+		uint128 denominator = uint128(reserveIn) * uint128(QSWAP_SWAP_FEE_BASE) + amountInWithFee;
 
-		uint128 res = numerator / denominator;
+		// numerator / denominator;
+		uint128 res = QPI::div(numerator, denominator);
 		return sint64(res.low);
 	}
 
 	// https://github.com/Uniswap/v2-periphery/blob/master/contracts/libraries/UniswapV2Library.sol#L53 
 	// x = (reserveIn * amountOut)/((1-fee) * (reserveOut - amountOut)
 	inline static sint64 getAmountInTakeFeeFromInToken(sint64 amountOut, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
-		uint128 res = uint128(reserveIn) * uint128(amountOut) / uint128(reserveOut - amountOut)	* uint128(SWAP_FEE_BASE) / uint128(SWAP_FEE_BASE - fee);
+		// reserveIn*amountOut/(reserveOut - amountOut)*QSWAP_SWAP_FEE_BASE / (QSWAP_SWAP_FEE_BASE - fee)
+		uint128 res = QPI::div(
+			QPI::div(
+				uint128(reserveIn) * uint128(amountOut),
+				uint128(reserveOut - amountOut)
+			) * uint128(QSWAP_SWAP_FEE_BASE),
+			uint128(QSWAP_SWAP_FEE_BASE - fee)
+		);
 		return sint64(res.low) + 1;
 	}
 
@@ -86,16 +98,19 @@ protected:
 	inline static sint64 getAmountOutTakeFeeFromOutToken(sint64 amountIn, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
 		uint128 numerator = uint128(reserveOut) * uint128(amountIn);
 		uint128 denominator = uint128(reserveIn + amountIn);
-        return sint64((numerator / denominator).low);
+
+		// (numerator / denominator).low);
+		return sint64(QPI::div(numerator, denominator).low);
 	}
 
 	// (reserveIn + x) * (reserveOut - amountOut/(1 - fee)) = reserveIn * reserveOut
 	// x = (reserveIn * amountOut ) / (reserveOut * (1-fee) - amountOut)
 	inline static sint64 getAmountInTakeFeeFromOutToken(sint64 amountOut, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
 		uint128 numerator = uint128(reserveIn) * uint128(amountOut);
-		uint128 denominator = uint128(reserveOut) * uint128(SWAP_FEE_BASE - fee) / uint128(SWAP_FEE_BASE) - uint128(amountOut);
+		uint128 denominator = uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee) / uint128(QSWAP_SWAP_FEE_BASE) - uint128(amountOut);
 
-        return sint64((numerator / denominator).low) + 1;
+		// (numerator / denominator).low);
+		return sint64(QPI::div(numerator, denominator).low) + 1;
 	}
 
 //
@@ -375,8 +390,8 @@ protected:
 
 		output.quAmountOut = sint64((
 			uint128(locals.quAmountOutWithFee) * 
-			uint128(SWAP_FEE_BASE - state.swapFeeRate) / 
-			uint128(SWAP_FEE_BASE)).low
+			uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate) / 
+			uint128(QSWAP_SWAP_FEE_BASE)).low
 		);
 	_
 
@@ -458,6 +473,12 @@ public:
 	};
 
 	PUBLIC_PROCEDURE(IssueAsset)
+		// I don't known how to issue asset by Qx in QSwap SC
+		// QX::IssueAsset_input qxInput{ input.assetName, input.numberOfShares, input.unitOfMeasurement, input.numberOfDecimalPlaces };
+		// QX::IssueAsset_output qxOutput;
+		// INVOKE_OTHER_CONTRACT_PROCEDURE(QX_CONTRACT_INDEX, 1, qxInput, qxOutput, qpi.invocationReward());
+		// output.issuedNumberOfShares = qxOutput.issuedNumberOfShares;
+
 		output.issuedNumberOfShares = 0;
 		if ((qpi.invocationReward() < state.assetIssueFee)) {
 			if (qpi.invocationReward() > 0) {
@@ -577,17 +598,16 @@ protected:
 	_
 
 
-   /** 
+	/** 
 	* @param	quAmountADesired		The amount of tokenA to add as liquidity if the B/A price is <= amountBDesired/amountADesired (A depreciates).
 	* @param	assetAmountBDesired		The amount of tokenB to add as liquidity if the A/B price is <= amountADesired/amountBDesired (B depreciates).
 	* @param	quAmountMin				Bounds the extent to which the B/A price can go up before the transaction reverts. Must be <= amountADesired.
 	* @param	assetAmountMin			Bounds the extent to which the A/B price can go up before the transaction reverts. Must be <= amountBDesired.
 	* https://docs.uniswap.org/contracts/v2/reference/smart-contracts/router-02#addliquidity
-    */
+	*/
 	struct AddLiqudity_input{
 		id assetIssuer;
 		uint64 assetName;
-		// sint64 quAmountDesired; // specified by invocationReward()
 		sint64 assetAmountDesired;
 		sint64 quAmountMin;
 		sint64 assetAmountMin;
@@ -598,8 +618,8 @@ protected:
 		sint64 assetAmount;
 	};
 
-   struct AddLiqudity_locals
-   {
+	struct AddLiqudity_locals
+	{
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
@@ -617,12 +637,10 @@ protected:
 		sint64 reservedAssetAmountAfter;
 
 		uint32 i0;
-   };
+	};
 
 	// https://github.com/Uniswap/v2-periphery/blob/0335e8f7e1bd1e8d8329fd300aea2ef2f36dd19f/contracts/UniswapV2Router02.sol#L61
 	PUBLIC_PROCEDURE_WITH_LOCALS(AddLiqudity)
-		// printf("add_liqudity\n");
-
 		output.userIncreaseLiqudity = 0;
 		output.assetAmount = 0;
 		output.quAmount = 0;
@@ -723,8 +741,7 @@ protected:
 		if (locals.poolBasicState.totalLiqudity == 0) {
 			locals.increaseLiqudity = sqrt(locals.quTransferAmount, locals.assetTransferAmount);
 
-			// printf("debug: liqudity: %lld\n", locals.deltaLiqudity);
-			if (locals.increaseLiqudity < MIN_LIQUDITY ){
+			if (locals.increaseLiqudity < QSWAP_MIN_LIQUDITY ){
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
 			}
@@ -756,33 +773,35 @@ protected:
 
 			if (locals.reservedAssetAmountAfter - locals.reservedAssetAmountBefore < locals.assetTransferAmount) {
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				// printf("add_liqudity 6\n");
 				return;
 			}
 
-			/* disable temporary
+			/* disable temporary, SEH exception in unit test 
 			// permanently lock the first MINIMUM_LIQUIDITY tokens
 			locals.tmpLiqudity.entity = SELF;
-			locals.tmpLiqudity.liqudity = MIN_LIQUDITY;
+			locals.tmpLiqudity.liqudity = QSWAP_MIN_LIQUDITY;
 			state.mLiquditys.add(locals.poolID, locals.tmpLiqudity, 0);
 
 			locals.tmpLiqudity.entity = qpi.invocator();
-			locals.tmpLiqudity.liqudity = locals.deltaLiqudity - MIN_LIQUDITY;
+			locals.tmpLiqudity.liqudity = locals.deltaLiqudity - QSWAP_MIN_LIQUDITY;
 			state.mLiquditys.add(locals.poolID, locals.tmpLiqudity, 0);
 			*/
 
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
-			output.userIncreaseLiqudity = locals.increaseLiqudity - MIN_LIQUDITY;
+			output.userIncreaseLiqudity = locals.increaseLiqudity - QSWAP_MIN_LIQUDITY;
 
 		} else {
 			locals.increaseLiqudity = min(
-				sint64((uint128(locals.quTransferAmount) 
-					* uint128(locals.poolBasicState.totalLiqudity) 
-					/ uint128(locals.poolBasicState.reservedQuAmount)).low),
-				sint64((uint128(locals.assetTransferAmount) 
-					* uint128(locals.poolBasicState.totalLiqudity) 
-					/ uint128(locals.poolBasicState.reservedAssetAmount)).low)
+				sint64(QPI::div(
+					uint128(locals.quTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
+					uint128(locals.poolBasicState.reservedQuAmount)
+				).low),
+
+				sint64(QPI::div(
+					uint128(locals.assetTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
+					uint128(locals.poolBasicState.reservedAssetAmount)
+				).low)
 			);
 
 			// maybe too little input 
@@ -839,7 +858,7 @@ protected:
 				return;
 			}
 
-			/* disable temporary for SEH exception in test
+			/* disable temporary, SEH exception in uint test
 			if (locals.userLiqudityElementIndex == NULL_INDEX) {
 				locals.tmpLiqudity.entity = qpi.invocator();
 				locals.tmpLiqudity.liqudity = locals.deltaLiqudity;
@@ -888,7 +907,6 @@ protected:
 		uint32 i0;
 		LiqudityInfo userLiqudity;
 
-		// sint64 userLiqudity;
 		sint64 burnQuAmount;
 		sint64 burnAssetAmount;
 	};
@@ -899,7 +917,7 @@ protected:
 		output.assetAmount = 0;
 
 		if (qpi.invocationReward() > 0 ) {
-           qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
 		// check the vadility of input params
@@ -927,7 +945,7 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		/* temporary disable
+		/* temporary disable, SEH exception in unit test
 		locals.userLiqudityElementIndex = state.mLiquditys.headIndex(locals.poolID, 0);
 		while (locals.userLiqudityElementIndex != NULL_INDEX) {
 			if(state.mLiquditys.element(locals.userLiqudityElementIndex).entity == qpi.invocator()) {
@@ -953,19 +971,16 @@ protected:
 			return;
 		}
 
-		locals.burnQuAmount = sint64((
-				uint128(input.burnLiqudity) 
-				* uint128(locals.poolBasicState.reservedQuAmount) 
-				/ uint128(locals.poolBasicState.totalLiqudity)
+		locals.burnQuAmount = sint64(QPI::div(
+				uint128(input.burnLiqudity) * uint128(locals.poolBasicState.reservedQuAmount),
+				uint128(locals.poolBasicState.totalLiqudity)
 			).low);
 
-		locals.burnAssetAmount = sint64((
-				uint128(input.burnLiqudity) 
-				* uint128(locals.poolBasicState.reservedAssetAmount) 
-				/ uint128(locals.poolBasicState.totalLiqudity)
+		locals.burnAssetAmount = sint64(QPI::div(
+				uint128(input.burnLiqudity) * uint128(locals.poolBasicState.reservedAssetAmount),
+				uint128(locals.poolBasicState.totalLiqudity)
 			).low);
 
-		// printf("burn, qu: %lld, asset: %lld\n", locals.burnQuAmount, locals.burnAssetAmount);
 
 		if ((locals.burnQuAmount < input.quAmountMin) || (locals.burnAssetAmount < input.assetAmountMin)){
 			return;
@@ -985,7 +1000,7 @@ protected:
 		output.quAmount = locals.burnQuAmount;
 		output.assetAmount = locals.burnAssetAmount;
 
-		/* disable temporary
+		/* disable temporary, SEH exception in unit test
 		// modify invocator's liqudity info
 		locals.userLiqudity.liqudity -= input.burnLiqudity;
 		if (locals.userLiqudity.liqudity == 0) {
@@ -1095,7 +1110,14 @@ protected:
 		}
 
 		// take fee from qu
-		locals.feeToProtocol = sint64((uint128(locals.quAmountIn) * uint128(state.swapFeeRate) / uint128(SWAP_FEE_BASE) * uint128(state.protocolFeeRate) / uint128(PROTOCOL_FEE_BASE)).low);
+		// quAmountIn * swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
+		locals.feeToProtocol = sint64(QPI::div(
+				QPI::div(
+					uint128(locals.quAmountIn) * uint128(state.swapFeeRate),
+					uint128(QSWAP_SWAP_FEE_BASE)
+				) * uint128(state.protocolFeeRate),
+				uint128(QSWAP_PROTOCOL_FEE_BASE)
+			).low);
 		state.protocolEarnedFee += locals.feeToProtocol;
 
 		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - locals.feeToProtocol;
@@ -1208,7 +1230,14 @@ protected:
 		}
 
 		// update pool states
-		locals.feeToProtocol = sint64((uint128(locals.quAmountIn) * uint128(state.swapFeeRate) / uint128(SWAP_FEE_BASE) * uint128(state.protocolFeeRate) / uint128(PROTOCOL_FEE_BASE)).low);
+		// locals.quAmountIn * state.swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
+		locals.feeToProtocol = sint64(QPI::div(
+				QPI::div(
+					uint128(locals.quAmountIn) * uint128(state.swapFeeRate),
+					uint128(QSWAP_SWAP_FEE_BASE)
+				) * uint128(state.protocolFeeRate),
+				uint128(QSWAP_PROTOCOL_FEE_BASE)
+			).low);
 		state.protocolEarnedFee += locals.feeToProtocol;
 		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - locals.feeToProtocol;
 		locals.poolBasicState.reservedAssetAmount -= input.assetAmountOut;
@@ -1291,17 +1320,20 @@ protected:
 			state.swapFeeRate
 		);
 
-		locals.quAmountOut = sint64((
-			uint128(locals.quAmountOutWithFee) * 
-			uint128(SWAP_FEE_BASE - state.swapFeeRate) / 
-			uint128(SWAP_FEE_BASE)).low
-		);
-		locals.protocolFee = sint64((
-			uint128(locals.quAmountOutWithFee) * 
-			uint128(state.swapFeeRate) / 
-			uint128(SWAP_FEE_BASE) 
-			* uint128(state.protocolFeeRate) 
-			/ uint128(PROTOCOL_FEE_BASE)).low
+		// locals.quAmountOutWithFee * (QSWAP_SWAP_FEE_BASE - state.swapFeeRate) / QSWAP_SWAP_FEE_BASE
+		locals.quAmountOut = sint64(QPI::div(
+				uint128(locals.quAmountOutWithFee) * uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate), 
+				uint128(QSWAP_SWAP_FEE_BASE)
+			).low);
+
+		// locals.quAmountOutWithFee * state.swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
+		locals.protocolFee = sint64(QPI::div(
+				QPI::div(
+					uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), 
+					uint128(QSWAP_SWAP_FEE_BASE)
+				) * uint128(state.protocolFeeRate),
+				uint128(QSWAP_PROTOCOL_FEE_BASE)
+			).low
 		);
 
 		// not meet user min amountOut requirement
@@ -1419,12 +1451,14 @@ protected:
 			locals.poolBasicState.reservedQuAmount,
 			state.swapFeeRate
 		);
-		locals.protocolFee = sint64((
-			uint128(input.quAmountOut) * 
-			uint128(state.swapFeeRate) / 
-			uint128(SWAP_FEE_BASE - state.swapFeeRate) *
-			uint128(state.protocolFeeRate) /
-			uint128(PROTOCOL_FEE_BASE)).low
+		// input.quAmountOut * state.swapFeeRate / (QSWAP_SWAP_FEE_BASE - state.swapFeeRate) * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
+		locals.protocolFee = sint64(QPI::div(
+				QPI::div(
+					uint128(input.quAmountOut) * uint128(state.swapFeeRate),
+					uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate)
+				) * uint128(state.protocolFeeRate),
+				uint128(QSWAP_PROTOCOL_FEE_BASE)
+			).low
 		);
 
 		// user does not hold enough asset
@@ -1480,8 +1514,6 @@ protected:
 		locals.poolBasicState.reservedAssetAmount += locals.assetAmountIn;
 		locals.poolBasicState.reservedQuAmount -= input.quAmountOut;
 		locals.poolBasicState.reservedQuAmount -= locals.protocolFee;
-
-		// printf("ra: %lld, ru: %lld, pf: %lld\n", locals.poolBasicState.reservedAssetAmount, locals.poolBasicState.reservedQuAmount, locals.protocolFee);
 
 		state.protocolEarnedFee += locals.protocolFee;
 
