@@ -10,8 +10,6 @@ constexpr uint64 MSVAULT_RELEASE_FEE = 1000ULL;
 constexpr uint64 MSVAULT_RELEASE_RESET_FEE = 500ULL;
 constexpr uint64 MSVAULT_HOLDING_FEE = 100ULL;
 
-constexpr uint64 MSVAULT_VAULT_TYPE_QUORUM = 1;
-constexpr uint64 MSVAULT_VAULT_TYPE_TWO_OUT_OF_X = 2;
 
 struct MSVAULT2
 {
@@ -22,10 +20,10 @@ struct MSVAULT : public ContractBase
 public:
     struct Vault
     {
-        uint64 vaultType;
         id vaultName;
         Array<id, MSVAULT_MAX_OWNERS> owners;
-        uint16 numberOfOwners;
+        uint64 numberOfOwners;
+        uint64 requiredApprovals;
         uint64 balance;
         bit isActive;
         Array<uint64, MSVAULT_MAX_OWNERS> releaseAmounts;
@@ -110,7 +108,7 @@ public:
     {
         id vaultName;
         Array<id, MSVAULT_MAX_OWNERS> owners;
-        uint64 vaultType;
+        uint64 requiredApprovals;
     };
     struct registerVault_output
     {
@@ -166,11 +164,7 @@ public:
         uint64 approvals;
         uint64 totalOwners;
         bit releaseApproved;
-        uint64 requiredApprovals;
         uint64 i;
-
-        uint64 calc;
-        uint64 divResult;
 
         isOwnerOfVault_input io_in;
         isOwnerOfVault_output io_out;
@@ -419,6 +413,13 @@ protected:
             return;
         }
 
+        // Check if requiredApprovals is valid: must be <= numberOfOwners, and > 0
+        if (input.requiredApprovals == 0 || input.requiredApprovals > locals.ownerCount)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
         // Find empty slot
         locals.slotIndex = -1;
         for (locals.ii = 0; locals.ii < MSVAULT_MAX_VAULTS; locals.ii++)
@@ -462,9 +463,9 @@ protected:
             }
         }
 
-        locals.newVault.vaultType = input.vaultType;
         locals.newVault.vaultName = input.vaultName;
-        locals.newVault.numberOfOwners = (uint16)locals.ownerCount;
+        locals.newVault.numberOfOwners = locals.ownerCount;
+        locals.newVault.requiredApprovals = input.requiredApprovals;
         locals.newVault.balance = 0;
         locals.newVault.isActive = true;
 
@@ -586,23 +587,9 @@ protected:
         }
 
         locals.releaseApproved = false;
-        if (locals.vault.vaultType == MSVAULT_VAULT_TYPE_QUORUM)
+        if (locals.approvals >= locals.vault.requiredApprovals)
         {
-            locals.calc = (locals.totalOwners * 2ULL) + 2ULL;
-            locals.divResult = QPI::div(locals.calc, 3ULL);
-            locals.requiredApprovals = locals.divResult;
-
-            if (locals.approvals >= locals.requiredApprovals)
-            {
-                locals.releaseApproved = true;
-            }
-        }
-        else if (locals.vault.vaultType == MSVAULT_VAULT_TYPE_TWO_OUT_OF_X)
-        {
-            if (locals.approvals >= 2)
-            {
-                locals.releaseApproved = true;
-            }
+            locals.releaseApproved = true;
         }
 
         if (locals.releaseApproved)
@@ -851,7 +838,7 @@ protected:
                     }
                     locals.v.isActive = false;
                     locals.v.balance = 0;
-                    locals.v.vaultType = 0;
+                    locals.v.requiredApprovals = 0;
                     locals.v.vaultName = NULL_ID;
                     locals.v.numberOfOwners = 0;
                     for (locals.j = 0; locals.j < MSVAULT_MAX_OWNERS; locals.j++)
@@ -860,7 +847,10 @@ protected:
                         locals.v.releaseAmounts.set(locals.j, 0);
                         locals.v.releaseDestinations.set(locals.j, NULL_ID);
                     }
-                    state.numberOfActiveVaults--;
+                    if (state.numberOfActiveVaults > 0)
+                    {
+                        state.numberOfActiveVaults--;
+                    }
                     state.vaults.set(locals.i, locals.v);
                 }
             }
