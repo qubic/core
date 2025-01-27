@@ -104,6 +104,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="contract_testing.h" />
+    <ClInclude Include="logging_test.h" />
     <ClInclude Include="score_params.h" />
     <ClInclude Include="score_reference.h" />
     <ClInclude Include="test_util.h" />

@@ -29,6 +29,7 @@
     <ClInclude Include="score_params.h" />
     <ClInclude Include="contract_testing.h" />
     <ClInclude Include="test_util.h" />
+    <ClInclude Include="logging_test.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
