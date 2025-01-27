@@ -15,7 +15,7 @@
 
 struct Peer;
 
-#define LOG_UNIVERSE (LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES)
+#define LOG_UNIVERSE (LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES | LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES)
 #define LOG_SPECTRUM (LOG_QU_TRANSFERS | LOG_BURNINGS | LOG_DUST_BURNINGS | LOG_SPECTRUM_STATS)
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
@@ -116,6 +116,8 @@ struct ResponseAllLogIdRangesFromTick
 #define BURNING 8
 #define DUST_BURNING 9
 #define SPECTRUM_STATS 10
+#define ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE 11
+#define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CUSTOM_MESSAGE 255
 
 /*
@@ -162,6 +164,31 @@ struct AssetPossessionChange
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+struct AssetOwnershipManagingContractChange
+{
+    m256i ownershipPublicKey;
+    m256i issuerPublicKey;
+    unsigned int sourceContractIndex;
+    unsigned int destinationContractIndex;
+    long long numberOfShares;
+    char assetName[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+struct AssetPossessionManagingContractChange
+{
+    m256i possessionPublicKey;
+    m256i ownershipPublicKey;
+    m256i issuerPublicKey;
+    unsigned int sourceContractIndex;
+    unsigned int destinationContractIndex;
+    long long numberOfShares;
+    char assetName[7];
 
     char _terminator; // Only data before "_terminator" are logged
 };
@@ -561,6 +588,22 @@ public:
     {
 #if LOG_ASSET_POSSESSION_CHANGES
         logMessage(offsetof(T, _terminator), ASSET_POSSESSION_CHANGE, &message);
+#endif
+    }
+
+    template <typename T>
+    void logAssetOwnershipManagingContractChange(const T& message)
+    {
+#if LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES
+        logMessage(offsetof(T, _terminator), ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE, &message);
+#endif
+    }
+
+    template <typename T>
+    void logAssetPossessionManagingContractChange(const T& message)
+    {
+#if LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES
+        logMessage(offsetof(T, _terminator), ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE, &message);
 #endif
     }
 
