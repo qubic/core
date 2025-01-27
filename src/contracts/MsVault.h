@@ -322,6 +322,8 @@ public:
         bit status;
         uint64 numberOfOwners;
         Array<id, MSVAULT_MAX_OWNERS> owners;
+
+        uint64 requiredApprovals;
     };
 
     struct BEGIN_EPOCH_locals
@@ -803,6 +805,8 @@ protected:
         {
             output.owners.set(locals.i, locals.v.owners.get(locals.i));
         }
+
+        output.requiredApprovals = locals.v.requiredApprovals;
 
         output.status = 1;
     _
