@@ -123,7 +123,12 @@ protected:
 	_
 
 	PRE_RELEASE_SHARES
-		output = state.preReleaseSharesOutput;
+		// check that qpi.acquireShares() leading to this callback is triggered by owner,
+		// otherwise allowing another contract to acquire management rights is risky
+		if (qpi.originator() == input.owner)
+		{
+			output = state.preReleaseSharesOutput;
+		}
 		state.prevPreReleaseSharesInput = input;
 	
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
@@ -151,12 +156,7 @@ protected:
 	_
 
 	PRE_ACQUIRE_SHARES
-		// check that acquire is triggered by owner, otherwise allowing another contract to acquire
-		// management rights is risky
-		if (qpi.originator() == input.owner)
-		{
-			output = state.preAcquireSharesOutput;
-		}
+		output = state.preAcquireSharesOutput;
 		state.prevPreAcquireSharesInput = input;
 
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);

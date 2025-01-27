@@ -123,27 +123,63 @@ _
 	_
 
 	PRE_RELEASE_SHARES
-		output = state.preReleaseSharesOutput;
+		// check that qpi.acquireShares() leading to this callback is triggered by owner,
+		// otherwise allowing another contract to acquire management rights is risky
+		if (qpi.originator() == input.owner)
+		{
+			output = state.preReleaseSharesOutput;
+		}
 		state.prevPreReleaseSharesInput = input;
+
+		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
+
+		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
+		// and should return with an error immeditately
+		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
+			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
+		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
+			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 	_
 
 	POST_RELEASE_SHARES
 		state.postReleaseSharesCounter++;
 		state.prevPostReleaseSharesInput = input;
+
+		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
+
+		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
+		// and should return with an error immeditately
+		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
+			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
+		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
+			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 	_
 
 	PRE_ACQUIRE_SHARES
-		// check that acquire is triggered by owner, otherwise allowing another contract to acquire
-		// management rights is risky
-		if (qpi.originator() == input.owner)
-		{
-            output = state.preAcquireSharesOutput;
-		}
-        state.prevPreAcquireSharesInput = input;
+		output = state.preAcquireSharesOutput;
+		state.prevPreAcquireSharesInput = input;
+
+		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
+
+		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
+		// and should return with an error immeditately
+		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
+			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
+		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
+			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 	_
 
 	POST_ACQUIRE_SHARES
-        state.postAcquireShareCounter++;
-        state.prevPostAcquireSharesInput = input;
-    _
+		state.postAcquireShareCounter++;
+		state.prevPostAcquireSharesInput = input;
+
+		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
+
+		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
+		// and should return with an error immeditately
+		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
+			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
+		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
+			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
+	_
 };

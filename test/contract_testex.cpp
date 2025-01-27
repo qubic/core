@@ -429,12 +429,6 @@ TEST(ContractTestEx, QpiAcquireShares)
     //////////////////////////////////////////////
     // TESTEXB ACQUIRES FROM TESTEXA
 
-    // TestExampleB tries / fails to acquire management rights (with wrong originator USER3)
-    EXPECT_EQ(test.acquireShareManagementRights<TESTEXB>(asset1, USER2, transferShareCount, TESTEXA_CONTRACT_INDEX, 0, USER3), 0);
-    EXPECT_EQ(numberOfShares(asset1, { USER2, TESTEXA_CONTRACT_INDEX }, { USER2, TESTEXA_CONTRACT_INDEX }), transferShareCount);
-    EXPECT_EQ(numberOfShares(asset1, { USER2, TESTEXB_CONTRACT_INDEX }, { USER2, TESTEXB_CONTRACT_INDEX }), 0);
-    test.getStateTestExampleA()->checkPostReleaseCounter(0);
-
     // TestExampleB tries / fails to acquire management rights (negative shares count)
     EXPECT_EQ(test.acquireShareManagementRights<TESTEXB>(asset1, USER2, -100, TESTEXA_CONTRACT_INDEX, 0), 0);
     EXPECT_EQ(numberOfShares(asset1, { USER2, TESTEXA_CONTRACT_INDEX }, { USER2, TESTEXA_CONTRACT_INDEX }), transferShareCount);
@@ -477,6 +471,13 @@ TEST(ContractTestEx, QpiAcquireShares)
     // TestExampleB tries / fails to acquire management rights (not enough QU owned to pay fee)
     test.setPreReleaseSharesOutput<TESTEXA>(true, test.qxFees.assetIssuanceFee * 11);
     EXPECT_EQ(test.acquireShareManagementRights<TESTEXB>(asset1, USER2, transferShareCount, TESTEXA_CONTRACT_INDEX, test.qxFees.assetIssuanceFee * 11), 0);
+    EXPECT_EQ(numberOfShares(asset1, { USER2, TESTEXA_CONTRACT_INDEX }, { USER2, TESTEXA_CONTRACT_INDEX }), transferShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { USER2, TESTEXB_CONTRACT_INDEX }, { USER2, TESTEXB_CONTRACT_INDEX }), 0);
+    test.getStateTestExampleA()->checkPostReleaseCounter(0);
+
+    // TestExampleB tries / fails to acquire management rights (with wrong originator USER3)
+    test.setPreReleaseSharesOutput<TESTEXA>(true, 1234);
+    EXPECT_EQ(test.acquireShareManagementRights<TESTEXB>(asset1, USER2, transferShareCount, TESTEXA_CONTRACT_INDEX, 1234, USER3), 0);
     EXPECT_EQ(numberOfShares(asset1, { USER2, TESTEXA_CONTRACT_INDEX }, { USER2, TESTEXA_CONTRACT_INDEX }), transferShareCount);
     EXPECT_EQ(numberOfShares(asset1, { USER2, TESTEXB_CONTRACT_INDEX }, { USER2, TESTEXB_CONTRACT_INDEX }), 0);
     test.getStateTestExampleA()->checkPostReleaseCounter(0);
