@@ -709,22 +709,26 @@ public:
     static void processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header);
 };
 
-static qLogger logger;
+GLOBAL_VAR_DECL qLogger logger;
 
 // For smartcontract logging
-template <typename T> void __logContractDebugMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractDebugMessage(unsigned int size, T& msg)
 {
     logger.__logContractDebugMessage(size, msg);
 }
-template <typename T> void __logContractErrorMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractErrorMessage(unsigned int size, T& msg)
 {
     logger.__logContractErrorMessage(size, msg);
 }
-template <typename T> void __logContractInfoMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractInfoMessage(unsigned int size, T& msg)
 {
     logger.__logContractInfoMessage(size, msg);
 }
-template <typename T> void __logContractWarningMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractWarningMessage(unsigned int size, T& msg)
 {
     logger.__logContractWarningMessage(size, msg);
 }

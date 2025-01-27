@@ -5449,6 +5449,8 @@ static void deinitialize()
 
     logger.deinitLogging();
 
+    deInitFileSystem();
+
 #if ADDON_TX_STATUS_REQUEST
     deinitTxStatusRequestAddOn();
 #endif
@@ -6263,6 +6265,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         unsigned long long numberOfAllProcessors, numberOfEnabledProcessors;
         mpServicesProtocol->GetNumberOfProcessors(mpServicesProtocol, &numberOfAllProcessors, &numberOfEnabledProcessors);
         mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
+
+        registerAsynFileIO(mpServicesProtocol);
         
         // Initialize resource management
         // ASSUMPTION: - each processor (CPU core) is bound to different functional thread.
@@ -6795,6 +6799,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #if !defined(NDEBUG)
                 printDebugMessages();
 #endif
+                // Flush the file system
+                flushAsyncFileIOBuffer();
             }
 
             saveSystem();

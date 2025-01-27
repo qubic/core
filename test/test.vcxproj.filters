@@ -23,12 +23,14 @@
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="assets.cpp" />
     <ClCompile Include="contract_testex.cpp" />
+    <ClCompile Include="file_io.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
     <ClInclude Include="score_params.h" />
     <ClInclude Include="contract_testing.h" />
     <ClInclude Include="test_util.h" />
+    <ClInclude Include="logging_test.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

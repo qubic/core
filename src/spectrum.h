@@ -415,6 +415,7 @@ static bool initSpectrum()
     {
         return false;
     }
+    spectrumLock = 0;
 
     return true;
 }

@@ -18,12 +18,12 @@
 #include "contract_core/qpi_asset_impl.h"
 #include "contract_core/qpi_system_impl.h"
 
-#include "logging/logging.h"
+#include "logging_test.h"
 
 #include "test_util.h"
 
 
-class ContractTesting
+class ContractTesting : public LoggingTest
 {
 public:
     ContractTesting()
