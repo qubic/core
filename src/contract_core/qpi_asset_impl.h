@@ -297,7 +297,7 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
     }
 
     // currently, only contract with index that fits into 16 bits can be managing contract
-    if (this->_currentContractIndex > 0xffffu)
+    if (_currentContractIndex > 0xffffu || _currentContractIndex >= contractCount)
     {
         return INVALID_AMOUNT;
     }
@@ -528,7 +528,7 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
     }
 
     // currently, only contract with index that fits into 16 bits can be managing contract
-    if (this->_currentContractIndex > 0xffffu)
+    if (_currentContractIndex > 0xffffu || _currentContractIndex >= contractCount)
     {
         return INVALID_AMOUNT;
     }
