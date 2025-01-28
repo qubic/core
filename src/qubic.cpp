@@ -127,6 +127,8 @@ static unsigned short numberOfOwnComputorIndices;
 static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 
+static int numberTickTransactions = -1;
+
 static TickStorage ts;
 static VoteCounter voteCounter;
 static Tick etalonTick;
@@ -1364,6 +1366,32 @@ static void checkAndSwitchMiningPhase()
     }
 }
 
+// This is called immediately before system.tick is increased.
+static void updateNumberOfTickTransactions()
+{
+    const unsigned int nextTick = system.tick + 1;
+    const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
+    
+    ts.tickData.acquireLock();
+    if (ts.tickData[nextTickIndex].epoch == 0 || ts.tickData[nextTickIndex].epoch == INVALIDATED_TICK_DATA)
+    {
+        numberTickTransactions = -1;
+    }
+    else
+    {
+        numberTickTransactions = 0;
+        for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
+        {
+            if (!isZero(ts.tickData[nextTickIndex].transactionDigests[transactionIndex]))
+            {
+                numberTickTransactions++;
+                // TODO: also check if transaction offset is non-zero?
+            }
+        }
+    }
+    ts.tickData.releaseLock();
+}
+
 // Disabling the optimizer for requestProcessor() is a workaround introduced to solve an issue
 // that has been observed in testnets/2024-11-23-release-227-qvault.
 // In this test, the processors calling requestProcessor() were stuck before entering the function.
@@ -1634,7 +1662,7 @@ unsigned char QPI::QpiContextFunctionCall::month() const
 
 int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
 {
-    return -1; // TODO: Return -1 if the current tick is empty, return the number of the transactions in the tick otherwise, including 0
+    return numberTickTransactions;
 }
 
 unsigned char QPI::QpiContextFunctionCall::second() const
@@ -2280,7 +2308,7 @@ static void processTick(unsigned long long processorNumber)
         // For seamless transition, spectrum and universe and computer have been changed after endEpoch event
         // (miner rewards, IPO finalizing, contract endEpoch procedures,...)
         // Here we still let prevDigests == digests of the last tick of last epoch
-        // so that lite client can verify the state of spectrum        
+        // so that lite client can verify the state of spectrum
 
 #if START_NETWORK_FROM_SCRATCH // only update it if the whole network starts from scratch
         // everything starts from files, there is no previous tick of the last epoch
@@ -4914,6 +4942,7 @@ static void tickProcessor(void*)
                                     ts.tickData.releaseLock();
                                 }
 
+                                updateNumberOfTickTransactions();
                                 system.tick++;
 
                                 checkAndSwitchMiningPhase();
