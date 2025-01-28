@@ -112,7 +112,6 @@ void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* hea
         && request->passcode[1] == logReaderPasscodes[1]
         && request->passcode[2] == logReaderPasscodes[2]
         && request->passcode[3] == logReaderPasscodes[3]
-        && request->tick <= lastUpdatedTick
         && request->tick >= tickBegin
         )
     {

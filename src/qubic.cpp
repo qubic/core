@@ -74,7 +74,7 @@
 #define PORT 21841
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
-#define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 4 // Must be at least 3+: 1+ for tx propagration + 1 for tickData propagration + 1 for vote propagration
+#define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 4 // Must be at least 3+: 1+ for tx propagation + 1 for tickData propagation + 1 for vote propagation
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
 
@@ -2680,7 +2680,7 @@ static void processTick(unsigned long long processorNumber)
     }
 
 #ifndef NDEBUG
-    // Check that continous updating of spectrum info is consistent with counting from scratch
+    // Check that continuous updating of spectrum info is consistent with counting from scratch
     SpectrumInfo si;
     updateSpectrumInfo(si);
     if (si.numberOfEntities != spectrumInfo.numberOfEntities || si.totalAmount != spectrumInfo.totalAmount)
@@ -5449,6 +5449,8 @@ static void deinitialize()
 
     logger.deinitLogging();
 
+    deInitFileSystem();
+
 #if ADDON_TX_STATUS_REQUEST
     deinitTxStatusRequestAddOn();
 #endif
@@ -6263,6 +6265,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         unsigned long long numberOfAllProcessors, numberOfEnabledProcessors;
         mpServicesProtocol->GetNumberOfProcessors(mpServicesProtocol, &numberOfAllProcessors, &numberOfEnabledProcessors);
         mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
+
+        registerAsynFileIO(mpServicesProtocol);
         
         // Initialize resource management
         // ASSUMPTION: - each processor (CPU core) is bound to different functional thread.
@@ -6795,6 +6799,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #if !defined(NDEBUG)
                 printDebugMessages();
 #endif
+                // Flush the file system
+                flushAsyncFileIOBuffer();
             }
 
             saveSystem();
