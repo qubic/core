@@ -366,7 +366,7 @@ protected:
 
     PRIVATE_FUNCTION_WITH_LOCALS(findOwnerIndexInVault)
         output.index = -1;
-        for (locals.i = 0; locals.i < input.vault.numberOfOwners; locals.i++)
+        for (locals.i = 0; locals.i < (sint64)input.vault.numberOfOwners; locals.i++)
         {
             if (input.vault.owners.get(locals.i) == input.ownerID)
             {
