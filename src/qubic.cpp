@@ -1366,14 +1366,13 @@ static void checkAndSwitchMiningPhase()
     }
 }
 
-// This is called immediately before system.tick is increased.
+// Updates the global numberTickTransactions based on the tick data in the tick storage.
 static void updateNumberOfTickTransactions()
 {
-    const unsigned int nextTick = system.tick + 1;
-    const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
+    const unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     
     ts.tickData.acquireLock();
-    if (ts.tickData[nextTickIndex].epoch == 0 || ts.tickData[nextTickIndex].epoch == INVALIDATED_TICK_DATA)
+    if (ts.tickData[tickIndex].epoch == 0 || ts.tickData[tickIndex].epoch == INVALIDATED_TICK_DATA)
     {
         numberTickTransactions = -1;
     }
@@ -1382,10 +1381,9 @@ static void updateNumberOfTickTransactions()
         numberTickTransactions = 0;
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
-            if (!isZero(ts.tickData[nextTickIndex].transactionDigests[transactionIndex]))
+            if (!isZero(ts.tickData[tickIndex].transactionDigests[transactionIndex]))
             {
                 numberTickTransactions++;
-                // TODO: also check if transaction offset is non-zero?
             }
         }
     }
@@ -4942,8 +4940,9 @@ static void tickProcessor(void*)
                                     ts.tickData.releaseLock();
                                 }
 
-                                updateNumberOfTickTransactions();
                                 system.tick++;
+
+                                updateNumberOfTickTransactions();
 
                                 checkAndSwitchMiningPhase();
 
@@ -5274,6 +5273,8 @@ static bool initialize()
             system.initialTick = TICK;
         }
         system.tick = system.initialTick;
+
+        updateNumberOfTickTransactions();
 
         beginEpoch();
 #if TICK_STORAGE_AUTOSAVE_MODE
