@@ -234,7 +234,7 @@ public:
     };
     struct getReleaseStatus_output
     {
-        bit status;
+        uint64 status;
         Array<uint64, MSVAULT_MAX_OWNERS> amounts;
         Array<id, MSVAULT_MAX_OWNERS> destinations;
     };
@@ -254,7 +254,7 @@ public:
     };
     struct getBalanceOf_output
     {
-        bit status;
+        uint64 status;
         sint64 balance;
     };
     struct getBalanceOf_locals
@@ -272,7 +272,7 @@ public:
     };
     struct getVaultName_output
     {
-        bit status;
+        uint64 status;
         id vaultName;
     };
     struct getVaultName_locals
@@ -319,7 +319,7 @@ public:
     };
     struct getVaultOwners_output
     {
-        bit status;
+        uint64 status;
         uint64 numberOfOwners;
         Array<id, MSVAULT_MAX_OWNERS> owners;
 
@@ -706,7 +706,7 @@ protected:
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getReleaseStatus)
-        output.status = false;
+        output.status = 0ULL;
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
@@ -726,11 +726,11 @@ protected:
             output.amounts.set(locals.i, locals.vault.releaseAmounts.get(locals.i));
             output.destinations.set(locals.i, locals.vault.releaseDestinations.get(locals.i));
         }
-        output.status = true;
+        output.status = 1ULL;
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getBalanceOf)
-        output.status = false;
+        output.status = 0ULL;
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
@@ -745,11 +745,11 @@ protected:
             return; // output.status = false
         }
         output.balance = locals.vault.balance;
-        output.status = true;
+        output.status = 1ULL;
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaultName)
-        output.status = false;
+        output.status = 0ULL;
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
@@ -764,7 +764,7 @@ protected:
             return; // output.status = false
         }
         output.vaultName = locals.vault.vaultName;
-        output.status = true;
+        output.status = 1ULL;
     _
 
     PUBLIC_FUNCTION(getRevenueInfo)
@@ -782,7 +782,7 @@ protected:
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaultOwners)
-        output.status = 0;
+        output.status = 0ULL;
         output.numberOfOwners = 0;
 
         locals.iv_in.vaultId = input.vaultId;
@@ -808,7 +808,7 @@ protected:
 
         output.requiredApprovals = locals.v.requiredApprovals;
 
-        output.status = 1;
+        output.status = 1ULL;
     _
 
     INITIALIZE
