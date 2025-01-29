@@ -415,8 +415,8 @@ protected:
             return;
         }
 
-        // Check if requiredApprovals is valid: must be <= numberOfOwners, and > 0
-        if (input.requiredApprovals == 0 || input.requiredApprovals > locals.ownerCount)
+        // Check if requiredApprovals is valid: must be <= numberOfOwners, > 1
+        if (input.requiredApprovals <= 1 || input.requiredApprovals > locals.ownerCount)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
