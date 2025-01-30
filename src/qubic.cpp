@@ -4108,6 +4108,7 @@ static bool loadAllNodeStates()
         logToConsole(L"Failed to load system");
         return false;
     }
+    updateNumberOfTickTransactions();
 
     setMem(assetChangeFlags, sizeof(assetChangeFlags), 0);
     setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
