@@ -1315,6 +1315,7 @@ namespace QPI
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
 		) const;
 
+		// Returns -1 if the current tick is empty, returns the number of the transactions in the tick otherwise, including 0.
 		sint32 numberOfTickTransactions(
 		) const;
 
