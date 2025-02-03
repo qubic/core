@@ -31,6 +31,8 @@
 #include "text_output.h"
 
 #include "kangaroo_twelve.h"
+#include "K12/kangaroo_twelve_xkcp.h"
+
 #include "four_q.h"
 #include "score.h"
 
@@ -202,6 +204,9 @@ static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningSc
 
 static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0 };
 
+
+// KangarooTwelve Instance to avoid recomputation of the base state with all tx bodies
+XKCP::KangarooTwelve_Instance txBody_base_nextTick;
 
 // variables and declare for persisting state
 static volatile int requestPersistingNodeState = 0;
@@ -722,6 +727,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
                     || request->tick.saltedUniverseDigest != tsTick->saltedUniverseDigest
                     || request->tick.saltedComputerDigest != tsTick->saltedComputerDigest
                     || request->tick.transactionDigest != tsTick->transactionDigest
+                    || request->tick.saltedTransactionBodyDigest != tsTick->saltedTransactionBodyDigest
                     || request->tick.expectedNextTickTransactionDigest != tsTick->expectedNextTickTransactionDigest)
                 {
                     faultyComputorFlags[request->tick.computorIndex >> 6] |= (1ULL << (request->tick.computorIndex & 63));
@@ -4454,6 +4460,33 @@ static void prepareNextTickTransactions()
     nextTickTransactionsSemaphore = 0;
 }
 
+
+// Computes the digest of all tx bodies of a certain tick
+static XKCP::KangarooTwelve_Instance computeTxBodyDigestBase(const int tick)
+{
+    constexpr size_t outputLen = 32; // output length in bytes
+
+    XKCP::KangarooTwelve_Instance kt;
+    XKCP::KangarooTwelve_Initialize(&kt, 128, outputLen);
+
+    const unsigned int tickIndex = ts.tickToIndexCurrentEpoch(tick);
+    const auto* tsTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+
+    for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+    {
+        ts.tickTransactions.acquireLock();
+
+        const Transaction* transaction = ts.tickTransactions(tsTransactionOffsets[i]);
+
+        XKCP::KangarooTwelve_Update(&kt, reinterpret_cast<const unsigned char*>(transaction), transaction->totalSize());
+
+        ts.tickTransactions.releaseLock();
+    }
+    return kt;
+}
+
+
+
 // broadcast all tickVotes from all IDs in this node
 static void broadcastTickVotes()
 {
@@ -4467,12 +4500,18 @@ static void broadcastTickVotes()
         saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
         saltedData[1].m256i_u64[0] = resourceTestingDigest;
         KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &broadcastTick.tick.saltedResourceTestingDigest, sizeof(broadcastTick.tick.saltedResourceTestingDigest));
+
         saltedData[1] = etalonTick.saltedSpectrumDigest;
         KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedSpectrumDigest);
+
         saltedData[1] = etalonTick.saltedUniverseDigest;
         KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedUniverseDigest);
+
         saltedData[1] = etalonTick.saltedComputerDigest;
         KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedComputerDigest);
+
+        saltedData[1] = etalonTick.saltedTransactionBodyDigest;
+        KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedTransactionBodyDigest);
 
         unsigned char digest[32];
         KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
@@ -4529,10 +4568,15 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                             KangarooTwelve64To32(saltedData, &saltedDigest);
                             if (tick->saltedComputerDigest == saltedDigest)
                             {
-                                tickNumberOfComputors++;
-                                // to avoid submitting invalid votes (eg: all zeroes with valid signature)
-                                // only count votes that matched etalonTick
-                                voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+                                saltedData[0] = etalonTick.saltedTransactionBodyDigest;
+                                KangarooTwelve64To32(saltedData, &saltedDigest);
+                                if(tick->saltedTransactionBodyDigest == saltedDigest)
+                                {
+                                    tickNumberOfComputors++;
+                                    // to avoid submitting invalid votes (eg: all zeroes with valid signature)
+                                    // only count votes that matched etalonTick
+                                    voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+                                }
                             }
                         }
                     }
@@ -4811,6 +4855,9 @@ static void tickProcessor(void*)
                     {
                         if (mainAuxStatus & 1)
                         {
+                            txBody_base_nextTick = computeTxBodyDigestBase(nextTick);
+                            //                            XKCP::KangarooTwelve_Update(&txBody_base_nextTick, saltedData[0].m256i_u8, 32);
+                            XKCP::KangarooTwelve_Final(&txBody_base_nextTick, etalonTick.saltedTransactionBodyDigest.m256i_u8, (const unsigned char *)"", 0);
                             broadcastTickVotes();
                         }
 
@@ -5977,10 +6024,17 @@ static void processKeyPresses()
             appendText(message, L".");
             logToConsole(message);
 
+            setText(message, L"Computer digest = ");
+            getIdentity(etalonTick.saltedTransactionBodyDigest.m256i_u8, digestChars, true);
+            appendText(message, digestChars);
+            appendText(message, L".");
+            logToConsole(message);
+
             setText(message, L"resourceTestingDigest = ");
             appendNumber(message, resourceTestingDigest, false);
             appendText(message, L".");
             logToConsole(message);
+
 
             unsigned int numberOfPublishedSolutions = 0, numberOfRecordedSolutions = 0, numberOfObsoleteSolutions = 0;
             for (unsigned int i = 0; i < system.numberOfSolutions; i++)
