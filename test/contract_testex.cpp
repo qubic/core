@@ -242,6 +242,14 @@ public:
 
         return output.transferredNumberOfShares;
     }
+
+    TESTEXA::QueryQpiFunctions_output queryQpiFunctions()
+    {
+        TESTEXA::QueryQpiFunctions_input input;
+        TESTEXA::QueryQpiFunctions_output output;
+        callFunction(TESTEXA_CONTRACT_INDEX, 1, input, output);
+        return output;
+    }
 };
 
 TEST(ContractTestEx, QpiReleaseShares)
@@ -575,4 +583,65 @@ TEST(ContractTestEx, QpiAcquireShares)
     EXPECT_EQ(numberOfShares(asset1, AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(USER2)), transferShareCount / 2);
     EXPECT_EQ(numberOfShares(asset1, AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(USER3)), transferShareCount / 2);
     EXPECT_EQ(numberOfShares(asset1), totalShareCount);
+}
+
+TEST(ContractTestEx, QueryBasicQpiFunctions)
+{
+    ContractTestingTestEx test;
+
+    id arbitratorPubKey;
+    getPublicKeyFromIdentity((const unsigned char*)ARBITRATOR, arbitratorPubKey.m256i_u8);
+
+    // Test 1 with initial time
+    setMemory(utcTime, 0);
+    utcTime.Year = 2022;
+    utcTime.Month = 4;
+    utcTime.Day = 13;
+    utcTime.Hour = 12;
+    updateQpiTime();
+    numberTickTransactions = 123;
+    system.tick = 4567890;
+    system.epoch = 987;
+    auto qpiReturned1 = test.queryQpiFunctions();
+    EXPECT_EQ(qpiReturned1.year, 22);
+    EXPECT_EQ(qpiReturned1.month, 4);
+    EXPECT_EQ(qpiReturned1.day, 13);
+    EXPECT_EQ(qpiReturned1.hour, 12);
+    EXPECT_EQ(qpiReturned1.minute, 0);
+    EXPECT_EQ(qpiReturned1.second, 0);
+    EXPECT_EQ((int)qpiReturned1.millisecond, 0);
+    EXPECT_EQ(qpiReturned1.dayOfWeek, 0);
+    EXPECT_EQ(qpiReturned1.arbitrator, arbitratorPubKey);
+    EXPECT_EQ(qpiReturned1.computor0, id::zero());
+    EXPECT_EQ((int)qpiReturned1.epoch, (int)system.epoch);
+    EXPECT_EQ(qpiReturned1.invocationReward, 0);
+    EXPECT_EQ(qpiReturned1.invocator, id::zero());
+    EXPECT_EQ(qpiReturned1.numberOfTickTransactions, numberTickTransactions);
+    EXPECT_EQ(qpiReturned1.originator, id::zero());
+    EXPECT_EQ(qpiReturned1.tick, system.tick);
+
+    // Test 2 with current time
+    updateTime();
+    updateQpiTime();
+    numberTickTransactions = 42;
+    system.tick = 4567891;
+    system.epoch = 988;
+    broadcastedComputors.computors.publicKeys[0] = id(12, 34, 56, 78);
+    auto qpiReturned2 = test.queryQpiFunctions();
+    EXPECT_EQ(qpiReturned2.year, utcTime.Year - 2000);
+    EXPECT_EQ(qpiReturned2.month, utcTime.Month);
+    EXPECT_EQ(qpiReturned2.day, utcTime.Day);
+    EXPECT_EQ(qpiReturned2.hour, utcTime.Hour);
+    EXPECT_EQ(qpiReturned2.minute, utcTime.Minute);
+    EXPECT_EQ(qpiReturned2.second, utcTime.Second);
+    EXPECT_EQ((int)qpiReturned2.millisecond, utcTime.Nanosecond / 1000000);
+    EXPECT_EQ(qpiReturned2.dayOfWeek, dayIndex(qpiReturned2.year, qpiReturned2.month, qpiReturned2.day) % 7);
+    EXPECT_EQ(qpiReturned2.arbitrator, arbitratorPubKey);
+    EXPECT_EQ(qpiReturned2.computor0, id(12, 34, 56, 78));
+    EXPECT_EQ((int)qpiReturned2.epoch, (int)system.epoch);
+    EXPECT_EQ(qpiReturned2.invocationReward, 0);
+    EXPECT_EQ(qpiReturned2.invocator, id::zero());
+    EXPECT_EQ(qpiReturned2.numberOfTickTransactions, numberTickTransactions);
+    EXPECT_EQ(qpiReturned2.originator, id::zero());
+    EXPECT_EQ(qpiReturned2.tick, system.tick);
 }

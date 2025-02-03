@@ -7,7 +7,7 @@
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH 50
 #undef TICKS_TO_KEEP_FROM_PRIOR_EPOCH
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 5
-#include "../src/tick_storage.h"
+#include "../src/ticking/tick_storage.h"
 
 #include <random>
 

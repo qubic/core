@@ -17,6 +17,7 @@
 #include "contract_core/qpi_spectrum_impl.h"
 #include "contract_core/qpi_asset_impl.h"
 #include "contract_core/qpi_system_impl.h"
+#include "contract_core/qpi_ticking_impl.h"
 
 #include "logging_test.h"
 
@@ -30,6 +31,7 @@ public:
     {
         initCommonBuffers();
         initContractExec();
+        initSpecialEntities();
 
         contractStates[0] = (unsigned char*)malloc(contractDescriptions[0].stateSize);
         setMem(contractStates[0], contractDescriptions[0].stateSize, 0);
@@ -37,6 +39,7 @@ public:
 
     ~ContractTesting()
     {
+        deinitSpecialEntities();
         deinitAssets();
         deinitSpectrum();
         deinitCommonBuffers();
@@ -145,4 +148,16 @@ static inline long long getBalance(const id& pubKey)
     long long balance = energy(index);
     EXPECT_GE(balance, 0ll);
     return balance;
+}
+
+// Update time returned by QPI functions based on utcTime, which can be set to current time with updateTime().
+static inline void updateQpiTime()
+{
+    etalonTick.millisecond = utcTime.Nanosecond / 1000000;
+    etalonTick.second = utcTime.Second;
+    etalonTick.minute = utcTime.Minute;
+    etalonTick.hour = utcTime.Hour;
+    etalonTick.day = utcTime.Day;
+    etalonTick.month = utcTime.Month;
+    etalonTick.year = utcTime.Year - 2000;
 }
