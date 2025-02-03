@@ -1,7 +1,7 @@
 #pragma once
 
 #include "contract_core/contract_exec.h"
-#include "spectrum.h"
+#include "spectrum/spectrum.h"
 
 
 bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity) const

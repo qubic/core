@@ -6,6 +6,27 @@ struct TESTEXA2
 
 struct TESTEXA : public ContractBase
 {
+	typedef NoData QueryQpiFunctions_input;
+	struct QueryQpiFunctions_output
+	{
+		uint8 year;   // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
+		uint8 month;  // [1..12]
+		uint8 day;    // [1..31]
+		uint8 hour;   // [0..23]
+		uint8 minute; // [0..59]
+		uint8 second;
+		uint16 millisecond;
+		uint8 dayOfWeek;
+		id arbitrator;
+		id computor0;
+		uint16 epoch;
+		sint64 invocationReward;
+		id invocator;
+		sint32 numberOfTickTransactions;
+		id originator;
+		uint32 tick;
+	};
+
 	struct IssueAsset_input
 	{
 		uint64 assetName;
@@ -70,6 +91,25 @@ protected:
 	uint32 postReleaseSharesCounter;
 	uint32 postAcquireShareCounter;
 
+	PUBLIC_FUNCTION(QueryQpiFunctions)
+		output.year = qpi.year();
+		output.month = qpi.month();
+		output.day = qpi.day();
+		output.hour = qpi.hour();
+		output.minute = qpi.minute();
+		output.second = qpi.second();
+		output.millisecond = qpi.millisecond();
+		output.dayOfWeek = qpi.dayOfWeek(output.year, output.month, output.day);
+		output.arbitrator = qpi.arbitrator();
+		output.computor0 = qpi.computor(0);
+		output.epoch = qpi.epoch();
+		output.invocationReward = qpi.invocationReward();
+		output.invocator = qpi.invocator();
+		output.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		output.originator = qpi.originator();
+		output.tick = qpi.tick();
+	_
+
 	PUBLIC_PROCEDURE(IssueAsset)
 		output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
 	_
@@ -114,6 +154,8 @@ protected:
 	_
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+		REGISTER_USER_FUNCTION(QueryQpiFunctions, 1);
+
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
 		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);
 		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 3);

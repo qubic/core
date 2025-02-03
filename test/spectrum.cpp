@@ -5,7 +5,7 @@
 #include "gtest/gtest.h"
 
 #include "logging_test.h"
-#include "spectrum.h"
+#include "spectrum/spectrum.h"
 
 #include <chrono>
 #include <random>
