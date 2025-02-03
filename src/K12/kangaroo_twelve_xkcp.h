@@ -4,6 +4,8 @@
 
 #include "platform/memory.h"
 
+namespace XKCP{
+
 typedef unsigned char uint8_t;
 typedef unsigned long long uint64_t;
 
@@ -783,7 +785,7 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     Cu = Abu^Agu^Aku^Amu^Asu; \
 
 
-#define thetaRhoPiChiIotaPrepareTheta(i, A, E) \
+#define XKCPthetaRhoPiChiIotaPrepareTheta(i, A, E) \
     Da = Cu^ROL64(Ce, 1); \
     De = Ca^ROL64(Ci, 1); \
     Di = Ce^ROL64(Co, 1); \
@@ -899,7 +901,7 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
 
 /* --- Code for round */
 /* --- 64-bit lanes mapped to 64-bit words */
-#define thetaRhoPiChiIota(i, A, E) \
+#define XKCPthetaRhoPiChiIota(i, A, E) \
     Da = Cu^ROL64(Ce, 1); \
     De = Ca^ROL64(Ci, 1); \
     Di = Ce^ROL64(Co, 1); \
@@ -989,7 +991,7 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
 \
 
 
-#define copyFromState(X, state) \
+#define XKCPcopyFromState(X, state) \
     X##ba = state[ 0]; \
     X##be = state[ 1]; \
     X##bi = state[ 2]; \
@@ -1016,7 +1018,7 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     X##so = state[23]; \
     X##su = state[24]; \
 
-#define copyToState(state, X) \
+#define XKCPcopyToState(state, X) \
     state[ 0] = X##ba; \
     state[ 1] = X##be; \
     state[ 2] = X##bi; \
@@ -1071,20 +1073,20 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     X##su = Y##su; \
 
 
-#define rounds12 \
+#define XKCProunds12 \
     prepareTheta \
-    thetaRhoPiChiIotaPrepareTheta(12, A, E) \
-    thetaRhoPiChiIotaPrepareTheta(13, E, A) \
-    thetaRhoPiChiIotaPrepareTheta(14, A, E) \
-    thetaRhoPiChiIotaPrepareTheta(15, E, A) \
-    thetaRhoPiChiIotaPrepareTheta(16, A, E) \
-    thetaRhoPiChiIotaPrepareTheta(17, E, A) \
-    thetaRhoPiChiIotaPrepareTheta(18, A, E) \
-    thetaRhoPiChiIotaPrepareTheta(19, E, A) \
-    thetaRhoPiChiIotaPrepareTheta(20, A, E) \
-    thetaRhoPiChiIotaPrepareTheta(21, E, A) \
-    thetaRhoPiChiIotaPrepareTheta(22, A, E) \
-    thetaRhoPiChiIota(23, E, A) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(12, A, E) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(13, E, A) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(14, A, E) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(15, E, A) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(16, A, E) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(17, E, A) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(18, A, E) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(19, E, A) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(20, A, E) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(21, E, A) \
+    XKCPthetaRhoPiChiIotaPrepareTheta(22, A, E) \
+    XKCPthetaRhoPiChiIota(23, E, A) \
 
 namespace K12xkcp
 {
@@ -1230,9 +1232,9 @@ namespace K12xkcp
         /* #endif */
         uint64_t *stateAsLanes = (uint64_t*)state;
 
-        copyFromState(A, stateAsLanes)
-        rounds12
-        copyToState(stateAsLanes, A)
+        XKCPcopyFromState(A, stateAsLanes)
+        XKCProunds12
+        XKCPcopyToState(stateAsLanes, A)
     }
 
 
@@ -1400,7 +1402,7 @@ namespace K12xkcp
             X##me ^= HTOLE64(input[16]); \
         } \
 
-    #include <assert.h>
+    /* #include <assert.h>  */
 
     size_t KeccakP1600_12rounds_FastLoop_Absorb(void *state, unsigned int laneCount, const unsigned char *data, size_t dataByteLen)
     {
@@ -1413,29 +1415,30 @@ namespace K12xkcp
         uint64_t *stateAsLanes = (uint64_t*)state;
         uint64_t *inDataAsLanes = (uint64_t*)data;
 
-        assert(laneCount == 21 || laneCount == 17);
+        /* ASSERT(laneCount == 21 || laneCount == 17); */
 
         if (laneCount == 21) {
-            copyFromState(A, stateAsLanes)
+            XKCPcopyFromState(A, stateAsLanes)
             while(dataByteLen >= laneCount*8) {
                 addInput21(A, inDataAsLanes, laneCount)
-                rounds12
+                XKCProunds12
                 inDataAsLanes += laneCount;
                 dataByteLen -= laneCount*8;
             }
-            copyToState(stateAsLanes, A)
+            XKCPcopyToState(stateAsLanes, A)
         } else if (laneCount == 17) {
-            copyFromState(A, stateAsLanes)
+            XKCPcopyFromState(A, stateAsLanes)
             while(dataByteLen >= laneCount*8) {
                 addInput17(A, inDataAsLanes, laneCount)
-                rounds12
+                XKCProunds12
                 inDataAsLanes += laneCount;
                 dataByteLen -= laneCount*8;
             }
-            copyToState(stateAsLanes, A)
+            XKCPcopyToState(stateAsLanes, A)
         }
 
         return originalDataByteLen - dataByteLen;
     }
 }
 #endif
+}

@@ -28,7 +28,7 @@ TEST(TestCoreK12, PerformanceDigest32Of1GB)
 
     auto startTime = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < repN; ++i)
-        KangarooTwelve((unsigned char *) inputPtr, inputN, (unsigned char*) outputArray, outputN);
+        XKCP::KangarooTwelve((unsigned char *) inputPtr, inputN, (unsigned char*) outputArray, outputN);
     auto durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime);
 
     double bytePerMilliSec = double(repN * inputN) / double(durationMilliSec.count());
