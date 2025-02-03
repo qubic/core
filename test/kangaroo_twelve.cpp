@@ -1,10 +1,12 @@
 #define NO_UEFI
 
-#include "../src/kangaroo_twelve.h"
-
+#include "../src/K12/kangaroo_twelve_xkcp.h"
+#include "../src/platform/memory.h"
+#include <intrin.h>
 #include "gtest/gtest.h"
 
 #include <chrono>
+#include <iostream>
 
 
 TEST(TestCoreK12, PerformanceDigest32Of1GB)
@@ -26,7 +28,7 @@ TEST(TestCoreK12, PerformanceDigest32Of1GB)
 
     auto startTime = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < repN; ++i)
-        KangarooTwelve(inputPtr, inputN, outputArray, outputN);
+        KangarooTwelve((unsigned char *) inputPtr, inputN, (unsigned char*) outputArray, outputN);
     auto durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime);
 
     double bytePerMilliSec = double(repN * inputN) / double(durationMilliSec.count());
