@@ -4476,9 +4476,17 @@ static XKCP::KangarooTwelve_Instance computeTxBodyDigestBase(const int tick)
     {
         ts.tickTransactions.acquireLock();
 
-        const Transaction* transaction = ts.tickTransactions(tsTransactionOffsets[i]);
+        if (tsTransactionOffsets[i]) {
+            const Transaction *transaction =
+                ts.tickTransactions(tsTransactionOffsets[i]);
+            if (transaction->checkValidity() && transaction->tick == tick) {
+                XKCP::KangarooTwelve_Update(&kt, reinterpret_cast<const unsigned char *>(transaction), transaction->totalSize());
+            }
+        }
 
-        XKCP::KangarooTwelve_Update(&kt, reinterpret_cast<const unsigned char*>(transaction), transaction->totalSize());
+        // const Transaction* transaction = ts.tickTransactions(tsTransactionOffsets[i]);
+
+        // XKCP::KangarooTwelve_Update(&kt, reinterpret_cast<const unsigned char*>(transaction), transaction->totalSize());
 
         ts.tickTransactions.releaseLock();
     }
