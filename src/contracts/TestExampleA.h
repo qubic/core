@@ -6,7 +6,12 @@ struct TESTEXA2
 
 struct TESTEXA : public ContractBase
 {
-	typedef NoData QueryQpiFunctions_input;
+	struct QueryQpiFunctions_input
+	{
+		Array<sint8, 128> data;
+		Array<sint8, 64> signature;
+		id entity;
+	};
 	struct QueryQpiFunctions_output
 	{
 		uint8 year;   // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
@@ -25,6 +30,8 @@ struct TESTEXA : public ContractBase
 		sint32 numberOfTickTransactions;
 		id originator;
 		uint32 tick;
+		id inputDataK12;
+		bit inputSignatureValid;
 	};
 
 	struct IssueAsset_input
@@ -108,6 +115,8 @@ protected:
 		output.numberOfTickTransactions = qpi.numberOfTickTransactions();
 		output.originator = qpi.originator();
 		output.tick = qpi.tick();
+		output.inputDataK12 = qpi.K12(input.data);
+		output.inputSignatureValid = qpi.signatureValidity(input.entity, output.inputDataK12, input.signature);
 	_
 
 	PUBLIC_PROCEDURE(IssueAsset)
