@@ -4474,6 +4474,8 @@ static XKCP::KangarooTwelve_Instance computeTxBodyDigestBase(const int tick)
 
     for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
     {
+        // TODO: Optimization to check: We have the ts locked for the whole K12_Update.
+        //       It might be worth to copy the transaction and release lock before update the K12 state.
         ts.tickTransactions.acquireLock();
 
         if (tsTransactionOffsets[i]) {
@@ -4483,10 +4485,6 @@ static XKCP::KangarooTwelve_Instance computeTxBodyDigestBase(const int tick)
                 XKCP::KangarooTwelve_Update(&kt, reinterpret_cast<const unsigned char *>(transaction), transaction->totalSize());
             }
         }
-
-        // const Transaction* transaction = ts.tickTransactions(tsTransactionOffsets[i]);
-
-        // XKCP::KangarooTwelve_Update(&kt, reinterpret_cast<const unsigned char*>(transaction), transaction->totalSize());
 
         ts.tickTransactions.releaseLock();
     }
