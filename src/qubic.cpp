@@ -4861,11 +4861,11 @@ static void tickProcessor(void*)
 
                     if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
                     {
+                        txBody_base_nextTick = computeTxBodyDigestBase(nextTick);
+                        //                            XKCP::KangarooTwelve_Update(&txBody_base_nextTick, saltedData[0].m256i_u8, 32);
+                        XKCP::KangarooTwelve_Final(&txBody_base_nextTick, etalonTick.saltedTransactionBodyDigest.m256i_u8, (const unsigned char *)"", 0);
                         if (mainAuxStatus & 1)
                         {
-                            txBody_base_nextTick = computeTxBodyDigestBase(nextTick);
-                            //                            XKCP::KangarooTwelve_Update(&txBody_base_nextTick, saltedData[0].m256i_u8, 32);
-                            XKCP::KangarooTwelve_Final(&txBody_base_nextTick, etalonTick.saltedTransactionBodyDigest.m256i_u8, (const unsigned char *)"", 0);
                             broadcastTickVotes();
                         }
 
