@@ -400,8 +400,7 @@ int KangarooTwelveXKPC(int securityLevel, const unsigned char* input, size_t inp
 */
 static void KangarooTwelve(const unsigned char* input, unsigned int inputByteLen, unsigned char* output, unsigned int outputByteLen)
 {
-    unsigned char a = 'a';
-    int sts = KangarooTwelveXKPC(128, input, (size_t)inputByteLen, output, (size_t) outputByteLen, &a, 0);
+    int sts = KangarooTwelveXKPC(128, input, (size_t)inputByteLen, output, (size_t) outputByteLen, nullptr, 0);
 }
 
 
@@ -428,7 +427,7 @@ static void random(const unsigned char* publicKey, const unsigned char* nonce, u
 #ifdef __AVX512F__
 
 /*
-* This part is get from
+* This part is from
 https://github.com/XKCP/K12/blob/master/lib/Optimized64/KeccakP-1600-AVX512-plainC.c
 
 K12 based on the eXtended Keccak Code Package (XKCP)
@@ -519,14 +518,14 @@ typedef __m512i     V512;
     V512    pi2KM = _mm512_setr_epi64(2, 3, 2+8, 3+8, 7, 5, 6, 7); \
     V512    pi2S3 = _mm512_setr_epi64(4, 5, 4+8, 5+8, 4, 5, 6, 7);
 
-#define copyFromState_xkpc_AVX512(pState) \
+#define XKCPAVX512copyFromState(pState) \
     Baeiou = LOAD_Plane(pState+ 0); \
     Gaeiou = LOAD_Plane(pState+ 5); \
     Kaeiou = LOAD_Plane(pState+10); \
     Maeiou = LOAD_Plane(pState+15); \
     Saeiou = LOAD_Plane(pState+20);
 
-#define copyToState_xkpc_AVX512(pState) \
+#define XKCPAVX512copyToState(pState) \
     STORE_Plane(pState+ 0, Baeiou); \
     STORE_Plane(pState+ 5, Gaeiou); \
     STORE_Plane(pState+10, Kaeiou); \
@@ -579,7 +578,7 @@ typedef __m512i     V512;
     Saeiou = _mm512_mask_blend_epi64(0x10, b0, Saeiou)
 
 
-#define rounds12_xkpc_AVX512 \
+#define XKCPAVX512rounds12 \
     KeccakP_Round( 12 ); \
     KeccakP_Round( 13 ); \
     KeccakP_Round( 14 ); \
@@ -667,9 +666,9 @@ namespace K12xkcp
         KeccakP_DeclareVars
             unsigned long long* stateAsLanes = (unsigned long long*)state;
 
-        copyFromState_xkpc_AVX512(stateAsLanes);
-        rounds12_xkpc_AVX512;
-        copyToState_xkpc_AVX512(stateAsLanes);
+        XKCPAVX512copyFromStatestateAsLanes);
+        XKCPAVX512rounds12;
+        XKCPAVX512copyToState(stateAsLanes);
     }
 
     size_t KeccakP1600_12rounds_FastLoop_Absorb(void* state, unsigned int laneCount, const unsigned char* data, size_t dataByteLen)
@@ -682,19 +681,19 @@ namespace K12xkcp
 
         if (laneCount == 21) {
 #define laneCount 21
-            copyToState_xkpc_AVX512(stateAsLanes);
+            XKCPAVX512copyToState(stateAsLanes);
             while (dataByteLen >= 21 * 8) {
                 Baeiou = XOR(Baeiou, LOAD_Plane(inDataAsLanes + 0));
                 Gaeiou = XOR(Gaeiou, LOAD_Plane(inDataAsLanes + 5));
                 Kaeiou = XOR(Kaeiou, LOAD_Plane(inDataAsLanes + 10));
                 Maeiou = XOR(Maeiou, LOAD_Plane(inDataAsLanes + 15));
                 Saeiou = XOR(Saeiou, LOAD_Lane(inDataAsLanes + 20));
-                rounds12_xkpc_AVX512;
+                XKCPAVX512rounds12;
                 inDataAsLanes += 21;
                 dataByteLen -= 21 * 8;
             }
 #undef laneCount
-            copyToState_xkpc_AVX512(stateAsLanes);
+            XKCPAVX512copyToState(stateAsLanes);
         }
         else if (laneCount == 17) {
             // TODO: further optimization needed for this case, laneCount == 17.
@@ -1095,8 +1094,6 @@ namespace K12xkcp
     {
         setMem(state, 200, 0);
     }
-
-
 
     void KeccakP1600_AddBytesInLane(void *state, unsigned int lanePosition, const unsigned char *data, unsigned int offset, unsigned int length)
     {
