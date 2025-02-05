@@ -37,6 +37,9 @@ namespace K12xkcp
     size_t KeccakP1600_12rounds_FastLoop_Absorb(void *state, unsigned int laneCount, const unsigned char *data, size_t dataByteLen);
 }
 
+
+// TurboSHAKE Code
+
 typedef struct TurboSHAKE_InstanceStruct {
     uint8_t state[KeccakP1600_stateSizeInBytes];
     unsigned int rate;
@@ -71,31 +74,37 @@ static void TurboSHAKE_Absorb(TurboSHAKE_Instance* instance, const unsigned char
 
     const uint8_t rateInBytes = instance->rate / 8;
 
-    //assert(instance->squeezing == 0);
+    // assert(instance->squeezing == 0);
 
     i = 0;
     curData = data;
-    while (i < dataByteLen) {
-        if ((instance->byteIOIndex == 0) && (dataByteLen - i >= rateInBytes)) {
+    while (i < dataByteLen)
+    {
+        if ((instance->byteIOIndex == 0) && (dataByteLen - i >= rateInBytes))
+        {
 #ifdef KeccakP1600_12rounds_FastLoop_supported
             /* processing full blocks first */
             j = KeccakP1600_12rounds_FastLoop_Absorb(instance->state, instance->rate / 64, curData, dataByteLen - i);
             i += j;
             curData += j;
 #endif
-            for (j = dataByteLen - i; j >= rateInBytes; j -= rateInBytes) {
+            for (j = dataByteLen - i; j >= rateInBytes; j -= rateInBytes)
+            {
                 K12xkcp::KeccakP1600_AddBytes(instance->state, curData, 0, rateInBytes);
                 K12xkcp::KeccakP1600_Permute_12rounds(instance->state);
                 curData += rateInBytes;
             }
             i = dataByteLen - j;
         }
-        else {
+        else
+        {
             /* normal lane: using the message queue */
-            if (dataByteLen - i > (size_t)rateInBytes - instance->byteIOIndex) {
+            if (dataByteLen - i > (size_t)rateInBytes - instance->byteIOIndex)
+            {
                 partialBlock = rateInBytes - instance->byteIOIndex;
             }
-            else {
+            else
+            {
                 partialBlock = (uint8_t)(dataByteLen - i);
             }
             i += partialBlock;
@@ -103,7 +112,8 @@ static void TurboSHAKE_Absorb(TurboSHAKE_Instance* instance, const unsigned char
             K12xkcp::KeccakP1600_AddBytes(instance->state, curData, instance->byteIOIndex, partialBlock);
             curData += partialBlock;
             instance->byteIOIndex += partialBlock;
-            if (instance->byteIOIndex == rateInBytes) {
+            if (instance->byteIOIndex == rateInBytes)
+            {
                 K12xkcp::KeccakP1600_Permute_12rounds(instance->state);
                 instance->byteIOIndex = 0;
             }
@@ -115,8 +125,8 @@ static void TurboSHAKE_AbsorbDomainSeparationByte(TurboSHAKE_Instance* instance,
 {
     const unsigned int rateInBytes = instance->rate / 8;
 
-    //assert(D != 0);
-    //assert(instance->squeezing == 0);
+    // assert(D != 0);
+    // assert(instance->squeezing == 0);
 
     /* Last few bits, whose delimiter coincides with first bit of padding */
     K12xkcp::KeccakP1600_AddByte(instance->state, D, instance->byteIOIndex);
@@ -142,18 +152,23 @@ static void TurboSHAKE_Squeeze(TurboSHAKE_Instance* instance, unsigned char* dat
 
     i = 0;
     curData = data;
-    while (i < dataByteLen) {
-        if ((instance->byteIOIndex == rateInBytes) && (dataByteLen - i >= rateInBytes)) {
-            for (j = dataByteLen - i; j >= rateInBytes; j -= rateInBytes) {
+    while (i < dataByteLen)
+    {
+        if ((instance->byteIOIndex == rateInBytes) && (dataByteLen - i >= rateInBytes))
+        {
+            for (j = dataByteLen - i; j >= rateInBytes; j -= rateInBytes)
+            {
                 K12xkcp::KeccakP1600_Permute_12rounds(instance->state);
                 K12xkcp::KeccakP1600_ExtractBytes(instance->state, curData, 0, rateInBytes);
                 curData += rateInBytes;
             }
             i = dataByteLen - j;
         }
-        else {
+        else
+        {
             /* normal lane: using the message queue */
-            if (instance->byteIOIndex == rateInBytes) {
+            if (instance->byteIOIndex == rateInBytes)
+            {
                 K12xkcp::KeccakP1600_Permute_12rounds(instance->state);
                 instance->byteIOIndex = 0;
             }
@@ -170,7 +185,8 @@ static void TurboSHAKE_Squeeze(TurboSHAKE_Instance* instance, unsigned char* dat
     }
 }
 
-typedef enum {
+typedef enum
+{
     NOT_INITIALIZED,
     ABSORBING,
     FINAL,
@@ -178,13 +194,12 @@ typedef enum {
 } KCP_Phases;
 typedef KCP_Phases KangarooTwelve_Phases;
 
-#define K12_chunkSize       8192
-#define K12_suffixLeaf      0x0B /* '110': message hop, simple padding, inner node */
-#define KT128_capacityInBytes   32
-#define KT256_capacityInBytes   64
+#define K12_chunkSize         8192
+#define K12_suffixLeaf        0x0B /* '110': message hop, simple padding, inner node */
+#define KT128_capacityInBytes 32
+#define KT256_capacityInBytes 64
 
 #define maxCapacityInBytes 64
-
 
 static unsigned int right_encode(unsigned char* encbuf, size_t value)
 {
@@ -193,13 +208,15 @@ static unsigned int right_encode(unsigned char* encbuf, size_t value)
 
     for (v = value, n = 0; v && (n < sizeof(size_t)); ++n, v >>= 8)
         ; /* empty */
-    for (i = 1; i <= n; ++i) {
+    for (i = 1; i <= n; ++i)
+    {
         encbuf[i - 1] = (unsigned char)(value >> (8 * (n - i)));
     }
     encbuf[n] = (unsigned char)n;
     return n + 1;
 }
 
+// K12 Code
 
 /**
   * Function to initialize a KangarooTwelve instance.
@@ -233,14 +250,16 @@ int KangarooTwelve_Update(KangarooTwelve_Instance* ktInstance, const unsigned ch
     if (ktInstance->phase != ABSORBING)
         return 1;
 
-    if (ktInstance->blockNumber == 0) {
+    if (ktInstance->blockNumber == 0)
+    {
         /* First block, absorb in final node */
         unsigned int len = (inputByteLen < (K12_chunkSize - ktInstance->queueAbsorbedLen)) ? (unsigned int)inputByteLen : (K12_chunkSize - ktInstance->queueAbsorbedLen);
         TurboSHAKE_Absorb(&ktInstance->finalNode, input, len);
         input += len;
         inputByteLen -= len;
         ktInstance->queueAbsorbedLen += len;
-        if ((ktInstance->queueAbsorbedLen == K12_chunkSize) && (inputByteLen != 0)) {
+        if ((ktInstance->queueAbsorbedLen == K12_chunkSize) && (inputByteLen != 0))
+        {
             /* First block complete and more input data available, finalize it */
             const unsigned char padding = 0x03; /* '110^6': message hop, simple padding */
             ktInstance->queueAbsorbedLen = 0;
@@ -249,17 +268,19 @@ int KangarooTwelve_Update(KangarooTwelve_Instance* ktInstance, const unsigned ch
             ktInstance->finalNode.byteIOIndex = (ktInstance->finalNode.byteIOIndex + 7) & ~7; /* Zero padding up to 64 bits */
         }
     }
-    else if (ktInstance->queueAbsorbedLen != 0) {
+    else if (ktInstance->queueAbsorbedLen != 0)
+    {
         /* There is data in the queue, absorb further in queue until block complete */
         unsigned int len = (inputByteLen < (K12_chunkSize - ktInstance->queueAbsorbedLen)) ? (unsigned int)inputByteLen : (K12_chunkSize - ktInstance->queueAbsorbedLen);
         TurboSHAKE_Absorb(&ktInstance->queueNode, input, len);
         input += len;
         inputByteLen -= len;
         ktInstance->queueAbsorbedLen += len;
-        if (ktInstance->queueAbsorbedLen == K12_chunkSize) {
+        if (ktInstance->queueAbsorbedLen == K12_chunkSize)
+        {
             int capacityInBytes = 2 * (ktInstance->securityLevel) / 8;
             unsigned char intermediate[maxCapacityInBytes];
-            //assert(capacityInBytes <= maxCapacityInBytes);
+            // assert(capacityInBytes <= maxCapacityInBytes);
             ktInstance->queueAbsorbedLen = 0;
             ++ktInstance->blockNumber;
             TurboSHAKE_AbsorbDomainSeparationByte(&ktInstance->queueNode, K12_suffixLeaf);
@@ -268,29 +289,31 @@ int KangarooTwelve_Update(KangarooTwelve_Instance* ktInstance, const unsigned ch
         }
     }
 
-    while (inputByteLen > 0) {
+    while (inputByteLen > 0)
+    {
         unsigned int len = (inputByteLen < K12_chunkSize) ? (unsigned int)inputByteLen : K12_chunkSize;
         TurboSHAKE_Initialize(&ktInstance->queueNode, ktInstance->securityLevel);
         TurboSHAKE_Absorb(&ktInstance->queueNode, input, len);
         input += len;
         inputByteLen -= len;
-        if (len == K12_chunkSize) {
+        if (len == K12_chunkSize)
+        {
             int capacityInBytes = 2 * (ktInstance->securityLevel) / 8;
             unsigned char intermediate[maxCapacityInBytes];
-            //assert(capacityInBytes <= maxCapacityInBytes);
+            // assert(capacityInBytes <= maxCapacityInBytes);
             ++ktInstance->blockNumber;
             TurboSHAKE_AbsorbDomainSeparationByte(&ktInstance->queueNode, K12_suffixLeaf);
             TurboSHAKE_Squeeze(&ktInstance->queueNode, intermediate, capacityInBytes);
             TurboSHAKE_Absorb(&ktInstance->finalNode, intermediate, capacityInBytes);
         }
-        else {
+        else
+        {
             ktInstance->queueAbsorbedLen = len;
         }
     }
 
     return 0;
 }
-
 
 /**
   * Function to call after all the input message has been input, and to get
@@ -319,18 +342,21 @@ int KangarooTwelve_Final(KangarooTwelve_Instance* ktInstance, unsigned char* out
     if (KangarooTwelve_Update(ktInstance, encbuf, right_encode(encbuf, customByteLen)) != 0)
         return 1;
 
-    if (ktInstance->blockNumber == 0) {
+    if (ktInstance->blockNumber == 0)
+    {
         /* Non complete first block in final node, pad it */
         padding = 0x07; /*  '11': message hop, final node */
     }
-    else {
+    else
+    {
         unsigned int n;
 
-        if (ktInstance->queueAbsorbedLen != 0) {
+        if (ktInstance->queueAbsorbedLen != 0)
+        {
             /* There is data in the queue node */
             int capacityInBytes = 2 * (ktInstance->securityLevel) / 8;
             unsigned char intermediate[maxCapacityInBytes];
-            //assert(capacityInBytes <= maxCapacityInBytes);
+            // assert(capacityInBytes <= maxCapacityInBytes);
             ++ktInstance->blockNumber;
             TurboSHAKE_AbsorbDomainSeparationByte(&ktInstance->queueNode, K12_suffixLeaf);
             TurboSHAKE_Squeeze(&ktInstance->queueNode, intermediate, capacityInBytes);
@@ -344,7 +370,8 @@ int KangarooTwelve_Final(KangarooTwelve_Instance* ktInstance, unsigned char* out
         padding = 0x06; /* '01': chaining hop, final node */
     }
     TurboSHAKE_AbsorbDomainSeparationByte(&ktInstance->finalNode, padding);
-    if (ktInstance->fixedOutputLength != 0) {
+    if (ktInstance->fixedOutputLength != 0)
+    {
         ktInstance->phase = FINAL;
         TurboSHAKE_Squeeze(&ktInstance->finalNode, output, ktInstance->fixedOutputLength);
         return 0;
@@ -381,8 +408,8 @@ int KangarooTwelve_Squeeze(KangarooTwelve_Instance* ktInstance, unsigned char* o
 */
 
 int KangarooTwelveXKPC(int securityLevel, const unsigned char* input, size_t inputByteLen,
-    unsigned char* output, size_t outputByteLen,
-    const unsigned char* customization, size_t customByteLen)
+                       unsigned char* output, size_t outputByteLen,
+                       const unsigned char* customization, size_t customByteLen)
 {
     KangarooTwelve_Instance ktInstance;
 
@@ -394,21 +421,19 @@ int KangarooTwelveXKPC(int securityLevel, const unsigned char* input, size_t inp
     return KangarooTwelve_Final(&ktInstance, output, customization, customByteLen);
 }
 
-
 /**
  * Wrapper around `KangarooTwelve` to use the 128-bit security level and no customization String.
-*/
+ */
 static void KangarooTwelve(const unsigned char* input, unsigned int inputByteLen, unsigned char* output, unsigned int outputByteLen)
 {
-    int sts = KangarooTwelveXKPC(128, input, (size_t)inputByteLen, output, (size_t) outputByteLen, nullptr, 0);
+    int sts = KangarooTwelveXKPC(128, input, (size_t)inputByteLen, output, (size_t)outputByteLen, nullptr, 0);
 }
-
 
 static void random(const unsigned char* publicKey, const unsigned char* nonce, unsigned char* output, unsigned long long outputSize)
 {
     unsigned char state[200];
-    *((__m256i*) & state[0]) = *((__m256i*)publicKey);
-    *((__m256i*) & state[32]) = *((__m256i*)nonce);
+    *((__m256i*)&state[0]) = *((__m256i*)publicKey);
+    *((__m256i*)&state[32]) = *((__m256i*)nonce);
     setMem(&state[64], sizeof(state) - 64, 0);
 
     for (unsigned long long i = 0; i < outputSize / sizeof(state); i++)
@@ -427,7 +452,7 @@ static void random(const unsigned char* publicKey, const unsigned char* nonce, u
 #ifdef __AVX512F__
 
 /*
-* This part is from
+This code is adopted from
 https://github.com/XKCP/K12/blob/master/lib/Optimized64/KeccakP-1600-AVX512-plainC.c
 
 K12 based on the eXtended Keccak Code Package (XKCP)
@@ -449,17 +474,6 @@ http://creativecommons.org/publicdomain/zero/1.0/
 We would like to thank Vladimir Sedach, we have used parts of his Keccak AVX-512 C++ code.
  */
 
-
-// #define KeccakP1600_12rounds_FastLoop_supported
-
-//#define K12_security        128
-//#define K12_capacity        (2 * K12_security)
-//#define K12_capacityInBytes (K12_capacity / 8)
-//#define K12_rateInBytes     ((1600 - K12_capacity) / 8)
-//#define K12_chunkSize       8192
-//#define K12_suffixLeaf      0x0B
-
-
 typedef __m512i     V512;
 
 #define XOR(a,b)                    _mm512_xor_si512(a,b)
@@ -467,6 +481,8 @@ typedef __m512i     V512;
 #define XOR5(a,b,c,d,e)             XOR3(XOR3(a,b,c),d,e)
 #define ROL(a,offset)               _mm512_rol_epi64(a,offset)
 #define Chi(a,b,c)                  _mm512_ternarylogic_epi64(a,b,c,0xD2)
+
+    /* ---------------------------------------------------------------- */
 
 #define LOAD_Lanes(m,a)             _mm512_maskz_loadu_epi64(m,a)
 #define LOAD_Lane(a)                LOAD_Lanes(0x01,a)
@@ -476,6 +492,8 @@ typedef __m512i     V512;
 #define STORE_Lane(a,v)             STORE_Lanes(a,0x01,v)
 #define STORE_Plane(a,v)            STORE_Lanes(a,0x1F,v)
 #define STORE_8Lanes(a,v)           STORE_Lanes(a,0xFF,v)
+
+    /* ---------------------------------------------------------------- */
 
 #define KeccakP_DeclareVars \
     V512    b0, b1, b2, b3, b4; \
@@ -498,6 +516,8 @@ typedef __m512i     V512;
     V512    pi2KM = _mm512_setr_epi64(2, 3, 2+8, 3+8, 7, 5, 6, 7); \
     V512    pi2S3 = _mm512_setr_epi64(4, 5, 4+8, 5+8, 4, 5, 6, 7);
 
+    /* ---------------------------------------------------------------- */
+
 #define KeccakP_DeclareVars2 \
     V512    b0, b1, b2, b3, b4; \
     V512    moveThetaPrev = _mm512_setr_epi64(4, 0, 1, 2, 3, 5, 6, 7); \
@@ -518,6 +538,8 @@ typedef __m512i     V512;
     V512    pi2KM = _mm512_setr_epi64(2, 3, 2+8, 3+8, 7, 5, 6, 7); \
     V512    pi2S3 = _mm512_setr_epi64(4, 5, 4+8, 5+8, 4, 5, 6, 7);
 
+    /* ---------------------------------------------------------------- */
+
 #define XKCPAVX512copyFromState(pState) \
     Baeiou = LOAD_Plane(pState+ 0); \
     Gaeiou = LOAD_Plane(pState+ 5); \
@@ -525,12 +547,16 @@ typedef __m512i     V512;
     Maeiou = LOAD_Plane(pState+15); \
     Saeiou = LOAD_Plane(pState+20);
 
+    /* ---------------------------------------------------------------- */
+
 #define XKCPAVX512copyToState(pState) \
     STORE_Plane(pState+ 0, Baeiou); \
     STORE_Plane(pState+ 5, Gaeiou); \
     STORE_Plane(pState+10, Kaeiou); \
     STORE_Plane(pState+15, Maeiou); \
     STORE_Plane(pState+20, Saeiou);
+
+    /* ---------------------------------------------------------------- */
 
 #define KeccakP_Round(i) \
     /* Theta */ \
@@ -577,6 +603,7 @@ typedef __m512i     V512;
     b0 = _mm512_permutex2var_epi64(b0, pi2S3, b1); \
     Saeiou = _mm512_mask_blend_epi64(0x10, b0, Saeiou)
 
+    /* ---------------------------------------------------------------- */
 
 #define XKCPAVX512rounds12 \
     KeccakP_Round( 12 ); \
@@ -592,47 +619,10 @@ typedef __m512i     V512;
     KeccakP_Round( 22 ); \
     KeccakP_Round( 23 )
 
+    /* ---------------------------------------------------------------- */
+
 namespace K12xkcp
 {
-
-    /* ---------------------------------------------------------------- */
-
-    void KeccakP1600_Initialize(void* state)
-    {
-        setMem(state, 200, 0);
-    }
-
-    /* ---------------------------------------------------------------- */
-
-    void KeccakP1600_AddBytes(void* state, const unsigned char* data, unsigned int offset, unsigned int length)
-    {
-        unsigned char* stateAsBytes;
-        unsigned long long* stateAsLanes;
-
-        for (stateAsBytes = (unsigned char*)state; ((offset % 8) != 0) && (length != 0); ++offset, --length)
-            stateAsBytes[offset] ^= *(data++);
-        for (stateAsLanes = (unsigned long long*)(stateAsBytes + offset); length >= 8 * 8; stateAsLanes += 8, data += 8 * 8, length -= 8 * 8)
-            STORE_8Lanes(stateAsLanes, XOR(LOAD_8Lanes(stateAsLanes), LOAD_8Lanes((const unsigned long long*)data)));
-        for (/* empty */; length >= 8; ++stateAsLanes, data += 8, length -= 8)
-            STORE_Lane(stateAsLanes, XOR(LOAD_Lane(stateAsLanes), LOAD_Lane((const unsigned long long*)data)));
-        for (stateAsBytes = (unsigned char*)stateAsLanes; length != 0; --length)
-            *(stateAsBytes++) ^= *(data++);
-    }
-
-    /* ---------------------------------------------------------------- */
-
-    void KeccakP1600_ExtractBytes(const void* state, unsigned char* data, unsigned int offset, unsigned int length)
-    {
-        copyMem(data, (unsigned char*)state + offset, length);
-    }
-
-    void KeccakP1600_AddByte(void* state, unsigned char data, unsigned int offset)
-    {
-        ((unsigned char*)(state))[offset] ^= data;
-    }
-
-    /* ---------------------------------------------------------------- */
-
     const unsigned long long KeccakP1600RoundConstants[24] = {
         0x0000000000000001ULL,
         0x0000000000008082ULL,
@@ -661,10 +651,41 @@ namespace K12xkcp
 
     /* ---------------------------------------------------------------- */
 
+    void KeccakP1600_Initialize(void* state)
+    {
+        setMem(state, 200, 0);
+    }
+
+    void KeccakP1600_AddBytes(void* state, const unsigned char* data, unsigned int offset, unsigned int length)
+    {
+        unsigned char* stateAsBytes;
+        unsigned long long* stateAsLanes;
+
+        for (stateAsBytes = (unsigned char*)state; ((offset % 8) != 0) && (length != 0); ++offset, --length)
+            stateAsBytes[offset] ^= *(data++);
+        for (stateAsLanes = (unsigned long long*)(stateAsBytes + offset); length >= 8 * 8; stateAsLanes += 8, data += 8 * 8, length -= 8 * 8)
+            STORE_8Lanes(stateAsLanes, XOR(LOAD_8Lanes(stateAsLanes), LOAD_8Lanes((const unsigned long long*)data)));
+        for (/* empty */; length >= 8; ++stateAsLanes, data += 8, length -= 8)
+            STORE_Lane(stateAsLanes, XOR(LOAD_Lane(stateAsLanes), LOAD_Lane((const unsigned long long*)data)));
+        for (stateAsBytes = (unsigned char*)stateAsLanes; length != 0; --length)
+            *(stateAsBytes++) ^= *(data++);
+    }
+
+    void KeccakP1600_ExtractBytes(const void* state, unsigned char* data, unsigned int offset, unsigned int length)
+    {
+        copyMem(data, (unsigned char*)state + offset, length);
+    }
+
+    void KeccakP1600_AddByte(void* state, unsigned char data, unsigned int offset)
+    {
+        ((unsigned char*)(state))[offset] ^= data;
+    }
+
+
     void KeccakP1600_Permute_12rounds(void* state)
     {
         KeccakP_DeclareVars
-            unsigned long long* stateAsLanes = (unsigned long long*)state;
+        unsigned long long* stateAsLanes = (unsigned long long*)state;
 
         XKCPAVX512copyFromStatestateAsLanes);
         XKCPAVX512rounds12;
@@ -679,10 +700,12 @@ namespace K12xkcp
         unsigned long long* stateAsLanes = (unsigned long long*)state;
         unsigned long long* inDataAsLanes = (unsigned long long*)data;
 
-        if (laneCount == 21) {
+        if (laneCount == 21)
+        {
 #define laneCount 21
             XKCPAVX512copyToState(stateAsLanes);
-            while (dataByteLen >= 21 * 8) {
+            while (dataByteLen >= 21 * 8)
+            {
                 Baeiou = XOR(Baeiou, LOAD_Plane(inDataAsLanes + 0));
                 Gaeiou = XOR(Gaeiou, LOAD_Plane(inDataAsLanes + 5));
                 Kaeiou = XOR(Kaeiou, LOAD_Plane(inDataAsLanes + 10));
@@ -695,9 +718,11 @@ namespace K12xkcp
 #undef laneCount
             XKCPAVX512copyToState(stateAsLanes);
         }
-        else if (laneCount == 17) {
+        else if (laneCount == 17)
+        {
             // TODO: further optimization needed for this case, laneCount == 17.
-            while (dataByteLen >= laneCount * 8) {
+            while (dataByteLen >= laneCount * 8)
+            {
                 KeccakP1600_AddBytes(state, data, 0, laneCount * 8);
                 KeccakP1600_Permute_12rounds(state);
                 data += laneCount * 8;
@@ -707,55 +732,21 @@ namespace K12xkcp
 
         return originalDataByteLen - dataByteLen;
     }
-
-
-
-
-    /* ---------------------------------------------------------------- */
-
-
-}
-
+} // namespace K12xkcp
 
 #elif defined(__AVX2__)
 // XKCP AVX2 Implementation uses ASM Code in GCC syntax hence it is not applicable with MSVC at the moment hence we have to use the opt64 version
-
 
 #include "brg_endian.h"
 
 #define KeccakP1600_opt64_implementation_config "all rounds unrolled"
 #define KeccakP1600_opt64_fullUnrolling
 
+    /* ---------------------------------------------------------------- */
+
 #define ROL64(a, offset) _rotl64(a, offset)
 
-static const unsigned long long KeccakF1600RoundConstants[24] = {
-    0x0000000000000001ULL,
-    0x0000000000008082ULL,
-    0x800000000000808aULL,
-    0x8000000080008000ULL,
-    0x000000000000808bULL,
-    0x0000000080000001ULL,
-    0x8000000080008081ULL,
-    0x8000000000008009ULL,
-    0x000000000000008aULL,
-    0x0000000000000088ULL,
-    0x0000000080008009ULL,
-    0x000000008000000aULL,
-    0x000000008000808bULL,
-    0x800000000000008bULL,
-    0x8000000000008089ULL,
-    0x8000000000008003ULL,
-    0x8000000000008002ULL,
-    0x8000000000000080ULL,
-    0x000000000000800aULL,
-    0x800000008000000aULL,
-    0x8000000080008081ULL,
-    0x8000000000008080ULL,
-    0x0000000080000001ULL,
-    0x8000000080008008ULL };
-
-
-
+    /* ---------------------------------------------------------------- */
 
 #define declareABCDE \
     unsigned long long Aba, Abe, Abi, Abo, Abu; \
@@ -776,6 +767,8 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     unsigned long long Ema, Eme, Emi, Emo, Emu; \
     unsigned long long Esa, Ese, Esi, Eso, Esu; \
 
+    /* ---------------------------------------------------------------- */
+
 #define prepareTheta \
     Ca = Aba^Aga^Aka^Ama^Asa; \
     Ce = Abe^Age^Ake^Ame^Ase; \
@@ -783,6 +776,7 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     Co = Abo^Ago^Ako^Amo^Aso; \
     Cu = Abu^Agu^Aku^Amu^Asu; \
 
+    /* ---------------------------------------------------------------- */
 
 #define XKCPthetaRhoPiChiIotaPrepareTheta(i, A, E) \
     Da = Cu^ROL64(Ce, 1); \
@@ -802,7 +796,7 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     A##su ^= Du; \
     Bbu = ROL64(A##su, 14); \
     E##ba =   Bba ^((~Bbe)&  Bbi ); \
-    E##ba ^= KeccakF1600RoundConstants[i]; \
+    E##ba ^= K12xkcp::KeccakF1600RoundConstants[i];  \
     Ca = E##ba; \
     E##be =   Bbe ^((~Bbi)&  Bbo ); \
     Ce = E##be; \
@@ -918,7 +912,7 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     A##su ^= Du; \
     Bbu = ROL64(A##su, 14); \
     E##ba =   Bba ^((~Bbe)&  Bbi ); \
-    E##ba ^= KeccakF1600RoundConstants[i]; \
+    E##ba ^= K12xkcp::KeccakF1600RoundConstants[i]; \
     E##be =   Bbe ^((~Bbi)&  Bbo ); \
     E##bi =   Bbi ^((~Bbo)&  Bbu ); \
     E##bo =   Bbo ^((~Bbu)&  Bba ); \
@@ -989,6 +983,7 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     E##su =   Bsu ^((~Bsa)&  Bse ); \
 \
 
+    /* ---------------------------------------------------------------- */
 
 #define XKCPcopyFromState(X, state) \
     X##ba = state[ 0]; \
@@ -1017,6 +1012,8 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     X##so = state[23]; \
     X##su = state[24]; \
 
+    /* ---------------------------------------------------------------- */
+
 #define XKCPcopyToState(state, X) \
     state[ 0] = X##ba; \
     state[ 1] = X##be; \
@@ -1043,6 +1040,8 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     state[22] = X##si; \
     state[23] = X##so; \
     state[24] = X##su; \
+
+    /* ---------------------------------------------------------------- */
 
 #define copyStateVariables(X, Y) \
     X##ba = Y##ba; \
@@ -1071,6 +1070,7 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     X##so = Y##so; \
     X##su = Y##su; \
 
+    /* ---------------------------------------------------------------- */
 
 #define XKCProunds12 \
     prepareTheta \
@@ -1087,106 +1087,38 @@ static const unsigned long long KeccakF1600RoundConstants[24] = {
     XKCPthetaRhoPiChiIotaPrepareTheta(22, A, E) \
     XKCPthetaRhoPiChiIota(23, E, A) \
 
+    /* ---------------------------------------------------------------- */
+
 namespace K12xkcp
 {
-    
-    void KeccakP1600_Initialize(void *state)
-    {
-        setMem(state, 200, 0);
-    }
+    static const unsigned long long KeccakF1600RoundConstants[24] = {
+        0x0000000000000001ULL,
+        0x0000000000008082ULL,
+        0x800000000000808aULL,
+        0x8000000080008000ULL,
+        0x000000000000808bULL,
+        0x0000000080000001ULL,
+        0x8000000080008081ULL,
+        0x8000000000008009ULL,
+        0x000000000000008aULL,
+        0x0000000000000088ULL,
+        0x0000000080008009ULL,
+        0x000000008000000aULL,
+        0x000000008000808bULL,
+        0x800000000000008bULL,
+        0x8000000000008089ULL,
+        0x8000000000008003ULL,
+        0x8000000000008002ULL,
+        0x8000000000000080ULL,
+        0x000000000000800aULL,
+        0x800000008000000aULL,
+        0x8000000080008081ULL,
+        0x8000000000008080ULL,
+        0x0000000080000001ULL,
+        0x8000000080008008ULL};
 
-    void KeccakP1600_AddBytesInLane(void *state, unsigned int lanePosition, const unsigned char *data, unsigned int offset, unsigned int length)
-    {
-    #if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
-        uint64_t lane;
-        if (length == 0)
-            return;
-        if (length == 1)
-            lane = data[0];
-        else {
-            lane = 0;
-            copyMem(&lane, data, length);
-        }
-        lane <<= offset*8;
-    #else
-        uint64_t lane = 0;
-        unsigned int i;
-        for(i=0; i<length; i++)
-            lane |= ((uint64_t)data[i]) << ((i+offset)*8);
-    #endif
-        ((uint64_t*)state)[lanePosition] ^= lane;
-    }
+    /* ---------------------------------------------------------------- */
 
-
-
-    static void KeccakP1600_AddLanes(void *state, const unsigned char *data, unsigned int laneCount)
-    {
-    #if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
-        unsigned int i = 0;
-    #ifdef NO_MISALIGNED_ACCESSES
-        /* If either pointer is misaligned, fall back to byte-wise xor. */
-        if (((((uintptr_t)state) & 7) != 0) || ((((uintptr_t)data) & 7) != 0)) {
-        for (i = 0; i < laneCount * 8; i++) {
-            ((unsigned char*)state)[i] ^= data[i];
-        }
-        }
-        else
-    #endif
-        {
-        /* Otherwise... */
-        for( ; (i+8)<=laneCount; i+=8) {
-            ((uint64_t*)state)[i+0] ^= ((uint64_t*)data)[i+0];
-            ((uint64_t*)state)[i+1] ^= ((uint64_t*)data)[i+1];
-            ((uint64_t*)state)[i+2] ^= ((uint64_t*)data)[i+2];
-            ((uint64_t*)state)[i+3] ^= ((uint64_t*)data)[i+3];
-            ((uint64_t*)state)[i+4] ^= ((uint64_t*)data)[i+4];
-            ((uint64_t*)state)[i+5] ^= ((uint64_t*)data)[i+5];
-            ((uint64_t*)state)[i+6] ^= ((uint64_t*)data)[i+6];
-            ((uint64_t*)state)[i+7] ^= ((uint64_t*)data)[i+7];
-        }
-        for( ; (i+4)<=laneCount; i+=4) {
-            ((uint64_t*)state)[i+0] ^= ((uint64_t*)data)[i+0];
-            ((uint64_t*)state)[i+1] ^= ((uint64_t*)data)[i+1];
-            ((uint64_t*)state)[i+2] ^= ((uint64_t*)data)[i+2];
-            ((uint64_t*)state)[i+3] ^= ((uint64_t*)data)[i+3];
-        }
-        for( ; (i+2)<=laneCount; i+=2) {
-            ((uint64_t*)state)[i+0] ^= ((uint64_t*)data)[i+0];
-            ((uint64_t*)state)[i+1] ^= ((uint64_t*)data)[i+1];
-        }
-        if (i<laneCount) {
-            ((uint64_t*)state)[i+0] ^= ((uint64_t*)data)[i+0];
-        }
-        }
-    #else
-        unsigned int i;
-        const uint8_t *curData = data;
-        for(i=0; i<laneCount; i++, curData+=8) {
-            uint64_t lane = (uint64_t)curData[0]
-                | ((uint64_t)curData[1] <<  8)
-                | ((uint64_t)curData[2] << 16)
-                | ((uint64_t)curData[3] << 24)
-                | ((uint64_t)curData[4] << 32)
-                | ((uint64_t)curData[5] << 40)
-                | ((uint64_t)curData[6] << 48)
-                | ((uint64_t)curData[7] << 56);
-            ((uint64_t*)state)[i] ^= lane;
-        }
-    #endif
-    }
-
-
-    void KeccakP1600_AddByte(void *state, unsigned char byte, unsigned int offset)
-    {
-    #if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
-        ((unsigned char*)(state))[offset] ^= byte;
-    #else
-        uint64_t lane = byte;
-        lane <<= (offset%8)*8;
-        ((uint64_t*)state)[offset/8] ^= lane;
-    #endif
-    }
-    
     #define SnP_AddBytes(state, data, offset, length, SnP_AddLanes, SnP_AddBytesInLane, SnP_laneLengthInBytes) \
         { \
             if ((offset) == 0) { \
@@ -1215,127 +1147,38 @@ namespace K12xkcp
             } \
         }
 
-    void KeccakP1600_AddBytes(void *state, const unsigned char *data, unsigned int offset, unsigned int length)
-    {
-        SnP_AddBytes(state, data, offset, length, KeccakP1600_AddLanes, KeccakP1600_AddBytesInLane, 8);
-    }
-
-
-    void KeccakP1600_Permute_12rounds(void *state)
-    {
-        declareABCDE
-        /* #ifndef KeccakP1600_fullUnrolling */
-        /* unsigned int i; */
-        /* #endif */
-        uint64_t *stateAsLanes = (uint64_t*)state;
-
-        XKCPcopyFromState(A, stateAsLanes)
-        XKCProunds12
-        XKCPcopyToState(stateAsLanes, A)
-    }
-
-
-    void KeccakP1600_ExtractBytesInLane(const void *state, unsigned int lanePosition, unsigned char *data, unsigned int offset, unsigned int length)
-    {
-        uint64_t lane = ((uint64_t*)state)[lanePosition];
-    #ifdef KeccakP1600_useLaneComplementing
-        if ((lanePosition == 1) || (lanePosition == 2) || (lanePosition == 8) || (lanePosition == 12) || (lanePosition == 17) || (lanePosition == 20))
-            lane = ~lane;
-    #endif
-    #if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
-        {
-            uint64_t lane1[1];
-            lane1[0] = lane;
-            copyMem(data, (uint8_t*)lane1+offset, length);
-        }
-    #else
-        unsigned int i;
-        lane >>= offset*8;
-        for(i=0; i<length; i++) {
-            data[i] = lane & 0xFF;
-            lane >>= 8;
-        }
-    #endif
-    }
-
-    
-    #if (PLATFORM_BYTE_ORDER != IS_LITTLE_ENDIAN)
-    static void fromWordToBytes(uint8_t *bytes, const uint64_t word)
-    {
-        unsigned int i;
-
-        for(i=0; i<(64/8); i++)
-            bytes[i] = (word >> (8*i)) & 0xFF;
-    }
-    #endif
-
-    void KeccakP1600_ExtractLanes(const void *state, unsigned char *data, unsigned int laneCount)
-    {
-    #if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
-        copyMem(data, state, laneCount*8);
-    #else
-        unsigned int i;
-
-        for(i=0; i<laneCount; i++)
-            fromWordToBytes(data+(i*8), ((const uint64_t*)state)[i]);
-    #endif
-    #ifdef KeccakP1600_useLaneComplementing
-        if (laneCount > 1) {
-            ((uint64_t*)data)[ 1] = ~((uint64_t*)data)[ 1];
-            if (laneCount > 2) {
-                ((uint64_t*)data)[ 2] = ~((uint64_t*)data)[ 2];
-                if (laneCount > 8) {
-                    ((uint64_t*)data)[ 8] = ~((uint64_t*)data)[ 8];
-                    if (laneCount > 12) {
-                        ((uint64_t*)data)[12] = ~((uint64_t*)data)[12];
-                        if (laneCount > 17) {
-                            ((uint64_t*)data)[17] = ~((uint64_t*)data)[17];
-                            if (laneCount > 20) {
-                                ((uint64_t*)data)[20] = ~((uint64_t*)data)[20];
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    #endif
-    }
-
     /* ---------------------------------------------------------------- */
 
     #define SnP_ExtractBytes(state, data, offset, length, SnP_ExtractLanes, SnP_ExtractBytesInLane, SnP_laneLengthInBytes) \
-        { \
-            if ((offset) == 0) { \
-                SnP_ExtractLanes(state, data, (length)/SnP_laneLengthInBytes); \
-                SnP_ExtractBytesInLane(state, \
-                    (length)/SnP_laneLengthInBytes, \
-                    (data)+((length)/SnP_laneLengthInBytes)*SnP_laneLengthInBytes, \
-                    0, \
-                    (length)%SnP_laneLengthInBytes); \
-            } \
-            else { \
-                unsigned int _sizeLeft = (length); \
-                unsigned int _lanePosition = (offset)/SnP_laneLengthInBytes; \
-                unsigned int _offsetInLane = (offset)%SnP_laneLengthInBytes; \
-                unsigned char *_curData = (data); \
-                while(_sizeLeft > 0) { \
-                    unsigned int _bytesInLane = SnP_laneLengthInBytes - _offsetInLane; \
-                    if (_bytesInLane > _sizeLeft) \
-                        _bytesInLane = _sizeLeft; \
-                    SnP_ExtractBytesInLane(state, _lanePosition, _curData, _offsetInLane, _bytesInLane); \
-                    _sizeLeft -= _bytesInLane; \
-                    _lanePosition++; \
-                    _offsetInLane = 0; \
-                    _curData += _bytesInLane; \
-                } \
-            } \
+        {                                                                                                                  \
+            if ((offset) == 0)                                                                                             \
+            {                                                                                                              \
+                SnP_ExtractLanes(state, data, (length) / SnP_laneLengthInBytes);                                           \
+                SnP_ExtractBytesInLane(state,                                                                              \
+                                    (length) / SnP_laneLengthInBytes,                                                      \
+                                    (data) + ((length) / SnP_laneLengthInBytes) * SnP_laneLengthInBytes,                   \
+                                    0,                                                                                     \
+                                    (length) % SnP_laneLengthInBytes);                                                     \
+            }                                                                                                              \
+            else                                                                                                           \
+            {                                                                                                              \
+                unsigned int _sizeLeft = (length);                                                                         \
+                unsigned int _lanePosition = (offset) / SnP_laneLengthInBytes;                                             \
+                unsigned int _offsetInLane = (offset) % SnP_laneLengthInBytes;                                             \
+                unsigned char* _curData = (data);                                                                          \
+                while (_sizeLeft > 0)                                                                                      \
+                {                                                                                                          \
+                    unsigned int _bytesInLane = SnP_laneLengthInBytes - _offsetInLane;                                     \
+                    if (_bytesInLane > _sizeLeft)                                                                          \
+                        _bytesInLane = _sizeLeft;                                                                          \
+                    SnP_ExtractBytesInLane(state, _lanePosition, _curData, _offsetInLane, _bytesInLane);                   \
+                    _sizeLeft -= _bytesInLane;                                                                             \
+                    _lanePosition++;                                                                                       \
+                    _offsetInLane = 0;                                                                                     \
+                    _curData += _bytesInLane;                                                                              \
+                }                                                                                                          \
+            }                                                                                                              \
         }
-
-
-    void KeccakP1600_ExtractBytes(const void *state, unsigned char *data, unsigned int offset, unsigned int length)
-    {
-        SnP_ExtractBytes(state, data, offset, length, KeccakP1600_ExtractLanes, KeccakP1600_ExtractBytesInLane, 8);
-    }
 
     /* ---------------------------------------------------------------- */
 
@@ -1352,6 +1195,8 @@ namespace K12xkcp
     ((x & 0x000000000000ff00ull) << 40) | \
     ((x & 0x00000000000000ffull) << 56))
     #endif
+
+    /* ---------------------------------------------------------------- */
 
     #define addInput21(X, input, laneCount) \
         if (laneCount == 21) { \
@@ -1378,6 +1223,8 @@ namespace K12xkcp
             X##sa ^= HTOLE64(input[20]); \
         } \
 
+    /* ---------------------------------------------------------------- */
+
     #define addInput17(X, input, laneCount) \
         if (laneCount == 17) { \
             X##ba ^= HTOLE64(input[ 0]); \
@@ -1399,43 +1246,249 @@ namespace K12xkcp
             X##me ^= HTOLE64(input[16]); \
         } \
 
-    /* #include <assert.h>  */
+    /* ---------------------------------------------------------------- */
 
-    size_t KeccakP1600_12rounds_FastLoop_Absorb(void *state, unsigned int laneCount, const unsigned char *data, size_t dataByteLen)
+    void KeccakP1600_Initialize(void* state)
     {
-        size_t originalDataByteLen = dataByteLen;
+        setMem(state, 200, 0);
+    }
 
+    void KeccakP1600_AddBytesInLane(void* state, unsigned int lanePosition, const unsigned char* data, unsigned int offset, unsigned int length)
+    {
+#if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
+        uint64_t lane;
+        if (length == 0)
+            return;
+        if (length == 1)
+            lane = data[0];
+        else
+        {
+            lane = 0;
+            copyMem(&lane, data, length);
+        }
+        lane <<= offset * 8;
+#else
+        uint64_t lane = 0;
+        unsigned int i;
+        for (i = 0; i < length; i++)
+            lane |= ((uint64_t)data[i]) << ((i + offset) * 8);
+#endif
+        ((uint64_t*)state)[lanePosition] ^= lane;
+    }
+
+    static void KeccakP1600_AddLanes(void* state, const unsigned char* data, unsigned int laneCount)
+    {
+#if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
+        unsigned int i = 0;
+#ifdef NO_MISALIGNED_ACCESSES
+    /* If either pointer is misaligned, fall back to byte-wise xor. */
+        if (((((uintptr_t)state) & 7) != 0) || ((((uintptr_t)data) & 7) != 0))
+        {
+            for (i = 0; i < laneCount * 8; i++)
+            {
+                ((unsigned char*)state)[i] ^= data[i];
+            }
+        }
+        else
+#endif
+        {
+            /* Otherwise... */
+            for (; (i + 8) <= laneCount; i += 8)
+            {
+                ((uint64_t*)state)[i + 0] ^= ((uint64_t*)data)[i + 0];
+                ((uint64_t*)state)[i + 1] ^= ((uint64_t*)data)[i + 1];
+                ((uint64_t*)state)[i + 2] ^= ((uint64_t*)data)[i + 2];
+                ((uint64_t*)state)[i + 3] ^= ((uint64_t*)data)[i + 3];
+                ((uint64_t*)state)[i + 4] ^= ((uint64_t*)data)[i + 4];
+                ((uint64_t*)state)[i + 5] ^= ((uint64_t*)data)[i + 5];
+                ((uint64_t*)state)[i + 6] ^= ((uint64_t*)data)[i + 6];
+                ((uint64_t*)state)[i + 7] ^= ((uint64_t*)data)[i + 7];
+            }
+            for (; (i + 4) <= laneCount; i += 4)
+            {
+                ((uint64_t*)state)[i + 0] ^= ((uint64_t*)data)[i + 0];
+                ((uint64_t*)state)[i + 1] ^= ((uint64_t*)data)[i + 1];
+                ((uint64_t*)state)[i + 2] ^= ((uint64_t*)data)[i + 2];
+                ((uint64_t*)state)[i + 3] ^= ((uint64_t*)data)[i + 3];
+            }
+            for (; (i + 2) <= laneCount; i += 2)
+            {
+                ((uint64_t*)state)[i + 0] ^= ((uint64_t*)data)[i + 0];
+                ((uint64_t*)state)[i + 1] ^= ((uint64_t*)data)[i + 1];
+            }
+            if (i < laneCount)
+            {
+                ((uint64_t*)state)[i + 0] ^= ((uint64_t*)data)[i + 0];
+            }
+        }
+#else
+        unsigned int i;
+        const uint8_t *curData = data;
+        for(i=0; i<laneCount; i++, curData+=8)
+        {
+            uint64_t lane = (uint64_t)curData[0]
+                | ((uint64_t)curData[1] <<  8)
+                | ((uint64_t)curData[2] << 16)
+                | ((uint64_t)curData[3] << 24)
+                | ((uint64_t)curData[4] << 32)
+                | ((uint64_t)curData[5] << 40)
+                | ((uint64_t)curData[6] << 48)
+                | ((uint64_t)curData[7] << 56);
+            ((uint64_t*)state)[i] ^= lane;
+        }
+#endif
+    }
+
+
+    void KeccakP1600_AddByte(void *state, unsigned char byte, unsigned int offset)
+    {
+#if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
+        ((unsigned char*)(state))[offset] ^= byte;
+#else
+        uint64_t lane = byte;
+        lane <<= (offset%8)*8;
+        ((uint64_t*)state)[offset/8] ^= lane;
+#endif
+    }
+
+
+    void KeccakP1600_AddBytes(void *state, const unsigned char *data, unsigned int offset, unsigned int length)
+    {
+        SnP_AddBytes(state, data, offset, length, KeccakP1600_AddLanes, KeccakP1600_AddBytesInLane, 8);
+    }
+
+
+    void KeccakP1600_Permute_12rounds(void *state)
+    {
         declareABCDE
         /* #ifndef KeccakP1600_fullUnrolling */
         /* unsigned int i; */
         /* #endif */
         uint64_t *stateAsLanes = (uint64_t*)state;
-        uint64_t *inDataAsLanes = (uint64_t*)data;
+
+        XKCPcopyFromState(A, stateAsLanes)
+        XKCProunds12
+        XKCPcopyToState(stateAsLanes, A)
+    }
+
+
+    void KeccakP1600_ExtractBytesInLane(const void *state, unsigned int lanePosition, unsigned char *data, unsigned int offset, unsigned int length)
+    {
+        uint64_t lane = ((uint64_t*)state)[lanePosition];
+#ifdef KeccakP1600_useLaneComplementing
+        if ((lanePosition == 1) || (lanePosition == 2) || (lanePosition == 8) || (lanePosition == 12) || (lanePosition == 17) || (lanePosition == 20))
+            lane = ~lane;
+#endif
+#if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
+        {
+            uint64_t lane1[1];
+            lane1[0] = lane;
+            copyMem(data, (uint8_t*)lane1 + offset, length);
+        }
+#else
+        unsigned int i;
+        lane >>= offset * 8;
+        for (i = 0; i < length; i++)
+        {
+            data[i] = lane & 0xFF;
+            lane >>= 8;
+        }
+#endif
+    }
+
+#if (PLATFORM_BYTE_ORDER != IS_LITTLE_ENDIAN)
+    static void fromWordToBytes(uint8_t *bytes, const uint64_t word)
+    {
+        unsigned int i;
+
+        for (i = 0; i < (64 / 8); i++)
+            bytes[i] = (word >> (8 * i)) & 0xFF;
+    }
+#endif
+
+    void KeccakP1600_ExtractLanes(const void *state, unsigned char *data, unsigned int laneCount)
+    {
+#if (PLATFORM_BYTE_ORDER == IS_LITTLE_ENDIAN)
+        copyMem(data, state, laneCount*8);
+#else
+        unsigned int i;
+
+        for(i=0; i<laneCount; i++)
+            fromWordToBytes(data+(i*8), ((const uint64_t*)state)[i]);
+#endif
+#ifdef KeccakP1600_useLaneComplementing
+        if (laneCount > 1)
+        {
+            ((uint64_t*)data)[1] = ~((uint64_t*)data)[1];
+            if (laneCount > 2)
+            {
+                ((uint64_t*)data)[2] = ~((uint64_t*)data)[2];
+                if (laneCount > 8)
+                {
+                    ((uint64_t*)data)[8] = ~((uint64_t*)data)[8];
+                    if (laneCount > 12)
+                    {
+                        ((uint64_t*)data)[12] = ~((uint64_t*)data)[12];
+                        if (laneCount > 17)
+                        {
+                            ((uint64_t*)data)[17] = ~((uint64_t*)data)[17];
+                            if (laneCount > 20)
+                            {
+                                ((uint64_t*)data)[20] = ~((uint64_t*)data)[20];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+#endif
+    }
+
+    void KeccakP1600_ExtractBytes(const void *state, unsigned char *data, unsigned int offset, unsigned int length)
+    {
+        SnP_ExtractBytes(state, data, offset, length, KeccakP1600_ExtractLanes, KeccakP1600_ExtractBytesInLane, 8);
+    }
+
+    /* #include <assert.h>  */
+
+    size_t KeccakP1600_12rounds_FastLoop_Absorb(void* state, unsigned int laneCount, const unsigned char* data, size_t dataByteLen)
+    {
+        size_t originalDataByteLen = dataByteLen;
+
+        declareABCDE
+            /* #ifndef KeccakP1600_fullUnrolling */
+            /* unsigned int i; */
+            /* #endif */
+            uint64_t* stateAsLanes = (uint64_t*)state;
+        uint64_t* inDataAsLanes = (uint64_t*)data;
 
         /* ASSERT(laneCount == 21 || laneCount == 17); */
 
-        if (laneCount == 21) {
-            XKCPcopyFromState(A, stateAsLanes)
-            while(dataByteLen >= laneCount*8) {
+        if (laneCount == 21)
+        {
+            XKCPcopyFromState(A, stateAsLanes) while (dataByteLen >= laneCount * 8)
+            {
                 addInput21(A, inDataAsLanes, laneCount)
-                XKCProunds12
-                inDataAsLanes += laneCount;
-                dataByteLen -= laneCount*8;
+                    XKCProunds12
+                        inDataAsLanes += laneCount;
+                dataByteLen -= laneCount * 8;
             }
             XKCPcopyToState(stateAsLanes, A)
-        } else if (laneCount == 17) {
-            XKCPcopyFromState(A, stateAsLanes)
-            while(dataByteLen >= laneCount*8) {
+        }
+        else if (laneCount == 17)
+        {
+            XKCPcopyFromState(A, stateAsLanes) while (dataByteLen >= laneCount * 8)
+            {
                 addInput17(A, inDataAsLanes, laneCount)
-                XKCProunds12
-                inDataAsLanes += laneCount;
-                dataByteLen -= laneCount*8;
+                    XKCProunds12
+                        inDataAsLanes += laneCount;
+                dataByteLen -= laneCount * 8;
             }
             XKCPcopyToState(stateAsLanes, A)
         }
 
         return originalDataByteLen - dataByteLen;
     }
-}
+} // namespace K12xkcp
 #endif
-}
+} // namespace XKPC

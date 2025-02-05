@@ -206,7 +206,7 @@ static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0
 
 
 // KangarooTwelve Instance to avoid recomputation of the base state with all tx bodies
-XKCP::KangarooTwelve_Instance txBody_base_nextTick;
+XKCP::KangarooTwelve_Instance txBodyBaseNextTick;
 
 // variables and declare for persisting state
 static volatile int requestPersistingNodeState = 0;
@@ -933,6 +933,10 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
     }
 }
 
+/**
+ * Sends Tick data for computors *not* marked in request->voteFlags (0 = requester wants the tick of this computer).
+ * Shuffles order, ends with EndResponse.
+ */
 static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 {
     RequestQuorumTick* request = header->getPayload<RequestQuorumTick>();
@@ -953,7 +957,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
     if (tickEpoch != 0)
     {
         // Send Tick struct data from tick storage as requested by tick and voteFlags in request->quorumTick.
-        // The order of the computors is randomized.
+        // The order of the computors is randomized using a Fisher–Yates shuffle
         // Todo: This function may be optimized by moving the checking of voteFlags in the first loop, reducing the number of calls to random().
         unsigned short computorIndices[NUMBER_OF_COMPUTORS];
         unsigned short numberOfComputorIndices;
@@ -4859,9 +4863,9 @@ static void tickProcessor(void*)
 
                     if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
                     {
-                        txBody_base_nextTick = computeTxBodyDigestBase(nextTick);
+                        txBodyBaseNextTick = computeTxBodyDigestBase(nextTick);
                         //                            XKCP::KangarooTwelve_Update(&txBody_base_nextTick, saltedData[0].m256i_u8, 32);
-                        XKCP::KangarooTwelve_Final(&txBody_base_nextTick, etalonTick.saltedTransactionBodyDigest.m256i_u8, (const unsigned char *)"", 0);
+                        XKCP::KangarooTwelve_Final(&txBodyBaseNextTick, etalonTick.saltedTransactionBodyDigest.m256i_u8, (const unsigned char *)"", 0);
                         if (mainAuxStatus & 1)
                         {
                             broadcastTickVotes();
