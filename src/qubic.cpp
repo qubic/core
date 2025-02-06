@@ -44,13 +44,14 @@
 #include "assets/net_msg_impl.h"
 #include "contract_core/qpi_asset_impl.h"
 
-#include "spectrum.h"
+#include "spectrum/spectrum.h"
 #include "contract_core/qpi_spectrum_impl.h"
 
 #include "logging/logging.h"
 #include "logging/net_msg_impl.h"
 
-#include "tick_storage.h"
+#include "ticking/ticking.h"
+#include "contract_core/qpi_ticking_impl.h"
 #include "vote_counter.h"
 
 #include "addons/tx_status_request.h"
@@ -107,14 +108,6 @@ static volatile unsigned char epochTransitionState = 0;
 static volatile unsigned char epochTransitionCleanMemoryFlag = 1;
 static volatile long epochTransitionWaitingRequestProcessors = 0;
 
-static m256i operatorPublicKey;
-static m256i computorSubseeds[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
-static m256i computorPrivateKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
-static m256i computorPublicKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
-static m256i arbitratorPublicKey;
-
-BroadcastComputors broadcastedComputors;
-
 // data closely related to system
 static int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS]; // scheduled tick to broadcast solution, -1 means already broadcasted, -2 means obsolete solution
 #define SOLUTION_RECORDED_FLAG -1
@@ -127,11 +120,8 @@ static unsigned short numberOfOwnComputorIndices;
 static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 
-static int numberTickTransactions = -1;
-
 static TickStorage ts;
 static VoteCounter voteCounter;
-static Tick etalonTick;
 static TickData nextTickData;
 
 static m256i uniqueNextTickTransactionDigests[NUMBER_OF_COMPUTORS];
@@ -1617,76 +1607,6 @@ static void requestProcessor(void* ProcedureArgument)
 }
 #pragma optimize("", on)
 
-QPI::id QPI::QpiContextFunctionCall::arbitrator() const
-{
-    return arbitratorPublicKey;
-}
-
-QPI::id QPI::QpiContextFunctionCall::computor(unsigned short computorIndex) const
-{
-    return broadcastedComputors.computors.publicKeys[computorIndex % NUMBER_OF_COMPUTORS];
-}
-
-unsigned char QPI::QpiContextFunctionCall::day() const
-{
-    return etalonTick.day;
-}
-
-unsigned char QPI::QpiContextFunctionCall::dayOfWeek(unsigned char year, unsigned char month, unsigned char day) const
-{
-    return dayIndex(year, month, day) % 7;
-}
-
-unsigned char QPI::QpiContextFunctionCall::hour() const
-{
-    return etalonTick.hour;
-}
-
-unsigned short QPI::QpiContextFunctionCall::millisecond() const
-{
-    return etalonTick.millisecond;
-}
-
-unsigned char QPI::QpiContextFunctionCall::minute() const
-{
-    return etalonTick.minute;
-}
-
-unsigned char QPI::QpiContextFunctionCall::month() const
-{
-    return etalonTick.month;
-}
-
-
-int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
-{
-    return numberTickTransactions;
-}
-
-unsigned char QPI::QpiContextFunctionCall::second() const
-{
-    return etalonTick.second;
-}
-
-bool QPI::QpiContextFunctionCall::signatureValidity(const m256i& entity, const m256i& digest, const Array<signed char, 64>& signature) const
-{
-    return verify(entity.m256i_u8, digest.m256i_u8, reinterpret_cast<const unsigned char*>(&signature));
-}
-
-unsigned char QPI::QpiContextFunctionCall::year() const
-{
-    return etalonTick.year;
-}
-
-template <typename T>
-m256i QPI::QpiContextFunctionCall::K12(const T& data) const
-{
-    m256i digest;
-
-    KangarooTwelve(&data, sizeof(data), &digest, sizeof(digest));
-
-    return digest;
-}
 
 static void contractProcessor(void*)
 {
@@ -5171,23 +5091,8 @@ static bool initialize()
     initAVX512FourQConstants();
 #endif
 
-    getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
-    if (isZero(operatorPublicKey))
-    {
-        operatorPublicKey.setRandomValue();
-    }
-
-    for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
-    {
-        if (!getSubseed(computorSeeds[i], computorSubseeds[i].m256i_u8))
-        {
-            return false;
-        }
-        getPrivateKey(computorSubseeds[i].m256i_u8, computorPrivateKeys[i].m256i_u8);
-        getPublicKey(computorPrivateKeys[i].m256i_u8, computorPublicKeys[i].m256i_u8);
-    }
-
-    getPublicKeyFromIdentity((const unsigned char*)ARBITRATOR, (unsigned char*)&arbitratorPublicKey);
+    if (!initSpecialEntities())
+        return false;
 
     initTimeStampCounter();
 
@@ -5479,10 +5384,7 @@ static void deinitialize()
 {
     deinitTcp4();
 
-    bs->SetMem(computorSeeds, sizeof(computorSeeds), 0);
-    bs->SetMem(computorSubseeds, sizeof(computorSubseeds), 0);
-    bs->SetMem(computorPrivateKeys, sizeof(computorPrivateKeys), 0);
-    bs->SetMem(computorPublicKeys, sizeof(computorPublicKeys), 0);
+    deinitSpecialEntities();
 
     if (root)
     {
