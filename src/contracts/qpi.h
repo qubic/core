@@ -1387,8 +1387,6 @@ namespace QPI
 		) const; // Returns number of shares or 0 on error
 
 		inline bool bidOnIPO(
-			const id& sourceContractPublickey,
-			uint32 sourceContractIndex,
 			uint32 IPOContractIndex,
 			sint64 price,
 			uint32 quantity

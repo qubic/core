@@ -1607,118 +1607,6 @@ static void requestProcessor(void* ProcedureArgument)
 }
 #pragma optimize("", on)
 
-
-bool QPI::QpiContextProcedureCall::bidOnIPO(const m256i& sourceContractPublickey, unsigned int sourceContractIndex, unsigned int IPOContractIndex, long long price, unsigned int quantity) const
-{
-    if(sourceContractIndex >= MAX_NUMBER_OF_CONTRACTS || IPOContractIndex >= MAX_NUMBER_OF_CONTRACTS || sourceContractIndex >= IPOContractIndex)
-    {
-        return 0;
-    }
-
-    if(system.epoch >= contractDescriptions[IPOContractIndex].constructionEpoch)  // IPO is finished.
-    {
-        return 0;
-    }
-
-    const int spectrumIndex = ::spectrumIndex(sourceContractPublickey);
-
-    ASSERT(spectrumIndex >= 0);
-    ASSERT(IPOContractIndex < contractCount);
-    ASSERT(system.epoch < contractDescriptions[IPOContractIndex].constructionEpoch);
-
-    bool result = 0;
-
-    if (price > 0 && price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
-        && quantity > 0 && quantity <= NUMBER_OF_COMPUTORS)
-    {
-        const long long amount = price * quantity;
-        if (decreaseEnergy(spectrumIndex, amount))
-        {
-            const QuTransfer quTransfer = { sourceContractPublickey, m256i::zero(), amount };
-            logger.logQuTransfer(quTransfer);
-
-            numberOfReleasedEntities = 0;
-            contractStateLock[IPOContractIndex].acquireWrite();
-            IPO* ipo = (IPO*)contractStates[IPOContractIndex];
-            for (unsigned int i = 0; i < quantity; i++)
-            {
-                if (price <= ipo->prices[NUMBER_OF_COMPUTORS - 1])
-                {
-                    unsigned int j;
-                    for (j = 0; j < numberOfReleasedEntities; j++)
-                    {
-                        if (sourceContractPublickey == releasedPublicKeys[j])
-                        {
-                            break;
-                        }
-                    }
-                    if (j == numberOfReleasedEntities)
-                    {
-                        releasedPublicKeys[numberOfReleasedEntities] = sourceContractPublickey;
-                        releasedAmounts[numberOfReleasedEntities++] = price;
-                    }
-                    else
-                    {
-                        releasedAmounts[j] += price;
-                    }
-                }
-                else
-                {
-                    unsigned int j;
-                    for (j = 0; j < numberOfReleasedEntities; j++)
-                    {
-                        if (ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] == releasedPublicKeys[j])
-                        {
-                            break;
-                        }
-                    }
-                    if (j == numberOfReleasedEntities)
-                    {
-                        releasedPublicKeys[numberOfReleasedEntities] = ipo->publicKeys[NUMBER_OF_COMPUTORS - 1];
-                        releasedAmounts[numberOfReleasedEntities++] = ipo->prices[NUMBER_OF_COMPUTORS - 1];
-                    }
-                    else
-                    {
-                        releasedAmounts[j] += ipo->prices[NUMBER_OF_COMPUTORS - 1];
-                    }
-
-                    ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] = sourceContractPublickey;
-                    ipo->prices[NUMBER_OF_COMPUTORS - 1] = price;
-                    j = NUMBER_OF_COMPUTORS - 1;
-                    while (j
-                        && ipo->prices[j - 1] < ipo->prices[j])
-                    {
-                        const long long tmpPrice = ipo->prices[j - 1];
-                        const m256i tmpPublicKey = ipo->publicKeys[j - 1];
-                        ipo->publicKeys[j - 1] = ipo->publicKeys[j];
-                        ipo->prices[j - 1] = ipo->prices[j];
-                        ipo->publicKeys[j] = tmpPublicKey;
-                        ipo->prices[j--] = tmpPrice;
-                    }
-
-                    contractStateChangeFlags[IPOContractIndex >> 6] |= (1ULL << (IPOContractIndex & 63));
-                    result = 1;
-                }
-            }
-            contractStateLock[IPOContractIndex].releaseWrite();
-
-            for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
-            {
-                increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
-                logger.logQuTransfer(quTransfer);
-            }
-        }
-    }
-
-    if(result) 
-    {
-        return 1;
-    }
-
-    return 0;
-}
-
 static void contractProcessor(void*)
 {
     enableAVX();
@@ -1916,6 +1804,28 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
     }
 
     return bidRegistered;
+}
+
+bool QPI::QpiContextProcedureCall::bidOnIPO(unsigned int IPOContractIndex, long long price, unsigned int quantity) const
+{
+    if(QPI::QpiContext::_currentContractIndex >= MAX_NUMBER_OF_CONTRACTS || IPOContractIndex >= MAX_NUMBER_OF_CONTRACTS || QPI::QpiContext::_currentContractIndex >= IPOContractIndex)
+    {
+        return false;
+    }
+
+    if(system.epoch >= contractDescriptions[IPOContractIndex].constructionEpoch)  // IPO is finished.
+    {
+        return false;
+    }
+
+    if(contractCallbacksRunning != NoContractCallback)
+    {
+        return false;
+    }
+
+    const int spectrumIndex = ::spectrumIndex(QPI::QpiContext::_currentContractId);
+
+    return bidInContractIPO(price, quantity, QPI::QpiContext::_currentContractId, spectrumIndex, IPOContractIndex);
 }
 
 static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
