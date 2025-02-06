@@ -1806,26 +1806,26 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
     return bidRegistered;
 }
 
-bool QPI::QpiContextProcedureCall::bidOnIPO(unsigned int IPOContractIndex, long long price, unsigned int quantity) const
+bool QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex, long long price, unsigned int quantity) const
 {
-    if(QPI::QpiContext::_currentContractIndex >= MAX_NUMBER_OF_CONTRACTS || IPOContractIndex >= MAX_NUMBER_OF_CONTRACTS || QPI::QpiContext::_currentContractIndex >= IPOContractIndex)
+    if (_currentContractIndex >= contractCount || IPOContractIndex >= contractCount || _currentContractIndex >= IPOContractIndex)
     {
         return false;
     }
 
-    if(system.epoch >= contractDescriptions[IPOContractIndex].constructionEpoch)  // IPO is finished.
+    if (system.epoch >= contractDescriptions[IPOContractIndex].constructionEpoch)  // IPO is finished.
     {
         return false;
     }
 
-    if(contractCallbacksRunning != NoContractCallback)
+    const int spectrumIndex = ::spectrumIndex(_currentContractId);
+
+    if (contractCallbacksRunning != NoContractCallback || spectrumIndex < 0)
     {
         return false;
     }
 
-    const int spectrumIndex = ::spectrumIndex(QPI::QpiContext::_currentContractId);
-
-    return bidInContractIPO(price, quantity, QPI::QpiContext::_currentContractId, spectrumIndex, IPOContractIndex);
+    return bidInContractIPO(price, quantity,_currentContractId, spectrumIndex, IPOContractIndex);
 }
 
 static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
