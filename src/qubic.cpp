@@ -1607,7 +1607,6 @@ static void requestProcessor(void* ProcedureArgument)
 }
 #pragma optimize("", on)
 
-
 static void contractProcessor(void*)
 {
     enableAVX();
@@ -1805,6 +1804,28 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
     }
 
     return bidRegistered;
+}
+
+bool QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex, long long price, unsigned int quantity) const
+{
+    if (_currentContractIndex >= contractCount || IPOContractIndex >= contractCount || _currentContractIndex >= IPOContractIndex)
+    {
+        return false;
+    }
+
+    if (system.epoch >= contractDescriptions[IPOContractIndex].constructionEpoch)  // IPO is finished.
+    {
+        return false;
+    }
+
+    const int spectrumIndex = ::spectrumIndex(_currentContractId);
+
+    if (contractCallbacksRunning != NoContractCallback || spectrumIndex < 0)
+    {
+        return false;
+    }
+
+    return bidInContractIPO(price, quantity,_currentContractId, spectrumIndex, IPOContractIndex);
 }
 
 static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)

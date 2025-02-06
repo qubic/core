@@ -1386,6 +1386,12 @@ namespace QPI
 			uint64 unitOfMeasurement
 		) const; // Returns number of shares or 0 on error
 
+		inline bool bidInIPO(
+			uint32 IPOContractIndex,
+			sint64 price,
+			uint32 quantity
+		) const; // "true" if the bid is succeed, "false" otherwise
+
 		inline sint64 releaseShares(
 			const Asset& asset,
 			const id& owner,
