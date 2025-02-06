@@ -242,6 +242,13 @@ public:
 
         return output.transferredNumberOfShares;
     }
+
+    TESTEXA::QueryQpiFunctions_output queryQpiFunctions(const TESTEXA::QueryQpiFunctions_input& input)
+    {
+        TESTEXA::QueryQpiFunctions_output output;
+        callFunction(TESTEXA_CONTRACT_INDEX, 1, input, output);
+        return output;
+    }
 };
 
 TEST(ContractTestEx, QpiReleaseShares)
@@ -575,4 +582,87 @@ TEST(ContractTestEx, QpiAcquireShares)
     EXPECT_EQ(numberOfShares(asset1, AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(USER2)), transferShareCount / 2);
     EXPECT_EQ(numberOfShares(asset1, AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(USER3)), transferShareCount / 2);
     EXPECT_EQ(numberOfShares(asset1), totalShareCount);
+}
+
+TEST(ContractTestEx, QueryBasicQpiFunctions)
+{
+    ContractTestingTestEx test;
+
+    id arbitratorPubKey;
+    getPublicKeyFromIdentity((const unsigned char*)ARBITRATOR, arbitratorPubKey.m256i_u8);
+
+    // prepare data for qpi.K12() and qpi.signatureValidity()
+    TESTEXA::QueryQpiFunctions_input queryQpiFuncInput1;
+    id subseed1(123456789, 987654321, 1357986420, 0xabcdef);
+    id privateKey1, digest1;
+    getPrivateKey(subseed1.m256i_u8, privateKey1.m256i_u8);
+    getPublicKey(privateKey1.m256i_u8, queryQpiFuncInput1.entity.m256i_u8);
+    for (uint64 i = 0; i < queryQpiFuncInput1.data.capacity(); ++i)
+        queryQpiFuncInput1.data.set(i, static_cast<sint8>(i - 50));
+    KangarooTwelve(&queryQpiFuncInput1.data, sizeof(queryQpiFuncInput1.data), &digest1, sizeof(digest1));
+    sign(subseed1.m256i_u8, queryQpiFuncInput1.entity.m256i_u8, digest1.m256i_u8, (unsigned char*)&queryQpiFuncInput1.signature);
+
+    // Test 1 with initial time
+    setMemory(utcTime, 0);
+    utcTime.Year = 2022;
+    utcTime.Month = 4;
+    utcTime.Day = 13;
+    utcTime.Hour = 12;
+    updateQpiTime();
+    numberTickTransactions = 123;
+    system.tick = 4567890;
+    system.epoch = 987;
+    auto qpiReturned1 = test.queryQpiFunctions(queryQpiFuncInput1);
+    EXPECT_EQ(qpiReturned1.year, 22);
+    EXPECT_EQ(qpiReturned1.month, 4);
+    EXPECT_EQ(qpiReturned1.day, 13);
+    EXPECT_EQ(qpiReturned1.hour, 12);
+    EXPECT_EQ(qpiReturned1.minute, 0);
+    EXPECT_EQ(qpiReturned1.second, 0);
+    EXPECT_EQ((int)qpiReturned1.millisecond, 0);
+    EXPECT_EQ(qpiReturned1.dayOfWeek, 0);
+    EXPECT_EQ(qpiReturned1.arbitrator, arbitratorPubKey);
+    EXPECT_EQ(qpiReturned1.computor0, id::zero());
+    EXPECT_EQ((int)qpiReturned1.epoch, (int)system.epoch);
+    EXPECT_EQ(qpiReturned1.invocationReward, 0);
+    EXPECT_EQ(qpiReturned1.invocator, id::zero());
+    EXPECT_EQ(qpiReturned1.numberOfTickTransactions, numberTickTransactions);
+    EXPECT_EQ(qpiReturned1.originator, id::zero());
+    EXPECT_EQ(qpiReturned1.tick, system.tick);
+    EXPECT_EQ(qpiReturned1.inputDataK12, digest1);
+    EXPECT_TRUE(qpiReturned1.inputSignatureValid);
+
+    // K12 test for wrong signature: change data but not signature
+    TESTEXA::QueryQpiFunctions_input queryQpiFuncInput2 = queryQpiFuncInput1;
+    id digest2;
+    queryQpiFuncInput2.data.set(0, 0);
+    KangarooTwelve(&queryQpiFuncInput2.data, sizeof(queryQpiFuncInput2.data), &digest2, sizeof(digest2));
+    EXPECT_NE(digest1, digest2);
+
+    // Test 2 with current time
+    updateTime();
+    updateQpiTime();
+    numberTickTransactions = 42;
+    system.tick = 4567891;
+    system.epoch = 988;
+    broadcastedComputors.computors.publicKeys[0] = id(12, 34, 56, 78);
+    auto qpiReturned2 = test.queryQpiFunctions(queryQpiFuncInput2);
+    EXPECT_EQ(qpiReturned2.year, utcTime.Year - 2000);
+    EXPECT_EQ(qpiReturned2.month, utcTime.Month);
+    EXPECT_EQ(qpiReturned2.day, utcTime.Day);
+    EXPECT_EQ(qpiReturned2.hour, utcTime.Hour);
+    EXPECT_EQ(qpiReturned2.minute, utcTime.Minute);
+    EXPECT_EQ(qpiReturned2.second, utcTime.Second);
+    EXPECT_EQ((int)qpiReturned2.millisecond, utcTime.Nanosecond / 1000000);
+    EXPECT_EQ(qpiReturned2.dayOfWeek, dayIndex(qpiReturned2.year, qpiReturned2.month, qpiReturned2.day) % 7);
+    EXPECT_EQ(qpiReturned2.arbitrator, arbitratorPubKey);
+    EXPECT_EQ(qpiReturned2.computor0, id(12, 34, 56, 78));
+    EXPECT_EQ((int)qpiReturned2.epoch, (int)system.epoch);
+    EXPECT_EQ(qpiReturned2.invocationReward, 0);
+    EXPECT_EQ(qpiReturned2.invocator, id::zero());
+    EXPECT_EQ(qpiReturned2.numberOfTickTransactions, numberTickTransactions);
+    EXPECT_EQ(qpiReturned2.originator, id::zero());
+    EXPECT_EQ(qpiReturned2.tick, system.tick);
+    EXPECT_EQ(qpiReturned2.inputDataK12, digest2);
+    EXPECT_FALSE(qpiReturned2.inputSignatureValid);
 }

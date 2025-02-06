@@ -1249,21 +1249,21 @@ namespace QPI
 	// QPI function available to contract functions and procedures
 	struct QpiContextFunctionCall : public QpiContext
 	{
-		id arbitrator(
+		inline id arbitrator(
 		) const;
 
-		id computor(
+		inline id computor(
 			uint16 computorIndex // [0..675]
 		) const;
 
-		uint8 day(
+		inline uint8 day(
 		) const; // [1..31]
 
-		uint8 dayOfWeek(
+		inline uint8 dayOfWeek(
 			uint8 year, // (0 = 2000, 1 = 2001, ..., 99 = 2099)
 			uint8 month,
 			uint8 day
-		) const; // [0..6]
+		) const; // [0..6] (0 = Wednesday)
 
 		inline uint16 epoch(
 		) const; // [0..9'999]
@@ -1273,7 +1273,7 @@ namespace QPI
 			Entity& entity
 		) const; // Returns "true" if the entity has been found, returns "false" otherwise
 
-		uint8 hour(
+		inline uint8 hour(
 		) const; // [0..23]
 
 		// Return the invocation reward (amount transferred to contract immediately before invoking)
@@ -1283,17 +1283,17 @@ namespace QPI
 		id invocator() const { return _invocator; }
 
 		template <typename T>
-		id K12(
+		inline id K12(
 			const T& data
 		) const;
 
-		uint16 millisecond(
+		inline uint16 millisecond(
 		) const; // [0..999]
 
-		uint8 minute(
+		inline uint8 minute(
 		) const; // [0..59]
 
-		uint8 month(
+		inline uint8 month(
 		) const; // [1..12]
 
 		inline id nextId(
@@ -1315,16 +1315,17 @@ namespace QPI
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
 		) const;
 
-		sint32 numberOfTickTransactions(
+		// Returns -1 if the current tick is empty, returns the number of the transactions in the tick otherwise, including 0.
+		inline sint32 numberOfTickTransactions(
 		) const;
 
 		// Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
 		id originator() const { return _originator; }
 
-		uint8 second(
+		inline uint8 second(
 		) const; // [0..59]
 
-		bit signatureValidity(
+		inline bit signatureValidity(
 			const id& entity,
 			const id& digest,
 			const Array<sint8, 64>& signature
@@ -1333,7 +1334,7 @@ namespace QPI
 		inline uint32 tick(
 		) const; // [0..999'999'999]
 
-		uint8 year(
+		inline uint8 year(
 		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 
 		// Access proposal functions with qpi(proposalVotingObject).func().

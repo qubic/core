@@ -14,13 +14,13 @@
 #include "../src/contract_core/qpi_proposal_voting.h"
 #include "../src/contract_core/qpi_system_impl.h"
 
-
 // changing offset simulates changed computor set with changed epoch
-static int computorIdOffset = 0;
-
-QPI::id QPI::QpiContextFunctionCall::computor(unsigned short computorIndex) const
+void initComputors(unsigned short computorIdOffset)
 {
-    return QPI::id(computorIndex + computorIdOffset, 9, 8, 7);
+    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; ++computorIndex)
+    {
+        broadcastedComputors.computors.publicKeys[computorIndex] = QPI::id(computorIndex + computorIdOffset, 9, 8, 7);
+    }
 }
 
 
@@ -207,6 +207,7 @@ TEST(TestCoreQPI, ProposalAndVotingByComputors)
 {
     QpiContextUserProcedureCall qpi(0, QPI::id(1, 2, 3, 4), 123);
     QPI::ProposalAndVotingByComputors pv;
+    initComputors(0);
 
     // Memory must be zeroed to work, which is done in contract states on init
     QPI::setMemory(pv, 0);
@@ -219,14 +220,17 @@ TEST(TestCoreQPI, ProposalAndVotingByComputors)
     }
     for (int i = NUMBER_OF_COMPUTORS; i < 800; ++i)
     {
-        EXPECT_EQ(pv.getVoterIndex(qpi, qpi.computor(i)), QPI::INVALID_VOTER_INDEX);
+        QPI::id testId(i, 9, 8, 7);
+        EXPECT_EQ(pv.getVoterIndex(qpi, testId), QPI::INVALID_VOTER_INDEX);
         EXPECT_EQ(pv.getVoterId(qpi, i), QPI::NULL_ID);
     }
     EXPECT_EQ(pv.getVoterIndex(qpi, qpi.originator()), QPI::INVALID_VOTER_INDEX);
 
     // valid proposers are computors
-    for (int i = 0; i < 2 * NUMBER_OF_COMPUTORS; ++i)
-        EXPECT_EQ(pv.isValidProposer(qpi, qpi.computor(i)), (i < NUMBER_OF_COMPUTORS));
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+        EXPECT_TRUE(pv.isValidProposer(qpi, qpi.computor(i)));
+    for (int i = NUMBER_OF_COMPUTORS; i < 2 * NUMBER_OF_COMPUTORS; ++i)
+        EXPECT_FALSE(pv.isValidProposer(qpi, QPI::id(i, 9, 8, 7)));
     EXPECT_FALSE(pv.isValidProposer(qpi, QPI::NULL_ID));
     EXPECT_FALSE(pv.isValidProposer(qpi, qpi.originator()));
 
@@ -641,6 +645,7 @@ void testProposalVotingV1()
 {
     system.tick = 123456789;
     system.epoch = 12345;
+    initComputors(0);
 
     typedef std::conditional<
         proposalByComputorsOnly,
@@ -1057,7 +1062,7 @@ void testProposalVotingV1()
 
     // simulate epoch change with changes in computors
     ++system.epoch;
-    computorIdOffset += 100;
+    initComputors(100);
     EXPECT_EQ(countActiveProposals(qpi, pv), 0);
     EXPECT_EQ(countFinishedProposals(qpi, pv), (int)pv->maxProposals - 2);
 

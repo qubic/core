@@ -133,7 +133,7 @@ bool runAsyncSaveFile(int id, bool blocking = true, bool largeFile = false)
 {
     bool sts = true;
     CHAR16 fileName[32];
-    setText(fileName, L"file_");
+    setText(fileName, L"tmp_file_");
     appendNumber(fileName, id, false);
 
     if (largeFile)
@@ -182,7 +182,7 @@ bool prepareAsyncLoadFile(bool largeFile = false)
     for (int id = 0; id < THREAD_COUNT; id++)
     {
         CHAR16 fileName[32];
-        setText(fileName, L"file_");
+        setText(fileName, L"tmp_file_");
         appendNumber(fileName, id, false);
 
         if (largeFile)
@@ -226,7 +226,7 @@ bool runAsyncLoadFile(int id, bool largeFile = false)
 {
     bool sts = true;
     CHAR16 fileName[32];
-    setText(fileName, L"file_");
+    setText(fileName, L"tmp_file_");
     appendNumber(fileName, id, false);
 
     if (largeFile)
@@ -272,7 +272,7 @@ bool verifyResult(int id, bool largeFile = false)
 {
     bool testPass = false;
     CHAR16 fileName[32];
-    setText(fileName, L"file_");
+    setText(fileName, L"tmp_file_");
     appendNumber(fileName, id, false);
 
     if (largeFile)

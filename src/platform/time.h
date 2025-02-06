@@ -1,25 +1,31 @@
 #pragma once
 
+#include "global_var.h"
 #include "uefi.h"
 #include "memory.h"
 #include <stddef.h>
 
 
-static EFI_TIME utcTime;
+GLOBAL_VAR_DECL EFI_TIME utcTime;
 
+
+#ifdef NO_UEFI
+
+// Defined in test/stdlib_impl.cpp
+void updateTime();
+
+#else
 
 static void updateTime()
 {
-#ifdef NO_UEFI
-    // TODO? Current time outside of UEFI
-#else
     EFI_TIME newTime;
     if (!rs->GetTime(&newTime, NULL))
     {
         bs->CopyMem(&utcTime, &newTime, sizeof(utcTime));
     }
-#endif
 }
+
+#endif
 
 static void initTime()
 {

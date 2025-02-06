@@ -3,7 +3,7 @@
 #include "contracts/qpi.h"
 
 #include "assets/assets.h"
-#include "../spectrum.h"
+#include "spectrum/spectrum.h"
 
 
 // Start iteration with given issuance and given ownership filter (selects first record).
