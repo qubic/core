@@ -1792,50 +1792,45 @@ static void contractProcessor(void*)
     }
 }
 
-static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
+static bool bidInContractIPO(long long price, unsigned short quantity, const m256i& sourcePublicKey, const int spectrumIndex, const unsigned int contractIndex)
 {
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(transaction->tick == system.tick);
-    ASSERT(!transaction->amount && transaction->inputSize == sizeof(ContractIPOBid));
     ASSERT(spectrumIndex >= 0);
+    ASSERT(spectrumIndex == ::spectrumIndex(sourcePublicKey));
     ASSERT(contractIndex < contractCount);
     ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
 
-    ContractIPOBid* contractIPOBid = (ContractIPOBid*)transaction->inputPtr();
-    if (contractIPOBid->price > 0 && contractIPOBid->price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
-        && contractIPOBid->quantity > 0 && contractIPOBid->quantity <= NUMBER_OF_COMPUTORS)
+    if (price > 0 && price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
+        && quantity > 0 && quantity <= NUMBER_OF_COMPUTORS)
     {
-        const long long amount = contractIPOBid->price * contractIPOBid->quantity;
+        const long long amount = price * quantity;
         if (decreaseEnergy(spectrumIndex, amount))
         {
-            const QuTransfer quTransfer = { transaction->sourcePublicKey, m256i::zero(), amount };
+            const QuTransfer quTransfer = { sourcePublicKey, m256i::zero(), amount };
             logger.logQuTransfer(quTransfer);
 
             numberOfReleasedEntities = 0;
             contractStateLock[contractIndex].acquireWrite();
             IPO* ipo = (IPO*)contractStates[contractIndex];
-            for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
+            for (unsigned int i = 0; i < quantity; i++)
             {
-                if (contractIPOBid->price <= ipo->prices[NUMBER_OF_COMPUTORS - 1])
+                if (price <= ipo->prices[NUMBER_OF_COMPUTORS - 1])
                 {
                     unsigned int j;
                     for (j = 0; j < numberOfReleasedEntities; j++)
                     {
-                        if (transaction->sourcePublicKey == releasedPublicKeys[j])
+                        if (sourcePublicKey == releasedPublicKeys[j])
                         {
                             break;
                         }
                     }
                     if (j == numberOfReleasedEntities)
                     {
-                        releasedPublicKeys[numberOfReleasedEntities] = transaction->sourcePublicKey;
-                        releasedAmounts[numberOfReleasedEntities++] = contractIPOBid->price;
+                        releasedPublicKeys[numberOfReleasedEntities] = sourcePublicKey;
+                        releasedAmounts[numberOfReleasedEntities++] = price;
                     }
                     else
                     {
-                        releasedAmounts[j] += contractIPOBid->price;
+                        releasedAmounts[j] += price;
                     }
                 }
                 else
@@ -1858,8 +1853,8 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
                         releasedAmounts[j] += ipo->prices[NUMBER_OF_COMPUTORS - 1];
                     }
 
-                    ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] = transaction->sourcePublicKey;
-                    ipo->prices[NUMBER_OF_COMPUTORS - 1] = contractIPOBid->price;
+                    ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] = sourcePublicKey;
+                    ipo->prices[NUMBER_OF_COMPUTORS - 1] = price;
                     j = NUMBER_OF_COMPUTORS - 1;
                     while (j
                         && ipo->prices[j - 1] < ipo->prices[j])
@@ -1883,8 +1878,27 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
                 const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
+
+            return true;
         }
     }
+
+    return false;
+}
+
+static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(transaction->tick == system.tick);
+    ASSERT(!transaction->amount && transaction->inputSize == sizeof(ContractIPOBid));
+    ASSERT(spectrumIndex >= 0);
+    ASSERT(contractIndex < contractCount);
+    ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
+
+    ContractIPOBid* contractIPOBid = (ContractIPOBid*)transaction->inputPtr();
+    bidInContractIPO(contractIPOBid->price, contractIPOBid->quantity, transaction->sourcePublicKey, spectrumIndex, contractIndex);
 }
 
 // Return if money flew
