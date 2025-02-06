@@ -1799,6 +1799,8 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
     ASSERT(contractIndex < contractCount);
     ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
 
+    bool bidRegistered = false;
+
     if (price > 0 && price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
         && quantity > 0 && quantity <= NUMBER_OF_COMPUTORS)
     {
@@ -1868,6 +1870,7 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
                     }
 
                     contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
+                    bidRegistered = true;
                 }
             }
             contractStateLock[contractIndex].releaseWrite();
@@ -1878,12 +1881,10 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
                 const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
-
-            return true;
         }
     }
 
-    return false;
+    return bidRegistered;
 }
 
 static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
