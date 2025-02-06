@@ -298,8 +298,8 @@ TEST(ContractMsVault, ReleaseTo_PartialApproval)
 {
     ContractTestingMsVault msVault;
 
-    increaseEnergy(OWNER1, 100000ULL);
-    increaseEnergy(OWNER3, 100000ULL);
+    increaseEnergy(OWNER1, 100000000ULL);
+    increaseEnergy(OWNER3, 100000000ULL);
 
     // 2 out of 3 owners
     msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
@@ -320,9 +320,9 @@ TEST(ContractMsVault, ReleaseTo_FullApproval)
 {
     ContractTestingMsVault msVault;
 
-    increaseEnergy(OWNER1, 100000ULL);
-    increaseEnergy(OWNER2, 100000ULL);
-    increaseEnergy(OWNER3, 100000ULL);
+    increaseEnergy(OWNER1, 100000000ULL);
+    increaseEnergy(OWNER2, 100000000ULL);
+    increaseEnergy(OWNER3, 100000000ULL);
 
     // 2 out of 3
     msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
@@ -347,9 +347,9 @@ TEST(ContractMsVault, ReleaseTo_InsufficientBalance)
 {
     ContractTestingMsVault msVault;
 
-    increaseEnergy(OWNER1, 100000ULL);
-    increaseEnergy(OWNER2, 100000ULL);
-    increaseEnergy(OWNER3, 100000ULL);
+    increaseEnergy(OWNER1, 100000000ULL);
+    increaseEnergy(OWNER2, 100000000ULL);
+    increaseEnergy(OWNER3, 100000000ULL);
 
     // 2 out of 2
     msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
@@ -372,9 +372,9 @@ TEST(ContractMsVault, ResetRelease_NonOwner)
 {
     ContractTestingMsVault msVault;
 
-    increaseEnergy(OWNER1, 100000ULL);
-    increaseEnergy(OWNER2, 100000ULL);
-    increaseEnergy(OWNER3, 100000ULL);
+    increaseEnergy(OWNER1, 100000000ULL);
+    increaseEnergy(OWNER2, 100000000ULL);
+    increaseEnergy(OWNER3, 100000000ULL);
 
     // 2 out of 2
     msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
@@ -399,9 +399,9 @@ TEST(ContractMsVault, ResetRelease_Success)
 {
     ContractTestingMsVault msVault;
 
-    increaseEnergy(OWNER1, 100000ULL);
-    increaseEnergy(OWNER2, 100000ULL);
-    increaseEnergy(OWNER3, 100000ULL);
+    increaseEnergy(OWNER1, 100000000ULL);
+    increaseEnergy(OWNER2, 100000000ULL);
+    increaseEnergy(OWNER3, 100000000ULL);
 
     msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
@@ -428,9 +428,9 @@ TEST(ContractMsVault, GetVaults_Multiple)
 {
     ContractTestingMsVault msVault;
 
-    increaseEnergy(OWNER1, 100000ULL);
-    increaseEnergy(OWNER2, 100000ULL);
-    increaseEnergy(OWNER3, 100000ULL);
+    increaseEnergy(OWNER1, 100000000ULL);
+    increaseEnergy(OWNER2, 100000000ULL);
+    increaseEnergy(OWNER3, 100000000ULL);
 
     auto vaultsForOwner2Before = msVault.getVaults(OWNER2);
 
@@ -452,8 +452,8 @@ TEST(ContractMsVault, GetRevenue)
     EXPECT_EQ(revenueOutput.totalDistributedToShareholders, 0U);
     EXPECT_EQ(revenueOutput.numberOfActiveVaults, 0U);
 
-    increaseEnergy(OWNER1, 100000ULL);
-    increaseEnergy(OWNER2, 100000ULL);
+    increaseEnergy(OWNER1, 100000000ULL);
+    increaseEnergy(OWNER2, 100000000000ULL);
     increaseEnergy(OWNER3, 100000ULL);
 
     msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
@@ -468,16 +468,16 @@ TEST(ContractMsVault, GetRevenue)
     EXPECT_EQ(revenueOutput.totalDistributedToShareholders, ((int)MSVAULT_REGISTERING_FEE / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS);
     EXPECT_EQ(revenueOutput.numberOfActiveVaults, 0U);
 
-    increaseEnergy(OWNER1, 100000ULL);
-    increaseEnergy(OWNER2, 100000ULL);
-    increaseEnergy(OWNER3, 100000ULL);
+    increaseEnergy(OWNER1, 100000000ULL);
+    increaseEnergy(OWNER2, 100000000ULL);
+    increaseEnergy(OWNER3, 100000000ULL);
 
     msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultId, 50000ULL, OWNER1);
+    msVault.deposit(vaultId, 500000000ULL, OWNER1);
 
     msVault.endEpoch();
 
