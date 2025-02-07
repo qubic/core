@@ -871,3 +871,7 @@ TEST(ContractTestEx, QueryBasicQpiFunctions)
     EXPECT_EQ(qpiReturned2.inputDataK12, digest2);
     EXPECT_FALSE(qpiReturned2.inputSignatureValid);
 }
+
+// Test stopping / cleanup of contract functions for all qpiAbort in single thread (single thread)
+
+// Add test contract C to allow checking for deadlock pattern with concurrent function call (2 threads needed)
