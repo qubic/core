@@ -105,6 +105,12 @@ struct StackBuffer
         return allocatedBuffer;
     }
 
+    // Allocate "special block" storage in buffer, which is relevant for unwinding.
+    inline char* allocateSpecial(SizeType size)
+    {
+        return allocate(size, true);
+    }
+
     // Free storage allocated by last call to allocate().
     bool free()
     {

@@ -1624,8 +1624,8 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(INITIALIZE);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, INITIALIZE);
+                qpiContext.call();
             }
         }
     }
@@ -1638,8 +1638,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(BEGIN_EPOCH);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_EPOCH);
+                qpiContext.call();
             }
         }
     }
@@ -1652,8 +1652,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(BEGIN_TICK);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_TICK);
+                qpiContext.call();
             }
         }
     }
@@ -1666,8 +1666,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(END_TICK);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_TICK);
+                qpiContext.call();
             }
         }
     }
@@ -1680,8 +1680,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(END_EPOCH);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_EPOCH);
+                qpiContext.call();
             }
         }
     }
