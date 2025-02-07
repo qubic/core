@@ -123,3 +123,18 @@ m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
 
     return m256i::zero();
 }
+
+m256i QPI::QpiContextFunctionCall::prevId(const m256i& currentId) const
+{
+    int index = spectrumIndex(currentId);
+    while (--index >= 0)
+    {
+        const m256i& prevId = spectrum[index].publicKey;
+        if (!isZero(prevId))
+        {
+            return prevId;
+        }
+    }
+
+    return m256i::zero();
+}

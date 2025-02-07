@@ -1300,6 +1300,10 @@ namespace QPI
 			const id& currentId
 		) const;
 
+		inline id prevId(
+			const id& currentId
+		) const;
+
 		inline sint64 numberOfPossessedShares(
 			uint64 assetName,
 			const id& issuer,
