@@ -1607,7 +1607,6 @@ static void requestProcessor(void* ProcedureArgument)
 }
 #pragma optimize("", on)
 
-
 static void contractProcessor(void*)
 {
     enableAVX();
@@ -1625,8 +1624,8 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(INITIALIZE);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, INITIALIZE);
+                qpiContext.call();
             }
         }
     }
@@ -1639,8 +1638,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(BEGIN_EPOCH);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_EPOCH);
+                qpiContext.call();
             }
         }
     }
@@ -1653,8 +1652,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(BEGIN_TICK);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_TICK);
+                qpiContext.call();
             }
         }
     }
@@ -1667,8 +1666,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(END_TICK);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_TICK);
+                qpiContext.call();
             }
         }
     }
@@ -1681,8 +1680,8 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                QpiContextSystemProcedureCall qpiContext(executedContractIndex);
-                qpiContext.call(END_EPOCH);
+                QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_EPOCH);
+                qpiContext.call();
             }
         }
     }
@@ -1712,50 +1711,47 @@ static void contractProcessor(void*)
     }
 }
 
-static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
+static bool bidInContractIPO(long long price, unsigned short quantity, const m256i& sourcePublicKey, const int spectrumIndex, const unsigned int contractIndex)
 {
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(transaction->tick == system.tick);
-    ASSERT(!transaction->amount && transaction->inputSize == sizeof(ContractIPOBid));
     ASSERT(spectrumIndex >= 0);
+    ASSERT(spectrumIndex == ::spectrumIndex(sourcePublicKey));
     ASSERT(contractIndex < contractCount);
     ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
 
-    ContractIPOBid* contractIPOBid = (ContractIPOBid*)transaction->inputPtr();
-    if (contractIPOBid->price > 0 && contractIPOBid->price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
-        && contractIPOBid->quantity > 0 && contractIPOBid->quantity <= NUMBER_OF_COMPUTORS)
+    bool bidRegistered = false;
+
+    if (price > 0 && price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
+        && quantity > 0 && quantity <= NUMBER_OF_COMPUTORS)
     {
-        const long long amount = contractIPOBid->price * contractIPOBid->quantity;
+        const long long amount = price * quantity;
         if (decreaseEnergy(spectrumIndex, amount))
         {
-            const QuTransfer quTransfer = { transaction->sourcePublicKey, m256i::zero(), amount };
+            const QuTransfer quTransfer = { sourcePublicKey, m256i::zero(), amount };
             logger.logQuTransfer(quTransfer);
 
             numberOfReleasedEntities = 0;
             contractStateLock[contractIndex].acquireWrite();
             IPO* ipo = (IPO*)contractStates[contractIndex];
-            for (unsigned int i = 0; i < contractIPOBid->quantity; i++)
+            for (unsigned int i = 0; i < quantity; i++)
             {
-                if (contractIPOBid->price <= ipo->prices[NUMBER_OF_COMPUTORS - 1])
+                if (price <= ipo->prices[NUMBER_OF_COMPUTORS - 1])
                 {
                     unsigned int j;
                     for (j = 0; j < numberOfReleasedEntities; j++)
                     {
-                        if (transaction->sourcePublicKey == releasedPublicKeys[j])
+                        if (sourcePublicKey == releasedPublicKeys[j])
                         {
                             break;
                         }
                     }
                     if (j == numberOfReleasedEntities)
                     {
-                        releasedPublicKeys[numberOfReleasedEntities] = transaction->sourcePublicKey;
-                        releasedAmounts[numberOfReleasedEntities++] = contractIPOBid->price;
+                        releasedPublicKeys[numberOfReleasedEntities] = sourcePublicKey;
+                        releasedAmounts[numberOfReleasedEntities++] = price;
                     }
                     else
                     {
-                        releasedAmounts[j] += contractIPOBid->price;
+                        releasedAmounts[j] += price;
                     }
                 }
                 else
@@ -1778,8 +1774,8 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
                         releasedAmounts[j] += ipo->prices[NUMBER_OF_COMPUTORS - 1];
                     }
 
-                    ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] = transaction->sourcePublicKey;
-                    ipo->prices[NUMBER_OF_COMPUTORS - 1] = contractIPOBid->price;
+                    ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] = sourcePublicKey;
+                    ipo->prices[NUMBER_OF_COMPUTORS - 1] = price;
                     j = NUMBER_OF_COMPUTORS - 1;
                     while (j
                         && ipo->prices[j - 1] < ipo->prices[j])
@@ -1793,6 +1789,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
                     }
 
                     contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
+                    bidRegistered = true;
                 }
             }
             contractStateLock[contractIndex].releaseWrite();
@@ -1805,6 +1802,45 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
             }
         }
     }
+
+    return bidRegistered;
+}
+
+bool QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex, long long price, unsigned int quantity) const
+{
+    if (_currentContractIndex >= contractCount || IPOContractIndex >= contractCount || _currentContractIndex >= IPOContractIndex)
+    {
+        return false;
+    }
+
+    if (system.epoch >= contractDescriptions[IPOContractIndex].constructionEpoch)  // IPO is finished.
+    {
+        return false;
+    }
+
+    const int spectrumIndex = ::spectrumIndex(_currentContractId);
+
+    if (contractCallbacksRunning != NoContractCallback || spectrumIndex < 0)
+    {
+        return false;
+    }
+
+    return bidInContractIPO(price, quantity,_currentContractId, spectrumIndex, IPOContractIndex);
+}
+
+static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
+{
+    ASSERT(nextTickData.epoch == system.epoch);
+    ASSERT(transaction != nullptr);
+    ASSERT(transaction->checkValidity());
+    ASSERT(transaction->tick == system.tick);
+    ASSERT(!transaction->amount && transaction->inputSize == sizeof(ContractIPOBid));
+    ASSERT(spectrumIndex >= 0);
+    ASSERT(contractIndex < contractCount);
+    ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
+
+    ContractIPOBid* contractIPOBid = (ContractIPOBid*)transaction->inputPtr();
+    bidInContractIPO(contractIPOBid->price, contractIPOBid->quantity, transaction->sourcePublicKey, spectrumIndex, contractIndex);
 }
 
 // Return if money flew
