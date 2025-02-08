@@ -4,12 +4,18 @@ constexpr uint64 MSVAULT_MAX_OWNERS = 16;
 constexpr uint64 MSVAULT_MAX_COOWNER = 8;
 constexpr uint64 MSVAULT_INITIAL_MAX_VAULTS = 524288ULL;
 constexpr uint64 MSVAULT_MAX_VAULTS = MSVAULT_INITIAL_MAX_VAULTS * X_MULTIPLIER;
+// MSVAULT asset name : 23727827095802701, using assetNameFromString("MSVAULT") utility in test_util.h
+static constexpr uint64 MSVAULT_ASSET_NAME = 23727827095802701;
 
 constexpr uint64 MSVAULT_REGISTERING_FEE = 5000000ULL;
 constexpr uint64 MSVAULT_RELEASE_FEE = 100000ULL;
 constexpr uint64 MSVAULT_RELEASE_RESET_FEE = 1000000ULL;
 constexpr uint64 MSVAULT_HOLDING_FEE = 500000ULL;
-constexpr uint64 MSVAULT_BURN_FEE = 0ULL;
+constexpr uint64 MSVAULT_BURN_FEE = 0ULL; // Integer percentage from 1 -> 100
+// [TODO]: Turn this assert ON when MSVAULT_BURN_FEE > 0
+//static_assert(MSVAULT_BURN_FEE > 0, "SC requires burning qu to operate, the burn fee must be higher than 0!");
+
+static constexpr uint64 MAX_FEE_VOTES = 64;
 
 
 struct MSVAULT2
@@ -29,6 +35,17 @@ public:
         bit isActive;
         Array<uint64, MSVAULT_MAX_OWNERS> releaseAmounts;
         Array<id, MSVAULT_MAX_OWNERS> releaseDestinations;
+    };
+
+
+    struct MsVaultFeeVote 
+    {
+        uint64 registeringFee;
+        uint64 releaseFee;
+        uint64 releaseResetFee;
+        uint64 holdingFee;
+        uint64 depositFee;
+        uint64 burnFee;
     };
 
     struct MSVaultLogger
@@ -102,6 +119,16 @@ public:
     struct resetReleaseRequests_locals
     {
         uint64 i;
+    };
+
+    struct isShareHolder_input
+    {
+        id candidate;
+    };
+    struct isShareHolder_locals {};
+    struct isShareHolder_output
+    {
+        uint64 result;
     };
 
     // Procedures and functions' structs
@@ -212,6 +239,41 @@ public:
         isValidVaultId_locals iv_locals;
     };
 
+    struct voteFeeChange_input 
+    {
+        uint64 newRegisteringFee;
+        uint64 newReleaseFee;
+        uint64 newReleaseResetFee;
+        uint64 newHoldingFee;
+        uint64 newDepositFee;
+        uint64 burnFee;
+    };
+    struct voteFeeChange_output
+    {
+    };
+    struct voteFeeChange_locals
+    {
+        uint64 i;
+        uint64 sumVote;
+        bit needNewRecord;
+        uint64 nShare;
+        MsVaultFeeVote fs;
+
+        id currentAddr;
+        uint64 realScore;
+        MsVaultFeeVote currentVote;
+        MsVaultFeeVote uniqueVote;
+
+        bit found;
+        uint64 uniqueIndex;
+        uint64 j;
+        uint64 currentRank;
+
+        isShareHolder_input ish_in;
+        isShareHolder_output ish_out;
+        isShareHolder_locals ish_locals;
+    };
+
     struct getVaults_input
     {
         id publicKey;
@@ -291,6 +353,7 @@ public:
         uint64 numberOfActiveVaults;
         uint64 totalRevenue;
         uint64 totalDistributedToShareholders;
+        uint64 burnedAmount;
     };
 
     struct getFees_input 
@@ -303,6 +366,7 @@ public:
         uint64 releaseResetFee;
         uint64 holdingFee;
         uint64 depositFee; // currently always 0
+        uint64 burnFee;
     };
 
     struct getVaultOwners_input
@@ -343,6 +407,7 @@ public:
         uint64 j;
         Vault v;
         sint64 amountToDistribute;
+        uint64 feeToBurn;
     };
 
 protected:
@@ -352,6 +417,23 @@ protected:
     uint64 numberOfActiveVaults;
     uint64 totalRevenue;
     uint64 totalDistributedToShareholders;
+    uint64 burnedAmount;
+
+    Array<MsVaultFeeVote, MAX_FEE_VOTES> feeVotes;
+    Array<id, MAX_FEE_VOTES> feeVotesOwner;
+    Array<uint64, MAX_FEE_VOTES> feeVotesScore;
+    uint64 feeVotesAddrCount;
+
+    Array<MsVaultFeeVote, MAX_FEE_VOTES> uniqueFeeVotes;
+    Array<uint64, MAX_FEE_VOTES> uniqueFeeVotesRanking;
+    uint64 uniqueFeeVotesCount;
+
+    uint64 liveRegisteringFee;
+    uint64 liveReleaseFee;
+    uint64 liveReleaseResetFee;
+    uint64 liveHoldingFee;
+    uint64 liveDepositFee;
+    uint64 liveBurnFee;
 
     // Helper Functions
     PRIVATE_FUNCTION_WITH_LOCALS(isValidVaultId)
@@ -395,6 +477,8 @@ protected:
 
     // Procedures and functions
     PUBLIC_PROCEDURE_WITH_LOCALS(registerVault)
+        // [TODO]: Change this to
+        // if (qpi.invocationReward() < state.liveRegisteringFee)
         if (qpi.invocationReward() < MSVAULT_REGISTERING_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -411,6 +495,12 @@ protected:
         }
 
         if (locals.ownerCount <= 1)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        if (locals.ownerCount > MSVAULT_MAX_OWNERS)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -483,12 +573,20 @@ protected:
 
         state.vaults.set((uint64)locals.slotIndex, locals.newVault);
 
+        // [TODO]: Change this to
+        //if (qpi.invocationReward() > state.liveRegisteringFee)
+        //{
+        //     qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveRegisteringFee);
+        // }        
         if (qpi.invocationReward() > MSVAULT_REGISTERING_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - MSVAULT_REGISTERING_FEE);
         }
 
         state.numberOfActiveVaults++;
+
+        // [TODO]: Change this to
+        //state.totalRevenue += state.liveRegisteringFee;
         state.totalRevenue += MSVAULT_REGISTERING_FEE;
     _
 
@@ -514,10 +612,18 @@ protected:
     _
 
     PUBLIC_PROCEDURE_WITH_LOCALS(releaseTo)
+
+        // [TODO]: Change this to
+        //if (qpi.invocationReward() > state.liveReleaseFee)
+        //{
+        //    qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseFee);
+        //}
         if (qpi.invocationReward() > MSVAULT_RELEASE_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - MSVAULT_RELEASE_FEE);
         }
+        // [TODO]: Change this to
+        //state.totalRevenue += state.liveReleaseFee;
         state.totalRevenue += MSVAULT_RELEASE_FEE;
 
         locals.logger._contractIndex = CONTRACT_INDEX;
@@ -627,10 +733,17 @@ protected:
     _
 
     PUBLIC_PROCEDURE_WITH_LOCALS(resetRelease)
+        // [TODO]: Change this to
+        //if (qpi.invocationReward() > state.liveReleaseResetFee)
+        //{
+        //    qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseResetFee);
+        //}
         if (qpi.invocationReward() > MSVAULT_RELEASE_RESET_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - MSVAULT_RELEASE_RESET_FEE);
         }
+        // [TODO]: Change this to
+        //state.totalRevenue += state.liveReleaseResetFee;
         state.totalRevenue += MSVAULT_RELEASE_RESET_FEE;
 
         locals.logger._contractIndex = CONTRACT_INDEX;
@@ -681,6 +794,111 @@ protected:
 
         locals.logger._type = 7;
         LOG_INFO(locals.logger);
+    _
+
+    // [TODO]: Uncomment this to enable live fee update
+    PUBLIC_PROCEDURE_WITH_LOCALS(voteFeeChange)
+    //    locals.ish_in.candidate = qpi.invocator();
+    //    isShareHolder(qpi, state, locals.ish_in, locals.ish_out, locals.ish_locals);
+    //    if (!locals.ish_out.result)
+    //    {
+    //        return;
+    //    }
+    //
+    //    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+    //    locals.nShare = qpi.numberOfPossessedShares(MSVAULT_ASSET_NAME, id::zero(), qpi.invocator(), qpi.invocator(), MSVAULT_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX);
+    //
+    //    locals.fs.registeringFee = input.newRegisteringFee;
+    //    locals.fs.releaseFee = input.newReleaseFee;
+    //    locals.fs.releaseResetFee = input.newReleaseResetFee;
+    //    locals.fs.holdingFee = input.newHoldingFee;
+    //    locals.fs.depositFee = input.newDepositFee;
+    //    // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+    //    //locals.fs.burnFee = input.burnFee;
+    //
+    //    locals.needNewRecord = true;
+    //    for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+    //    {
+    //        locals.currentAddr = state.feeVotesOwner.get(locals.i);
+    //        locals.realScore = qpi.numberOfPossessedShares(MSVAULT_ASSET_NAME, id::zero(), locals.currentAddr, locals.currentAddr, MSVAULT_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX);
+    //        state.feeVotesScore.set(locals.i, locals.realScore);
+    //        if (locals.currentAddr == qpi.invocator())
+    //        {
+    //            locals.needNewRecord = false;
+    //        }
+    //    }
+    //    if (locals.needNewRecord)
+    //    {
+    //        state.feeVotes.set(state.feeVotesAddrCount, locals.fs);
+    //        state.feeVotesOwner.set(state.feeVotesAddrCount, qpi.invocator());
+    //        state.feeVotesScore.set(state.feeVotesAddrCount, locals.nShare);
+    //        state.feeVotesAddrCount = state.feeVotesAddrCount + 1;
+    //    }
+    //
+    //    locals.sumVote = 0;
+    //    for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+    //    {
+    //        locals.sumVote = locals.sumVote + state.feeVotesScore.get(locals.i);
+    //    }
+    //    if (locals.sumVote < QUORUM)
+    //    {
+    //        return;
+    //    }
+    //
+    //    state.uniqueFeeVotesCount = 0;
+    //    for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+    //    {
+    //        locals.currentVote = state.feeVotes.get(locals.i);
+    //        locals.found = false;
+    //        locals.uniqueIndex = 0;
+    //        locals.j;
+    //        for (locals.j = 0; locals.j < state.uniqueFeeVotesCount; locals.j = locals.j + 1)
+    //        {
+    //            locals.uniqueVote = state.uniqueFeeVotes.get(locals.j);
+    //            if (locals.uniqueVote.registeringFee == locals.currentVote.registeringFee &&
+    //                locals.uniqueVote.releaseFee == locals.currentVote.releaseFee &&
+    //                locals.uniqueVote.releaseResetFee == locals.currentVote.releaseResetFee &&
+    //                locals.uniqueVote.holdingFee == locals.currentVote.holdingFee &&
+    //                locals.uniqueVote.depositFee == locals.currentVote.depositFee
+    //                // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+    //                //&& locals.uniqueVote.burnFee == locals.currentVote.burnFee
+    //                )
+    //            {
+    //                locals.found = true;
+    //                locals.uniqueIndex = locals.j;
+    //                break;
+    //            }
+    //        }
+    //        if (locals.found)
+    //        {
+    //            locals.currentRank = state.uniqueFeeVotesRanking.get(locals.uniqueIndex);
+    //            state.uniqueFeeVotesRanking.set(locals.uniqueIndex, locals.currentRank + state.feeVotesScore.get(locals.i));
+    //        }
+    //        else
+    //        {
+    //            state.uniqueFeeVotes.set(state.uniqueFeeVotesCount, locals.currentVote);
+    //            state.uniqueFeeVotesRanking.set(state.uniqueFeeVotesCount, state.feeVotesScore.get(locals.i));
+    //            state.uniqueFeeVotesCount = state.uniqueFeeVotesCount + 1;
+    //        }
+    //    }
+    //
+    //    for (locals.i = 0; locals.i < state.uniqueFeeVotesCount; locals.i = locals.i + 1)
+    //    {
+    //        if (state.uniqueFeeVotesRanking.get(locals.i) >= QUORUM)
+    //        {
+    //            state.liveRegisteringFee = state.uniqueFeeVotes.get(locals.i).registeringFee;
+    //            state.liveReleaseFee = state.uniqueFeeVotes.get(locals.i).releaseFee;
+    //            state.liveReleaseResetFee = state.uniqueFeeVotes.get(locals.i).releaseResetFee;
+    //            state.liveHoldingFee = state.uniqueFeeVotes.get(locals.i).holdingFee;
+    //            state.liveDepositFee = state.uniqueFeeVotes.get(locals.i).depositFee;
+    //            // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+    //            //state.liveBurnFee = state.uniqueFeeVotes.get(locals.i).burnFee;
+
+    //            state.feeVotesAddrCount = 0;
+    //            state.uniqueFeeVotesCount = 0;
+    //            return;
+    //        }
+    //    }
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaults)
@@ -772,6 +990,8 @@ protected:
         output.numberOfActiveVaults = state.numberOfActiveVaults;
         output.totalRevenue = state.totalRevenue;
         output.totalDistributedToShareholders = state.totalDistributedToShareholders;
+        // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+        //output.burnedAmount = state.burnedAmount;
     _
 
     PUBLIC_FUNCTION(getFees)
@@ -779,7 +999,15 @@ protected:
         output.releaseFee = MSVAULT_RELEASE_FEE;
         output.releaseResetFee = MSVAULT_RELEASE_RESET_FEE;
         output.holdingFee = MSVAULT_HOLDING_FEE;
-        output.depositFee = 0ULL; // currently always 0, but we still need to return it for viewing purpose
+        output.depositFee = 0ULL;
+        // [TODO]: Change this to:
+        //output.registeringFee = state.liveRegisteringFee;
+        //output.releaseFee = state.liveReleaseFee;
+        //output.releaseResetFee = state.liveReleaseResetFee;
+        //output.holdingFee = state.liveHoldingFee;
+        //output.depositFee = state.liveDepositFee;
+        // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+        //output.burnFee = state.liveBurnFee;
     _
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaultOwners)
@@ -811,11 +1039,32 @@ protected:
 
         output.status = 1ULL;
     _
+    
+    // [TODO]: Uncomment this to enable live fee update
+    PUBLIC_FUNCTION_WITH_LOCALS(isShareHolder)
+    //    if (qpi.numberOfPossessedShares(MSVAULT_ASSET_NAME, id::zero(), input.candidate, input.candidate, MSVAULT_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX) > 0)
+    //    {
+    //        output.result = 1ULL;
+    //    }
+    //    else
+    //    {
+    //        output.result = 0ULL;
+    //    }
+    _
 
     INITIALIZE
         state.numberOfActiveVaults = 0ULL;
         state.totalRevenue = 0ULL;
         state.totalDistributedToShareholders = 0ULL;
+        // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+        //state.burnedAmount = 0ULL;
+        //state.liveBurnFee = MSVAULT_BURN_FEE;
+        // [TODO]: Add this
+        //state.liveRegisteringFee = MSVAULT_REGISTERING_FEE;
+        //state.liveReleaseFee = MSVAULT_RELEASE_FEE;
+        //state.liveReleaseResetFee = MSVAULT_RELEASE_RESET_FEE;
+        //state.liveHoldingFee = MSVAULT_HOLDING_FEE;
+        //state.liveDepositFee = 0ULL;
     _
 
     BEGIN_EPOCH_WITH_LOCALS
@@ -827,9 +1076,15 @@ protected:
             locals.v = state.vaults.get(locals.i);
             if (locals.v.isActive)
             {
+                // [TODO]: Change this to
+                //if (locals.v.balance >= state.liveHoldingFee)
+                //{
+                //    locals.v.balance -= state.liveHoldingFee;
+                //    state.totalRevenue += state.liveHoldingFee;
+                //    state.vaults.set(locals.i, locals.v);
+                //}
                 if (locals.v.balance >= MSVAULT_HOLDING_FEE)
                 {
-                    // pay the holding fee
                     locals.v.balance -= MSVAULT_HOLDING_FEE;
                     state.totalRevenue += MSVAULT_HOLDING_FEE;
                     state.vaults.set(locals.i, locals.v);
@@ -863,6 +1118,17 @@ protected:
 
         {
             locals.amountToDistribute = QPI::div<uint64>(state.totalRevenue - state.totalDistributedToShareholders, NUMBER_OF_COMPUTORS);
+
+            // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+            //// Burn fee
+            //locals.feeToBurn = QPI::div<uint64>(locals.amountToDistribute * state.liveBurnFee, 100ULL);
+            //if (locals.feeToBurn > 0)
+            //{
+            //    qpi.burn(locals.feeToBurn);
+            //}
+            //locals.amountToDistribute -= locals.feeToBurn;
+            //state.burnedAmount += locals.feeToBurn;
+
             if (locals.amountToDistribute > 0 && state.totalRevenue > state.totalDistributedToShareholders)
             {
                 if (qpi.distributeDividends(locals.amountToDistribute))
@@ -885,5 +1151,7 @@ protected:
         REGISTER_USER_FUNCTION(getRevenueInfo, 9);
         REGISTER_USER_FUNCTION(getFees, 10);
         REGISTER_USER_FUNCTION(getVaultOwners, 11);
+        REGISTER_USER_FUNCTION(isShareHolder, 12);
+        REGISTER_USER_PROCEDURE(voteFeeChange, 13);
     _
 };
