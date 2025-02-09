@@ -5216,9 +5216,11 @@ static bool initialize()
         }
         system.tick = system.initialTick;
 
+        beginEpoch();
+
+        // needs to be called after ts.beginEpoch() because it looks up tickIndex, which requires to setup begin of epoch in ts
         updateNumberOfTickTransactions();
 
-        beginEpoch();
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
 #else
