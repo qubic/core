@@ -307,8 +307,8 @@ public:
         LOG_INFO(state.logger);
         output.total = 0;
 
-        // Insufficient number of addresses
-        if (input.dstCount == 0)
+        // Number of addresses and transfers is > 0 and total transfers do not exceed limit (including 2 transfers from invocator to contract and contract to invocator)
+        if (input.dstCount <= 0 || input.numTransfersEach <= 0 || input.dstCount * input.numTransfersEach + 2 > CONTRACT_ACTION_TRACKER_SIZE)
         {
             if (qpi.invocationReward() > 0)
             {

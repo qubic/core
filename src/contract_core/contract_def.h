@@ -31,6 +31,9 @@ constexpr unsigned int MAX_SIZE_OF_CONTRACT_LOCALS = 32 * 1024;
 // TODO: make sure the limit of nested calls is not violated
 constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
 
+// Size of the contract action tracker, limits the number of transfers that one contract call can execute.
+constexpr unsigned long long CONTRACT_ACTION_TRACKER_SIZE = 16 * 1024 * 1024;
+
 
 static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);

@@ -56,7 +56,7 @@ enum ContractCallbacksRunningFlags
 };
 
 
-GLOBAL_VAR_DECL ContractActionTracker<1024*1024> contractActionTracker;
+GLOBAL_VAR_DECL ContractActionTracker<CONTRACT_ACTION_TRACKER_SIZE> contractActionTracker;
 
 
 static bool initContractExec()
