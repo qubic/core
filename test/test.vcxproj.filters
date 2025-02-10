@@ -23,6 +23,7 @@
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="assets.cpp" />
     <ClCompile Include="contract_testex.cpp" />
+    <ClCompile Include="contract_PFP.cpp" />
     <ClCompile Include="file_io.cpp" />
   </ItemGroup>
   <ItemGroup>
