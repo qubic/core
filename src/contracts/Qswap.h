@@ -18,10 +18,9 @@ protected:
 	uint32 swapFeeRate; 		// e.g. 30: 0.3% (base: 10_000)
 	uint32 protocolFeeRate; 	// e.g. 20: 20% (base: 100) only charge in qu
 	uint32 poolCreateFee;		// qu amount
-	uint32 assetIssueFee; 		// qu amount
-	uint32 assetTransferFee; 	// qu amount
 
 	sint64 protocolEarnedFee;
+	sint64 distributedAmount;
 
 	struct PoolBasicState{
 		id poolID;
@@ -471,16 +470,16 @@ public:
 	{
 		sint64 issuedNumberOfShares;
 	};
+	struct IssueAsset_locals{
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
+	};
 
-	PUBLIC_PROCEDURE(IssueAsset)
-		// I don't known how to issue asset by Qx in QSwap SC
-		// QX::IssueAsset_input qxInput{ input.assetName, input.numberOfShares, input.unitOfMeasurement, input.numberOfDecimalPlaces };
-		// QX::IssueAsset_output qxOutput;
-		// INVOKE_OTHER_CONTRACT_PROCEDURE(QX_CONTRACT_INDEX, 1, qxInput, qxOutput, qpi.invocationReward());
-		// output.issuedNumberOfShares = qxOutput.issuedNumberOfShares;
+	PUBLIC_PROCEDURE_WITH_LOCALS(IssueAsset)
+		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
 
 		output.issuedNumberOfShares = 0;
-		if ((qpi.invocationReward() < state.assetIssueFee)) {
+		if ((qpi.invocationReward() < locals.feesOutput.assetIssuanceFee)) {
 			if (qpi.invocationReward() > 0) {
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
@@ -514,9 +513,9 @@ public:
 		if (output.issuedNumberOfShares == 0) {
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
-		} else if (qpi.invocationReward() > state.assetIssueFee ){
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.assetIssueFee);
-			state.protocolEarnedFee += state.assetIssueFee;
+		} else if (qpi.invocationReward() > locals.feesOutput.assetIssuanceFee ){
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.feesOutput.assetIssuanceFee);
+			state.protocolEarnedFee += locals.feesOutput.assetIssuanceFee;
 		}
 	_
 
@@ -776,16 +775,14 @@ protected:
 				return;
 			}
 
-			/* disable temporary, SEH exception in unit test 
 			// permanently lock the first MINIMUM_LIQUIDITY tokens
 			locals.tmpLiqudity.entity = SELF;
 			locals.tmpLiqudity.liqudity = QSWAP_MIN_LIQUDITY;
 			state.mLiquditys.add(locals.poolID, locals.tmpLiqudity, 0);
 
 			locals.tmpLiqudity.entity = qpi.invocator();
-			locals.tmpLiqudity.liqudity = locals.deltaLiqudity - QSWAP_MIN_LIQUDITY;
+			locals.tmpLiqudity.liqudity = locals.increaseLiqudity - QSWAP_MIN_LIQUDITY;
 			state.mLiquditys.add(locals.poolID, locals.tmpLiqudity, 0);
-			*/
 
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
@@ -858,17 +855,15 @@ protected:
 				return;
 			}
 
-			/* disable temporary, SEH exception in uint test
 			if (locals.userLiqudityElementIndex == NULL_INDEX) {
 				locals.tmpLiqudity.entity = qpi.invocator();
-				locals.tmpLiqudity.liqudity = locals.deltaLiqudity;
+				locals.tmpLiqudity.liqudity = locals.increaseLiqudity;
 				state.mLiquditys.add(locals.poolID, locals.tmpLiqudity, 0);
 			} else {
 				locals.tmpLiqudity = state.mLiquditys.element(locals.userLiqudityElementIndex);
-				locals.tmpLiqudity.liqudity += locals.deltaLiqudity;
+				locals.tmpLiqudity.liqudity += locals.increaseLiqudity;
 				state.mLiquditys.replace(locals.userLiqudityElementIndex, locals.tmpLiqudity);
 			}
-			*/
 
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
@@ -945,7 +940,6 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		/* temporary disable, SEH exception in unit test
 		locals.userLiqudityElementIndex = state.mLiquditys.headIndex(locals.poolID, 0);
 		while (locals.userLiqudityElementIndex != NULL_INDEX) {
 			if(state.mLiquditys.element(locals.userLiqudityElementIndex).entity == qpi.invocator()) {
@@ -965,7 +959,6 @@ protected:
 		if (locals.userLiqudity.liqudity < input.burnLiqudity ){
 			return;
 		}
-		*/
 
 		if (locals.poolBasicState.totalLiqudity < input.burnLiqudity ){
 			return;
@@ -1000,7 +993,6 @@ protected:
 		output.quAmount = locals.burnQuAmount;
 		output.assetAmount = locals.burnAssetAmount;
 
-		/* disable temporary, SEH exception in unit test
 		// modify invocator's liqudity info
 		locals.userLiqudity.liqudity -= input.burnLiqudity;
 		if (locals.userLiqudity.liqudity == 0) {
@@ -1008,7 +1000,6 @@ protected:
 		} else {
 			state.mLiquditys.replace(locals.userLiqudityElementIndex, locals.userLiqudity);
 		}
-		*/
 
 		// modify the pool's liqudity info
 		locals.poolBasicState.totalLiqudity -= input.burnLiqudity;
@@ -1238,6 +1229,7 @@ protected:
 				) * uint128(state.protocolFeeRate),
 				uint128(QSWAP_PROTOCOL_FEE_BASE)
 			).low);
+
 		state.protocolEarnedFee += locals.feeToProtocol;
 		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - locals.feeToProtocol;
 		locals.poolBasicState.reservedAssetAmount -= input.assetAmountOut;
@@ -1532,11 +1524,17 @@ public:
 	{
 		sint64 transferredAmount;
 	};
+	struct TransferShareOwnershipAndPossession_locals {
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
+	};
 
-	PUBLIC_PROCEDURE(TransferShareOwnershipAndPossession)
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareOwnershipAndPossession)
 		output.transferredAmount = 0;
 
-		if (qpi.invocationReward() < state.assetTransferFee ){
+		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+
+		if (qpi.invocationReward() < locals.feesOutput.transferFee){
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
@@ -1574,11 +1572,11 @@ public:
 
 		if (output.transferredAmount == 0) {
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		} else if (qpi.invocationReward() > state.assetTransferFee ) {
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.assetTransferFee);
+		} else if (qpi.invocationReward() > locals.feesOutput.transferFee) {
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.feesOutput.transferFee);
 		}
 
-		state.protocolEarnedFee += state.assetTransferFee;
+		state.protocolEarnedFee += locals.feesOutput.transferFee;
 	_
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
@@ -1607,7 +1605,15 @@ public:
 		state.swapFeeRate = 30; 	// 0.3%, must less than 10000
 		state.protocolFeeRate = 20; // 20%, must less than 100
 		state.poolCreateFee = 10000000;
-		state.assetTransferFee = 10000; // qu amount
-		state.assetIssueFee = 10000000; // qu amount
+	_
+
+	END_TICK
+		if ((QPI::div((state.protocolEarnedFee - state.distributedAmount), 676ULL) > 0) && (state.protocolEarnedFee > state.distributedAmount))
+		{
+			if (qpi.distributeDividends(QPI::div((state.protocolEarnedFee - state.distributedAmount), 676ULL)))
+			{
+				state.distributedAmount += QPI::div((state.protocolEarnedFee- state.distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
+			}
+		}
 	_
 };
