@@ -112,7 +112,6 @@
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="stdlib_impl.cpp" />
     <ClCompile Include="contract_swap.cpp" />
-    <!-- 
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="assets.cpp" />
     <ClCompile Include="contract_core.cpp" />
@@ -133,7 +132,6 @@
     <ClCompile Include="score_cache.cpp" />
     <ClCompile Include="tick_storage.cpp" />
     <ClCompile Include="vote_counter.cpp" />
-    -->
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
