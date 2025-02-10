@@ -243,6 +243,19 @@ public:
         return output.transferredNumberOfShares;
     }
 
+    sint64 getTestExAsShareManagementRightsByInvokingTestExB(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, sint64 fee = 0)
+    {
+        TESTEXB::GetTestExampleAShareManagementRights_input input;
+        TESTEXB::GetTestExampleAShareManagementRights_output output;
+
+        input.asset = asset;
+        input.numberOfShares = numberOfShares;
+
+        invokeUserProcedure(TESTEXB::__contract_index, 7, input, output, currentOwnerAndPossesor, fee);
+
+        return output.transferredNumberOfShares;
+    }
+
     TESTEXA::QueryQpiFunctions_output queryQpiFunctions(const TESTEXA::QueryQpiFunctions_input& input)
     {
         TESTEXA::QueryQpiFunctions_output output;
@@ -582,6 +595,53 @@ TEST(ContractTestEx, QpiAcquireShares)
     EXPECT_EQ(numberOfShares(asset1, AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(USER2)), transferShareCount / 2);
     EXPECT_EQ(numberOfShares(asset1, AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(USER3)), transferShareCount / 2);
     EXPECT_EQ(numberOfShares(asset1), totalShareCount);
+}
+
+TEST(ContractTestEx, GetManagementRightsByInvokingOtherContractsRelease)
+{
+    ContractTestingTestEx test;
+
+    const Asset asset1{ USER1, assetNameFromString("BLURB") };
+    const sint64 totalShareCount = 1000000;
+    const sint64 transferShareCount = totalShareCount / 5;
+
+    // make sure the enities have enough qu
+    increaseEnergy(USER1, test.qxFees.assetIssuanceFee * 10);
+    increaseEnergy(USER2, test.qxFees.assetIssuanceFee * 10);
+    increaseEnergy(USER3, test.qxFees.assetIssuanceFee * 10);
+
+    // issueAsset with TestExampleA
+    EXPECT_EQ(test.issueAssetTestExA(asset1, totalShareCount, 0, 0), totalShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { USER1, TESTEXA_CONTRACT_INDEX }, { USER1, TESTEXA_CONTRACT_INDEX }), totalShareCount);
+
+    ///////////////////////////////////////////////////////////////////////////
+    // TESTEXB ACQUIRES FROM TESTEXA BY INVOKING TESTEXA PROCEDURE (QX PATTERN)
+
+    // run ownership/possession transfer to TestExB in TestExampleA -> should work (has management rights from issueAsset)
+    // (TestExB needs to own/possess shares in order to invoke TestExA for transferring rights to TestExB in the next step)
+    EXPECT_EQ(test.transferShareOwnershipAndPossession<TESTEXA>(asset1, asset1.issuer, TESTEXB_CONTRACT_ID, transferShareCount), transferShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { USER1, TESTEXA_CONTRACT_INDEX }, { USER1, TESTEXA_CONTRACT_INDEX }), totalShareCount - transferShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { TESTEXB_CONTRACT_ID, TESTEXA_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, TESTEXA_CONTRACT_INDEX }), transferShareCount);
+
+    // Transfer rights to TestExB using the QX approach
+    // -> Test that we don't get a deadlock in the following case:
+    //    invoke procedure of TestExB, which invokes procedure of TestExA for calling qpi.releaseShares(), which runs
+    //    callback PRE_ACQUIRE_SHARES of TestExB
+    // Attempt 1: fail due to forbidding by default
+    EXPECT_EQ(test.getTestExAsShareManagementRightsByInvokingTestExB(asset1, USER1, transferShareCount, 0), 0);
+    EXPECT_EQ(numberOfShares(asset1, { USER1, TESTEXA_CONTRACT_INDEX }, { USER1, TESTEXA_CONTRACT_INDEX }), totalShareCount - transferShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { TESTEXB_CONTRACT_ID, TESTEXA_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, TESTEXA_CONTRACT_INDEX }), transferShareCount);
+
+    // Attempt 2: allow -> fail because requested fee > offered fee
+    test.setPreAcquireSharesOutput<TESTEXB>(true, 13);
+    EXPECT_EQ(test.getTestExAsShareManagementRightsByInvokingTestExB(asset1, USER1, transferShareCount, 0), 0);
+    EXPECT_EQ(numberOfShares(asset1, { USER1, TESTEXA_CONTRACT_INDEX }, { USER1, TESTEXA_CONTRACT_INDEX }), totalShareCount - transferShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { TESTEXB_CONTRACT_ID, TESTEXA_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, TESTEXA_CONTRACT_INDEX }), transferShareCount);
+
+    // Attempt 2: allow -> success
+    EXPECT_EQ(test.getTestExAsShareManagementRightsByInvokingTestExB(asset1, USER1, transferShareCount, 15), transferShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { USER1, TESTEXA_CONTRACT_INDEX }, { USER1, TESTEXA_CONTRACT_INDEX }), totalShareCount - transferShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { TESTEXB_CONTRACT_ID, TESTEXB_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, TESTEXB_CONTRACT_INDEX }), transferShareCount);
 }
 
 TEST(ContractTestEx, QueryBasicQpiFunctions)

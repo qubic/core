@@ -281,10 +281,12 @@ enum SystemProcedureID
     contractSystemProcedureCount,
 };
 
-enum MoreProcedureIDs
+enum OtherEntryPointIDs
 {
-    // Used together with SystemProcedureID values, so there must be not overlap!
+    // Used together with SystemProcedureID values, so there must be no overlap!
     USER_PROCEDURE_CALL = contractSystemProcedureCount + 1,
+    USER_FUNCTION_CALL = contractSystemProcedureCount + 2,
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3
 };
 
 GLOBAL_VAR_DECL SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
