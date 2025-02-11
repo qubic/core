@@ -164,7 +164,20 @@ static bool initContractExec()
 
     contractCallbacksRunning = NoContractCallback;
 
+    if (!contractActionTracker.allocBuffer())
+        return false;
+
     return true;
+}
+
+static void deinitContractExec()
+{
+    if (contractStateChangeFlags)
+    {
+        freePool(contractStateChangeFlags);
+    }
+
+    contractActionTracker.freeBuffer();
 }
 
 // Acquire lock of an currently unused stack (may block if all in use)
