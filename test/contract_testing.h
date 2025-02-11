@@ -43,6 +43,7 @@ public:
         deinitAssets();
         deinitSpectrum();
         deinitCommonBuffers();
+        deinitContractExec();
         for (unsigned int i = 0; i < contractCount; ++i)
         {
             if (contractStates[i])

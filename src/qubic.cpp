@@ -5428,10 +5428,7 @@ static void deinitialize()
     deinitTxStatusRequestAddOn();
 #endif
 
-    if (contractStateChangeFlags)
-    {
-        bs->FreePool(contractStateChangeFlags);
-    }
+    deinitContractExec();
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
         if (contractStates[contractIndex])
