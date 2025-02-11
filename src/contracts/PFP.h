@@ -28,7 +28,7 @@ constexpr sint32 PFP_INVALID_INPUT = 2;
 constexpr sint32 PFP_INVALID_VOLUME_SIZE = 3;
 constexpr sint32 PFP_INSUFFICIENT_CFB = 4;
 constexpr sint32 PFP_LIMIT_COLLECTION_VOLUME = 5;
-constexpr sint32 PFP_ERROR_TRANSFER_SHARE_MANAGEMENT = 6;
+constexpr sint32 PFP_ERROR_TRANSFER_ASSET = 6;
 constexpr sint32 PFP_MAX_NUMBER_COLLECTION = 7;
 
 //      For mint
@@ -68,7 +68,7 @@ enum PFPLogInfo {
 	invalidVolumnSize = 3,
 	insufficientCFB = 4,
 	limitCollectionVolumn = 5,
-	errorTransferShareManagement = 6,
+	errorTransferAsset = 6,
 	maxNumberOfCollection = 7,
 	//      For mint
 	overflowNFT = 8,
@@ -654,14 +654,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_2_200 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_2_200 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_2_200 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_2_200 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 200;
 			state.numberOfNFTIncoming += 200;
@@ -702,15 +703,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_201_1000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_201_1000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_201_1000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_201_1000 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 1000;
 			state.numberOfNFTIncoming += 1000;
@@ -751,15 +752,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_1001_2000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_1001_2000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_1001_2000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_1001_2000 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 2000;
 			state.numberOfNFTIncoming += 2000;
@@ -800,15 +801,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_2001_3000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_2001_3000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_2001_3000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_2001_3000 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 3000;
 			state.numberOfNFTIncoming += 3000;
@@ -849,15 +850,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_3001_4000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_3001_4000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_3001_4000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_3001_4000 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 4000;
 			state.numberOfNFTIncoming += 4000;
@@ -898,15 +899,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_4001_5000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_4001_5000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_4001_5000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_4001_5000 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 5000;
 			state.numberOfNFTIncoming += 5000;
@@ -947,15 +948,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_5001_6000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_5001_6000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_5001_6000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_5001_6000 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 6000;
 			state.numberOfNFTIncoming += 6000;
@@ -996,15 +997,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_6001_7000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_6001_7000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_6001_7000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_6001_7000 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 7000;
 			state.numberOfNFTIncoming += 7000;
@@ -1045,15 +1046,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_7001_8000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_7001_8000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_7001_8000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_7001_8000 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 8000;
 			state.numberOfNFTIncoming += 8000;
@@ -1094,15 +1095,15 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_8001_9000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_8001_9000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_8001_9000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_8001_9000 * state.priceOfCFB, SELF);
 
 			locals.newCollection.currentSize = 9000;
 			state.numberOfNFTIncoming += 9000;
@@ -1139,19 +1140,19 @@ protected:
 			locals.transferShareManagementRights_input.asset.assetName = PFP_CFB_NAME;
 			locals.transferShareManagementRights_input.asset.issuer = state.cfbIssuer;
 			locals.transferShareManagementRights_input.newManagingContractIndex = PFP_CONTRACT_INDEX;
-			locals.transferShareManagementRights_input.numberOfShares = 10;
+			locals.transferShareManagementRights_input.numberOfShares = PFP_FEE_COLLECTION_CREATE_9001_10000 * state.priceOfCFB;
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != PFP_FEE_COLLECTION_CREATE_9001_10000 * state.priceOfCFB)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_9001_10000 * state.priceOfCFB, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != PFP_FEE_COLLECTION_CREATE_9001_10000 * state.priceOfCFB)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), 10, SELF);
 
 			locals.newCollection.currentSize = 10000;
 			state.numberOfNFTIncoming += 10000;
@@ -1738,20 +1739,20 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != div(state.NFTs.get(input.NFTid).salePrice * 1ULL, state.priceOfQubic) * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
 			locals.creatorFee = div(locals.transferredAmountOfCFB * state.NFTs.get(input.NFTid).royalty * 1ULL, 100ULL);
 			locals.marketFee = div(locals.transferredAmountOfCFB * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
 
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.marketFee, SELF);
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.creatorFee, state.NFTs.get(input.NFTid).creator);
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.transferredAmountOfCFB - locals.creatorFee - locals.marketFee, state.NFTs.get(input.NFTid).possesor);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != div(state.NFTs.get(input.NFTid).salePrice * 1ULL, state.priceOfQubic) * state.priceOfCFB)
+			{
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
+				LOG_INFO(locals.log);
+				return ;
+			}
 		}
 
 		locals.updatedNFT.possesor = qpi.invocator();
@@ -2170,16 +2171,16 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != input.askPrice)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), input.askPrice, SELF);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != input.askPrice)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), input.askPrice, SELF);
 		}
 
 		locals.AskedNFT.statusOfAsk = 1;
@@ -2291,16 +2292,16 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != state.NFTs.get(input.NFTid).askMaxPrice - locals.marketFee)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, locals.creatorFee, state.NFTs.get(input.NFTid).creator);
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice - locals.marketFee - locals.creatorFee, state.NFTs.get(input.NFTid).possesor);
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != state.NFTs.get(input.NFTid).askMaxPrice - locals.marketFee)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, locals.creatorFee, state.NFTs.get(input.NFTid).creator);
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice - locals.marketFee - locals.creatorFee, state.NFTs.get(input.NFTid).possesor);
 			
 		}
 
@@ -2398,16 +2399,16 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != state.NFTs.get(input.NFTid).askMaxPrice)
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice, qpi.invocator());
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != state.NFTs.get(input.NFTid).askMaxPrice)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
 				LOG_INFO(locals.log);
 
 				return ;
 			}
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice, qpi.invocator());
 			
 		}
 
@@ -2711,15 +2712,6 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-			if(locals.transferShareManagementRights_output.transferredNumberOfShares != input.price)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_SHARE_MANAGEMENT;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferShareManagement, 0 };
-				LOG_INFO(locals.log);
-
-				return ;
-			}
-
 			if(state.NFTs.get(input.NFTId).statusOfAuction == 1)
 			{
 				locals.marketFee = div(input.price * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
@@ -2738,6 +2730,15 @@ protected:
 				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.creatorFee, state.NFTs.get(input.NFTId).creator);
 				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), state.NFTs.get(input.NFTId).currentPriceOfAuction, state.NFTs.get(input.NFTId).possesor);
 				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), input.price - state.NFTs.get(input.NFTId).currentPriceOfAuction - locals.marketFee - locals.creatorFee, state.NFTs.get(input.NFTId).creatorOfAuction);
+			}
+
+            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) != input.price)
+			{
+				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
+				LOG_INFO(locals.log);
+
+				return ;
 			}
 			
 			locals.updatedNFT.currentPriceOfAuction = div(input.price, state.priceOfCFB) * state.priceOfQubic;
@@ -2979,9 +2980,7 @@ protected:
 
     _
 
-	PRE_RELEASE_SHARES
-
-        output.allowTransfer = true;
-
-    _
+    PRE_ACQUIRE_SHARES
+		output.allowTransfer = true;
+	_
 };

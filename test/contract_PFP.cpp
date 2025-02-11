@@ -402,6 +402,21 @@ public:
 
         return output.transferredNumberOfShares;
     }
+
+    sint64 TransferShareManagementRights(const id& issuer, uint64 assetName, uint32 newManagingContractIndex, sint64 numberOfShares, id currentOwner)
+    {
+        QX::TransferShareManagementRights_input input;
+        QX::TransferShareManagementRights_output output;
+
+        input.asset.assetName = assetName;
+        input.asset.issuer = issuer;
+        input.newManagingContractIndex = newManagingContractIndex;
+        input.numberOfShares = numberOfShares;
+
+        invokeUserProcedure(QX_CONTRACT_INDEX, 9, input, output, currentOwner, 0);
+
+        return output.transferredNumberOfShares;
+    }
 };
 
 TEST(TestContractPFP, testingAllProceduresAndFunctions)
@@ -433,9 +448,12 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     {
         URI.set(i, getRandomURI().get(i));
     }
+
+    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_9001_10000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_9001_10000);
+    
     pfp.createCollection(users[0], 0, 10, 10, 100, 1, URI);
 
-    EXPECT_EQ(numberOfPossessedShares(assetName, CFB_ISSUER, id(11, 0, 0, 0), id(11, 0, 0, 0), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), numberOfPossessedShares(assetName, CFB_ISSUER, users[0], users[0], QX_CONTRACT_INDEX, QX_CONTRACT_INDEX));
+    EXPECT_EQ(numberOfPossessedShares(assetName, CFB_ISSUER, id(11, 0, 0, 0), id(11, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), cfbPrice * PFP_FEE_COLLECTION_CREATE_9001_10000);
 
-    // pfp.getState()->createCollectionChecker(users[0], 0, 10000, 10, 100, 1, 1, URI);
+    pfp.getState()->createCollectionChecker(users[0], 0, 10000, 10, 100, 1, 1, URI);
 }
