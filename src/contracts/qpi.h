@@ -1212,9 +1212,10 @@ namespace QPI
 			unsigned int contractIndex,
 			const m256i& originator,
 			const m256i& invocator,
-			long long invocationReward
+			long long invocationReward,
+			unsigned char entryPoint
 		) {
-			init(contractIndex, originator, invocator, invocationReward);
+			init(contractIndex, originator, invocator, invocationReward, entryPoint, -1);
 		}
 
 		void init(
@@ -1222,7 +1223,8 @@ namespace QPI
 			const m256i& originator,
 			const m256i& invocator,
 			long long invocationReward,
-			int stackIndex = -1
+			unsigned char entryPoint,
+			int stackIndex
 		) {
 			ASSERT(invocationReward >= 0);
 			_currentContractIndex = contractIndex;
@@ -1230,13 +1232,15 @@ namespace QPI
 			_originator = originator;
 			_invocator = invocator;
 			_invocationReward = invocationReward;
+			_entryPoint = entryPoint;
 			_stackIndex = stackIndex;
 		}
 
 		unsigned int _currentContractIndex;
+		int _stackIndex;
 		m256i _currentContractId, _originator, _invocator;
 		long long _invocationReward;
-		int _stackIndex;
+		unsigned char _entryPoint;
 
 	private:
 		// Disabling copy and move
@@ -1300,6 +1304,10 @@ namespace QPI
 			const id& currentId
 		) const;
 
+		inline id prevId(
+			const id& currentId
+		) const;
+
 		inline sint64 numberOfPossessedShares(
 			uint64 assetName,
 			const id& issuer,
@@ -1354,7 +1362,7 @@ namespace QPI
 
 	protected:
 		// Construction is done in core, not allowed in contracts
-		QpiContextFunctionCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContext(contractIndex, originator, originator, invocationReward) {}
+		QpiContextFunctionCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContext(contractIndex, originator, originator, invocationReward, entryPoint) {}
 	};
 
 	// QPI procedures available to contract procedures (not to contract functions)
@@ -1432,7 +1440,7 @@ namespace QPI
 
 	protected:
 		// Construction is done in core, not allowed in contracts
-		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContextFunctionCall(contractIndex, originator, invocationReward) {}
+		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContextFunctionCall(contractIndex, originator, invocationReward, entryPoint) {}
 	};
 
 	// QPI available in REGISTER_USER_FUNCTIONS_AND_PROCEDURES
@@ -1442,7 +1450,7 @@ namespace QPI
 		inline void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
 
 		// Construction is done in core, not allowed in contracts
-		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
+		inline QpiContextForInit(unsigned int contractIndex);
 	};
 
 	// Used if no locals, input, or output is needed in a procedure or function
@@ -1650,15 +1658,18 @@ namespace QPI
 		qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
 
 	// Call function or procedure of current contract (without changing invocation reward)
+	// WARNING: input may be changed by called function
 	#define CALL(functionOrProcedure, input, output) \
 		static_assert(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #functionOrProcedure "_locals size too large"); \
 		functionOrProcedure(qpi, state, input, output, *(functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals))); \
 		qpi.__qpiFreeLocals()
 
 	// Invoke procedure of current contract with changed invocation reward
+	// WARNING: input may be changed by called function
 	// TODO: INVOKE
 
 	// Call function of other contract
+	// WARNING: input may be changed by called function
 	#define CALL_OTHER_CONTRACT_FUNCTION(contractStateType, function, input, output) \
 		static_assert(sizeof(contractStateType::function##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #function "_locals size too large"); \
 		static_assert(contractStateType::__is_function_##function, "CALL_OTHER_CONTRACT_FUNCTION() cannot be used to invoke procedures."); \
@@ -1669,24 +1680,24 @@ namespace QPI
 			*(contractStateType*)qpi.__qpiAcquireStateForReading(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
-		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
 	// Transfer invocation reward and invoke of other contract (procedure only)
+	// WARNING: input may be changed by called function
 	#define INVOKE_OTHER_CONTRACT_PROCEDURE(contractStateType, procedure, input, output, invocationReward) \
 		static_assert(sizeof(contractStateType::procedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #procedure "_locals size too large"); \
 		static_assert(!contractStateType::__is_function_##procedure, "INVOKE_OTHER_CONTRACT_PROCEDURE() cannot be used to call functions."); \
 		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function/procedure of this contract."); \
 		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
-		static_assert(invocationReward >= 0, "The invocationReward cannot be negative!"); \
 		contractStateType::procedure( \
 			qpi.__qpiConstructContextOtherContractProcedureCall(contractStateType::__contract_index, invocationReward), \
 			*(contractStateType*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
-		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
 		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
 	#define QUERY_ORACLE(oracle, query) // TODO

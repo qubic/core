@@ -31,6 +31,9 @@ constexpr unsigned int MAX_SIZE_OF_CONTRACT_LOCALS = 32 * 1024;
 // TODO: make sure the limit of nested calls is not violated
 constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
 
+// Size of the contract action tracker, limits the number of transfers that one contract call can execute.
+constexpr unsigned long long CONTRACT_ACTION_TRACKER_SIZE = 16 * 1024 * 1024;
+
 
 static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);
@@ -289,10 +292,12 @@ enum SystemProcedureID
     contractSystemProcedureCount,
 };
 
-enum MoreProcedureIDs
+enum OtherEntryPointIDs
 {
-    // Used together with SystemProcedureID values, so there must be not overlap!
+    // Used together with SystemProcedureID values, so there must be no overlap!
     USER_PROCEDURE_CALL = contractSystemProcedureCount + 1,
+    USER_FUNCTION_CALL = contractSystemProcedureCount + 2,
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3
 };
 
 GLOBAL_VAR_DECL SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];

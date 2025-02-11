@@ -122,8 +122,8 @@ public:
     {
         EXPECT_LT(contractIndex, contractCount);
         EXPECT_NE(contractStates[contractIndex], nullptr);
-        QpiContextSystemProcedureCall qpiContext(contractIndex);
-        qpiContext.call(sysProcId);
+        QpiContextSystemProcedureCall qpiContext(contractIndex, sysProcId);
+        qpiContext.call();
         if (expectSuccess)
         {
             EXPECT_EQ(contractError[contractIndex], 0);

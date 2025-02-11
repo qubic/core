@@ -58,6 +58,16 @@ struct TESTEXB : public ContractBase
 		sint64 transferredNumberOfShares;
 	};
 
+	struct GetTestExampleAShareManagementRights_input
+	{
+		Asset asset;
+		sint64 numberOfShares;
+	};
+	struct GetTestExampleAShareManagementRights_output
+	{
+		sint64 transferredNumberOfShares;
+	};
+
 protected:
 	
 	PreManagementRightsTransfer_output preReleaseSharesOutput;
@@ -110,8 +120,21 @@ _
 			// success
 			output.transferredNumberOfShares = input.numberOfShares;
 		}
-
     _
+
+	struct GetTestExampleAShareManagementRights_locals
+	{
+		TESTEXA::TransferShareManagementRights_input input;
+		TESTEXA::TransferShareManagementRights_output output;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(GetTestExampleAShareManagementRights)
+		locals.input.asset = input.asset;
+		locals.input.numberOfShares = input.numberOfShares;
+		locals.input.newManagingContractIndex = SELF_INDEX;
+		INVOKE_OTHER_CONTRACT_PROCEDURE(TESTEXA, TransferShareManagementRights, locals.input, locals.output, qpi.invocationReward());
+		output.transferredNumberOfShares = locals.output.transferredNumberOfShares;
+	_
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
@@ -120,6 +143,7 @@ _
 		REGISTER_USER_PROCEDURE(SetPreReleaseSharesOutput, 4);
 		REGISTER_USER_PROCEDURE(SetPreAcquireSharesOutput, 5);
 		REGISTER_USER_PROCEDURE(AcquireShareManagementRights, 6);
+		REGISTER_USER_PROCEDURE(GetTestExampleAShareManagementRights, 7);
 	_
 
 	PRE_RELEASE_SHARES
