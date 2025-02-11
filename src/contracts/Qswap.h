@@ -19,8 +19,8 @@ protected:
 	uint32 protocolFeeRate; 	// e.g. 20: 20% (base: 100) only charge in qu
 	uint32 poolCreateFee;		// qu amount
 
-	sint64 protocolEarnedFee;
-	sint64 distributedAmount;
+	uint64 protocolEarnedFee;
+	uint64 distributedAmount;
 
 	struct PoolBasicState{
 		id poolID;
@@ -34,8 +34,8 @@ protected:
 		sint64 liqudity;
 	};
 
-	array<PoolBasicState, QSWAP_MAX_POOL> mPoolBasicStates;
-	collection<LiqudityInfo, QSWAP_MAX_POOL * QSWAP_MAX_USER_PER_POOL > mLiquditys;
+	Array<PoolBasicState, QSWAP_MAX_POOL> mPoolBasicStates;
+	Collection<LiqudityInfo, QSWAP_MAX_POOL * QSWAP_MAX_USER_PER_POOL > mLiquditys;
 
 	inline static sint64 min(sint64 a, sint64 b) {
 		return (a < b) ? a : b;
@@ -48,13 +48,13 @@ protected:
 		uint128 prod = uint128(a) * uint128(b);
 
 		// (prod + 1) / 2;
-		uint128 z = QPI::div(prod+uint128(1), uint128(2));
+		uint128 z = div(prod+uint128(1), uint128(2));
 		uint128_t y = prod;
 
 		while(z < y){
 			y = z;
 			// (prod / z + z) / 2;
-			z = QPI::div((QPI::div(prod, z) + z), uint128(2));
+			z = div((div(prod, z) + z), uint128(2));
 		}
 
 		return sint64(y.low);
@@ -62,7 +62,7 @@ protected:
 
 	inline static sint64 quoteEquivalentAmountB(sint64 amountADesired, sint64 reserveA, sint64 reserveB) {
 		// amountDesired * reserveB / reserveA
-		uint128 res = QPI::div(uint128(amountADesired) * uint128(reserveB), uint128(reserveA));
+		uint128 res = div(uint128(amountADesired) * uint128(reserveB), uint128(reserveA));
 		return sint64(res.low);
 	}
 
@@ -74,7 +74,7 @@ protected:
 		uint128 denominator = uint128(reserveIn) * uint128(QSWAP_SWAP_FEE_BASE) + amountInWithFee;
 
 		// numerator / denominator;
-		uint128 res = QPI::div(numerator, denominator);
+		uint128 res = div(numerator, denominator);
 		return sint64(res.low);
 	}
 
@@ -82,8 +82,8 @@ protected:
 	// x = (reserveIn * amountOut)/((1-fee) * (reserveOut - amountOut)
 	inline static sint64 getAmountInTakeFeeFromInToken(sint64 amountOut, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
 		// reserveIn*amountOut/(reserveOut - amountOut)*QSWAP_SWAP_FEE_BASE / (QSWAP_SWAP_FEE_BASE - fee)
-		uint128 res = QPI::div(
-			QPI::div(
+		uint128 res = div(
+			div(
 				uint128(reserveIn) * uint128(amountOut),
 				uint128(reserveOut - amountOut)
 			) * uint128(QSWAP_SWAP_FEE_BASE),
@@ -99,7 +99,7 @@ protected:
 		uint128 denominator = uint128(reserveIn + amountIn);
 
 		// (numerator / denominator).low);
-		return sint64(QPI::div(numerator, denominator).low);
+		return sint64(div(numerator, denominator).low);
 	}
 
 	// (reserveIn + x) * (reserveOut - amountOut/(1 - fee)) = reserveIn * reserveOut
@@ -109,7 +109,7 @@ protected:
 		uint128 denominator = uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee) / uint128(QSWAP_SWAP_FEE_BASE) - uint128(amountOut);
 
 		// (numerator / denominator).low);
-		return sint64(QPI::div(numerator, denominator).low) + 1;
+		return sint64(div(numerator, denominator).low) + 1;
 	}
 
 //
@@ -790,12 +790,12 @@ protected:
 
 		} else {
 			locals.increaseLiqudity = min(
-				sint64(QPI::div(
+				sint64(div(
 					uint128(locals.quTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
 					uint128(locals.poolBasicState.reservedQuAmount)
 				).low),
 
-				sint64(QPI::div(
+				sint64(div(
 					uint128(locals.assetTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
 					uint128(locals.poolBasicState.reservedAssetAmount)
 				).low)
@@ -964,12 +964,12 @@ protected:
 			return;
 		}
 
-		locals.burnQuAmount = sint64(QPI::div(
+		locals.burnQuAmount = sint64(div(
 				uint128(input.burnLiqudity) * uint128(locals.poolBasicState.reservedQuAmount),
 				uint128(locals.poolBasicState.totalLiqudity)
 			).low);
 
-		locals.burnAssetAmount = sint64(QPI::div(
+		locals.burnAssetAmount = sint64(div(
 				uint128(input.burnLiqudity) * uint128(locals.poolBasicState.reservedAssetAmount),
 				uint128(locals.poolBasicState.totalLiqudity)
 			).low);
@@ -1102,8 +1102,8 @@ protected:
 
 		// take fee from qu
 		// quAmountIn * swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
-		locals.feeToProtocol = sint64(QPI::div(
-				QPI::div(
+		locals.feeToProtocol = sint64(div(
+				div(
 					uint128(locals.quAmountIn) * uint128(state.swapFeeRate),
 					uint128(QSWAP_SWAP_FEE_BASE)
 				) * uint128(state.protocolFeeRate),
@@ -1222,8 +1222,8 @@ protected:
 
 		// update pool states
 		// locals.quAmountIn * state.swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
-		locals.feeToProtocol = sint64(QPI::div(
-				QPI::div(
+		locals.feeToProtocol = sint64(div(
+				div(
 					uint128(locals.quAmountIn) * uint128(state.swapFeeRate),
 					uint128(QSWAP_SWAP_FEE_BASE)
 				) * uint128(state.protocolFeeRate),
@@ -1313,14 +1313,14 @@ protected:
 		);
 
 		// locals.quAmountOutWithFee * (QSWAP_SWAP_FEE_BASE - state.swapFeeRate) / QSWAP_SWAP_FEE_BASE
-		locals.quAmountOut = sint64(QPI::div(
+		locals.quAmountOut = sint64(div(
 				uint128(locals.quAmountOutWithFee) * uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate), 
 				uint128(QSWAP_SWAP_FEE_BASE)
 			).low);
 
 		// locals.quAmountOutWithFee * state.swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
-		locals.protocolFee = sint64(QPI::div(
-				QPI::div(
+		locals.protocolFee = sint64(div(
+				div(
 					uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), 
 					uint128(QSWAP_SWAP_FEE_BASE)
 				) * uint128(state.protocolFeeRate),
@@ -1444,8 +1444,8 @@ protected:
 			state.swapFeeRate
 		);
 		// input.quAmountOut * state.swapFeeRate / (QSWAP_SWAP_FEE_BASE - state.swapFeeRate) * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
-		locals.protocolFee = sint64(QPI::div(
-				QPI::div(
+		locals.protocolFee = sint64(div(
+				div(
 					uint128(input.quAmountOut) * uint128(state.swapFeeRate),
 					uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate)
 				) * uint128(state.protocolFeeRate),
@@ -1608,11 +1608,11 @@ public:
 	_
 
 	END_TICK
-		if ((QPI::div((state.protocolEarnedFee - state.distributedAmount), 676ULL) > 0) && (state.protocolEarnedFee > state.distributedAmount))
+		if ((div((state.protocolEarnedFee - state.distributedAmount), 676ULL) > 0) && (state.protocolEarnedFee > state.distributedAmount))
 		{
-			if (qpi.distributeDividends(QPI::div((state.protocolEarnedFee - state.distributedAmount), 676ULL)))
+			if (qpi.distributeDividends(div((state.protocolEarnedFee - state.distributedAmount), 676ULL)))
 			{
-				state.distributedAmount += QPI::div((state.protocolEarnedFee- state.distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
+				state.distributedAmount += div((state.protocolEarnedFee- state.distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
 			}
 		}
 	_

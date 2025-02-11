@@ -1,18 +1,20 @@
 #pragma once
 
+#include <utility>
+
 // baseed on https://github.com/calccrypto/uint128_t/blob/master/uint128_t.cpp
 
 class uint128_t{
 public:
-	uint64_t low;
-	uint64_t high;
+	unsigned __int64 low;
+	unsigned __int64 high;
 
-	uint128_t(uint64_t n){
+	uint128_t(unsigned __int64 n){
 		low = n;
 		high = 0;
 	};
 
-	uint128_t(uint64_t i_high, uint64_t i_low){
+	uint128_t(unsigned __int64 i_high, unsigned __int64 i_low){
 		high = i_high;
 		low = i_low;
 	}
@@ -52,7 +54,7 @@ public:
 	}
 
 	uint128_t operator<<(const uint128_t & rhs) const{
-		const uint64_t shift = rhs.low;
+		const unsigned __int64 shift = rhs.low;
 		if (((bool) rhs.high) || (shift >= 128)){
 			return uint128_t(0, 0);
 		}
@@ -79,7 +81,7 @@ public:
 	}
 
 	uint128_t operator>>(const uint128_t & rhs) const{
-		const uint64_t shift = rhs.low;
+		const unsigned __int64 shift = rhs.low;
 		if (((bool) rhs.high) || (shift >= 128)){
 			return uint128_t(0, 0);
 		}
@@ -124,18 +126,18 @@ public:
 	}
 
 	// bits
-	uint8_t bits() const{
-		uint8_t out = 0;
+	unsigned __int8 bits() const{
+		unsigned __int8 out = 0;
 		if (high){
 			out = 64;
-			uint64_t up = high;
+			unsigned __int64 up = high;
 			while (up){
 				up >>= 1;
 				out++;
 			}
 		}
 		else{
-			uint64_t inner_low = low;
+			unsigned __int64 inner_low = low;
 			while (inner_low){
 				inner_low >>= 1;
 				out++;
@@ -206,10 +208,10 @@ public:
 
 	uint128_t operator*(const uint128_t& rhs) const{
 		// split values into 4 32-bit parts
-		uint64_t top[4] = {high >> 32, high & 0xffffffff, low >> 32, low & 0xffffffff};
+		unsigned __int64 top[4] = {high >> 32, high & 0xffffffff, low >> 32, low & 0xffffffff};
 
-		uint64_t bottom[4] = {rhs.high >> 32, rhs.high & 0xffffffff, rhs.low >> 32, rhs.low & 0xffffffff};
-		uint64_t products[4][4];
+		unsigned __int64 bottom[4] = {rhs.high >> 32, rhs.high & 0xffffffff, rhs.low >> 32, rhs.low & 0xffffffff};
+		unsigned __int64 products[4][4];
 
 		// multiply each component of the values
 		for(int y = 3; y > -1; y--){
@@ -219,10 +221,10 @@ public:
 		}
 
 		// first row
-		uint64_t fourth32 = (products[0][3] & 0xffffffff);
-		uint64_t third32  = (products[0][2] & 0xffffffff) + (products[0][3] >> 32);
-		uint64_t second32 = (products[0][1] & 0xffffffff) + (products[0][2] >> 32);
-		uint64_t first32  = (products[0][0] & 0xffffffff) + (products[0][1] >> 32);
+		unsigned __int64 fourth32 = (products[0][3] & 0xffffffff);
+		unsigned __int64 third32  = (products[0][2] & 0xffffffff) + (products[0][3] >> 32);
+		unsigned __int64 second32 = (products[0][1] & 0xffffffff) + (products[0][2] >> 32);
+		unsigned __int64 first32  = (products[0][0] & 0xffffffff) + (products[0][1] >> 32);
 
 		// second row
 		third32  += (products[1][3] & 0xffffffff);
