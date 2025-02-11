@@ -493,9 +493,10 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
             if (isZero(request->destinationPublicKey))
             {
-                if (request->sourcePublicKey == arbitratorPublicKey)
+                if (request->sourcePublicKey == notOverseer9000PublicKey)
                 {
                     // See CustomMiningTaskMessage structure
+                    // MESSAGE_TYPE_CUSTOM_MINING_TASK
                 }
                 else
                 {
