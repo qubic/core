@@ -203,8 +203,21 @@ TEST(TestCoreQPI, Mod) {
     EXPECT_EQ(QPI::mod(2, -1), 0);
 }
 
+struct ContractExecInitDeinitGuard
+{
+    ContractExecInitDeinitGuard()
+    {
+        EXPECT_TRUE(initContractExec());
+    }
+    ~ContractExecInitDeinitGuard()
+    {
+        deinitContractExec();
+    }
+};
+
 TEST(TestCoreQPI, ProposalAndVotingByComputors)
 {
+    ContractExecInitDeinitGuard initDeinitGuard;
     QpiContextUserProcedureCall qpi(0, QPI::id(1, 2, 3, 4), 123);
     QPI::ProposalAndVotingByComputors pv;
     initComputors(0);
@@ -433,6 +446,7 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataWithoutScalarVoteSupport)
 
 TEST(TestCoreQPI, ProposalWithAllVoteDataYesNoProposals)
 {
+    ContractExecInitDeinitGuard initDeinitGuard;
     typedef QPI::ProposalDataYesNo ProposalT;
     QPI::ProposalWithAllVoteData<ProposalT, 42> pwav;
     ProposalT proposal;
@@ -643,6 +657,8 @@ int countFinishedProposals(
 template <bool supportScalarVotes, bool proposalByComputorsOnly>
 void testProposalVotingV1()
 {
+    ContractExecInitDeinitGuard initDeinitGuard;
+
     system.tick = 123456789;
     system.epoch = 12345;
     initComputors(0);
