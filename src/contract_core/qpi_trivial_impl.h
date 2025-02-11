@@ -23,14 +23,14 @@ namespace QPI
 
 	// Check if array is sorted in given range (duplicates allowed). Returns false if range is invalid.
 	template <typename T, uint64 L>
-	bool isArraySorted(const array<T, L>& array, uint64 beginIdx, uint64 endIdx)
+	bool isArraySorted(const Array<T, L>& Array, uint64 beginIdx, uint64 endIdx)
 	{
 		if (endIdx > L || beginIdx > endIdx)
 			return false;
 
 		for (uint64 i = beginIdx + 1; i < endIdx; ++i)
 		{
-			if (array.get(i - 1) > array.get(i))
+			if (Array.get(i - 1) > Array.get(i))
 				return false;
 		}
 
@@ -39,14 +39,14 @@ namespace QPI
 
 	// Check if array is sorted without duplicates in given range. Returns false if range is invalid.
 	template <typename T, uint64 L>
-	bool isArraySortedWithoutDuplicates(const array<T, L>& array, uint64 beginIdx, uint64 endIdx)
+	bool isArraySortedWithoutDuplicates(const Array<T, L>& Array, uint64 beginIdx, uint64 endIdx)
 	{
 		if (endIdx > L || beginIdx > endIdx)
 			return false;
 
 		for (uint64 i = beginIdx + 1; i < endIdx; ++i)
 		{
-			if (array.get(i - 1) >= array.get(i))
+			if (Array.get(i - 1) >= Array.get(i))
 				return false;
 		}
 

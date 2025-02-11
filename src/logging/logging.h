@@ -3,7 +3,7 @@
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/time.h"
-#include "platform/memory.h"
+#include "platform/memory_util.h"
 #include "platform/debugging.h"
 
 #include "network_messages/header.h"
@@ -15,7 +15,7 @@
 
 struct Peer;
 
-#define LOG_UNIVERSE (LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES)
+#define LOG_UNIVERSE (LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES | LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES)
 #define LOG_SPECTRUM (LOG_QU_TRANSFERS | LOG_BURNINGS | LOG_DUST_BURNINGS | LOG_SPECTRUM_STATS)
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
@@ -116,6 +116,8 @@ struct ResponseAllLogIdRangesFromTick
 #define BURNING 8
 #define DUST_BURNING 9
 #define SPECTRUM_STATS 10
+#define ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE 11
+#define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CUSTOM_MESSAGE 255
 
 /*
@@ -162,6 +164,31 @@ struct AssetPossessionChange
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+struct AssetOwnershipManagingContractChange
+{
+    m256i ownershipPublicKey;
+    m256i issuerPublicKey;
+    unsigned int sourceContractIndex;
+    unsigned int destinationContractIndex;
+    long long numberOfShares;
+    char assetName[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+struct AssetPossessionManagingContractChange
+{
+    m256i possessionPublicKey;
+    m256i ownershipPublicKey;
+    m256i issuerPublicKey;
+    unsigned int sourceContractIndex;
+    unsigned int destinationContractIndex;
+    long long numberOfShares;
+    char assetName[7];
 
     char _terminator; // Only data before "_terminator" are logged
 };
@@ -277,7 +304,9 @@ public:
     inline static BlobInfo* mapLogIdToBufferIndex = NULL;
     inline static unsigned long long logBufferTail;
     inline static unsigned long long logId;
-    inline static unsigned int tickBegin;
+    inline static unsigned int tickBegin; // initial tick of the epoch
+    inline static unsigned int tickLoadedFrom; // tick that this node load from (save/load state feature)
+    inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
     inline static BlobInfo currentTxInfo;
@@ -444,34 +473,28 @@ public:
 #if ENABLED_LOGGING
         if (logBuffer == NULL)
         {
-            if (!allocatePool(LOG_BUFFER_SIZE, (void**)&logBuffer))
+            if (!allocPoolWithErrorLog(L"logBuffer", LOG_BUFFER_SIZE, (void**)&logBuffer, __LINE__))
             {
-                logToConsole(L"Failed to allocate logging buffer!");
-
                 return false;
             }
         }
 
         if (mapTxToLogId == NULL)
         {
-            if (!allocatePool(LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId))
+            if (!allocPoolWithErrorLog(L"mapTxToLogId", LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId, __LINE__))
             {
-                logToConsole(L"Failed to allocate logging buffer!");
-
                 return false;
             }
         }
 
         if (mapLogIdToBufferIndex == NULL)
         {
-            if (!allocatePool(LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex))
+            if (!allocPoolWithErrorLog(L"mapLogIdToBufferIndex", LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex, __LINE__))
             {
-                logToConsole(L"Failed to allocate logging buffer!");
-
                 return false;
             }
         }
-        reset(0);
+        reset(0, 0);
 #endif
         return true;
     }
@@ -497,15 +520,22 @@ public:
 #endif
     }
 
-    static void reset(unsigned int _tickBegin)
+    static void reset(unsigned int _tickBegin, unsigned int _tickLoadedFrom)
     {
 #if ENABLED_LOGGING
         logBuf.init();
         tx.init();
         logBufferTail = 0;
         logId = 0;
-        tickBegin = _tickBegin;
+        lastUpdatedTick = 0;
+        tickBegin = _tickBegin;        
+        tickLoadedFrom = _tickLoadedFrom;
 #endif
+    }
+
+    static void updateTick(unsigned int _tick)
+    {
+        lastUpdatedTick = _tick;
     }
 
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
@@ -558,6 +588,22 @@ public:
     {
 #if LOG_ASSET_POSSESSION_CHANGES
         logMessage(offsetof(T, _terminator), ASSET_POSSESSION_CHANGE, &message);
+#endif
+    }
+
+    template <typename T>
+    void logAssetOwnershipManagingContractChange(const T& message)
+    {
+#if LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES
+        logMessage(offsetof(T, _terminator), ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE, &message);
+#endif
+    }
+
+    template <typename T>
+    void logAssetPossessionManagingContractChange(const T& message)
+    {
+#if LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES
+        logMessage(offsetof(T, _terminator), ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE, &message);
 #endif
     }
 
@@ -663,22 +709,26 @@ public:
     static void processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header);
 };
 
-static qLogger logger;
+GLOBAL_VAR_DECL qLogger logger;
 
 // For smartcontract logging
-template <typename T> void __logContractDebugMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractDebugMessage(unsigned int size, T& msg)
 {
     logger.__logContractDebugMessage(size, msg);
 }
-template <typename T> void __logContractErrorMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractErrorMessage(unsigned int size, T& msg)
 {
     logger.__logContractErrorMessage(size, msg);
 }
-template <typename T> void __logContractInfoMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractInfoMessage(unsigned int size, T& msg)
 {
     logger.__logContractInfoMessage(size, msg);
 }
-template <typename T> void __logContractWarningMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractWarningMessage(unsigned int size, T& msg)
 {
     logger.__logContractWarningMessage(size, msg);
 }

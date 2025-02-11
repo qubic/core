@@ -161,6 +161,7 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE QVAULT2
 #include "contracts/QVAULT.h"
 
+// new contracts should be added above this line
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -170,6 +171,25 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE_TYPE QSWAP
 #define CONTRACT_STATE2_TYPE QSWAP2
 #include "contracts/Qswap.h"
+
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+constexpr unsigned short TESTEXA_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+#define CONTRACT_INDEX TESTEXA_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE TESTEXA
+#define CONTRACT_STATE2_TYPE TESTEXA2
+#include "contracts/TestExampleA.h"
+constexpr unsigned short TESTEXB_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+#define CONTRACT_INDEX TESTEXB_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE TESTEXB
+#define CONTRACT_STATE2_TYPE TESTEXB2
+#include "contracts/TestExampleB.h"
+#endif
 
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
 
@@ -224,7 +244,12 @@ constexpr struct ContractDescription
     {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
     {"QEARN", 137, 10000, sizeof(QEARN)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
     {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
+    // new contracts should be added above this line
     {"QSWAP", 139, 10000, sizeof(QSWAP)},
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    {"TESTEXA", 138, 10000, sizeof(IPO)},
+    {"TESTEXB", 138, 10000, sizeof(IPO)},
+#endif
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -311,5 +336,10 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(CCF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QEARN);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QVAULT);
+    // new contracts should be added above this line
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
+#endif
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSWAP);
 }

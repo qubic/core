@@ -27,13 +27,13 @@ struct CCF : public ContractBase
 	struct LatestTransfersEntry
 	{
 		id destination;
-		array<uint8, 256> url;
+		Array<uint8, 256> url;
 		sint64 amount;
 		uint32 tick;
 		bool success;
 	};
 
-	typedef array<LatestTransfersEntry, 128> LatestTransfersT;
+	typedef Array<LatestTransfersEntry, 128> LatestTransfersT;
 
 private:
 	//----------------------------------------------------------------------------
@@ -102,7 +102,7 @@ public:
 	struct GetProposalIndices_output
 	{
 		uint16 numOfIndices;		// Number of valid entries in indices. Call again if it is 64.
-		array<uint16, 64> indices;	// Requested proposal indices. Valid entries are in range 0 ... (numOfIndices - 1).
+		Array<uint16, 64> indices;	// Requested proposal indices. Valid entries are in range 0 ... (numOfIndices - 1).
 	};
 
 	PUBLIC_FUNCTION(GetProposalIndices)

@@ -6,6 +6,7 @@
 #include "platform/uefi.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
+#include "platform/memory_util.h"
 
 #include "network_messages/assets.h"
 
@@ -28,7 +29,7 @@
 
 // TODO: move this into AssetStorage class
 GLOBAL_VAR_DECL volatile char universeLock GLOBAL_VAR_INIT(0);
-GLOBAL_VAR_DECL Asset* assets GLOBAL_VAR_INIT(nullptr);
+GLOBAL_VAR_DECL AssetRecord* assets GLOBAL_VAR_INIT(nullptr);
 GLOBAL_VAR_DECL m256i* assetDigests GLOBAL_VAR_INIT(nullptr);
 static constexpr unsigned long long assetDigestsSizeInBytes = (ASSETS_CAPACITY * 2 - 1) * 32ULL;
 GLOBAL_VAR_DECL unsigned long long* assetChangeFlags GLOBAL_VAR_INIT(nullptr);
@@ -57,7 +58,7 @@ public: // TODO: make protected
     struct IndexLists
     {
         unsigned int issuancesFirstIdx;
-        unsigned int ownnershipsPossessionsFirstIdx[ASSETS_CAPACITY];
+        unsigned int ownershipsPossessionsFirstIdx[ASSETS_CAPACITY];
 
         unsigned int nextIdx[ASSETS_CAPACITY];
 
@@ -78,9 +79,9 @@ public: // TODO: make protected
             ASSERT(newOwnershipIdx < ASSETS_CAPACITY);
             ASSERT(assets[issuanceIdx].varStruct.issuance.type == ISSUANCE);
             ASSERT(assets[newOwnershipIdx].varStruct.ownership.type == OWNERSHIP);
-            ASSERT(ownnershipsPossessionsFirstIdx[issuanceIdx] == NO_ASSET_INDEX || assets[ownnershipsPossessionsFirstIdx[issuanceIdx]].varStruct.issuance.type == OWNERSHIP);
-            nextIdx[newOwnershipIdx] = ownnershipsPossessionsFirstIdx[issuanceIdx];
-            ownnershipsPossessionsFirstIdx[issuanceIdx] = newOwnershipIdx;
+            ASSERT(ownershipsPossessionsFirstIdx[issuanceIdx] == NO_ASSET_INDEX || assets[ownershipsPossessionsFirstIdx[issuanceIdx]].varStruct.issuance.type == OWNERSHIP);
+            nextIdx[newOwnershipIdx] = ownershipsPossessionsFirstIdx[issuanceIdx];
+            ownershipsPossessionsFirstIdx[issuanceIdx] = newOwnershipIdx;
         }
 
         // Add newPossessionIdx as first element in linked list of all possessions of ownershipIdx
@@ -90,9 +91,9 @@ public: // TODO: make protected
             ASSERT(newPossessionIdx < ASSETS_CAPACITY);
             ASSERT(assets[ownershipIdx].varStruct.ownership.type == OWNERSHIP);
             ASSERT(assets[newPossessionIdx].varStruct.possession.type == POSSESSION);
-            ASSERT(ownnershipsPossessionsFirstIdx[ownershipIdx] == NO_ASSET_INDEX || assets[ownnershipsPossessionsFirstIdx[ownershipIdx]].varStruct.possession.type == POSSESSION);
-            nextIdx[newPossessionIdx] = ownnershipsPossessionsFirstIdx[ownershipIdx];
-            ownnershipsPossessionsFirstIdx[ownershipIdx] = newPossessionIdx;
+            ASSERT(ownershipsPossessionsFirstIdx[ownershipIdx] == NO_ASSET_INDEX || assets[ownershipsPossessionsFirstIdx[ownershipIdx]].varStruct.possession.type == POSSESSION);
+            nextIdx[newPossessionIdx] = ownershipsPossessionsFirstIdx[ownershipIdx];
+            ownershipsPossessionsFirstIdx[ownershipIdx] = newPossessionIdx;
         }
 
         // Reset lists to empty
@@ -100,7 +101,7 @@ public: // TODO: make protected
         {
             issuancesFirstIdx = NO_ASSET_INDEX;
             static_assert(NO_ASSET_INDEX == 0xffffffff, "Following setMem() expects NO_ASSET_INDEX == 0xffffffff");
-            setMem(ownnershipsPossessionsFirstIdx, sizeof(ownnershipsPossessionsFirstIdx), 0xff);
+            setMem(ownershipsPossessionsFirstIdx, sizeof(ownershipsPossessionsFirstIdx), 0xff);
             setMem(nextIdx, sizeof(nextIdx), 0xff);
         }
 
@@ -159,11 +160,10 @@ static unsigned int issuanceIndex(const m256i& issuer, unsigned long long assetN
 
 static bool initAssets()
 {
-    if (!allocatePool(ASSETS_CAPACITY * sizeof(Asset), (void**)&assets)
-        || !allocatePool(assetDigestsSizeInBytes, (void**)&assetDigests)
-        || !allocatePool(ASSETS_CAPACITY / 8, (void**)&assetChangeFlags))
+    if (!allocPoolWithErrorLog(L"assets", ASSETS_CAPACITY * sizeof(AssetRecord), (void**)&assets, __LINE__)
+        || !allocPoolWithErrorLog(L"assetDigets", assetDigestsSizeInBytes, (void**)&assetDigests, __LINE__)
+        || !allocPoolWithErrorLog(L"assetChangeFlags", ASSETS_CAPACITY / 8, (void**)&assetChangeFlags, __LINE__))
     {
-        logToConsole(L"Failed to allocate asset buffers!");
         return false;
     }
     setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
@@ -276,7 +276,7 @@ iteration:
 }
 
 static sint64 numberOfShares(
-    const AssetIssuanceId& issuanceId,
+    const Asset& asset,
     const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
     const AssetPossessionSelect& possession = AssetPossessionSelect::any())
 {
@@ -285,14 +285,14 @@ static sint64 numberOfShares(
     sint64 numOfShares = 0;
     if (possession.anyPossessor && possession.anyManagingContract)
     {
-        for (AssetOwnershipIterator iter(issuanceId, ownership); !iter.reachedEnd(); iter.next())
+        for (AssetOwnershipIterator iter(asset, ownership); !iter.reachedEnd(); iter.next())
         {
             numOfShares += iter.numberOfOwnedShares();
         }
     }
     else
     {
-        for (AssetPossessionIterator iter(issuanceId, ownership, possession); !iter.reachedEnd(); iter.next())
+        for (AssetPossessionIterator iter(asset, ownership, possession); !iter.reachedEnd(); iter.next())
         {
             numOfShares += iter.numberOfPossessedShares();
         }
@@ -301,6 +301,143 @@ static sint64 numberOfShares(
     RELEASE(universeLock);
 
     return numOfShares;
+}
+
+// Transfer asset management rights, creating new ownership and possession records in the universe.
+// A nullptr may be passed as destinationOwnershipIndexPtr and destinationPossessionIndexPtr if this
+// info is not needed by the calling function.
+static bool transferShareManagementRights(int sourceOwnershipIndex, int sourcePossessionIndex,
+    unsigned short destinationOwnershipManagingContractIndex,
+    unsigned short destinationPossessionManagingContractIndex,
+    long long numberOfShares,
+    int* destinationOwnershipIndexPtr, int* destinationPossessionIndexPtr,
+    bool lock)
+{
+    if (numberOfShares <= 0)
+    {
+        return false;
+    }
+
+    if (lock)
+    {
+        ACQUIRE(universeLock);
+    }
+
+    if (assets[sourceOwnershipIndex].varStruct.ownership.type != OWNERSHIP || assets[sourceOwnershipIndex].varStruct.ownership.numberOfShares < numberOfShares
+        || assets[sourcePossessionIndex].varStruct.possession.type != POSSESSION || assets[sourcePossessionIndex].varStruct.possession.numberOfShares < numberOfShares
+        || assets[sourcePossessionIndex].varStruct.possession.ownershipIndex != sourceOwnershipIndex)
+    {
+        if (lock)
+        {
+            RELEASE(universeLock);
+        }
+
+        return false;
+    }
+
+    const m256i& ownershipPublicKey = assets[sourceOwnershipIndex].varStruct.ownership.publicKey;
+    const m256i& possessionPublicKey = assets[sourcePossessionIndex].varStruct.possession.publicKey;
+    const int issuanceIndex = assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex;
+
+    int destinationOwnershipIndex = ownershipPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+iteration:
+    if (assets[destinationOwnershipIndex].varStruct.ownership.type == EMPTY
+        || (assets[destinationOwnershipIndex].varStruct.ownership.type == OWNERSHIP
+            && assets[destinationOwnershipIndex].varStruct.ownership.managingContractIndex == destinationOwnershipManagingContractIndex
+            && assets[destinationOwnershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
+            && assets[destinationOwnershipIndex].varStruct.ownership.publicKey == ownershipPublicKey))
+    {
+        // found empty slot for ownership record or existing record to update
+        assets[sourceOwnershipIndex].varStruct.ownership.numberOfShares -= numberOfShares;
+
+        if (assets[destinationOwnershipIndex].varStruct.ownership.type == EMPTY)
+        {
+            assets[destinationOwnershipIndex].varStruct.ownership.publicKey = ownershipPublicKey;
+            assets[destinationOwnershipIndex].varStruct.ownership.type = OWNERSHIP;
+            assets[destinationOwnershipIndex].varStruct.ownership.managingContractIndex = destinationOwnershipManagingContractIndex;
+            assets[destinationOwnershipIndex].varStruct.ownership.issuanceIndex = issuanceIndex;
+
+            as.indexLists.addOwnership(issuanceIndex, destinationOwnershipIndex);
+        }
+        assets[destinationOwnershipIndex].varStruct.ownership.numberOfShares += numberOfShares;
+
+        int destinationPossessionIndex = possessionPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+    iteration2:
+        if (assets[destinationPossessionIndex].varStruct.possession.type == EMPTY
+            || (assets[destinationPossessionIndex].varStruct.possession.type == POSSESSION
+                && assets[destinationPossessionIndex].varStruct.possession.managingContractIndex == destinationPossessionManagingContractIndex
+                && assets[destinationPossessionIndex].varStruct.possession.ownershipIndex == destinationOwnershipIndex
+                && assets[destinationPossessionIndex].varStruct.possession.publicKey == possessionPublicKey))
+        {
+            // found empty slot for poss possession or existing record to update
+            assets[sourcePossessionIndex].varStruct.possession.numberOfShares -= numberOfShares;
+
+            if (assets[destinationPossessionIndex].varStruct.possession.type == EMPTY)
+            {
+                assets[destinationPossessionIndex].varStruct.possession.publicKey = possessionPublicKey;
+                assets[destinationPossessionIndex].varStruct.possession.type = POSSESSION;
+                assets[destinationPossessionIndex].varStruct.possession.managingContractIndex = destinationPossessionManagingContractIndex;
+                assets[destinationPossessionIndex].varStruct.possession.ownershipIndex = destinationOwnershipIndex;
+
+                as.indexLists.addPossession(destinationOwnershipIndex, destinationPossessionIndex);
+            }
+            assets[destinationPossessionIndex].varStruct.possession.numberOfShares += numberOfShares;
+
+            assetChangeFlags[sourceOwnershipIndex >> 6] |= (1ULL << (sourceOwnershipIndex & 63));
+            assetChangeFlags[sourcePossessionIndex >> 6] |= (1ULL << (sourcePossessionIndex & 63));
+            assetChangeFlags[destinationOwnershipIndex >> 6] |= (1ULL << (destinationOwnershipIndex & 63));
+            assetChangeFlags[destinationPossessionIndex >> 6] |= (1ULL << (destinationPossessionIndex & 63));
+
+            if (lock)
+            {
+                RELEASE(universeLock);
+            }
+
+            AssetOwnershipManagingContractChange logOM;
+            logOM.ownershipPublicKey = ownershipPublicKey;
+            logOM.issuerPublicKey = assets[issuanceIndex].varStruct.issuance.publicKey;
+            logOM.sourceContractIndex = assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex;
+            logOM.destinationContractIndex = destinationOwnershipManagingContractIndex;
+            logOM.numberOfShares = numberOfShares;
+            *((unsigned long long*) & logOM.assetName) = *((unsigned long long*) & assets[issuanceIndex].varStruct.issuance.name); // possible with 7 byte array, because it is followed by memory reserved for terminator byte
+            logger.logAssetOwnershipManagingContractChange(logOM);
+
+            AssetPossessionManagingContractChange logPM;
+            logPM.possessionPublicKey = possessionPublicKey;
+            logPM.ownershipPublicKey = ownershipPublicKey;
+            logPM.issuerPublicKey = assets[issuanceIndex].varStruct.issuance.publicKey;
+            logOM.sourceContractIndex = assets[sourcePossessionIndex].varStruct.ownership.managingContractIndex;
+            logOM.destinationContractIndex = destinationPossessionManagingContractIndex;
+            logPM.numberOfShares = numberOfShares;
+            *((unsigned long long*) & logPM.assetName) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name);  // possible with 7 byte array, because it is followed by memory reserved for terminator byte
+            logger.logAssetPossessionManagingContractChange(logPM);
+
+            if (destinationOwnershipIndexPtr)
+            {
+                *destinationOwnershipIndexPtr = destinationOwnershipIndex;
+            }
+            if (destinationPossessionIndexPtr)
+            {
+                *destinationPossessionIndexPtr = destinationPossessionIndex;
+            }
+
+            return true;
+        }
+        else
+        {
+            // try next slot for finding new possession record
+            destinationPossessionIndex = (destinationPossessionIndex + 1) & (ASSETS_CAPACITY - 1);
+
+            goto iteration2;
+        }
+    }
+    else
+    {
+        // try next slot for finding new ownership record
+        destinationOwnershipIndex = (destinationOwnershipIndex + 1) & (ASSETS_CAPACITY - 1);
+
+        goto iteration;
+    }
 }
 
 static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int sourcePossessionIndex, const m256i& destinationPublicKey, long long numberOfShares,
@@ -505,7 +642,7 @@ static void getUniverseDigest(m256i& digest)
     {
         if (assetChangeFlags[digestIndex >> 6] & (1ULL << (digestIndex & 63)))
         {
-            KangarooTwelve(&assets[digestIndex], sizeof(Asset), &assetDigests[digestIndex], 32);
+            KangarooTwelve(&assets[digestIndex], sizeof(AssetRecord), &assetDigests[digestIndex], 32);
         }
     }
     unsigned int previousLevelBeginning = 0;
@@ -538,10 +675,10 @@ static bool saveUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, const CHAR
     const unsigned long long beginningTick = __rdtsc();
 
     ACQUIRE(universeLock);
-    long long savedSize = save(fileName, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets, directory);
+    long long savedSize = save(fileName, ASSETS_CAPACITY * sizeof(AssetRecord), (unsigned char*)assets, directory);
     RELEASE(universeLock);
 
-    if (savedSize == ASSETS_CAPACITY * sizeof(Asset))
+    if (savedSize == ASSETS_CAPACITY * sizeof(AssetRecord))
     {
         setNumber(message, savedSize, TRUE);
         appendText(message, L" bytes of the universe data are saved (");
@@ -555,8 +692,8 @@ static bool saveUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, const CHAR
 
 static bool loadUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, CHAR16* directory = NULL)
 {
-    long long loadedSize = load(fileName, ASSETS_CAPACITY * sizeof(Asset), (unsigned char*)assets, directory);
-    if (loadedSize != ASSETS_CAPACITY * sizeof(Asset))
+    long long loadedSize = load(fileName, ASSETS_CAPACITY * sizeof(AssetRecord), (unsigned char*)assets, directory);
+    if (loadedSize != ASSETS_CAPACITY * sizeof(AssetRecord))
     {
         logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
 
@@ -571,8 +708,8 @@ static void assetsEndEpoch()
     ACQUIRE(universeLock);
 
     // rebuild asset hash map, getting rid of all elements with zero shares
-    Asset* reorgAssets = (Asset*)reorgBuffer;
-    setMem(reorgAssets, ASSETS_CAPACITY * sizeof(Asset), 0);
+    AssetRecord* reorgAssets = (AssetRecord*)reorgBuffer;
+    setMem(reorgAssets, ASSETS_CAPACITY * sizeof(AssetRecord), 0);
     for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
     {
         if (assets[i].varStruct.possession.type == POSSESSION
@@ -591,7 +728,7 @@ static void assetsEndEpoch()
             {
                 if (reorgAssets[issuanceIndex].varStruct.issuance.type == EMPTY)
                 {
-                    copyMem(&reorgAssets[issuanceIndex], &assets[oldIssuanceIndex], sizeof(Asset));
+                    copyMem(&reorgAssets[issuanceIndex], &assets[oldIssuanceIndex], sizeof(AssetRecord));
                 }
 
                 const m256i& ownerPublicKey = assets[oldOwnershipIndex].varStruct.ownership.publicKey;
@@ -651,7 +788,7 @@ static void assetsEndEpoch()
             }
         }
     }
-    copyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(Asset));
+    copyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(AssetRecord));
 
     setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
 

@@ -116,6 +116,44 @@ public:
             EXPECT_EQ(fullyUnlockedUser[idx], FullyUnlockedInfo._unlockedID);
         }
     }
+
+    void checkStatsPerEpoch(getBurnedAndBoostedStatsPerEpoch_output result, uint16 epoch)
+    {
+        EXPECT_EQ(result.boostedAmount, statsInfo.get(epoch).boostedAmount);
+        EXPECT_EQ(result.burnedAmount, statsInfo.get(epoch).burnedAmount);
+        EXPECT_EQ(result.rewardedAmount, statsInfo.get(epoch).rewardedAmount);
+        EXPECT_EQ(result.boostedPercent, div(result.boostedAmount * 10000000, _initialRoundInfo.get(epoch)._epochBonusAmount));
+        EXPECT_EQ(result.burnedPercent, div(result.burnedAmount * 10000000, _initialRoundInfo.get(epoch)._epochBonusAmount));
+        EXPECT_EQ(result.rewardedPercent, div(result.rewardedAmount * 10000000, _initialRoundInfo.get(epoch)._epochBonusAmount));
+    }
+
+    void checkStatsForAll(getBurnedAndBoostedStats_output result)
+    {
+        uint64 totalBurnedAmountInSC = 0;
+        uint64 totalBoostedAmountInSC = 0;
+        uint64 totalRewardedAmountInSC = 0;
+        uint64 sumBurnedPercent = 0;
+        uint64 sumBoostedPercent = 0;
+        uint64 sumRewardedPercent = 0;
+
+        for(uint32 epoch = 138 ; epoch < system.epoch; epoch++)
+        {
+            totalBurnedAmountInSC += statsInfo.get(epoch).burnedAmount;
+            totalBoostedAmountInSC += statsInfo.get(epoch).boostedAmount;
+            totalRewardedAmountInSC += statsInfo.get(epoch).rewardedAmount;
+
+            sumBurnedPercent += div(statsInfo.get(epoch).burnedAmount * 10000000, _initialRoundInfo.get(epoch)._epochBonusAmount);
+            sumBoostedPercent += div(statsInfo.get(epoch).boostedAmount * 10000000, _initialRoundInfo.get(epoch)._epochBonusAmount);
+            sumRewardedPercent += div(statsInfo.get(epoch).rewardedAmount * 10000000, _initialRoundInfo.get(epoch)._epochBonusAmount);
+        }
+
+        EXPECT_EQ(result.boostedAmount, totalBoostedAmountInSC);
+        EXPECT_EQ(result.burnedAmount, totalBurnedAmountInSC);
+        EXPECT_EQ(result.rewardedAmount, totalRewardedAmountInSC);
+        EXPECT_EQ(result.averageBoostedPercent, div(sumBoostedPercent, system.epoch - 138ULL));
+        EXPECT_EQ(result.averageBurnedPercent, div(sumBurnedPercent, system.epoch - 138ULL));
+        EXPECT_EQ(result.averageRewardedPercent, div(sumRewardedPercent, system.epoch - 138ULL));
+    }
 };
 
 class ContractTestingQearn : protected ContractTesting
@@ -132,7 +170,6 @@ public:
     {
         INIT_CONTRACT(QEARN);
         initEmptySpectrum();
-        qLogger::initLogging();
         rand64.seed(42);
 
         for (unsigned int epChanges = 0; epChanges <= 52; ++epChanges)
@@ -164,11 +201,6 @@ public:
             else
                 epochChangesToUnlockParams.push_back(UnlockTableEntry{ 100, 0 });
         }
-    }
-
-    ~ContractTestingQearn()
-    {
-        qLogger::deinitLogging();
     }
 
     QearnChecker* getState()
@@ -236,6 +268,22 @@ public:
         QEARN::getStatsPerEpoch_input input{ epoch };
         QEARN::getStatsPerEpoch_output output;
         callFunction(QEARN_CONTRACT_INDEX, 6, input, output);
+        return output;
+    }
+
+    QEARN::getBurnedAndBoostedStats_output getBurnedAndBoostedStats() const
+    {
+        QEARN::getBurnedAndBoostedStats_input input;
+        QEARN::getBurnedAndBoostedStats_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 7, input, output);
+        return output;
+    }
+
+    QEARN::getBurnedAndBoostedStatsPerEpoch_output getBurnedAndBoostedStatsPerEpoch(uint16 epoch) const
+    {
+        QEARN::getBurnedAndBoostedStatsPerEpoch_input input{ epoch };
+        QEARN::getBurnedAndBoostedStatsPerEpoch_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 8, input, output);
         return output;
     }
 
@@ -361,7 +409,7 @@ public:
         return rewardFactorTenmillionth;
     }
 
-    void checkEpochInfo(uint16 epoch) const
+    void checkEpochInfo(uint16 epoch)
     {
         const auto scEpochInfo = getLockInfoPerEpoch(epoch);
         EXPECT_LE(scEpochInfo.currentBonusAmount, QEARN_MAX_BONUS_AMOUNT);
@@ -375,19 +423,19 @@ public:
         EXPECT_EQ(ed.amountCurrentlyLocked, scEpochInfo.currentLockedAmount);
 
         const auto scStatsInfo = getStatsPerEpoch(epoch);
-        /*
-            we can't test at epoch 138 because the value of state in QEarn SC was assigned by hardcoding.
-            To test the epoch 138, please remove the line 777~780 in QEarn SC.
-        */
-        if(epoch != 138)    
-        {
-            EXPECT_EQ(scStatsInfo.earlyUnlockedAmount, ed.initialTotalLockedAmount - ed.amountCurrentlyLocked);
-            EXPECT_EQ(scStatsInfo.earlyUnlockedPercent, QPI::div((ed.initialTotalLockedAmount - ed.amountCurrentlyLocked) * 10000, ed.initialTotalLockedAmount));
-        }
-        uint64 totalLockedInSC = 0;
+        
+        EXPECT_EQ(scStatsInfo.earlyUnlockedAmount, ed.initialTotalLockedAmount - ed.amountCurrentlyLocked);
+        EXPECT_EQ(scStatsInfo.earlyUnlockedPercent, QPI::div((ed.initialTotalLockedAmount - ed.amountCurrentlyLocked) * 10000, ed.initialTotalLockedAmount));
+
+        const auto scBurnedAndBoostedStatsPerEpoch = getBurnedAndBoostedStatsPerEpoch(epoch);
+        const auto scBurnedAndBoostedStatsForAllEpoch = getBurnedAndBoostedStats();
+
+        getState()->checkStatsPerEpoch(scBurnedAndBoostedStatsPerEpoch, epoch);
+        getState()->checkStatsForAll(scBurnedAndBoostedStatsForAllEpoch);
+
         uint64 averageAPY = 0;
         uint32 cnt = 0;
-        for(uint16 t = system.epoch; t >= system.epoch - 52; t--)
+        for(uint16 t = system.epoch - 1; t >= system.epoch - 52; t--)
         {
             auto preEdIt = allEpochData.find(t);
             const EpochData& preED = preEdIt->second;
@@ -401,11 +449,10 @@ public:
             }
 
             cnt++;
-            totalLockedInSC += preED.amountCurrentlyLocked;
             EXPECT_EQ(getLockInfoPerEpoch(t).currentLockedAmount, preED.amountCurrentlyLocked);
             averageAPY += QPI::div(preED.bonusAmount * 10000000ULL, preED.amountCurrentlyLocked);
         }
-        EXPECT_EQ(scStatsInfo.totalLockedAmount, totalLockedInSC);
+        EXPECT_EQ(scStatsInfo.totalLockedAmount, getBalance(QEARN_CONTRACT_ID));
         EXPECT_EQ(scStatsInfo.averageAPY, QPI::div(averageAPY, cnt * 1ULL));
     }
 

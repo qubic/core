@@ -262,12 +262,6 @@ public:
         callSystemProcedure(QVAULT_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
-        qLogger::initLogging();
-    }
-
-    ~ContractTestingQvault()
-    {
-        qLogger::deinitLogging();
     }
 
     QVAULTChecker* getState()

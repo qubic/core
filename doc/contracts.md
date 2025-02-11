@@ -2,6 +2,16 @@
 
 For a general introduction to Smart Contracts in Qubic, we recommend to read [the Qubic Docs](https://docs.qubic.org/learn/smart-contracts).
 
+This developer documentation is structured as follows:
+
+1.  [Overview](#overview)
+2.  [Development](#development)
+3.  [Review and tests](#review-and-tests)
+4.  [Procedures and Functions](#procedures-and-functions)
+5.  [Assets and shares](#assets-and-shares)
+6.  [Restrictions of C++ Language Features](#restrictions-of-c-language-features)
+7.  [General Change Management](#general-change-management)
+
 ## Overview
 
 In Qubic, smart contracts are implemented in a restricted variant of C++ and compiled into the Qubic Core executable.
@@ -20,11 +30,13 @@ The state struct also includes the procedures and functions of the contract, whi
 Functions cannot modify the state, but they are useful to query information with the network message `RequestContractFunction`.
 Procedures can modify the state and are either invoked by special transactions (user procedures) or internal core events (system procedures).
 
-Contract developers should be aware of the following part of the Qubic protocol that is not implemented yet in the core:
-Execution of contract procedures will cost fees that will be paid from its contract fee reserve.
-This reserve is initially filled with the QUs burned during the IPO of the contract and refilled by additional burning of QUs happening in the contract.
-In the long run, each contract needs to burn QUs to stay alive.
-If a contract's execution fee reserve runs empty, the contract will not be executed anymore.
+Contract developers should be aware of the following parts of the Qubic protocol that are not implemented yet in the core:
+- Execution of contract procedures will cost fees that will be paid from its contract fee reserve.
+  This reserve is initially filled with the QUs burned during the IPO of the contract and refilled by additional burning of QUs happening in the contract.
+  In the long run, each contract needs to burn QUs to stay alive.
+  If a contract's execution fee reserve runs empty, the contract will not be executed anymore.
+- In the future, the issuer of an asset, more specifically the managing contract, will have to pay for entries in the ledger.
+  This is why it is a good idea to collect fees when issuing an asset.
 
 
 ## Development
@@ -34,7 +46,9 @@ In order to develop a contract, follow these steps:
 1. Write a description of your contract, about what it is supposed to do.
    We recommend to discuss it with others, for example the Qubic community on Discord.
 2. Think about a name of your contract and check that it is not used yet.
-   You will need a long version such as `YourContractName` for naming the file, a short version of at most 7 capital letters such as `YCN` (asset name of the contract shares), and optionally a longer capital-letter name for the state struct and as a prefix for global constants of the contract, such as `YOURCONTRACTNAME`.
+   You will need a long version such as `YourContractName` for naming the file,
+   a short version of at most 7 capital letters (or digits after the first letter) such as `YCN` ([asset name](#assets-and-shares) of the contract shares),
+   and optionally a longer capital-letter name for the state struct and as a prefix for global constants of the contract, such as `YOURCONTRACTNAME`.
    An example: The file is called `Quottery.h`, the asset name of the contract shares is `QTRY`, and the name of the state struct is `QUOTTERY`.
    Another example: Filename `Qx.h`, asset name `QX`, state struct name `QX`.
 3. Fork the main repository and create your own branch based on the current `develop` branch.
@@ -65,6 +79,7 @@ In order to develop a contract, follow these steps:
     - Create a file for your tests in the directory `test`.
       To get started, you may copy an existing contract test file, such as `test/contract_qearn.cpp`.
       The name of your new file should follow the pattern `contract_[YourContractName].cpp`.
+    - Add the file to the MS Visual C++ project "test".
     - Implement tests covering all your procedures and functions, making sure they work as intended and as written down in your contract description.
 6. Make sure that there are no compiler errors, no compiler warnings, all your tests pass without errors.
 7. Double check that the implementation of your contract does what it is supposed to do.
@@ -90,7 +105,7 @@ Steps for deploying a contract:
 1. Finish development, review, and tests as written above.
 2. A proposal for including your contract into the Qubic Core needs to be prepared.
    We recommend to add your proposal description to https://github.com/qubic/proposal/tree/main/SmartContracts via a pull request (this directory also contains files from other contracts added before, which can be used as a template).
-   The proposal description should include a detailed description of your contract (see point 1 of the Development section) and the final source code of the contract.
+   The proposal description should include a detailed description of your contract (see point 1 of the [Development section](#development)) and the final source code of the contract.
 3. A computor operator needs to propose to include your contract into the Qubic Core, see https://github.com/qubic/proposal/blob/main/general-computor-proposal-how-to.md.
    The proposal needs to be made with the GQMPROP smart contract ("GeneralQuorumProposal") and include a permanent link to your proposal description.
    Your proposal will be open for voting by computors until the end of the running epoch (the end is next Wednesday 12:00 UTC).
@@ -169,7 +184,7 @@ A reference to an instance of `[NAME]_locals` named `locals` is passed to the pr
 
 ### System procedures
 
-System procedures can modify the state and are invoked by the Qubic Core as event callbacks.
+System procedures can modify the state and are invoked by the Qubic Core (the system) as event callbacks.
 
 They are defined with the following macros:
 
@@ -178,12 +193,13 @@ They are defined with the following macros:
 3. `END_EPOCH`: Called after each epoch, after the last `END_TICK` but before (1) contract shares are generated in case of IPO, (2) revenue and revenue donations are distributed, and (3) the epoch counter is incremented and the next epoch's initial tick is set.
 4. `BEGIN_TICK`: Called before a tick is processed, that is before the transactions of the tick are executed.
 5. `END_TICK`: Called after finishing to execute all transactions of a tick.
-6. `PRE_RELEASE_SHARES`: Called before asset management rights transfer by `qpi.releaseShare()`. Not fully implemented yet.
-7. `PRE_ACQUIRE_SHARES`: Called before asset management rights transfer by `qpi.acquireShare()`. Not fully implemented yet.
-8. `POST_RELEASE_SHARES`: Called after asset management rights transfer by `qpi.releaseShare()`. Not fully implemented yet.
-9. `POST_ACQUIRE_SHARES`: Called after asset management rights transfer by `qpi.acquireShare()`. Not fully implemented yet.
+6. `PRE_RELEASE_SHARES`: Called before asset management rights are transferred from this contract to another contract that called `qpi.acquireShare()`.
+7. `PRE_ACQUIRE_SHARES`: Called before asset management rights are transferred to this contract from another contract that called `qpi.releaseShare()`.
+8. `POST_RELEASE_SHARES`: Called after asset management rights were transferred from this contract to another contract that called `qpi.acquireShare()`
+9. `POST_ACQUIRE_SHARES`: Called after asset management rights were transferred to this contract from another contract that called `qpi.releaseShare()`.
 
 System procedures 1 to 5 have no input and output.
+The input and output of system procedures 6 to 9 are discussed in the section about [management rights transfer](#management-rights-transfer).
 
 The contract state is passed to each of the procedures as a reference named `state`.
 And it can be modified (in contrast to contract functions).
@@ -193,11 +209,216 @@ These can be used, if the procedure needs local variables, because creating loca
 With these, you have to define the struct `[NAME]_locals`.
 A reference to an instance of `[NAME]_locals` named `locals` is passed to the procedure (initialized with zeros).
 
-The QPI function `qpi.invocator()` returns `NULL_ID` / `id::zero()` for system procedures.
+The QPI function `qpi.invocator()` returns `NULL_ID` / `id::zero()` for system procedures 1 to 5.
+For system procedures 6 to 9, it returns the contract ID of the contract calling `qpi.releaseShares()` or `qpi.acquireShares()`.
 
 Each of `INITIALIZE`, `BEGIN_EPOCH`, and `BEGIN_TICK` is executed for all contracts in ascending order, that is, it is executed for the contract with contract index 1 before that with index 2, followed by contract 3 etc.
 
 Each of  `END_TICK` and `END_EPOCH` is executed for all contracts in descending order, that is, it is executed for the contract with the highest contract index first; the contract with index 1 is executed last.
+
+
+## Assets and shares
+
+Next to the 676 contract shares that are created after the IPO of a new contract, a contract can also create a new asset with a fixed number of shares with `qpi.issueAsset()`.
+
+An asset is identified by the pair of issuer and asset name.
+Thus, an asset name may not be unique and always needs to be given together with the issuer to uniquely identify an asset.
+The issuer is the public key / ID (of user or contract) passed to `qpi.issueAsset()`.
+The asset name consists of up to 7 characters.
+The first must be an upper-case letter in range A to Z.
+The following may be either upper-case letters (A to Z) or digits (0-9).
+
+The fixed number of asset shares created by `qpi.issueAsset()` first are owned and possessed by the issuer entity.
+The contract that issued an asset via `qpi.issueAsset()` gets the asset management rights, that is,
+it can transfer ownership and possession of shares to other entities through `qpi.transferShareOwnershipAndPossession()`.
+
+A common way of creating assets is by invoking the QX user procedure `IssueAsset`.
+The managing contract of all asset shares issued this way is QX.
+Thus, only QX can successfully transfer ownership and possession of these shares to other entities, either with the user procedure `TransferShareOwnershipAndPossession` or via selling / buying with ask / bid orders in the QX exchange.
+
+Asset management rights can be transferred to other contracts through `qpi.releaseShares()` or `qpi.acquireShares()`,
+for example, if an asset has been issued using QX but an owner of some if its shares wants to trade them using a different exchange (not QX), the management rights of these shares need to be transferred to the other contract first.
+Shares that are managed by QX can be released to another contract (transferring rights to manage ownership and possession) by invoking the QX user procedure `TransferShareManagementRights` (with owner/possessor as invocator).
+QX rejects all attempts (`qpi.acquireShares()`) of other contracts to acquire rights from QX.
+
+
+### Referencing of asset shares
+
+TODO
+
+### Management rights transfer
+
+There are two ways of transferring asset management rights:
+
+1. The contract already having management rights releases them to another contract by calling `qpi.releaseShares()`.
+2. The contract needing management rights acquires them from the contract having the rights by calling `qpi.acquireShares()`.
+
+#### Transferring rights with `qpi.releaseShares()`
+
+Let's assume contract A has management rights of shares and wants to transfer them to contract B.
+Contract A can try to do this by calling `qpi.releaseShares()`.
+In this call, the following happens:
+
+![qpi.releaseShares()](releaseShares.png "qpi.releaseShares()")
+
+After checking the inputs passed to `qpi.releaseShares()` by contract A, the system calls `PRE_ACQUIRE_SHARES` of contract B to (1) query if it is willing to acquire the management rights and (2) query the fee that A needs to pay to B for the rights transfer.
+
+An instance of the following struct is passed to the system procedure `PRE_ACQUIRE_SHARES` of contract B as `input`:
+
+```
+struct PreManagementRightsTransfer_input
+{
+    Asset asset;
+    id owner;
+    id possessor;
+    sint64 numberOfShares;
+    sint64 offeredFee;
+    uint16 otherContractIndex;
+};
+```
+
+An instance of the following struct is passed to the system procedure `PRE_ACQUIRE_SHARES` of contract B as `output`:
+
+```
+struct PreManagementRightsTransfer_output
+{
+    bool allowTransfer;
+    sint64 requestedFee;
+};
+```
+
+By default, all of `output` is set to zero, that is, `allowTransfer = false`.
+Thus, if `PRE_ACQUIRE_SHARES` is not defined or empty, all transfers are rejected.
+Set `output.allowTransfer = true` in order to accept the rights transfer.
+
+If `allowTransfer` is `false` or `requestedFee > offeredFee`, the transfer is canceled.
+Otherwise, the `requestedFee` is transferred from contract A to B, followed by the transfer of the management rights from contract A to B.
+
+Finally, the system procedure `POST_ACQUIRE_SHARES` is called in contract B, passing an instance of the following struct as `input`:
+
+```
+struct PostManagementRightsTransfer_input
+{
+    Asset asset;
+    id owner;
+    id possessor;
+    sint64 numberOfShares;
+    sint64 receivedFee;
+    uint16 otherContractIndex;
+};
+```
+
+The output of `POST_ACQUIRE_SHARES` is empty (`NoData`).
+
+Calling `qpi.releaseShares()` and `qpi.acquireShares()` is not permitted in the system procedures `PRE_ACQUIRE_SHARES` and `POST_ACQUIRE_SHARES`, that is, they will return with an error in such a context.
+
+The function `qpi.releaseShares()` has the following parameters and return value:
+
+```
+sint64 releaseShares(
+    const Asset& asset,
+    const id& owner,
+    const id& possessor,
+    sint64 numberOfShares,
+    uint16 destinationOwnershipManagingContractIndex,
+    uint16 destinationPossessionManagingContractIndex,
+    sint64 offeredTransferFee
+);
+```
+
+On success, it returns the payed fee, which is >= 0.
+If `offeredTransferFee` or the contract balance is not sufficient, it returns `-requestedFee`.
+In case of another error, it returns `INVALID_AMOUNT` (which is a negative number of large amount).
+
+For more details, refer to the code of `qpi.releaseShares()` in `src/contract_core/qpi_asset_impl.h`.
+
+
+#### Transferring rights with `qpi.acquireShares()`
+
+Let's assume contract A has management rights of shares and contract B wants to get them.
+Contract B can try to do this by calling `qpi.acquireShares()`.
+In this call, the following happens:
+
+![qpi.acquireShares()](acquireShares.png "qpi.acquireShares()")
+
+After checking the inputs passed to `qpi.acquireShares()` by contract B, the system calls `PRE_RELEASE_SHARES` of contract A to (1) query if it is willing to release the management rights and (2) query the fee that B needs to pay to A for the rights transfer.
+
+An instance of the following struct is passed to the system procedure `PRE_RELEASE_SHARES` of contract A as `input`:
+
+```
+struct PreManagementRightsTransfer_input
+{
+    Asset asset;
+    id owner;
+    id possessor;
+    sint64 numberOfShares;
+    sint64 offeredFee;
+    uint16 otherContractIndex;
+};
+```
+
+An instance of the following struct is passed to the system procedure `PRE_RELEASE_SHARES` of contract A as `output`:
+
+```
+struct PreManagementRightsTransfer_output
+{
+    bool allowTransfer;
+    sint64 requestedFee;
+};
+```
+
+By default, all of `output` is set to zero, that is, `allowTransfer = false`.
+Thus, if `PRE_RELEASE_SHARES` is not defined or empty, all transfers are rejected.
+Set `output.allowTransfer = true` in order to accept the rights transfer.
+
+If `allowTransfer` is `false` or `requestedFee > offeredFee`, the transfer is canceled.
+Otherwise, the `requestedFee` is transferred from contract B to A, followed by the transfer of the management rights from contract A to B.
+
+Finally, the system procedure `POST_RELEASE_SHARES` is called in contract A, passing an instance of the following struct as `input`:
+
+```
+struct PostManagementRightsTransfer_input
+{
+    Asset asset;
+    id owner;
+    id possessor;
+    sint64 numberOfShares;
+    sint64 receivedFee;
+    uint16 otherContractIndex;
+};
+```
+
+The output of `POST_RELEASE_SHARES` is empty (`NoData`).
+
+Calling `qpi.releaseShares()` and `qpi.acquireShares()` is not permitted in the system procedures `PRE_RELEASE_SHARES` and `POST_RELEASE_SHARES`, that is, they will return with an error in such a context.
+
+The function `qpi.acquireShares()` has the following parameters and return value:
+
+```
+sint64 acquireShares(
+    const Asset& asset,
+    const id& owner,
+    const id& possessor,
+    sint64 numberOfShares,
+    uint16 sourceOwnershipManagingContractIndex,
+    uint16 sourcePossessionManagingContractIndex,
+    sint64 offeredTransferFee
+);
+```
+
+On success, it returns the payed fee, which is >= 0.
+If `offeredTransferFee` or the contract balance is not sufficient, it returns `-requestedFee`.
+In case of another error, it returns `INVALID_AMOUNT` (which is a negative number of large amount).
+
+For more details, refer to the code of `qpi.acquireShares()` in `src/contract_core/qpi_asset_impl.h`.
+
+#### Notes and recommendations
+
+By default, management rights of shares can be transferred without the agreement of the owner/possessor, given that both contracts agree on the transfer and the requested transfer fee is paid.
+However, this feature is to be used with caution, because there is a risk of hijacking management rights, requesting a high fee for getting (back) management rights of shares.
+This is why the recommended way (that is implemented in QX) is that the owner/possessor needs to invoke a user procedure that actively releases the management rights by calling `qpi.releaseShares()`.
+QX never releases shares passively (following call of `qpi.acquireShares()` by another contract).
+The callbacks `PRE_RELEASE_SHARES` and `PRE_ACQUIRE_SHARES` may also check that the `qpi.originator()` initiating the transfer is the owner/possessor.
 
 
 ## Restrictions of C++ Language Features
@@ -233,3 +454,13 @@ Global variables are not permitted.
 Global constants must begin with the name of the contract state struct.
 
 There is a limit for recursion and depth of nested contract function / procedure calls (the limit is 10 at the moment).
+
+## General Change Management
+Smart Contract code in Qubic is generally immutable. This ensures stable quality and security across the network.
+However there are situations where you want to change your SC.
+
+### Bugfix
+A bugfix is possible at any time. It can be applied during the epoch (if no state is changed) or must be coordinated with an epoch update.
+
+### New Features
+If you want to add new features, this needs to be approved by the computors again. Please refer to the [Deployment](#deployment) for the needed steps. The IPO is not anymore needed for an update of your SC.

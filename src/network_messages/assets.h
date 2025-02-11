@@ -15,7 +15,7 @@
 #define MOLE 5
 #define SECOND 6
 
-struct Asset
+struct AssetRecord
 {
     union
     {
@@ -72,7 +72,7 @@ static_assert(sizeof(RequestIssuedAssets) == 32, "Something is wrong with the st
 
 struct RespondIssuedAssets
 {
-    Asset asset;
+    AssetRecord asset;
     unsigned int tick;
     unsigned int universeIndex;
     m256i siblings[ASSETS_DEPTH];
@@ -97,8 +97,8 @@ static_assert(sizeof(RequestOwnedAssets) == 32, "Something is wrong with the str
 
 struct RespondOwnedAssets
 {
-    Asset asset;
-    Asset issuanceAsset;
+    AssetRecord asset;
+    AssetRecord issuanceAsset;
     unsigned int tick;
     unsigned int universeIndex;
     m256i siblings[ASSETS_DEPTH];
@@ -123,9 +123,9 @@ static_assert(sizeof(RequestPossessedAssets) == 32, "Something is wrong with the
 
 struct RespondPossessedAssets
 {
-    Asset asset;
-    Asset ownershipAsset;
-    Asset issuanceAsset;
+    AssetRecord asset;
+    AssetRecord ownershipAsset;
+    AssetRecord issuanceAsset;
     unsigned int tick;
     unsigned int universeIndex;
     m256i siblings[ASSETS_DEPTH];

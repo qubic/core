@@ -8,6 +8,9 @@
 // reduced size of logging buffer (512 MB instead of 8 GB)
 #define LOG_BUFFER_SIZE (2*268435456ULL)
 
+// make test example contracts available in all compile units
+#define INCLUDE_CONTRACT_TEST_EXAMPLES
+
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
 
@@ -15,12 +18,12 @@
 #include "contract_core/qpi_asset_impl.h"
 #include "contract_core/qpi_system_impl.h"
 
-#include "logging/logging.h"
+#include "logging_test.h"
 
 #include "test_util.h"
 
 
-class ContractTesting
+class ContractTesting : public LoggingTest
 {
 public:
     ContractTesting()
