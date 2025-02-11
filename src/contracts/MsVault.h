@@ -2,7 +2,7 @@ using namespace QPI;
 
 constexpr uint64 MSVAULT_MAX_OWNERS = 16;
 constexpr uint64 MSVAULT_MAX_COOWNER = 8;
-constexpr uint64 MSVAULT_INITIAL_MAX_VAULTS = 524288ULL;
+constexpr uint64 MSVAULT_INITIAL_MAX_VAULTS = 131072ULL; // 2^17
 constexpr uint64 MSVAULT_MAX_VAULTS = MSVAULT_INITIAL_MAX_VAULTS * X_MULTIPLIER;
 // MSVAULT asset name : 23727827095802701, using assetNameFromString("MSVAULT") utility in test_util.h
 static constexpr uint64 MSVAULT_ASSET_NAME = 23727827095802701;
@@ -15,7 +15,7 @@ constexpr uint64 MSVAULT_BURN_FEE = 0ULL; // Integer percentage from 1 -> 100
 // [TODO]: Turn this assert ON when MSVAULT_BURN_FEE > 0
 //static_assert(MSVAULT_BURN_FEE > 0, "SC requires burning qu to operate, the burn fee must be higher than 0!");
 
-static constexpr uint64 MAX_FEE_VOTES = 64;
+static constexpr uint64 MSVAULT_MAX_FEE_VOTES = 64;
 
 
 struct MSVAULT2
@@ -29,14 +29,13 @@ public:
     {
         id vaultName;
         Array<id, MSVAULT_MAX_OWNERS> owners;
-        uint64 numberOfOwners;
-        uint64 requiredApprovals;
-        uint64 balance;
-        bit isActive;
         Array<uint64, MSVAULT_MAX_OWNERS> releaseAmounts;
         Array<id, MSVAULT_MAX_OWNERS> releaseDestinations;
+        uint64 balance;
+        uint8 numberOfOwners;
+        uint8 requiredApprovals;
+        bit isActive;
     };
-
 
     struct MsVaultFeeVote 
     {
@@ -153,6 +152,8 @@ public:
         Vault newVault;
         Vault tempVault;
         id proposedOwner;
+
+        Array<id, MSVAULT_MAX_OWNERS> tempOwners;
 
         resetReleaseRequests_input rr_in;
         resetReleaseRequests_output rr_out;
@@ -391,16 +392,6 @@ public:
         uint64 requiredApprovals;
     };
 
-    struct BEGIN_EPOCH_locals
-    {
-        uint64 i;
-        resetReleaseRequests_input rr_in;
-        resetReleaseRequests_output rr_out;
-        resetReleaseRequests_locals rr_locals;
-        Vault v;
-    };
-
-
     struct END_EPOCH_locals
     {
         uint64 i;
@@ -419,13 +410,13 @@ protected:
     uint64 totalDistributedToShareholders;
     uint64 burnedAmount;
 
-    Array<MsVaultFeeVote, MAX_FEE_VOTES> feeVotes;
-    Array<id, MAX_FEE_VOTES> feeVotesOwner;
-    Array<uint64, MAX_FEE_VOTES> feeVotesScore;
+    Array<MsVaultFeeVote, MSVAULT_MAX_FEE_VOTES> feeVotes;
+    Array<id, MSVAULT_MAX_FEE_VOTES> feeVotesOwner;
+    Array<uint64, MSVAULT_MAX_FEE_VOTES> feeVotesScore;
     uint64 feeVotesAddrCount;
 
-    Array<MsVaultFeeVote, MAX_FEE_VOTES> uniqueFeeVotes;
-    Array<uint64, MAX_FEE_VOTES> uniqueFeeVotesRanking;
+    Array<MsVaultFeeVote, MSVAULT_MAX_FEE_VOTES> uniqueFeeVotes;
+    Array<uint64, MSVAULT_MAX_FEE_VOTES> uniqueFeeVotesRanking;
     uint64 uniqueFeeVotesCount;
 
     uint64 liveRegisteringFee;
@@ -486,11 +477,13 @@ protected:
         }
 
         locals.ownerCount = 0;
-        for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i++)
+        for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i = locals.i + 1)
         {
-            if (input.owners.get(locals.i) != NULL_ID)
+            locals.proposedOwner = input.owners.get(locals.i);
+            if (locals.proposedOwner != NULL_ID)
             {
-                locals.ownerCount++;
+                locals.tempOwners.set(locals.ownerCount, locals.proposedOwner);
+                locals.ownerCount = locals.ownerCount + 1;
             }
         }
 
@@ -504,6 +497,11 @@ protected:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
+        }
+
+        for (locals.i = locals.ownerCount; locals.i < MSVAULT_MAX_OWNERS; locals.i = locals.i + 1)
+        {
+            locals.tempOwners.set(locals.i, NULL_ID);
         }
 
         // Check if requiredApprovals is valid: must be <= numberOfOwners, > 1
@@ -533,14 +531,14 @@ protected:
 
         for (locals.i = 0; locals.i < locals.ownerCount; locals.i++)
         {
-            locals.proposedOwner = input.owners.get(locals.i);
+            locals.proposedOwner = locals.tempOwners.get(locals.i);
             locals.count = 0;
             for (locals.j = 0; locals.j < MSVAULT_MAX_VAULTS; locals.j++)
             {
                 locals.tempVault = state.vaults.get(locals.j);
                 if (locals.tempVault.isActive)
                 {
-                    for (locals.k = 0; locals.k < locals.tempVault.numberOfOwners; locals.k++)
+                    for (locals.k = 0; locals.k < (uint64)locals.tempVault.numberOfOwners; locals.k++)
                     {
                         if (locals.tempVault.owners.get(locals.k) == locals.proposedOwner)
                         {
@@ -557,8 +555,8 @@ protected:
         }
 
         locals.newVault.vaultName = input.vaultName;
-        locals.newVault.numberOfOwners = locals.ownerCount;
-        locals.newVault.requiredApprovals = input.requiredApprovals;
+        locals.newVault.numberOfOwners = (uint8)locals.ownerCount;
+        locals.newVault.requiredApprovals = (uint8)input.requiredApprovals;
         locals.newVault.balance = 0;
         locals.newVault.isActive = true;
 
@@ -568,7 +566,7 @@ protected:
 
         for (locals.i = 0; locals.i < locals.ownerCount; locals.i++)
         {
-            locals.newVault.owners.set(locals.i, input.owners.get(locals.i));
+            locals.newVault.owners.set(locals.i, locals.tempOwners.get(locals.i));
         }
 
         state.vaults.set((uint64)locals.slotIndex, locals.newVault);
@@ -685,7 +683,7 @@ protected:
         locals.vault.releaseDestinations.set(locals.ownerIndex, input.destination);
 
         locals.approvals = 0;
-        locals.totalOwners = locals.vault.numberOfOwners;
+        locals.totalOwners = (uint64)locals.vault.numberOfOwners;
         for (locals.i = 0; locals.i < locals.totalOwners; locals.i++)
         {
             if (locals.vault.releaseAmounts.get(locals.i) == input.amount &&
@@ -696,7 +694,7 @@ protected:
         }
 
         locals.releaseApproved = false;
-        if (locals.approvals >= locals.vault.requiredApprovals)
+        if (locals.approvals >= (uint64)locals.vault.requiredApprovals)
         {
             locals.releaseApproved = true;
         }
@@ -909,7 +907,7 @@ protected:
             locals.v = state.vaults.get(locals.i);
             if (locals.v.isActive)
             {
-                for (locals.j = 0ULL; locals.j < locals.v.numberOfOwners; locals.j++)
+                for (locals.j = 0ULL; locals.j < (uint64)locals.v.numberOfOwners; locals.j++)
                 {
                     if (locals.v.owners.get(locals.j) == input.publicKey)
                     {
@@ -940,7 +938,7 @@ protected:
             return; // output.status = false
         }
 
-        for (locals.i = 0; locals.i < locals.vault.numberOfOwners; locals.i++)
+        for (locals.i = 0; locals.i < (uint64)locals.vault.numberOfOwners; locals.i++)
         {
             output.amounts.set(locals.i, locals.vault.releaseAmounts.get(locals.i));
             output.destinations.set(locals.i, locals.vault.releaseDestinations.get(locals.i));
@@ -1028,14 +1026,14 @@ protected:
             return;
         }
 
-        output.numberOfOwners = locals.v.numberOfOwners;
+        output.numberOfOwners = (uint64)locals.v.numberOfOwners;
 
         for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i++)
         {
             output.owners.set(locals.i, locals.v.owners.get(locals.i));
         }
 
-        output.requiredApprovals = locals.v.requiredApprovals;
+        output.requiredApprovals = (uint64)locals.v.requiredApprovals;
 
         output.status = 1ULL;
     _
@@ -1065,9 +1063,6 @@ protected:
         //state.liveReleaseResetFee = MSVAULT_RELEASE_RESET_FEE;
         //state.liveHoldingFee = MSVAULT_HOLDING_FEE;
         //state.liveDepositFee = 0ULL;
-    _
-
-    BEGIN_EPOCH_WITH_LOCALS
     _
 
     END_EPOCH_WITH_LOCALS
