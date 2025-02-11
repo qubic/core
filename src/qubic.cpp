@@ -4330,10 +4330,14 @@ static void prepareNextTickTransactions()
                     unknownTransactions[i >> 6] |= (1ULL << (i & 63));
                 }
             }
+            else
+            {
+                unknownTransactions[i >> 6] |= (1ULL << (i & 63));
+            }
             ts.tickTransactions.releaseLock();
         }
     }
-        
+
     if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
     {
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
@@ -4418,9 +4422,12 @@ static void prepareNextTickTransactions()
         // Update requestedTickTransactions the list of txs that not exist in memory so the MAIN loop can try to fetch them from peers
         for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
         {
-            if (!(unknownTransactions[i >> 6] & (1ULL << (i & 63))))
+            if (!isZero(nextTickData.transactionDigests[i]))
             {
-                requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] |= (1 << (i & 7));
+                if (!(unknownTransactions[i >> 6] & (1ULL << (i & 63))))
+                {
+                    requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] |= (1 << (i & 7));
+                }
             }
         }
     }
