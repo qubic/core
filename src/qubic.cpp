@@ -1627,6 +1627,7 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, INITIALIZE);
                 qpiContext.call();
             }
