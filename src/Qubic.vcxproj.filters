@@ -90,7 +90,6 @@
     <ClInclude Include="network_messages\system_info.h">
       <Filter>network_messages</Filter>
     </ClInclude>
-    <ClInclude Include="tick_storage.h" />
     <ClInclude Include="platform\debugging.h">
       <Filter>platform</Filter>
     </ClInclude>
@@ -101,6 +100,9 @@
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contracts\Quottery.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+        <ClInclude Include="contracts\MsVault.h">
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contracts\QUtil.h">
@@ -164,7 +166,6 @@
     <ClInclude Include="contracts\SupplyWatcher.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="spectrum.h" />
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h">
       <Filter>contracts</Filter>
@@ -217,8 +218,21 @@
     <ClInclude Include="contracts\TestExampleB.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="platform\memory_util.h">
-      <Filter>platform</Filter>
+    <ClInclude Include="platform\memory-util.h" />
+    <ClInclude Include="ticking\ticking.h">
+      <Filter>ticking</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_ticking_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="ticking\tick_storage.h">
+      <Filter>ticking</Filter>
+    </ClInclude>
+    <ClInclude Include="spectrum\spectrum.h">
+      <Filter>spectrum</Filter>
+    </ClInclude>
+    <ClInclude Include="spectrum\special_entities.h">
+      <Filter>spectrum</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -254,6 +268,12 @@
     </Filter>
     <Filter Include="assets">
       <UniqueIdentifier>{c1da3a12-d369-44a1-82b3-73e125ac20ed}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ticking">
+      <UniqueIdentifier>{d49f7252-8e04-411d-8a14-a8eca902c392}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="spectrum">
+      <UniqueIdentifier>{2f27aed7-b9b8-4b8c-a70a-90f18385b167}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

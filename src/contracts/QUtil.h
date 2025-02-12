@@ -5,18 +5,19 @@ using namespace QPI;
 /*
 * A collection of useful functions for smart contract on Qubic:
 * - SendToManyV1 (STM1): Sending qu from a single address to multiple addresses (upto 25)
+* - SendToManyBenchmark: Sending n transfers of 1 qu each to the specified number of addresses 
 * ...
 * ...
 */
 
 // Return code for logger and return struct
-// TODO: Replace by constexpr, because any "#" is forbidden in contracts
-#define STM1_SUCCESS 0
-#define STM1_INVALID_AMOUNT_NUMBER 1
-#define STM1_WRONG_FUND 2
-#define STM1_TRIGGERED 3
-#define STM1_SEND_FUND 4
-#define STM1_INVOCATION_FEE 10LL // fee to be burned and make the SC running
+constexpr uint64 STM1_SUCCESS = 0;
+constexpr uint64 STM1_INVALID_AMOUNT_NUMBER = 1;
+constexpr uint64 STM1_WRONG_FUND = 2;
+constexpr uint64 STM1_TRIGGERED = 3;
+constexpr uint64 STM1_SEND_FUND = 4;
+constexpr sint64 STM1_INVOCATION_FEE = 10LL; // fee to be burned and make the SC running
+
 struct QUtilLogger
 {
     uint32 contractId; // to distinguish bw SCs
@@ -64,6 +65,25 @@ public:
     struct GetSendToManyV1Fee_output
     {
         sint64 fee;
+    };
+
+    struct SendToManyBenchmark_input
+    {
+        sint64 dstCount;
+        sint64 numTransfersEach;
+    };
+    struct SendToManyBenchmark_output
+    {
+        sint64 dstCount;
+        sint32 returnCode;
+        sint64 total;
+    };
+
+    struct SendToManyBenchmark_locals
+    {
+        id currentId;
+        sint64 t;
+        bool useNext;
     };
 
     struct BurnQubic_input
@@ -276,6 +296,78 @@ public:
     _
 
     /**
+    * Send n transfers of 1 qu each from a single address to a specified number of addresses.
+    * If there are not enough entities in the spectrum, a single entity might be chosen multiple times.
+    * @param number of addresses that will be sent n times 1 qubic
+    * @param number of transfers for each address
+    * @return returnCode (0 means success)
+    */
+    PUBLIC_PROCEDURE_WITH_LOCALS(SendToManyBenchmark)
+        state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), STM1_TRIGGERED };
+        LOG_INFO(state.logger);
+        output.total = 0;
+
+        // Number of addresses and transfers is > 0 and total transfers do not exceed limit (including 2 transfers from invocator to contract and contract to invocator)
+        if (input.dstCount <= 0 || input.numTransfersEach <= 0 || input.dstCount * input.numTransfersEach + 2 > CONTRACT_ACTION_TRACKER_SIZE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), STM1_INVALID_AMOUNT_NUMBER };
+            LOG_INFO(state.logger);
+            output.returnCode = STM1_INVALID_AMOUNT_NUMBER;
+            return;
+        }
+
+        // Check the fund is enough
+        if (qpi.invocationReward() < input.dstCount * input.numTransfersEach)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), STM1_INVALID_AMOUNT_NUMBER };
+            LOG_INFO(state.logger);
+            output.returnCode = STM1_INVALID_AMOUNT_NUMBER;
+            return;
+        }
+
+        // Loop through the number of addresses and do the transfers
+        locals.currentId = qpi.invocator();
+        locals.useNext = true;
+        while (output.dstCount < input.dstCount)
+        {
+            if (locals.useNext)
+                locals.currentId = qpi.nextId(locals.currentId);
+            else
+                locals.currentId = qpi.prevId(locals.currentId);
+            if (locals.currentId == m256i::zero())
+            {
+                locals.currentId = qpi.invocator();
+                locals.useNext = !locals.useNext;
+                continue;
+            }
+
+            output.dstCount++;
+            for (locals.t = 0; locals.t < input.numTransfersEach; locals.t++)
+            {
+                qpi.transfer(locals.currentId, 1);
+                output.total += 1;
+            }
+        }
+
+        // Return the change if there is any
+        if (output.total < qpi.invocationReward())
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - output.total);
+        }
+
+        state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, output.total, STM1_SUCCESS };
+        LOG_INFO(state.logger);
+    _
+
+    /**
     * Practicing burning qubic in the QChurch
     * @param the amount of qubic to burn
     * @return the amount of qubic has burned, < 0 if failed to burn
@@ -312,5 +404,6 @@ public:
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
+        REGISTER_USER_PROCEDURE(SendToManyBenchmark, 3);
     _
 };

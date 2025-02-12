@@ -1212,9 +1212,10 @@ namespace QPI
 			unsigned int contractIndex,
 			const m256i& originator,
 			const m256i& invocator,
-			long long invocationReward
+			long long invocationReward,
+			unsigned char entryPoint
 		) {
-			init(contractIndex, originator, invocator, invocationReward);
+			init(contractIndex, originator, invocator, invocationReward, entryPoint, -1);
 		}
 
 		void init(
@@ -1222,7 +1223,8 @@ namespace QPI
 			const m256i& originator,
 			const m256i& invocator,
 			long long invocationReward,
-			int stackIndex = -1
+			unsigned char entryPoint,
+			int stackIndex
 		) {
 			ASSERT(invocationReward >= 0);
 			_currentContractIndex = contractIndex;
@@ -1230,13 +1232,15 @@ namespace QPI
 			_originator = originator;
 			_invocator = invocator;
 			_invocationReward = invocationReward;
+			_entryPoint = entryPoint;
 			_stackIndex = stackIndex;
 		}
 
 		unsigned int _currentContractIndex;
+		int _stackIndex;
 		m256i _currentContractId, _originator, _invocator;
 		long long _invocationReward;
-		int _stackIndex;
+		unsigned char _entryPoint;
 
 	private:
 		// Disabling copy and move
@@ -1249,21 +1253,21 @@ namespace QPI
 	// QPI function available to contract functions and procedures
 	struct QpiContextFunctionCall : public QpiContext
 	{
-		id arbitrator(
+		inline id arbitrator(
 		) const;
 
-		id computor(
+		inline id computor(
 			uint16 computorIndex // [0..675]
 		) const;
 
-		uint8 day(
+		inline uint8 day(
 		) const; // [1..31]
 
-		uint8 dayOfWeek(
+		inline uint8 dayOfWeek(
 			uint8 year, // (0 = 2000, 1 = 2001, ..., 99 = 2099)
 			uint8 month,
 			uint8 day
-		) const; // [0..6]
+		) const; // [0..6] (0 = Wednesday)
 
 		inline uint16 epoch(
 		) const; // [0..9'999]
@@ -1273,7 +1277,7 @@ namespace QPI
 			Entity& entity
 		) const; // Returns "true" if the entity has been found, returns "false" otherwise
 
-		uint8 hour(
+		inline uint8 hour(
 		) const; // [0..23]
 
 		// Return the invocation reward (amount transferred to contract immediately before invoking)
@@ -1283,20 +1287,24 @@ namespace QPI
 		id invocator() const { return _invocator; }
 
 		template <typename T>
-		id K12(
+		inline id K12(
 			const T& data
 		) const;
 
-		uint16 millisecond(
+		inline uint16 millisecond(
 		) const; // [0..999]
 
-		uint8 minute(
+		inline uint8 minute(
 		) const; // [0..59]
 
-		uint8 month(
+		inline uint8 month(
 		) const; // [1..12]
 
 		inline id nextId(
+			const id& currentId
+		) const;
+
+		inline id prevId(
 			const id& currentId
 		) const;
 
@@ -1315,16 +1323,17 @@ namespace QPI
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
 		) const;
 
-		sint32 numberOfTickTransactions(
+		// Returns -1 if the current tick is empty, returns the number of the transactions in the tick otherwise, including 0.
+		inline sint32 numberOfTickTransactions(
 		) const;
 
 		// Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
 		id originator() const { return _originator; }
 
-		uint8 second(
+		inline uint8 second(
 		) const; // [0..59]
 
-		bit signatureValidity(
+		inline bit signatureValidity(
 			const id& entity,
 			const id& digest,
 			const Array<sint8, 64>& signature
@@ -1333,7 +1342,7 @@ namespace QPI
 		inline uint32 tick(
 		) const; // [0..999'999'999]
 
-		uint8 year(
+		inline uint8 year(
 		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 
 		// Access proposal functions with qpi(proposalVotingObject).func().
@@ -1353,7 +1362,7 @@ namespace QPI
 
 	protected:
 		// Construction is done in core, not allowed in contracts
-		QpiContextFunctionCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContext(contractIndex, originator, originator, invocationReward) {}
+		QpiContextFunctionCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContext(contractIndex, originator, originator, invocationReward, entryPoint) {}
 	};
 
 	// QPI procedures available to contract procedures (not to contract functions)
@@ -1384,6 +1393,12 @@ namespace QPI
 			sint64 numberOfShares,
 			uint64 unitOfMeasurement
 		) const; // Returns number of shares or 0 on error
+
+		inline bool bidInIPO(
+			uint32 IPOContractIndex,
+			sint64 price,
+			uint32 quantity
+		) const; // "true" if the bid is succeed, "false" otherwise
 
 		inline sint64 releaseShares(
 			const Asset& asset,
@@ -1425,7 +1440,7 @@ namespace QPI
 
 	protected:
 		// Construction is done in core, not allowed in contracts
-		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContextFunctionCall(contractIndex, originator, invocationReward) {}
+		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContextFunctionCall(contractIndex, originator, invocationReward, entryPoint) {}
 	};
 
 	// QPI available in REGISTER_USER_FUNCTIONS_AND_PROCEDURES
@@ -1435,7 +1450,7 @@ namespace QPI
 		inline void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
 
 		// Construction is done in core, not allowed in contracts
-		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
+		inline QpiContextForInit(unsigned int contractIndex);
 	};
 
 	// Used if no locals, input, or output is needed in a procedure or function
@@ -1643,15 +1658,18 @@ namespace QPI
 		qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
 
 	// Call function or procedure of current contract (without changing invocation reward)
+	// WARNING: input may be changed by called function
 	#define CALL(functionOrProcedure, input, output) \
 		static_assert(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #functionOrProcedure "_locals size too large"); \
 		functionOrProcedure(qpi, state, input, output, *(functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals))); \
 		qpi.__qpiFreeLocals()
 
 	// Invoke procedure of current contract with changed invocation reward
+	// WARNING: input may be changed by called function
 	// TODO: INVOKE
 
 	// Call function of other contract
+	// WARNING: input may be changed by called function
 	#define CALL_OTHER_CONTRACT_FUNCTION(contractStateType, function, input, output) \
 		static_assert(sizeof(contractStateType::function##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #function "_locals size too large"); \
 		static_assert(contractStateType::__is_function_##function, "CALL_OTHER_CONTRACT_FUNCTION() cannot be used to invoke procedures."); \
@@ -1662,24 +1680,24 @@ namespace QPI
 			*(contractStateType*)qpi.__qpiAcquireStateForReading(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
-		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
 	// Transfer invocation reward and invoke of other contract (procedure only)
+	// WARNING: input may be changed by called function
 	#define INVOKE_OTHER_CONTRACT_PROCEDURE(contractStateType, procedure, input, output, invocationReward) \
 		static_assert(sizeof(contractStateType::procedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #procedure "_locals size too large"); \
 		static_assert(!contractStateType::__is_function_##procedure, "INVOKE_OTHER_CONTRACT_PROCEDURE() cannot be used to call functions."); \
 		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function/procedure of this contract."); \
 		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
-		static_assert(invocationReward >= 0, "The invocationReward cannot be negative!"); \
 		contractStateType::procedure( \
 			qpi.__qpiConstructContextOtherContractProcedureCall(contractStateType::__contract_index, invocationReward), \
 			*(contractStateType*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
-		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
 		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
 	#define QUERY_ORACLE(oracle, query) // TODO
