@@ -855,70 +855,75 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 enqueueResponse(NULL, header);
             }
 
-            const int computorIndex = ::computorIndex(request->sourcePublicKey);
-            if (computorIndex >= 0)
+            if (request->tick == system.tick + 1)
             {
-                ACQUIRE(computorPendingTransactionsLock);
-
-                const unsigned int offset = random(MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR);
-                if (((Transaction*)&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE])->tick < request->tick
-                    && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
+                unsigned int tickIndex = ts.tickToIndexCurrentEpoch(request->tick);
+                ts.tickData.acquireLock();
+                if (ts.tickData[tickIndex].epoch == system.epoch)
                 {
-                    bs->CopyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
-                    KangarooTwelve(request, transactionSize, &computorPendingTransactionDigests[computorIndex * offset * 32ULL], 32);
+                    KangarooTwelve(request, transactionSize, digest, sizeof(digest));
+                    auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+                    for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                    {
+                        if (digest == ts.tickData[tickIndex].transactionDigests[i])
+                        {
+                            ts.tickTransactions.acquireLock();
+                            if (!tsReqTickTransactionOffsets[i])
+                            {
+                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                                {
+                                    tsReqTickTransactionOffsets[i] = ts.nextTickTransactionOffset;
+                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
+                                    ts.nextTickTransactionOffset += transactionSize;
+                                }
+                            }
+                            ts.tickTransactions.releaseLock();
+                            break;
+                        }
+                    }
                 }
-
-                RELEASE(computorPendingTransactionsLock);
+                ts.tickData.releaseLock();
             }
             else
             {
-                const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
-                if (spectrumIndex >= 0)
+                const int computorIndex = ::computorIndex(request->sourcePublicKey);
+                if (computorIndex >= 0)
                 {
-                    ACQUIRE(entityPendingTransactionsLock);
+                    ACQUIRE(computorPendingTransactionsLock);
 
-                    // Pending transactions pool follows the rule: A transaction with a higher tick overwrites previous transaction from the same address.
-                    // The second filter is to avoid accident made by users/devs (setting scheduled tick too high) and get locked until end of epoch.
-                    // It also makes sense that a node doesn't need to store a transaction that is scheduled on a tick that node will never reach.
-                    // Notice: MAX_NUMBER_OF_TICKS_PER_EPOCH is not set globally since every node may have different TARGET_TICK_DURATION time due to memory limitation.
-                    if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
+                    const unsigned int offset = random(MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR);
+                    if (((Transaction*)&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE])->tick < request->tick
                         && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                     {
-                        bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
-                        KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
+                        bs->CopyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
+                        KangarooTwelve(request, transactionSize, &computorPendingTransactionDigests[computorIndex * offset * 32ULL], 32);
                     }
 
-                    RELEASE(entityPendingTransactionsLock);
+                    RELEASE(computorPendingTransactionsLock);
                 }
-            }
-
-            unsigned int tickIndex = ts.tickToIndexCurrentEpoch(request->tick);
-            ts.tickData.acquireLock();
-            if (request->tick == system.tick + 1
-                && ts.tickData[tickIndex].epoch == system.epoch)
-            {
-                KangarooTwelve(request, transactionSize, digest, sizeof(digest));
-                auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
-                for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                else
                 {
-                    if (digest == ts.tickData[tickIndex].transactionDigests[i])
+                    const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
+                    if (spectrumIndex >= 0)
                     {
-                        ts.tickTransactions.acquireLock();
-                        if (!tsReqTickTransactionOffsets[i])
+                        ACQUIRE(entityPendingTransactionsLock);
+
+                        // Pending transactions pool follows the rule: A transaction with a higher tick overwrites previous transaction from the same address.
+                        // The second filter is to avoid accident made by users/devs (setting scheduled tick too high) and get locked until end of epoch.
+                        // It also makes sense that a node doesn't need to store a transaction that is scheduled on a tick that node will never reach.
+                        // Notice: MAX_NUMBER_OF_TICKS_PER_EPOCH is not set globally since every node may have different TARGET_TICK_DURATION time due to memory limitation.
+                        if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
+                            && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                         {
-                            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
-                            {
-                                tsReqTickTransactionOffsets[i] = ts.nextTickTransactionOffset;
-                                bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
-                                ts.nextTickTransactionOffset += transactionSize;
-                            }
+                            bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
+                            KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
                         }
-                        ts.tickTransactions.releaseLock();
-                        break;
+
+                        RELEASE(entityPendingTransactionsLock);
                     }
                 }
+
             }
-            ts.tickData.releaseLock();
         }
     }
 }
