@@ -46,6 +46,7 @@ constexpr sint32 PFP_LOW_PRICE = 16;
 constexpr sint32 PFP_NOT_ASK_STATUS = 17;
 constexpr sint32 PFP_NOT_OWNER = 18;
 constexpr sint32 PFP_NOT_ASK_USER = 19;
+constexpr sint32 PFP_RESERVED_NFT = 27;
 
 //		For DropMint
 
@@ -84,6 +85,7 @@ enum PFPLogInfo {
 	notAskStatus = 17,
 	notOwner = 18,
 	notAskUser = 19,
+	reservedNFT = 27,
 	//		For DropMint
 	notCollectionForDrop = 20,
 	overflowMaxSizePerOneId = 21,
@@ -454,6 +456,43 @@ struct PFP : public ContractBase
 	struct getIncomingAuctions_output
 	{
 		Array<uint32, 1024> NFTId;
+	};
+
+	struct getInfoOfNFTById_input
+	{
+		uint32 NFTId;
+	};
+
+	struct getInfoOfNFTById_output
+	{
+		id creator;                             	//      Identity of NFT creator
+		id possesor;								//		Identity of NFT possesor
+		id askUser;									//		Identity of Asked user
+		id creatorOfAuction;						//		Creator of Auction
+		sint64 salePrice;							//		This price should be set by possesor
+		sint64 askMaxPrice;							//	 	This price is the max of asked prices
+		uint64 currentPriceOfAuction;				//		This price is the start price of auctions
+		uint32 royalty;								//		Percent from 0 ~ 100
+		uint32 NFTidForExchange;					//      NFT Id that want to exchange
+		Array<uint8, 64> URI;			            //      URI for this NFT
+		uint8 statusOfAuction;						//		Status of Auction(0 means that there is no auction, 1 means that tranditional Auction is started, 2 means that one user buyed the NFT in traditinoal auction, 3 means that dutch auction is started)
+		uint8 yearAuctionStarted;
+		uint8 monthAuctionStarted;
+		uint8 dayAuctionStarted;
+		uint8 hourAuctionStarted;
+		uint8 minuteAuctionStarted;
+		uint8 secondAuctionStarted;
+		uint8 yearAuctionEnded;
+		uint8 monthAuctionEnded;
+		uint8 dayAuctionEnded;
+		uint8 hourAuctionEnded;
+		uint8 minuteAuctionEnded;
+		uint8 secondAuctionEnded;
+		bit statusOfSale;							//		Status of Sale, 0 means possesor don't want to sell
+		bit statusOfAsk;							//		Status of Ask
+		bit paymentMethodOfAsk;						//		0 means the asked user want to buy using $Qubic, 1 means that want to buy using $CFB
+		bit statusOfExchange;						//		Status of Exchange
+		bit paymentMethodOfAuction;					//		0 means the user can buy using only $Qubic, 1 means that can buy using only $CFB
 	};
 
 protected:
@@ -1853,6 +1892,8 @@ protected:
 
 			locals.updatedNFT.NFTidForExchange = PFP_MAX_NUMBER_NFT;
 			locals.updatedNFT.statusOfExchange = 0;
+			locals.updatedNFT.salePrice = PFP_SALE_PRICE;
+			locals.updatedNFT.statusOfSale = 0;
 			locals.updatedNFT.currentPriceOfAuction = 0;
 			locals.updatedNFT.startTimeOfAuction = 0;
 			locals.updatedNFT.endTimeOfAuction = 0;
@@ -1864,8 +1905,6 @@ protected:
 			locals.updatedNFT.possesor = state.NFTs.get(input.anotherNFT).possesor;
 			locals.updatedNFT.askUser = state.NFTs.get(input.possessedNFT).askUser;
 			locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.possessedNFT).paymentMethodOfAsk;
-			locals.updatedNFT.salePrice = state.NFTs.get(input.possessedNFT).salePrice;
-			locals.updatedNFT.statusOfSale = state.NFTs.get(input.possessedNFT).statusOfSale;
 			locals.updatedNFT.askMaxPrice = state.NFTs.get(input.possessedNFT).askMaxPrice;
 			locals.updatedNFT.royalty = state.NFTs.get(input.possessedNFT).royalty;
 			locals.updatedNFT.statusOfAsk = state.NFTs.get(input.possessedNFT).statusOfAsk;
@@ -1899,6 +1938,14 @@ protected:
 
 		else 
 		{
+			if(state.NFTs.get(input.anotherNFT).NFTidForExchange != PFP_MAX_NUMBER_NFT)
+			{
+				output.returnCode = PFP_RESERVED_NFT;
+
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::reservedNFT, 0 };
+				LOG_INFO(locals.log);
+				return ;
+			}
 			locals.updatedNFT.NFTidForExchange = input.possessedNFT;
 			locals.updatedNFT.statusOfExchange = 1;
 
@@ -2388,7 +2435,7 @@ protected:
 		uint32 curDate;
 		uint32 startDate;
 		uint32 endDate;
-		uint32 _t;
+		uint32 _t, _r;
 		PFPLogger log;
 	};
 
@@ -2446,11 +2493,11 @@ protected:
 		locals.updatedNFT.askUser = state.NFTs.get(input.NFTId).askUser;
 		locals.updatedNFT.askMaxPrice = state.NFTs.get(input.NFTId).askMaxPrice;
 		locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.NFTId).paymentMethodOfAsk;
+		locals.updatedNFT.NFTidForExchange = state.NFTs.get(input.NFTId).NFTidForExchange;
+		locals.updatedNFT.statusOfExchange = state.NFTs.get(input.NFTId).statusOfExchange;
 
 		locals.updatedNFT.statusOfSale = 0;
 		locals.updatedNFT.salePrice = PFP_SALE_PRICE;
-		locals.updatedNFT.NFTidForExchange = 0;
-		locals.updatedNFT.statusOfExchange = 0;
 
 		locals.updatedNFT.currentPriceOfAuction = input.minPrice;
 		locals.updatedNFT.startTimeOfAuction = locals.startDate;
@@ -2465,6 +2512,38 @@ protected:
 		}
 
 		state.NFTs.set(input.NFTId, locals.updatedNFT);
+
+		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
+		{
+			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTId)
+			{
+				locals.updatedNFT.NFTidForExchange = PFP_MAX_NUMBER_NFT;
+				locals.updatedNFT.statusOfExchange = 0;
+
+				locals.updatedNFT.creator = state.NFTs.get(locals._t).creator;
+				locals.updatedNFT.royalty = state.NFTs.get(locals._t).royalty;
+				locals.updatedNFT.possesor = state.NFTs.get(locals._t).possesor;
+				locals.updatedNFT.statusOfAsk = state.NFTs.get(locals._t).statusOfAsk;
+				locals.updatedNFT.askUser = state.NFTs.get(locals._t).askUser;
+				locals.updatedNFT.askMaxPrice = state.NFTs.get(locals._t).askMaxPrice;
+				locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(locals._t).paymentMethodOfAsk;
+				locals.updatedNFT.statusOfSale = state.NFTs.get(locals._t).statusOfSale;
+				locals.updatedNFT.salePrice = state.NFTs.get(locals._t).salePrice;
+				locals.updatedNFT.currentPriceOfAuction = state.NFTs.get(locals._t).currentPriceOfAuction;
+				locals.updatedNFT.startTimeOfAuction = state.NFTs.get(locals._t).startTimeOfAuction;
+				locals.updatedNFT.endTimeOfAuction = state.NFTs.get(locals._t).endTimeOfAuction;
+				locals.updatedNFT.statusOfAuction = state.NFTs.get(locals._t).statusOfAuction;
+				locals.updatedNFT.paymentMethodOfAuction = state.NFTs.get(locals._t).paymentMethodOfAuction;
+				locals.updatedNFT.creatorOfAuction = state.NFTs.get(locals._t).creatorOfAuction;
+
+				for(locals._r = 0; locals._r < PFP_LENGTH_OF_URI; locals._r++) 
+				{
+					locals.updatedNFT.URI.set(locals._r, state.NFTs.get(locals._t).URI.get(locals._r));
+				}
+
+				state.NFTs.set(locals._t, locals.updatedNFT);
+			}
+		}
 
 		output.returnCode = PFP_SUCCESS;
 		locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::success, 0 };
@@ -2683,11 +2762,11 @@ protected:
 		locals.updatedNFT.askUser = state.NFTs.get(input.NFTId).askUser;
 		locals.updatedNFT.askMaxPrice = state.NFTs.get(input.NFTId).askMaxPrice;
 		locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.NFTId).paymentMethodOfAsk;
+		locals.updatedNFT.NFTidForExchange = state.NFTs.get(input.NFTId).NFTidForExchange;
+		locals.updatedNFT.statusOfExchange = state.NFTs.get(input.NFTId).statusOfExchange;
 
 		locals.updatedNFT.statusOfSale = 0;
 		locals.updatedNFT.salePrice = PFP_SALE_PRICE;
-		locals.updatedNFT.NFTidForExchange = 0;
-		locals.updatedNFT.statusOfExchange = 0;
 
 		locals.updatedNFT.startTimeOfAuction = state.NFTs.get(input.NFTId).startTimeOfAuction;
 		locals.updatedNFT.endTimeOfAuction = state.NFTs.get(input.NFTId).endTimeOfAuction;
@@ -2881,6 +2960,39 @@ protected:
 
 	_
 
+	struct getInfoOfNFTById_locals
+	{
+		uint32 _r;
+	};
+
+	PUBLIC_FUNCTION_WITH_LOCALS(getInfoOfNFTById)
+
+		output.salePrice = state.NFTs.get(input.NFTId).salePrice;
+		output.askMaxPrice = state.NFTs.get(input.NFTId).askMaxPrice;
+		output.currentPriceOfAuction = state.NFTs.get(input.NFTId).currentPriceOfAuction;
+		output.royalty = state.NFTs.get(input.NFTId).royalty;
+		output.NFTidForExchange = state.NFTs.get(input.NFTId).NFTidForExchange;
+		output.creator = state.NFTs.get(input.NFTId).creator;
+		output.possesor = state.NFTs.get(input.NFTId).possesor;
+		output.askUser = state.NFTs.get(input.NFTId).askUser;
+		output.creatorOfAuction = state.NFTs.get(input.NFTId).creatorOfAuction;
+		output.statusOfAuction = state.NFTs.get(input.NFTId).statusOfAuction;
+		output.statusOfSale = state.NFTs.get(input.NFTId).statusOfSale;
+		output.statusOfAsk = state.NFTs.get(input.NFTId).statusOfAsk;
+		output.paymentMethodOfAsk = state.NFTs.get(input.NFTId).paymentMethodOfAsk;
+		output.statusOfExchange = state.NFTs.get(input.NFTId).statusOfExchange;
+		output.paymentMethodOfAuction = state.NFTs.get(input.NFTId).paymentMethodOfAuction;
+		QUOTTERY::unpackQuotteryDate(output.yearAuctionStarted, output.monthAuctionStarted, output.dayAuctionStarted, output.hourAuctionStarted, output.minuteAuctionStarted, output.secondAuctionStarted, state.NFTs.get(input.NFTId).startTimeOfAuction);
+		QUOTTERY::unpackQuotteryDate(output.yearAuctionEnded, output.monthAuctionEnded, output.dayAuctionEnded, output.hourAuctionEnded, output.minuteAuctionEnded, output.secondAuctionEnded, state.NFTs.get(input.NFTId).endTimeOfAuction);
+		
+		for(locals._r = 0 ; locals._r < 64; locals._r++)
+		{
+			output.URI.set(locals._r, state.NFTs.get(input.NFTId).URI.get(input.NFTId));
+		}
+		
+	_
+
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 
 		REGISTER_USER_FUNCTION(getNumberOfNFTForUser, 1);
@@ -2889,6 +3001,7 @@ protected:
 		REGISTER_USER_FUNCTION(getInfoOfCollectionByCreator, 4);
 		REGISTER_USER_FUNCTION(getInfoOfCollectionById, 5);
 		REGISTER_USER_FUNCTION(getIncomingAuctions, 6);
+		REGISTER_USER_FUNCTION(getInfoOfNFTById, 7);
 
 		REGISTER_USER_PROCEDURE(settingCFBAndQubicPrice, 1);
 		REGISTER_USER_PROCEDURE(createCollection, 2);
