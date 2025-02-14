@@ -171,15 +171,21 @@ public:
         EXPECT_EQ(NFTs.get(NFTId).statusOfSale, 0);
     }
 
-    void listInExchangeChecker(id user, uint32 NFTId1, uint32 NFTId2)
+    void listInExchangeChecker(id user, uint32 possessedNFT, uint32 anotherNFT)
     {
-        EXPECT_EQ(NFTs.get(NFTId2).NFTidForExchange, NFTId1);
-        EXPECT_EQ(NFTs.get(NFTId2).statusOfExchange, 1);
+        EXPECT_EQ(NFTs.get(anotherNFT).NFTidForExchange, possessedNFT);
+        EXPECT_EQ(NFTs.get(anotherNFT).statusOfExchange, 1);
     }
 
-    void exchangedChecker(id user, uint32 NFTId1, uint32 NFTId2)
+    void possesorChecker(id user, uint32 possessedNFT)
     {
-        EXPECT_EQ(NFTs.get(NFTId2).possesor, user);
+        EXPECT_EQ(NFTs.get(possessedNFT).possesor, user);
+    }
+
+    void cancelExchangeChecker(uint32 NFTId)
+    {
+        EXPECT_EQ(NFTs.get(NFTId).NFTidForExchange, PFP_MAX_NUMBER_NFT);
+        EXPECT_EQ(NFTs.get(NFTId).statusOfExchange, 0);
     }
 
     uint64 getDropMintPrice(uint32 collectionId)
@@ -401,12 +407,13 @@ public:
         return output;
     }
 
-    PFP::cancelExchange_output cancelExchange(const id& user, uint32 possessedNFT)
+    PFP::cancelExchange_output cancelExchange(const id& user, uint32 possessedNFT, uint32 anotherNFT)
     {
         PFP::cancelExchange_input input;
         PFP::cancelExchange_output output;
 
         input.possessedNFT = possessedNFT;
+        input.anotherNFT = anotherNFT;
 
         invokeUserProcedure(PFP_CONTRACT_INDEX, 10, input, output, user, 0);
 
@@ -728,14 +735,21 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
 
     // listInExchange
     
+    increaseEnergy(users[4], 10000000);
+    increaseEnergy(users[0], 10000000);
+
     pfp.listInExchange(users[0], 1, 0);
     pfp.getState()->listInExchangeChecker(users[0], 1, 0);
 
     pfp.listInExchange(users[4], 0, 1);
-    pfp.getState()->exchangedChecker(users[0], 0, 1);
+    pfp.getState()->possesorChecker(users[0], 0);
+    pfp.getState()->possesorChecker(users[4], 1);
 
     // cancelExchange
 
-    pfp.cancelExchange(users[4], 1);
+    pfp.listInExchange(users[4], 1, 0);
+    pfp.cancelExchange(users[4], 1, 0);
+    pfp.getState()->cancelExchangeChecker(0);
+
 
 }
