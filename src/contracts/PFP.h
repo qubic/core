@@ -1803,6 +1803,7 @@ protected:
 	struct listInExchange_locals 
 	{
 		InfoOfNFT updatedNFT;
+		id tmpPossesor;
 		uint32 _t;
 		uint32 curDate;
 		PFPLogger log;
@@ -1847,6 +1848,8 @@ protected:
 
 		if(state.NFTs.get(input.anotherNFT).NFTidForExchange == input.possessedNFT)
 		{
+			locals.tmpPossesor = state.NFTs.get(input.possessedNFT).possesor;
+
 			locals.updatedNFT.NFTidForExchange = PFP_MAX_NUMBER_NFT;
 			locals.updatedNFT.statusOfExchange = 0;
 			locals.updatedNFT.currentPriceOfAuction = 0;
@@ -1875,7 +1878,7 @@ protected:
 			state.NFTs.set(input.possessedNFT, locals.updatedNFT);
 
 			locals.updatedNFT.creator = state.NFTs.get(input.anotherNFT).creator;
-			locals.updatedNFT.possesor = state.NFTs.get(input.possessedNFT).possesor;
+			locals.updatedNFT.possesor = locals.tmpPossesor;
 			locals.updatedNFT.askUser = state.NFTs.get(input.anotherNFT).askUser;
 			locals.updatedNFT.salePrice = state.NFTs.get(input.anotherNFT).salePrice;
 			locals.updatedNFT.statusOfSale = state.NFTs.get(input.anotherNFT).statusOfSale;
@@ -1895,18 +1898,18 @@ protected:
 
 		else 
 		{
-			locals.updatedNFT.NFTidForExchange = input.anotherNFT;
+			locals.updatedNFT.NFTidForExchange = input.possessedNFT;
 			locals.updatedNFT.statusOfExchange = 1;
 
-			locals.updatedNFT.creator = state.NFTs.get(input.possessedNFT).creator;
-			locals.updatedNFT.possesor = state.NFTs.get(input.possessedNFT).possesor;
-			locals.updatedNFT.askUser = state.NFTs.get(input.possessedNFT).askUser;
-			locals.updatedNFT.salePrice = state.NFTs.get(input.possessedNFT).salePrice;
-			locals.updatedNFT.statusOfSale = state.NFTs.get(input.possessedNFT).statusOfSale;
-			locals.updatedNFT.askMaxPrice = state.NFTs.get(input.possessedNFT).askMaxPrice;
-			locals.updatedNFT.royalty = state.NFTs.get(input.possessedNFT).royalty;
-			locals.updatedNFT.statusOfAsk = state.NFTs.get(input.possessedNFT).statusOfAsk;
-			locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.possessedNFT).paymentMethodOfAsk;
+			locals.updatedNFT.creator = state.NFTs.get(input.anotherNFT).creator;
+			locals.updatedNFT.possesor = state.NFTs.get(input.anotherNFT).possesor;
+			locals.updatedNFT.askUser = state.NFTs.get(input.anotherNFT).askUser;
+			locals.updatedNFT.salePrice = state.NFTs.get(input.anotherNFT).salePrice;
+			locals.updatedNFT.statusOfSale = state.NFTs.get(input.anotherNFT).statusOfSale;
+			locals.updatedNFT.askMaxPrice = state.NFTs.get(input.anotherNFT).askMaxPrice;
+			locals.updatedNFT.royalty = state.NFTs.get(input.anotherNFT).royalty;
+			locals.updatedNFT.statusOfAsk = state.NFTs.get(input.anotherNFT).statusOfAsk;
+			locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.anotherNFT).paymentMethodOfAsk;
 			locals.updatedNFT.currentPriceOfAuction = 0;
 			locals.updatedNFT.startTimeOfAuction = 0;
 			locals.updatedNFT.endTimeOfAuction = 0;
@@ -1916,10 +1919,10 @@ protected:
 
 			for(locals._t = 0; locals._t < PFP_LENGTH_OF_URI; locals._t++) 
 			{
-				locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.possessedNFT).URI.get(locals._t));
+				locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.anotherNFT).URI.get(locals._t));
 			}
 
-			state.NFTs.set(input.possessedNFT, locals.updatedNFT);
+			state.NFTs.set(input.anotherNFT, locals.updatedNFT);
 		}
 		
 		output.returnCode = PFP_SUCCESS;

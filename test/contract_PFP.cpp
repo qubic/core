@@ -138,7 +138,15 @@ public:
             else {
                 EXPECT_EQ(initialBalanceOfCreator + div(price * NFTs.get(NFTId).royalty * 1ULL, 100ULL), getBalance(NFTs.get(NFTId).creator));
                 EXPECT_EQ(initialBalanceOfPossesor + price - div(price * (NFTs.get(NFTId).royalty * 10 + 25) * 1ULL, 1000ULL), getBalance(oldPossesor));
-                EXPECT_EQ(initialBalanceOfMarket + div(price * 20ULL, 1000ULL), getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)));
+                
+                if(div(price * 5ULL, 1000ULL) < NUMBER_OF_COMPUTORS)
+                {
+                    EXPECT_EQ(initialBalanceOfMarket + div(price * 25ULL, 1000ULL), getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)));
+                }
+                else 
+                {
+                    EXPECT_EQ(initialBalanceOfMarket + div(price * 2ULL, 100ULL) + (div(price * 5ULL, 1000ULL) - div(div(price * 5ULL, 1000ULL), NUMBER_OF_COMPUTORS * 1ULL) * NUMBER_OF_COMPUTORS * 1ULL), getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)));
+                }
             }
         }
         else 
@@ -161,6 +169,17 @@ public:
     {
         EXPECT_EQ(NFTs.get(NFTId).salePrice, PFP_SALE_PRICE);
         EXPECT_EQ(NFTs.get(NFTId).statusOfSale, 0);
+    }
+
+    void listInExchangeChecker(id user, uint32 NFTId1, uint32 NFTId2)
+    {
+        EXPECT_EQ(NFTs.get(NFTId2).NFTidForExchange, NFTId1);
+        EXPECT_EQ(NFTs.get(NFTId2).statusOfExchange, 1);
+    }
+
+    void exchangedChecker(id user, uint32 NFTId1, uint32 NFTId2)
+    {
+        EXPECT_EQ(NFTs.get(NFTId2).possesor, user);
     }
 
     uint64 getDropMintPrice(uint32 collectionId)
@@ -655,6 +674,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     pfp.getState()->listInMarketChecker(0, 100000);
 
     // buy with $Qubic
+    // small price
 
     increaseEnergy(users[2], 100000);
     uint64 initialBalanceOfCreator = getBalance(pfp.getState()->getCreatorOfNFT(0));
@@ -665,9 +685,23 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     pfp.buy(users[2], 0, 0, 100000);
     pfp.getState()->buyChecker(oldPossesor, users[2], 0, 100000, 0, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
 
-    // buy with $CFB
+    // big price
 
     pfp.listInMarket(users[2], 10000000, 0);
+    pfp.getState()->listInMarketChecker(0, 10000000);
+
+    increaseEnergy(users[3], 10000000);
+    initialBalanceOfCreator = getBalance(pfp.getState()->getCreatorOfNFT(0));
+    initialBalanceOfPossesor = getBalance(pfp.getState()->getPossessorOfNFT(0));
+    initialBalanceOfMarket = getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0));
+    oldPossesor = pfp.getState()->getPossessorOfNFT(0);
+
+    pfp.buy(users[3], 0, 0, 10000000);
+    pfp.getState()->buyChecker(oldPossesor, users[3], 0, 10000000, 0, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
+
+    // buy with $CFB
+
+    pfp.listInMarket(users[3], 10000000, 0);
     pfp.getState()->listInMarketChecker(0, 10000000);
 
     initialBalanceOfCreator = numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, pfp.getState()->getCreatorOfNFT(0), pfp.getState()->getCreatorOfNFT(0), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, pfp.getState()->getCreatorOfNFT(0), pfp.getState()->getCreatorOfNFT(0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
@@ -675,21 +709,33 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     initialBalanceOfMarket = numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
     oldPossesor = pfp.getState()->getPossessorOfNFT(0);
 
-    increaseEnergy(users[3], 10000000);
+    increaseEnergy(users[4], 10000000);
     increaseEnergy(CFB_ISSUER, PFP_TOKEN_TRANSFER_FEE);
-    EXPECT_EQ(pfp.TransferShareOwnershipAndPossession(CFB_ISSUER, assetName, 10000000000, users[3]), 10000000000);
-    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, div(10000000ULL, qubicPrice) * cfbPrice, users[3]), div(10000000ULL, qubicPrice) * cfbPrice);
+    EXPECT_EQ(pfp.TransferShareOwnershipAndPossession(CFB_ISSUER, assetName, 10000000000, users[4]), 10000000000);
+    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, div(10000000ULL, qubicPrice) * cfbPrice, users[4]), div(10000000ULL, qubicPrice) * cfbPrice);
 
-    pfp.buy(users[3], 0, 1, 0);
+    pfp.buy(users[4], 0, 1, 0);
 
-    pfp.getState()->buyChecker(oldPossesor, users[3], 0, div(10000000ULL, qubicPrice) * cfbPrice, 1, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
+    pfp.getState()->buyChecker(oldPossesor, users[4], 0, div(10000000ULL, qubicPrice) * cfbPrice, 1, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
 
     // cancelSale 
 
-    pfp.listInMarket(users[3], 10000000, 0);
+    pfp.listInMarket(users[4], 10000000, 0);
     pfp.getState()->listInMarketChecker(0, 10000000);
 
-    pfp.cancelSale(users[3], 0);
+    pfp.cancelSale(users[4], 0);
     pfp.getState()->cancelSaleChecker(0);
+
+    // listInExchange
+    
+    pfp.listInExchange(users[0], 1, 0);
+    pfp.getState()->listInExchangeChecker(users[0], 1, 0);
+
+    pfp.listInExchange(users[4], 0, 1);
+    pfp.getState()->exchangedChecker(users[0], 0, 1);
+
+    // cancelExchange
+
+    pfp.cancelExchange(users[4], 1);
 
 }
