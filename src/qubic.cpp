@@ -1581,6 +1581,12 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestAssets::type:
+                {
+                    processRequestAssets(peer, header);
+                }
+                break;
+
                 case SpecialCommand::type:
                 {
                     processSpecialCommand(peer, header);
