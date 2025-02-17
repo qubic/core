@@ -601,6 +601,27 @@ namespace QPI
 		uint64 assetName;
 	};
 
+	struct AssetIssuanceSelect : public Asset
+	{
+		bool anyIssuer;
+		bool anyName;
+
+		inline static AssetIssuanceSelect any()
+		{
+			return { id::zero(), 0, true, true };
+		}
+
+		inline static AssetIssuanceSelect byIssuer(const id& owner)
+		{
+			return { owner, 0, false, true };
+		}
+
+		inline static AssetIssuanceSelect byName(uint64 assetName)
+		{
+			return { m256i::zero(), assetName, true, false };
+		}
+	};
+
 	struct AssetOwnershipSelect
 	{
 		id owner;
@@ -647,6 +668,43 @@ namespace QPI
 		}
 	};
 
+	// Iterator for asset issuance records.
+	// CAUTION CORE DEVS: DOES NOT TAKE CARE FOR LOCKING! (not relevant for contract devs)
+	class AssetIssuanceIterator
+	{
+	protected:
+		AssetIssuanceSelect _issuance;
+		unsigned int _issuanceIdx;
+
+	public:
+		AssetIssuanceIterator(const AssetIssuanceSelect& issuance = AssetIssuanceSelect::any())
+		{
+			begin(issuance);
+		}
+
+		// Start iteration with issuance filter (selects first record).
+		inline void begin(const AssetIssuanceSelect& issuance);
+
+		// Return if iteration with next() has reached end.
+		inline bool reachedEnd() const;
+
+		// Step to next issuance record matching filtering criteria.
+		inline bool next();
+
+		// Issuer of current record
+		inline id issuer() const;
+
+		// Asset name of current record
+		inline uint64 assetName() const;
+
+		// Index of issuance in universe. Should not be used by contracts, because it may change between contract calls.
+		// Changed by next(). NO_ASSET_INDEX if issuance has not been found.
+		inline unsigned int issuanceIndex() const
+		{
+			return _issuanceIdx;
+		}
+	};
+
 	// Iterator for ownership records of specific issuance also providing filtering options.
 	// CAUTION CORE DEVS: DOES NOT TAKE CARE FOR LOCKING! (not relevant for contract devs)
 	class AssetOwnershipIterator
@@ -679,6 +737,9 @@ namespace QPI
 
 		// Issuer of current record
 		inline id issuer() const;
+
+		// Asset name of current record
+		inline uint64 assetName() const;
 
 		// Owner of current record
 		inline id owner() const;
