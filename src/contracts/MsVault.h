@@ -473,9 +473,7 @@ protected:
     // Procedures and functions
     PUBLIC_PROCEDURE_WITH_LOCALS(registerVault)
     {
-        // [TODO]: Change this to
-        // if (qpi.invocationReward() < state.liveRegisteringFee)
-        if (qpi.invocationReward() < MSVAULT_REGISTERING_FEE)
+         if (qpi.invocationReward() < state.liveRegisteringFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -576,21 +574,14 @@ protected:
 
         state.vaults.set((uint64)locals.slotIndex, locals.newVault);
 
-        // [TODO]: Change this to
-        //if (qpi.invocationReward() > state.liveRegisteringFee)
-        //{
-        //     qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveRegisteringFee);
-        // }        
-        if (qpi.invocationReward() > MSVAULT_REGISTERING_FEE)
+        if (qpi.invocationReward() > state.liveRegisteringFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - MSVAULT_REGISTERING_FEE);
+             qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveRegisteringFee);
         }
 
         state.numberOfActiveVaults++;
 
-        // [TODO]: Change this to
-        //state.totalRevenue += state.liveRegisteringFee;
-        state.totalRevenue += MSVAULT_REGISTERING_FEE;
+        state.totalRevenue += state.liveRegisteringFee;
     }
 
     PUBLIC_PROCEDURE_WITH_LOCALS(deposit)
@@ -617,18 +608,12 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(releaseTo)
     {
-        // [TODO]: Change this to
-        //if (qpi.invocationReward() > state.liveReleaseFee)
-        //{
-        //    qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseFee);
-        //}
-        if (qpi.invocationReward() > MSVAULT_RELEASE_FEE)
+        if (qpi.invocationReward() > state.liveReleaseFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - MSVAULT_RELEASE_FEE);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseFee);
         }
-        // [TODO]: Change this to
-        //state.totalRevenue += state.liveReleaseFee;
-        state.totalRevenue += MSVAULT_RELEASE_FEE;
+
+        state.totalRevenue += state.liveReleaseFee;
 
         locals.logger._contractIndex = CONTRACT_INDEX;
         locals.logger._type = 0;
@@ -738,18 +723,12 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(resetRelease)
     {
-        // [TODO]: Change this to
-        //if (qpi.invocationReward() > state.liveReleaseResetFee)
-        //{
-        //    qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseResetFee);
-        //}
-        if (qpi.invocationReward() > MSVAULT_RELEASE_RESET_FEE)
+        if (qpi.invocationReward() > state.liveReleaseResetFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - MSVAULT_RELEASE_RESET_FEE);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseResetFee);
         }
-        // [TODO]: Change this to
-        //state.totalRevenue += state.liveReleaseResetFee;
-        state.totalRevenue += MSVAULT_RELEASE_RESET_FEE;
+
+        state.totalRevenue += state.liveReleaseResetFee;
 
         locals.logger._contractIndex = CONTRACT_INDEX;
         locals.logger._type = 0;
@@ -801,110 +780,109 @@ protected:
         LOG_INFO(locals.logger);
     }
 
-    // [TODO]: Uncomment this to enable live fee update
     PUBLIC_PROCEDURE_WITH_LOCALS(voteFeeChange)
     {
-    //    locals.ish_in.candidate = qpi.invocator();
-    //    isShareHolder(qpi, state, locals.ish_in, locals.ish_out, locals.ish_locals);
-    //    if (!locals.ish_out.result)
-    //    {
-    //        return;
-    //    }
-    //
-    //    qpi.transfer(qpi.invocator(), qpi.invocationReward());
-    //    locals.nShare = qpi.numberOfPossessedShares(MSVAULT_ASSET_NAME, id::zero(), qpi.invocator(), qpi.invocator(), MSVAULT_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX);
-    //
-    //    locals.fs.registeringFee = input.newRegisteringFee;
-    //    locals.fs.releaseFee = input.newReleaseFee;
-    //    locals.fs.releaseResetFee = input.newReleaseResetFee;
-    //    locals.fs.holdingFee = input.newHoldingFee;
-    //    locals.fs.depositFee = input.newDepositFee;
-    //    // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
-    //    //locals.fs.burnFee = input.burnFee;
-    //
-    //    locals.needNewRecord = true;
-    //    for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
-    //    {
-    //        locals.currentAddr = state.feeVotesOwner.get(locals.i);
-    //        locals.realScore = qpi.numberOfPossessedShares(MSVAULT_ASSET_NAME, id::zero(), locals.currentAddr, locals.currentAddr, MSVAULT_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX);
-    //        state.feeVotesScore.set(locals.i, locals.realScore);
-    //        if (locals.currentAddr == qpi.invocator())
-    //        {
-    //            locals.needNewRecord = false;
-    //        }
-    //    }
-    //    if (locals.needNewRecord)
-    //    {
-    //        state.feeVotes.set(state.feeVotesAddrCount, locals.fs);
-    //        state.feeVotesOwner.set(state.feeVotesAddrCount, qpi.invocator());
-    //        state.feeVotesScore.set(state.feeVotesAddrCount, locals.nShare);
-    //        state.feeVotesAddrCount = state.feeVotesAddrCount + 1;
-    //    }
-    //
-    //    locals.sumVote = 0;
-    //    for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
-    //    {
-    //        locals.sumVote = locals.sumVote + state.feeVotesScore.get(locals.i);
-    //    }
-    //    if (locals.sumVote < QUORUM)
-    //    {
-    //        return;
-    //    }
-    //
-    //    state.uniqueFeeVotesCount = 0;
-    //    for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
-    //    {
-    //        locals.currentVote = state.feeVotes.get(locals.i);
-    //        locals.found = false;
-    //        locals.uniqueIndex = 0;
-    //        locals.j;
-    //        for (locals.j = 0; locals.j < state.uniqueFeeVotesCount; locals.j = locals.j + 1)
-    //        {
-    //            locals.uniqueVote = state.uniqueFeeVotes.get(locals.j);
-    //            if (locals.uniqueVote.registeringFee == locals.currentVote.registeringFee &&
-    //                locals.uniqueVote.releaseFee == locals.currentVote.releaseFee &&
-    //                locals.uniqueVote.releaseResetFee == locals.currentVote.releaseResetFee &&
-    //                locals.uniqueVote.holdingFee == locals.currentVote.holdingFee &&
-    //                locals.uniqueVote.depositFee == locals.currentVote.depositFee
-    //                // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
-    //                //&& locals.uniqueVote.burnFee == locals.currentVote.burnFee
-    //                )
-    //            {
-    //                locals.found = true;
-    //                locals.uniqueIndex = locals.j;
-    //                break;
-    //            }
-    //        }
-    //        if (locals.found)
-    //        {
-    //            locals.currentRank = state.uniqueFeeVotesRanking.get(locals.uniqueIndex);
-    //            state.uniqueFeeVotesRanking.set(locals.uniqueIndex, locals.currentRank + state.feeVotesScore.get(locals.i));
-    //        }
-    //        else
-    //        {
-    //            state.uniqueFeeVotes.set(state.uniqueFeeVotesCount, locals.currentVote);
-    //            state.uniqueFeeVotesRanking.set(state.uniqueFeeVotesCount, state.feeVotesScore.get(locals.i));
-    //            state.uniqueFeeVotesCount = state.uniqueFeeVotesCount + 1;
-    //        }
-    //    }
-    //
-    //    for (locals.i = 0; locals.i < state.uniqueFeeVotesCount; locals.i = locals.i + 1)
-    //    {
-    //        if (state.uniqueFeeVotesRanking.get(locals.i) >= QUORUM)
-    //        {
-    //            state.liveRegisteringFee = state.uniqueFeeVotes.get(locals.i).registeringFee;
-    //            state.liveReleaseFee = state.uniqueFeeVotes.get(locals.i).releaseFee;
-    //            state.liveReleaseResetFee = state.uniqueFeeVotes.get(locals.i).releaseResetFee;
-    //            state.liveHoldingFee = state.uniqueFeeVotes.get(locals.i).holdingFee;
-    //            state.liveDepositFee = state.uniqueFeeVotes.get(locals.i).depositFee;
-    //            // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
-    //            //state.liveBurnFee = state.uniqueFeeVotes.get(locals.i).burnFee;
+        locals.ish_in.candidate = qpi.invocator();
+        isShareHolder(qpi, state, locals.ish_in, locals.ish_out, locals.ish_locals);
+        if (!locals.ish_out.result)
+        {
+            return;
+        }
+    
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        locals.nShare = qpi.numberOfShares({ NULL_ID, MSVAULT_ASSET_NAME }, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator()));
+    
+        locals.fs.registeringFee = input.newRegisteringFee;
+        locals.fs.releaseFee = input.newReleaseFee;
+        locals.fs.releaseResetFee = input.newReleaseResetFee;
+        locals.fs.holdingFee = input.newHoldingFee;
+        locals.fs.depositFee = input.newDepositFee;
+        // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+        //locals.fs.burnFee = input.burnFee;
+    
+        locals.needNewRecord = true;
+        for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        {
+            locals.currentAddr = state.feeVotesOwner.get(locals.i);
+            locals.realScore = qpi.numberOfShares({ NULL_ID, MSVAULT_ASSET_NAME }, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator()));
+            state.feeVotesScore.set(locals.i, locals.realScore);
+            if (locals.currentAddr == qpi.invocator())
+            {
+                locals.needNewRecord = false;
+            }
+        }
+        if (locals.needNewRecord)
+        {
+            state.feeVotes.set(state.feeVotesAddrCount, locals.fs);
+            state.feeVotesOwner.set(state.feeVotesAddrCount, qpi.invocator());
+            state.feeVotesScore.set(state.feeVotesAddrCount, locals.nShare);
+            state.feeVotesAddrCount = state.feeVotesAddrCount + 1;
+        }
+    
+        locals.sumVote = 0;
+        for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        {
+            locals.sumVote = locals.sumVote + state.feeVotesScore.get(locals.i);
+        }
+        if (locals.sumVote < QUORUM)
+        {
+            return;
+        }
+    
+        state.uniqueFeeVotesCount = 0;
+        for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        {
+            locals.currentVote = state.feeVotes.get(locals.i);
+            locals.found = false;
+            locals.uniqueIndex = 0;
+            locals.j;
+            for (locals.j = 0; locals.j < state.uniqueFeeVotesCount; locals.j = locals.j + 1)
+            {
+                locals.uniqueVote = state.uniqueFeeVotes.get(locals.j);
+                if (locals.uniqueVote.registeringFee == locals.currentVote.registeringFee &&
+                    locals.uniqueVote.releaseFee == locals.currentVote.releaseFee &&
+                    locals.uniqueVote.releaseResetFee == locals.currentVote.releaseResetFee &&
+                    locals.uniqueVote.holdingFee == locals.currentVote.holdingFee &&
+                    locals.uniqueVote.depositFee == locals.currentVote.depositFee
+                    // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+                    //&& locals.uniqueVote.burnFee == locals.currentVote.burnFee
+                    )
+                {
+                    locals.found = true;
+                    locals.uniqueIndex = locals.j;
+                    break;
+                }
+            }
+            if (locals.found)
+            {
+                locals.currentRank = state.uniqueFeeVotesRanking.get(locals.uniqueIndex);
+                state.uniqueFeeVotesRanking.set(locals.uniqueIndex, locals.currentRank + state.feeVotesScore.get(locals.i));
+            }
+            else
+            {
+                state.uniqueFeeVotes.set(state.uniqueFeeVotesCount, locals.currentVote);
+                state.uniqueFeeVotesRanking.set(state.uniqueFeeVotesCount, state.feeVotesScore.get(locals.i));
+                state.uniqueFeeVotesCount = state.uniqueFeeVotesCount + 1;
+            }
+        }
+    
+        for (locals.i = 0; locals.i < state.uniqueFeeVotesCount; locals.i = locals.i + 1)
+        {
+            if (state.uniqueFeeVotesRanking.get(locals.i) >= QUORUM)
+            {
+                state.liveRegisteringFee = state.uniqueFeeVotes.get(locals.i).registeringFee;
+                state.liveReleaseFee = state.uniqueFeeVotes.get(locals.i).releaseFee;
+                state.liveReleaseResetFee = state.uniqueFeeVotes.get(locals.i).releaseResetFee;
+                state.liveHoldingFee = state.uniqueFeeVotes.get(locals.i).holdingFee;
+                state.liveDepositFee = state.uniqueFeeVotes.get(locals.i).depositFee;
+                // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
+                //state.liveBurnFee = state.uniqueFeeVotes.get(locals.i).burnFee;
 
-    //            state.feeVotesAddrCount = 0;
-    //            state.uniqueFeeVotesCount = 0;
-    //            return;
-    //        }
-    //    }
+                state.feeVotesAddrCount = 0;
+                state.uniqueFeeVotesCount = 0;
+                return;
+            }
+        }
     }
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaults)
@@ -1003,23 +981,19 @@ protected:
         output.totalDistributedToShareholders = state.totalDistributedToShareholders;
         // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
         //output.burnedAmount = state.burnedAmount;
+        output.burnedAmount = 0;
     }
 
     PUBLIC_FUNCTION(getFees)
     {
-        output.registeringFee = MSVAULT_REGISTERING_FEE;
-        output.releaseFee = MSVAULT_RELEASE_FEE;
-        output.releaseResetFee = MSVAULT_RELEASE_RESET_FEE;
-        output.holdingFee = MSVAULT_HOLDING_FEE;
-        output.depositFee = 0ULL;
-        // [TODO]: Change this to:
-        //output.registeringFee = state.liveRegisteringFee;
-        //output.releaseFee = state.liveReleaseFee;
-        //output.releaseResetFee = state.liveReleaseResetFee;
-        //output.holdingFee = state.liveHoldingFee;
-        //output.depositFee = state.liveDepositFee;
+        output.registeringFee = state.liveRegisteringFee;
+        output.releaseFee = state.liveReleaseFee;
+        output.releaseResetFee = state.liveReleaseResetFee;
+        output.holdingFee = state.liveHoldingFee;
+        output.depositFee = state.liveDepositFee;
         // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
         //output.burnFee = state.liveBurnFee;
+        output.burnFee = MSVAULT_BURN_FEE;
     }
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaultOwners)
@@ -1053,17 +1027,16 @@ protected:
         output.status = 1ULL;
     }
     
-    // [TODO]: Uncomment this to enable live fee update
     PUBLIC_FUNCTION_WITH_LOCALS(isShareHolder)
     {
-    //    if (qpi.numberOfPossessedShares(MSVAULT_ASSET_NAME, id::zero(), input.candidate, input.candidate, MSVAULT_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX) > 0)
-    //    {
-    //        output.result = 1ULL;
-    //    }
-    //    else
-    //    {
-    //        output.result = 0ULL;
-    //    }
+        if (qpi.numberOfShares({ NULL_ID, MSVAULT_ASSET_NAME }, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) > 0)
+        {
+            output.result = 1ULL;
+        }
+        else
+        {
+            output.result = 0ULL;
+        }
     }
 
     INITIALIZE()
@@ -1087,17 +1060,10 @@ protected:
             locals.v = state.vaults.get(locals.i);
             if (locals.v.isActive)
             {
-                // [TODO]: Change this to
-                //if (locals.v.balance >= state.liveHoldingFee)
-                //{
-                //    locals.v.balance -= state.liveHoldingFee;
-                //    state.totalRevenue += state.liveHoldingFee;
-                //    state.vaults.set(locals.i, locals.v);
-                //}
-                if (locals.v.balance >= MSVAULT_HOLDING_FEE)
+                if (locals.v.balance >= state.liveHoldingFee)
                 {
-                    locals.v.balance -= MSVAULT_HOLDING_FEE;
-                    state.totalRevenue += MSVAULT_HOLDING_FEE;
+                    locals.v.balance -= state.liveHoldingFee;
+                    state.totalRevenue += state.liveHoldingFee;
                     state.vaults.set(locals.i, locals.v);
                 }
                 else
