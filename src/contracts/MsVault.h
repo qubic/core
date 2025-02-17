@@ -392,6 +392,76 @@ public:
         uint64 requiredApprovals;
     };
 
+    struct getFeeVotes_input
+    {
+    };
+    struct getFeeVotes_output
+    {
+        uint64 status;
+        uint64 numberOfFeeVotes;
+        Array<MsVaultFeeVote, MSVAULT_MAX_FEE_VOTES> feeVotes;
+    };
+    struct getFeeVotes_locals
+    {
+        uint64 i;
+    };
+
+    struct getFeeVotesOwner_input
+    {
+    };
+    struct getFeeVotesOwner_output
+    {
+        uint64 status;
+        uint64 numberOfFeeVotes;
+        Array<id, MSVAULT_MAX_FEE_VOTES> feeVotesOwner;
+    };
+    struct getFeeVotesOwner_locals
+    {
+        uint64 i;
+    };
+
+    struct getFeeVotesScore_input
+    {
+    };
+    struct getFeeVotesScore_output
+    {
+        uint64 status;
+        uint64 numberOfFeeVotes;
+        Array<uint64, MSVAULT_MAX_FEE_VOTES> feeVotesScore;
+    };
+    struct getFeeVotesScore_locals
+    {
+        uint64 i;
+    };
+
+    struct getUniqueFeeVotes_input
+    {
+    };
+    struct getUniqueFeeVotes_output
+    {
+        uint64 status;
+        uint64 numberOfUniqueFeeVotes;
+        Array<MsVaultFeeVote, MSVAULT_MAX_FEE_VOTES> uniqueFeeVotes;
+    };
+    struct getUniqueFeeVotes_locals
+    {
+        uint64 i;
+    };
+
+    struct getUniqueFeeVotesRanking_input
+    {
+    };
+    struct getUniqueFeeVotesRanking_output
+    {
+        uint64 status;
+        uint64 numberOfUniqueFeeVotes;
+        Array<uint64, MSVAULT_MAX_FEE_VOTES> uniqueFeeVotesRanking;
+    };
+    struct getUniqueFeeVotesRanking_locals
+    {
+        uint64 i;
+    };
+
     struct END_EPOCH_locals
     {
         uint64 i;
@@ -473,7 +543,7 @@ protected:
     // Procedures and functions
     PUBLIC_PROCEDURE_WITH_LOCALS(registerVault)
     {
-         if (qpi.invocationReward() < state.liveRegisteringFee)
+         if (qpi.invocationReward() < (sint64)state.liveRegisteringFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -574,7 +644,7 @@ protected:
 
         state.vaults.set((uint64)locals.slotIndex, locals.newVault);
 
-        if (qpi.invocationReward() > state.liveRegisteringFee)
+        if (qpi.invocationReward() > (sint64)state.liveRegisteringFee)
         {
              qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveRegisteringFee);
         }
@@ -608,7 +678,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(releaseTo)
     {
-        if (qpi.invocationReward() > state.liveReleaseFee)
+        if (qpi.invocationReward() > (sint64)state.liveReleaseFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseFee);
         }
@@ -723,7 +793,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(resetRelease)
     {
-        if (qpi.invocationReward() > state.liveReleaseResetFee)
+        if (qpi.invocationReward() > (sint64)state.liveReleaseResetFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseResetFee);
         }
@@ -1039,6 +1109,72 @@ protected:
         }
     }
 
+    PUBLIC_FUNCTION_WITH_LOCALS(getFeeVotes)
+    {
+        output.status = 0ULL;
+
+        for (locals.i = 0ULL; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        {
+            output.feeVotes.set(locals.i, state.feeVotes.get(locals.i));
+        }
+
+        output.numberOfFeeVotes = state.feeVotesAddrCount;
+
+        output.status = 1ULL;
+    }
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getFeeVotesOwner)
+    {
+        output.status = 0ULL;
+
+        for (locals.i = 0ULL; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        {
+            output.feeVotesOwner.set(locals.i, state.feeVotesOwner.get(locals.i));
+        }
+        output.numberOfFeeVotes = state.feeVotesAddrCount;
+
+        output.status = 1ULL;
+    }
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getFeeVotesScore)
+    {
+        output.status = 0ULL;
+
+        for (locals.i = 0ULL; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        {
+            output.feeVotesScore.set(locals.i, state.feeVotesScore.get(locals.i));
+        }
+        output.numberOfFeeVotes = state.feeVotesAddrCount;
+
+        output.status = 1ULL;
+    }
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getUniqueFeeVotes)
+    {
+        output.status = 0ULL;
+
+        for (locals.i = 0ULL; locals.i < state.uniqueFeeVotesCount; locals.i = locals.i + 1)
+        {
+            output.uniqueFeeVotes.set(locals.i, state.uniqueFeeVotes.get(locals.i));
+        }
+        output.numberOfUniqueFeeVotes = state.uniqueFeeVotesCount;
+
+        output.status = 1ULL;
+    }
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getUniqueFeeVotesRanking)
+    {
+        output.status = 0ULL;
+
+        for (locals.i = 0ULL; locals.i < state.uniqueFeeVotesCount; locals.i = locals.i + 1)
+        {
+            output.uniqueFeeVotesRanking.set(locals.i, state.uniqueFeeVotesRanking.get(locals.i));
+        }
+        output.numberOfUniqueFeeVotes = state.uniqueFeeVotesCount;
+
+        output.status = 1ULL;
+    }
+
     INITIALIZE()
     {
         state.numberOfActiveVaults = 0ULL;
@@ -1131,5 +1267,10 @@ protected:
         REGISTER_USER_FUNCTION(getVaultOwners, 11);
         REGISTER_USER_FUNCTION(isShareHolder, 12);
         REGISTER_USER_PROCEDURE(voteFeeChange, 13);
+        REGISTER_USER_FUNCTION(getFeeVotes, 14);
+        REGISTER_USER_FUNCTION(getFeeVotesOwner, 15);
+        REGISTER_USER_FUNCTION(getFeeVotesScore, 16);
+        REGISTER_USER_FUNCTION(getUniqueFeeVotes, 17);
+        REGISTER_USER_FUNCTION(getUniqueFeeVotesRanking, 18);
     }
 };
