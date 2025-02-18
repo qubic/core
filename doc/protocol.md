@@ -31,7 +31,6 @@ The type number is the identifier used in `RequestResponseHeader` (defined in `h
 - `RequestContractIPO`, type 33, defined in `contract.h`.
 - `RespondContractIPO`, type 34, defined in `contract.h`.
 - `EndResponse`, type 35, defined in `common_response.h`.
-- `EndResponse`, type 35, defined in `common_response.h`.
 - `RequestIssuedAssets`, type 36, defined in `assets.h`.
 - `RespondIssuedAssets`, type 37, defined in `assets.h`.
 - `RequestOwnedAssets`, type 38, defined in `assets.h`.
