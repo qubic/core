@@ -4309,8 +4309,6 @@ static void prepareNextTickTransactions()
 
     nextTickTransactionsSemaphore = 1; // signal a flag for displaying on the console log
 
-    // Initialize transactionFlags to one so that by default we do not request any transaction
-    bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0xff);
 
     // unknownTransactions is set to 1 if a transaction is missing in the local storage
     unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
@@ -4439,11 +4437,17 @@ static void prepareNextTickTransactions()
         // Update requestedTickTransactions the list of txs that not exist in memory so the MAIN loop can try to fetch them from peers
         // We prepare the transactionFlags so that missing transactions are set to 0 (initialized to all 1)
         // As processNextTickTransactions returns tx for which the flag ist set to 0 (tx with flag set to 1 are not returned)
-        for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
-        {
-            if (unknownTransactions[i >> 6] & (1ULL << (i & 63)))
+
+        // We check if the last tickTransactionRequest it already sent
+        if(requestedTickTransactions.requestedTickTransactions.tick == 0){
+            // Initialize transactionFlags to one so that by default we do not request any transaction
+            bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0xff);
+            for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
             {
-                requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] &= ~(1 << (i & 7));
+                if (unknownTransactions[i >> 6] & (1ULL << (i & 63)))
+                {
+                    requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] &= ~(1 << (i & 7));
+                }
             }
         }
     }
