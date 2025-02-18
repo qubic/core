@@ -9,6 +9,7 @@
 #include "computors.h"
 #include "contract.h"
 #include "entity.h"
+#include "logging.h"
 #include "public_peers.h"
 #include "special_command.h"
 #include "tick.h"
