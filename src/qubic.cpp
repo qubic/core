@@ -4296,24 +4296,28 @@ static unsigned int countCurrentTickVote()
 }
 
 // This function scans through all transactions digest in next tickData
-// and look for those txs in local memory (pending txs). If a transaction doesn't exist, it will try to update requestedTickTransactions
+// and look for those txs in local memory (pending txs and tickstorage). If a transaction doesn't exist, it will try to update requestedTickTransactions
 // I main loop (MAIN thread), it will try to fetch missing txs based on the data inside requestedTickTransactions
 // Current code assumes the limits:
 // - 1 tx per source publickey per tick
 // - 128 txs per computor publickey per tick
+// Note requestedTickTransactions.transactionFlags are set to 0 for tx we want to request and 1 for tx we are not interested in
 static void prepareNextTickTransactions()
 {
     const unsigned int nextTick = system.tick + 1;
     const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
 
     nextTickTransactionsSemaphore = 1; // signal a flag for displaying on the console log
-    bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0);
+
+
+    // unknownTransactions is set to 1 if a transaction is missing in the local storage
     unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
     bs->SetMem(unknownTransactions, sizeof(unknownTransactions), 0);
     const auto* tsNextTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(nextTickIndex);
     
     // This function maybe called multiple times per tick due to lack of data (txs or votes)
     // Here we do a simple pre scan to check txs via tsNextTickTransactionOffsets (already processed - aka already copying from pendingTransaction array to tickTransaction)
+    // Mark all transaction that are not in the tickStorage as missing
     for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
     {
         if (!isZero(nextTickData.transactionDigests[i]))
@@ -4348,6 +4352,7 @@ static void prepareNextTickTransactions()
 
     if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
     {
+        // Checks if any of the missing transactions is available in the computorPendingTransaction and remove unknownTransaction flag if found
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; i++)
         {
             Transaction* pendingTransaction = (Transaction*)&computorPendingTransactions[i * MAX_TRANSACTION_SIZE];
@@ -4387,6 +4392,7 @@ static void prepareNextTickTransactions()
                 RELEASE(computorPendingTransactionsLock);
             }
         }
+        // Checks if any of the missing transactions is available in the entityPendingTransaction and remove unknownTransaction flag if found
         for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
         {
             Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
@@ -4427,14 +4433,20 @@ static void prepareNextTickTransactions()
             }
         }
 
+        // At this point unknownTransactions is set to 1 for all transactions that are unknown
         // Update requestedTickTransactions the list of txs that not exist in memory so the MAIN loop can try to fetch them from peers
-        for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
-        {
-            if (!isZero(nextTickData.transactionDigests[i]))
+        // We prepare the transactionFlags so that missing transactions are set to 0 (initialized to all 1)
+        // As processNextTickTransactions returns tx for which the flag ist set to 0 (tx with flag set to 1 are not returned)
+
+        // We check if the last tickTransactionRequest it already sent
+        if(requestedTickTransactions.requestedTickTransactions.tick == 0){
+            // Initialize transactionFlags to one so that by default we do not request any transaction
+            bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0xff);
+            for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
             {
-                if (!(unknownTransactions[i >> 6] & (1ULL << (i & 63))))
+                if (unknownTransactions[i >> 6] & (1ULL << (i & 63)))
                 {
-                    requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] |= (1 << (i & 7));
+                    requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] &= ~(1 << (i & 7));
                 }
             }
         }
