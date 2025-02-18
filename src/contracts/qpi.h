@@ -706,7 +706,7 @@ namespace QPI
 	};
 
 	// Iterator for ownership records of specific issuance also providing filtering options.
-	// CAUTION CORE DEVS: DOES NOT TAKE CARE FOR LOCKING! (not relevant for contract devs)
+	// CAUTION CORE DEVS: DOES NOT TAKE CARE OF LOCKING! (not relevant for contract devs)
 	class AssetOwnershipIterator
 	{
 	protected:
@@ -766,7 +766,7 @@ namespace QPI
 	};
 
 	// Iterator for possession records of specific issuance also providing filtering options.
-	// CAUTION CORE DEVS: DOES NOT TAKE CARE FOR LOCKING! (not relevant for contract devs)
+	// CAUTION CORE DEVS: DOES NOT TAKE CARE OF LOCKING! (not relevant for contract devs)
 	class AssetPossessionIterator : public AssetOwnershipIterator
 	{
 	protected:

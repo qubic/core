@@ -1,5 +1,7 @@
 #define NO_UEFI
 
+#define PRINT_TEST_INFO 0
+
 #include "gtest/gtest.h"
 
 #include "logging_test.h"
@@ -334,14 +336,18 @@ TEST(TestCoreAssets, AssetIterators)
         for (int i = 0; i < issuancesCount; ++i)
         {
             AssetKey key{ issuances[i].id.issuer, issuances[i].id.assetName };
-            //std::cout << issuances[i].id.issuer << ", name " << issuances[i].id.assetName << ", idx " << issuances[i].universeIdx << std::endl;
+#if PRINT_TEST_INFO > 0
+            std::cout << issuances[i].id.issuer << ", name " << issuances[i].id.assetName << ", idx " << issuances[i].universeIdx << std::endl;
+#endif
             testIssuancesSet[key] = &issuances[i];
         }
         AssetIssuanceIterator iter;
         while (!iter.reachedEnd())
         {
             AssetKey key{ iter.issuer(), iter.assetName() };
-            //std::cout << iter.issuer() << ", name " << iter.assetName() << ", idx " << iter.issuanceIndex() << std::endl;
+#if PRINT_TEST_INFO > 0
+            std::cout << iter.issuer() << ", name " << iter.assetName() << ", idx " << iter.issuanceIndex() << std::endl;
+#endif
             auto testIssuancesSetIt = testIssuancesSet.find(key);
             EXPECT_NE(testIssuancesSetIt, testIssuancesSet.end());
             testIssuancesSetIt->second->checkIssuance(iter);
@@ -358,14 +364,18 @@ TEST(TestCoreAssets, AssetIterators)
             if (issuances[i].id.issuer != assetSelect.issuer)
                 continue;
             AssetKey key{ issuances[i].id.issuer, issuances[i].id.assetName };
-            //std::cout << issuances[i].id.issuer << ", name " << issuances[i].id.assetName << ", idx " << issuances[i].universeIdx << std::endl;
+#if PRINT_TEST_INFO > 0
+            std::cout << issuances[i].id.issuer << ", name " << issuances[i].id.assetName << ", idx " << issuances[i].universeIdx << std::endl;
+#endif
             testIssuancesSet[key] = &issuances[i];
         }
         iter.begin(assetSelect);
         while (!iter.reachedEnd())
         {
             AssetKey key{ iter.issuer(), iter.assetName() };
-            //std::cout << iter.issuer() << ", name " << iter.assetName() << ", idx " << iter.issuanceIndex() << std::endl;
+#if PRINT_TEST_INFO > 0
+            std::cout << iter.issuer() << ", name " << iter.assetName() << ", idx " << iter.issuanceIndex() << std::endl;
+#endif
             auto testIssuancesSetIt = testIssuancesSet.find(key);
             EXPECT_NE(testIssuancesSetIt, testIssuancesSet.end());
             testIssuancesSetIt->second->checkIssuance(iter);
@@ -382,14 +392,18 @@ TEST(TestCoreAssets, AssetIterators)
             if (issuances[i].id.assetName != assetSelect.assetName)
                 continue;
             AssetKey key{ issuances[i].id.issuer, issuances[i].id.assetName };
-            //std::cout << issuances[i].id.issuer << ", name " << issuances[i].id.assetName << ", idx " << issuances[i].universeIdx << std::endl;
+#if PRINT_TEST_INFO > 0
+            std::cout << issuances[i].id.issuer << ", name " << issuances[i].id.assetName << ", idx " << issuances[i].universeIdx << std::endl;
+#endif
             testIssuancesSet[key] = &issuances[i];
         }
         iter.begin(assetSelect);
         while (!iter.reachedEnd())
         {
             AssetKey key{ iter.issuer(), iter.assetName() };
-            //std::cout << iter.issuer() << ", name " << iter.assetName() << ", idx " << iter.issuanceIndex() << std::endl;
+#if PRINT_TEST_INFO > 0
+            std::cout << iter.issuer() << ", name " << iter.assetName() << ", idx " << iter.issuanceIndex() << std::endl;
+#endif
             auto testIssuancesSetIt = testIssuancesSet.find(key);
             EXPECT_NE(testIssuancesSetIt, testIssuancesSet.end());
             testIssuancesSetIt->second->checkIssuance(iter);
