@@ -164,7 +164,6 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE QVAULT2
 #include "contracts/QVAULT.h"
 
-#ifndef NO_MSVAULT
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -174,7 +173,6 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE_TYPE MSVAULT
 #define CONTRACT_STATE2_TYPE MSVAULT2
 #include "contracts/MsVault.h"
-#endif
 
 // new contracts should be added above this line
 
@@ -250,9 +248,7 @@ constexpr struct ContractDescription
     {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
     {"QEARN", 137, 10000, sizeof(QEARN)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
     {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
-#ifndef NO_MSVAULT
     {"MSVAULT", 149, 10000, sizeof(MSVAULT)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
@@ -346,9 +342,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(CCF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QEARN);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QVAULT);
-#ifndef NO_MSVAULT
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MSVAULT);
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
