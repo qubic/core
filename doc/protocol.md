@@ -42,8 +42,7 @@ The type number is the identifier used in `RequestResponseHeader` (defined in `h
 - `RespondContractFunction`, type 43, defined in `contract.h`.
 - `RequestLog`, type 44, defined in `logging.h`.
 - `RespondLog`, type 45, defined in `logging.h`.
-- `TryAgain`, **type 46**, defined in `common_response.h`.
-- `REQUEST_SYSTEM_INFO`, **type 46**, defined in `system_info.h`.
+- `REQUEST_SYSTEM_INFO`, type 46, defined in `system_info.h`.
 - `RespondSystemInfo`, type 47, defined in `system_info.h`.
 - `RequestLogIdRangeFromTx`, type 48, defined in `logging.h`.
 - `ResponseLogIdRangeFromTx`, type 49, defined in `logging.h`.
@@ -51,6 +50,7 @@ The type number is the identifier used in `RequestResponseHeader` (defined in `h
 - `ResponseAllLogIdRangesFromTick`, type 51, defined in `logging.h`.
 - `RequestAssets`, type 52, defined in `assets.h`.
 - `RespondAssets` and `RespondAssetsWithSiblings`, type 53, defined in `assets.h`.
+- `TryAgain`, type 54, defined in `common_response.h`.
 - `SpecialCommand`, type 255, defined in `special_command.h`.
 
 Addon messages (supported if addon is enabled):
