@@ -12,6 +12,7 @@ constexpr uint64 MSVAULT_RELEASE_FEE = 100000ULL;
 constexpr uint64 MSVAULT_RELEASE_RESET_FEE = 1000000ULL;
 constexpr uint64 MSVAULT_HOLDING_FEE = 500000ULL;
 constexpr uint64 MSVAULT_BURN_FEE = 0ULL; // Integer percentage from 1 -> 100
+constexpr uint64 MSVAULT_VOTE_FEE_CHANGE_FEE = 10000000ULL; // Deposit fee for adjusting other fees. Refund if shareholders
 // [TODO]: Turn this assert ON when MSVAULT_BURN_FEE > 0
 //static_assert(MSVAULT_BURN_FEE > 0, "SC requires burning qu to operate, the burn fee must be higher than 0!");
 
@@ -852,6 +853,11 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(voteFeeChange)
     {
+        if (qpi.invocationReward() < (sint64)MSVAULT_VOTE_FEE_CHANGE_FEE)
+        {
+            return;
+        }
+
         locals.ish_in.candidate = qpi.invocator();
         isShareHolder(qpi, state, locals.ish_in, locals.ish_out, locals.ish_locals);
         if (!locals.ish_out.result)
@@ -874,7 +880,7 @@ protected:
         for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
         {
             locals.currentAddr = state.feeVotesOwner.get(locals.i);
-            locals.realScore = qpi.numberOfShares({ NULL_ID, MSVAULT_ASSET_NAME }, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator()));
+            locals.realScore = qpi.numberOfShares({ NULL_ID, MSVAULT_ASSET_NAME }, AssetOwnershipSelect::byOwner(locals.currentAddr), AssetPossessionSelect::byPossessor(locals.currentAddr));
             state.feeVotesScore.set(locals.i, locals.realScore);
             if (locals.currentAddr == qpi.invocator())
             {
@@ -1099,7 +1105,8 @@ protected:
     
     PUBLIC_FUNCTION_WITH_LOCALS(isShareHolder)
     {
-        if (qpi.numberOfShares({ NULL_ID, MSVAULT_ASSET_NAME }, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) > 0)
+        if (qpi.numberOfShares({ NULL_ID, MSVAULT_ASSET_NAME }, AssetOwnershipSelect::byOwner(input.candidate),
+            AssetPossessionSelect::byPossessor(input.candidate)) > 0)
         {
             output.result = 1ULL;
         }
