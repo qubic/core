@@ -4438,10 +4438,10 @@ static void prepareNextTickTransactions()
         // At this point unknownTransactions is set to 1 for all transactions that are unknown
         // Update requestedTickTransactions the list of txs that not exist in memory so the MAIN loop can try to fetch them from peers
         // We prepare the transactionFlags so that missing transactions are set to 0 (initialized to all 1)
-        // As processNextTickTransactions returns tx for which the flag ist set to 0 (tx with flag set to 1 are nto returned)
+        // As processNextTickTransactions returns tx for which the flag ist set to 0 (tx with flag set to 1 are not returned)
         for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
         {
-            if ((unknownTransactions[i >> 6] & (1ULL << (i & 63))))
+            if (unknownTransactions[i >> 6] & (1ULL << (i & 63)))
             {
                 requestedTickTransactions.requestedTickTransactions.transactionFlags[i >> 3] &= ~(1 << (i & 7));
             }
