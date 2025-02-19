@@ -14,6 +14,174 @@ struct QSWAP2
 
 struct QSWAP : public ContractBase
 {
+public:
+	struct Fees_input{};
+	struct Fees_output{
+		uint32 assetIssuanceFee; // Amount of qus
+		uint32 transferFee; // Amount of qus
+		uint32 swapFee; // Number of billionths
+		uint32 protocolFee;
+	};
+
+	struct GetPoolBasicState_input{
+		id assetIssuer;
+		uint64 assetName;
+	};
+	struct GetPoolBasicState_output{
+		bool poolExists;
+		sint64 reservedQuAmount;
+		sint64 reservedAssetAmount;
+		sint64 totalLiqudity;
+	};
+
+	struct GetLiqudityOf_input{
+		id assetIssuer;
+		uint64 assetName;
+		id account;
+	};
+	struct GetLiqudityOf_output{
+		sint64 liqudity;
+	};
+
+	struct QuoteExactQuInput_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 quAmountIn;
+	};
+	struct QuoteExactQuInput_output{
+		sint64 assetAmountOut;
+	};
+
+	struct QuoteExactQuOutput_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 quAmountOut;
+	};
+	struct QuoteExactQuOutput_output{
+		sint64 assetAmountIn;
+	};
+
+	struct QuoteExactAssetInput_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 assetAmountIn;
+	};
+	struct QuoteExactAssetInput_output{
+		sint64 quAmountOut;
+	};
+
+	struct QuoteExactAssetOutput_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 assetAmountOut;
+	};
+	struct QuoteExactAssetOutput_output{
+		sint64 quAmountIn;
+	};
+
+	struct IssueAsset_input
+	{
+		uint64 assetName;
+		sint64 numberOfShares;
+		uint64 unitOfMeasurement;
+		sint8 numberOfDecimalPlaces;
+	};
+	struct IssueAsset_output
+	{
+		sint64 issuedNumberOfShares;
+	};
+
+	struct CreatePool_input {
+		id assetIssuer;
+		uint64 assetName;
+	};
+	struct CreatePool_output {
+		bool success;
+	};
+
+	struct TransferShareOwnershipAndPossession_input
+	{
+		id assetIssuer;
+		uint64 assetName;
+		id newOwnerAndPossessor;
+		sint64 amount;
+	};
+	struct TransferShareOwnershipAndPossession_output
+	{
+		sint64 transferredAmount;
+	};
+
+	/** 
+	* @param	quAmountADesired		The amount of tokenA to add as liquidity if the B/A price is <= amountBDesired/amountADesired (A depreciates).
+	* @param	assetAmountBDesired		The amount of tokenB to add as liquidity if the A/B price is <= amountADesired/amountBDesired (B depreciates).
+	* @param	quAmountMin				Bounds the extent to which the B/A price can go up before the transaction reverts. Must be <= amountADesired.
+	* @param	assetAmountMin			Bounds the extent to which the A/B price can go up before the transaction reverts. Must be <= amountBDesired.
+	* https://docs.uniswap.org/contracts/v2/reference/smart-contracts/router-02#addliquidity
+	*/
+	struct AddLiqudity_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 assetAmountDesired;
+		sint64 quAmountMin;
+		sint64 assetAmountMin;
+	};
+	struct AddLiqudity_output{
+		sint64 userIncreaseLiqudity;
+		sint64 quAmount;
+		sint64 assetAmount;
+	};
+
+	struct RemoveLiqudity_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 burnLiqudity;
+		sint64 quAmountMin;
+		sint64 assetAmountMin;
+	};
+
+	struct RemoveLiqudity_output {
+		sint64 quAmount;
+		sint64 assetAmount;
+	};
+
+	struct SwapExactQuForAsset_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 assetAmountOutMin;
+	};
+	struct SwapExactQuForAsset_output{
+		sint64 assetAmountOut;
+	};
+
+	struct SwapQuForExactAsset_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 assetAmountOut;
+	};
+	struct SwapQuForExactAsset_output{
+		sint64 quAmountIn;
+	};
+
+	struct SwapExactAssetForQu_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 assetAmountIn;
+		sint64 quAmountOutMin;
+	};
+	struct SwapExactAssetForQu_output{
+		sint64 quAmountOut;
+	};
+
+	struct SwapAssetForExactQu_input{
+		id assetIssuer;
+		uint64 assetName;
+		sint64 assetAmountInMax;
+		sint64 quAmountOut;
+	};
+	struct SwapAssetForExactQu_output{
+		sint64 assetAmountIn;
+	};
+
 protected:
 	uint32 swapFeeRate; 		// e.g. 30: 0.3% (base: 10_000)
 	uint32 protocolFeeRate; 	// e.g. 20: 20% (base: 100) only charge in qu
@@ -112,32 +280,19 @@ protected:
 		return sint64(div(numerator, denominator).low) + 1;
 	}
 
-//
-// functions
-//
-public:
-	struct SwapFee_input{};
-	struct SwapFee_output{
-		uint32 fee;
+	struct Fees_locals{
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
 	};
 
-	PUBLIC_FUNCTION(SwapFee)
-		output.fee = state.swapFeeRate;
+	PUBLIC_FUNCTION_WITH_LOCALS(Fees)
+		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+		output.assetIssuanceFee = locals.feesOutput.assetIssuanceFee;
+		output.transferFee = locals.feesOutput.transferFee;
+		output.swapFee = state.swapFeeRate;
+		output.protocolFee = state.protocolFeeRate;
 	_
 
-public:
-	struct GetPoolBasicState_input{
-		id assetIssuer;
-		uint64 assetName;
-	};
-	struct GetPoolBasicState_output{
-		bool poolExists;
-		sint64 reservedQuAmount;
-		sint64 reservedAssetAmount;
-		sint64 totalLiqudity;
-	};
-
-protected:
 	struct GetPoolBasicState_locals{
 		id poolID;
 		sint64 poolSlot;
@@ -180,17 +335,6 @@ protected:
 		output.totalLiqudity = locals.poolBasicState.totalLiqudity;
 	_
 
-public:
-	struct GetLiqudityOf_input{
-		id assetIssuer;
-		uint64 assetName;
-		id account;
-	};
-	struct GetLiqudityOf_output{
-		sint64 liqudity;
-	};
-
-protected:
 	struct GetLiqudityOf_locals{
 		id poolID;
 		sint64 liqElementIndex;
@@ -212,16 +356,6 @@ protected:
 			locals.liqElementIndex = state.mLiquditys.nextElementIndex(locals.liqElementIndex);
 		}
 	_
-
-public:
-	struct QuoteExactQuInput_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 quAmountIn;
-	};
-	struct QuoteExactQuInput_output{
-		sint64 assetAmountOut;
-	};
 
 	struct QuoteExactQuInput_locals{
 		id poolID;
@@ -269,17 +403,6 @@ public:
 		);
 	_
 
-public:
-	struct QuoteExactQuOutput_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 quAmountOut;
-	};
-	struct QuoteExactQuOutput_output{
-		sint64 assetAmountIn;
-	};
-
-protected:
 	struct QuoteExactQuOutput_locals{
 		id poolID;
 		sint64 poolSlot;
@@ -330,17 +453,6 @@ protected:
 		);
 	_
 
-public:
-	struct QuoteExactAssetInput_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 assetAmountIn;
-	};
-	struct QuoteExactAssetInput_output{
-		sint64 quAmountOut;
-	};
-
-protected:
 	struct QuoteExactAssetInput_locals{
 		id poolID;
 		sint64 poolSlot;
@@ -394,17 +506,6 @@ protected:
 		);
 	_
 
-public:
-	struct QuoteExactAssetOutput_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 assetAmountOut;
-	};
-	struct QuoteExactAssetOutput_output{
-		sint64 quAmountIn;
-	};
-
-protected:
 	struct QuoteExactAssetOutput_locals{
 		id poolID;
 		sint64 poolSlot;
@@ -458,18 +559,6 @@ protected:
 //
 // procudue
 // 
-public:
-	struct IssueAsset_input
-	{
-		uint64 assetName;
-		sint64 numberOfShares;
-		uint64 unitOfMeasurement;
-		sint8 numberOfDecimalPlaces;
-	};
-	struct IssueAsset_output
-	{
-		sint64 issuedNumberOfShares;
-	};
 	struct IssueAsset_locals{
 		QX::Fees_input feesInput;
 		QX::Fees_output feesOutput;
@@ -519,16 +608,6 @@ public:
 		}
 	_
 
-public:
-	struct CreatePool_input {
-		id assetIssuer;
-		uint64 assetName;
-	};
-	struct CreatePool_output {
-		bool success;
-	};
-
-protected:
 	struct CreatePool_locals{
 		id poolID;
 		sint64 poolSlot;
@@ -596,26 +675,6 @@ protected:
 		output.success = true;
 	_
 
-
-	/** 
-	* @param	quAmountADesired		The amount of tokenA to add as liquidity if the B/A price is <= amountBDesired/amountADesired (A depreciates).
-	* @param	assetAmountBDesired		The amount of tokenB to add as liquidity if the A/B price is <= amountADesired/amountBDesired (B depreciates).
-	* @param	quAmountMin				Bounds the extent to which the B/A price can go up before the transaction reverts. Must be <= amountADesired.
-	* @param	assetAmountMin			Bounds the extent to which the A/B price can go up before the transaction reverts. Must be <= amountBDesired.
-	* https://docs.uniswap.org/contracts/v2/reference/smart-contracts/router-02#addliquidity
-	*/
-	struct AddLiqudity_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 assetAmountDesired;
-		sint64 quAmountMin;
-		sint64 assetAmountMin;
-	};
-	struct AddLiqudity_output{
-		sint64 userIncreaseLiqudity;
-		sint64 quAmount;
-		sint64 assetAmount;
-	};
 
 	struct AddLiqudity_locals
 	{
@@ -881,19 +940,6 @@ protected:
 		}
 	_
 
-	struct RemoveLiqudity_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 burnLiqudity;
-		sint64 quAmountMin;
-		sint64 assetAmountMin;
-	};
-
-	struct RemoveLiqudity_output {
-		sint64 quAmount;
-		sint64 assetAmount;
-	};
-
 	struct RemoveLiqudity_locals {
 		id poolID;
 		PoolBasicState poolBasicState;
@@ -1009,15 +1055,6 @@ protected:
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 	_
 
-	// swap_exact_qu_for_asset
-	struct SwapExactQuForAsset_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 assetAmountOutMin;
-	};
-	struct SwapExactQuForAsset_output{
-		sint64 assetAmountOut;
-	};
 	struct SwapExactQuForAsset_locals{
 		id poolID;
 		sint64 poolSlot;
@@ -1116,15 +1153,6 @@ protected:
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 	_
 
-
-	struct SwapQuForExactAsset_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 assetAmountOut;
-	};
-	struct SwapQuForExactAsset_output{
-		sint64 quAmountIn;
-	};
 	struct SwapQuForExactAsset_locals{
 		id poolID;
 		sint64 poolSlot;
@@ -1237,15 +1265,6 @@ protected:
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 	_
 
-	struct SwapExactAssetForQu_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 assetAmountIn;
-		sint64 quAmountOutMin;
-	};
-	struct SwapExactAssetForQu_output{
-		sint64 quAmountOut;
-	};
 	struct SwapExactAssetForQu_locals{
 		id poolID;
 		sint64 poolSlot;
@@ -1376,18 +1395,6 @@ protected:
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 	_
 
-public:
-	struct SwapAssetForExactQu_input{
-		id assetIssuer;
-		uint64 assetName;
-		sint64 assetAmountInMax;
-		sint64 quAmountOut;
-	};
-	struct SwapAssetForExactQu_output{
-		sint64 assetAmountIn;
-	};
-
-protected:
 	struct SwapAssetForExactQu_locals{
 		id poolID;
 		sint64 poolSlot;
@@ -1512,18 +1519,6 @@ protected:
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 	_
 
-public:
-	struct TransferShareOwnershipAndPossession_input
-	{
-		id assetIssuer;
-		uint64 assetName;
-		id newOwnerAndPossessor;
-		sint64 amount;
-	};
-	struct TransferShareOwnershipAndPossession_output
-	{
-		sint64 transferredAmount;
-	};
 	struct TransferShareOwnershipAndPossession_locals {
 		QX::Fees_input feesInput;
 		QX::Fees_output feesOutput;
@@ -1581,7 +1576,7 @@ public:
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 		// functions
-		REGISTER_USER_FUNCTION(SwapFee, 1);
+		REGISTER_USER_FUNCTION(Fees, 1);
 		REGISTER_USER_FUNCTION(GetPoolBasicState, 2);
 		REGISTER_USER_FUNCTION(GetLiqudityOf, 3);
 		REGISTER_USER_FUNCTION(QuoteExactQuInput, 4);
