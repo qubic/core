@@ -102,7 +102,7 @@
     <ClInclude Include="contracts\Quottery.h">
       <Filter>contracts</Filter>
     </ClInclude>
-        <ClInclude Include="contracts\MsVault.h">
+    <ClInclude Include="contracts\MsVault.h">
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contracts\QUtil.h">
@@ -233,6 +233,9 @@
     </ClInclude>
     <ClInclude Include="spectrum\special_entities.h">
       <Filter>spectrum</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\logging.h">
+      <Filter>network_messages</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

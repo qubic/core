@@ -1054,15 +1054,13 @@ protected:
         state.numberOfActiveVaults = 0ULL;
         state.totalRevenue = 0ULL;
         state.totalDistributedToShareholders = 0ULL;
-        // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
-        //state.burnedAmount = 0ULL;
-        //state.liveBurnFee = MSVAULT_BURN_FEE;
-        // [TODO]: Add this
-        //state.liveRegisteringFee = MSVAULT_REGISTERING_FEE;
-        //state.liveReleaseFee = MSVAULT_RELEASE_FEE;
-        //state.liveReleaseResetFee = MSVAULT_RELEASE_RESET_FEE;
-        //state.liveHoldingFee = MSVAULT_HOLDING_FEE;
-        //state.liveDepositFee = 0ULL;
+        state.burnedAmount = 0ULL;
+        state.liveBurnFee = MSVAULT_BURN_FEE;
+        state.liveRegisteringFee = MSVAULT_REGISTERING_FEE;
+        state.liveReleaseFee = MSVAULT_RELEASE_FEE;
+        state.liveReleaseResetFee = MSVAULT_RELEASE_RESET_FEE;
+        state.liveHoldingFee = MSVAULT_HOLDING_FEE;
+        state.liveDepositFee = 0ULL;
     _
 
     END_EPOCH_WITH_LOCALS
