@@ -6,13 +6,7 @@ struct TESTEXA2
 
 struct TESTEXA : public ContractBase
 {
-	struct QueryQpiFunctions_input
-	{
-		Array<sint8, 128> data;
-		Array<sint8, 64> signature;
-		id entity;
-	};
-	struct QueryQpiFunctions_output
+	struct QpiFunctionsOutput
 	{
 		uint8 year;   // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 		uint8 month;  // [1..12]
@@ -30,8 +24,49 @@ struct TESTEXA : public ContractBase
 		sint32 numberOfTickTransactions;
 		id originator;
 		uint32 tick;
+	};
+
+	struct QueryQpiFunctions_input
+	{
+		Array<sint8, 128> data;
+		Array<sint8, 64> signature;
+		id entity;
+	};
+	struct QueryQpiFunctions_output
+	{
+		QpiFunctionsOutput qpiFunctionsOutput;
 		id inputDataK12;
 		bit inputSignatureValid;
+	};
+
+	struct QueryQpiFunctionsToState_input {};
+	struct QueryQpiFunctionsToState_output {};
+
+	struct ReturnQpiFunctionsOutputBeginTick_input 
+	{
+		uint32 tick;
+	};
+	struct ReturnQpiFunctionsOutputBeginTick_output
+	{
+		QpiFunctionsOutput qpiFunctionsOutput;
+	};
+
+	struct ReturnQpiFunctionsOutputEndTick_input
+	{
+		uint32 tick;
+	};
+	struct ReturnQpiFunctionsOutputEndTick_output
+	{
+		QpiFunctionsOutput qpiFunctionsOutput;
+	};
+
+	struct ReturnQpiFunctionsOutputUserProc_input
+	{
+		uint32 tick;
+	};
+	struct ReturnQpiFunctionsOutputUserProc_output
+	{
+		QpiFunctionsOutput qpiFunctionsOutput;
 	};
 
 	struct IssueAsset_input
@@ -87,6 +122,15 @@ struct TESTEXA : public ContractBase
 	};
 
 protected:
+
+	uint32 iterationIndex;
+	QpiFunctionsOutput qpiFunctionsOutputTemp;
+	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputBeginTick; // Output of QPI functions queried by the BEGIN_TICK procedure for the last 16 ticks
+	uint8 qpiFunctionsOutputBeginTickNextIndex; // Next index to write to in qpiFunctionsOutputBeginTick
+	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputEndTick; // Output of QPI functions queried by the END_TICK procedure for the last 16 ticks
+	uint8 qpiFunctionsOutputEndTickNextIndex; // Next index to write to in qpiFunctionsOutputEndTick
+	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputUserProc; // Output of QPI functions queried by the END_TICK procedure for the last 16 ticks
+	uint8 qpiFunctionsOutputUserProcNextIndex; // Next index to write to in qpiFunctionsOutputUserProc
 	
 	PreManagementRightsTransfer_output preReleaseSharesOutput;
 	PreManagementRightsTransfer_output preAcquireSharesOutput;
@@ -99,24 +143,79 @@ protected:
 	uint32 postAcquireShareCounter;
 
 	PUBLIC_FUNCTION(QueryQpiFunctions)
-		output.year = qpi.year();
-		output.month = qpi.month();
-		output.day = qpi.day();
-		output.hour = qpi.hour();
-		output.minute = qpi.minute();
-		output.second = qpi.second();
-		output.millisecond = qpi.millisecond();
-		output.dayOfWeek = qpi.dayOfWeek(output.year, output.month, output.day);
-		output.arbitrator = qpi.arbitrator();
-		output.computor0 = qpi.computor(0);
-		output.epoch = qpi.epoch();
-		output.invocationReward = qpi.invocationReward();
-		output.invocator = qpi.invocator();
-		output.numberOfTickTransactions = qpi.numberOfTickTransactions();
-		output.originator = qpi.originator();
-		output.tick = qpi.tick();
+		output.qpiFunctionsOutput.year = qpi.year();
+		output.qpiFunctionsOutput.month = qpi.month();
+		output.qpiFunctionsOutput.day = qpi.day();
+		output.qpiFunctionsOutput.hour = qpi.hour();
+		output.qpiFunctionsOutput.minute = qpi.minute();
+		output.qpiFunctionsOutput.second = qpi.second();
+		output.qpiFunctionsOutput.millisecond = qpi.millisecond();
+		output.qpiFunctionsOutput.dayOfWeek = qpi.dayOfWeek(output.qpiFunctionsOutput.year, output.qpiFunctionsOutput.month, output.qpiFunctionsOutput.day);
+		output.qpiFunctionsOutput.arbitrator = qpi.arbitrator();
+		output.qpiFunctionsOutput.computor0 = qpi.computor(0);
+		output.qpiFunctionsOutput.epoch = qpi.epoch();
+		output.qpiFunctionsOutput.invocationReward = qpi.invocationReward();
+		output.qpiFunctionsOutput.invocator = qpi.invocator();
+		output.qpiFunctionsOutput.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		output.qpiFunctionsOutput.originator = qpi.originator();
+		output.qpiFunctionsOutput.tick = qpi.tick();
 		output.inputDataK12 = qpi.K12(input.data);
 		output.inputSignatureValid = qpi.signatureValidity(input.entity, output.inputDataK12, input.signature);
+	_
+
+	PUBLIC_PROCEDURE(QueryQpiFunctionsToState)
+		state.qpiFunctionsOutputTemp.year = qpi.year();
+		state.qpiFunctionsOutputTemp.month = qpi.month();
+		state.qpiFunctionsOutputTemp.day = qpi.day();
+		state.qpiFunctionsOutputTemp.hour = qpi.hour();
+		state.qpiFunctionsOutputTemp.minute = qpi.minute();
+		state.qpiFunctionsOutputTemp.second = qpi.second();
+		state.qpiFunctionsOutputTemp.millisecond = qpi.millisecond();
+		state.qpiFunctionsOutputTemp.dayOfWeek = qpi.dayOfWeek(state.qpiFunctionsOutputTemp.year, state.qpiFunctionsOutputTemp.month, state.qpiFunctionsOutputTemp.day);
+		state.qpiFunctionsOutputTemp.arbitrator = qpi.arbitrator();
+		state.qpiFunctionsOutputTemp.computor0 = qpi.computor(0);
+		state.qpiFunctionsOutputTemp.epoch = qpi.epoch();
+		state.qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
+		state.qpiFunctionsOutputTemp.invocator = qpi.invocator();
+		state.qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		state.qpiFunctionsOutputTemp.originator = qpi.originator();
+		state.qpiFunctionsOutputTemp.tick = qpi.tick();
+
+		state.qpiFunctionsOutputUserProc.set(state.qpiFunctionsOutputUserProcNextIndex, state.qpiFunctionsOutputTemp);
+		state.qpiFunctionsOutputUserProcNextIndex = mod(state.qpiFunctionsOutputUserProcNextIndex + 1, 16);
+	_
+
+	PUBLIC_PROCEDURE(ReturnQpiFunctionsOutputBeginTick)
+		for (state.iterationIndex = 0; state.iterationIndex < 16; ++state.iterationIndex)
+		{
+			if (state.qpiFunctionsOutputBeginTick.get(state.iterationIndex).tick == input.tick)
+			{
+				output.qpiFunctionsOutput = state.qpiFunctionsOutputBeginTick.get(state.iterationIndex);
+				break;
+			}
+		}
+	_
+
+	PUBLIC_PROCEDURE(ReturnQpiFunctionsOutputEndTick)
+		for (state.iterationIndex = 0; state.iterationIndex < 16; ++state.iterationIndex)
+		{
+			if (state.qpiFunctionsOutputEndTick.get(state.iterationIndex).tick == input.tick)
+			{
+				output.qpiFunctionsOutput = state.qpiFunctionsOutputEndTick.get(state.iterationIndex);
+				break;
+			}
+		}
+	_
+
+	PUBLIC_PROCEDURE(ReturnQpiFunctionsOutputUserProc)
+		for (state.iterationIndex = 0; state.iterationIndex < 16; ++state.iterationIndex)
+		{
+			if (state.qpiFunctionsOutputUserProc.get(state.iterationIndex).tick == input.tick)
+			{
+				output.qpiFunctionsOutput = state.qpiFunctionsOutputUserProc.get(state.iterationIndex);
+				break;
+			}
+		}
 	_
 
 	PUBLIC_PROCEDURE(IssueAsset)
@@ -171,6 +270,54 @@ protected:
 		REGISTER_USER_PROCEDURE(SetPreReleaseSharesOutput, 4);
 		REGISTER_USER_PROCEDURE(SetPreAcquireSharesOutput, 5);
 		REGISTER_USER_PROCEDURE(AcquireShareManagementRights, 6);
+		REGISTER_USER_PROCEDURE(QueryQpiFunctionsToState, 7);
+		REGISTER_USER_PROCEDURE(ReturnQpiFunctionsOutputBeginTick, 8);
+		REGISTER_USER_PROCEDURE(ReturnQpiFunctionsOutputEndTick, 9);
+		REGISTER_USER_PROCEDURE(ReturnQpiFunctionsOutputUserProc, 10);
+	_
+
+	BEGIN_TICK
+		state.qpiFunctionsOutputTemp.year = qpi.year();
+		state.qpiFunctionsOutputTemp.month = qpi.month();
+		state.qpiFunctionsOutputTemp.day = qpi.day();
+		state.qpiFunctionsOutputTemp.hour = qpi.hour();
+		state.qpiFunctionsOutputTemp.minute = qpi.minute();
+		state.qpiFunctionsOutputTemp.second = qpi.second();
+		state.qpiFunctionsOutputTemp.millisecond = qpi.millisecond();
+		state.qpiFunctionsOutputTemp.dayOfWeek = qpi.dayOfWeek(state.qpiFunctionsOutputTemp.year, state.qpiFunctionsOutputTemp.month, state.qpiFunctionsOutputTemp.day);
+		state.qpiFunctionsOutputTemp.arbitrator = qpi.arbitrator();
+		state.qpiFunctionsOutputTemp.computor0 = qpi.computor(0);
+		state.qpiFunctionsOutputTemp.epoch = qpi.epoch();
+		state.qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
+		state.qpiFunctionsOutputTemp.invocator = qpi.invocator();
+		state.qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		state.qpiFunctionsOutputTemp.originator = qpi.originator();
+		state.qpiFunctionsOutputTemp.tick = qpi.tick();
+
+		state.qpiFunctionsOutputBeginTick.set(state.qpiFunctionsOutputBeginTickNextIndex, state.qpiFunctionsOutputTemp);
+		state.qpiFunctionsOutputBeginTickNextIndex = mod(state.qpiFunctionsOutputBeginTickNextIndex + 1, 16);
+	_
+
+	END_TICK
+		state.qpiFunctionsOutputTemp.year = qpi.year();
+		state.qpiFunctionsOutputTemp.month = qpi.month();
+		state.qpiFunctionsOutputTemp.day = qpi.day();
+		state.qpiFunctionsOutputTemp.hour = qpi.hour();
+		state.qpiFunctionsOutputTemp.minute = qpi.minute();
+		state.qpiFunctionsOutputTemp.second = qpi.second();
+		state.qpiFunctionsOutputTemp.millisecond = qpi.millisecond();
+		state.qpiFunctionsOutputTemp.dayOfWeek = qpi.dayOfWeek(state.qpiFunctionsOutputTemp.year, state.qpiFunctionsOutputTemp.month, state.qpiFunctionsOutputTemp.day);
+		state.qpiFunctionsOutputTemp.arbitrator = qpi.arbitrator();
+		state.qpiFunctionsOutputTemp.computor0 = qpi.computor(0);
+		state.qpiFunctionsOutputTemp.epoch = qpi.epoch();
+		state.qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
+		state.qpiFunctionsOutputTemp.invocator = qpi.invocator();
+		state.qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		state.qpiFunctionsOutputTemp.originator = qpi.originator();
+		state.qpiFunctionsOutputTemp.tick = qpi.tick();
+
+		state.qpiFunctionsOutputEndTick.set(state.qpiFunctionsOutputEndTickNextIndex, state.qpiFunctionsOutputTemp);
+		state.qpiFunctionsOutputEndTickNextIndex = mod(state.qpiFunctionsOutputEndTickNextIndex + 1, 16);
 	_
 
 	PRE_RELEASE_SHARES
