@@ -155,6 +155,7 @@ const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateD
 // targetNextTickDataDigestIsKnown == false means there is no consensus on next tick data yet
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
+// rdtsc of ticks
 static unsigned long long tickTicks[11];
 
 static m256i releasedPublicKeys[NUMBER_OF_COMPUTORS];
@@ -4690,9 +4691,19 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                             KangarooTwelve64To32(saltedData, &saltedDigest);
                             if (tick->saltedComputerDigest == saltedDigest)
                             {
-                                saltedData[1] = etalonTick.saltedTransactionBodyDigest;
-                                KangarooTwelve64To32(saltedData, &saltedDigest);
-                                if(tick->saltedTransactionBodyDigest == saltedDigest)
+                                if (!isZero(etalonTick.expectedNextTickTransactionDigest))
+                                {
+                                    saltedData[1] = etalonTick.saltedTransactionBodyDigest;
+                                    KangarooTwelve64To32(saltedData, &saltedDigest);
+                                    if(tick->saltedTransactionBodyDigest == saltedDigest)
+                                    {
+                                        tickNumberOfComputors++;
+                                        // to avoid submitting invalid votes (eg: all zeroes with valid signature)
+                                        // only count votes that matched etalonTick
+                                        voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+                                    }
+                                }
+                                else // ignore transactionbodyDigest if out expectedNextTicktransactionDigest is zero
                                 {
                                     tickNumberOfComputors++;
                                     // to avoid submitting invalid votes (eg: all zeroes with valid signature)
@@ -4965,6 +4976,7 @@ static void tickProcessor(void*)
                         {
                             // if this node is faster than most, targetNextTickDataDigest is unknown at this point because of lack of votes
                             // Thus, expectedNextTickTransactionDigest it not updated yet
+                            // If it targetNextTickDataDigest is known expectedNextTickTransactionDigest is set above already.
                             KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
                         }
                     }
