@@ -50,6 +50,10 @@ struct TESTEXA : public ContractBase
 	{
 		QpiFunctionsOutput qpiFunctionsOutput;
 	};
+	struct ReturnQpiFunctionsOutputBeginTick_locals
+	{
+		uint32 iterationIndex;
+	};
 
 	struct ReturnQpiFunctionsOutputEndTick_input
 	{
@@ -59,6 +63,10 @@ struct TESTEXA : public ContractBase
 	{
 		QpiFunctionsOutput qpiFunctionsOutput;
 	};
+	struct ReturnQpiFunctionsOutputEndTick_locals
+	{
+		uint32 iterationIndex;
+	};
 
 	struct ReturnQpiFunctionsOutputUserProc_input
 	{
@@ -67,6 +75,10 @@ struct TESTEXA : public ContractBase
 	struct ReturnQpiFunctionsOutputUserProc_output
 	{
 		QpiFunctionsOutput qpiFunctionsOutput;
+	};
+	struct ReturnQpiFunctionsOutputUserProc_locals
+	{
+		uint32 iterationIndex;
 	};
 
 	struct IssueAsset_input
@@ -123,7 +135,6 @@ struct TESTEXA : public ContractBase
 
 protected:
 
-	uint32 iterationIndex;
 	QpiFunctionsOutput qpiFunctionsOutputTemp;
 	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputBeginTick; // Output of QPI functions queried by the BEGIN_TICK procedure for the last 16 ticks
 	uint8 qpiFunctionsOutputBeginTickNextIndex; // Next index to write to in qpiFunctionsOutputBeginTick
@@ -185,34 +196,34 @@ protected:
 		state.qpiFunctionsOutputUserProcNextIndex = mod(state.qpiFunctionsOutputUserProcNextIndex + 1, 16);
 	_
 
-	PUBLIC_PROCEDURE(ReturnQpiFunctionsOutputBeginTick)
-		for (state.iterationIndex = 0; state.iterationIndex < 16; ++state.iterationIndex)
+	PUBLIC_FUNCTION_WITH_LOCALS(ReturnQpiFunctionsOutputBeginTick)
+		for (locals.iterationIndex = 0; locals.iterationIndex < 16; ++locals.iterationIndex)
 		{
-			if (state.qpiFunctionsOutputBeginTick.get(state.iterationIndex).tick == input.tick)
+			if (state.qpiFunctionsOutputBeginTick.get(locals.iterationIndex).tick == input.tick)
 			{
-				output.qpiFunctionsOutput = state.qpiFunctionsOutputBeginTick.get(state.iterationIndex);
+				output.qpiFunctionsOutput = state.qpiFunctionsOutputBeginTick.get(locals.iterationIndex);
 				break;
 			}
 		}
 	_
 
-	PUBLIC_PROCEDURE(ReturnQpiFunctionsOutputEndTick)
-		for (state.iterationIndex = 0; state.iterationIndex < 16; ++state.iterationIndex)
+	PUBLIC_FUNCTION_WITH_LOCALS(ReturnQpiFunctionsOutputEndTick)
+		for (locals.iterationIndex = 0; locals.iterationIndex < 16; ++locals.iterationIndex)
 		{
-			if (state.qpiFunctionsOutputEndTick.get(state.iterationIndex).tick == input.tick)
+			if (state.qpiFunctionsOutputEndTick.get(locals.iterationIndex).tick == input.tick)
 			{
-				output.qpiFunctionsOutput = state.qpiFunctionsOutputEndTick.get(state.iterationIndex);
+				output.qpiFunctionsOutput = state.qpiFunctionsOutputEndTick.get(locals.iterationIndex);
 				break;
 			}
 		}
 	_
 
-	PUBLIC_PROCEDURE(ReturnQpiFunctionsOutputUserProc)
-		for (state.iterationIndex = 0; state.iterationIndex < 16; ++state.iterationIndex)
+	PUBLIC_FUNCTION_WITH_LOCALS(ReturnQpiFunctionsOutputUserProc)
+		for (locals.iterationIndex = 0; locals.iterationIndex < 16; ++locals.iterationIndex)
 		{
-			if (state.qpiFunctionsOutputUserProc.get(state.iterationIndex).tick == input.tick)
+			if (state.qpiFunctionsOutputUserProc.get(locals.iterationIndex).tick == input.tick)
 			{
-				output.qpiFunctionsOutput = state.qpiFunctionsOutputUserProc.get(state.iterationIndex);
+				output.qpiFunctionsOutput = state.qpiFunctionsOutputUserProc.get(locals.iterationIndex);
 				break;
 			}
 		}
@@ -263,6 +274,9 @@ protected:
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 		REGISTER_USER_FUNCTION(QueryQpiFunctions, 1);
+		REGISTER_USER_FUNCTION(ReturnQpiFunctionsOutputBeginTick, 2);
+		REGISTER_USER_FUNCTION(ReturnQpiFunctionsOutputEndTick, 3);
+		REGISTER_USER_FUNCTION(ReturnQpiFunctionsOutputUserProc, 4);
 
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
 		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);
@@ -271,9 +285,6 @@ protected:
 		REGISTER_USER_PROCEDURE(SetPreAcquireSharesOutput, 5);
 		REGISTER_USER_PROCEDURE(AcquireShareManagementRights, 6);
 		REGISTER_USER_PROCEDURE(QueryQpiFunctionsToState, 7);
-		REGISTER_USER_PROCEDURE(ReturnQpiFunctionsOutputBeginTick, 8);
-		REGISTER_USER_PROCEDURE(ReturnQpiFunctionsOutputEndTick, 9);
-		REGISTER_USER_PROCEDURE(ReturnQpiFunctionsOutputUserProc, 10);
 	_
 
 	BEGIN_TICK
