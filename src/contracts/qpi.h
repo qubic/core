@@ -174,6 +174,25 @@ namespace QPI
 			for (uint64 i = 0; i < _elements; ++i)
 				_values[i] = setValue;
 		}
+
+
+        bool operator==(const BitArray<L>& other) const
+        {
+            for (uint64 i = 0; i < _elements; ++i)
+            {
+                if (_values[i] != other._values[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool operator!=(const BitArray<L>& other) const
+        {
+            return !(*this == other);
+        }
+
 	};
 
 	// Bit array convenience definitions

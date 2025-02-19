@@ -98,6 +98,15 @@ TEST(TestCoreQPI, BitArray)
     b1.set(0, true);
     EXPECT_EQ(b1.get(0), 1);
 
+    b1.setAll(0);
+    QPI::BitArray<1> b1_2;
+    b1_2.setAll(0);
+    QPI::BitArray<1> b1_3;
+    b1_3.setAll(1);
+    EXPECT_TRUE(b1 == b1_2);
+    EXPECT_TRUE(b1 != b1_3);
+    EXPECT_FALSE(b1 == b1_3);
+
     QPI::BitArray<64> b64;
     EXPECT_EQ(b64.capacity(), 64);
     b64.setMem(0x11llu);
@@ -118,6 +127,18 @@ TEST(TestCoreQPI, BitArray)
     b64.setAll(1);
     llu1.setMem(b64);
     EXPECT_EQ(llu1.get(0), 0xffffffffffffffffllu);
+
+
+    b64.setMem(0x11llu);
+    QPI::BitArray<64> b64_2;
+    EXPECT_EQ(b64.capacity(), 64);
+    b64_2.setMem(0x11llu);
+    QPI::BitArray<64> b64_3;
+    EXPECT_EQ(b64.capacity(), 64);
+    b64_3.setMem(0x55llu);
+    EXPECT_TRUE(b64 == b64_2);
+    EXPECT_TRUE(b64 != b64_3);
+    EXPECT_FALSE(b64 == b64_3);
 
     //QPI::BitArray<96> b96; // must trigger compile error
 
@@ -152,6 +173,15 @@ TEST(TestCoreQPI, BitArray)
     {
         EXPECT_EQ(b128.get(i), i % 2 == 0);
     }
+
+    b128.setAll(1);
+    QPI::BitArray<128> b128_2;
+    QPI::BitArray<128> b128_3;
+    b128_2.setAll(1);
+    b128_3.setAll(0);
+    EXPECT_TRUE(b128 == b128_2);
+    EXPECT_TRUE(b128 != b128_3);
+    EXPECT_FALSE(b128 == b128_3);
 }
 
 TEST(TestCoreQPI, Div) {
