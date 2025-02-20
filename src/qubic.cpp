@@ -851,75 +851,70 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 enqueueResponse(NULL, header);
             }
 
-            if (request->tick == system.tick + 1)
+            const int computorIndex = ::computorIndex(request->sourcePublicKey);
+            if (computorIndex >= 0)
             {
-                unsigned int tickIndex = ts.tickToIndexCurrentEpoch(request->tick);
-                ts.tickData.acquireLock();
-                if (ts.tickData[tickIndex].epoch == system.epoch)
+                ACQUIRE(computorPendingTransactionsLock);
+
+                const unsigned int offset = random(MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR);
+                if (((Transaction*)&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE])->tick < request->tick
+                    && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                 {
-                    KangarooTwelve(request, transactionSize, digest, sizeof(digest));
-                    auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
-                    for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
-                    {
-                        if (digest == ts.tickData[tickIndex].transactionDigests[i])
-                        {
-                            ts.tickTransactions.acquireLock();
-                            if (!tsReqTickTransactionOffsets[i])
-                            {
-                                if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
-                                {
-                                    tsReqTickTransactionOffsets[i] = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
-                                    ts.nextTickTransactionOffset += transactionSize;
-                                }
-                            }
-                            ts.tickTransactions.releaseLock();
-                            break;
-                        }
-                    }
+                    bs->CopyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
+                    KangarooTwelve(request, transactionSize, &computorPendingTransactionDigests[computorIndex * offset * 32ULL], 32);
                 }
-                ts.tickData.releaseLock();
+
+                RELEASE(computorPendingTransactionsLock);
             }
             else
             {
-                const int computorIndex = ::computorIndex(request->sourcePublicKey);
-                if (computorIndex >= 0)
+                const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
+                if (spectrumIndex >= 0)
                 {
-                    ACQUIRE(computorPendingTransactionsLock);
+                    ACQUIRE(entityPendingTransactionsLock);
 
-                    const unsigned int offset = random(MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR);
-                    if (((Transaction*)&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE])->tick < request->tick
+                    // Pending transactions pool follows the rule: A transaction with a higher tick overwrites previous transaction from the same address.
+                    // The second filter is to avoid accident made by users/devs (setting scheduled tick too high) and get locked until end of epoch.
+                    // It also makes sense that a node doesn't need to store a transaction that is scheduled on a tick that node will never reach.
+                    // Notice: MAX_NUMBER_OF_TICKS_PER_EPOCH is not set globally since every node may have different TARGET_TICK_DURATION time due to memory limitation.
+                    if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
                         && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                     {
-                        bs->CopyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
-                        KangarooTwelve(request, transactionSize, &computorPendingTransactionDigests[computorIndex * offset * 32ULL], 32);
+                        bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
+                        KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
                     }
 
-                    RELEASE(computorPendingTransactionsLock);
+                    RELEASE(entityPendingTransactionsLock);
                 }
-                else
-                {
-                    const int spectrumIndex = ::spectrumIndex(request->sourcePublicKey);
-                    if (spectrumIndex >= 0)
-                    {
-                        ACQUIRE(entityPendingTransactionsLock);
-
-                        // Pending transactions pool follows the rule: A transaction with a higher tick overwrites previous transaction from the same address.
-                        // The second filter is to avoid accident made by users/devs (setting scheduled tick too high) and get locked until end of epoch.
-                        // It also makes sense that a node doesn't need to store a transaction that is scheduled on a tick that node will never reach.
-                        // Notice: MAX_NUMBER_OF_TICKS_PER_EPOCH is not set globally since every node may have different TARGET_TICK_DURATION time due to memory limitation.
-                        if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
-                            && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
-                        {
-                            bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
-                            KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
-                        }
-
-                        RELEASE(entityPendingTransactionsLock);
-                    }
-                }
-
             }
+
+            unsigned int tickIndex = ts.tickToIndexCurrentEpoch(request->tick);
+            ts.tickData.acquireLock();
+            if (request->tick == system.tick + 1
+                && ts.tickData[tickIndex].epoch == system.epoch)
+            {
+                KangarooTwelve(request, transactionSize, digest, sizeof(digest));
+                auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+                for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                {
+                    if (digest == ts.tickData[tickIndex].transactionDigests[i])
+                    {
+                        ts.tickTransactions.acquireLock();
+                        if (!tsReqTickTransactionOffsets[i])
+                        {
+                            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+                            {
+                                tsReqTickTransactionOffsets[i] = ts.nextTickTransactionOffset;
+                                bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
+                                ts.nextTickTransactionOffset += transactionSize;
+                            }
+                        }
+                        ts.tickTransactions.releaseLock();
+                        break;
+                    }
+                }
+            }
+            ts.tickData.releaseLock();
         }
     }
 }
