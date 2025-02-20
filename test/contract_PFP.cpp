@@ -62,13 +62,14 @@ class PFPChecker : public PFP
 {
 public:
 
-    void stateVriableChecker(uint64 gt_priceOfCFB, uint64 gt_priceOfQubic, uint64 gt_numberOfNFTIncoming, uint32 gt_numberOfCollection, uint32 gt_numberOfNFT)
+    void stateVriableChecker(uint64 gt_priceOfCFB, uint64 gt_priceOfQubic, uint64 gt_numberOfNFTIncoming, uint32 gt_numberOfCollection, uint32 gt_numberOfNFT, bit gt_statusOfMarketPlace)
     {
         EXPECT_EQ(gt_priceOfCFB, priceOfCFB);
         EXPECT_EQ(gt_priceOfQubic, priceOfQubic);
         EXPECT_EQ(gt_numberOfNFTIncoming, numberOfNFTIncoming);
         EXPECT_EQ(gt_numberOfCollection, numberOfCollection);
         EXPECT_EQ(gt_numberOfNFT, numberOfNFT);
+        EXPECT_EQ(gt_statusOfMarketPlace, statusOfMarketPlace);
     }
 
     void createCollectionChecker(id user, uint64 priceForDropMint, uint32 countOfNFT, uint32 royalty, uint32 maxSizePerOneId, bit typeOfCollection, uint32 countOfCollection, Array<uint8, 64>& URI)
@@ -138,15 +139,6 @@ public:
             else {
                 EXPECT_EQ(initialBalanceOfCreator + div(price * NFTs.get(NFTId).royalty * 1ULL, 100ULL), getBalance(NFTs.get(NFTId).creator));
                 EXPECT_EQ(initialBalanceOfPossesor + price - div(price * (NFTs.get(NFTId).royalty * 10 + 25) * 1ULL, 1000ULL), getBalance(oldPossesor));
-                
-                if(div(price * 5ULL, 1000ULL) < NUMBER_OF_COMPUTORS)
-                {
-                    EXPECT_EQ(initialBalanceOfMarket + div(price * 25ULL, 1000ULL), getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)));
-                }
-                else 
-                {
-                    EXPECT_EQ(initialBalanceOfMarket + div(price * 2ULL, 100ULL) + (div(price * 5ULL, 1000ULL) - div(div(price * 5ULL, 1000ULL), NUMBER_OF_COMPUTORS * 1ULL) * NUMBER_OF_COMPUTORS * 1ULL), getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)));
-                }
             }
         }
         else 
@@ -186,6 +178,149 @@ public:
     {
         EXPECT_EQ(NFTs.get(NFTId).NFTidForExchange, PFP_MAX_NUMBER_NFT);
         EXPECT_EQ(NFTs.get(NFTId).statusOfExchange, 0);
+    }
+
+    void makeOfferChecker(uint32 NFTId, id user, bit paymentMethod, uint64 askPrice)
+    {
+        EXPECT_EQ(NFTs.get(NFTId).askUser, user);
+        EXPECT_EQ(NFTs.get(NFTId).paymentMethodOfAsk, paymentMethod);
+        EXPECT_EQ(NFTs.get(NFTId).askMaxPrice, askPrice);
+    }
+
+    void acceptOfferChecker(id user, uint32 NFTId)
+    {
+        EXPECT_LT(NFTs.get(NFTId).askUser, user);
+        EXPECT_EQ(NFTs.get(NFTId).askMaxPrice, 0);
+        EXPECT_EQ(NFTs.get(NFTId).statusOfAsk, 0);
+    }
+
+    void cancelOfferChecker(uint32 NFTId)
+    {
+        EXPECT_EQ(NFTs.get(NFTId).askUser, NULL_ID);
+        EXPECT_EQ(NFTs.get(NFTId).askMaxPrice, 0);
+    }
+
+    void createAuctionChecker(uint32 NFTId, uint64 price, bit gt_statusOfAuction, bit gt_paymentMethodOfAuction, id gt_creatorOfAuction, uint32 startYear, uint32 startMonth, uint32 startDay, uint32 startHour, uint32 endYear, uint32 endMonth, uint32 endDay, uint32 endHour)
+    {
+        uint32 startTime, endTime;
+        QUOTTERY::packQuotteryDate(startYear, startMonth, startDay, startHour, 0, 0, startTime);
+        QUOTTERY::packQuotteryDate(endYear, endMonth, endDay, endHour, 0, 0, endTime);
+        EXPECT_EQ(NFTs.get(NFTId).startTimeOfAuction, startTime);
+        EXPECT_EQ(NFTs.get(NFTId).endTimeOfAuction, endTime);
+        EXPECT_EQ(NFTs.get(NFTId).currentPriceOfAuction, price);
+        EXPECT_EQ(NFTs.get(NFTId).statusOfAuction, gt_statusOfAuction);
+        EXPECT_EQ(NFTs.get(NFTId).paymentMethodOfAuction, gt_paymentMethodOfAuction);
+        EXPECT_EQ(NFTs.get(NFTId).creatorOfAuction, gt_creatorOfAuction);
+    }
+
+    void bidOnAuctionChecker(id user, uint32 NFTId, uint64 price)
+    {
+        EXPECT_EQ(NFTs.get(NFTId).possesor, user);
+        EXPECT_EQ(NFTs.get(NFTId).currentPriceOfAuction, price);
+        EXPECT_EQ(NFTs.get(NFTId).statusOfAuction, 2);
+    }
+
+    void profitChecker(uint64 amountOfQubic, uint64 amountOfCFB)
+    {
+        EXPECT_EQ(amountOfQubic, earnedQubic);
+        EXPECT_EQ(amountOfCFB, earnedCFB);
+    }
+
+    void getNumberOfNFTForUserChecker(getNumberOfNFTForUser_output output, uint32 numberOfNFT)
+    {
+        EXPECT_EQ(output.numberOfNFT, numberOfNFT);
+    }
+
+    void getInfoOfNFTUserPossessedChecker(getInfoOfNFTUserPossessed_output output, uint32 idOfNFT)
+    {
+        EXPECT_EQ(output.creator, NFTs.get(idOfNFT).creator);
+        EXPECT_EQ(output.possesor, NFTs.get(idOfNFT).possesor);
+        EXPECT_EQ(output.askMaxPrice, NFTs.get(idOfNFT).askMaxPrice);
+        EXPECT_EQ(output.askUser, NFTs.get(idOfNFT).askUser);
+        EXPECT_EQ(output.creatorOfAuction, NFTs.get(idOfNFT).creatorOfAuction);
+        EXPECT_EQ(output.currentPriceOfAuction, NFTs.get(idOfNFT).currentPriceOfAuction);
+        EXPECT_EQ(output.statusOfSale, NFTs.get(idOfNFT).statusOfSale);
+        EXPECT_EQ(output.statusOfAsk, NFTs.get(idOfNFT).statusOfAsk);
+        EXPECT_EQ(output.statusOfAuction, NFTs.get(idOfNFT).statusOfAuction);
+        EXPECT_EQ(output.statusOfExchange, NFTs.get(idOfNFT).statusOfExchange);
+        EXPECT_EQ(output.royalty, NFTs.get(idOfNFT).royalty);
+        EXPECT_EQ(output.salePrice, NFTs.get(idOfNFT).salePrice);
+        EXPECT_EQ(output.NFTidForExchange, NFTs.get(idOfNFT).NFTidForExchange);
+        EXPECT_EQ(output.paymentMethodOfAsk, NFTs.get(idOfNFT).paymentMethodOfAsk);
+        for(uint32 i = 0 ; i < 64; i++)
+        {
+            EXPECT_EQ(output.URI.get(i), NFTs.get(idOfNFT).URI.get(i));
+        }
+    }
+
+    void getInfoOfMarketplaceChecker(getInfoOfMarketplace_output output)
+    {
+        EXPECT_EQ(output.earnedCFB, earnedCFB);
+        EXPECT_EQ(output.earnedQubic, earnedQubic);
+        EXPECT_EQ(output.numberOfCollection, numberOfCollection);
+        EXPECT_EQ(output.numberOfNFT, numberOfNFT);
+        EXPECT_EQ(output.numberOfNFTIncoming, numberOfNFTIncoming);
+        EXPECT_EQ(output.priceOfCFB, priceOfCFB);
+        EXPECT_EQ(output.priceOfQubic, priceOfQubic);
+        EXPECT_EQ(output.statusOfMarketPlace, statusOfMarketPlace);
+    }
+
+    void getInfoOfCollectionByCreatorChecker(getInfoOfCollectionByCreator_output output, uint32 idOfCollection)
+    {
+        EXPECT_EQ(output.currentSize, Collections.get(idOfCollection).currentSize);
+        EXPECT_EQ(output.idOfCollection, idOfCollection);
+        EXPECT_EQ(output.maxSizeHoldingPerOneId, Collections.get(idOfCollection).maxSizeHoldingPerOneId);
+        EXPECT_EQ(output.priceForDropMint, Collections.get(idOfCollection).priceForDropMint);
+        EXPECT_EQ(output.royalty, Collections.get(idOfCollection).royalty);
+        EXPECT_EQ(output.typeOfCollection, Collections.get(idOfCollection).typeOfCollection);
+        for(uint32 i = 0 ; i < 64; i++)
+        {
+            EXPECT_EQ(output.URI.get(i), Collections.get(idOfCollection).URI.get(i));
+        }
+    }
+
+    void getInfoOfCollectionByIdChecker(getInfoOfCollectionById_output output, uint32 idOfCollection)
+    {
+        EXPECT_EQ(output.creator, Collections.get(idOfCollection).creator);
+        EXPECT_EQ(output.currentSize, Collections.get(idOfCollection).currentSize);
+        EXPECT_EQ(output.maxSizeHoldingPerOneId, Collections.get(idOfCollection).maxSizeHoldingPerOneId);
+        EXPECT_EQ(output.priceForDropMint, Collections.get(idOfCollection).priceForDropMint);
+        EXPECT_EQ(output.royalty, Collections.get(idOfCollection).royalty);
+        EXPECT_EQ(output.typeOfCollection, Collections.get(idOfCollection).typeOfCollection);
+        for(uint32 i = 0 ; i < 64; i++)
+        {
+            EXPECT_EQ(output.URI.get(i), Collections.get(idOfCollection).URI.get(i));
+        }
+    }
+
+    void getIncomingAuctionsChecker(getIncomingAuctions_output output, uint32 offset, uint32 count)
+    {
+        for(uint32 i = offset, k = 0; i < count; i++, k++)
+        {
+            EXPECT_EQ(NFTs.get(output.NFTId.get(k)).statusOfAuction, 1);
+        }
+    }
+
+    void getInfoOfNFTByIdChecker(getInfoOfNFTById_output output, uint32 idOfNFT)
+    {
+        EXPECT_EQ(output.creator, NFTs.get(idOfNFT).creator);
+        EXPECT_EQ(output.possesor, NFTs.get(idOfNFT).possesor);
+        EXPECT_EQ(output.askMaxPrice, NFTs.get(idOfNFT).askMaxPrice);
+        EXPECT_EQ(output.askUser, NFTs.get(idOfNFT).askUser);
+        EXPECT_EQ(output.creatorOfAuction, NFTs.get(idOfNFT).creatorOfAuction);
+        EXPECT_EQ(output.currentPriceOfAuction, NFTs.get(idOfNFT).currentPriceOfAuction);
+        EXPECT_EQ(output.statusOfSale, NFTs.get(idOfNFT).statusOfSale);
+        EXPECT_EQ(output.statusOfAsk, NFTs.get(idOfNFT).statusOfAsk);
+        EXPECT_EQ(output.statusOfAuction, NFTs.get(idOfNFT).statusOfAuction);
+        EXPECT_EQ(output.statusOfExchange, NFTs.get(idOfNFT).statusOfExchange);
+        EXPECT_EQ(output.royalty, NFTs.get(idOfNFT).royalty);
+        EXPECT_EQ(output.salePrice, NFTs.get(idOfNFT).salePrice);
+        EXPECT_EQ(output.NFTidForExchange, NFTs.get(idOfNFT).NFTidForExchange);
+        EXPECT_EQ(output.paymentMethodOfAsk, NFTs.get(idOfNFT).paymentMethodOfAsk);
+        for(uint32 i = 0 ; i < 64; i++)
+        {
+            EXPECT_EQ(output.URI.get(i), NFTs.get(idOfNFT).URI.get(i));
+        }
     }
 
     uint64 getDropMintPrice(uint32 collectionId)
@@ -234,7 +369,7 @@ public:
         callSystemProcedure(QVAULT_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
-    PFP::getNumberOfNFTForUser_output getNumberOfNFTForUser(const id& user) const
+    PFP::getNumberOfNFTForUser_output getNumberOfNFTForUser(id user) const
     {
         PFP::getNumberOfNFTForUser_input input;
         PFP::getNumberOfNFTForUser_output output;
@@ -245,7 +380,7 @@ public:
         return output;
     }
 
-    PFP::getInfoOfNFTUserPossessed_output getInfoOfNFTUserPossessed(const id& user, uint32 NFTNumber) const
+    PFP::getInfoOfNFTUserPossessed_output getInfoOfNFTUserPossessed(id user, uint32 NFTNumber) const
     {
         PFP::getInfoOfNFTUserPossessed_input input;
         PFP::getInfoOfNFTUserPossessed_output output;
@@ -263,6 +398,78 @@ public:
         PFP::getInfoOfMarketplace_output output;
 
         callFunction(PFP_CONTRACT_INDEX, 3, input, output);
+        return output;
+    }
+
+    PFP::getInfoOfCollectionByCreator_output getInfoOfCollectionByCreator(id creator, uint32 orderOfCollection) const
+    {
+        PFP::getInfoOfCollectionByCreator_input input;
+        PFP::getInfoOfCollectionByCreator_output output;
+
+        input.creator = creator;
+        input.orderOfCollection = orderOfCollection;
+
+        callFunction(PFP_CONTRACT_INDEX, 4, input, output);
+        return output;
+    }
+
+    PFP::getInfoOfCollectionById_output getInfoOfCollectionById(uint32 idOfColletion) const
+    {
+        PFP::getInfoOfCollectionById_input input;
+        PFP::getInfoOfCollectionById_output output;
+
+        input.idOfColletion = idOfColletion;
+
+        callFunction(PFP_CONTRACT_INDEX, 5, input, output);
+        return output;
+    }
+
+    PFP::getIncomingAuctions_output getIncomingAuctions(uint32 offset, uint32 count) const
+    {
+        PFP::getIncomingAuctions_input input;
+        PFP::getIncomingAuctions_output output;
+
+        input.count = count;
+        input.offset = offset;
+
+        callFunction(PFP_CONTRACT_INDEX, 6, input, output);
+        return output;
+    }
+
+    PFP::getInfoOfNFTById_output getInfoOfNFTById(uint32 NFTId) const
+    {
+        PFP::getInfoOfNFTById_input input;
+        PFP::getInfoOfNFTById_output output;
+
+        input.NFTId = NFTId;
+
+        callFunction(PFP_CONTRACT_INDEX, 7, input, output);
+        return output;
+    }
+
+    PFP::getUserCreatedCollection_output getUserCreatedCollection(id user, uint32 offset, uint32 count) const
+    {
+        PFP::getUserCreatedCollection_input input;
+        PFP::getUserCreatedCollection_output output;
+
+        input.user = user;
+        input.offset = offset;
+        input.count = count;
+
+        callFunction(PFP_CONTRACT_INDEX, 8, input, output);
+        return output;
+    }
+
+    PFP::getUserCreatedNFT_output getUserCreatedNFT(id user, uint32 offset, uint32 count) const
+    {
+        PFP::getUserCreatedNFT_input input;
+        PFP::getUserCreatedNFT_output output;
+
+        input.user = user;
+        input.offset = offset;
+        input.count = count;
+
+        callFunction(PFP_CONTRACT_INDEX, 9, input, output);
         return output;
     }
 
@@ -429,7 +636,7 @@ public:
         input.NFTid = NFTid;
         input.paymentMethod = paymentMethod;
 
-        invokeUserProcedure(PFP_CONTRACT_INDEX, 11, input, output, user, askPrice);
+        invokeUserProcedure(PFP_CONTRACT_INDEX, 11, input, output, user, paymentMethod == 0?askPrice:0);
 
         return output;
     }
@@ -494,6 +701,28 @@ public:
         return output;
     }
 
+    PFP::withdrawProfit_output withdrawProfit(const id& user, uint64 amountOfQubic, uint64 amountOfCFB)
+    {
+        PFP::withdrawProfit_input input;
+        PFP::withdrawProfit_output output;
+
+        invokeUserProcedure(PFP_CONTRACT_INDEX, 16, input, output, user, 0);
+
+        return output;
+    }
+
+    PFP::changeStatusOfMarketPlace_output changeStatusOfMarketPlace(const id& user, bit status)
+    {
+        PFP::changeStatusOfMarketPlace_input input;
+        PFP::changeStatusOfMarketPlace_output output;
+
+        input.status = status;
+
+        invokeUserProcedure(PFP_CONTRACT_INDEX, 17, input, output, user, 0);
+
+        return output;
+    }
+
     sint64 issueAsset(const id& issuer, uint64 assetName, sint64 numberOfShares, uint64 unitOfMeasurement, sint8 numberOfDecimalPlaces)
     {
         QX::IssueAsset_input input{ assetName, numberOfShares, unitOfMeasurement, numberOfDecimalPlaces };
@@ -531,6 +760,8 @@ public:
 
         return output.transferredNumberOfShares;
     }
+
+
 };
 
 TEST(TestContractPFP, testingAllProceduresAndFunctions)
@@ -539,6 +770,9 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
 
     uint64 cfbPrice = random(1, 1000000);
     uint64 qubicPrice = random(1, 1000000);
+    uint64 earnedQubic = 0;
+    uint64 earnedCFB = 0;
+    uint64 collectedShareHolderFee = 0;
     uint32 totalIncommingNFTNumber = 0;
     uint32 totalPriceForCollectionCreating = 0;
     uint32 numberOfCollectionCreated = 0;
@@ -547,7 +781,8 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     increaseEnergy(MARKETPLACE_OWNER, 1);
 
     pfp.settingCFBAndQubicPrice(MARKETPLACE_OWNER, cfbPrice, qubicPrice);
-    pfp.getState()->stateVriableChecker(cfbPrice, qubicPrice, totalIncommingNFTNumber, numberOfCollectionCreated, numberOfNFTCreated);
+    pfp.changeStatusOfMarketPlace(MARKETPLACE_OWNER, 1);
+    pfp.getState()->stateVriableChecker(cfbPrice, qubicPrice, totalIncommingNFTNumber, numberOfCollectionCreated, numberOfNFTCreated, 1);
 
     uint64 assetName = assetNameFromString("CFB");
 
@@ -573,6 +808,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_9001_10000;
     totalIncommingNFTNumber += 10000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_9001_10000 * cfbPrice;
     
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_8001_9000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_8001_9000);
     pfp.createCollection(users[0], 0, 9, 10, 100, 1, URI);
@@ -580,6 +816,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_8001_9000;
     totalIncommingNFTNumber += 9000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_8001_9000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_7001_8000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_7001_8000);
     pfp.createCollection(users[0], 0, 8, 10, 100, 1, URI);
@@ -587,6 +824,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_7001_8000;
     totalIncommingNFTNumber += 8000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_7001_8000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_6001_7000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_6001_7000);
     pfp.createCollection(users[0], 0, 7, 10, 100, 1, URI);
@@ -594,6 +832,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_6001_7000;
     totalIncommingNFTNumber += 7000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_6001_7000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_5001_6000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_5001_6000);
     pfp.createCollection(users[0], 0, 6, 10, 100, 1, URI);
@@ -601,6 +840,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_5001_6000;
     totalIncommingNFTNumber += 6000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_5001_6000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_4001_5000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_4001_5000);
     pfp.createCollection(users[0], 0, 5, 10, 100, 1, URI);
@@ -608,6 +848,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_4001_5000;
     totalIncommingNFTNumber += 5000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_4001_5000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_3001_4000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_3001_4000);
     pfp.createCollection(users[0], 0, 4, 10, 100, 1, URI);
@@ -615,6 +856,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_3001_4000;
     totalIncommingNFTNumber += 4000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_3001_4000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_2001_3000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_2001_3000);
     pfp.createCollection(users[0], 0, 3, 10, 100, 1, URI);
@@ -622,6 +864,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_2001_3000;
     totalIncommingNFTNumber += 3000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_2001_3000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_1001_2000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_1001_2000);
     pfp.createCollection(users[0], 0, 2, 10, 100, 1, URI);
@@ -629,6 +872,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_1001_2000;
     totalIncommingNFTNumber += 2000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_1001_2000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_201_1000, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_201_1000);
     pfp.createCollection(users[0], 0, 1, 10, 100, 1, URI);
@@ -636,6 +880,7 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_201_1000;
     totalIncommingNFTNumber += 1000;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_201_1000 * cfbPrice;
 
     // Collection for Drop. collection id: 10
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, cfbPrice * PFP_FEE_COLLECTION_CREATE_2_200, users[0]), cfbPrice * PFP_FEE_COLLECTION_CREATE_2_200);
@@ -644,24 +889,66 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += PFP_FEE_COLLECTION_CREATE_2_200;
     totalIncommingNFTNumber += 200;
     numberOfCollectionCreated++;
+    earnedCFB += PFP_FEE_COLLECTION_CREATE_2_200 * cfbPrice;
+
+    // getting the id of collection user created
+
+    auto getUserCreatedCollection_output = pfp.getUserCreatedCollection(users[0], 0, 10);
+    for(uint32 i = 0 ; i < 10; i++)
+    {
+        EXPECT_EQ(getUserCreatedCollection_output.collectionId.get(i), i);
+    }
+
+    // checking the infos of collection by creator
+    auto getInfoOfCollectionByCreator_output = pfp.getInfoOfCollectionByCreator(users[0], 1);
+    pfp.getState()->getInfoOfCollectionByCreatorChecker(getInfoOfCollectionByCreator_output, 0);
+
+    // checking the infos of collection by id
+    auto getInfoOfCollectionById_output = pfp.getInfoOfCollectionById(0);
+    pfp.getState()->getInfoOfCollectionByIdChecker(getInfoOfCollectionById_output, 0);
 
     EXPECT_EQ(numberOfPossessedShares(assetName, CFB_ISSUER, id(11, 0, 0, 0), id(11, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), cfbPrice * totalPriceForCollectionCreating);
 
-
+    EXPECT_EQ(numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), earnedCFB);
+    EXPECT_EQ(getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)), earnedQubic);
     // mint the NFT using collection
 
     pfp.mint(users[0], 0, 0, URI, 0, 0);
     numberOfNFTCreated++;
     pfp.getState()->mintChecker(users[0], 0, 0, URI, 0, numberOfNFTCreated - 1);
-    pfp.getState()->stateVriableChecker(cfbPrice, qubicPrice, totalIncommingNFTNumber, numberOfCollectionCreated, numberOfNFTCreated);
+    pfp.getState()->stateVriableChecker(cfbPrice, qubicPrice, totalIncommingNFTNumber, numberOfCollectionCreated, numberOfNFTCreated, 1);
 
     // mint the single NFT
     increaseEnergy(users[0], PFP_SINGLE_NFT_CREATE_FEE);
     pfp.mint(users[0], 10, 0, URI, 1, PFP_SINGLE_NFT_CREATE_FEE);
     numberOfNFTCreated++;
     totalIncommingNFTNumber++;
+    earnedQubic += PFP_SINGLE_NFT_CREATE_FEE;
     pfp.getState()->mintChecker(users[0], 10, 0, URI, 1, numberOfNFTCreated - 1);
-    pfp.getState()->stateVriableChecker(cfbPrice, qubicPrice, totalIncommingNFTNumber, numberOfCollectionCreated, numberOfNFTCreated);
+    pfp.getState()->stateVriableChecker(cfbPrice, qubicPrice, totalIncommingNFTNumber, numberOfCollectionCreated, numberOfNFTCreated, 1);
+
+    auto getUserCreatedNFT_output = pfp.getUserCreatedNFT(users[0], 0, 2);
+    for(uint32 i = 0 ; i < 2; i++)
+    {
+        EXPECT_EQ(getUserCreatedNFT_output.NFTId.get(i), i);
+    }
+
+    // checking if 2 NFTs are minted by users[0]
+    auto getNumberOfNFTForUser_output = pfp.getNumberOfNFTForUser(users[0]);
+    pfp.getState()->getNumberOfNFTForUserChecker(getNumberOfNFTForUser_output, 2);
+
+    // checking the info of users[0]'s first NFT
+    auto getInfoOfNFTUserPossessed_output = pfp.getInfoOfNFTUserPossessed(users[0], 1);
+    pfp.getState()->getInfoOfNFTUserPossessedChecker(getInfoOfNFTUserPossessed_output, 0);
+
+    // checking the info of NFT by id
+
+    auto getInfoOfNFTById_output = pfp.getInfoOfNFTById(0);
+    pfp.getState()->getInfoOfNFTByIdChecker(getInfoOfNFTById_output, 0);
+
+
+    EXPECT_EQ(numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), earnedCFB);
+    EXPECT_EQ(getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)), earnedQubic);
 
     // dropMint
     increaseEnergy(users[0], pfp.getState()->getDropMintPrice(10));
@@ -689,9 +976,17 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     uint64 initialBalanceOfMarket = getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0));
     id oldPossesor = pfp.getState()->getPossessorOfNFT(0);
 
+    uint64 gt_marketFee = div(100000 * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
+    uint64 gt_shareHolderFee = div(100000 * PFP_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 1000ULL);
+
     pfp.buy(users[2], 0, 0, 100000);
     pfp.getState()->buyChecker(oldPossesor, users[2], 0, 100000, 0, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
+    earnedQubic += gt_marketFee;
+    collectedShareHolderFee += gt_shareHolderFee;
 
+    EXPECT_EQ(numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), earnedCFB);
+    EXPECT_EQ(getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
+    
     // big price
 
     pfp.listInMarket(users[2], 10000000, 0);
@@ -704,8 +999,15 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     oldPossesor = pfp.getState()->getPossessorOfNFT(0);
 
     pfp.buy(users[3], 0, 0, 10000000);
+    gt_marketFee = div(10000000 * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
+    gt_shareHolderFee = div(10000000 * PFP_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 1000ULL);
     pfp.getState()->buyChecker(oldPossesor, users[3], 0, 10000000, 0, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
+    earnedQubic += gt_marketFee;
+    collectedShareHolderFee += gt_shareHolderFee;
 
+    EXPECT_EQ(numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), earnedCFB);
+    EXPECT_EQ(getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
+    
     // buy with $CFB
 
     pfp.listInMarket(users[3], 10000000, 0);
@@ -722,9 +1024,12 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, div(10000000ULL, qubicPrice) * cfbPrice, users[4]), div(10000000ULL, qubicPrice) * cfbPrice);
 
     pfp.buy(users[4], 0, 1, 0);
+    earnedCFB += div(div(10000000ULL, qubicPrice) * cfbPrice * PFP_FEE_NFT_SALE_MARKET, 1000ULL);
 
     pfp.getState()->buyChecker(oldPossesor, users[4], 0, div(10000000ULL, qubicPrice) * cfbPrice, 1, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
 
+    EXPECT_EQ(numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), earnedCFB);
+    EXPECT_EQ(getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
     // cancelSale 
 
     pfp.listInMarket(users[4], 10000000, 0);
@@ -751,5 +1056,95 @@ TEST(TestContractPFP, testingAllProceduresAndFunctions)
     pfp.cancelExchange(users[4], 1, 0);
     pfp.getState()->cancelExchangeChecker(0);
 
+    // makeOffer with $Qubic
 
+    pfp.makeOffer(users[4], 10000000, 0, 0);
+    pfp.getState()->makeOfferChecker(0, users[4], 0, 10000000);
+    increaseEnergy(users[5], 100000000);
+    pfp.makeOffer(users[5], 100000000, 0, 0);
+    pfp.getState()->makeOfferChecker(0, users[5], 0, 100000000);
+
+    // makeOffer with $CFB in high price
+
+    sint64 askPrice = (div(1000000000ULL, qubicPrice) + 1) * cfbPrice;
+    increaseEnergy(CFB_ISSUER, 100000000);
+    EXPECT_EQ(pfp.TransferShareOwnershipAndPossession(CFB_ISSUER, assetName, askPrice, users[4]), askPrice);
+    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, PFP_CFB_NAME, PFP_CONTRACT_INDEX, askPrice, users[4]), askPrice);
+    
+    pfp.makeOffer(users[4], askPrice, 0, 1);
+    pfp.getState()->makeOfferChecker(0, users[4], 1, askPrice);
+
+    // acceptOffer 
+
+    pfp.acceptOffer(users[0], 0);
+    pfp.getState()->acceptOfferChecker(users[0], 0);
+    earnedCFB += div(askPrice * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
+
+    // cancelOffer
+
+    pfp.makeOffer(users[5], 100000000, 0, 0);
+    pfp.getState()->makeOfferChecker(0, users[5], 0, 100000000);
+    pfp.cancelOffer(users[5], 0);
+    pfp.getState()->cancelOfferChecker(0);
+
+    EXPECT_EQ(numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), earnedCFB);
+    EXPECT_EQ(getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
+
+    // createTraditionalAuction
+    updateTime();
+    updateQpiTime();
+    pfp.createTraditionalAuction(users[4], 10000000, 0, 0, 26, 1, 1, 0, 26, 1, 5, 0);
+    pfp.getState()->createAuctionChecker(0, 10000000, 1, 0, users[4], 26, 1, 1, 0, 26, 1, 5, 0);
+
+    // getting the info of Auction
+    auto getIncomingAuctions_output = pfp.getIncomingAuctions(0, 1);
+    pfp.getState()->getIncomingAuctionsChecker(getIncomingAuctions_output, 0, 1);
+    
+    setMemory(utcTime, 0);
+    utcTime.Year = 2026;
+    utcTime.Month = 1;
+    utcTime.Day = 3;
+    utcTime.Hour = 0;
+    updateQpiTime();
+
+    EXPECT_EQ(numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), earnedCFB);
+    EXPECT_EQ(getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
+
+    // bidOnAuction
+    pfp.bidOnTraditionalAuction(users[5], 12000000, 0, 0);
+    pfp.getState()->bidOnAuctionChecker(users[5], 0, 12000000);
+    gt_marketFee = div(12000000 * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
+    gt_shareHolderFee = div(12000000 * PFP_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 1000ULL);
+
+    earnedQubic += gt_marketFee;
+    collectedShareHolderFee += gt_shareHolderFee;
+
+    EXPECT_EQ(numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), earnedCFB);
+    EXPECT_EQ(getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
+
+    increaseEnergy(users[6], 110000000);
+    pfp.bidOnTraditionalAuction(users[6], 110000000, 0, 0);
+    pfp.getState()->bidOnAuctionChecker(users[6], 0, 110000000);
+    gt_marketFee = div((110000000 - 12000000) * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
+    gt_shareHolderFee = div((110000000 - 12000000) * PFP_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 1000ULL);
+
+    earnedQubic += gt_marketFee;
+    collectedShareHolderFee += gt_shareHolderFee;
+
+    EXPECT_EQ(numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, id(PFP_CONTRACT_INDEX, 0, 0, 0), id(PFP_CONTRACT_INDEX, 0, 0, 0), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX), earnedCFB);
+    EXPECT_EQ(getBalance(id(PFP_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
+
+    auto getInfoOfMarketplace_output = pfp.getInfoOfMarketplace();
+    pfp.getState()->getInfoOfMarketplaceChecker(getInfoOfMarketplace_output);
+
+    pfp.getState()->profitChecker(earnedQubic, earnedCFB);
+
+    pfp.withdrawProfit(MARKETPLACE_OWNER, earnedQubic, earnedCFB);
+    EXPECT_EQ(earnedQubic, getBalance(MARKETPLACE_OWNER) - 1);
+    EXPECT_EQ(earnedCFB, numberOfPossessedShares(PFP_CFB_NAME, CFB_ISSUER, MARKETPLACE_OWNER, MARKETPLACE_OWNER, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX));
+    earnedCFB = 0;
+    earnedQubic = 0;
+
+    pfp.changeStatusOfMarketPlace(MARKETPLACE_OWNER, 0);
+    pfp.getState()->stateVriableChecker(cfbPrice, qubicPrice, totalIncommingNFTNumber, numberOfCollectionCreated, numberOfNFTCreated, 0);
 }

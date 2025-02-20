@@ -390,6 +390,14 @@ public:
         res -= (qtryGetHour(A) * 3600 + qtryGetMinute(A) * 60 + qtryGetSecond(A));
     }
 
+    inline static bool isLeapYear(uint32 year)
+	{
+		if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
+			return true; // 366-day leap year
+		}
+		return false; 
+	}
+
     inline static bool checkValidQtryDateTime(uint32& A)
     {
         if (qtryGetMonth(A) > 12) return false;
@@ -398,7 +406,7 @@ public:
             (qtryGetMonth(A) != 1) && (qtryGetMonth(A) != 3) && (qtryGetMonth(A) != 5) &&
             (qtryGetMonth(A) != 7) && (qtryGetMonth(A) != 8) && (qtryGetMonth(A) != 10) && (qtryGetMonth(A) != 12)) return false;
         if ((qtryGetDay(A) == 30) && (qtryGetMonth(A) == 2)) return false;
-        if ((qtryGetDay(A) == 29) && (qtryGetMonth(A) == 2) && (mod(qtryGetYear(A), 4u) != 0)) return false;
+        if ((qtryGetDay(A) == 29) && (qtryGetMonth(A) == 2) && (isLeapYear(A) == 0)) return false;
         if (qtryGetHour(A) >= 24) return false;
         if (qtryGetMinute(A) >= 60) return false;
         if (qtryGetSecond(A) >= 60) return false;

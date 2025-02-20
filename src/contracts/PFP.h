@@ -6,6 +6,7 @@ constexpr uint32 PFP_MAX_COLLECTION = 32768;
 constexpr uint32 PFP_SINGLE_NFT_CREATE_FEE = 5000000;
 constexpr uint32 PFP_LENGTH_OF_URI = 59;
 constexpr uint32 PFP_CFB_NAME = 4343363;
+constexpr uint32 PFP_MIN_DELTA_SIZE = 1000000;
 constexpr uint32 PFP_FEE_COLLECTION_CREATE_2_200 = 100;
 constexpr uint32 PFP_FEE_COLLECTION_CREATE_201_1000 = 200;
 constexpr uint32 PFP_FEE_COLLECTION_CREATE_1001_2000 = 400;
@@ -61,6 +62,11 @@ constexpr sint32 PFP_NOT_AUCTION_TIME = 24;
 constexpr sint32 PFP_SMALL_PRICE = 25;
 constexpr sint32 PFP_NOT_MATCH_PAYMENT_METHOD = 26;
 
+constexpr sint32 PFP_NOT_AVAILABLE_CREATE_AND_MINT = 28;
+constexpr sint32 PFP_EXCHANGE_STATUS = 29;
+constexpr sint32 PFP_SALE_STATUS = 30;
+
+
 enum PFPLogInfo {
     success = 0,
 	insufficientQubic = 1,
@@ -95,6 +101,9 @@ enum PFPLogInfo {
 	notAuctionTime = 24,
 	smallPrice = 25,
 	notMatchPaymentMethod = 26,
+	notAvailableCreateAndMint = 28,
+	exchangeStatus = 29,
+	saleStatus = 30,
 };
 
 struct PFPLogger
@@ -181,8 +190,8 @@ struct PFP : public ContractBase
 	struct transfer_input 
 	{
 
-		uint32 NFTid;
 		id receiver;
+		uint32 NFTid;
 
 	};
 
@@ -351,6 +360,26 @@ struct PFP : public ContractBase
 
 	};
 
+	struct withdrawProfit_input
+	{
+
+	};
+
+	struct withdrawProfit_output
+	{
+		uint32 returnCode;
+	};
+
+	struct changeStatusOfMarketPlace_input
+	{
+		bit status;
+	};
+
+	struct changeStatusOfMarketPlace_output
+	{
+		uint32 returnCode;
+	};
+
 	struct getNumberOfNFTForUser_input
 	{
 		id user;
@@ -410,8 +439,11 @@ struct PFP : public ContractBase
 		uint64 priceOfCFB;							// The amount of $CFB per 1 USD
 		uint64 priceOfQubic;						// The amount of $Qubic per 1 USD
 		uint64 numberOfNFTIncoming;					// The number of NFT after minting of all NFTs for collection
+		uint64 earnedQubic;
+		uint64 earnedCFB;
 		uint32 numberOfCollection;
 		uint32 numberOfNFT;
+		bit statusOfMarketPlace;
 	};
 
 	struct getInfoOfCollectionByCreator_input
@@ -495,15 +527,43 @@ struct PFP : public ContractBase
 		bit paymentMethodOfAuction;					//		0 means the user can buy using only $Qubic, 1 means that can buy using only $CFB
 	};
 
+	struct getUserCreatedCollection_input
+	{
+		id user;
+		uint32 offset;
+		uint32 count;
+	};
+
+	struct getUserCreatedCollection_output
+	{
+		Array<uint32, 1024> collectionId;
+	};
+
+	struct getUserCreatedNFT_input
+	{
+		id user;
+		uint32 offset;
+		uint32 count;
+	};
+
+	struct getUserCreatedNFT_output
+	{
+		Array<uint32, 1024> NFTId;
+	};
+
 protected:
 
     uint64 priceOfCFB;							// The amount of $CFB per 1 USD
 	uint64 priceOfQubic;						// The amount of $Qubic per 1 USD
 	uint64 numberOfNFTIncoming;					// The number of NFT after minting of all NFTs for collection
+	uint64 earnedQubic;							// The amount of Qubic that the marketplace earned
+	uint64 earnedCFB;							// The amount of CFB that the marketplace earned
+	uint64 collectedShareHoldersFee;
 	uint32 numberOfCollection;
 	uint32 numberOfNFT;
 	id cfbIssuer;
 	id marketplaceOwner;
+	bit statusOfMarketPlace;					// The Marketplace owner can adjust the status of marketplace. if owner does not turn on the status with 1, it will not be available to invoke the "createCollection" and "mint" procedures
 
 	struct InfoOfCollection 
 	{
@@ -537,7 +597,7 @@ protected:
 		uint32 royalty;								//		Percent from 0 ~ 100
 		uint32 NFTidForExchange;					//      NFT Id that want to exchange
 		Array<uint8, 64> URI;			            //      URI for this NFT
-		uint8 statusOfAuction;						//		Status of Auction(0 means that there is no auction, 1 means that tranditional Auction is started, 2 means that one user buyed the NFT in traditinoal auction, 3 means that dutch auction is started)
+		uint8 statusOfAuction;						//		Status of Auction(0 means that there is no auction, 1 means that tranditional Auction is started, 2 means that one user buyed the NFT in traditinoal auction)
 		bit statusOfSale;							//		Status of Sale, 0 means possesor don't want to sell
 		bit statusOfAsk;							//		Status of Ask
 		bit paymentMethodOfAsk;						//		0 means the asked user want to buy using $Qubic, 1 means that want to buy using $CFB
@@ -558,44 +618,6 @@ protected:
 	{
         QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
     }
-
-	inline static bool isLeapYear(uint32 year)
-	{
-		if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
-			return true; // 366-day leap year
-		}
-		return false; 
-	}
-
-	inline static bool isBigMonth(uint32 month)
-	{
-		if(month == 1 || month == 3 || month == 5 || month == 7 || month == 8 || month == 10 || month == 12)
-		{
-			return true;
-		}
-		return false;
-	}
-
-	inline static bool checkValidTime(uint32 year, uint32 month, uint32 day, uint32 hour)
-	{
-		if(month == 0 || month > 12)
-		{
-			return false;
-		}
-		if(day == 0 || (isBigMonth(month) == 1 && day > 31) || (isBigMonth(month) == 0 && day > 30))
-		{
-			return false;
-		}
-		if((isLeapYear(year) == 1 && month == 2 && day > 29) || (isLeapYear(year) == 0 && month == 2 && day > 28))
-		{
-			return false;
-		}
-		if(hour >= 24)
-		{
-			return false;
-		}
-		return true;
-	}
 
 	struct settingCFBAndQubicPrice_locals
 	{
@@ -623,13 +645,25 @@ protected:
 
 		InfoOfCollection newCollection;
 		sint64 possessedAmount;
-        sint64 tmp;
+		uint64 tmp;
 		uint32 _t;
 		PFPLogger log;
 
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(createCollection)
+
+		if(state.statusOfMarketPlace == 0)
+		{
+			output.returnCode = PFP_NOT_AVAILABLE_CREATE_AND_MINT;
+			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::notAvailableCreateAndMint, 0 };
+			LOG_INFO(locals.log);
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
 
 		if(state.numberOfCollection >= PFP_MAX_COLLECTION || state.numberOfNFTIncoming + (input.volumn == 0 ? 200: input.volumn * 1000) >= PFP_MAX_NUMBER_NFT) 
 		{
@@ -656,7 +690,8 @@ protected:
 			return ;
 		}
 
-		locals.possessedAmount = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+		locals.possessedAmount = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
+
 
 		if(input.volumn == 0) 
 		{
@@ -686,18 +721,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_2_200 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_2_200 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_2_200 * state.priceOfCFB;
 			locals.newCollection.currentSize = 200;
 			state.numberOfNFTIncoming += 200;
 		}
@@ -730,18 +756,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_201_1000 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_201_1000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_201_1000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 1000;
 			state.numberOfNFTIncoming += 1000;
 		}
@@ -774,18 +791,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_1001_2000 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_1001_2000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_1001_2000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 2000;
 			state.numberOfNFTIncoming += 2000;
 		}
@@ -818,18 +826,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_2001_3000 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_2001_3000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_2001_3000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 3000;
 			state.numberOfNFTIncoming += 3000;
 		}
@@ -862,18 +861,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_3001_4000 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_3001_4000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_3001_4000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 4000;
 			state.numberOfNFTIncoming += 4000;
 		}
@@ -906,18 +896,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_4001_5000 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_4001_5000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_4001_5000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 5000;
 			state.numberOfNFTIncoming += 5000;
 		}
@@ -950,18 +931,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_5001_6000 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_5001_6000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_5001_6000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 6000;
 			state.numberOfNFTIncoming += 6000;
 		}
@@ -994,18 +966,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_6001_7000 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_6001_7000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_6001_7000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 7000;
 			state.numberOfNFTIncoming += 7000;
 		}
@@ -1038,18 +1001,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_7001_8000 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_7001_8000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_7001_8000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 8000;
 			state.numberOfNFTIncoming += 8000;
 		}
@@ -1081,19 +1035,10 @@ protected:
 				}
 				return ;
 			}
-
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
+			
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_8001_9000 * state.priceOfCFB, SELF);
-
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_8001_9000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_8001_9000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 9000;
 			state.numberOfNFTIncoming += 9000;
 		}
@@ -1126,18 +1071,9 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_FEE_COLLECTION_CREATE_9001_10000 * state.priceOfCFB, SELF);
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != PFP_FEE_COLLECTION_CREATE_9001_10000 * state.priceOfCFB)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-
+			state.earnedCFB += PFP_FEE_COLLECTION_CREATE_9001_10000 * state.priceOfCFB;
 			locals.newCollection.currentSize = 10000;
 			state.numberOfNFTIncoming += 10000;
 		}
@@ -1180,6 +1116,18 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(mint)
+
+		if(state.statusOfMarketPlace == 0)
+		{
+			output.returnCode = PFP_NOT_AVAILABLE_CREATE_AND_MINT;
+			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::notAvailableCreateAndMint, 0 };
+			LOG_INFO(locals.log);
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
 
 		if(input.typeOfMint == 1)     //     It means NFT creator mints the single NFT.
 		{
@@ -1224,6 +1172,7 @@ protected:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward() - PFP_SINGLE_NFT_CREATE_FEE);
 			}
 
+			state.earnedQubic += PFP_SINGLE_NFT_CREATE_FEE;
 			locals.newNFT.royalty = input.royalty;
 			state.numberOfNFTIncoming++;
 		}
@@ -1369,7 +1318,7 @@ protected:
 			}
 		}
 
-		if(locals.cntOfNFTHoldingPerOneId + 1 >= state.Collections.get(input.collectionId).maxSizeHoldingPerOneId)
+		if(locals.cntOfNFTHoldingPerOneId >= state.Collections.get(input.collectionId).maxSizeHoldingPerOneId)
 		{
 			output.returnCode = PFP_OVERFLOW_MAX_SIZE_PER_ONEID;
 			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::overflowMaxSizePerOneId, 0 };
@@ -1476,6 +1425,27 @@ protected:
 			return ;
 		}
 
+		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
+		{
+			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTid)
+			{
+				output.returnCode = PFP_EXCHANGE_STATUS;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::exchangeStatus, 0 };
+				LOG_INFO(locals.log);
+
+				return;
+			}
+		}
+
+		if(state.NFTs.get(input.NFTid).statusOfSale == 1)
+		{
+			output.returnCode = PFP_SALE_STATUS;
+			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::saleStatus, 0 };
+			LOG_INFO(locals.log);
+
+			return;
+		}
+
 		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
@@ -1553,6 +1523,18 @@ protected:
 			return ;
 		}
 
+		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
+		{
+			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTid)
+			{
+				output.returnCode = PFP_EXCHANGE_STATUS;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::exchangeStatus, 0 };
+				LOG_INFO(locals.log);
+
+				return;
+			}
+		}
+
 		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
@@ -1607,7 +1589,8 @@ protected:
 
 	struct buy_locals 
 	{
-
+		QX::TransferShareManagementRights_input transferShareManagementRights_input;
+		QX::TransferShareManagementRights_output transferShareManagementRights_output;
 		InfoOfNFT updatedNFT;
 		sint64 transferredAmountOfCFB;
 		sint64 marketFee;
@@ -1615,7 +1598,6 @@ protected:
 		sint64 shareHolderFee;
 		sint64 possessedCFBAmount;
 		sint64 transferredCFBAmount;
-        sint64 tmp;
 		uint32 _t;
 		uint32 curDate;
 		PFPLogger log;
@@ -1688,15 +1670,16 @@ protected:
 			locals.marketFee = div(state.NFTs.get(input.NFTid).salePrice * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
 			locals.shareHolderFee = div(state.NFTs.get(input.NFTid).salePrice * PFP_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 1000ULL);
 
-			qpi.distributeDividends(div(locals.shareHolderFee * 1ULL, 676ULL));
+			state.collectedShareHoldersFee += locals.shareHolderFee;
 			qpi.transfer(state.NFTs.get(input.NFTid).creator, locals.creatorFee);
 			qpi.transfer(state.NFTs.get(input.NFTid).possesor, state.NFTs.get(input.NFTid).salePrice - locals.creatorFee - locals.marketFee - locals.shareHolderFee);
+			state.earnedQubic += locals.marketFee;
 		}
 
 		else 
 		{
-			locals.possessedCFBAmount = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
-			if((uint64)state.NFTs.get(input.NFTid).salePrice >= div(locals.possessedCFBAmount * 1ULL, state.priceOfCFB) * state.priceOfQubic) 
+			locals.possessedCFBAmount = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
+			if(div(state.NFTs.get(input.NFTid).salePrice * 1ULL, state.priceOfQubic) > div(locals.possessedCFBAmount * 1ULL, state.priceOfCFB)) 
 			{
 				output.returnCode = PFP_INSUFFICIENT_FUND;
 				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::insufficientQubic, 0 };
@@ -1719,18 +1702,10 @@ protected:
 			locals.creatorFee = div(locals.transferredAmountOfCFB * state.NFTs.get(input.NFTid).royalty * 1ULL, 100ULL);
 			locals.marketFee = div(locals.transferredAmountOfCFB * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.marketFee, SELF);
+            qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.marketFee, SELF);
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.creatorFee, state.NFTs.get(input.NFTid).creator);
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.transferredAmountOfCFB - locals.creatorFee - locals.marketFee, state.NFTs.get(input.NFTid).possesor);
-
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != locals.marketFee)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
+			state.earnedCFB += locals.marketFee;
 		}
 
 		locals.updatedNFT.possesor = qpi.invocator();
@@ -1861,6 +1836,24 @@ protected:
 		{
 			output.returnCode = PFP_WRONG_NFTID; 
 			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::wrongNFTId, 0 };
+			LOG_INFO(locals.log);
+
+			return ;
+		}
+
+		if(input.possessedNFT == input.anotherNFT)
+		{
+			output.returnCode = PFP_INVALID_VOLUME_SIZE; 
+			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+
+			return ;
+		}
+
+		if(state.NFTs.get(input.possessedNFT).statusOfSale == 1)
+		{
+			output.returnCode = PFP_SALE_STATUS; 
+			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::saleStatus, 0 };
 			LOG_INFO(locals.log);
 
 			return ;
@@ -2058,6 +2051,8 @@ protected:
 
 	struct makeOffer_locals 
 	{
+		QX::TransferShareManagementRights_input transferShareManagementRights_input;
+		QX::TransferShareManagementRights_output transferShareManagementRights_output;
 		InfoOfNFT AskedNFT;
         sint64 tmp;
 		uint32 _t;
@@ -2094,9 +2089,9 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).statusOfAsk == 1)
 		{
-			if(input.askPrice <= state.NFTs.get(input.NFTid).askMaxPrice && input.paymentMethod == state.NFTs.get(input.NFTid).paymentMethodOfAsk
-			|| (input.paymentMethod == 1 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 0 && div(input.askPrice * 1ULL, state.priceOfCFB) * state.priceOfQubic <= (uint64)state.NFTs.get(input.NFTid).askMaxPrice)
-			|| (input.paymentMethod == 0 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 1 && div(input.askPrice * 1ULL, state.priceOfQubic) * state.priceOfCFB <= (uint64)state.NFTs.get(input.NFTid).askMaxPrice))
+			if((input.askPrice <= state.NFTs.get(input.NFTid).askMaxPrice + PFP_MIN_DELTA_SIZE && input.paymentMethod == state.NFTs.get(input.NFTid).paymentMethodOfAsk)
+			|| (input.paymentMethod == 1 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 0 && div(input.askPrice * 1ULL, state.priceOfCFB) <= div((state.NFTs.get(input.NFTid).askMaxPrice + PFP_MIN_DELTA_SIZE) * 1ULL, state.priceOfQubic))
+			|| (input.paymentMethod == 0 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 1 && div(input.askPrice * 1ULL, state.priceOfQubic) <= div((state.NFTs.get(input.NFTid).askMaxPrice + PFP_MIN_DELTA_SIZE) * 1ULL, state.priceOfCFB)))
 			{
 				output.returnCode = PFP_LOW_PRICE;
 				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::lowPrice, 0 };
@@ -2134,32 +2129,35 @@ protected:
 		
 		else if(input.paymentMethod == 1)
 		{
-			if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) < input.askPrice)
+			if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) < input.askPrice)
 			{
 				output.returnCode = PFP_INSUFFICIENT_FUND;
 				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::insufficientQubic, 0 };
 				LOG_INFO(locals.log);
 
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-
 				return;
 			}
-
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), input.askPrice, SELF);
+		}
 
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != input.askPrice)
+		if(state.NFTs.get(input.NFTid).statusOfAsk == 1)
+		{
+
+			if(state.NFTs.get(input.NFTid).paymentMethodOfAsk == 0)
 			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-
-				return ;
+				qpi.transfer(state.NFTs.get(input.NFTid).askUser, state.NFTs.get(input.NFTid).askMaxPrice);
 			}
+			else
+			{
+				locals.transferShareManagementRights_input.asset.assetName = PFP_CFB_NAME;
+				locals.transferShareManagementRights_input.asset.issuer = state.cfbIssuer;
+				locals.transferShareManagementRights_input.newManagingContractIndex = PFP_CONTRACT_INDEX;
+				locals.transferShareManagementRights_input.numberOfShares = state.NFTs.get(input.NFTid).askMaxPrice;
+
+				INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
+				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice, state.NFTs.get(input.NFTid).askUser);
+			}
+
 		}
 
 		locals.AskedNFT.statusOfAsk = 1;
@@ -2211,7 +2209,7 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(acceptOffer)
 
-		if(qpi.invocationReward() > 0) 
+		if(qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
@@ -2258,13 +2256,16 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).paymentMethodOfAsk == 0)
 		{
-			qpi.distributeDividends(div(locals.shareHolderFee * 1ULL, 676ULL));
+			state.collectedShareHoldersFee += locals.shareHolderFee;
 			qpi.transfer(state.NFTs.get(input.NFTid).creator, locals.creatorFee);
 			qpi.transfer(state.NFTs.get(input.NFTid).possesor, state.NFTs.get(input.NFTid).askMaxPrice - locals.creatorFee - locals.marketFee - locals.shareHolderFee);
+			
+			state.earnedQubic += locals.marketFee;
 		}
 
 		else if(state.NFTs.get(input.NFTid).paymentMethodOfAsk == 1)
 		{
+			
 			locals.transferShareManagementRights_input.asset.assetName = PFP_CFB_NAME;
 			locals.transferShareManagementRights_input.asset.issuer = state.cfbIssuer;
 			locals.transferShareManagementRights_input.newManagingContractIndex = PFP_CONTRACT_INDEX;
@@ -2272,19 +2273,9 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, locals.creatorFee, state.NFTs.get(input.NFTid).creator);
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice - locals.marketFee - locals.creatorFee, state.NFTs.get(input.NFTid).possesor);
-
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != state.NFTs.get(input.NFTid).askMaxPrice - locals.marketFee)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-			
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice - locals.creatorFee - locals.marketFee, qpi.invocator());
+			state.earnedCFB += locals.marketFee;
 		}
 
 		locals.updatedNFT.possesor = state.NFTs.get(input.NFTid).askUser;
@@ -2359,7 +2350,7 @@ protected:
 			return ;
 		}
 
-		if(state.NFTs.get(input.NFTid).statusOfAsk == 0 || state.NFTs.get(input.NFTid).askUser != qpi.invocator())
+		if(state.NFTs.get(input.NFTid).statusOfAsk == 0)
 		{
 			output.returnCode = PFP_NOT_ASK_STATUS;
 			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::notAskStatus, 0 };
@@ -2368,11 +2359,19 @@ protected:
 			return ;
 		}
 
-		if(state.NFTs.get(input.NFTid).paymentMethodOfAsk == 0)
+		if(state.NFTs.get(input.NFTid).askUser != qpi.invocator() && state.NFTs.get(input.NFTid).possesor != qpi.invocator())
 		{
-			qpi.transfer(qpi.invocator(), state.NFTs.get(input.NFTid).askMaxPrice);
+			output.returnCode = PFP_NOT_POSSESOR;
+			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::notPossesor, 0 };
+			LOG_INFO(locals.log);
+
+			return ;
 		}
 
+		if(state.NFTs.get(input.NFTid).paymentMethodOfAsk == 0)
+		{
+			qpi.transfer(state.NFTs.get(input.NFTid).askUser, state.NFTs.get(input.NFTid).askMaxPrice);
+		}
 		else if(state.NFTs.get(input.NFTid).paymentMethodOfAsk == 1)
 		{
 			locals.transferShareManagementRights_input.asset.assetName = PFP_CFB_NAME;
@@ -2382,19 +2381,7 @@ protected:
 
 			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
-			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice, qpi.invocator());
-
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != state.NFTs.get(input.NFTid).askMaxPrice)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-
-				return ;
-			}
-			
+			qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice, state.NFTs.get(input.NFTid).askUser);
 		}
 
 		locals.updatedNFT.creator = state.NFTs.get(input.NFTid).creator;
@@ -2446,7 +2433,31 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if(input.NFTId >= PFP_MAX_NUMBER_NFT || checkValidTime(input.startYear, input.startMonth, input.startDay, input.startHour) == 0 || checkValidTime(input.endYear, input.endMonth, input.endDay, input.endHour) == 0)
+		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
+		{
+			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTId)
+			{
+				output.returnCode = PFP_EXCHANGE_STATUS;
+				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::exchangeStatus, 0 };
+				LOG_INFO(locals.log);
+
+				return;
+			}
+		}
+
+		if(state.NFTs.get(input.NFTId).statusOfSale == 1)
+		{
+			output.returnCode = PFP_SALE_STATUS;
+			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::saleStatus, 0};
+			LOG_INFO(locals.log);
+
+			return;
+		}
+
+		QUOTTERY::packQuotteryDate(input.startYear, input.startMonth, input.startDay, input.startHour, 0, 0, locals.startDate);
+		QUOTTERY::packQuotteryDate(input.endYear, input.endMonth, input.endDay, input.endHour, 0, 0, locals.endDate);
+
+		if(input.NFTId >= PFP_MAX_NUMBER_NFT || QUOTTERY::checkValidQtryDateTime(locals.startDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.endDate) == 0)
 		{
 			output.returnCode = PFP_INVALID_INPUT;
 			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::invalidInput, 0 };
@@ -2455,8 +2466,6 @@ protected:
 			return;
 		}
 
-		QUOTTERY::packQuotteryDate(input.startYear, input.startMonth, input.startDay, input.startHour, 0, 0, locals.startDate);
-		QUOTTERY::packQuotteryDate(input.endYear, input.endMonth, input.endDay, input.endHour, 0, 0, locals.endDate);
 		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.startDate <= locals.curDate || locals.endDate <= locals.startDate)
@@ -2513,38 +2522,6 @@ protected:
 
 		state.NFTs.set(input.NFTId, locals.updatedNFT);
 
-		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
-		{
-			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTId)
-			{
-				locals.updatedNFT.NFTidForExchange = PFP_MAX_NUMBER_NFT;
-				locals.updatedNFT.statusOfExchange = 0;
-
-				locals.updatedNFT.creator = state.NFTs.get(locals._t).creator;
-				locals.updatedNFT.royalty = state.NFTs.get(locals._t).royalty;
-				locals.updatedNFT.possesor = state.NFTs.get(locals._t).possesor;
-				locals.updatedNFT.statusOfAsk = state.NFTs.get(locals._t).statusOfAsk;
-				locals.updatedNFT.askUser = state.NFTs.get(locals._t).askUser;
-				locals.updatedNFT.askMaxPrice = state.NFTs.get(locals._t).askMaxPrice;
-				locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(locals._t).paymentMethodOfAsk;
-				locals.updatedNFT.statusOfSale = state.NFTs.get(locals._t).statusOfSale;
-				locals.updatedNFT.salePrice = state.NFTs.get(locals._t).salePrice;
-				locals.updatedNFT.currentPriceOfAuction = state.NFTs.get(locals._t).currentPriceOfAuction;
-				locals.updatedNFT.startTimeOfAuction = state.NFTs.get(locals._t).startTimeOfAuction;
-				locals.updatedNFT.endTimeOfAuction = state.NFTs.get(locals._t).endTimeOfAuction;
-				locals.updatedNFT.statusOfAuction = state.NFTs.get(locals._t).statusOfAuction;
-				locals.updatedNFT.paymentMethodOfAuction = state.NFTs.get(locals._t).paymentMethodOfAuction;
-				locals.updatedNFT.creatorOfAuction = state.NFTs.get(locals._t).creatorOfAuction;
-
-				for(locals._r = 0; locals._r < PFP_LENGTH_OF_URI; locals._r++) 
-				{
-					locals.updatedNFT.URI.set(locals._r, state.NFTs.get(locals._t).URI.get(locals._r));
-				}
-
-				state.NFTs.set(locals._t, locals.updatedNFT);
-			}
-		}
-
 		output.returnCode = PFP_SUCCESS;
 		locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::success, 0 };
 		LOG_INFO(locals.log);
@@ -2580,7 +2557,7 @@ protected:
 			return;
 		}
 
-		if(state.NFTs.get(input.NFTId).statusOfAuction != 1 && state.NFTs.get(input.NFTId).statusOfAuction != 2)
+		if(state.NFTs.get(input.NFTId).statusOfAuction == 0)
 		{
 			output.returnCode = PFP_NOT_TRADITIONAL_AUCTION;
 			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::notTraditionalAuction, 0 };
@@ -2622,7 +2599,7 @@ protected:
 				return ;
 			}
 
-			if(input.price <= state.NFTs.get(input.NFTId).currentPriceOfAuction)
+			if(input.price <= state.NFTs.get(input.NFTId).currentPriceOfAuction + PFP_MIN_DELTA_SIZE)
 			{
 				output.returnCode = PFP_SMALL_PRICE;
 				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::smallPrice, 0 };
@@ -2656,23 +2633,25 @@ protected:
 			{
 				locals.marketFee = div(input.price * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
 				locals.creatorFee = div(input.price * state.NFTs.get(input.NFTId).royalty * 1ULL, 100ULL);
-				locals.shareHolderFee = div(input.price * PFP_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 100ULL);
+				locals.shareHolderFee = div(input.price * PFP_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 1000ULL);
 
-				qpi.distributeDividends(div(locals.shareHolderFee * 1ULL, 676ULL));
 				qpi.transfer(state.NFTs.get(input.NFTId).creator, locals.creatorFee);
 				qpi.transfer(state.NFTs.get(input.NFTId).possesor, input.price - locals.creatorFee - locals.marketFee - locals.shareHolderFee);
+				state.earnedQubic += locals.marketFee;
+				state.collectedShareHoldersFee += locals.shareHolderFee;
 			}
 
 			if(state.NFTs.get(input.NFTId).statusOfAuction == 2)
 			{
 				locals.creatorFee = div((input.price - state.NFTs.get(input.NFTId).currentPriceOfAuction) * state.NFTs.get(input.NFTId).royalty * 1ULL, 100ULL);
 				locals.marketFee = div((input.price - state.NFTs.get(input.NFTId).currentPriceOfAuction) * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
-				locals.shareHolderFee = div((input.price - state.NFTs.get(input.NFTId).currentPriceOfAuction) * PFP_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 100ULL);
+				locals.shareHolderFee = div((input.price - state.NFTs.get(input.NFTId).currentPriceOfAuction) * PFP_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 1000ULL);
 				
-				qpi.distributeDividends(div(locals.shareHolderFee * 1ULL, 676ULL));
 				qpi.transfer(state.NFTs.get(input.NFTId).possesor, state.NFTs.get(input.NFTId).currentPriceOfAuction);
 				qpi.transfer(state.NFTs.get(input.NFTId).creator, locals.creatorFee);
-				qpi.transfer(state.NFTs.get(input.NFTId).creatorOfAuction, input.price - state.NFTs.get(input.NFTId).currentPriceOfAuction - locals.creatorFee - locals.marketFee);
+				qpi.transfer(state.NFTs.get(input.NFTId).creatorOfAuction, input.price - state.NFTs.get(input.NFTId).currentPriceOfAuction - locals.creatorFee - locals.marketFee - locals.shareHolderFee);
+				state.earnedQubic += locals.marketFee;
+				state.collectedShareHoldersFee += locals.shareHolderFee;
 			}
 			
 			locals.updatedNFT.currentPriceOfAuction = input.price;
@@ -2692,7 +2671,7 @@ protected:
 				}
 				return ;
 			}
-			if(input.price <= state.NFTs.get(input.NFTId).currentPriceOfAuction)
+			if(input.price <= state.NFTs.get(input.NFTId).currentPriceOfAuction + PFP_MIN_DELTA_SIZE)
 			{
 				output.returnCode = PFP_SMALL_PRICE;
 				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::smallPrice, 0 };
@@ -2705,7 +2684,7 @@ protected:
 				return ;
 			}
 
-			locals.possessedAmount = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+			locals.possessedAmount = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
 
 			if(locals.possessedAmount < input.price)
 			{
@@ -2720,8 +2699,6 @@ protected:
 				return ;
 			}
 
-            locals.tmp = qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX);
-
 			if(state.NFTs.get(input.NFTId).statusOfAuction == 1)
 			{
 				locals.marketFee = div(input.price * PFP_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
@@ -2730,6 +2707,8 @@ protected:
 				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.creatorFee, state.NFTs.get(input.NFTId).creator);
 				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), input.price - locals.creatorFee - locals.marketFee, state.NFTs.get(input.NFTId).possesor);
 				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.marketFee, SELF);
+
+				state.earnedCFB += locals.marketFee;
 			}
 			if(state.NFTs.get(input.NFTId).statusOfAuction == 2)
 			{
@@ -2740,18 +2719,11 @@ protected:
 				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.creatorFee, state.NFTs.get(input.NFTId).creator);
 				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), state.NFTs.get(input.NFTId).currentPriceOfAuction, state.NFTs.get(input.NFTId).possesor);
 				qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), input.price - state.NFTs.get(input.NFTId).currentPriceOfAuction - locals.marketFee - locals.creatorFee, state.NFTs.get(input.NFTId).creatorOfAuction);
-			}
-
-            if(qpi.numberOfPossessedShares(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, PFP_CONTRACT_INDEX, PFP_CONTRACT_INDEX) - locals.tmp != input.price)
-			{
-				output.returnCode = PFP_ERROR_TRANSFER_ASSET;
-				locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::errorTransferAsset, 0 };
-				LOG_INFO(locals.log);
-
-				return ;
+			
+				state.earnedCFB += locals.marketFee;
 			}
 			
-			locals.updatedNFT.currentPriceOfAuction = div(input.price, state.priceOfCFB) * state.priceOfQubic;
+			locals.updatedNFT.currentPriceOfAuction = input.price;
 		}
 
 		locals.updatedNFT.possesor = qpi.invocator();
@@ -2780,6 +2752,71 @@ protected:
 		}
 
 		state.NFTs.set(input.NFTId, locals.updatedNFT);
+
+		output.returnCode = PFP_SUCCESS;
+		locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::success, 0 };
+		LOG_INFO(locals.log);
+	_
+
+	struct withdrawProfit_locals
+	{
+		QX::TransferShareManagementRights_input transferShareManagementRights_input;
+		QX::TransferShareManagementRights_output transferShareManagementRights_output;
+		PFPLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(withdrawProfit)
+		
+		if(qpi.invocator() != state.marketplaceOwner)
+		{
+			output.returnCode = PFP_NOT_OWNER;
+			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::notOwner, 0 };
+			LOG_INFO(locals.log);
+		}
+
+		if(qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		qpi.transfer(qpi.invocator(), state.earnedQubic);
+		locals.transferShareManagementRights_input.asset.assetName = PFP_CFB_NAME;
+		locals.transferShareManagementRights_input.asset.issuer = state.cfbIssuer;
+		locals.transferShareManagementRights_input.newManagingContractIndex = PFP_CONTRACT_INDEX;
+		locals.transferShareManagementRights_input.numberOfShares = state.earnedCFB;
+
+		INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
+
+		qpi.transferShareOwnershipAndPossession(PFP_CFB_NAME, state.cfbIssuer, SELF, SELF, state.earnedCFB, qpi.invocator());
+
+		state.earnedCFB = 0;
+		state.earnedQubic = 0;
+
+		output.returnCode = PFP_SUCCESS;
+		locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::success, 0 };
+		LOG_INFO(locals.log);
+	_
+
+	struct changeStatusOfMarketPlace_locals
+	{
+		PFPLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(changeStatusOfMarketPlace)
+
+		if(qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if(qpi.invocator() != state.marketplaceOwner)
+		{
+			output.returnCode = PFP_NOT_OWNER;
+			locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::notOwner, 0 };
+			LOG_INFO(locals.log);
+		}
+
+		state.statusOfMarketPlace = input.status;
 
 		output.returnCode = PFP_SUCCESS;
 		locals.log = PFPLogger{ PFP_CONTRACT_INDEX, PFPLogInfo::success, 0 };
@@ -2845,7 +2882,7 @@ protected:
 					output.paymentMethodOfAuction = state.NFTs.get(locals._t).paymentMethodOfAuction;
 					QUOTTERY::unpackQuotteryDate(output.yearAuctionStarted, output.monthAuctionStarted, output.dayAuctionStarted, output.hourAuctionStarted, output.minuteAuctionStarted, output.secondAuctionStarted, state.NFTs.get(locals._t).startTimeOfAuction);
 					QUOTTERY::unpackQuotteryDate(output.yearAuctionEnded, output.monthAuctionEnded, output.dayAuctionEnded, output.hourAuctionEnded, output.minuteAuctionEnded, output.secondAuctionEnded, state.NFTs.get(locals._t).endTimeOfAuction);
-					
+
 					for(locals._r = 0 ; locals._r < 64; locals._r++)
 					{
 						output.URI.set(locals._r, state.NFTs.get(locals._t).URI.get(locals._r));
@@ -2864,6 +2901,9 @@ protected:
 		output.numberOfNFTIncoming = state.numberOfNFTIncoming;
 		output.priceOfCFB = state.priceOfCFB;
 		output.priceOfQubic = state.priceOfQubic;
+		output.earnedQubic = state.earnedQubic;
+		output.earnedCFB = state.earnedCFB;
+		output.statusOfMarketPlace = state.statusOfMarketPlace;
 
 	_
 
@@ -2893,7 +2933,7 @@ protected:
 				
 				for(locals._r = 0 ; locals._r < 64; locals._r++)
 				{
-					output.URI.set(locals._t, state.Collections.get(locals._t).URI.get(locals._r));
+					output.URI.set(locals._r, state.Collections.get(locals._t).URI.get(locals._r));
 				}
 
 				return ;
@@ -2935,6 +2975,11 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getIncomingAuctions)
+
+		if(input.offset + input.count >= state.numberOfNFT || input.count > 1024)
+		{
+			return ;
+		}
 
 		getCurrentDate(qpi, locals.curDate);
 		locals.cnt = 0;
@@ -2987,11 +3032,74 @@ protected:
 		
 		for(locals._r = 0 ; locals._r < 64; locals._r++)
 		{
-			output.URI.set(locals._r, state.NFTs.get(input.NFTId).URI.get(input.NFTId));
+			output.URI.set(locals._r, state.NFTs.get(input.NFTId).URI.get(locals._r));
 		}
-		
+
 	_
 
+	struct getUserCreatedCollection_locals
+	{
+		uint32 _r, cnt, _t;
+	};
+
+	PUBLIC_FUNCTION_WITH_LOCALS(getUserCreatedCollection)
+
+		if(input.offset + input.count > state.numberOfCollection || input.count > 1024)
+		{
+			return ;
+		}
+
+		locals.cnt = 0;
+		locals._r = 0;
+
+		for(locals._t = 0 ; locals._t < state.numberOfCollection; locals._t++)
+		{
+			if(state.Collections.get(locals._t).creator == input.user)
+			{
+				locals.cnt++;
+				if(locals.cnt >= input.offset && locals._r < input.count)
+				{
+					output.collectionId.set(locals._r++, locals._t);
+				}
+				if(locals._r == input.count)
+				{
+					return ;
+				}
+			}
+		}
+	_
+
+	struct getUserCreatedNFT_locals
+	{
+		uint32 _r, cnt, _t;
+	};
+
+	PUBLIC_FUNCTION_WITH_LOCALS(getUserCreatedNFT)
+
+	if(input.offset + input.count > state.numberOfNFT || input.count > 1024)
+	{
+		return ;
+	}
+
+	locals.cnt = 0;
+	locals._r = 0;
+
+	for(locals._t = 0 ; locals._t < state.numberOfCollection; locals._t++)
+	{
+		if(state.NFTs.get(locals._t).creator == input.user)
+		{
+			locals.cnt++;
+			if(locals.cnt >= input.offset && locals._r < input.count)
+			{
+				output.NFTId.set(locals._r++, locals._t);
+			}
+			if(locals._r == input.count)
+			{
+				return ;
+			}
+		}
+	}
+	_
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 
@@ -3002,6 +3110,8 @@ protected:
 		REGISTER_USER_FUNCTION(getInfoOfCollectionById, 5);
 		REGISTER_USER_FUNCTION(getIncomingAuctions, 6);
 		REGISTER_USER_FUNCTION(getInfoOfNFTById, 7);
+		REGISTER_USER_FUNCTION(getUserCreatedCollection, 8);
+		REGISTER_USER_FUNCTION(getUserCreatedNFT , 9);
 
 		REGISTER_USER_PROCEDURE(settingCFBAndQubicPrice, 1);
 		REGISTER_USER_PROCEDURE(createCollection, 2);
@@ -3018,6 +3128,8 @@ protected:
 		REGISTER_USER_PROCEDURE(cancelOffer, 13);
 		REGISTER_USER_PROCEDURE(createTraditionalAuction, 14);
 		REGISTER_USER_PROCEDURE(bidOnTraditionalAuction, 15);
+		REGISTER_USER_PROCEDURE(withdrawProfit, 16);
+		REGISTER_USER_PROCEDURE(changeStatusOfMarketPlace, 17);
 
     _
 
@@ -3028,6 +3140,14 @@ protected:
 		state.marketplaceOwner = ID(_Y, _R, _P, _H, _H, _S, _U, _E, _E, _B, _S, _A, _X, _B, _Y, _F, _B, _A, _X, _P, _U, _R, _E, _X, _F, _E, _S, _A, _Q, _F, _N, _C, _J, _O, _M, _R, _I, _G, _B, _C, _W, _D, _I, _M, _K, _R, _R, _I, _Z, _T, _K, _P, _O, _J, _F, _H);
 
     _
+
+	END_EPOCH
+
+		qpi.distributeDividends(div(state.collectedShareHoldersFee * 1ULL, 676ULL));
+		qpi.burn(state.collectedShareHoldersFee - div(state.collectedShareHoldersFee, 676ULL) * 676ULL);
+		state.collectedShareHoldersFee = 0;
+
+	_
 
     PRE_ACQUIRE_SHARES
 		output.allowTransfer = true;
