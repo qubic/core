@@ -921,16 +921,24 @@ struct ScoreFunction
     // for future use for somewhere else, you can only increase the size.
 
     volatile char taskQueueLock = 0;
+    volatile char preTaskQueueLock = 0;
     struct
     {
         m256i publicKey[NUMBER_OF_TRANSACTIONS_PER_TICK];
         m256i miningSeed[NUMBER_OF_TRANSACTIONS_PER_TICK];
         m256i nonce[NUMBER_OF_TRANSACTIONS_PER_TICK];
     } taskQueue;
+    struct
+    {
+        m256i publicKey[NUMBER_OF_TRANSACTIONS_PER_TICK];
+        m256i miningSeed[NUMBER_OF_TRANSACTIONS_PER_TICK];
+        m256i nonce[NUMBER_OF_TRANSACTIONS_PER_TICK];
+    } preTaskQueue;
     unsigned int _nTask;
     unsigned int _nProcessing;
     unsigned int _nFinished;
     bool _nIsTaskQueueReady;
+    bool _nIsPreTaskQueueReady; // default on
 
     void resetTaskQueue()
     {
