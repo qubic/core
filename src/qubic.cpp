@@ -761,7 +761,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
         {
             if (!isZero(request->tickData.transactionDigests[i]))
             {
-                // Check if same transactionDigest is present in the tickData
+                // Check if same transactionDigest is present twice
                 for (unsigned int j = 0; j < i; j++)
                 {
                     if (request->tickData.transactionDigests[i] == request->tickData.transactionDigests[j])
