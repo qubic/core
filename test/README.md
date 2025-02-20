@@ -63,10 +63,10 @@ It is based on the Google Test framework and runs in your OS, facilitating easy 
 
 ### Score test
 
-The Score Test will compare the generated results with the ground truth files located in test/data.
+The Score Test will compare the generated results with the ground-truth files located in test/data.
 
-#### Ground truth files
-The ground truth files will be read by the score test, typically consist of two files:
+#### Ground-truth files
+The ground-truth files will be read by the score test, typically consist of two files:
 1. **samples_xxx.csv** contains the input data.
     - Each column is hex presentation of mining seeds, public keys and nonces.
     - Each row is a sample
@@ -74,14 +74,14 @@ The ground truth files will be read by the score test, typically consist of two 
     - Column presents score setting
     - Row will corresponds to a row in the sample file. For example, the 10th row in scores_xxx.csv is the result of the data in the 10th row of the sample file.
 
-#### Reading ground truth files
+#### Reading ground-truth files
 
-The ground truth files are in CSV format and can be read using various applications such as OpenOffice, MS Excel, and Google Sheets.
+The ground-truth files are in CSV format and can be read using various applications such as OpenOffice, MS Excel, and Google Sheets.
 
 For reference on how to read these files, please see **core/test/utils.h**.
 
-#### Generate ground truth files
-Ground truth files can be generated using the tools available in the **core/tools** directory. You can pass the -h argument to get detailed instructions.
+#### Generate ground-truth files
+Ground-truth files can be generated using the tools available in the **core/tools** directory. You can pass the -h argument to get detailed instructions.
 
 For example,
 

@@ -15,6 +15,7 @@ For big changes, such as adding a smart contract, we recommend to discuss with o
 8. Push your branch to the remote origin (your fork on Github).
 9. From your fork on GitHub, open a pull request (PR) in your new branch targeting the `develop` branch of the original repo. In the PR, describe the problem and how your changes solve it.
    After requesting / getting a review, do not rebase and force-push your changes.
+   Instead, merge changes of other branches if your branch needs to be updated.
 10. If the PR reviewer requests further changes, push them to your branch. The PR will be updated automatically.
 11. When your PR is approved and merged, you can pull the changes from upstream to your local repo and delete your extra branch.
 
@@ -35,7 +36,7 @@ Before committing to this branch or creating a PR, please check that everything 
 
 3. `feature/YYYY-MM-DD-FeatureName`: When we are working on a specific feature that is non-trivial (more than a few lines) and/or requires code review, a feature branch should be created from `develop`.
 The commits in this branch do not need to be fully functional, but before creating a pull request, you should check that the final commit compiles and the automated tests (gtest) run successfully.
-If the code passes the PR review, it can be merged to the "develop" branch for testing.
+If the code passes the PR review, it can be merged to the `develop` branch for testing.
 (The idea is to test the changes in an accumulated way in the testnet, assuming that most changes work and do not require debugging. This should be easier than deploying each feature branch in the testnet separately.)
 If code changes are very complex, they should be tested with a separate testnet before merging the PR.
 The feature branch should be deleted after merging with the PR.
@@ -62,7 +63,7 @@ The coding guidelines are meant to support the team of contributors in creating 
 ### Most important principles
 
 - Security and stability are of utmost importance!
-  Funds must be save.
+  Funds must be safe.
   Any attack surface must be avoided or minimized.
 - The implementation of public interfaces (network messages, transactions, ...) must check all inputs for invalid data, preventing vulnerabilities for attacking.
 - The software must be extensively tested to ensure that it functions as expected and runs stable in the EFI environment on bare metal.
@@ -80,7 +81,7 @@ The coding guidelines are meant to support the team of contributors in creating 
 ### General guidelines
 
 - Make sure that all code in the branches `main` and `develop` always compiles without errors and warnings.
-  Change the code to fix warning, not the compiler options!
+  Change the code to fix warnings, not the compiler options!
   Also check that the "test" project runs without errors.
 
 - Review the diffs of your changes before committing (or at least before creating a PR of your branch) and undo unintended / irrelevant changes that blow up the diff and hamper reviewing and merging.
@@ -108,7 +109,7 @@ The coding guidelines are meant to support the team of contributors in creating 
   not including any of the business logic of the Qubic Core or dependencies to other files of the repository from outside `src/platform`.
 
 - Names (of functions, classes, structs, variables, constants, types etc.) should be self-explanatory, especially in public scope.
-  A rule of thumb is that the length length of a variable name should be somewhat correlated to the size of its scope.
+  A rule of thumb is that the length of a variable name should be somewhat correlated to the size of its scope.
   For example, in global scope naming should be precise and self-explanatory, while in a trivial loop the counter may be named `i` or `c`.
 
 - Add comments to your code, documenting things that are not obvious but relevant for other developers or your future self.
@@ -151,7 +152,7 @@ The coding guidelines are meant to support the team of contributors in creating 
 
 - Prefer constants over variables and use `const` or `constexpr` by default (unless the value is supposed to be changed).
   An exception are function parameters passed by value, because they are rarely declared `const` and doing so may cause confusion (for example, the `const` in `void f(const int x);` is uncommon and may be skipped).
-  However, inputs parameters that are passed by reference should be `const` (for example, `void f(const ArrayType& x)` and `void f(const ArrayType* x)`).
+  However, input parameters that are passed by reference should be `const` (for example, `void f(const ArrayType& x)` and `void f(const ArrayType* x)`).
 
 - Make member functions `const` by default (unless the object's observable state is supposed to be changed).
 
@@ -164,12 +165,12 @@ The coding guidelines are meant to support the team of contributors in creating 
 
 - Pass objects to functions by reference if there is no good reason to copy them.
   Use const references for input parameters and non-const references for output and input/output parameters.
-  Input of Built-in types and their aliases (that fit into a CPU register = up to 8 bytes) should be passed by value.
+  Input of built-in types and their aliases (that fit into a CPU register = up to 8 bytes) should be passed by value.
   Use a pointer (`T*`) if "no argument" is a valid option (`nullptr` = no argument).
   Otherwise, prefer references (`T&`).
 
 - Be aware of alignment of struct/class member variables and try to avoid padding.
-  This is especially relevant for if the data structure replicated often in containers (like arrays) or if it is transmitted in network messages.
+  This is especially relevant if the data structure is replicated often in containers (like arrays) or if it is transmitted in network messages.
 
 - For readability, use `class` rather than `struct` if any member is non-public.
 
@@ -188,7 +189,7 @@ The coding guidelines are meant to support the team of contributors in creating 
 
 The code formatting rules are enforced using `clang-format`, ideally setup as a pre-commit hook.
 They are based on the "Microsoft" style with some custom modifications.
-Currently, the style guidelines are designed improve consistency while minimize the number of changes needed in the existing codebase.
+Currently, the style guidelines are designed to improve consistency while minimizing the number of changes needed in the existing codebase.
 
 The following naming rules are not strictly enforced, but should be followed at least in new code:
 
@@ -201,12 +202,12 @@ The following naming rules are not strictly enforced, but should be followed at 
   Examples: `BitArray`, `UInt8`, `RequestContractIPO`.
   Exceptions: structs of inputs, outputs, and locals of contract functions and procedures must be named `[NAME]_inputs`, `[NAME]_outputs`, and `[NAME]_locals` with `NAME` being the name of the corresponding contract function or procedure.
 
-- **Variables** are named similar to types, but starting with a lower case letter. Each additional word after the first starts with a capital letter.
+- **Variables** are named similar to types, but starting with a lower case letter. Each additional word after the first starts with a capital letter, without separating words by underscores.
   Examples: `numberOfTransactions`, `thisIsAVariable`.
   Special cases:
 
   - **Member variables of classes** may begin with an underscore `_`.
-    In member functions, this helps to clarify that the referenced variable belongs is an object member variable. Example: `_contractIndex`.
+    In member functions, this helps to clarify that the referenced variable is an object member variable. Example: `_contractIndex`.
     Member variables of structs without member functions should not begin with an underscore, because they are accessed via `object.member` or `pointer->member` anyway.
 
   - **Global variables** may begin with the prefix `g` in order to clarify its global scope. Example: `gTickNumberOfComputors`.
