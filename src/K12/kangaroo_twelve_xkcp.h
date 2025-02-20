@@ -687,7 +687,7 @@ namespace K12xkcp
         KeccakP_DeclareVars
         unsigned long long* stateAsLanes = (unsigned long long*)state;
 
-        XKCPAVX512copyFromStatestateAsLanes);
+        XKCPAVX512copyFromState(stateAsLanes);
         XKCPAVX512rounds12;
         XKCPAVX512copyToState(stateAsLanes);
     }
