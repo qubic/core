@@ -117,7 +117,7 @@
     <ClCompile Include="contract_qx.cpp" />
     <ClCompile Include="contract_qvault.cpp" />
     <ClCompile Include="contract_testex.cpp" />
-    <ClCompile Include="contract_PFP.cpp" />
+    <ClCompile Include="contract_qbay.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="qpi_collection.cpp" />
     <ClCompile Include="qpi_hash_map.cpp" />
