@@ -31,6 +31,9 @@ constexpr unsigned int MAX_SIZE_OF_CONTRACT_LOCALS = 32 * 1024;
 // TODO: make sure the limit of nested calls is not violated
 constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
 
+// Size of the contract action tracker, limits the number of transfers that one contract call can execute.
+constexpr unsigned long long CONTRACT_ACTION_TRACKER_SIZE = 16 * 1024 * 1024;
+
 
 static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);
@@ -165,7 +168,17 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QBAY_CONTRACT_INDEX 11
+#define MSVAULT_CONTRACT_INDEX 11
+#define CONTRACT_INDEX MSVAULT_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE MSVAULT
+#define CONTRACT_STATE2_TYPE MSVAULT2
+#include "contracts/MsVault.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QBAY_CONTRACT_INDEX 12
 #define CONTRACT_INDEX QBAY_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QBAY
 #define CONTRACT_STATE2_TYPE QBAY2
@@ -245,7 +258,8 @@ constexpr struct ContractDescription
     {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
     {"QEARN", 137, 10000, sizeof(QEARN)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
     {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
-    {"QBAY", 150, 10000, sizeof(QBAY)},
+    {"MSVAULT", 149, 10000, sizeof(MSVAULT)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
+    {"QBAY", 151, 10000, sizeof(QBAY)}, // proposal in epoch 149, IPO in 150, construction and first use in 151
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
@@ -291,7 +305,7 @@ enum SystemProcedureID
 
 enum OtherEntryPointIDs
 {
-    // Used together with SystemProcedureID values, so there must be not overlap!
+    // Used together with SystemProcedureID values, so there must be no overlap!
     USER_PROCEDURE_CALL = contractSystemProcedureCount + 1,
     USER_FUNCTION_CALL = contractSystemProcedureCount + 2,
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3
@@ -339,6 +353,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(CCF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QEARN);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QVAULT);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MSVAULT);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBAY);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES

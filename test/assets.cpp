@@ -1,5 +1,7 @@
 #define NO_UEFI
 
+#define PRINT_TEST_INFO 0
+
 #include "gtest/gtest.h"
 
 #include "logging_test.h"
@@ -166,6 +168,19 @@ struct AssetSharesKey
     }
 };
 
+struct AssetKey : public Asset
+{
+    bool operator < (const Asset& rhs) const
+    {
+        if (issuer < rhs.issuer)
+            return true;
+        else if (rhs.issuer < issuer)
+            return false;
+        else
+            return assetName < rhs.assetName;
+    }
+};
+
 struct IssuanceTestData
 {
     Asset id;
@@ -178,6 +193,19 @@ struct IssuanceTestData
     std::map<AssetSharesKey, long long> shares;
     std::map<AssetSharesKey, long long> ownershipIdx;
     std::map<AssetSharesKey, long long> possessionIdx;
+
+    void checkIssuance(const AssetIssuanceIterator& iter) const
+    {
+        unsigned int idxI = iter.issuanceIndex();
+        EXPECT_LT(idxI, ASSETS_CAPACITY);
+        EXPECT_EQ(idxI, universeIdx);
+        EXPECT_EQ(assets[idxI].varStruct.issuance.type, ISSUANCE);
+        EXPECT_EQ((*((unsigned long long*)assets[idxI].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF, id.assetName);
+        EXPECT_EQ(assets[idxI].varStruct.issuance.publicKey, id.issuer);
+
+        EXPECT_EQ(iter.issuer(), id.issuer);
+        EXPECT_EQ(iter.assetName(), id.assetName);
+    }
 
     void checkOwnershipAndIssuance(const AssetOwnershipIterator& iter) const
     {
@@ -206,6 +234,7 @@ struct IssuanceTestData
 
         EXPECT_EQ(iter.numberOfOwnedShares(), numOfShares);
         EXPECT_EQ(iter.issuer(), id.issuer);
+        EXPECT_EQ(iter.assetName(), id.assetName);
         EXPECT_EQ(iter.owner(), owner);
         EXPECT_EQ((uint32)iter.ownershipManagingContract(), managingContract);
     }
@@ -236,7 +265,7 @@ struct IssuanceTestData
     }
 };
 
-TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
+TEST(TestCoreAssets, AssetIterators)
 {
     AssetsTest test;
     test.clearUniverse();
@@ -253,18 +282,20 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
     m256i unusedPublicKey(9876, 4321, 0, 13579);
 
     // With empty universe, all iterators should stop right after init
+    AssetIssuanceIterator iterI;
+    EXPECT_TRUE(iterI.reachedEnd());
+    EXPECT_EQ(iterI.issuanceIndex(), NO_ASSET_INDEX);
     for (int i = 0; i < issuancesCount; ++i)
     {
         AssetOwnershipIterator iterO(issuances[i].id);
         EXPECT_TRUE(iterO.reachedEnd());
         EXPECT_EQ(iterO.issuanceIndex(), NO_ASSET_INDEX);
         EXPECT_EQ(iterO.ownershipIndex(), NO_ASSET_INDEX);
-        EXPECT_EQ(iterO.issuanceIndex(), NO_ASSET_INDEX);
-        AssetOwnershipIterator iterP(issuances[i].id);
+        AssetPossessionIterator iterP(issuances[i].id);
         EXPECT_TRUE(iterP.reachedEnd());
         EXPECT_EQ(iterP.issuanceIndex(), NO_ASSET_INDEX);
         EXPECT_EQ(iterP.ownershipIndex(), NO_ASSET_INDEX);
-        EXPECT_EQ(iterP.issuanceIndex(), NO_ASSET_INDEX);
+        EXPECT_EQ(iterP.possessionIndex(), NO_ASSET_INDEX);
     }
 
     // Build universe with multiple owners / possessor per issuance
@@ -297,6 +328,106 @@ TEST(TestCoreAssets, AssetIteratorOwnershipAndPossession)
         issuances[i].possessionIdx[key] = firstPossessionIdx;
 
         test.checkAssetsConsistency(i == issuancesCount - 1);
+    }
+
+    {
+        // Test iterating all issuances with AssetIssuanceIterator
+        std::map<AssetKey, IssuanceTestData*> testIssuancesSet;
+        for (int i = 0; i < issuancesCount; ++i)
+        {
+            AssetKey key{ issuances[i].id.issuer, issuances[i].id.assetName };
+#if PRINT_TEST_INFO > 0
+            std::cout << issuances[i].id.issuer << ", name " << issuances[i].id.assetName << ", idx " << issuances[i].universeIdx << std::endl;
+#endif
+            testIssuancesSet[key] = &issuances[i];
+        }
+        AssetIssuanceIterator iter;
+        while (!iter.reachedEnd())
+        {
+            AssetKey key{ iter.issuer(), iter.assetName() };
+#if PRINT_TEST_INFO > 0
+            std::cout << iter.issuer() << ", name " << iter.assetName() << ", idx " << iter.issuanceIndex() << std::endl;
+#endif
+            auto testIssuancesSetIt = testIssuancesSet.find(key);
+            EXPECT_NE(testIssuancesSetIt, testIssuancesSet.end());
+            testIssuancesSetIt->second->checkIssuance(iter);
+            testIssuancesSet.erase(key);
+            bool hasNext = iter.next();
+            EXPECT_EQ(hasNext, !iter.reachedEnd());
+        }
+        EXPECT_EQ(testIssuancesSet.size(), 0);
+
+        // Iterate by issuer (also test reusing the iterator)
+        auto assetSelect = AssetIssuanceSelect::byIssuer(issuances[0].id.issuer);
+        for (int i = 0; i < issuancesCount; ++i)
+        {
+            if (issuances[i].id.issuer != assetSelect.issuer)
+                continue;
+            AssetKey key{ issuances[i].id.issuer, issuances[i].id.assetName };
+#if PRINT_TEST_INFO > 0
+            std::cout << issuances[i].id.issuer << ", name " << issuances[i].id.assetName << ", idx " << issuances[i].universeIdx << std::endl;
+#endif
+            testIssuancesSet[key] = &issuances[i];
+        }
+        iter.begin(assetSelect);
+        while (!iter.reachedEnd())
+        {
+            AssetKey key{ iter.issuer(), iter.assetName() };
+#if PRINT_TEST_INFO > 0
+            std::cout << iter.issuer() << ", name " << iter.assetName() << ", idx " << iter.issuanceIndex() << std::endl;
+#endif
+            auto testIssuancesSetIt = testIssuancesSet.find(key);
+            EXPECT_NE(testIssuancesSetIt, testIssuancesSet.end());
+            testIssuancesSetIt->second->checkIssuance(iter);
+            testIssuancesSet.erase(key);
+            bool hasNext = iter.next();
+            EXPECT_EQ(hasNext, !iter.reachedEnd());
+        }
+        EXPECT_EQ(testIssuancesSet.size(), 0);
+
+        // Iterate by name
+        assetSelect = AssetIssuanceSelect::byName(assetNameFromString("BLA"));
+        for (int i = 0; i < issuancesCount; ++i)
+        {
+            if (issuances[i].id.assetName != assetSelect.assetName)
+                continue;
+            AssetKey key{ issuances[i].id.issuer, issuances[i].id.assetName };
+#if PRINT_TEST_INFO > 0
+            std::cout << issuances[i].id.issuer << ", name " << issuances[i].id.assetName << ", idx " << issuances[i].universeIdx << std::endl;
+#endif
+            testIssuancesSet[key] = &issuances[i];
+        }
+        iter.begin(assetSelect);
+        while (!iter.reachedEnd())
+        {
+            AssetKey key{ iter.issuer(), iter.assetName() };
+#if PRINT_TEST_INFO > 0
+            std::cout << iter.issuer() << ", name " << iter.assetName() << ", idx " << iter.issuanceIndex() << std::endl;
+#endif
+            auto testIssuancesSetIt = testIssuancesSet.find(key);
+            EXPECT_NE(testIssuancesSetIt, testIssuancesSet.end());
+            testIssuancesSetIt->second->checkIssuance(iter);
+            testIssuancesSet.erase(key);
+            bool hasNext = iter.next();
+            EXPECT_EQ(hasNext, !iter.reachedEnd());
+        }
+        EXPECT_EQ(testIssuancesSet.size(), 0);
+
+        // Test iterator to return single issuance
+        for (int i = 0; i < issuancesCount; ++i)
+        {
+            iter.begin({ issuances[i].id.issuer, issuances[i].id.assetName });
+            issuances[i].checkIssuance(iter);
+            EXPECT_FALSE(iter.next());
+        }
+
+        // Test issuance iterator with unused key
+        iter.begin({ unusedPublicKey, assetNameFromString("UNUSED") });
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(AssetIssuanceSelect::byIssuer(unusedPublicKey));
+        EXPECT_TRUE(iter.reachedEnd());
+        iter.begin(AssetIssuanceSelect::byName(assetNameFromString("UNUSED")));
+        EXPECT_TRUE(iter.reachedEnd());
     }
 
     {
