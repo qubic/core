@@ -69,7 +69,7 @@ echo -e "o\nY\nd\nn\n\n\n+200G\n\nt\n\nef00\nw\nY" | gdisk /dev/sda
 - contract0008.XXX => must be the current contract #8 file. XXX must be replaced with the current epoch. (e.g. `contract0008.114`). Data from CCF.
 - contract0009.XXX => must be the current contract #9 file. XXX must be replaced with the current epoch. (e.g. `contract0009.114`). Data from QEarn.
 - contract0010.XXX => must be the current contract #10 file. XXX must be replaced with the current epoch. (e.g. `contract0010.114`). Data from QVault.
-- contract0011.XXX => must be the current contract #10 file. XXX must be replaced with the current epoch. (e.g. `contract0010.114`). Data from MSVault.
+- contract0011.XXX => must be the current contract #10 file. XXX must be replaced with the current epoch. (e.g. `contract0011.114`). Data from MSVault.
 - Other contract files with the same format as above. For now, we have 6 contracts.
 - universe.XXX => must be the current universe file. XXX must be replaced with the current epoch. (e.g `universe.114`)
 - spectrum.XXX => must be the current spectrum file. XXX must be replaced with the current epoch. (e.g `spectrum.114`)
