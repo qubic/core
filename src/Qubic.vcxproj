@@ -35,7 +35,7 @@
     <ClInclude Include="contracts\Random.h" />
     <ClInclude Include="contracts\Qearn.h" />
     <ClInclude Include="contracts\QVAULT.h" />
-    <ClInclude Include="contracts\PFP.h" />
+    <ClInclude Include="contracts\QBAY.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contract_core\contract_action_tracker.h" />
