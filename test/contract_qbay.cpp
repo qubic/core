@@ -884,9 +884,9 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     // getting the id of collection user created
 
     auto getUserCreatedCollection_output = pfp.getUserCreatedCollection(users[0], 0, 10);
-    for(uint32 i = 0 ; i < 10; i++)
+    for(uint32 i = 0 ; i < 11; i++)
     {
-        EXPECT_EQ(getUserCreatedCollection_output.collectionId.get(i), i);
+        EXPECT_EQ(getUserCreatedCollection_output.collectionId.get(i), 10 - i);
     }
 
     // checking the infos of collection by creator
@@ -920,7 +920,7 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     auto getUserCreatedNFT_output = pfp.getUserCreatedNFT(users[0], 0, 2);
     for(uint32 i = 0 ; i < 2; i++)
     {
-        EXPECT_EQ(getUserCreatedNFT_output.NFTId.get(i), i);
+        EXPECT_EQ(getUserCreatedNFT_output.NFTId.get(i), 1 - i);
     }
 
     // checking if 2 NFTs are minted by users[0]
