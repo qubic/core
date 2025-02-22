@@ -5,6 +5,7 @@
 //#define PRINT_DETAILS 0
 
 static constexpr uint64 QSWAP_ISSUE_ASSET_FEE = 1000000000ull;
+static constexpr uint64 QSWAP_TRANSFER_ASSET_FEE = 10000000ull;
 static constexpr uint64 QSWAP_CREATE_POOL_FEE = 1000000000ull;
 
 static const id QSWAP_CONTRACT_ID(QSWAP_CONTRACT_INDEX, 0, 0, 0);
@@ -15,7 +16,7 @@ constexpr uint32 GET_LIQUDITY_OF_IDX = 3;
 constexpr uint32 QUOTE_EXACT_QU_INPUT_IDX = 4;
 //
 constexpr uint32 ISSUE_ASSET_IDX = 1;
-// constexpr uint32 TRANSFER_SHARE_OWNERSHIP_AND_POSSESSION_IDX = 2;
+constexpr uint32 TRANSFER_SHARE_OWNERSHIP_AND_POSSESSION_IDX = 2;
 constexpr uint32 CREATE_POOL_IDX = 3;
 constexpr uint32 ADD_LIQUDITY_IDX = 4;
 constexpr uint32 REMOVE_LIQUDITY_IDX = 5;
@@ -62,6 +63,12 @@ public:
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, ISSUE_ASSET_IDX, input, output, issuer, QSWAP_ISSUE_ASSET_FEE);
 		return output.issuedNumberOfShares;
 	}
+
+    sint64 transferAsset(const id& issuer, QSWAP::TransferShareOwnershipAndPossession_input input){
+        QSWAP::TransferShareOwnershipAndPossession_output output;
+		invokeUserProcedure(QSWAP_CONTRACT_INDEX, TRANSFER_SHARE_OWNERSHIP_AND_POSSESSION_IDX, input, output, issuer, QSWAP_TRANSFER_ASSET_FEE);
+        return output.transferredAmount;
+    }
 
 	bool createPool(const id& issuer, uint64 assetName){
 		QSWAP::CreatePool_input input{issuer, assetName};
@@ -166,6 +173,68 @@ public:
 		return output;
 	}
 };
+
+/*
+0. normally issue asset
+1. not enough qu for asset issue fee
+2. issue duplicate asset
+3. issue asset with invalid input params, such as numberOfShares: 0
+*/
+TEST(ContractSwap, IssueAsset)
+{
+    ContractTestingQswap qswap;
+
+    id issuer(1, 2, 3, 4);
+
+    // 0. normally issue asset and transfer
+    {
+        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
+        uint64 assetName = assetNameFromString("QSWAP0");
+        sint64 numberOfShares = 1000000;
+        QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
+        EXPECT_EQ(getBalance(QSWAP_CONTRACT_ID), 0);
+        EXPECT_EQ(qswap.issueAsset(issuer, input), numberOfShares);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), numberOfShares);
+        EXPECT_EQ(getBalance(QSWAP_CONTRACT_ID), QSWAP_ISSUE_ASSET_FEE);
+
+        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
+        sint64 transferAmount = 1000;
+        id newId(2,3,4,5);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, newId, newId, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), 0);
+        QSWAP::TransferShareOwnershipAndPossession_input ts_input = {issuer, assetName, newId, transferAmount};
+		// printf("ts amount: %lld\n", transferAmount);
+        EXPECT_EQ(qswap.transferAsset(issuer, ts_input), transferAmount);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, newId, newId, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), transferAmount);
+        // printf("%lld\n", getBalance(QSWAP_CONTRACT_ID));
+    }
+
+    // 1. not enough energy for asset issue fee
+    {
+        decreaseEnergy(spectrumIndex(issuer), getBalance(issuer));
+        uint64 assetName = assetNameFromString("QSWAP1");
+        sint64 numberOfShares = 1000000;
+        QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
+        EXPECT_EQ(qswap.issueAsset(issuer, input), 0);
+    }
+
+    // 2. issue duplicate asset, related to test.0
+    {
+        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
+        uint64 assetName = assetNameFromString("QSWAP0");
+        sint64 numberOfShares = 1000000;
+        QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
+        EXPECT_EQ(qswap.issueAsset(issuer, input), 0);
+    }
+
+    // 3. issue asset with invalid input params, such as numberOfShares: 0
+    {
+        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
+        uint64 assetName = assetNameFromString("QSWAP1");
+        sint64 numberOfShares = 0;
+        QSWAP::IssueAsset_input input = {assetName, numberOfShares, 0, 0 };
+        EXPECT_EQ(qswap.issueAsset(issuer, input), 0);
+    }
+}
 
 TEST(ContractSwap, SwapExactQuForAsset)
 {
@@ -317,58 +386,6 @@ TEST(ContractSwap, SwapAssetForExactQu)
         QSWAP::SwapAssetForExactQu_input input = {issuer, assetName, 200*1000 + 10, 100*1000};
         QSWAP::SwapAssetForExactQu_output output = qswap.swapAssetForExactQu(user, input, inputValue);
         // printf("swap asset in: %lld\n", output.assetAmountIn);
-    }
-}
-
-/*
-0. normally issue asset
-1. not enough qu for asset issue fee
-2. issue duplicate asset
-3. issue asset with invalid input params, such as numberOfShares: 0
-*/
-TEST(ContractSwap, IssueAsset)
-{
-    ContractTestingQswap qswap;
-
-    id issuer(1, 2, 3, 4);
-
-    // 0. normally issue asset
-    {
-        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
-        uint64 assetName = assetNameFromString("QSWAP0");
-        sint64 numberOfShares = 1000000;
-        QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
-        EXPECT_EQ(getBalance(QSWAP_CONTRACT_ID), 0);
-        EXPECT_EQ(qswap.issueAsset(issuer, input), numberOfShares);
-        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), numberOfShares);
-        EXPECT_EQ(getBalance(QSWAP_CONTRACT_ID), QSWAP_ISSUE_ASSET_FEE);
-    }
-
-    // 1. not enough energy for asset issue fee
-    {
-        decreaseEnergy(spectrumIndex(issuer), getBalance(issuer));
-        uint64 assetName = assetNameFromString("QSWAP1");
-        sint64 numberOfShares = 1000000;
-        QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
-        EXPECT_EQ(qswap.issueAsset(issuer, input), 0);
-    }
-
-    // 2. issue duplicate asset, related to test.0
-    {
-        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
-        uint64 assetName = assetNameFromString("QSWAP0");
-        sint64 numberOfShares = 1000000;
-        QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
-        EXPECT_EQ(qswap.issueAsset(issuer, input), 0);
-    }
-
-    // 3. issue asset with invalid input params, such as numberOfShares: 0
-    {
-        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
-        uint64 assetName = assetNameFromString("QSWAP1");
-        sint64 numberOfShares = 0;
-        QSWAP::IssueAsset_input input = {assetName, numberOfShares, 0, 0 };
-        EXPECT_EQ(qswap.issueAsset(issuer, input), 0);
     }
 }
 
