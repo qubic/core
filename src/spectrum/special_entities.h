@@ -14,6 +14,7 @@ GLOBAL_VAR_DECL m256i computorSubseeds[sizeof(computorSeeds) / sizeof(computorSe
 GLOBAL_VAR_DECL m256i computorPrivateKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 GLOBAL_VAR_DECL m256i computorPublicKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
 GLOBAL_VAR_DECL m256i arbitratorPublicKey;
+GLOBAL_VAR_DECL m256i dispatcherPublicKey;
 
 GLOBAL_VAR_DECL BroadcastComputors broadcastedComputors;
 
@@ -37,6 +38,7 @@ static bool initSpecialEntities()
     }
 
     getPublicKeyFromIdentity((const unsigned char*)ARBITRATOR, (unsigned char*)&arbitratorPublicKey);
+    getPublicKeyFromIdentity((const unsigned char*)DISPATCHER, dispatcherPublicKey.m256i_u8);
 
     setMem(&broadcastedComputors, sizeof(broadcastedComputors), 0);
 

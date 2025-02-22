@@ -27,6 +27,7 @@
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
     <ClInclude Include="contracts\math_lib.h" />
+    <ClInclude Include="contracts\MsVault.h" />
     <ClInclude Include="contracts\MyLastMatch.h" />
     <ClInclude Include="contracts\qpi.h" />
     <ClInclude Include="contracts\Quottery.h" />
@@ -65,6 +66,7 @@
     <ClInclude Include="network_messages\contract.h" />
     <ClInclude Include="network_messages\entity.h" />
     <ClInclude Include="network_messages\header.h" />
+    <ClInclude Include="network_messages\logging.h" />
     <ClInclude Include="network_messages\public_peers.h" />
     <ClInclude Include="network_messages\special_command.h" />
     <ClInclude Include="network_messages\system_info.h" />

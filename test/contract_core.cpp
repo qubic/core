@@ -122,6 +122,7 @@ TEST(TestCoreContractCore, ContractActionTracker)
     m256i id2(3, 4, 5, 6);
 
     ContractActionTracker<6> at;
+    EXPECT_TRUE(at.allocBuffer());
     at.init();
     EXPECT_EQ(at.getOverallQuTransferBalance(id0), 0);
 
@@ -161,4 +162,6 @@ TEST(TestCoreContractCore, ContractActionTracker)
     EXPECT_EQ(at.getOverallQuTransferBalance(id0), -500);
     EXPECT_EQ(at.getOverallQuTransferBalance(id1), 200);
     EXPECT_EQ(at.getOverallQuTransferBalance(id2), 300);
+
+    at.freeBuffer();
 }

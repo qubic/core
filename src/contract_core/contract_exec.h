@@ -63,7 +63,7 @@ enum ContractCallbacksRunningFlags
 };
 
 
-GLOBAL_VAR_DECL ContractActionTracker<1024*1024> contractActionTracker;
+GLOBAL_VAR_DECL ContractActionTracker<CONTRACT_ACTION_TRACKER_SIZE> contractActionTracker;
 
 // Instances of this struct are pushed on the contractLocalsStack during execution to support rollback of locks etc
 // in case of an error
@@ -78,7 +78,7 @@ struct ContractRollbackInfo
     unsigned int type : 2;
     unsigned int contractIndex : 30;
     static constexpr int i = (1 << 30) - 1;
-    static_assert(contractCount < (1 << 30) - 1, "Implementation assumes less contracts and must be changed!");
+    static_assert(contractCount < (1 << 30) - 1, "Implementation assumes fewer contracts and must be changed!");
 };
 
 static inline ContractRollbackInfo* contractStackUnwindRollbackInfo(int stackIndex)
@@ -164,7 +164,20 @@ static bool initContractExec()
 
     contractCallbacksRunning = NoContractCallback;
 
+    if (!contractActionTracker.allocBuffer())
+        return false;
+
     return true;
+}
+
+static void deinitContractExec()
+{
+    if (contractStateChangeFlags)
+    {
+        freePool(contractStateChangeFlags);
+    }
+
+    contractActionTracker.freeBuffer();
 }
 
 // Acquire lock of an currently unused stack (may block if all in use)
@@ -368,24 +381,25 @@ void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int cont
             //      1. Contract C2 invokes a C1 procedure (C2 and C1 states locked for writing)
             //      2. Contract C1 runs qpi.releaseShares(), which needs to call the PRE_ACQUIRE_SHARES
             //         callback of C1.
-            //    If it is locked for reading (by a function)
+            //      3. C1 then calls a function of C2. For this, it tries to acquire a read lock of
+            //         C2's state, ending up here.
             // -> Because we know that this runs within a procedure entry point, we only have one
-            //    processor running procedures, and a function can never all a procedure, we know that:
+            //    processor running procedures, and a function can never call a procedure, we know that:
             //      1. all write locks are owned by contract processor (running this) and
             //      2. all read locks are owned by request processors (other processors).
             if (contractStateLock[contractIndex].isLockedForWriting())
             {
                 // already locked by this processor
                 // -> signal situation for corresponding __qpiReleaseStateForReading()
-                // -> give write access to state without further ado
+                // -> give read access to state without further ado
                 rollbackInfo->type = ContractRollbackInfo::ContractStateReuseLock;
             }
             else
             {
                 // not locked or already locked by a request processor for reading (contract function)
-                // -> acquire lock as usual (which may need to wait if locked for reading)
-                // -> if there is a deadlock with a request processor, the following acquireWrite()
-                //    needs to wait until it gets resolved in __qpiAcquireStateForReading()
+                // -> acquire lock as usual
+                // -> if there is a deadlock with a request processor, the following acquireRead()
+                //    needs to wait until it gets resolved by stopping the request processor
                 contractStateLock[contractIndex].acquireRead();
                 rollbackInfo->type = ContractRollbackInfo::ContractStateReadLock;
             }
@@ -462,7 +476,7 @@ void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int con
         //         callback of C2 -> __qpiCallSystemProcOfOtherContract() tries to acquire write
         //         lock of C2 through __qpiAcquireStateForWriting()
         // -> Because we know that this runs within a procedure entry point, we only have one
-        //    processor running procedures, and a function can never all a procedure, we know that:
+        //    processor running procedures, and a function can never call a procedure, we know that:
         //      1. all write locks are owned by contract processor (running this) and
         //      2. all read locks are owned by request processors (other processors).
         if (contractStateLock[contractIndex].isLockedForWriting())
