@@ -153,6 +153,7 @@ const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateD
 // targetNextTickDataDigestIsKnown == false means there is no consensus on next tick data yet
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
+static m256i lastExpectedTickTransactionDigest = m256i::zero();
 // rdtsc (timestamp) of ticks
 static unsigned long long tickTicks[11];
 
@@ -4916,6 +4917,13 @@ static void tickProcessor(void*)
                             // If targetNextTickDataDigest is known expectedNextTickTransactionDigest is set above already.
                             KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
                         }
+
+                        // Compute the txBodyDigest expectedNextTickTransactionDigest changed
+                        if (lastExpectedTickTransactionDigest != etalonTick.expectedNextTickTransactionDigest)
+                        {
+                            computeTxBodyDigestBase(nextTick);
+                            lastExpectedTickTransactionDigest = etalonTick.expectedNextTickTransactionDigest;
+                        }
                     }
                     else
                     {
@@ -4923,13 +4931,9 @@ static void tickProcessor(void*)
                         etalonTick.saltedTransactionBodyDigest = m256i::zero();
                     }
 
+
                     if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
                     {
-                        if (nextTickData.epoch == system.epoch)
-                        {
-                            computeTxBodyDigestBase(nextTick);
-                        }
-
                         if (mainAuxStatus & 1)
                         {
                             broadcastTickVotes();
