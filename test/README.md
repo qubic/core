@@ -1,3 +1,10 @@
+# Qubic Core Testing
+
+## Testnet operation
+
+New features and releases of the Qubic Core must be tested in the target environment (EFI bare metal) in a testnet with multiple nodes.
+In this task, developer are supported by the test team, which is led by kavatak and can be initially contacted via the [public test-net channel on Discord](https://discord.com/channels/768887649540243497/1182262429174992937).
+
 ### Testing checklist
 Importance Levels:
 - **High**: the networks and node can't function properly, need to fix asap or we should not release.
@@ -49,13 +56,17 @@ Request processors and networking:
 - [Medium] Success rate of connection to the node: >90% Good. >70% OK. Acceptable >50%. Potentially bug <50%
 
 
+## Google Tests
+
+For simplified, automated, and isolated testing of components, we use the "test" project.
+It is based on the Google Test framework and runs in your OS, facilitating easy debugging within your dev environment.
 
 ### Score test
 
-The Score Test will compare the generated results with the ground truth files located in test/data.
+The Score Test will compare the generated results with the ground-truth files located in test/data.
 
-#### Grouth truth files
-The ground truth files will be read by the score test, typically consist of two files:
+#### Ground-truth files
+The ground-truth files will be read by the score test, typically consist of two files:
 1. **samples_xxx.csv** contains the input data.
     - Each column is hex presentation of mining seeds, public keys and nonces.
     - Each row is a sample
@@ -63,14 +74,14 @@ The ground truth files will be read by the score test, typically consist of two 
     - Column presents score setting
     - Row will corresponds to a row in the sample file. For example, the 10th row in scores_xxx.csv is the result of the data in the 10th row of the sample file.
 
-#### Reading grouth truth files
+#### Reading ground-truth files
 
-The ground truth files are in CSV format and can be read using various applications such as OpenOffice, MS Excel, and Google Sheets.
+The ground-truth files are in CSV format and can be read using various applications such as OpenOffice, MS Excel, and Google Sheets.
 
 For reference on how to read these files, please see **core/test/utils.h**.
 
-#### Generate grouth truth files
-Ground truth files can be generated using the tools available in the **core/tools** directory. You can pass the -h argument to get detailed instructions.
+#### Generate ground-truth files
+Ground-truth files can be generated using the tools available in the **core/tools** directory. You can pass the -h argument to get detailed instructions.
 
 For example,
 
