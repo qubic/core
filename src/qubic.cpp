@@ -153,7 +153,7 @@ const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateD
 // targetNextTickDataDigestIsKnown == false means there is no consensus on next tick data yet
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
-static m256i lastExpectedTickTransactionDigest = m256i::zero();
+static m256i lastExpectedTickTransactionDigest;
 // rdtsc (timestamp) of ticks
 static unsigned long long tickTicks[11];
 
@@ -4627,13 +4627,16 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                             KangarooTwelve64To32(saltedData, &saltedDigest);
                             if (tick->saltedComputerDigest == saltedDigest)
                             {
+                                // expectedNextTickTransactionDigest and txBodyDigest is ignored to find consensus of current tick
+                                tickNumberOfComputors++;
+
+                                // Vote of a node is only counting if txBodyDigest is matching with the version of the node
                                 if (!isZero(etalonTick.expectedNextTickTransactionDigest))
                                 {
                                     saltedData[1] = etalonTick.saltedTransactionBodyDigest;
                                     KangarooTwelve64To32(saltedData, &saltedDigest);
                                     if(tick->saltedTransactionBodyDigest == saltedDigest)
                                     {
-                                        tickNumberOfComputors++;
                                         // to avoid submitting invalid votes (eg: all zeroes with valid signature)
                                         // only count votes that matched etalonTick
                                         voteCounter.registerNewVote(tick->tick, tick->computorIndex);
@@ -4641,12 +4644,7 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                                 }
                                 else
                                 {
-                                    // ignore transactionBodyDigest if etalonTick.expectedNextTicktransactionDigest is zero
-                                    // so node that already voted can recover from misalignment state
-                                    tickNumberOfComputors++;
-                                    // to avoid submitting invalid votes (eg: all zeroes with valid signature)
-                                    // only count votes that matched etalonTick
-                                    voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+                                        voteCounter.registerNewVote(tick->tick, tick->computorIndex);
                                 }
                             }
                         }
@@ -4929,6 +4927,7 @@ static void tickProcessor(void*)
                     {
                         etalonTick.expectedNextTickTransactionDigest = m256i::zero();
                         etalonTick.saltedTransactionBodyDigest = m256i::zero();
+                        lastExpectedTickTransactionDigest = etalonTick.expectedNextTickTransactionDigest;
                     }
 
 
@@ -5367,6 +5366,8 @@ static bool initialize()
             system.initialTick = TICK;
         }
         system.tick = system.initialTick;
+
+        lastExpectedTickTransactionDigest = m256i::zero();
 
         beginEpoch();
 
