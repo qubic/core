@@ -8,22 +8,22 @@ struct TESTEXA : public ContractBase
 {
 	struct QpiFunctionsOutput
 	{
+		id arbitrator;
+		id computor0;
+		id invocator;
+		id originator;
+		sint64 invocationReward;
+		sint32 numberOfTickTransactions;
+		uint32 tick;
+		uint16 epoch;
+		uint16 millisecond;
 		uint8 year;   // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 		uint8 month;  // [1..12]
 		uint8 day;    // [1..31]
 		uint8 hour;   // [0..23]
 		uint8 minute; // [0..59]
 		uint8 second;
-		uint16 millisecond;
 		uint8 dayOfWeek;
-		id arbitrator;
-		id computor0;
-		uint16 epoch;
-		sint64 invocationReward;
-		id invocator;
-		sint32 numberOfTickTransactions;
-		id originator;
-		uint32 tick;
 	};
 
 	struct QueryQpiFunctions_input
@@ -50,10 +50,6 @@ struct TESTEXA : public ContractBase
 	{
 		QpiFunctionsOutput qpiFunctionsOutput;
 	};
-	struct ReturnQpiFunctionsOutputBeginTick_locals
-	{
-		uint32 iterationIndex;
-	};
 
 	struct ReturnQpiFunctionsOutputEndTick_input
 	{
@@ -63,10 +59,6 @@ struct TESTEXA : public ContractBase
 	{
 		QpiFunctionsOutput qpiFunctionsOutput;
 	};
-	struct ReturnQpiFunctionsOutputEndTick_locals
-	{
-		uint32 iterationIndex;
-	};
 
 	struct ReturnQpiFunctionsOutputUserProc_input
 	{
@@ -75,10 +67,6 @@ struct TESTEXA : public ContractBase
 	struct ReturnQpiFunctionsOutputUserProc_output
 	{
 		QpiFunctionsOutput qpiFunctionsOutput;
-	};
-	struct ReturnQpiFunctionsOutputUserProc_locals
-	{
-		uint32 iterationIndex;
 	};
 
 	struct IssueAsset_input
@@ -137,11 +125,8 @@ protected:
 
 	QpiFunctionsOutput qpiFunctionsOutputTemp;
 	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputBeginTick; // Output of QPI functions queried by the BEGIN_TICK procedure for the last 16 ticks
-	uint8 qpiFunctionsOutputBeginTickNextIndex; // Next index to write to in qpiFunctionsOutputBeginTick
 	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputEndTick; // Output of QPI functions queried by the END_TICK procedure for the last 16 ticks
-	uint8 qpiFunctionsOutputEndTickNextIndex; // Next index to write to in qpiFunctionsOutputEndTick
-	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputUserProc; // Output of QPI functions queried by the END_TICK procedure for the last 16 ticks
-	uint8 qpiFunctionsOutputUserProcNextIndex; // Next index to write to in qpiFunctionsOutputUserProc
+	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputUserProc; // Output of QPI functions queried by the USER_PROCEDURE
 	
 	PreManagementRightsTransfer_output preReleaseSharesOutput;
 	PreManagementRightsTransfer_output preAcquireSharesOutput;
@@ -192,41 +177,22 @@ protected:
 		state.qpiFunctionsOutputTemp.originator = qpi.originator();
 		state.qpiFunctionsOutputTemp.tick = qpi.tick();
 
-		state.qpiFunctionsOutputUserProc.set(state.qpiFunctionsOutputUserProcNextIndex, state.qpiFunctionsOutputTemp);
-		state.qpiFunctionsOutputUserProcNextIndex = mod(state.qpiFunctionsOutputUserProcNextIndex + 1, 16);
+		state.qpiFunctionsOutputUserProc.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
 	_
 
-	PUBLIC_FUNCTION_WITH_LOCALS(ReturnQpiFunctionsOutputBeginTick)
-		for (locals.iterationIndex = 0; locals.iterationIndex < 16; ++locals.iterationIndex)
-		{
-			if (state.qpiFunctionsOutputBeginTick.get(locals.iterationIndex).tick == input.tick)
-			{
-				output.qpiFunctionsOutput = state.qpiFunctionsOutputBeginTick.get(locals.iterationIndex);
-				break;
-			}
-		}
+	PUBLIC_FUNCTION(ReturnQpiFunctionsOutputBeginTick)
+        if (state.qpiFunctionsOutputBeginTick.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
+            output.qpiFunctionsOutput = state.qpiFunctionsOutputBeginTick.get(input.tick);
 	_
 
-	PUBLIC_FUNCTION_WITH_LOCALS(ReturnQpiFunctionsOutputEndTick)
-		for (locals.iterationIndex = 0; locals.iterationIndex < 16; ++locals.iterationIndex)
-		{
-			if (state.qpiFunctionsOutputEndTick.get(locals.iterationIndex).tick == input.tick)
-			{
-				output.qpiFunctionsOutput = state.qpiFunctionsOutputEndTick.get(locals.iterationIndex);
-				break;
-			}
-		}
+	PUBLIC_FUNCTION(ReturnQpiFunctionsOutputEndTick)
+        if (state.qpiFunctionsOutputEndTick.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
+            output.qpiFunctionsOutput = state.qpiFunctionsOutputEndTick.get(input.tick);
 	_
 
-	PUBLIC_FUNCTION_WITH_LOCALS(ReturnQpiFunctionsOutputUserProc)
-		for (locals.iterationIndex = 0; locals.iterationIndex < 16; ++locals.iterationIndex)
-		{
-			if (state.qpiFunctionsOutputUserProc.get(locals.iterationIndex).tick == input.tick)
-			{
-				output.qpiFunctionsOutput = state.qpiFunctionsOutputUserProc.get(locals.iterationIndex);
-				break;
-			}
-		}
+	PUBLIC_FUNCTION(ReturnQpiFunctionsOutputUserProc)
+        if (state.qpiFunctionsOutputUserProc.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
+            output.qpiFunctionsOutput = state.qpiFunctionsOutputUserProc.get(input.tick);
 	_
 
 	PUBLIC_PROCEDURE(IssueAsset)
@@ -305,8 +271,7 @@ protected:
 		state.qpiFunctionsOutputTemp.originator = qpi.originator();
 		state.qpiFunctionsOutputTemp.tick = qpi.tick();
 
-		state.qpiFunctionsOutputBeginTick.set(state.qpiFunctionsOutputBeginTickNextIndex, state.qpiFunctionsOutputTemp);
-		state.qpiFunctionsOutputBeginTickNextIndex = mod(state.qpiFunctionsOutputBeginTickNextIndex + 1, 16);
+		state.qpiFunctionsOutputBeginTick.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
 	_
 
 	END_TICK
@@ -327,8 +292,7 @@ protected:
 		state.qpiFunctionsOutputTemp.originator = qpi.originator();
 		state.qpiFunctionsOutputTemp.tick = qpi.tick();
 
-		state.qpiFunctionsOutputEndTick.set(state.qpiFunctionsOutputEndTickNextIndex, state.qpiFunctionsOutputTemp);
-		state.qpiFunctionsOutputEndTickNextIndex = mod(state.qpiFunctionsOutputEndTickNextIndex + 1, 16);
+		state.qpiFunctionsOutputEndTick.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
 	_
 
 	PRE_RELEASE_SHARES
