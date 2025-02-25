@@ -30,6 +30,7 @@
 
 #include "text_output.h"
 
+#include "K12/kangaroo_twelve_xkcp.h"
 #include "kangaroo_twelve.h"
 #include "four_q.h"
 #include "score.h"
@@ -152,6 +153,9 @@ const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateD
 // targetNextTickDataDigestIsKnown == false means there is no consensus on next tick data yet
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
+static m256i lastExpectedTickTransactionDigest;
+XKCP::KangarooTwelve_Instance g_k12_instance;
+// rdtsc (timestamp) of ticks
 static unsigned long long tickTicks[11];
 
 static m256i releasedPublicKeys[NUMBER_OF_COMPUTORS];
@@ -722,6 +726,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
                     || request->tick.saltedUniverseDigest != tsTick->saltedUniverseDigest
                     || request->tick.saltedComputerDigest != tsTick->saltedComputerDigest
                     || request->tick.transactionDigest != tsTick->transactionDigest
+                    || request->tick.saltedTransactionBodyDigest != tsTick->saltedTransactionBodyDigest
                     || request->tick.expectedNextTickTransactionDigest != tsTick->expectedNextTickTransactionDigest)
                 {
                     faultyComputorFlags[request->tick.computorIndex >> 6] |= (1ULL << (request->tick.computorIndex & 63));
@@ -758,6 +763,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
         {
             if (!isZero(request->tickData.transactionDigests[i]))
             {
+                // Check if same transactionDigest is present twice
                 for (unsigned int j = 0; j < i; j++)
                 {
                     if (request->tickData.transactionDigests[i] == request->tickData.transactionDigests[j])
@@ -927,6 +933,10 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
     }
 }
 
+/**
+ * Sends Tick data for computors *not* marked in request->voteFlags (0 = requester wants the tick of this computer).
+ * Shuffles order, ends with EndResponse.
+ */
 static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 {
     RequestQuorumTick* request = header->getPayload<RequestQuorumTick>();
@@ -947,7 +957,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
     if (tickEpoch != 0)
     {
         // Send Tick struct data from tick storage as requested by tick and voteFlags in request->quorumTick.
-        // The order of the computors is randomized.
+        // The order of the computors is randomized using a Fisher–Yates shuffle
         // Todo: This function may be optimized by moving the checking of voteFlags in the first loop, reducing the number of calls to random().
         unsigned short computorIndices[NUMBER_OF_COMPUTORS];
         unsigned short numberOfComputorIndices;
@@ -965,7 +975,9 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
                 const Tick* tsTick = tsCompTicks + computorIndices[index];
                 if (tsTick->epoch == tickEpoch)
                 {
+                    ts.ticks.acquireLock(computorIndices[index]);
                     enqueueResponse(peer, sizeof(Tick), BroadcastTick::type, header->dejavu(), tsTick);
+                    ts.ticks.releaseLock(computorIndices[index]);
                 }
             }
 
@@ -2444,6 +2456,8 @@ static void processTick(unsigned long long processorNumber)
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
 
+    // If node is MAIN and has ID of tickleader for system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET,
+    // prepare tickData and enqueue it
     for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
     {
         if ((system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET) % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
@@ -4454,6 +4468,84 @@ static void prepareNextTickTransactions()
     nextTickTransactionsSemaphore = 0;
 }
 
+
+// Computes the digest of all tx bodies of a certain tick and saves it in etalonTick
+// This function can only be called by tickProcessor
+static void computeTxBodyDigestBase(const int tick)
+{
+    ASSERT(nextTickData.epoch == system.epoch); // nextTickData need to be valid
+    constexpr size_t outputLen = 32; // output length in bytes
+
+    XKCP::KangarooTwelve_Initialize(&g_k12_instance, 128, outputLen);
+
+    const unsigned int tickIndex = ts.tickToIndexCurrentEpoch(tick);
+    const auto* tsTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+
+    for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+    {
+        if (!isZero(nextTickData.transactionDigests[i]))
+        {
+            // TODO: Optimization to check: We have the ts locked for the whole K12_Update.
+            //       It might be worth to copy the transaction and release lock before update the K12 state.
+            // TODO: Here we check each Tx against the nextTickData again (before we did it in prepareNextTickTransactions
+            //       Might be worth to do only do it once.
+            ts.tickTransactions.acquireLock();
+
+            if (tsTransactionOffsets[i]) {
+                const Transaction* transaction = ts.tickTransactions(tsTransactionOffsets[i]);
+
+                if (transaction->checkValidity() && transaction->tick == tick) {
+                    unsigned char digest[32];
+                    KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
+                    if (digest == nextTickData.transactionDigests[i])
+                    {
+                        int ret = 1;
+                        while(ret == 1)
+                        {
+                            ret = XKCP::KangarooTwelve_Update(&g_k12_instance, reinterpret_cast<const unsigned char *>(transaction), transaction->totalSize());
+                            if (ret == 0)
+                            {
+                                break;
+                            }
+#if !defined(NDEBUG)
+                            else
+                            {
+                                setText(message, L"txBodyDigest: XKCP failed to create hash of tx");
+                                addDebugMessage(message);
+                            }
+#endif
+                        }
+                    }
+                }
+#if !defined(NDEBUG)
+                else
+                {
+                    setText(message, L"txBodyDigest: Transaction verification failed");
+                    addDebugMessage(message);
+                }
+#endif
+            }
+
+            ts.tickTransactions.releaseLock();
+        }
+    }
+
+    int ret = 1;
+    while(ret == 1)
+    {
+        ret = XKCP::KangarooTwelve_Final(&g_k12_instance, etalonTick.saltedTransactionBodyDigest.m256i_u8, (const unsigned char *)"", 0);
+#if !defined(NDEBUG)
+        if(ret == 1)
+        {
+            setText(message, L"txBodyDigest: XKCP failed to finalize hash");
+            addDebugMessage(message);
+        }
+#endif
+    }
+}
+
+
+
 // broadcast all tickVotes from all IDs in this node
 static void broadcastTickVotes()
 {
@@ -4467,17 +4559,24 @@ static void broadcastTickVotes()
         saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
         saltedData[1].m256i_u64[0] = resourceTestingDigest;
         KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &broadcastTick.tick.saltedResourceTestingDigest, sizeof(broadcastTick.tick.saltedResourceTestingDigest));
+
         saltedData[1] = etalonTick.saltedSpectrumDigest;
         KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedSpectrumDigest);
+
         saltedData[1] = etalonTick.saltedUniverseDigest;
         KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedUniverseDigest);
+
         saltedData[1] = etalonTick.saltedComputerDigest;
         KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedComputerDigest);
+
+        saltedData[1] = etalonTick.saltedTransactionBodyDigest;
+        KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedTransactionBodyDigest);
 
         unsigned char digest[32];
         KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
         broadcastTick.tick.computorIndex ^= BroadcastTick::type;
         sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
+
 
         enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);
         // NOTE: here we don't copy these votes to memory, instead we wait other nodes echoing these votes back because:
@@ -4529,10 +4628,26 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                             KangarooTwelve64To32(saltedData, &saltedDigest);
                             if (tick->saltedComputerDigest == saltedDigest)
                             {
+                                // expectedNextTickTransactionDigest and txBodyDigest is ignored to find consensus of current tick
                                 tickNumberOfComputors++;
-                                // to avoid submitting invalid votes (eg: all zeroes with valid signature)
-                                // only count votes that matched etalonTick
-                                voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+
+                                // Vote of a node is only counting if txBodyDigest is matching with the version of the node
+                                if (!isZero(etalonTick.expectedNextTickTransactionDigest))
+                                {
+                                    saltedData[1] = etalonTick.saltedTransactionBodyDigest;
+                                    KangarooTwelve64To32(saltedData, &saltedDigest);
+                                    if(tick->saltedTransactionBodyDigest == saltedDigest)
+                                    {
+                                        // to avoid submitting invalid votes (eg: all zeroes with valid signature)
+                                        // only count votes that matched etalonTick
+                                        voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+                                    }
+                                }
+                                else // If expectedNextTickTransactionDigest changes to to empty due to time-out,
+                                     // we count votes anyway, otherwise we may end up with no or very few votes
+                                {
+                                    voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+                                }
                             }
                         }
                     }
@@ -4669,7 +4784,7 @@ static void tickProcessor(void*)
 
             bool tickDataSuits; // a flag to tell if tickData is suitable to be included with this node states
             if (!targetNextTickDataDigestIsKnown) // Next tick digest is still unknown
-            {   
+            {
                 if (nextTickData.epoch != system.epoch // tick data is valid (not yet invalidated)
                     && gFutureTickTotalNumberOfComputors <= NUMBER_OF_COMPUTORS - QUORUM // future tick vote less than 225
                     && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] < TARGET_TICK_DURATION * frequency / 1000) // tick duration not exceed TARGET_TICK_DURATION
@@ -4799,13 +4914,24 @@ static void tickProcessor(void*)
                         {
                             // if this node is faster than most, targetNextTickDataDigest is unknown at this point because of lack of votes
                             // Thus, expectedNextTickTransactionDigest it not updated yet
+                            // If targetNextTickDataDigest is known, expectedNextTickTransactionDigest is set above already.
                             KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
+                        }
+
+                        // Compute the txBodyDigest if expectedNextTickTransactionDigest changed
+                        if (lastExpectedTickTransactionDigest != etalonTick.expectedNextTickTransactionDigest)
+                        {
+                            computeTxBodyDigestBase(nextTick);
+                            lastExpectedTickTransactionDigest = etalonTick.expectedNextTickTransactionDigest;
                         }
                     }
                     else
                     {
                         etalonTick.expectedNextTickTransactionDigest = m256i::zero();
+                        etalonTick.saltedTransactionBodyDigest = m256i::zero();
+                        lastExpectedTickTransactionDigest = etalonTick.expectedNextTickTransactionDigest;
                     }
+
 
                     if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
                     {
@@ -4822,13 +4948,13 @@ static void tickProcessor(void*)
 
                     unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0;
                     updateVotesCount(tickNumberOfComputors, tickTotalNumberOfComputors);
-                    
+
                     gTickNumberOfComputors = tickNumberOfComputors;
                     gTickTotalNumberOfComputors = tickTotalNumberOfComputors;
 
                     if (tickNumberOfComputors >= QUORUM)
                     {
-                        tryForceEmptyNextTick();                        
+                        tryForceEmptyNextTick();
 
                         if (targetNextTickDataDigestIsKnown)
                         {
@@ -5242,6 +5368,8 @@ static bool initialize()
             system.initialTick = TICK;
         }
         system.tick = system.initialTick;
+
+        lastExpectedTickTransactionDigest = m256i::zero();
 
         beginEpoch();
 
@@ -5896,7 +6024,7 @@ static void processKeyPresses()
         * Version, faulty Computors, Last Tick Date,
         * Digest of spectrum, universe, and computer, number of transactions and solutions processed
         */
-        case 0x0C: // 
+        case 0x0C:
         {
             setText(message, L"Qubic ");
             appendQubicVersion(message);
@@ -5973,6 +6101,12 @@ static void processKeyPresses()
 
             setText(message, L"Computer digest = ");
             getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+            appendText(message, digestChars);
+            appendText(message, L".");
+            logToConsole(message);
+
+            setText(message, L"TxBody digest = ");
+            getIdentity(etalonTick.saltedTransactionBodyDigest.m256i_u8, digestChars, true);
             appendText(message, digestChars);
             appendText(message, L".");
             logToConsole(message);
