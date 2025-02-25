@@ -2294,6 +2294,7 @@ static void processTick(unsigned long long processorNumber)
             etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
             getUniverseDigest(etalonTick.prevUniverseDigest);
             getComputerDigest(etalonTick.prevComputerDigest);
+            etalonTick.prevTransactionBodyDigest = m256i::zero();
         }
 #endif
     }
