@@ -2275,10 +2275,11 @@ static void processTick(unsigned long long processorNumber)
         etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
         getUniverseDigest(etalonTick.prevUniverseDigest);
         getComputerDigest(etalonTick.prevComputerDigest);
+        etalonTick.prevTransactionBodyDigest = etalonTick.saltedTransactionBodyDigest;
     }
     else if (system.tick == system.initialTick) // the first tick of an epoch
     {
-        // RULE: prevDigests of tick T are the digests of tick T-1, so epoch number doesn't matter.        
+        // RULE: prevDigests of tick T are the digests of tick T-1, so epoch number doesn't matter.
         // For seamless transition, spectrum and universe and computer have been changed after endEpoch event
         // (miner rewards, IPO finalizing, contract endEpoch procedures,...)
         // Here we still let prevDigests == digests of the last tick of last epoch
@@ -2293,6 +2294,7 @@ static void processTick(unsigned long long processorNumber)
             etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
             getUniverseDigest(etalonTick.prevUniverseDigest);
             getComputerDigest(etalonTick.prevComputerDigest);
+            etalonTick.prevTransactionBodyDigest = m256i::zero();
         }
 #endif
     }
@@ -2800,6 +2802,7 @@ static void endEpoch()
     etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
     getUniverseDigest(etalonTick.prevUniverseDigest);
     getComputerDigest(etalonTick.prevComputerDigest);
+    etalonTick.prevTransactionBodyDigest = etalonTick.saltedTransactionBodyDigest;
 
     // Handle IPO
     for (unsigned int contractIndex = 1; contractIndex < contractCount; contractIndex++)
@@ -3826,6 +3829,7 @@ static void initializeFirstTick()
                     etalonTick.prevResourceTestingDigest = unique->prevResourceTestingDigest;
                     etalonTick.prevSpectrumDigest = unique->prevSpectrumDigest;
                     etalonTick.prevUniverseDigest = unique->prevUniverseDigest;
+                    etalonTick.prevTransactionBodyDigest = unique->saltedTransactionBodyDigest;
                     return;
                 }
             }
