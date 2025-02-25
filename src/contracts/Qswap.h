@@ -28,7 +28,7 @@ public:
 		uint64 assetName;
 	};
 	struct GetPoolBasicState_output{
-		bool poolExists;
+		sint64 poolExists;
 		sint64 reservedQuAmount;
 		sint64 reservedAssetAmount;
 		sint64 totalLiqudity;
