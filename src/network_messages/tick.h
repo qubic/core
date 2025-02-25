@@ -36,7 +36,7 @@ struct Tick
     unsigned char signature[SIGNATURE_SIZE];
 };
 
-static_assert(sizeof(Tick) == 8 + 8 + 16 + 6 * 32 + 2 * 32 + 32 + 32 + SIGNATURE_SIZE, "Something is wrong with the struct size.");
+static_assert(sizeof(Tick) == 8 + 8 + 16 + 6 * 32 + 2 * 32 + 2 * 32 + SIGNATURE_SIZE, "Something is wrong with the struct size.");
 
 
 struct BroadcastTick
