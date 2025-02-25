@@ -154,6 +154,7 @@ const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateD
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
 static m256i lastExpectedTickTransactionDigest;
+XKCP::KangarooTwelve_Instance g_k12_instance;
 // rdtsc (timestamp) of ticks
 static unsigned long long tickTicks[11];
 
@@ -2455,7 +2456,7 @@ static void processTick(unsigned long long processorNumber)
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
 
-    // If node is MAIN and has ID of tickleader for system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET
+    // If node is MAIN and has ID of tickleader for system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET,
     // prepare tickData and enqueue it
     for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
     {
@@ -4469,13 +4470,13 @@ static void prepareNextTickTransactions()
 
 
 // Computes the digest of all tx bodies of a certain tick and saves it in etalonTick
+// This function can only be called by tickProcessor
 static void computeTxBodyDigestBase(const int tick)
 {
     ASSERT(nextTickData.epoch == system.epoch); // nextTickData need to be valid
     constexpr size_t outputLen = 32; // output length in bytes
 
-    XKCP::KangarooTwelve_Instance kt;
-    XKCP::KangarooTwelve_Initialize(&kt, 128, outputLen);
+    XKCP::KangarooTwelve_Initialize(&g_k12_instance, 128, outputLen);
 
     const unsigned int tickIndex = ts.tickToIndexCurrentEpoch(tick);
     const auto* tsTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
@@ -4501,7 +4502,7 @@ static void computeTxBodyDigestBase(const int tick)
                         int ret = 1;
                         while(ret == 1)
                         {
-                            ret = XKCP::KangarooTwelve_Update(&kt, reinterpret_cast<const unsigned char *>(transaction), transaction->totalSize());
+                            ret = XKCP::KangarooTwelve_Update(&g_k12_instance, reinterpret_cast<const unsigned char *>(transaction), transaction->totalSize());
                             if (ret == 0)
                             {
                                 break;
@@ -4532,7 +4533,7 @@ static void computeTxBodyDigestBase(const int tick)
     int ret = 1;
     while(ret == 1)
     {
-        ret = XKCP::KangarooTwelve_Final(&kt, etalonTick.saltedTransactionBodyDigest.m256i_u8, (const unsigned char *)"", 0);
+        ret = XKCP::KangarooTwelve_Final(&g_k12_instance, etalonTick.saltedTransactionBodyDigest.m256i_u8, (const unsigned char *)"", 0);
 #if !defined(NDEBUG)
         if(ret == 1)
         {
@@ -4642,9 +4643,10 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                                         voteCounter.registerNewVote(tick->tick, tick->computorIndex);
                                     }
                                 }
-                                else
+                                else // If expectedNextTickTransactionDigest changes to to empty due to time-out,
+                                     // we count votes anyway, otherwise we may end up with no or very few votes
                                 {
-                                        voteCounter.registerNewVote(tick->tick, tick->computorIndex);
+                                    voteCounter.registerNewVote(tick->tick, tick->computorIndex);
                                 }
                             }
                         }
@@ -4912,11 +4914,11 @@ static void tickProcessor(void*)
                         {
                             // if this node is faster than most, targetNextTickDataDigest is unknown at this point because of lack of votes
                             // Thus, expectedNextTickTransactionDigest it not updated yet
-                            // If targetNextTickDataDigest is known expectedNextTickTransactionDigest is set above already.
+                            // If targetNextTickDataDigest is known, expectedNextTickTransactionDigest is set above already.
                             KangarooTwelve(&nextTickData, sizeof(TickData), &etalonTick.expectedNextTickTransactionDigest, 32);
                         }
 
-                        // Compute the txBodyDigest expectedNextTickTransactionDigest changed
+                        // Compute the txBodyDigest if expectedNextTickTransactionDigest changed
                         if (lastExpectedTickTransactionDigest != etalonTick.expectedNextTickTransactionDigest)
                         {
                             computeTxBodyDigestBase(nextTick);
