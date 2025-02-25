@@ -14,6 +14,9 @@ static const id QSWAP_CONTRACT_ID(QSWAP_CONTRACT_INDEX, 0, 0, 0);
 constexpr uint32 GET_POOL_BASIC_STATE_IDX = 2;
 constexpr uint32 GET_LIQUDITY_OF_IDX = 3;
 constexpr uint32 QUOTE_EXACT_QU_INPUT_IDX = 4;
+constexpr uint32 QUOTE_EXACT_QU_OUTPUT_IDX = 5;
+constexpr uint32 QUOTE_EXACT_ASSET_INPUT_IDX = 6;
+constexpr uint32 QUOTE_EXACT_ASSET_OUTPUT_IDX = 7;
 //
 constexpr uint32 ISSUE_ASSET_IDX = 1;
 constexpr uint32 TRANSFER_SHARE_OWNERSHIP_AND_POSSESSION_IDX = 2;
@@ -172,7 +175,72 @@ public:
 
 		return output;
 	}
+
+    QSWAP::QuoteExactQuInput_output quoteExactQuInput(QSWAP::QuoteExactQuInput_input input) {
+		QSWAP::QuoteExactQuInput_output output;
+		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_QU_INPUT_IDX, input, output);
+		return output;
+    }
+
+    QSWAP::QuoteExactQuOutput_output quoteExactQuOutput(QSWAP::QuoteExactQuOutput_input input) {
+		QSWAP::QuoteExactQuOutput_output output;
+		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_QU_OUTPUT_IDX, input, output);
+		return output;
+    }
+
+    QSWAP::QuoteExactAssetInput_output quoteExactAssetInput(QSWAP::QuoteExactAssetInput_input input){
+		QSWAP::QuoteExactAssetInput_output output;
+		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_ASSET_INPUT_IDX, input, output);
+		return output;
+    }
+
+    QSWAP::QuoteExactAssetOutput_output quoteExactAssetOutput(QSWAP::QuoteExactAssetOutput_input input){
+		QSWAP::QuoteExactAssetOutput_output output;
+		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_ASSET_OUTPUT_IDX, input, output);
+		return output;
+    }
 };
+
+TEST(ContractSwap, QuoteTest)
+{
+    ContractTestingQswap qswap;
+
+    id issuer(1, 2, 3, 4);
+    uint64 assetName = assetNameFromString("QSWAP0");
+    sint64 numberOfShares = 10000 * 1000;
+
+    // issue an asset and create a pool, and init liqudity
+    {
+        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
+        QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
+        EXPECT_EQ(qswap.issueAsset(issuer, input), numberOfShares);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), numberOfShares);
+
+        increaseEnergy(issuer, QSWAP_CREATE_POOL_FEE);
+        EXPECT_TRUE(qswap.createPool(issuer, assetName));
+
+        sint64 inputValue = 30*1000;
+        increaseEnergy(issuer, inputValue);
+        QSWAP::AddLiqudity_input alInput = { issuer, assetName, 30*1000, 0, 0 };
+        QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, alInput, inputValue);
+
+        QSWAP::QuoteExactQuInput_input qi_input = {issuer, assetName, 1000};
+        QSWAP::QuoteExactQuInput_output qi_output = qswap.quoteExactQuInput(qi_input);
+        printf("quote exact qu input: %lld\n", qi_output.assetAmountOut);
+
+        QSWAP::QuoteExactQuOutput_input qo_input = {issuer, assetName, 1000};
+        QSWAP::QuoteExactQuOutput_output qo_output = qswap.quoteExactQuOutput(qo_input);
+        printf("quote exact qu output: %lld\n", qo_output.assetAmountIn);
+
+        QSWAP::QuoteExactAssetInput_input ai_input = {issuer, assetName, 1000};
+        QSWAP::QuoteExactAssetInput_output ai_output = qswap.quoteExactAssetInput(ai_input);
+        printf("quote exact asset input: %lld\n", ai_output.quAmountOut);
+
+        QSWAP::QuoteExactAssetOutput_input ao_input = {issuer, assetName, 1000};
+        QSWAP::QuoteExactAssetOutput_output ao_output = qswap.quoteExactAssetOutput(ao_input);
+        printf("quote exact asset output: %lld\n", ao_output.quAmountIn);
+    }
+}
 
 /*
 0. normally issue asset
@@ -266,9 +334,17 @@ TEST(ContractSwap, SwapExactQuForAsset)
         id user(2,3,4,5);
         sint64 inputValue = 200*1000;
         increaseEnergy(user, inputValue);
+
+        QSWAP::QuoteExactQuInput_input qi_input = {issuer, assetName, inputValue};
+        QSWAP::QuoteExactQuInput_output qi_output = qswap.quoteExactQuInput(qi_input);
+        // printf("quote_exact_qu_input, asset out: %lld\n", qi_output.assetAmountOut);
+
         QSWAP::SwapExactQuForAsset_input input = {issuer, assetName, 0};
         QSWAP::SwapExactQuForAsset_output output = qswap.swapExactQuForAsset(user, input, inputValue);
-        // printf("swap asset out: %lld\n", output.assetAmountOut);
+        // printf("swap_exact_qu_for_asset, asset out: %lld\n", output.assetAmountOut);
+
+        EXPECT_EQ(qi_output.assetAmountOut, output.assetAmountOut); // 49924
+
         EXPECT_TRUE(output.assetAmountOut <= 50000); // 49924 if swapFee 0.3%
 
         QSWAP::GetPoolBasicState_output psOutput = qswap.getPoolBasicState(issuer, assetName);
@@ -285,7 +361,6 @@ TEST(ContractSwap, SwapQuForExactAsset)
 
     id issuer(1, 2, 3, 4);
     uint64 assetName = assetNameFromString("QSWAP0");
-    uint64 invalidAssetName = assetNameFromString("QSWAP1");
     sint64 numberOfShares = 10000 * 1000;
 
     // issue an asset and create a pool, and init liqudity
@@ -311,10 +386,18 @@ TEST(ContractSwap, SwapQuForExactAsset)
         sint64 expectQuAmountIn = 22289;
         sint64 assetAmountOut = 10 * 1000;
         increaseEnergy(user, inputValue);
+
+        QSWAP::QuoteExactAssetOutput_input ao_input = {issuer, assetName, assetAmountOut};
+        QSWAP::QuoteExactAssetOutput_output ao_output = qswap.quoteExactAssetOutput(ao_input);
+        printf("quote_exact_asset_output, qu in %lld\n", ao_output.quAmountIn);
+
         QSWAP::SwapQuForExactAsset_input input = {issuer, assetName, assetAmountOut};
         QSWAP::SwapQuForExactAsset_output output = qswap.swapQuForExactAsset(user, input, inputValue);
+
+        EXPECT_EQ(ao_output.quAmountIn, output.quAmountIn); // 22289
+
         // EXPECT_EQ(output.quAmountIn, 22289);
-        // printf("swap qu in: %lld\n", output.quAmountIn);
+        printf("swap_qu_for_exact_asset, asset in: %lld\n", output.quAmountIn);
     }
 }
 
@@ -324,7 +407,6 @@ TEST(ContractSwap, SwapExactAssetForQu)
 
     id issuer(1, 2, 3, 4);
     uint64 assetName = assetNameFromString("QSWAP0");
-    uint64 invalidAssetName = assetNameFromString("QSWAP1");
     sint64 numberOfShares = 10000 * 1000;
 
     // issue an asset and create a pool, and init liqudity
@@ -347,10 +429,18 @@ TEST(ContractSwap, SwapExactAssetForQu)
     {
         id user(1, 2,3,4);
         sint64 inputValue = 0;
+        sint64 assetAmountIn = 100*1000;
+        sint64 expectQuAmountOut = 99700;
         increaseEnergy(user, inputValue);
-        QSWAP::SwapExactAssetForQu_input input = {issuer, assetName, 100*1000, 0};
+
+        QSWAP::QuoteExactAssetInput_input ai_input = {issuer, assetName, assetAmountIn};
+        QSWAP::QuoteExactAssetInput_output ai_output = qswap.quoteExactAssetInput(ai_input);
+        // printf("quote exact asset input: %lld\n", ai_output.quAmountOut);
+
+        QSWAP::SwapExactAssetForQu_input input = {issuer, assetName, assetAmountIn, 0};
         QSWAP::SwapExactAssetForQu_output output = qswap.swapExactAssetForQu(user, input, inputValue);
         // printf("swap qu out: %lld\n", output.quAmountOut);
+        EXPECT_EQ(ai_output.quAmountOut, output.quAmountOut); // 99700
     }
 }
 
@@ -377,15 +467,39 @@ TEST(ContractSwap, SwapAssetForExactQu)
         QSWAP::AddLiqudity_input alInput = { issuer, assetName, 100*1000, 0, 0 };
         QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, alInput, inputValue);
         // printf("increase liqudity: %lld, %lld, %lld\n", output.userIncreaseLiqudity, output.assetAmount, output.quAmount);
+
+        // QSWAP::GetPoolBasicState_output gp_output = qswap.getPoolBasicState(issuer, assetName);
+        // printf("%lld, %lld, %lld\n", gp_output.reservedQuAmount, gp_output.reservedAssetAmount, gp_output.totalLiqudity);
     }
 
     {
-        id user(1,2,3,4);
-        sint64 inputValue = 0;
-        increaseEnergy(user, inputValue);
-        QSWAP::SwapAssetForExactQu_input input = {issuer, assetName, 200*1000 + 10, 100*1000};
-        QSWAP::SwapAssetForExactQu_output output = qswap.swapAssetForExactQu(user, input, inputValue);
-        // printf("swap asset in: %lld\n", output.assetAmountIn);
+       id user(1,2,3,4);
+       sint64 inputValue = 0;
+       sint64 quAmountOut = 200*1000 - 1;
+
+       QSWAP::QuoteExactQuOutput_input qo_input = {issuer, assetName, quAmountOut};
+       QSWAP::QuoteExactQuOutput_output qo_output = qswap.quoteExactQuOutput(qo_input);
+       printf("quote exact qu output: %lld\n", qo_output.assetAmountIn);
+       EXPECT_EQ(qo_output.assetAmountIn, -1);
+    }
+
+    {
+       id user(1,2,3,4);
+       sint64 inputValue = 0;
+       sint64 quAmountOut = 100*1000;
+       sint64 expectAssetAmountIn = 100603;
+
+       QSWAP::QuoteExactQuOutput_input qo_input = {issuer, assetName, quAmountOut};
+       QSWAP::QuoteExactQuOutput_output qo_output = qswap.quoteExactQuOutput(qo_input);
+       // printf("quote exact qu output: %lld\n", qo_output.assetAmountIn);
+       EXPECT_EQ(qo_output.assetAmountIn, expectAssetAmountIn);
+
+       increaseEnergy(user, inputValue);
+       sint64 assetAmountInMax = 200*1000;
+       QSWAP::SwapAssetForExactQu_input input = {issuer, assetName, assetAmountInMax, quAmountOut};
+       QSWAP::SwapAssetForExactQu_output output = qswap.swapAssetForExactQu(user, input, inputValue);
+       // printf("swap asset in: %lld\n", output.assetAmountIn);
+       EXPECT_EQ(qo_output.assetAmountIn, output.assetAmountIn);
     }
 }
 

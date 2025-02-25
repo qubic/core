@@ -231,7 +231,12 @@ protected:
 	inline static sint64 quoteEquivalentAmountB(sint64 amountADesired, sint64 reserveA, sint64 reserveB) {
 		// amountDesired * reserveB / reserveA
 		uint128 res = div(uint128(amountADesired) * uint128(reserveB), uint128(reserveA));
-		return sint64(res.low);
+
+		if ((res.high != 0)|| (res.low > 0x7FFFFFFFFFFFFFFF)) {
+			return -1;
+		} else {
+			return sint64(res.low);
+		}
 	}
 
 	// https://github.com/Uniswap/v2-periphery/blob/master/contracts/libraries/UniswapV2Library.sol#L43 
@@ -243,7 +248,11 @@ protected:
 
 		// numerator / denominator;
 		uint128 res = div(numerator, denominator);
-		return sint64(res.low);
+		if ((res.high != 0) || (res.low > 0x7FFFFFFFFFFFFFFF)) {
+			return -1;
+		} else {
+			return sint64(res.low);
+		}
 	}
 
 	// https://github.com/Uniswap/v2-periphery/blob/master/contracts/libraries/UniswapV2Library.sol#L53 
@@ -257,7 +266,11 @@ protected:
 			) * uint128(QSWAP_SWAP_FEE_BASE),
 			uint128(QSWAP_SWAP_FEE_BASE - fee)
 		);
-		return sint64(res.low) + 1;
+		if ((res.high != 0) || (res.low > 0x7FFFFFFFFFFFFFFF)) {
+			return -1;
+		} else {
+			return sint64(res.low);
+		}
 	}
 
 	// (reserveIn + amountIn) * (reserveOut - x) = reserveIn * reserveOut
@@ -266,18 +279,29 @@ protected:
 		uint128 numerator = uint128(reserveOut) * uint128(amountIn);
 		uint128 denominator = uint128(reserveIn + amountIn);
 
-		// (numerator / denominator).low);
-		return sint64(div(numerator, denominator).low);
+		uint128 res = div(numerator, denominator);
+		if ((res.high != 0)|| (res.low > 0x7FFFFFFFFFFFFFFF)) {
+			return -1;
+		} else {
+			return sint64(res.low);
+		}
 	}
 
 	// (reserveIn + x) * (reserveOut - amountOut/(1 - fee)) = reserveIn * reserveOut
 	// x = (reserveIn * amountOut ) / (reserveOut * (1-fee) - amountOut)
 	inline static sint64 getAmountInTakeFeeFromOutToken(sint64 amountOut, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
 		uint128 numerator = uint128(reserveIn) * uint128(amountOut);
+		if (uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee) / uint128(QSWAP_SWAP_FEE_BASE) < uint128(amountOut)){
+			return -1;
+		}
 		uint128 denominator = uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee) / uint128(QSWAP_SWAP_FEE_BASE) - uint128(amountOut);
 
-		// (numerator / denominator).low);
-		return sint64(div(numerator, denominator).low) + 1;
+		uint128 res = div(numerator, denominator);
+		if ((res.high != 0)|| (res.low > 0x7FFFFFFFFFFFFFFF)) {
+			return -1;
+		} else {
+			return sint64(res.low);
+		}
 	}
 
 	struct Fees_locals{
@@ -499,11 +523,17 @@ protected:
 			state.swapFeeRate
 		);
 
+		// above call overflow
+		if (locals.quAmountOutWithFee == -1){
+			return;
+		}
+
+		// amount * (1-fee), no overflow risk
 		output.quAmountOut = sint64((
 			uint128(locals.quAmountOutWithFee) * 
 			uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate) / 
-			uint128(QSWAP_SWAP_FEE_BASE)).low
-		);
+			uint128(QSWAP_SWAP_FEE_BASE)
+		).low);
 	_
 
 	struct QuoteExactAssetOutput_locals{
@@ -694,6 +724,9 @@ protected:
 		sint64 reservedAssetAmountBefore;
 		sint64 reservedAssetAmountAfter;
 
+		uint128 tmpIncLiq0;
+		uint128 tmpIncLiq1;
+
 		uint32 i0;
 	};
 
@@ -749,6 +782,12 @@ protected:
 				locals.poolBasicState.reservedQuAmount,
 				locals.poolBasicState.reservedAssetAmount
 			);
+			// overflow
+			if (locals.assetOptimalAmount == -1) {
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				return ;
+			}
+
 			if (locals.assetOptimalAmount <= input.assetAmountDesired ){
 				if (locals.assetOptimalAmount < input.assetAmountMin) {
 					qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -762,6 +801,11 @@ protected:
 					locals.poolBasicState.reservedAssetAmount,
 					locals.poolBasicState.reservedQuAmount
 				);
+				// overflow
+				if (locals.quOptimalAmount == -1) {
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					return ;
+				}
 				if (locals.quOptimalAmount > locals.quAmountDesired) {
 					qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					return ;
@@ -848,17 +892,37 @@ protected:
 			output.userIncreaseLiqudity = locals.increaseLiqudity - QSWAP_MIN_LIQUDITY;
 
 		} else {
-			locals.increaseLiqudity = min(
-				sint64(div(
-					uint128(locals.quTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
-					uint128(locals.poolBasicState.reservedQuAmount)
-				).low),
+			// locals.increaseLiqudity = min(
+			// 	sint64(div(
+			// 		uint128(locals.quTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
+			// 		uint128(locals.poolBasicState.reservedQuAmount)
+			// 	).low),
 
-				sint64(div(
-					uint128(locals.assetTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
-					uint128(locals.poolBasicState.reservedAssetAmount)
-				).low)
+			// 	sint64(div(
+			// 		uint128(locals.assetTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
+			// 		uint128(locals.poolBasicState.reservedAssetAmount)
+			// 	).low)
+			// );
+
+			locals.tmpIncLiq0 = div(
+				uint128(locals.quTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
+				uint128(locals.poolBasicState.reservedQuAmount)
 			);
+			if (locals.tmpIncLiq0.high != 0 || locals.tmpIncLiq0.low > 0x7FFFFFFFFFFFFFFF) {
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				return;
+			}
+			locals.tmpIncLiq1 = div(
+				uint128(locals.assetTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
+				uint128(locals.poolBasicState.reservedAssetAmount)
+			);
+			if (locals.tmpIncLiq1.high != 0 || locals.tmpIncLiq1.low > 0x7FFFFFFFFFFFFFFF) {
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				return;
+			}
+
+			locals.increaseLiqudity = min(sint64(locals.tmpIncLiq0.low), sint64(locals.tmpIncLiq1.low));
+
 
 			// maybe too little input 
 			if (locals.increaseLiqudity == 0) {
@@ -1010,11 +1074,13 @@ protected:
 			return;
 		}
 
+		// since burnLiqudity < totalLiqudity, so there will be no overflow risk
 		locals.burnQuAmount = sint64(div(
 				uint128(input.burnLiqudity) * uint128(locals.poolBasicState.reservedQuAmount),
 				uint128(locals.poolBasicState.totalLiqudity)
 			).low);
 
+		// since burnLiqudity < totalLiqudity, so there will be no overflow risk
 		locals.burnAssetAmount = sint64(div(
 				uint128(input.burnLiqudity) * uint128(locals.poolBasicState.reservedAssetAmount),
 				uint128(locals.poolBasicState.totalLiqudity)
@@ -1115,6 +1181,12 @@ protected:
 			state.swapFeeRate
 		);
 
+		// overflow
+		if (locals.assetAmountOut == -1){
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
 		// not meet user's amountOut requirement
 		if (locals.assetAmountOut < input.assetAmountOutMin) {
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1139,6 +1211,7 @@ protected:
 
 		// take fee from qu
 		// quAmountIn * swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
+		// no overflow risk
 		locals.feeToProtocol = sint64(div(
 				div(
 					uint128(locals.quAmountIn) * uint128(state.swapFeeRate),
@@ -1215,6 +1288,12 @@ protected:
 			state.swapFeeRate
 		);
 
+		// above call overflow
+		if (locals.quAmountIn == -1) {
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
 		// not enough qu amountIn
 		if (locals.quAmountIn > qpi.invocationReward()) {
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1249,6 +1328,7 @@ protected:
 		}
 
 		// update pool states
+		// no overflow risk
 		// locals.quAmountIn * state.swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
 		locals.feeToProtocol = sint64(div(
 				div(
@@ -1331,12 +1411,19 @@ protected:
 			state.swapFeeRate
 		);
 
+		// above call overflow
+		if (locals.quAmountOutWithFee == -1){
+			return;
+		}
+
+		// no overflow risk
 		// locals.quAmountOutWithFee * (QSWAP_SWAP_FEE_BASE - state.swapFeeRate) / QSWAP_SWAP_FEE_BASE
 		locals.quAmountOut = sint64(div(
 				uint128(locals.quAmountOutWithFee) * uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate), 
 				uint128(QSWAP_SWAP_FEE_BASE)
 			).low);
 
+		// no overflow risk
 		// locals.quAmountOutWithFee * state.swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
 		locals.protocolFee = sint64(div(
 				div(
@@ -1450,6 +1537,13 @@ protected:
 			locals.poolBasicState.reservedQuAmount,
 			state.swapFeeRate
 		);
+
+		// above call overflow
+		if (locals.assetAmountIn == -1) {
+			return;
+		}
+
+		// no overflow risk
 		// input.quAmountOut * state.swapFeeRate / (QSWAP_SWAP_FEE_BASE - state.swapFeeRate) * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
 		locals.protocolFee = sint64(div(
 				div(
