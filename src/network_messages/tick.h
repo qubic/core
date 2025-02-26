@@ -17,8 +17,11 @@ struct Tick
     unsigned char month;
     unsigned char year;
 
-    unsigned long long prevResourceTestingDigest;
-    unsigned long long saltedResourceTestingDigest;
+    unsigned int prevResourceTestingDigest;
+    unsigned int saltedResourceTestingDigest;
+
+    unsigned int prevTransactionBodyDigest;
+    unsigned int saltedTransactionBodyDigest;
 
     m256i prevSpectrumDigest;
     m256i prevUniverseDigest;
@@ -30,13 +33,10 @@ struct Tick
     m256i transactionDigest;
     m256i expectedNextTickTransactionDigest;
 
-    m256i prevTransactionBodyDigest;
-    m256i saltedTransactionBodyDigest;
-
     unsigned char signature[SIGNATURE_SIZE];
 };
 
-static_assert(sizeof(Tick) == 8 + 8 + 16 + 6 * 32 + 2 * 32 + 2 * 32 + SIGNATURE_SIZE, "Something is wrong with the struct size.");
+static_assert(sizeof(Tick) == 8 + 8 + 2 * 4 + 2 * 4 + 6 * 32 + 2 * 32 + SIGNATURE_SIZE, "Something is wrong with the struct size.");
 
 
 struct BroadcastTick
