@@ -1235,7 +1235,6 @@ protected:
 	{
 		InfoOfCollection updatedCollection;
 		InfoOfNFT newNFT;
-		InfoOfCollection newCollection;
 		uint64 cntOfNFTHoldingPerOneId;
 		uint32 _t;
 		QBAYLogger log;
