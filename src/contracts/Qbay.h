@@ -495,16 +495,16 @@ protected:
 
 	struct InfoOfCollection 
 	{
-		uint64 priceForDropMint;				// the price for initial sale for NFT if the collection is for Drop.
 		id creator;								// address of collection creator
-		uint32 royalty;							// percent from 0 ~ 100
-		sint32 currentSize;						// collection volume
+		uint64 priceForDropMint;				// the price for initial sale for NFT if the collection is for Drop.
 		uint32 maxSizeHoldingPerOneId;          // max size that one ID can hold the NFTs of one collection.
+		sint16 currentSize;						// collection volume
 		Array<uint8, 64> URI;			        // URI for this Collection
-		bit typeOfCollection;					// 0 means that the collection is for Drop, 1 means that the collection is for normal collection
+		uint8 royalty;							// percent from 0 ~ 100
+		uint8 typeOfCollection;					// 0 means that the collection is for Drop, 1 means that the collection is for normal collection
 	};
 
-	// The capacity of one collection is 53 byte
+	// The capacity of one collection is 112 byte
 
 	Array<InfoOfCollection, QBAY_MAX_COLLECTION> Collections;
 
