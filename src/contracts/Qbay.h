@@ -135,7 +135,7 @@ struct QBAY : public ContractBase
 	struct createCollection_input 
 	{
 		uint64 priceForDropMint;
-		uint32 volumn;
+		uint32 volumn;						//	it means that how much NFTs can the collection be holded. 0 means that the collection holds up to 200 NFTs, 1 -> 1000 NFTs, 2 -> 3000 NFTs
 		uint32 royalty;
 		uint32 maxSizePerOneId;
 		Array<uint8, 64> URI;
