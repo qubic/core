@@ -948,6 +948,7 @@ protected:
 	{
 		InfoOfCollection updatedCollection;
 		InfoOfNFT newNFT;
+		id creator;
 		uint64 cntOfNFTHoldingPerOneId;
 		uint32 _t;
 		QBAYLogger log;
@@ -983,10 +984,11 @@ protected:
 		}
 
 		locals.cntOfNFTHoldingPerOneId = 0;
+		locals.creator = state.Collections.get(input.collectionId).creator;
 
 		for(locals._t = 0; locals._t < state.numberOfNFT; locals._t++)
 		{
-			if(state.NFTs.get(locals._t).creator == state.Collections.get(input.collectionId).creator && state.NFTs.get(locals._t).possesor == qpi.invocator())
+			if(state.NFTs.get(locals._t).creator == locals.creator && state.NFTs.get(locals._t).possesor == qpi.invocator())
 			{
 				locals.cntOfNFTHoldingPerOneId++;
 			}
