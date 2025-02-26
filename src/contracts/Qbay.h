@@ -1755,10 +1755,15 @@ protected:
 		
 		else if(input.paymentMethod == 1)
 		{
+			if(qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
 			if(qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX) < input.askPrice)
 			{
-				output.returnCode = QBAYLogInfo::insufficientQubic;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
+				output.returnCode = QBAYLogInfo::insufficientCFB;
+				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
 				LOG_INFO(locals.log);
 
 				return;
