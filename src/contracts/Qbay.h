@@ -123,206 +123,153 @@ struct QBAY : public ContractBase
 
 	struct settingCFBAndQubicPrice_input 
 	{
-
 		uint64 CFBPrice;                         //    The amount of $CFB per 1 USD
 		uint64 QubicPrice;						 //    The amount of $Qubic per 1 USD
-
 	};
 
 	struct settingCFBAndQubicPrice_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct createCollection_input 
 	{
-
 		uint64 priceForDropMint;
 		uint32 volumn;
 		uint32 royalty;
 		uint32 maxSizePerOneId;
 		Array<uint8, 64> URI;
 		bit typeOfCollection;
-
 	};
 
 	struct createCollection_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct mint_input
 	{
-
 		uint32 royalty;
 		uint32 collectionId;
 		Array<uint8, 64> URI;
 		bit typeOfMint;						// 0 means that creator uses the his collection to mint the NFT. 1 means that creator mints the single NFT.
-
 	};
 
 	struct mint_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct mintOfDrop_input 
 	{
-
 		uint32 collectionId;
 		Array<uint8, 64> URI;
-
 	};
 
 	struct mintOfDrop_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct transfer_input 
 	{
-
 		id receiver;
 		uint32 NFTid;
-
 	};
 
 	struct transfer_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct listInMarket_input 
 	{
-
 		uint64 price;
 		uint32 NFTid;
-
 	};
 
 	struct listInMarket_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct buy_input 
 	{
-
 		uint32 NFTid;
 		bit methodOfPayment;
-
 	};
 
 	struct buy_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct cancelSale_input 
 	{
-
 		uint32 NFTid;
-
 	};
 
 	struct cancelSale_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct listInExchange_input 
 	{
-
 		uint32 possessedNFT;
 		uint32 anotherNFT;
-
 	};
 
 	struct listInExchange_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct cancelExchange_input 
 	{
-
 		uint32 possessedNFT;
 		uint32 anotherNFT;
-		
 	};
 
 	struct cancelExchange_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct makeOffer_input 
 	{
-
 		sint64 askPrice;
 		uint32 NFTid;
 		bit paymentMethod;
-		
 	};
 
 	struct makeOffer_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct acceptOffer_input 
 	{
-
 		uint32 NFTid;
-
 	};
 
 	struct acceptOffer_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct cancelOffer_input 
 	{
-
 		uint32 NFTid;
-
 	};
 
 	struct cancelOffer_output 
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct createTraditionalAuction_input
 	{
-
 		uint64 minPrice;
 		uint32 NFTId;
 		uint32 startYear;
@@ -334,30 +281,23 @@ struct QBAY : public ContractBase
 		uint32 endDay;
 		uint32 endHour;
 		bit paymentMethodOfAuction;
-		
 	};
 
 	struct createTraditionalAuction_output
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct bidOnTraditionalAuction_input
 	{
-
 		uint64 price;
 		uint32 NFTId;
 		bit paymentMethod;
-
 	};
 
 	struct bidOnTraditionalAuction_output
 	{
-
 		uint32 returnCode;
-
 	};
 
 	struct changeStatusOfMarketPlace_input
@@ -416,12 +356,10 @@ struct QBAY : public ContractBase
 		bit paymentMethodOfAsk;						//		0 means the asked user want to buy using $Qubic, 1 means that want to buy using $CFB
 		bit statusOfExchange;						//		Status of Exchange
 		bit paymentMethodOfAuction;					//		0 means the user can buy using only $Qubic, 1 means that can buy using only $CFB
-
 	};
 
 	struct getInfoOfMarketplace_input
 	{
-
 	};
 
 	struct getInfoOfMarketplace_output
@@ -557,7 +495,6 @@ protected:
 
 	struct InfoOfCollection 
 	{
-
 		uint64 priceForDropMint;				// the price for initial sale for NFT if the collection is for Drop.
 		id creator;								// address of collection creator
 		uint32 royalty;							// percent from 0 ~ 100
@@ -565,7 +502,6 @@ protected:
 		uint32 maxSizeHoldingPerOneId;          // max size that one ID can hold the NFTs of one collection.
 		Array<uint8, 64> URI;			        // URI for this Collection
 		bit typeOfCollection;					// 0 means that the collection is for Drop, 1 means that the collection is for normal collection
-
 	};
 
 	// The capacity of one collection is 53 byte
@@ -574,7 +510,6 @@ protected:
 
 	struct InfoOfNFT 
 	{
-
 		id creator;                             	//      Identity of NFT creator
 		id possesor;								//		Identity of NFT possesor
 		id askUser;									//		Identity of Asked user
@@ -593,7 +528,6 @@ protected:
 		bit paymentMethodOfAsk;						//		0 means the asked user want to buy using $Qubic, 1 means that want to buy using $CFB
 		bit statusOfExchange;						//		Status of Exchange
 		bit paymentMethodOfAuction;					//		0 means the user can buy using only $Qubic, 1 means that can buy using only $CFB
-
 	};
 
 	// The capacity of one NFT is 238 byte;
@@ -632,13 +566,11 @@ protected:
 
 	struct createCollection_locals 
 	{
-
 		InfoOfCollection newCollection;
 		sint64 possessedAmount;
 		uint64 tmp;
 		uint32 _t;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(createCollection)
@@ -1140,13 +1072,11 @@ protected:
 
 	struct mint_locals 
 	{
-
 		uint32 _t;
 		uint32 cntOfNFTPerOne;
 		InfoOfNFT newNFT;
 		InfoOfCollection updatedCollection;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(mint)
@@ -1303,14 +1233,12 @@ protected:
 
 	struct mintOfDrop_locals 
 	{
-		
 		InfoOfCollection updatedCollection;
 		InfoOfNFT newNFT;
 		InfoOfCollection newCollection;
 		uint64 cntOfNFTHoldingPerOneId;
 		uint32 _t;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(mintOfDrop)
@@ -1435,12 +1363,10 @@ protected:
 
 	struct transfer_locals 
 	{
-
 		InfoOfNFT transferNFT;
 		uint32 curDate;
 		uint32 _t;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(transfer)
@@ -1533,12 +1459,10 @@ protected:
 
 	struct listInMarket_locals 
 	{
-
 		InfoOfNFT saleNFT;
 		uint32 _t;
 		uint32 curDate;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(listInMarket)
@@ -1635,7 +1559,6 @@ protected:
 		uint32 _t;
 		uint32 curDate;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(buy)
@@ -1856,7 +1779,6 @@ protected:
 		uint32 _t;
 		uint32 curDate;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(listInExchange)
@@ -2007,12 +1929,10 @@ protected:
 
 	struct cancelExchange_locals
 	{
-
 		InfoOfNFT updatedNFT;
 		uint32 _t;
 		uint32 curDate;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(cancelExchange)
@@ -2092,7 +2012,6 @@ protected:
 		uint32 _t;
 		uint32 curDate;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(makeOffer)
@@ -2238,7 +2157,6 @@ protected:
 		uint32 _t;
 		uint32 curDate;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(acceptOffer)
@@ -2346,7 +2264,6 @@ protected:
 
 	struct cancelOffer_locals
 	{
-
 		QX::TransferShareManagementRights_input transferShareManagementRights_input;
 		QX::TransferShareManagementRights_output transferShareManagementRights_output;
 		InfoOfNFT updatedNFT;
@@ -2354,7 +2271,6 @@ protected:
 		uint32 _t;
 		uint32 curDate;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(cancelOffer)
@@ -2573,7 +2489,6 @@ protected:
 		uint32 _t;
 		uint32 curDate;
 		QBAYLogger log;
-
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(bidOnTraditionalAuction)
@@ -2822,7 +2737,6 @@ protected:
 	{
 		uint32 curDate;
 		uint32 _t;
-
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getNumberOfNFTForUser)
