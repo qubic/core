@@ -1248,6 +1248,11 @@ protected:
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
 			return ;
 		}
 
@@ -1699,6 +1704,11 @@ protected:
 			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 
 			return ;
 		}
