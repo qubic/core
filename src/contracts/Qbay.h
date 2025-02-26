@@ -1184,12 +1184,8 @@ protected:
 
 			locals.newNFT.royalty = state.Collections.get(input.collectionId).royalty;   // The royalty should be set as the royalty to be set in collection
 
-			locals.updatedCollection.creator = state.Collections.get(input.collectionId).creator;
-			locals.updatedCollection.currentSize = state.Collections.get(input.collectionId).currentSize - 1;
-			locals.updatedCollection.maxSizeHoldingPerOneId = state.Collections.get(input.collectionId).maxSizeHoldingPerOneId;
-			locals.updatedCollection.royalty = state.Collections.get(input.collectionId).royalty;
-			locals.updatedCollection.priceForDropMint = state.Collections.get(input.collectionId).priceForDropMint;
-			locals.updatedCollection.typeOfCollection = state.Collections.get(input.collectionId).typeOfCollection;
+			locals.updatedCollection = state.Collections.get(input.collectionId);
+			locals.updatedCollection.currentSize--;
 
 			state.Collections.set(input.collectionId, locals.updatedCollection);
 		}
@@ -1312,12 +1308,8 @@ protected:
 
         qpi.transfer(state.Collections.get(input.collectionId).creator, state.Collections.get(input.collectionId).priceForDropMint);
 
-		locals.updatedCollection.creator = state.Collections.get(input.collectionId).creator;
-		locals.updatedCollection.currentSize = state.Collections.get(input.collectionId).currentSize - 1;
-		locals.updatedCollection.maxSizeHoldingPerOneId = state.Collections.get(input.collectionId).maxSizeHoldingPerOneId;
-		locals.updatedCollection.royalty = state.Collections.get(input.collectionId).royalty;
-		locals.updatedCollection.priceForDropMint = state.Collections.get(input.collectionId).priceForDropMint;
-		locals.updatedCollection.typeOfCollection = state.Collections.get(input.collectionId).typeOfCollection;
+		locals.updatedCollection = state.Collections.get(input.collectionId);
+		locals.updatedCollection.currentSize--;
 
 		state.Collections.set(input.collectionId, locals.updatedCollection);
 
