@@ -6530,12 +6530,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             unsigned int salt;
             _rdrand32_step(&salt);
 
-            // TODO: remove later
-            unsigned long long debugDigestOriginal = 0, debugDigestCurrent = 0;
-            unsigned int debugTick = 0;
-
-            KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestOriginal, sizeof(debugDigestOriginal));
-
 #if TICK_STORAGE_AUTOSAVE_MODE
             // Use random tick offset to reduce risk of several nodes doing auto-save in parallel (which can lead to bad topology and misalignment)
             nextPersistingNodeStateTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
@@ -6549,19 +6543,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (criticalSituation == 1)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
-                }
-
-                {
-                    // TODO: remove later
-                    KangarooTwelve(contractUserProcedureLocalsSizes, sizeof(contractUserProcedureLocalsSizes), &debugDigestCurrent, sizeof(debugDigestCurrent));
-                    if (debugDigestOriginal != debugDigestCurrent)
-                    {
-                        if (debugTick == 0)
-                            debugTick = system.tick;
-                        setText(message, L"REPORT TO DEVS: contractUserProcedureLocalsSizes changed in tick ");
-                        appendNumber(message, debugTick, FALSE);
-                        logToConsole(message);
-                    }
                 }
 
                 const unsigned long long curTimeTick = __rdtsc();
