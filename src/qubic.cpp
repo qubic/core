@@ -228,7 +228,7 @@ struct
     unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
     unsigned char voteCounterData[VoteCounter::VoteCounterDataSize];
     BroadcastComputors broadcastedComputors;
-    unsigned long long resourceTestingDigest;
+    unsigned int resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
     unsigned long long lastLogId;
@@ -1916,7 +1916,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         if (score->isValidScore(solutionScore))
         {
-            resourceTestingDigest ^= (unsigned long long)(solutionScore);
+            resourceTestingDigest ^= solutionScore;
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
             const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
@@ -3740,6 +3740,7 @@ static bool haveSamePrevDigestsAndTime(const Tick& A, const Tick& B)
 {
     return A.prevComputerDigest == B.prevComputerDigest &&
         A.prevResourceTestingDigest == B.prevResourceTestingDigest &&
+        A.prevTransactionBodyDigest == B.prevTransactionBodyDigest &&
         A.prevSpectrumDigest == B.prevSpectrumDigest &&
         A.prevUniverseDigest == B.prevUniverseDigest &&
         *((unsigned long long*) & A.millisecond) == *((unsigned long long*) & B.millisecond);
