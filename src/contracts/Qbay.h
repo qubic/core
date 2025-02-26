@@ -21,52 +21,6 @@ constexpr uint32 QBAY_FEE_COLLECTION_CREATE_9001_10000 = 2000;
 constexpr uint32 QBAY_FEE_NFT_SALE_MARKET = 20;
 constexpr uint32 QBAY_FEE_NFT_SALE_SHAREHOLDERS = 10;
 
-constexpr sint32 QBAY_SUCCESS = 0;
-constexpr sint32 QBAY_INSUFFICIENT_FUND = 1;
-constexpr sint32 QBAY_INVALID_INPUT = 2;
-
-//      For createCollection
-constexpr sint32 QBAY_INVALID_VOLUME_SIZE = 3;
-constexpr sint32 QBAY_INSUFFICIENT_CFB = 4;
-constexpr sint32 QBAY_LIMIT_COLLECTION_VOLUME = 5;
-constexpr sint32 QBAY_ERROR_TRANSFER_ASSET = 6;
-constexpr sint32 QBAY_MAX_NUMBER_COLLECTION = 7;
-
-//      For mint
-constexpr sint32 QBAY_OVERFLOW_NFT = 8;
-constexpr sint32 QBAY_LIMIT_HOLDING_NFT_PER_ONE_ADDRESS = 9;
-constexpr sint32 QBAY_NOT_COLLECTION_CREATOR = 10;
-constexpr sint32 QBAY_COLLECTION_FOR_DROP = 11;
-
-//		For listInMarket & sale
-constexpr sint32 QBAY_NOT_POSSESOR = 12;
-constexpr sint32 QBAY_WRONG_NFTID = 13;
-constexpr sint32 QBAY_WRONG_URI = 14;
-constexpr sint32 QBAY_NOT_SALE_STATUS = 15;
-constexpr sint32 QBAY_LOW_PRICE = 16;
-constexpr sint32 QBAY_NOT_ASK_STATUS = 17;
-constexpr sint32 QBAY_NOT_OWNER = 18;
-constexpr sint32 QBAY_NOT_ASK_USER = 19;
-constexpr sint32 QBAY_RESERVED_NFT = 27;
-
-//		For DropMint
-
-constexpr sint32 QBAY_NOT_COLLECTION_FOR_DROP = 20;
-constexpr sint32 QBAY_OVERFLOW_MAX_SIZE_PER_ONEID = 21;
-
-//		For Auction
-
-constexpr sint32 QBAY_NOT_ENDED_AUCTION = 22;
-constexpr sint32 QBAY_NOT_TRADITIONAL_AUCTION = 23;
-constexpr sint32 QBAY_NOT_AUCTION_TIME = 24;
-constexpr sint32 QBAY_SMALL_PRICE = 25;
-constexpr sint32 QBAY_NOT_MATCH_PAYMENT_METHOD = 26;
-
-constexpr sint32 QBAY_NOT_AVAILABLE_CREATE_AND_MINT = 28;
-constexpr sint32 QBAY_EXCHANGE_STATUS = 29;
-constexpr sint32 QBAY_SALE_STATUS = 30;
-
-
 enum QBAYLogInfo {
     success = 0,
 	insufficientQubic = 1,
@@ -110,7 +64,6 @@ struct QBAYLogger
 {
     uint32 _contractIndex;
     uint32 _type; // Assign a random unique (per contract) number to distinguish messages of different types
-    // Other data go here
     char _terminator; // Only data before "_terminator" are logged
 };
 
@@ -552,7 +505,7 @@ protected:
 
 		if(qpi.invocator() != state.marketPlaceOwner)
 		{
-			output.returnCode = QBAY_NOT_OWNER;
+			output.returnCode = QBAYLogInfo::notOwner;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notOwner, 0 };
 			LOG_INFO(locals.log);
 			return ;
@@ -561,7 +514,7 @@ protected:
 		state.priceOfCFB = input.CFBPrice;
 		state.priceOfQubic = input.QubicPrice;
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 	_
 
 	struct createCollection_locals 
@@ -579,7 +532,7 @@ protected:
 
 		if(state.statusOfMarketPlace == 0 && qpi.invocator() != state.marketPlaceOwner)
 		{
-			output.returnCode = QBAY_NOT_AVAILABLE_CREATE_AND_MINT;
+			output.returnCode = QBAYLogInfo::notAvailableCreateAndMint;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notAvailableCreateAndMint, 0 };
 			LOG_INFO(locals.log);
 			if(qpi.invocationReward() > 0) 
@@ -591,7 +544,7 @@ protected:
 
 		if(state.numberOfCollection >= QBAY_MAX_COLLECTION || state.numberOfNFTIncoming + (input.volumn == 0 ? 200: input.volumn * 1000) >= QBAY_MAX_NUMBER_NFT) 
 		{
-			output.returnCode = QBAY_OVERFLOW_NFT; 
+			output.returnCode = QBAYLogInfo::overflowNFT; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::overflowNFT, 0 };
 			LOG_INFO(locals.log);
 			if(qpi.invocationReward() > 0) 
@@ -603,7 +556,7 @@ protected:
 
 		if(input.volumn > 10 || input.royalty > 100) 
 		{
-			output.returnCode = QBAY_INVALID_VOLUME_SIZE;  			// volume size should be 0 ~ 10
+			output.returnCode = QBAYLogInfo::invalidVolumnSize;  			// volume size should be 0 ~ 10
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidVolumnSize, 0 };
 			LOG_INFO(locals.log);
 
@@ -616,13 +569,13 @@ protected:
 
 		locals.possessedAmount = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 
 		if(input.volumn == 0) 
 		{
 			if(input.maxSizePerOneId > 200)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_2_200;
 			locals.numberOfNFT = 200;
@@ -632,7 +585,7 @@ protected:
 		{
 			if(input.maxSizePerOneId > 1000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_201_1000;
 			locals.numberOfNFT = 1000;
@@ -642,7 +595,7 @@ protected:
 		{
 			if(input.maxSizePerOneId > 2000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_1001_2000;
 			locals.numberOfNFT = 2000;
@@ -652,7 +605,7 @@ protected:
 		{
 			if(input.maxSizePerOneId > 3000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_2001_3000;
 			locals.numberOfNFT = 3000;
@@ -662,7 +615,7 @@ protected:
 		{
 			if(input.maxSizePerOneId > 4000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_3001_4000;
 			locals.numberOfNFT = 4000;
@@ -672,7 +625,7 @@ protected:
 		{
 			if(input.maxSizePerOneId > 5000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_4001_5000;
 			locals.numberOfNFT = 5000;
@@ -682,7 +635,7 @@ protected:
 		{
 			if(input.maxSizePerOneId > 6000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_5001_6000;
 			locals.numberOfNFT = 6000;
@@ -692,7 +645,7 @@ protected:
 		{
 			if(input.maxSizePerOneId > 7000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_6001_7000;
 			locals.numberOfNFT = 7000;
@@ -702,7 +655,7 @@ protected:
 		{
 			if(input.maxSizePerOneId > 8000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_7001_8000;
 			locals.numberOfNFT = 8000;
@@ -712,7 +665,7 @@ protected:
 		{
 			if(input.maxSizePerOneId > 9000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_8001_9000;
 			locals.numberOfNFT = 9000;
@@ -722,13 +675,13 @@ protected:
 		{
 			if(input.maxSizePerOneId > 10000)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 			}
 			locals.fee = QBAY_FEE_COLLECTION_CREATE_9001_10000;
 			locals.numberOfNFT = 10000;
 		}
 
-		if(output.returnCode == QBAY_INVALID_INPUT)
+		if(output.returnCode == QBAYLogInfo::invalidInput)
 		{
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 			LOG_INFO(locals.log);
@@ -744,7 +697,7 @@ protected:
 		{
 			if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < locals.fee) 
 			{
-				output.returnCode = QBAY_INSUFFICIENT_CFB;
+				output.returnCode = QBAYLogInfo::insufficientCFB;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
 				LOG_INFO(locals.log);
 
@@ -781,7 +734,7 @@ protected:
 
 		state.Collections.set(state.numberOfCollection, locals.newCollection);
 		state.numberOfCollection++;
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
@@ -800,7 +753,7 @@ protected:
 
 		if(state.statusOfMarketPlace == 0)
 		{
-			output.returnCode = QBAY_NOT_AVAILABLE_CREATE_AND_MINT;
+			output.returnCode = QBAYLogInfo::notAvailableCreateAndMint;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notAvailableCreateAndMint, 0 };
 			LOG_INFO(locals.log);
 			if(qpi.invocationReward() > 0) 
@@ -814,7 +767,7 @@ protected:
 		{
 			if(input.royalty >= 100)
 			{
-				output.returnCode = QBAY_INVALID_INPUT;
+				output.returnCode = QBAYLogInfo::invalidInput;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 				LOG_INFO(locals.log);
 				
@@ -826,7 +779,7 @@ protected:
 			}
 			if(state.numberOfNFTIncoming + 1 >= QBAY_MAX_NUMBER_NFT) 
 			{
-				output.returnCode = QBAY_OVERFLOW_NFT; 
+				output.returnCode = QBAYLogInfo::overflowNFT; 
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::overflowNFT, 0 };
 				LOG_INFO(locals.log);
 
@@ -839,7 +792,7 @@ protected:
 
 			if(qpi.invocationReward() < QBAY_SINGLE_NFT_CREATE_FEE)  //     The fee for single NFT should be more than 5M QU
 			{
-				output.returnCode = QBAY_INSUFFICIENT_FUND;
+				output.returnCode = QBAYLogInfo::insufficientQubic;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
 				LOG_INFO(locals.log);
 				if(qpi.invocationReward() > 0) 
@@ -862,7 +815,7 @@ protected:
 		{
 			if(state.Collections.get(input.collectionId).creator != qpi.invocator())
 			{
-				output.returnCode = QBAY_NOT_COLLECTION_CREATOR;
+				output.returnCode = QBAYLogInfo::notCollectionCreator;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notCollectionCreator, 0 };
 				LOG_INFO(locals.log);
 
@@ -875,7 +828,7 @@ protected:
 
 			if(state.Collections.get(input.collectionId).typeOfCollection == 0)
 			{
-				output.returnCode = QBAY_COLLECTION_FOR_DROP;
+				output.returnCode = QBAYLogInfo::collectionForDrop;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::collectionForDrop, 0 };
 				LOG_INFO(locals.log);
 
@@ -888,7 +841,7 @@ protected:
 
 			if(state.Collections.get(input.collectionId).currentSize <= 0) 
 			{
-				output.returnCode = QBAY_LIMIT_COLLECTION_VOLUME;
+				output.returnCode = QBAYLogInfo::limitCollectionVolumn;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::limitCollectionVolumn, 0 };
 				LOG_INFO(locals.log);
 
@@ -938,7 +891,7 @@ protected:
 		
 		state.NFTs.set(state.numberOfNFT, locals.newNFT);
 		state.numberOfNFT++;
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
@@ -958,7 +911,7 @@ protected:
 
 		if(state.Collections.get(input.collectionId).typeOfCollection == 1)
 		{
-			output.returnCode = QBAY_NOT_COLLECTION_FOR_DROP;
+			output.returnCode = QBAYLogInfo::notCollectionForDrop;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notCollectionForDrop, 0 };
 			LOG_INFO(locals.log);
 
@@ -972,7 +925,7 @@ protected:
 
 		if(state.Collections.get(input.collectionId).currentSize <= 0) 
 		{
-			output.returnCode = QBAY_LIMIT_COLLECTION_VOLUME;
+			output.returnCode = QBAYLogInfo::limitCollectionVolumn;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::limitCollectionVolumn, 0 };
 			LOG_INFO(locals.log);
 
@@ -996,7 +949,7 @@ protected:
 
 		if(locals.cntOfNFTHoldingPerOneId >= state.Collections.get(input.collectionId).maxSizeHoldingPerOneId)
 		{
-			output.returnCode = QBAY_OVERFLOW_MAX_SIZE_PER_ONEID;
+			output.returnCode = QBAYLogInfo::overflowMaxSizePerOneId;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::overflowMaxSizePerOneId, 0 };
 			LOG_INFO(locals.log);
 
@@ -1009,7 +962,7 @@ protected:
 
 		if((uint64)qpi.invocationReward() < state.Collections.get(input.collectionId).priceForDropMint)
 		{
-			output.returnCode = QBAY_INSUFFICIENT_FUND;
+			output.returnCode = QBAYLogInfo::insufficientQubic;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
 			LOG_INFO(locals.log);
 
@@ -1064,7 +1017,7 @@ protected:
 
 		state.NFTs.set(state.numberOfNFT, locals.newNFT);
 		state.numberOfNFT++;
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
@@ -1088,7 +1041,7 @@ protected:
 
 		if(input.NFTid >= QBAY_MAX_NUMBER_NFT)									//			NFTid should be less than MAX_NUMBER_NFT
 		{
-			output.returnCode = QBAY_WRONG_NFTID; 
+			output.returnCode = QBAYLogInfo::wrongNFTId; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::wrongNFTId, 0 };
 			LOG_INFO(locals.log);
 
@@ -1099,7 +1052,7 @@ protected:
 		{
 			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTid)
 			{
-				output.returnCode = QBAY_EXCHANGE_STATUS;
+				output.returnCode = QBAYLogInfo::exchangeStatus;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::exchangeStatus, 0 };
 				LOG_INFO(locals.log);
 
@@ -1109,7 +1062,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).statusOfSale == 1)
 		{
-			output.returnCode = QBAY_SALE_STATUS;
+			output.returnCode = QBAYLogInfo::saleStatus;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::saleStatus, 0 };
 			LOG_INFO(locals.log);
 
@@ -1120,7 +1073,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -1129,7 +1082,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).possesor != qpi.invocator())
 		{
-			output.returnCode = QBAY_NOT_POSSESOR;
+			output.returnCode = QBAYLogInfo::notPossesor;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notPossesor, 0 };
 			LOG_INFO(locals.log);
 
@@ -1162,7 +1115,7 @@ protected:
 		}
 
 		state.NFTs.set(input.NFTid, locals.transferNFT);
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 	_
@@ -1184,7 +1137,7 @@ protected:
 
 		if(input.NFTid >= QBAY_MAX_NUMBER_NFT)									//			NFTid should be less than MAX_NUMBER_NFT
 		{
-			output.returnCode = QBAY_WRONG_NFTID; 
+			output.returnCode = QBAYLogInfo::wrongNFTId; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::wrongNFTId, 0 };
 			LOG_INFO(locals.log);
 
@@ -1195,7 +1148,7 @@ protected:
 		{
 			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTid)
 			{
-				output.returnCode = QBAY_EXCHANGE_STATUS;
+				output.returnCode = QBAYLogInfo::exchangeStatus;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::exchangeStatus, 0 };
 				LOG_INFO(locals.log);
 
@@ -1207,7 +1160,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -1216,7 +1169,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).possesor != qpi.invocator())   //		Checking the possesor
 		{
-			output.returnCode = QBAY_NOT_POSSESOR;
+			output.returnCode = QBAYLogInfo::notPossesor;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notPossesor, 0 };
 			LOG_INFO(locals.log);
 
@@ -1249,7 +1202,7 @@ protected:
 
 		state.NFTs.set(input.NFTid, locals.saleNFT);
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
@@ -1275,7 +1228,7 @@ protected:
 
 		if(input.NFTid >= QBAY_MAX_NUMBER_NFT)									//			NFTid should be less than MAX_NUMBER_NFT
 		{
-			output.returnCode = QBAY_WRONG_NFTID; 
+			output.returnCode = QBAYLogInfo::wrongNFTId; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::wrongNFTId, 0 };
 			LOG_INFO(locals.log);
 
@@ -1291,7 +1244,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -1300,8 +1253,8 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).statusOfSale == 0) 
 		{
-			output.returnCode = QBAY_NOT_SALE_STATUS;
-			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notSaleStatus };
+			output.returnCode = QBAYLogInfo::notSaleStatus;
+			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notSaleStatus, 0 };
 			LOG_INFO(locals.log);
 
 			if(qpi.invocationReward() > 0) 
@@ -1316,7 +1269,7 @@ protected:
 		{
 			if(state.NFTs.get(input.NFTid).salePrice > qpi.invocationReward()) 
 			{
-				output.returnCode = QBAY_INSUFFICIENT_FUND;
+				output.returnCode = QBAYLogInfo::insufficientQubic;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
 				LOG_INFO(locals.log);
 
@@ -1348,7 +1301,7 @@ protected:
 			locals.possessedCFBAmount = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
 			if(div(state.NFTs.get(input.NFTid).salePrice * 1ULL, state.priceOfQubic) > div(locals.possessedCFBAmount * 1ULL, state.priceOfCFB)) 
 			{
-				output.returnCode = QBAY_INSUFFICIENT_FUND;
+				output.returnCode = QBAYLogInfo::insufficientQubic;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
 				LOG_INFO(locals.log);
 
@@ -1400,7 +1353,7 @@ protected:
 		}
 
 		state.NFTs.set(input.NFTid, locals.updatedNFT);
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
@@ -1423,7 +1376,7 @@ protected:
 
 		if(input.NFTid >= QBAY_MAX_NUMBER_NFT)									// NFTid should be less than MAX_NUMBER_NFT
 		{
-			output.returnCode = QBAY_WRONG_NFTID; 
+			output.returnCode = QBAYLogInfo::wrongNFTId; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::wrongNFTId, 0 };
 			LOG_INFO(locals.log);
 
@@ -1434,7 +1387,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -1443,7 +1396,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).possesor != qpi.invocator())   			// Checking the possesor
 		{
-			output.returnCode = QBAY_NOT_POSSESOR;
+			output.returnCode = QBAYLogInfo::notPossesor;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notPossesor, 0 };
 			LOG_INFO(locals.log);
 
@@ -1476,7 +1429,7 @@ protected:
 
 		state.NFTs.set(input.NFTid, locals.updatedNFT);
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
@@ -1500,7 +1453,7 @@ protected:
 
 		if(input.possessedNFT >= QBAY_MAX_NUMBER_NFT || input.anotherNFT >= QBAY_MAX_NUMBER_NFT )		//	NFTid should be less than MAX_NUMBER_NFT
 		{
-			output.returnCode = QBAY_WRONG_NFTID; 
+			output.returnCode = QBAYLogInfo::wrongNFTId; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::wrongNFTId, 0 };
 			LOG_INFO(locals.log);
 
@@ -1509,7 +1462,7 @@ protected:
 
 		if(input.possessedNFT == input.anotherNFT)
 		{
-			output.returnCode = QBAY_INVALID_VOLUME_SIZE; 
+			output.returnCode = QBAYLogInfo::invalidInput; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 			LOG_INFO(locals.log);
 
@@ -1518,7 +1471,7 @@ protected:
 
 		if(state.NFTs.get(input.possessedNFT).statusOfSale == 1)
 		{
-			output.returnCode = QBAY_SALE_STATUS; 
+			output.returnCode = QBAYLogInfo::saleStatus; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::saleStatus, 0 };
 			LOG_INFO(locals.log);
 
@@ -1529,7 +1482,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.possessedNFT).endTimeOfAuction || locals.curDate <= state.NFTs.get(input.anotherNFT).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -1538,7 +1491,7 @@ protected:
 
 		if(state.NFTs.get(input.possessedNFT).possesor != qpi.invocator())
 		{
-			output.returnCode = QBAY_NOT_POSSESOR;
+			output.returnCode = QBAYLogInfo::notPossesor;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notPossesor, 0 };
 			LOG_INFO(locals.log);
 
@@ -1599,7 +1552,7 @@ protected:
 		{
 			if(state.NFTs.get(input.anotherNFT).NFTidForExchange != QBAY_MAX_NUMBER_NFT)
 			{
-				output.returnCode = QBAY_RESERVED_NFT;
+				output.returnCode = QBAYLogInfo::reservedNFT;
 
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::reservedNFT, 0 };
 				LOG_INFO(locals.log);
@@ -1632,7 +1585,7 @@ protected:
 			state.NFTs.set(input.anotherNFT, locals.updatedNFT);
 		}
 		
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 	_
@@ -1654,7 +1607,7 @@ protected:
 
 		if(input.possessedNFT >= QBAY_MAX_NUMBER_NFT || input.anotherNFT >= QBAY_MAX_NUMBER_NFT)		//	NFTid should be less than MAX_NUMBER_NFT
 		{
-			output.returnCode = QBAY_WRONG_NFTID; 
+			output.returnCode = QBAYLogInfo::wrongNFTId; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::wrongNFTId, 0 };
 			LOG_INFO(locals.log);
 
@@ -1665,7 +1618,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.possessedNFT).endTimeOfAuction || locals.curDate <= state.NFTs.get(input.anotherNFT).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -1674,7 +1627,7 @@ protected:
 
 		if(state.NFTs.get(input.possessedNFT).possesor != qpi.invocator() || state.NFTs.get(input.anotherNFT).NFTidForExchange != input.possessedNFT)
 		{
-			output.returnCode = QBAY_NOT_POSSESOR;
+			output.returnCode = QBAYLogInfo::notPossesor;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notPossesor, 0 };
 			LOG_INFO(locals.log);
 
@@ -1708,7 +1661,7 @@ protected:
 
 		state.NFTs.set(input.anotherNFT, locals.updatedNFT);
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 	_
@@ -1728,7 +1681,7 @@ protected:
 
 		if(input.NFTid >= QBAY_MAX_NUMBER_NFT || input.askPrice == 0)
 		{
-			output.returnCode = QBAY_INVALID_INPUT;
+			output.returnCode = QBAYLogInfo::invalidInput;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 			LOG_INFO(locals.log);
 
@@ -1743,7 +1696,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -1756,7 +1709,7 @@ protected:
 			|| (input.paymentMethod == 1 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 0 && div(input.askPrice * 1ULL, state.priceOfCFB) <= div((state.NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.priceOfQubic))
 			|| (input.paymentMethod == 0 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 1 && div(input.askPrice * 1ULL, state.priceOfQubic) <= div((state.NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.priceOfCFB)))
 			{
-				output.returnCode = QBAY_LOW_PRICE;
+				output.returnCode = QBAYLogInfo::lowPrice;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::lowPrice, 0 };
 				LOG_INFO(locals.log);
 
@@ -1772,7 +1725,7 @@ protected:
 		{
 			if(qpi.invocationReward() < input.askPrice)
 			{
-				output.returnCode = QBAY_INSUFFICIENT_FUND;
+				output.returnCode = QBAYLogInfo::insufficientQubic;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
 				LOG_INFO(locals.log);
 
@@ -1794,7 +1747,7 @@ protected:
 		{
 			if(qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX) < input.askPrice)
 			{
-				output.returnCode = QBAY_INSUFFICIENT_FUND;
+				output.returnCode = QBAYLogInfo::insufficientQubic;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
 				LOG_INFO(locals.log);
 
@@ -1849,7 +1802,7 @@ protected:
 
 		state.NFTs.set(input.NFTid, locals.AskedNFT);
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
@@ -1878,7 +1831,7 @@ protected:
 
 		if(input.NFTid >= QBAY_MAX_NUMBER_NFT)
 		{
-			output.returnCode = QBAY_INVALID_INPUT;
+			output.returnCode = QBAYLogInfo::invalidInput;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 			LOG_INFO(locals.log);
 
@@ -1889,7 +1842,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -1898,7 +1851,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).possesor != qpi.invocator())
 		{
-			output.returnCode = QBAY_NOT_POSSESOR;
+			output.returnCode = QBAYLogInfo::notPossesor;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notPossesor, 0 };
 			LOG_INFO(locals.log);
 			return ;
@@ -1906,7 +1859,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).statusOfAsk == 0)
 		{
-			output.returnCode = QBAY_NOT_ASK_STATUS;
+			output.returnCode = QBAYLogInfo::notAskStatus;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notAskStatus, 0 };
 			LOG_INFO(locals.log);
 			return ;
@@ -1966,7 +1919,7 @@ protected:
 
 		state.NFTs.set(input.NFTid, locals.updatedNFT);
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
@@ -1992,7 +1945,7 @@ protected:
 
 		if(input.NFTid >= QBAY_MAX_NUMBER_NFT)
 		{
-			output.returnCode = QBAY_INVALID_INPUT;
+			output.returnCode = QBAYLogInfo::invalidInput;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 			LOG_INFO(locals.log);
 
@@ -2003,7 +1956,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -2012,7 +1965,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).statusOfAsk == 0)
 		{
-			output.returnCode = QBAY_NOT_ASK_STATUS;
+			output.returnCode = QBAYLogInfo::notAskStatus;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notAskStatus, 0 };
 			LOG_INFO(locals.log);
 
@@ -2021,7 +1974,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).askUser != qpi.invocator() && state.NFTs.get(input.NFTid).possesor != qpi.invocator())
 		{
-			output.returnCode = QBAY_NOT_POSSESOR;
+			output.returnCode = QBAYLogInfo::notPossesor;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notPossesor, 0 };
 			LOG_INFO(locals.log);
 
@@ -2071,7 +2024,7 @@ protected:
 
 		state.NFTs.set(input.NFTid, locals.updatedNFT);
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 	_
@@ -2097,7 +2050,7 @@ protected:
 		{
 			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTId)
 			{
-				output.returnCode = QBAY_EXCHANGE_STATUS;
+				output.returnCode = QBAYLogInfo::exchangeStatus;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::exchangeStatus, 0 };
 				LOG_INFO(locals.log);
 
@@ -2107,7 +2060,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTId).statusOfSale == 1)
 		{
-			output.returnCode = QBAY_SALE_STATUS;
+			output.returnCode = QBAYLogInfo::saleStatus;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::saleStatus, 0};
 			LOG_INFO(locals.log);
 
@@ -2119,7 +2072,7 @@ protected:
 
 		if(input.NFTId >= QBAY_MAX_NUMBER_NFT || QUOTTERY::checkValidQtryDateTime(locals.startDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.endDate) == 0)
 		{
-			output.returnCode = QBAY_INVALID_INPUT;
+			output.returnCode = QBAYLogInfo::invalidInput;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 			LOG_INFO(locals.log);
 
@@ -2130,7 +2083,7 @@ protected:
 
 		if(locals.startDate <= locals.curDate || locals.endDate <= locals.startDate)
 		{
-			output.returnCode = QBAY_INVALID_INPUT;
+			output.returnCode = QBAYLogInfo::invalidInput;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 			LOG_INFO(locals.log);
 
@@ -2139,7 +2092,7 @@ protected:
 
 		if(locals.curDate <= state.NFTs.get(input.NFTId).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_ENDED_AUCTION;
+			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -2148,7 +2101,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTId).possesor != qpi.invocator())
 		{
-			output.returnCode = QBAY_NOT_POSSESOR;
+			output.returnCode = QBAYLogInfo::notPossesor;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notPossesor, 0 };
 			LOG_INFO(locals.log);
 
@@ -2182,7 +2135,7 @@ protected:
 
 		state.NFTs.set(input.NFTId, locals.updatedNFT);
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 	_
@@ -2205,7 +2158,7 @@ protected:
 
 		if(input.NFTId >= QBAY_MAX_NUMBER_NFT)
 		{
-			output.returnCode = QBAY_INVALID_INPUT;
+			output.returnCode = QBAYLogInfo::invalidInput;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 			LOG_INFO(locals.log);
 
@@ -2218,7 +2171,7 @@ protected:
 
 		if(state.NFTs.get(input.NFTId).statusOfAuction == 0)
 		{
-			output.returnCode = QBAY_NOT_TRADITIONAL_AUCTION;
+			output.returnCode = QBAYLogInfo::notTraditionalAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notTraditionalAuction, 0 };
 			LOG_INFO(locals.log);
 
@@ -2233,7 +2186,7 @@ protected:
 
 		if(locals.curDate < state.NFTs.get(input.NFTId).startTimeOfAuction || locals.curDate > state.NFTs.get(input.NFTId).endTimeOfAuction)
 		{
-			output.returnCode = QBAY_NOT_AUCTION_TIME;
+			output.returnCode = QBAYLogInfo::notAuctionTime;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notAuctionTime, 0 };
 			LOG_INFO(locals.log);
 			if(qpi.invocationReward() > 0)
@@ -2247,7 +2200,7 @@ protected:
 		{
 			if(input.paymentMethod == 1)
 			{
-				output.returnCode = QBAY_NOT_MATCH_PAYMENT_METHOD;
+				output.returnCode = QBAYLogInfo::notMatchPaymentMethod;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notMatchPaymentMethod, 0 };
 				LOG_INFO(locals.log);
 
@@ -2260,7 +2213,7 @@ protected:
 
 			if(input.price <= state.NFTs.get(input.NFTId).currentPriceOfAuction + QBAY_MIN_DELTA_SIZE)
 			{
-				output.returnCode = QBAY_SMALL_PRICE;
+				output.returnCode = QBAYLogInfo::smallPrice;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::smallPrice, 0 };
 				LOG_INFO(locals.log);
 
@@ -2272,7 +2225,7 @@ protected:
 			}
 			if((uint64)qpi.invocationReward() < input.price)
 			{
-				output.returnCode = QBAY_INSUFFICIENT_FUND;
+				output.returnCode = QBAYLogInfo::insufficientQubic;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
 				LOG_INFO(locals.log);
 
@@ -2320,7 +2273,7 @@ protected:
 		{
 			if(input.paymentMethod == 0)
 			{
-				output.returnCode = QBAY_NOT_MATCH_PAYMENT_METHOD;
+				output.returnCode = QBAYLogInfo::notMatchPaymentMethod;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notMatchPaymentMethod, 0 };
 				LOG_INFO(locals.log);
 
@@ -2332,7 +2285,7 @@ protected:
 			}
 			if(input.price <= state.NFTs.get(input.NFTId).currentPriceOfAuction + QBAY_MIN_DELTA_SIZE)
 			{
-				output.returnCode = QBAY_SMALL_PRICE;
+				output.returnCode = QBAYLogInfo::smallPrice;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::smallPrice, 0 };
 				LOG_INFO(locals.log);
 
@@ -2347,7 +2300,7 @@ protected:
 
 			if(locals.possessedAmount < input.price)
 			{
-				output.returnCode = QBAY_INSUFFICIENT_FUND;
+				output.returnCode = QBAYLogInfo::insufficientQubic;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
 				LOG_INFO(locals.log);
 
@@ -2412,7 +2365,7 @@ protected:
 
 		state.NFTs.set(input.NFTId, locals.updatedNFT);
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 	_
@@ -2431,14 +2384,14 @@ protected:
 
 		if(qpi.invocator() != state.marketPlaceOwner)
 		{
-			output.returnCode = QBAY_NOT_OWNER;
+			output.returnCode = QBAYLogInfo::notOwner;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notOwner, 0 };
 			LOG_INFO(locals.log);
 		}
 
 		state.statusOfMarketPlace = input.status;
 
-		output.returnCode = QBAY_SUCCESS;
+		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 	_
