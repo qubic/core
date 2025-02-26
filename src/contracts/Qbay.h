@@ -570,6 +570,8 @@ protected:
 		sint64 possessedAmount;
 		uint64 tmp;
 		uint32 _t;
+		uint32 numberOfNFT;
+		uint16 fee;
 		QBAYLogger log;
 	};
 
@@ -614,44 +616,16 @@ protected:
 
 		locals.possessedAmount = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
 
+		output.returnCode = QBAY_SUCCESS;
 
 		if(input.volumn == 0) 
 		{
 			if(input.maxSizePerOneId > 200)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_2_200) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_2_200 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_2_200 * state.priceOfCFB;
-
-			}
-			locals.newCollection.currentSize = 200;
-			state.numberOfNFTIncoming += 200;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_2_200;
+			locals.numberOfNFT = 200;
 		}
 
 		if(input.volumn == 1) 
@@ -659,38 +633,9 @@ protected:
 			if(input.maxSizePerOneId > 1000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_201_1000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_201_1000 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_201_1000 * state.priceOfCFB;
-			}
-			
-			locals.newCollection.currentSize = 1000;
-			state.numberOfNFTIncoming += 1000;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_201_1000;
+			locals.numberOfNFT = 1000;
 		}
 
 		if(input.volumn == 2) 
@@ -698,38 +643,9 @@ protected:
 			if(input.maxSizePerOneId > 2000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_1001_2000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_1001_2000 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_1001_2000 * state.priceOfCFB;
-			}
-			
-			locals.newCollection.currentSize = 2000;
-			state.numberOfNFTIncoming += 2000;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_1001_2000;
+			locals.numberOfNFT = 2000;
 		}
 
 		if(input.volumn == 3) 
@@ -737,38 +653,9 @@ protected:
 			if(input.maxSizePerOneId > 3000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_2001_3000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_2001_3000 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_2001_3000 * state.priceOfCFB;
-			}
-			
-			locals.newCollection.currentSize = 3000;
-			state.numberOfNFTIncoming += 3000;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_2001_3000;
+			locals.numberOfNFT = 3000;
 		}
 
 		if(input.volumn == 4) 
@@ -776,38 +663,9 @@ protected:
 			if(input.maxSizePerOneId > 4000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_3001_4000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_3001_4000 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_3001_4000 * state.priceOfCFB;
-			}
-			
-			locals.newCollection.currentSize = 4000;
-			state.numberOfNFTIncoming += 4000;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_3001_4000;
+			locals.numberOfNFT = 4000;
 		}
 
 		if(input.volumn == 5) 
@@ -815,38 +673,9 @@ protected:
 			if(input.maxSizePerOneId > 5000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_4001_5000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_4001_5000 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_4001_5000 * state.priceOfCFB;
-			}
-			
-			locals.newCollection.currentSize = 5000;
-			state.numberOfNFTIncoming += 5000;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_4001_5000;
+			locals.numberOfNFT = 5000;
 		}
 
 		if(input.volumn == 6) 
@@ -854,38 +683,9 @@ protected:
 			if(input.maxSizePerOneId > 6000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_5001_6000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_5001_6000 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_5001_6000 * state.priceOfCFB;
-			}
-			
-			locals.newCollection.currentSize = 6000;
-			state.numberOfNFTIncoming += 6000;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_5001_6000;
+			locals.numberOfNFT = 6000;
 		}
 
 		if(input.volumn == 7) 
@@ -893,38 +693,9 @@ protected:
 			if(input.maxSizePerOneId > 7000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_6001_7000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_6001_7000 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_6001_7000 * state.priceOfCFB;
-			}
-
-			locals.newCollection.currentSize = 7000;
-			state.numberOfNFTIncoming += 7000;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_6001_7000;
+			locals.numberOfNFT = 7000;
 		}
 
 		if(input.volumn == 8) 
@@ -932,38 +703,9 @@ protected:
 			if(input.maxSizePerOneId > 8000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_7001_8000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_7001_8000 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_7001_8000 * state.priceOfCFB;
-			}
-			
-			locals.newCollection.currentSize = 8000;
-			state.numberOfNFTIncoming += 8000;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_7001_8000;
+			locals.numberOfNFT = 8000;
 		}
 
 		if(input.volumn == 9) 
@@ -971,38 +713,9 @@ protected:
 			if(input.maxSizePerOneId > 9000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
-				LOG_INFO(locals.log);
-
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
 			}
-
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_8001_9000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-				
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_8001_9000 * state.priceOfCFB, SELF);
-				
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_8001_9000 * state.priceOfCFB;
-			}
-			
-			locals.newCollection.currentSize = 9000;
-			state.numberOfNFTIncoming += 9000;
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_8001_9000;
+			locals.numberOfNFT = 9000;
 		}
 
 		if(input.volumn == 10) 
@@ -1010,7 +723,29 @@ protected:
 			if(input.maxSizePerOneId > 10000)
 			{
 				output.returnCode = QBAY_INVALID_INPUT;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
+			}
+			locals.fee = QBAY_FEE_COLLECTION_CREATE_9001_10000;
+			locals.numberOfNFT = 10000;
+		}
+
+		if(output.returnCode == QBAY_INVALID_INPUT)
+		{
+			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+
+		if(qpi.invocator() != state.marketPlaceOwner)
+		{
+			if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < locals.fee) 
+			{
+				output.returnCode = QBAY_INSUFFICIENT_CFB;
+				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
 				LOG_INFO(locals.log);
 
 				if(qpi.invocationReward() > 0) 
@@ -1020,29 +755,11 @@ protected:
 				return ;
 			}
 
-			if(qpi.invocator() != state.marketPlaceOwner)
-			{
-				if(div(locals.possessedAmount * 1ULL, state.priceOfCFB) < QBAY_FEE_COLLECTION_CREATE_9001_10000) 
-				{
-					output.returnCode = QBAY_INSUFFICIENT_CFB;
-					locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
-					LOG_INFO(locals.log);
-
-					if(qpi.invocationReward() > 0) 
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-
-				qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_FEE_COLLECTION_CREATE_9001_10000 * state.priceOfCFB, SELF);
-
-				state.earnedCFB += QBAY_FEE_COLLECTION_CREATE_9001_10000 * state.priceOfCFB;
-			}
-			
-			locals.newCollection.currentSize = 10000;
-			state.numberOfNFTIncoming += 10000;
+			qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), locals.fee * state.priceOfCFB, SELF);
+			state.earnedCFB += locals.fee * state.priceOfCFB;
 		}
+		locals.newCollection.currentSize = locals.numberOfNFT;
+		state.numberOfNFTIncoming += locals.numberOfNFT;
 
 		locals.newCollection.creator = qpi.invocator();
 		locals.newCollection.royalty = input.royalty;
