@@ -191,7 +191,7 @@ struct QBAY : public ContractBase
 
 	struct makeOffer_input 
 	{
-		sint64 askPrice;
+		uint64 askPrice;
 		uint32 NFTid;
 		bit paymentMethod;
 	};
@@ -1684,7 +1684,7 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(makeOffer)
 
-		if(input.NFTid >= QBAY_MAX_NUMBER_NFT || input.askPrice <= 0)
+		if(input.NFTid >= QBAY_MAX_NUMBER_NFT || input.askPrice == 0)
 		{
 			output.returnCode = QBAYLogInfo::invalidInput;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
