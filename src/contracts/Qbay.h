@@ -7,17 +7,6 @@ constexpr uint32 QBAY_SINGLE_NFT_CREATE_FEE = 5000000;
 constexpr uint32 QBAY_LENGTH_OF_URI = 59;
 constexpr uint32 QBAY_CFB_NAME = 4343363;
 constexpr uint32 QBAY_MIN_DELTA_SIZE = 1000000;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_2_200 = 100;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_201_1000 = 200;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_1001_2000 = 400;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_2001_3000 = 600;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_3001_4000 = 800;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_4001_5000 = 1000;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_5001_6000 = 1200;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_6001_7000 = 1400;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_7001_8000 = 1600;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_8001_9000 = 1800;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_9001_10000 = 2000;
 constexpr uint32 QBAY_FEE_NFT_SALE_MARKET = 20;
 constexpr uint32 QBAY_FEE_NFT_SALE_SHAREHOLDERS = 10;
 
@@ -542,7 +531,22 @@ protected:
 			return ;
 		}
 
-		if(state.numberOfCollection >= QBAY_MAX_COLLECTION || state.numberOfNFTIncoming + (input.volumn == 0 ? 200: input.volumn * 1000) >= QBAY_MAX_NUMBER_NFT) 
+		if(input.volumn > 10 || input.royalty > 100) 
+		{
+			output.returnCode = QBAYLogInfo::invalidInput;  			// volume size should be 0 ~ 10
+			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+
+		locals.numberOfNFT = input.volumn == 0 ? 200: input.volumn * 1000;
+
+		if(state.numberOfCollection >= QBAY_MAX_COLLECTION || state.numberOfNFTIncoming + locals.numberOfNFT >= QBAY_MAX_NUMBER_NFT) 
 		{
 			output.returnCode = QBAYLogInfo::overflowNFT; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::overflowNFT, 0 };
@@ -554,135 +558,12 @@ protected:
 			return ;
 		}
 
-		if(input.volumn > 10 || input.royalty > 100) 
-		{
-			output.returnCode = QBAYLogInfo::invalidVolumnSize;  			// volume size should be 0 ~ 10
-			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidVolumnSize, 0 };
-			LOG_INFO(locals.log);
-
-			if(qpi.invocationReward() > 0) 
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
 		locals.possessedAmount = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
+		locals.fee = input.volumn == 0 ? 100: input.volumn * 200;
 
-		output.returnCode = QBAYLogInfo::success;
-
-		if(input.volumn == 0) 
+		if(input.maxSizePerOneId > locals.numberOfNFT)
 		{
-			if(input.maxSizePerOneId > 200)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_2_200;
-			locals.numberOfNFT = 200;
-		}
-
-		if(input.volumn == 1) 
-		{
-			if(input.maxSizePerOneId > 1000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_201_1000;
-			locals.numberOfNFT = 1000;
-		}
-
-		if(input.volumn == 2) 
-		{
-			if(input.maxSizePerOneId > 2000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_1001_2000;
-			locals.numberOfNFT = 2000;
-		}
-
-		if(input.volumn == 3) 
-		{
-			if(input.maxSizePerOneId > 3000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_2001_3000;
-			locals.numberOfNFT = 3000;
-		}
-
-		if(input.volumn == 4) 
-		{
-			if(input.maxSizePerOneId > 4000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_3001_4000;
-			locals.numberOfNFT = 4000;
-		}
-
-		if(input.volumn == 5) 
-		{
-			if(input.maxSizePerOneId > 5000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_4001_5000;
-			locals.numberOfNFT = 5000;
-		}
-
-		if(input.volumn == 6) 
-		{
-			if(input.maxSizePerOneId > 6000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_5001_6000;
-			locals.numberOfNFT = 6000;
-		}
-
-		if(input.volumn == 7) 
-		{
-			if(input.maxSizePerOneId > 7000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_6001_7000;
-			locals.numberOfNFT = 7000;
-		}
-
-		if(input.volumn == 8) 
-		{
-			if(input.maxSizePerOneId > 8000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_7001_8000;
-			locals.numberOfNFT = 8000;
-		}
-
-		if(input.volumn == 9) 
-		{
-			if(input.maxSizePerOneId > 9000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_8001_9000;
-			locals.numberOfNFT = 9000;
-		}
-
-		if(input.volumn == 10) 
-		{
-			if(input.maxSizePerOneId > 10000)
-			{
-				output.returnCode = QBAYLogInfo::invalidInput;
-			}
-			locals.fee = QBAY_FEE_COLLECTION_CREATE_9001_10000;
-			locals.numberOfNFT = 10000;
-		}
-
-		if(output.returnCode == QBAYLogInfo::invalidInput)
-		{
+			output.returnCode = QBAYLogInfo::invalidInput;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
 			LOG_INFO(locals.log);
 
