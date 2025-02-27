@@ -7,6 +7,7 @@
 #include <thread>
 #include <mutex>
 #include <fstream>
+#include <chrono>
 
 #include "../src/platform/file_io.h"
 
