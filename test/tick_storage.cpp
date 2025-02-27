@@ -43,7 +43,7 @@ public:
 
 TestTickStorage ts;
 
-void addTick(unsigned int tick, unsigned long long seed, unsigned short maxTransactions)
+void addTick(unsigned int tick, unsigned int seed, unsigned short maxTransactions)
 {
     // use pseudo-random sequence
     std::mt19937 gen32(seed);
@@ -78,7 +78,7 @@ void addTick(unsigned int tick, unsigned long long seed, unsigned short maxTrans
     ts.checkStateConsistencyWithAssert();
 }
 
-void checkTick(unsigned int tick, unsigned long long seed, unsigned short maxTransactions, bool previousEpoch = false)
+void checkTick(unsigned int tick, unsigned int seed, unsigned short maxTransactions, bool previousEpoch = false)
 {
     // only last ticks of previous epoch are kept in storage -> check okay
     if (previousEpoch && !ts.tickInPreviousEpochStorage(tick))
@@ -134,7 +134,7 @@ void checkTick(unsigned int tick, unsigned long long seed, unsigned short maxTra
 
 TEST(TestCoreTickStorage, EpochTransition) {
 
-    unsigned long long seed = 42;
+    unsigned int seed = 42;
 
     // use pseudo-random sequence
     std::mt19937 gen32(seed);
@@ -154,9 +154,9 @@ TEST(TestCoreTickStorage, EpochTransition) {
         const unsigned int firstEpochTick0 = gen32() % 10000000;
         const unsigned int secondEpochTick0 = firstEpochTick0 + firstEpochTicks;
         const unsigned int thirdEpochTick0 = secondEpochTick0 + secondEpochTicks;
-        unsigned long long firstEpochSeeds[MAX_NUMBER_OF_TICKS_PER_EPOCH];
-        unsigned long long secondEpochSeeds[MAX_NUMBER_OF_TICKS_PER_EPOCH];
-        unsigned long long thirdEpochSeeds[MAX_NUMBER_OF_TICKS_PER_EPOCH];
+        unsigned int firstEpochSeeds[MAX_NUMBER_OF_TICKS_PER_EPOCH];
+        unsigned int secondEpochSeeds[MAX_NUMBER_OF_TICKS_PER_EPOCH];
+        unsigned int thirdEpochSeeds[MAX_NUMBER_OF_TICKS_PER_EPOCH];
         for (int i = 0; i < firstEpochTicks; ++i)
             firstEpochSeeds[i] = gen32();
         for (int i = 0; i < secondEpochTicks; ++i)
