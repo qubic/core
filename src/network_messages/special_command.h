@@ -20,7 +20,7 @@ struct SpecialCommand
 struct SpecialCommandSetSolutionThresholdRequestAndResponse
 {
     unsigned long long everIncreasingNonceAndCommandType;
-    unsigned int epoch;
+    unsigned short epoch;
     int threshold;
 };
 
