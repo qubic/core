@@ -1485,9 +1485,9 @@ protected:
 
 		if(state.NFTs.get(input.NFTid).statusOfAsk == 1)
 		{
-			if((input.askPrice <= state.NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE && input.paymentMethod == state.NFTs.get(input.NFTid).paymentMethodOfAsk)
-			|| (input.paymentMethod == 1 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 0 && div(input.askPrice * 1ULL, state.priceOfCFB) <= div((state.NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.priceOfQubic))
-			|| (input.paymentMethod == 0 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 1 && div(input.askPrice * 1ULL, state.priceOfQubic) <= div((state.NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.priceOfCFB)))
+			if((input.askPrice < state.NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE && input.paymentMethod == state.NFTs.get(input.NFTid).paymentMethodOfAsk)
+			|| (input.paymentMethod == 1 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 0 && div(input.askPrice * 1ULL, state.priceOfCFB) < div((state.NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.priceOfQubic))
+			|| (input.paymentMethod == 0 && state.NFTs.get(input.NFTid).paymentMethodOfAsk == 1 && div(input.askPrice * 1ULL, state.priceOfQubic) < div((state.NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.priceOfCFB)))
 			{
 				output.returnCode = QBAYLogInfo::lowPrice;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::lowPrice, 0 };
@@ -1940,7 +1940,7 @@ protected:
 				return ;
 			}
 
-			if(input.price <= state.NFTs.get(input.NFTId).currentPriceOfAuction + QBAY_MIN_DELTA_SIZE)
+			if(input.price < state.NFTs.get(input.NFTId).currentPriceOfAuction + QBAY_MIN_DELTA_SIZE)
 			{
 				output.returnCode = QBAYLogInfo::smallPrice;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::smallPrice, 0 };
@@ -2012,7 +2012,7 @@ protected:
 				}
 				return ;
 			}
-			if(input.price <= state.NFTs.get(input.NFTId).currentPriceOfAuction + QBAY_MIN_DELTA_SIZE)
+			if(input.price < state.NFTs.get(input.NFTId).currentPriceOfAuction + QBAY_MIN_DELTA_SIZE)
 			{
 				output.returnCode = QBAYLogInfo::smallPrice;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::smallPrice, 0 };
