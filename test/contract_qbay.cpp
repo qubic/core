@@ -897,7 +897,7 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     auto getInfoOfCollectionById_output = pfp.getInfoOfCollectionById(0);
     pfp.getState()->getInfoOfCollectionByIdChecker(getInfoOfCollectionById_output, 0);
 
-    EXPECT_EQ(numberOfPossessedShares(assetName, CFB_ISSUER, id(11, 0, 0, 0), id(11, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), cfbPrice * totalPriceForCollectionCreating);
+    EXPECT_EQ(numberOfPossessedShares(assetName, CFB_ISSUER, id(12, 0, 0, 0), id(12, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), cfbPrice * totalPriceForCollectionCreating);
 
     EXPECT_EQ(numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, id(QBAY_CONTRACT_INDEX, 0, 0, 0), id(QBAY_CONTRACT_INDEX, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), earnedCFB);
     EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), earnedQubic);

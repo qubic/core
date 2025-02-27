@@ -467,8 +467,8 @@ protected:
 		id possesor;								//		Identity of NFT possesor
 		id askUser;									//		Identity of Asked user
 		id creatorOfAuction;						//		Creator of Auction
-		sint64 salePrice;							//		This price should be set by possesor
-		sint64 askMaxPrice;							//	 	This price is the max of asked prices
+		uint64 salePrice;							//		This price should be set by possesor
+		uint64 askMaxPrice;							//	 	This price is the max of asked prices
 		uint64 currentPriceOfAuction;				//		This price is the start price of auctions
 		uint32 startTimeOfAuction;					//		The start time of auction
 		uint32 endTimeOfAuction;					//		The end time of auction
@@ -1272,7 +1272,7 @@ protected:
 
 		if(input.methodOfPayment == 0)
 		{
-			if(state.NFTs.get(input.NFTid).salePrice > qpi.invocationReward()) 
+			if((sint64)state.NFTs.get(input.NFTid).salePrice > qpi.invocationReward()) 
 			{
 				output.returnCode = QBAYLogInfo::insufficientQubic;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
@@ -1286,7 +1286,7 @@ protected:
 				return ;
 			}
 
-			if(state.NFTs.get(input.NFTid).salePrice < qpi.invocationReward())
+			if((sint64)state.NFTs.get(input.NFTid).salePrice < qpi.invocationReward())
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.NFTs.get(input.NFTid).salePrice);
 			}
@@ -1733,7 +1733,7 @@ protected:
 
 		if(input.paymentMethod == 0)
 		{
-			if(qpi.invocationReward() < input.askPrice)
+			if(qpi.invocationReward() < (sint64)input.askPrice)
 			{
 				output.returnCode = QBAYLogInfo::insufficientQubic;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
@@ -1747,7 +1747,7 @@ protected:
 				return;
 			}
 
-			if(qpi.invocationReward() > input.askPrice)
+			if(qpi.invocationReward() > (sint64)input.askPrice)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.askPrice);
 			}
@@ -1760,7 +1760,7 @@ protected:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			if(qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX) < input.askPrice)
+			if(qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX) < (sint64)input.askPrice)
 			{
 				output.returnCode = QBAYLogInfo::insufficientCFB;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
