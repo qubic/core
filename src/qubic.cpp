@@ -128,7 +128,7 @@ static TickData nextTickData;
 static m256i uniqueNextTickTransactionDigests[NUMBER_OF_COMPUTORS];
 static unsigned int uniqueNextTickTransactionDigestCounters[NUMBER_OF_COMPUTORS];
 
-static unsigned long long resourceTestingDigest = 0;
+static unsigned int resourceTestingDigest = 0;
 
 static unsigned int numberOfTransactions = 0;
 static volatile char entityPendingTransactionsLock = 0;
@@ -228,7 +228,7 @@ struct
     unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
     unsigned char voteCounterData[VoteCounter::VoteCounterDataSize];
     BroadcastComputors broadcastedComputors;
-    unsigned long long resourceTestingDigest;
+    unsigned int resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
     unsigned long long lastLogId;
@@ -1916,7 +1916,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         if (score->isValidScore(solutionScore))
         {
-            resourceTestingDigest ^= (unsigned long long)(solutionScore);
+            resourceTestingDigest ^= solutionScore;
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 
             const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
@@ -2294,7 +2294,7 @@ static void processTick(unsigned long long processorNumber)
             etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
             getUniverseDigest(etalonTick.prevUniverseDigest);
             getComputerDigest(etalonTick.prevComputerDigest);
-            etalonTick.prevTransactionBodyDigest = m256i::zero();
+            etalonTick.prevTransactionBodyDigest = 0;
         }
 #endif
     }
@@ -2798,7 +2798,7 @@ static void endEpoch()
     // treating endEpoch as a tick, start updating etalonTick:
     // this is the last tick of an epoch, should we set prevResourceTestingDigest to zero? nodes that start from scratch (for the new epoch)
     // would be unable to compute this value(!?)
-    etalonTick.prevResourceTestingDigest = resourceTestingDigest; 
+    etalonTick.prevResourceTestingDigest = resourceTestingDigest;
     etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
     getUniverseDigest(etalonTick.prevUniverseDigest);
     getComputerDigest(etalonTick.prevComputerDigest);
@@ -3740,6 +3740,7 @@ static bool haveSamePrevDigestsAndTime(const Tick& A, const Tick& B)
 {
     return A.prevComputerDigest == B.prevComputerDigest &&
         A.prevResourceTestingDigest == B.prevResourceTestingDigest &&
+        A.prevTransactionBodyDigest == B.prevTransactionBodyDigest &&
         A.prevSpectrumDigest == B.prevSpectrumDigest &&
         A.prevUniverseDigest == B.prevUniverseDigest &&
         *((unsigned long long*) & A.millisecond) == *((unsigned long long*) & B.millisecond);
@@ -3829,7 +3830,7 @@ static void initializeFirstTick()
                     etalonTick.prevResourceTestingDigest = unique->prevResourceTestingDigest;
                     etalonTick.prevSpectrumDigest = unique->prevSpectrumDigest;
                     etalonTick.prevUniverseDigest = unique->prevUniverseDigest;
-                    etalonTick.prevTransactionBodyDigest = unique->saltedTransactionBodyDigest;
+                    etalonTick.prevTransactionBodyDigest = unique->prevTransactionBodyDigest;
                     return;
                 }
             }
@@ -4473,12 +4474,12 @@ static void prepareNextTickTransactions()
 }
 
 
-// Computes the digest of all tx bodies of a certain tick and saves it in etalonTick
+// Computes the digest of all tx bodies of a certain tick and saves it in etalonTick (4 bytes)
 // This function can only be called by tickProcessor
 static void computeTxBodyDigestBase(const int tick)
 {
     ASSERT(nextTickData.epoch == system.epoch); // nextTickData need to be valid
-    constexpr size_t outputLen = 32; // output length in bytes
+    constexpr size_t outputLen = 4; // output length in bytes
 
     XKCP::KangarooTwelve_Initialize(&g_k12_instance, 128, outputLen);
 
@@ -4537,7 +4538,7 @@ static void computeTxBodyDigestBase(const int tick)
     int ret = 1;
     while(ret == 1)
     {
-        ret = XKCP::KangarooTwelve_Final(&g_k12_instance, etalonTick.saltedTransactionBodyDigest.m256i_u8, (const unsigned char *)"", 0);
+        ret = XKCP::KangarooTwelve_Final(&g_k12_instance, reinterpret_cast<unsigned char*>(&etalonTick.saltedTransactionBodyDigest), (const unsigned char *)"", 0);
 #if !defined(NDEBUG)
         if(ret == 1)
         {
@@ -4561,7 +4562,7 @@ static void broadcastTickVotes()
         broadcastTick.tick.epoch = system.epoch;
         m256i saltedData[2];
         saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
-        saltedData[1].m256i_u64[0] = resourceTestingDigest;
+        saltedData[1].m256i_u32[0] = resourceTestingDigest;
         KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &broadcastTick.tick.saltedResourceTestingDigest, sizeof(broadcastTick.tick.saltedResourceTestingDigest));
 
         saltedData[1] = etalonTick.saltedSpectrumDigest;
@@ -4573,8 +4574,9 @@ static void broadcastTickVotes()
         saltedData[1] = etalonTick.saltedComputerDigest;
         KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedComputerDigest);
 
-        saltedData[1] = etalonTick.saltedTransactionBodyDigest;
-        KangarooTwelve64To32(saltedData, &broadcastTick.tick.saltedTransactionBodyDigest);
+        saltedData[1] = m256i::zero();
+        saltedData[1].m256i_u32[0] = etalonTick.saltedTransactionBodyDigest;
+        KangarooTwelve(saltedData, 32 + sizeof(etalonTick.saltedTransactionBodyDigest), &broadcastTick.tick.saltedTransactionBodyDigest, sizeof(broadcastTick.tick.saltedTransactionBodyDigest));
 
         unsigned char digest[32];
         KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
@@ -4616,9 +4618,9 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                 m256i saltedData[2];
                 m256i saltedDigest;
                 saltedData[0] = broadcastedComputors.computors.publicKeys[tick->computorIndex];
-                saltedData[1].m256i_u64[0] = resourceTestingDigest;
+                saltedData[1].m256i_u32[0] = resourceTestingDigest;
                 KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &saltedDigest, sizeof(resourceTestingDigest));
-                if (tick->saltedResourceTestingDigest == saltedDigest.m256i_u64[0])
+                if (tick->saltedResourceTestingDigest == saltedDigest.m256i_u32[0])
                 {
                     saltedData[1] = etalonTick.saltedSpectrumDigest;
                     KangarooTwelve64To32(saltedData, &saltedDigest);
@@ -4638,9 +4640,10 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                                 // Vote of a node is only counting if txBodyDigest is matching with the version of the node
                                 if (!isZero(etalonTick.expectedNextTickTransactionDigest))
                                 {
-                                    saltedData[1] = etalonTick.saltedTransactionBodyDigest;
-                                    KangarooTwelve64To32(saltedData, &saltedDigest);
-                                    if(tick->saltedTransactionBodyDigest == saltedDigest)
+                                    saltedData[1] = m256i::zero();
+                                    saltedData[1].m256i_u32[0] = etalonTick.saltedTransactionBodyDigest;
+                                    KangarooTwelve(saltedData, 32 + sizeof(etalonTick.saltedTransactionBodyDigest), &saltedDigest, sizeof(etalonTick.saltedTransactionBodyDigest));
+                                    if(tick->saltedTransactionBodyDigest == saltedDigest.m256i_u32[0])
                                     {
                                         // to avoid submitting invalid votes (eg: all zeroes with valid signature)
                                         // only count votes that matched etalonTick
@@ -4932,7 +4935,7 @@ static void tickProcessor(void*)
                     else
                     {
                         etalonTick.expectedNextTickTransactionDigest = m256i::zero();
-                        etalonTick.saltedTransactionBodyDigest = m256i::zero();
+                        etalonTick.saltedTransactionBodyDigest = 0;
                         lastExpectedTickTransactionDigest = etalonTick.expectedNextTickTransactionDigest;
                     }
 
@@ -6110,8 +6113,7 @@ static void processKeyPresses()
             logToConsole(message);
 
             setText(message, L"TxBody digest = ");
-            getIdentity(etalonTick.saltedTransactionBodyDigest.m256i_u8, digestChars, true);
-            appendText(message, digestChars);
+            appendNumber(message, etalonTick.saltedTransactionBodyDigest, false);
             appendText(message, L".");
             logToConsole(message);
 
