@@ -47,6 +47,8 @@ enum QBAYLogInfo {
 	notAvailableCreateAndMint = 28,
 	exchangeStatus = 29,
 	saleStatus = 30,
+	creatorOfAuction = 31,
+	possesor = 32,
 };
 
 struct QBAYLogger
@@ -684,7 +686,6 @@ protected:
 				}
 				return ;
 			}
-
 			if(qpi.invocationReward() < QBAY_SINGLE_NFT_CREATE_FEE)  //     The fee for single NFT should be more than 5M QU
 			{
 				output.returnCode = QBAYLogInfo::insufficientQubic;
@@ -705,48 +706,36 @@ protected:
 			locals.newNFT.royalty = input.royalty;
 			state.numberOfNFTIncoming++;
 		}
-
 		else 
 		{
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			if(state.Collections.get(input.collectionId).creator != qpi.invocator())
 			{
 				output.returnCode = QBAYLogInfo::notCollectionCreator;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notCollectionCreator, 0 };
 				LOG_INFO(locals.log);
 
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
 				return ;
 			}
-
 			if(state.Collections.get(input.collectionId).typeOfCollection == 0)
 			{
 				output.returnCode = QBAYLogInfo::collectionForDrop;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::collectionForDrop, 0 };
 				LOG_INFO(locals.log);
 
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
 				return ;
 			}
-
 			if(state.Collections.get(input.collectionId).currentSize <= 0) 
 			{
 				output.returnCode = QBAYLogInfo::limitCollectionVolumn;
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::limitCollectionVolumn, 0 };
 				LOG_INFO(locals.log);
 
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
 				return ;
 			}
-
 			locals.newNFT.royalty = state.Collections.get(input.collectionId).royalty;   // The royalty should be set as the royalty to be set in collection
 
 			locals.updatedCollection = state.Collections.get(input.collectionId);
@@ -943,17 +932,15 @@ protected:
 			return ;
 		}
 
-		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
+		if(input.receiver == qpi.invocator())
 		{
-			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTid)
-			{
-				output.returnCode = QBAYLogInfo::exchangeStatus;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::exchangeStatus, 0 };
-				LOG_INFO(locals.log);
+			output.returnCode = QBAYLogInfo::invalidInput;
+			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
 
-				return;
-			}
+			return;
 		}
+
 
 		if(state.NFTs.get(input.NFTid).statusOfSale == 1)
 		{
@@ -984,30 +971,22 @@ protected:
 			return ;
 		}
 
+		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
+		{
+			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTid)
+			{
+				output.returnCode = QBAYLogInfo::exchangeStatus;
+				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::exchangeStatus, 0 };
+				LOG_INFO(locals.log);
+
+				return;
+			}
+		}
+
+		locals.transferNFT = state.NFTs.get(input.NFTid);
 		locals.transferNFT.possesor = input.receiver;
 		locals.transferNFT.salePrice = QBAY_SALE_PRICE;
 		locals.transferNFT.statusOfSale = 0;
-
-		locals.transferNFT.creator = state.NFTs.get(input.NFTid).creator;
-		locals.transferNFT.royalty = state.NFTs.get(input.NFTid).royalty;
-		locals.transferNFT.statusOfAsk = state.NFTs.get(input.NFTid).statusOfAsk;
-		locals.transferNFT.paymentMethodOfAsk = state.NFTs.get(input.NFTid).paymentMethodOfAsk;
-		locals.transferNFT.askUser = state.NFTs.get(input.NFTid).askUser;
-		locals.transferNFT.askMaxPrice = state.NFTs.get(input.NFTid).askMaxPrice;
-		locals.transferNFT.NFTidForExchange = state.NFTs.get(input.NFTid).NFTidForExchange;
-		locals.transferNFT.statusOfExchange = state.NFTs.get(input.NFTid).statusOfExchange;
-		locals.transferNFT.currentPriceOfAuction = 0;
-		locals.transferNFT.startTimeOfAuction = 0;
-		locals.transferNFT.endTimeOfAuction = 0;
-		locals.transferNFT.statusOfAuction = 0;
-		locals.transferNFT.paymentMethodOfAuction = 0;
-		locals.transferNFT.creatorOfAuction = NULL_ID;
-		
-
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.transferNFT.URI.set(locals._t, state.NFTs.get(input.NFTid).URI.get(locals._t));
-		}
 
 		state.NFTs.set(input.NFTid, locals.transferNFT);
 		output.returnCode = QBAYLogInfo::success;
@@ -1039,18 +1018,6 @@ protected:
 			return ;
 		}
 
-		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
-		{
-			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTid)
-			{
-				output.returnCode = QBAYLogInfo::exchangeStatus;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::exchangeStatus, 0 };
-				LOG_INFO(locals.log);
-
-				return;
-			}
-		}
-
 		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
@@ -1071,29 +1038,21 @@ protected:
 			return ;
 		}
 
+		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
+		{
+			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTid)
+			{
+				output.returnCode = QBAYLogInfo::exchangeStatus;
+				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::exchangeStatus, 0 };
+				LOG_INFO(locals.log);
+
+				return;
+			}
+		}
+
+		locals.saleNFT = state.NFTs.get(input.NFTid);
 		locals.saleNFT.salePrice = input.price;
 		locals.saleNFT.statusOfSale = 1;
-		locals.saleNFT.creator = state.NFTs.get(input.NFTid).creator;
-		locals.saleNFT.possesor = state.NFTs.get(input.NFTid).possesor;
-		locals.saleNFT.askUser = state.NFTs.get(input.NFTid).askUser;
-		locals.saleNFT.askMaxPrice = state.NFTs.get(input.NFTid).askMaxPrice;
-		locals.saleNFT.royalty = state.NFTs.get(input.NFTid).royalty;
-		locals.saleNFT.statusOfAsk = state.NFTs.get(input.NFTid).statusOfAsk;
-		locals.saleNFT.paymentMethodOfAsk = state.NFTs.get(input.NFTid).paymentMethodOfAsk;
-		locals.saleNFT.NFTidForExchange = state.NFTs.get(input.NFTid).NFTidForExchange;
-		locals.saleNFT.statusOfExchange = state.NFTs.get(input.NFTid).statusOfExchange;
-		locals.saleNFT.currentPriceOfAuction = 0;
-		locals.saleNFT.startTimeOfAuction = 0;
-		locals.saleNFT.endTimeOfAuction = 0;
-		locals.saleNFT.statusOfAuction = 0;
-		locals.saleNFT.paymentMethodOfAuction = 0;
-		locals.saleNFT.creatorOfAuction = NULL_ID;
-		
-
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.saleNFT.URI.set(locals._t, state.NFTs.get(input.NFTid).URI.get(locals._t));
-		}
 
 		state.NFTs.set(input.NFTid, locals.saleNFT);
 
@@ -1165,6 +1124,20 @@ protected:
 			return ;
 		}
 
+		if(state.NFTs.get(input.NFTid).possesor == qpi.invocator())
+		{
+			output.returnCode = QBAYLogInfo::possesor;
+			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::possesor, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			return ;
+		}
+
 		if(input.methodOfPayment == 0)
 		{
 			if((sint64)state.NFTs.get(input.NFTid).salePrice > qpi.invocationReward()) 
@@ -1198,6 +1171,10 @@ protected:
 
 		else 
 		{
+			if(qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			locals.possessedCFBAmount = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
 			if(div(state.NFTs.get(input.NFTid).salePrice * 1ULL, state.priceOfQubic) > div(locals.possessedCFBAmount * 1ULL, state.priceOfCFB)) 
 			{
@@ -1205,17 +1182,7 @@ protected:
 				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
 				LOG_INFO(locals.log);
 
-				if(qpi.invocationReward() > 0) 
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-
 				return ;
-			}
-
-			if(qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
 			locals.transferredAmountOfCFB = div(state.NFTs.get(input.NFTid).salePrice * 1ULL, state.priceOfQubic) * state.priceOfCFB;
@@ -1228,29 +1195,11 @@ protected:
 			state.earnedCFB += locals.marketFee;
 		}
 
+		locals.updatedNFT = state.NFTs.get(input.NFTid);
+
 		locals.updatedNFT.possesor = qpi.invocator();
 		locals.updatedNFT.salePrice = QBAY_SALE_PRICE;
 		locals.updatedNFT.statusOfSale = 0;
-
-		locals.updatedNFT.creator = state.NFTs.get(input.NFTid).creator;
-		locals.updatedNFT.royalty = state.NFTs.get(input.NFTid).royalty;
-		locals.updatedNFT.statusOfAsk = state.NFTs.get(input.NFTid).statusOfAsk;
-		locals.updatedNFT.askUser = state.NFTs.get(input.NFTid).askUser;
-		locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.NFTid).paymentMethodOfAsk;
-		locals.updatedNFT.askMaxPrice = state.NFTs.get(input.NFTid).askMaxPrice;
-		locals.updatedNFT.NFTidForExchange = state.NFTs.get(input.NFTid).NFTidForExchange;
-		locals.updatedNFT.statusOfExchange = state.NFTs.get(input.NFTid).statusOfExchange;
-		locals.updatedNFT.currentPriceOfAuction = 0;
-		locals.updatedNFT.startTimeOfAuction = 0;
-		locals.updatedNFT.endTimeOfAuction = 0;
-		locals.updatedNFT.statusOfAuction = 0;
-		locals.updatedNFT.paymentMethodOfAuction = 0;
-		locals.updatedNFT.creatorOfAuction = NULL_ID;
-		
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.NFTid).URI.get(locals._t));
-		}
 
 		state.NFTs.set(input.NFTid, locals.updatedNFT);
 		output.returnCode = QBAYLogInfo::success;
@@ -1303,29 +1252,9 @@ protected:
 			return ;
 		}
 
+		locals.updatedNFT = state.NFTs.get(input.NFTid);
 		locals.updatedNFT.salePrice = QBAY_SALE_PRICE;
 		locals.updatedNFT.statusOfSale = 0;
-
-		locals.updatedNFT.creator = state.NFTs.get(input.NFTid).creator;
-		locals.updatedNFT.possesor = state.NFTs.get(input.NFTid).possesor;
-		locals.updatedNFT.askUser = state.NFTs.get(input.NFTid).askUser;
-		locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.NFTid).paymentMethodOfAsk;
-		locals.updatedNFT.askMaxPrice = state.NFTs.get(input.NFTid).askMaxPrice;
-		locals.updatedNFT.royalty = state.NFTs.get(input.NFTid).royalty;
-		locals.updatedNFT.statusOfAsk = state.NFTs.get(input.NFTid).statusOfAsk;
-		locals.updatedNFT.NFTidForExchange = state.NFTs.get(input.NFTid).NFTidForExchange;
-		locals.updatedNFT.statusOfExchange = state.NFTs.get(input.NFTid).statusOfExchange;
-		locals.updatedNFT.currentPriceOfAuction = 0;
-		locals.updatedNFT.startTimeOfAuction = 0;
-		locals.updatedNFT.endTimeOfAuction = 0;
-		locals.updatedNFT.statusOfAuction = 0;
-		locals.updatedNFT.paymentMethodOfAuction = 0;
-		locals.updatedNFT.creatorOfAuction = NULL_ID;
-
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.NFTid).URI.get(locals._t));
-		}
 
 		state.NFTs.set(input.NFTid, locals.updatedNFT);
 
@@ -1360,7 +1289,7 @@ protected:
 			return ;
 		}
 
-		if(input.possessedNFT == input.anotherNFT)
+		if(input.possessedNFT == input.anotherNFT || state.NFTs.get(input.possessedNFT).possesor == state.NFTs.get(input.anotherNFT).possesor)
 		{
 			output.returnCode = QBAYLogInfo::invalidInput; 
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
@@ -1402,48 +1331,21 @@ protected:
 		{
 			locals.tmpPossesor = state.NFTs.get(input.possessedNFT).possesor;
 
+			locals.updatedNFT = state.NFTs.get(input.possessedNFT);
 			locals.updatedNFT.NFTidForExchange = QBAY_MAX_NUMBER_NFT;
 			locals.updatedNFT.statusOfExchange = 0;
 			locals.updatedNFT.salePrice = QBAY_SALE_PRICE;
 			locals.updatedNFT.statusOfSale = 0;
-			locals.updatedNFT.currentPriceOfAuction = 0;
-			locals.updatedNFT.startTimeOfAuction = 0;
-			locals.updatedNFT.endTimeOfAuction = 0;
-			locals.updatedNFT.statusOfAuction = 0;
-			locals.updatedNFT.paymentMethodOfAuction = 0;
-			locals.updatedNFT.creatorOfAuction = NULL_ID;
-
-			locals.updatedNFT.creator = state.NFTs.get(input.possessedNFT).creator;
 			locals.updatedNFT.possesor = state.NFTs.get(input.anotherNFT).possesor;
-			locals.updatedNFT.askUser = state.NFTs.get(input.possessedNFT).askUser;
-			locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.possessedNFT).paymentMethodOfAsk;
-			locals.updatedNFT.askMaxPrice = state.NFTs.get(input.possessedNFT).askMaxPrice;
-			locals.updatedNFT.royalty = state.NFTs.get(input.possessedNFT).royalty;
-			locals.updatedNFT.statusOfAsk = state.NFTs.get(input.possessedNFT).statusOfAsk;
-			
-
-			for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-			{
-				locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.possessedNFT).URI.get(locals._t));
-			}
 
 			state.NFTs.set(input.possessedNFT, locals.updatedNFT);
 
-			locals.updatedNFT.creator = state.NFTs.get(input.anotherNFT).creator;
+			locals.updatedNFT = state.NFTs.get(input.anotherNFT);
+			locals.updatedNFT.NFTidForExchange = QBAY_MAX_NUMBER_NFT;
+			locals.updatedNFT.statusOfExchange = 0;
+			locals.updatedNFT.salePrice = QBAY_SALE_PRICE;
+			locals.updatedNFT.statusOfSale = 0;
 			locals.updatedNFT.possesor = locals.tmpPossesor;
-			locals.updatedNFT.askUser = state.NFTs.get(input.anotherNFT).askUser;
-			locals.updatedNFT.salePrice = state.NFTs.get(input.anotherNFT).salePrice;
-			locals.updatedNFT.statusOfSale = state.NFTs.get(input.anotherNFT).statusOfSale;
-			locals.updatedNFT.askMaxPrice = state.NFTs.get(input.anotherNFT).askMaxPrice;
-			locals.updatedNFT.royalty = state.NFTs.get(input.anotherNFT).royalty;
-			locals.updatedNFT.statusOfAsk = state.NFTs.get(input.anotherNFT).statusOfAsk;
-			locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.anotherNFT).paymentMethodOfAsk;
-			
-
-			for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-			{
-				locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.anotherNFT).URI.get(locals._t));
-			}
 
 			state.NFTs.set(input.anotherNFT, locals.updatedNFT);
 		}
@@ -1458,29 +1360,9 @@ protected:
 				LOG_INFO(locals.log);
 				return ;
 			}
+			locals.updatedNFT = state.NFTs.get(input.anotherNFT);
 			locals.updatedNFT.NFTidForExchange = input.possessedNFT;
 			locals.updatedNFT.statusOfExchange = 1;
-
-			locals.updatedNFT.creator = state.NFTs.get(input.anotherNFT).creator;
-			locals.updatedNFT.possesor = state.NFTs.get(input.anotherNFT).possesor;
-			locals.updatedNFT.askUser = state.NFTs.get(input.anotherNFT).askUser;
-			locals.updatedNFT.salePrice = state.NFTs.get(input.anotherNFT).salePrice;
-			locals.updatedNFT.statusOfSale = state.NFTs.get(input.anotherNFT).statusOfSale;
-			locals.updatedNFT.askMaxPrice = state.NFTs.get(input.anotherNFT).askMaxPrice;
-			locals.updatedNFT.royalty = state.NFTs.get(input.anotherNFT).royalty;
-			locals.updatedNFT.statusOfAsk = state.NFTs.get(input.anotherNFT).statusOfAsk;
-			locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.anotherNFT).paymentMethodOfAsk;
-			locals.updatedNFT.currentPriceOfAuction = 0;
-			locals.updatedNFT.startTimeOfAuction = 0;
-			locals.updatedNFT.endTimeOfAuction = 0;
-			locals.updatedNFT.statusOfAuction = 0;
-			locals.updatedNFT.creatorOfAuction = NULL_ID;
-			
-
-			for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-			{
-				locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.anotherNFT).URI.get(locals._t));
-			}
 
 			state.NFTs.set(input.anotherNFT, locals.updatedNFT);
 		}
@@ -1534,30 +1416,9 @@ protected:
 			return ;
 		}
 
+		locals.updatedNFT = state.NFTs.get(input.anotherNFT);
 		locals.updatedNFT.NFTidForExchange = QBAY_MAX_NUMBER_NFT;
 		locals.updatedNFT.statusOfExchange = 0;
-
-		locals.updatedNFT.creator = state.NFTs.get(input.anotherNFT).creator;
-		locals.updatedNFT.possesor = state.NFTs.get(input.anotherNFT).possesor;
-		locals.updatedNFT.askUser = state.NFTs.get(input.anotherNFT).askUser;
-		locals.updatedNFT.salePrice = state.NFTs.get(input.anotherNFT).salePrice;
-		locals.updatedNFT.statusOfSale = state.NFTs.get(input.anotherNFT).statusOfSale;
-		locals.updatedNFT.askMaxPrice = state.NFTs.get(input.anotherNFT).askMaxPrice;
-		locals.updatedNFT.royalty = state.NFTs.get(input.anotherNFT).royalty;
-		locals.updatedNFT.statusOfAsk = state.NFTs.get(input.anotherNFT).statusOfAsk;
-		locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.anotherNFT).paymentMethodOfAsk;
-		locals.updatedNFT.currentPriceOfAuction = 0;
-		locals.updatedNFT.startTimeOfAuction = 0;
-		locals.updatedNFT.endTimeOfAuction = 0;
-		locals.updatedNFT.statusOfAuction = 0;
-		locals.updatedNFT.paymentMethodOfAuction = 0;
-		locals.updatedNFT.creatorOfAuction = NULL_ID;
-		
-
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.anotherNFT).URI.get(locals._t));
-		}
 
 		state.NFTs.set(input.anotherNFT, locals.updatedNFT);
 
@@ -1598,6 +1459,20 @@ protected:
 		{
 			output.returnCode = QBAYLogInfo::notEndedAuction;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notEndedAuction, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			return ;
+		}
+
+		if(state.NFTs.get(input.NFTid).possesor == qpi.invocator())
+		{
+			output.returnCode = QBAYLogInfo::possesor;
+			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::possesor, 0 };
 			LOG_INFO(locals.log);
 
 			if(qpi.invocationReward() > 0) 
@@ -1686,29 +1561,11 @@ protected:
 
 		}
 
+		locals.AskedNFT = state.NFTs.get(input.NFTid);
 		locals.AskedNFT.statusOfAsk = 1;
 		locals.AskedNFT.askUser = qpi.invocator();
 		locals.AskedNFT.askMaxPrice = input.askPrice;
 		locals.AskedNFT.paymentMethodOfAsk = input.paymentMethod;
-
-		locals.AskedNFT.creator = state.NFTs.get(input.NFTid).creator;
-		locals.AskedNFT.possesor = state.NFTs.get(input.NFTid).possesor;
-		locals.AskedNFT.royalty = state.NFTs.get(input.NFTid).royalty;
-		locals.AskedNFT.salePrice = state.NFTs.get(input.NFTid).salePrice;
-		locals.AskedNFT.statusOfSale = state.NFTs.get(input.NFTid).statusOfSale;
-		locals.AskedNFT.NFTidForExchange = state.NFTs.get(input.NFTid).NFTidForExchange;
-		locals.AskedNFT.statusOfExchange = state.NFTs.get(input.NFTid).statusOfExchange;
-		locals.AskedNFT.currentPriceOfAuction = 0;
-		locals.AskedNFT.startTimeOfAuction = 0;
-		locals.AskedNFT.endTimeOfAuction = 0;
-		locals.AskedNFT.statusOfAuction = 0;
-		locals.AskedNFT.paymentMethodOfAuction = 0;
-		locals.AskedNFT.creatorOfAuction = NULL_ID;
-		
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.AskedNFT.URI.set(locals._t, state.NFTs.get(input.NFTid).URI.get(locals._t));
-		}
 
 		state.NFTs.set(input.NFTid, locals.AskedNFT);
 
@@ -1803,6 +1660,7 @@ protected:
 			state.earnedCFB += locals.marketFee;
 		}
 
+		locals.updatedNFT = state.NFTs.get(input.NFTid);
 		locals.updatedNFT.possesor = state.NFTs.get(input.NFTid).askUser;
 		locals.updatedNFT.statusOfAsk = 0;
 		locals.updatedNFT.askUser = NULL_ID;
@@ -1810,22 +1668,6 @@ protected:
 		locals.updatedNFT.paymentMethodOfAsk = 0;
 		locals.updatedNFT.statusOfSale = 0;
 		locals.updatedNFT.salePrice = QBAY_SALE_PRICE;
-		locals.updatedNFT.currentPriceOfAuction = 0;
-		locals.updatedNFT.startTimeOfAuction = 0;
-		locals.updatedNFT.endTimeOfAuction = 0;
-		locals.updatedNFT.statusOfAuction = 0;
-		locals.updatedNFT.paymentMethodOfAuction = 0;
-		locals.updatedNFT.creatorOfAuction = NULL_ID;
-
-		locals.updatedNFT.creator = state.NFTs.get(input.NFTid).creator;
-		locals.updatedNFT.royalty = state.NFTs.get(input.NFTid).royalty;
-		locals.updatedNFT.NFTidForExchange = state.NFTs.get(input.NFTid).NFTidForExchange;
-		locals.updatedNFT.statusOfExchange = state.NFTs.get(input.NFTid).statusOfExchange;
-
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.NFTid).URI.get(locals._t));
-		}
 
 		state.NFTs.set(input.NFTid, locals.updatedNFT);
 
@@ -1907,30 +1749,11 @@ protected:
 			qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.cfbIssuer, SELF, SELF, state.NFTs.get(input.NFTid).askMaxPrice, state.NFTs.get(input.NFTid).askUser);
 		}
 
-		locals.updatedNFT.creator = state.NFTs.get(input.NFTid).creator;
-		locals.updatedNFT.royalty = state.NFTs.get(input.NFTid).royalty;
-		locals.updatedNFT.possesor = state.NFTs.get(input.NFTid).possesor;
-		locals.updatedNFT.statusOfSale = state.NFTs.get(input.NFTid).statusOfSale;
-		locals.updatedNFT.salePrice = state.NFTs.get(input.NFTid).salePrice;
-		locals.updatedNFT.NFTidForExchange = state.NFTs.get(input.NFTid).NFTidForExchange;
-		locals.updatedNFT.statusOfExchange = state.NFTs.get(input.NFTid).statusOfExchange;
-
+		locals.updatedNFT = state.NFTs.get(input.NFTid);
 		locals.updatedNFT.statusOfAsk = 0;
 		locals.updatedNFT.askUser = NULL_ID;
 		locals.updatedNFT.askMaxPrice = 0;
 		locals.updatedNFT.paymentMethodOfAsk = 0;
-
-		locals.updatedNFT.currentPriceOfAuction = 0;
-		locals.updatedNFT.startTimeOfAuction = 0;
-		locals.updatedNFT.endTimeOfAuction = 0;
-		locals.updatedNFT.statusOfAuction = 0;
-		locals.updatedNFT.paymentMethodOfAuction = 0;
-		locals.updatedNFT.creatorOfAuction = NULL_ID;
-
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.NFTid).URI.get(locals._t));
-		}
 
 		state.NFTs.set(input.NFTid, locals.updatedNFT);
 
@@ -1954,18 +1777,6 @@ protected:
 		if(qpi.invocationReward() > 0) 
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
-
-		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
-		{
-			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTId)
-			{
-				output.returnCode = QBAYLogInfo::exchangeStatus;
-				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::exchangeStatus, 0 };
-				LOG_INFO(locals.log);
-
-				return;
-			}
 		}
 
 		if(state.NFTs.get(input.NFTId).statusOfSale == 1)
@@ -2018,30 +1829,25 @@ protected:
 			return ;
 		}
 
-		locals.updatedNFT.creator = state.NFTs.get(input.NFTId).creator;
-		locals.updatedNFT.royalty = state.NFTs.get(input.NFTId).royalty;
-		locals.updatedNFT.possesor = state.NFTs.get(input.NFTId).possesor;
-		locals.updatedNFT.statusOfAsk = state.NFTs.get(input.NFTId).statusOfAsk;
-		locals.updatedNFT.askUser = state.NFTs.get(input.NFTId).askUser;
-		locals.updatedNFT.askMaxPrice = state.NFTs.get(input.NFTId).askMaxPrice;
-		locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.NFTId).paymentMethodOfAsk;
-		locals.updatedNFT.NFTidForExchange = state.NFTs.get(input.NFTId).NFTidForExchange;
-		locals.updatedNFT.statusOfExchange = state.NFTs.get(input.NFTId).statusOfExchange;
+		for(locals._t = 0 ; locals._t < state.numberOfNFT; locals._t++)
+		{
+			if(state.NFTs.get(locals._t).NFTidForExchange == input.NFTId)
+			{
+				output.returnCode = QBAYLogInfo::exchangeStatus;
+				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::exchangeStatus, 0 };
+				LOG_INFO(locals.log);
 
-		locals.updatedNFT.statusOfSale = 0;
-		locals.updatedNFT.salePrice = QBAY_SALE_PRICE;
+				return;
+			}
+		}
 
+		locals.updatedNFT = state.NFTs.get(input.NFTId);
 		locals.updatedNFT.currentPriceOfAuction = input.minPrice;
 		locals.updatedNFT.startTimeOfAuction = locals.startDate;
 		locals.updatedNFT.endTimeOfAuction = locals.endDate;
 		locals.updatedNFT.statusOfAuction = 1;
 		locals.updatedNFT.paymentMethodOfAuction = input.paymentMethodOfAuction;
 		locals.updatedNFT.creatorOfAuction = qpi.invocator();
-
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.NFTId).URI.get(locals._t));
-		}
 
 		state.NFTs.set(input.NFTId, locals.updatedNFT);
 
@@ -2058,6 +1864,7 @@ protected:
 		uint64 creatorFee;
 		uint64 shareHolderFee;
 		uint64 possessedAmount;
+		uint64 updatedBidPrice;
         sint64 tmp;
 		uint32 _t;
 		uint32 curDate;
@@ -2098,6 +1905,18 @@ protected:
 		{
 			output.returnCode = QBAYLogInfo::notAuctionTime;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notAuctionTime, 0 };
+			LOG_INFO(locals.log);
+			if(qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+
+		if(state.NFTs.get(input.NFTId).creatorOfAuction == qpi.invocator())
+		{
+			output.returnCode = QBAYLogInfo::creatorOfAuction;
+			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::creatorOfAuction, 0 };
 			LOG_INFO(locals.log);
 			if(qpi.invocationReward() > 0)
 			{
@@ -2176,7 +1995,7 @@ protected:
 				state.collectedShareHoldersFee += locals.shareHolderFee;
 			}
 			
-			locals.updatedNFT.currentPriceOfAuction = input.price;
+			locals.updatedBidPrice = input.price;
 		}
 
 		if(state.NFTs.get(input.NFTId).paymentMethodOfAuction == 1)
@@ -2245,33 +2064,13 @@ protected:
 				state.earnedCFB += locals.marketFee;
 			}
 			
-			locals.updatedNFT.currentPriceOfAuction = input.price;
+			locals.updatedBidPrice = input.price;
 		}
 
+		locals.updatedNFT = state.NFTs.get(input.NFTId);
 		locals.updatedNFT.possesor = qpi.invocator();
-
-		locals.updatedNFT.creator = state.NFTs.get(input.NFTId).creator;
-		locals.updatedNFT.royalty = state.NFTs.get(input.NFTId).royalty;
-		locals.updatedNFT.statusOfAsk = state.NFTs.get(input.NFTId).statusOfAsk;
-		locals.updatedNFT.askUser = state.NFTs.get(input.NFTId).askUser;
-		locals.updatedNFT.askMaxPrice = state.NFTs.get(input.NFTId).askMaxPrice;
-		locals.updatedNFT.paymentMethodOfAsk = state.NFTs.get(input.NFTId).paymentMethodOfAsk;
-		locals.updatedNFT.NFTidForExchange = state.NFTs.get(input.NFTId).NFTidForExchange;
-		locals.updatedNFT.statusOfExchange = state.NFTs.get(input.NFTId).statusOfExchange;
-
-		locals.updatedNFT.statusOfSale = 0;
-		locals.updatedNFT.salePrice = QBAY_SALE_PRICE;
-
-		locals.updatedNFT.startTimeOfAuction = state.NFTs.get(input.NFTId).startTimeOfAuction;
-		locals.updatedNFT.endTimeOfAuction = state.NFTs.get(input.NFTId).endTimeOfAuction;
 		locals.updatedNFT.statusOfAuction = 2;
-		locals.updatedNFT.paymentMethodOfAuction = state.NFTs.get(input.NFTId).paymentMethodOfAuction;
-		locals.updatedNFT.creatorOfAuction = state.NFTs.get(input.NFTId).creatorOfAuction;
-
-		for(locals._t = 0; locals._t < QBAY_LENGTH_OF_URI; locals._t++) 
-		{
-			locals.updatedNFT.URI.set(locals._t, state.NFTs.get(input.NFTId).URI.get(locals._t));
-		}
+		locals.updatedNFT.currentPriceOfAuction = locals.updatedBidPrice;
 
 		state.NFTs.set(input.NFTId, locals.updatedNFT);
 
