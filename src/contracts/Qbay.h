@@ -544,7 +544,14 @@ protected:
 			return ;
 		}
 
-		locals.numberOfNFT = input.volumn == 0 ? 200: input.volumn * 1000;
+		if(input.volumn == 0)
+		{
+			locals.numberOfNFT = 200;
+		}
+		else 
+		{
+			locals.numberOfNFT = input.volumn * 1000;
+		}
 
 		if(state.numberOfCollection >= QBAY_MAX_COLLECTION || state.numberOfNFTIncoming + locals.numberOfNFT >= QBAY_MAX_NUMBER_NFT) 
 		{
@@ -559,7 +566,14 @@ protected:
 		}
 
 		locals.possessedAmount = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
-		locals.fee = input.volumn == 0 ? 100: input.volumn * 200;
+		if(input.volumn == 0)
+		{
+			locals.fee = 100;
+		}
+		else 
+		{
+			locals.fee = input.volumn * 200;
+		}
 
 		if(input.maxSizePerOneId > locals.numberOfNFT)
 		{
