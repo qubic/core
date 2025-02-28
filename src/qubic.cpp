@@ -5553,6 +5553,13 @@ static bool initialize()
         if (numberOfPublicPeers > 0)
             publicPeers[numberOfPublicPeers - 1].isVerified = true;
     }
+    if (numberOfPublicPeers < 4)
+    {
+        setText(message, L"WARNING: Only ");
+        appendNumber(message, numberOfPublicPeers, FALSE);
+        appendText(message, L" knownPublicPeers were given. It is recommendended to enter at least 4!");
+        logToConsole(message);
+    }
 
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
