@@ -494,6 +494,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                                 else
                                 {
                                     peers[i].isConnectedAccepted = TRUE;
+                                    peers[i].address.u32 = *(unsigned int*)tcp4ConfigData.AccessPoint.RemoteAddress.Addr;
                                 }
                             }
                             else
