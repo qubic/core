@@ -337,7 +337,7 @@ struct QBAY : public ContractBase
 
 	struct getInfoOfCollectionById_input
 	{
-		uint32 idOfColletion;
+		uint32 idOfCollection;
 	};
 
 	struct getInfoOfCollectionById_output
@@ -2235,16 +2235,16 @@ protected:
 			return ;
 		}
 
-		output.creator = state.Collections.get(input.idOfColletion).creator;
-		output.currentSize = state.Collections.get(input.idOfColletion).currentSize;
-		output.maxSizeHoldingPerOneId = state.Collections.get(input.idOfColletion).maxSizeHoldingPerOneId;
-		output.priceForDropMint = state.Collections.get(input.idOfColletion).priceForDropMint;
-		output.royalty = state.Collections.get(input.idOfColletion).royalty;
-		output.typeOfCollection = state.Collections.get(input.idOfColletion).typeOfCollection;
+		output.creator = state.Collections.get(input.idOfCollection).creator;
+		output.currentSize = state.Collections.get(input.idOfCollection).currentSize;
+		output.maxSizeHoldingPerOneId = state.Collections.get(input.idOfCollection).maxSizeHoldingPerOneId;
+		output.priceForDropMint = state.Collections.get(input.idOfCollection).priceForDropMint;
+		output.royalty = state.Collections.get(input.idOfCollection).royalty;
+		output.typeOfCollection = state.Collections.get(input.idOfCollection).typeOfCollection;
 
 		for(locals._t = 0 ; locals._t < 64; locals._t++)
 		{
-			output.URI.set(locals._t, state.Collections.get(input.idOfColletion).URI.get(locals._t));
+			output.URI.set(locals._t, state.Collections.get(input.idOfCollection).URI.get(locals._t));
 		}
 
 	_

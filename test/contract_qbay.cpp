@@ -106,7 +106,7 @@ public:
     void mintChecker(id user, uint32 royalty, uint32 collectionId, Array<uint8, 64> URI, bit typeOfMint, uint32 idOfNFT)
     {
         EXPECT_EQ(NFTs.get(idOfNFT).creator, user);
-        EXPECT_EQ(NFTs.get(idOfNFT).possesor, user);
+        EXPECT_EQ(NFTs.get(idOfNFT).possessor, user);
         if(typeOfMint == 0)
         {
             EXPECT_EQ(NFTs.get(idOfNFT).royalty, Collections.get(collectionId).royalty);
@@ -128,7 +128,7 @@ public:
 
     void transferChecker(id newUser, uint32 NFTId)
     {
-        EXPECT_EQ(NFTs.get(NFTId).possesor, newUser);
+        EXPECT_EQ(NFTs.get(NFTId).possessor, newUser);
     }
 
     void listInMarketChecker(uint32 NFTId, uint64 price)
@@ -139,7 +139,7 @@ public:
 
     void buyChecker(id oldPossesor, id newPossessor, uint32 NFTId, uint64 price, bit typfOfPayment, uint64 initialBalanceOfCreator, uint64 initialBalanceOfPossesor, uint64 initialBalanceOfMarket, bit isSameCreatorAndPossesor)
     {
-        EXPECT_EQ(NFTs.get(NFTId).possesor, newPossessor);
+        EXPECT_EQ(NFTs.get(NFTId).possessor, newPossessor);
         if(typfOfPayment == 0)
         {
             if(isSameCreatorAndPossesor == 1)
@@ -182,7 +182,7 @@ public:
 
     void possesorChecker(id user, uint32 possessedNFT)
     {
-        EXPECT_EQ(NFTs.get(possessedNFT).possesor, user);
+        EXPECT_EQ(NFTs.get(possessedNFT).possessor, user);
     }
 
     void cancelExchangeChecker(uint32 NFTId)
@@ -226,7 +226,7 @@ public:
 
     void bidOnAuctionChecker(id user, uint32 NFTId, uint64 price)
     {
-        EXPECT_EQ(NFTs.get(NFTId).possesor, user);
+        EXPECT_EQ(NFTs.get(NFTId).possessor, user);
         EXPECT_EQ(NFTs.get(NFTId).currentPriceOfAuction, price);
         EXPECT_EQ(NFTs.get(NFTId).statusOfAuction, 2);
     }
@@ -245,7 +245,7 @@ public:
     void getInfoOfNFTUserPossessedChecker(getInfoOfNFTUserPossessed_output output, uint32 idOfNFT)
     {
         EXPECT_EQ(output.creator, NFTs.get(idOfNFT).creator);
-        EXPECT_EQ(output.possesor, NFTs.get(idOfNFT).possesor);
+        EXPECT_EQ(output.possessor, NFTs.get(idOfNFT).possessor);
         EXPECT_EQ(output.askMaxPrice, NFTs.get(idOfNFT).askMaxPrice);
         EXPECT_EQ(output.askUser, NFTs.get(idOfNFT).askUser);
         EXPECT_EQ(output.creatorOfAuction, NFTs.get(idOfNFT).creatorOfAuction);
@@ -315,7 +315,7 @@ public:
     void getInfoOfNFTByIdChecker(getInfoOfNFTById_output output, uint32 idOfNFT)
     {
         EXPECT_EQ(output.creator, NFTs.get(idOfNFT).creator);
-        EXPECT_EQ(output.possesor, NFTs.get(idOfNFT).possesor);
+        EXPECT_EQ(output.possessor, NFTs.get(idOfNFT).possessor);
         EXPECT_EQ(output.askMaxPrice, NFTs.get(idOfNFT).askMaxPrice);
         EXPECT_EQ(output.askUser, NFTs.get(idOfNFT).askUser);
         EXPECT_EQ(output.creatorOfAuction, NFTs.get(idOfNFT).creatorOfAuction);
@@ -346,7 +346,7 @@ public:
 
     id getPossessorOfNFT(uint32 NFTId)
     {
-        return NFTs.get(NFTId).possesor;
+        return NFTs.get(NFTId).possessor;
     }
     
 };
@@ -424,12 +424,12 @@ public:
         return output;
     }
 
-    QBAY::getInfoOfCollectionById_output getInfoOfCollectionById(uint32 idOfColletion) const
+    QBAY::getInfoOfCollectionById_output getInfoOfCollectionById(uint32 idOfCollection) const
     {
         QBAY::getInfoOfCollectionById_input input;
         QBAY::getInfoOfCollectionById_output output;
 
-        input.idOfColletion = idOfColletion;
+        input.idOfCollection = idOfCollection;
 
         callFunction(QBAY_CONTRACT_INDEX, 5, input, output);
         return output;
@@ -497,14 +497,14 @@ public:
         return output;
     }
 
-    QBAY::createCollection_output createCollection(const id& user, uint64 priceForDropMint, uint32 volumn, uint32 royalty, uint32 maxSizePerOneId, bit typeOfCollection, Array<uint8, 64>& URI)
+    QBAY::createCollection_output createCollection(const id& user, uint64 priceForDropMint, uint32 volume, uint32 royalty, uint32 maxSizePerOneId, bit typeOfCollection, Array<uint8, 64>& URI)
     {
         QBAY::createCollection_input input;
         QBAY::createCollection_output output;
 
         input.maxSizePerOneId = maxSizePerOneId;
         input.priceForDropMint = priceForDropMint;
-        input.volumn = volumn;
+        input.volume = volume;
         input.royalty = royalty;
         input.typeOfCollection = typeOfCollection;
 
