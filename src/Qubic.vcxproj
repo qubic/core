@@ -78,6 +78,7 @@
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
+    <ClInclude Include="K12/kangaroo_twelve_xkcp.h" />
     <ClInclude Include="platform\custom_stack.h" />
     <ClInclude Include="platform\debugging.h" />
     <ClInclude Include="platform\file_io.h" />
