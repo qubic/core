@@ -168,6 +168,9 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
         if (peer->dataToTransmitSize + requestResponseHeader->size() > BUFFER_SIZE)
         {
             // Buffer is full, which indicates a problem
+#ifndef NDEBUG
+            addDebugMessage(L"Warning: Peer transmit buffer overflow -> closing connection!");
+#endif
             closePeer(peer);
         }
         else
@@ -228,6 +231,10 @@ static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
     if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + responseHeader->size() < responseQueueBufferTail)
         && (unsigned short)(responseQueueElementHead + 1) != responseQueueElementTail)
     {
+        ASSERT(responseQueueElementHead < RESPONSE_QUEUE_LENGTH);
+        ASSERT(responseQueueBufferHead < RESPONSE_QUEUE_BUFFER_SIZE);
+        ASSERT(responseQueueBufferHead + responseHeader->size() < RESPONSE_QUEUE_BUFFER_SIZE);
+
         responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
         bs->CopyMem(&responseQueueBuffer[responseQueueBufferHead], responseHeader, responseHeader->size());
         responseQueueBufferHead += responseHeader->size();
@@ -250,6 +257,10 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
     if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + sizeof(RequestResponseHeader) + dataSize < responseQueueBufferTail)
         && (unsigned short)(responseQueueElementHead + 1) != responseQueueElementTail)
     {
+        ASSERT(responseQueueElementHead < RESPONSE_QUEUE_LENGTH);
+        ASSERT(responseQueueBufferHead < RESPONSE_QUEUE_BUFFER_SIZE);
+        ASSERT(responseQueueBufferHead + sizeof(RequestResponseHeader) + dataSize < RESPONSE_QUEUE_BUFFER_SIZE);
+
         responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueBufferHead];
         if (!responseHeader->checkAndSetSize(sizeof(RequestResponseHeader) + dataSize))
