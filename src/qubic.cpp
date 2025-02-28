@@ -6950,7 +6950,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
 #endif
 
-#if !defined(NDEBUG)
+#if 0 //!defined(NDEBUG)
                     if (system.tick % 1000 == 0)
                     {
                         logHealthStatus();
