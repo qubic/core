@@ -82,6 +82,67 @@ inline char HashMapTestData<QPI::sint64, char>::GetValueNotInTestPairs()
 }
 
 
+// testdata for KeyT = QPI::BitArray<1024>, ValueT = uint64
+template<>
+std::array<std::pair<QPI::bit_1024, QPI::uint64>, 4>  HashMapTestData<QPI::bit_1024, QPI::uint64>::CreateKeyValueTestPairs()
+{
+    // Create a properly sized array to work with BitArray's setMem
+    alignas(32) unsigned char buffer[128] = {0}; // 1024 bits = 128 bytes
+
+    // Helper lambda to set a string pattern in bit_1024
+    auto setStringKey = [](QPI::bit_1024& bits, const std::string& str) {
+        bits.setAll(0);  // Clear all bits first
+        // Each character becomes 8 bits
+        for(size_t i = 0; i < str.length() && i < 128; i++)  // 128 is max bytes (1024/8)
+        {
+            unsigned char c = str[i];
+            // Set 8 bits for this character
+            for(int bit = 0; bit < 8; bit++)
+            {
+                bits.set(i * 8 + bit, (c & (1 << bit)) != 0);
+            }
+        }
+    };
+
+    QPI::bit_1024 key1, key2, key3, key4;
+    setStringKey(key1, "TestString1");
+    setStringKey(key2, "AnotherTest2");
+    setStringKey(key3, "ThirdString3");
+    setStringKey(key4, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()_-+={}[]|;:\"\'<>,.?/~`abcdefghijklmnopqrstuvwxyzABCDEFGH");
+
+    std::array<std::pair<QPI::bit_1024, QPI::uint64>, 4> res;
+	res = { {
+		{ key1, 12},
+		{ key2, 99},
+		{ key3, 723},
+		{ key4, 0},
+	} };
+	return res;
+}
+
+template<>
+inline QPI::bit_1024 HashMapTestData<QPI::bit_1024, QPI::uint64>::GetKeyNotInTestPairs()
+{
+    alignas(32) unsigned char buffer[128] = {0};
+    QPI::bit_1024 key;
+    std::string str = "NotInTestPairs";
+    for(size_t i = 0; i < str.length() && i < 128; i++)
+    {
+        unsigned char c = str[i];
+        for(int bit = 0; bit < 8; bit++)
+        {
+            key.set(i * 8 + bit, (c & (1 << bit)) != 0);
+        }
+    }
+    return key;
+}
+
+template<>
+inline QPI::uint64 HashMapTestData<QPI::bit_1024, QPI::uint64>::GetValueNotInTestPairs()
+{
+	return 42;
+}
+
 // Define the test fixture class with a single template parameter T because the type list
 // for test instantiation will contain pair-types std::pair<KeyT, ValueT> to use for T.
 template <typename T>
@@ -391,5 +452,5 @@ REGISTER_TYPED_TEST_CASE_P(QPIHashMapTest,
 	TestReset
 );
 
-typedef Types<std::pair<QPI::id, int>, std::pair<QPI::sint64, char>> KeyValueTypesToTest;
+typedef Types<std::pair<QPI::id, int>, std::pair<QPI::sint64, char>, std::pair<QPI::bit_1024, QPI::uint64>> KeyValueTypesToTest;
 INSTANTIATE_TYPED_TEST_CASE_P(TypedQPIHashMapTests, QPIHashMapTest, KeyValueTypesToTest);
