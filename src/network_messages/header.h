@@ -41,6 +41,7 @@ public:
         return true;
     }
 
+    // Check if dejavue is 0. A zero dejavu is used to signal that a message should be distributed to other peers.
     inline bool isDejavuZero() const
     {
         return !_dejavu;

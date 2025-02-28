@@ -576,8 +576,12 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                         {
                             if (receivedDataSize >= requestResponseHeader->size())
                             {
+                                // Compute saltId of packet with K12 of payload and header (size + type temporarily
+                                // overwritten with salt). This is used recognized and skip packet duplicates with
+                                // dejavu0 (checking/setting flag for received package). After receiving a certain
+                                // number of packages (DEJAVU_SWAP_LIMIT), dejavu0 is moved to dejavu1 for checking
+                                // and dejavu0 is initialized with an empty buffer for checking/setting.
                                 unsigned int saltedId;
-
                                 const unsigned int header = *((unsigned int*)requestResponseHeader);
                                 *((unsigned int*)requestResponseHeader) = salt;
                                 KangarooTwelve(requestResponseHeader, header & 0xFFFFFF, &saltedId, sizeof(saltedId));
