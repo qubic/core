@@ -46,13 +46,13 @@ constexpr sint32 QEARN_OVERFLOW_USER = 6;
 constexpr sint32 QEARN_LIMIT_LOCK = 7;
 
 enum QearnLogInfo {
-    successLocking = 0,
-    failedTransfer = 1,
-    limitLocking = 2,
-    overflowUser = 3,
-    invalidInput = 4,
-    successEarlyUnlocking = 5,
-    successFullyUnlocking = 6,
+    QearnSuccessLocking = 0,
+    QearnFailedTransfer = 1,
+    QearnLimitLocking = 2,
+    QearnOverflowUser = 3,
+    QearnInvalidInput = 4,
+    QearnSuccessEarlyUnlocking = 5,
+    QearnSuccessFullyUnlocking = 6,
 };
 struct QearnLogger
 {
@@ -493,7 +493,7 @@ protected:
         {
             output.returnCode = QEARN_INVALID_INPUT_AMOUNT;         // if the amount of locking is less than 10M, it should be failed to lock.
             
-            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), invalidInput, 0};
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), QearnInvalidInput, 0};
             LOG_INFO(locals.log);
             if(qpi.invocationReward() > 0) 
             {
@@ -513,7 +513,7 @@ protected:
                 {
                     output.returnCode = QEARN_LIMIT_LOCK;
 
-                    locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), limitLocking, 0};
+                    locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), QearnLimitLocking, 0};
                     LOG_INFO(locals.log);
 
                     if(qpi.invocationReward() > 0) 
@@ -539,7 +539,7 @@ protected:
                 
                 output.returnCode = QEARN_LOCK_SUCCESS;          //  additional locking of this epoch is succeed
 
-                locals.log = {QEARN_CONTRACT_INDEX, qpi.invocator(), SELF, qpi.invocationReward(), successLocking, 0};
+                locals.log = {QEARN_CONTRACT_INDEX, qpi.invocator(), SELF, qpi.invocationReward(), QearnSuccessLocking, 0};
                 LOG_INFO(locals.log);
                 return ;
             }
@@ -550,7 +550,7 @@ protected:
         {
             output.returnCode = QEARN_OVERFLOW_USER;
 
-            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), overflowUser, 0};
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), QearnOverflowUser, 0};
             LOG_INFO(locals.log);
 
             if(qpi.invocationReward() > 0) 
@@ -564,7 +564,7 @@ protected:
         {
             output.returnCode = QEARN_LIMIT_LOCK;
 
-            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), limitLocking, 0};
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), QearnLimitLocking, 0};
             LOG_INFO(locals.log);
 
             if(qpi.invocationReward() > 0) 
@@ -594,7 +594,7 @@ protected:
 
         output.returnCode = QEARN_LOCK_SUCCESS;            //  new locking of this epoch is succeed
 
-        locals.log = {QEARN_CONTRACT_INDEX, qpi.invocator(), SELF, qpi.invocationReward(), successLocking, 0};
+        locals.log = {QEARN_CONTRACT_INDEX, qpi.invocator(), SELF, qpi.invocationReward(), QearnSuccessLocking, 0};
         LOG_INFO(locals.log);
     _
 
@@ -630,7 +630,7 @@ protected:
 
             output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
             
-            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, invalidInput, 0};
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
             LOG_INFO(locals.log);
 
             return ;
@@ -642,7 +642,7 @@ protected:
             
             output.returnCode = QEARN_INVALID_INPUT_AMOUNT;
 
-            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, invalidInput, 0};
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
             LOG_INFO(locals.log);
 
             return ;
@@ -663,7 +663,7 @@ protected:
 
                     output.returnCode = QEARN_INVALID_INPUT_UNLOCK_AMOUNT;  //  if the amount to be wanted to unlock is more than locked amount, it should be failed to unlock
                     
-                    locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, invalidInput, 0};
+                    locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
                     LOG_INFO(locals.log);
 
                     return ;  
@@ -683,7 +683,7 @@ protected:
             
             output.returnCode = QEARN_EMPTY_LOCKED;     //   if there is no any locked info in state.Locker array, it shows this address didn't lock at the epoch (input.Locked_Epoch)
             
-            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, invalidInput, 0};
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
             LOG_INFO(locals.log);
 
             return ;  
@@ -784,7 +784,7 @@ protected:
         qpi.transfer(qpi.invocator(), locals.amountOfUnlocking + locals.amountOfReward);
         locals.transferAmount = locals.amountOfUnlocking + locals.amountOfReward;
         
-        locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, successEarlyUnlocking, 0};
+        locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, QearnSuccessEarlyUnlocking, 0};
         LOG_INFO(locals.log);
 
         qpi.burn(locals.amountOfburn);
@@ -977,7 +977,7 @@ protected:
             qpi.transfer(state.locker.get(locals._t).ID, locals._rewardAmount + state.locker.get(locals._t)._lockedAmount);
 
             locals.transferAmount = locals._rewardAmount + state.locker.get(locals._t)._lockedAmount;
-            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, successFullyUnlocking, 0};
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, QearnSuccessFullyUnlocking, 0};
             LOG_INFO(locals.log);
 
             if(state._fullyUnlockedCnt < QEARN_MAX_USERS) 
