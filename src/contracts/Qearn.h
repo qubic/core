@@ -57,8 +57,8 @@ enum QearnLogInfo {
 struct QearnLogger
 {
     uint32 _contractIndex;
-    id sourceIndex;
-    id destinationIndex;
+    id sourcePublicKey;
+    id destinationPublicKey;
     sint64 amount;
     uint32 _type;
     char _terminator; 
