@@ -18,10 +18,10 @@ namespace QPI
 	#
 	%
 	'
-	* not as multiplication operator
+	* (not prohibited as multiplication operator)
 	...
 	/ as division operator
-	::
+	:: (not prohibited as scope operator for structs, enums, and namespaces defined in contracts and `qpi.h`)
 	[
 	]
 	__
