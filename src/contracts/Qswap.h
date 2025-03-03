@@ -1,9 +1,9 @@
 using namespace QPI;
 
 // FIXED CONSTANTS
-constexpr uint64 QSWAP_INITIAL_MAX_POOL = 16;
+constexpr uint64 QSWAP_INITIAL_MAX_POOL = 16384;
 constexpr uint64 QSWAP_MAX_POOL = QSWAP_INITIAL_MAX_POOL * X_MULTIPLIER;
-constexpr uint64 QSWAP_MAX_USER_PER_POOL = 16;
+constexpr uint64 QSWAP_MAX_USER_PER_POOL = 256;
 constexpr sint64 QSWAP_MIN_LIQUDITY = 1000;
 constexpr uint32 QSWAP_SWAP_FEE_BASE = 10000;
 constexpr uint32 QSWAP_PROTOCOL_FEE_BASE = 100;
@@ -203,21 +203,21 @@ protected:
 	};
 
 	Array<PoolBasicState, QSWAP_MAX_POOL> mPoolBasicStates;
-	Collection<LiqudityInfo, QSWAP_MAX_POOL * QSWAP_MAX_USER_PER_POOL > mLiquditys;
+	Collection<LiqudityInfo, QSWAP_MAX_POOL * QSWAP_MAX_USER_PER_POOL> mLiquditys;
 
 	inline static sint64 min(sint64 a, sint64 b) {
 		return (a < b) ? a : b;
 	}
 
 	// find the sqrt of a*b
-	inline static sint64 sqrt(sint64 a, sint64 b) {
+	inline static sint64 sqrt(sint64& a, sint64& b, uint128& prod, uint128& y, uint128& z) {
 		if (a == b) { return a; }
 
-		uint128 prod = uint128(a) * uint128(b);
+		prod = uint128(a) * uint128(b);
 
 		// (prod + 1) / 2;
-		uint128 z = div(prod+uint128(1), uint128(2));
-		uint128_t y = prod;
+		z = div(prod+uint128(1), uint128(2));
+		y = prod;
 
 		while(z < y){
 			y = z;
@@ -228,79 +228,88 @@ protected:
 		return sint64(y.low);
 	}
 
-	inline static sint64 quoteEquivalentAmountB(sint64 amountADesired, sint64 reserveA, sint64 reserveB) {
+	inline static sint64 quoteEquivalentAmountB(sint64& amountADesired, sint64& reserveA, sint64& reserveB, uint128& tmpRes) {
 		// amountDesired * reserveB / reserveA
-		uint128 res = div(uint128(amountADesired) * uint128(reserveB), uint128(reserveA));
+		tmpRes = div(uint128(amountADesired) * uint128(reserveB), uint128(reserveA));
 
-		if ((res.high != 0)|| (res.low > 0x7FFFFFFFFFFFFFFF)) {
+		if ((tmpRes.high != 0)|| (tmpRes.low > 0x7FFFFFFFFFFFFFFF)) {
 			return -1;
 		} else {
-			return sint64(res.low);
+			return sint64(tmpRes.low);
 		}
 	}
 
 	// https://github.com/Uniswap/v2-periphery/blob/master/contracts/libraries/UniswapV2Library.sol#L43 
 	// x = reserveOut * amountIn * (1-fee) / (reserveIn + amountIn * (1-fee))
-	inline static sint64 getAmountOutTakeFeeFromInToken(sint64 amountIn, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
-		uint128 amountInWithFee = uint128(amountIn) * uint128(QSWAP_SWAP_FEE_BASE - fee);
-		uint128 numerator = uint128(reserveOut) * amountInWithFee;
-		uint128 denominator = uint128(reserveIn) * uint128(QSWAP_SWAP_FEE_BASE) + amountInWithFee;
+	inline static sint64 getAmountOutTakeFeeFromInToken(
+		sint64& amountIn,
+		sint64& reserveIn,
+		sint64& reserveOut,
+		uint32 fee,
+		uint128& amountInWithFee,
+		uint128& numerator,
+		uint128& denominator,
+		uint128& tmpRes
+	) {
+		amountInWithFee = uint128(amountIn) * uint128(QSWAP_SWAP_FEE_BASE - fee);
+		numerator = uint128(reserveOut) * amountInWithFee;
+		denominator = uint128(reserveIn) * uint128(QSWAP_SWAP_FEE_BASE) + amountInWithFee;
 
 		// numerator / denominator;
-		uint128 res = div(numerator, denominator);
-		if ((res.high != 0) || (res.low > 0x7FFFFFFFFFFFFFFF)) {
+		tmpRes = div(numerator, denominator);
+		if ((tmpRes.high != 0) || (tmpRes.low > 0x7FFFFFFFFFFFFFFF)) {
 			return -1;
 		} else {
-			return sint64(res.low);
+			return sint64(tmpRes.low);
 		}
 	}
 
 	// https://github.com/Uniswap/v2-periphery/blob/master/contracts/libraries/UniswapV2Library.sol#L53 
 	// x = (reserveIn * amountOut)/((1-fee) * (reserveOut - amountOut)
-	inline static sint64 getAmountInTakeFeeFromInToken(sint64 amountOut, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
+	inline static sint64 getAmountInTakeFeeFromInToken(sint64& amountOut, sint64& reserveIn, sint64& reserveOut, uint32 fee, uint128& tmpRes) {
 		// reserveIn*amountOut/(reserveOut - amountOut)*QSWAP_SWAP_FEE_BASE / (QSWAP_SWAP_FEE_BASE - fee)
-		uint128 res = div(
+		tmpRes = div(
 			div(
 				uint128(reserveIn) * uint128(amountOut),
 				uint128(reserveOut - amountOut)
 			) * uint128(QSWAP_SWAP_FEE_BASE),
 			uint128(QSWAP_SWAP_FEE_BASE - fee)
 		);
-		if ((res.high != 0) || (res.low > 0x7FFFFFFFFFFFFFFF)) {
+		if ((tmpRes.high != 0) || (tmpRes.low > 0x7FFFFFFFFFFFFFFF)) {
 			return -1;
 		} else {
-			return sint64(res.low);
+			return sint64(tmpRes.low);
 		}
 	}
 
 	// (reserveIn + amountIn) * (reserveOut - x) = reserveIn * reserveOut
 	// x = reserveOut * amountIn / (reserveIn + amountIn)
-	inline static sint64 getAmountOutTakeFeeFromOutToken(sint64 amountIn, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
-		uint128 numerator = uint128(reserveOut) * uint128(amountIn);
-		uint128 denominator = uint128(reserveIn + amountIn);
+	inline static sint64 getAmountOutTakeFeeFromOutToken(sint64& amountIn, sint64& reserveIn, sint64& reserveOut, uint32 fee, uint128& numerator, uint128& denominator, uint128& tmpRes) {
+		numerator = uint128(reserveOut) * uint128(amountIn);
+		denominator = uint128(reserveIn + amountIn);
 
-		uint128 res = div(numerator, denominator);
-		if ((res.high != 0)|| (res.low > 0x7FFFFFFFFFFFFFFF)) {
+		tmpRes = div(numerator, denominator);
+		if ((tmpRes.high != 0)|| (tmpRes.low > 0x7FFFFFFFFFFFFFFF)) {
 			return -1;
 		} else {
-			return sint64(res.low);
+			return sint64(tmpRes.low);
 		}
 	}
 
 	// (reserveIn + x) * (reserveOut - amountOut/(1 - fee)) = reserveIn * reserveOut
 	// x = (reserveIn * amountOut ) / (reserveOut * (1-fee) - amountOut)
-	inline static sint64 getAmountInTakeFeeFromOutToken(sint64 amountOut, sint64 reserveIn, sint64 reserveOut, uint32 fee) {
-		uint128 numerator = uint128(reserveIn) * uint128(amountOut);
+	inline static sint64 getAmountInTakeFeeFromOutToken(sint64& amountOut, sint64& reserveIn, sint64& reserveOut, uint32 fee, uint128& numerator, uint128& denominator, uint128& tmpRes) {
+		numerator = uint128(reserveIn) * uint128(amountOut);
 		if (uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee) / uint128(QSWAP_SWAP_FEE_BASE) < uint128(amountOut)){
 			return -1;
 		}
-		uint128 denominator = uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee) / uint128(QSWAP_SWAP_FEE_BASE) - uint128(amountOut);
+		denominator = uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee) / uint128(QSWAP_SWAP_FEE_BASE) - uint128(amountOut);
 
-		uint128 res = div(numerator, denominator);
-		if ((res.high != 0)|| (res.low > 0x7FFFFFFFFFFFFFFF)) {
+		tmpRes = div(numerator, denominator);
+		if ((tmpRes.high != 0)|| (tmpRes.low > 0x7FFFFFFFFFFFFFFF)) {
 			return -1;
 		} else {
-			return sint64(res.low);
+			return sint64(tmpRes.low);
 		}
 	}
 
@@ -325,7 +334,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetPoolBasicState)
-		output.poolExists = false;
+		output.poolExists = 0;
 		output.totalLiqudity = -1;
 		output.reservedAssetAmount = -1;
 		output.reservedQuAmount = -1;
@@ -350,7 +359,7 @@ protected:
 			return;
 		}
 
-		output.poolExists = true;
+		output.poolExists = 1;
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
@@ -387,6 +396,7 @@ protected:
 		PoolBasicState poolBasicState;
 
 		uint32 i0;
+		uint128 i1, i2, i3, i4;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(QuoteExactQuInput)
@@ -423,7 +433,11 @@ protected:
 			input.quAmountIn,
 			locals.poolBasicState.reservedQuAmount,
 			locals.poolBasicState.reservedAssetAmount,
-			state.swapFeeRate
+			state.swapFeeRate,
+			locals.i1,
+			locals.i2,
+			locals.i3,
+			locals.i4
 		);
 	_
 
@@ -433,6 +447,7 @@ protected:
 		PoolBasicState poolBasicState;
 
 		uint32 i0;
+		uint128 i1, i2, i3;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(QuoteExactQuOutput)
@@ -473,7 +488,10 @@ protected:
 			input.quAmountOut,
 			locals.poolBasicState.reservedAssetAmount,
 			locals.poolBasicState.reservedQuAmount,
-			state.swapFeeRate
+			state.swapFeeRate,
+			locals.i1,
+			locals.i2,
+			locals.i3
 		);
 	_
 
@@ -484,6 +502,7 @@ protected:
 		sint64 quAmountOutWithFee;
 
 		uint32 i0;
+		uint128 i1, i2, i3;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(QuoteExactAssetInput)
@@ -520,7 +539,10 @@ protected:
 			input.assetAmountIn,
 			locals.poolBasicState.reservedAssetAmount,
 			locals.poolBasicState.reservedQuAmount,
-			state.swapFeeRate
+			state.swapFeeRate,
+			locals.i1,
+			locals.i2,
+			locals.i3
 		);
 
 		// above call overflow
@@ -542,6 +564,7 @@ protected:
 		PoolBasicState poolBasicState;
 
 		uint32 i0;
+		uint128 i1;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(QuoteExactAssetOutput)
@@ -582,7 +605,8 @@ protected:
 			input.assetAmountOut,
 			locals.poolBasicState.reservedQuAmount,
 			locals.poolBasicState.reservedAssetAmount,
-			state.swapFeeRate
+			state.swapFeeRate,
+			locals.i1
 		);
 	_
 
@@ -642,6 +666,7 @@ protected:
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
+
 		uint32 i0, i1;
 	};
 
@@ -728,6 +753,7 @@ protected:
 		uint128 tmpIncLiq1;
 
 		uint32 i0;
+		uint128 i1, i2, i3;
 	};
 
 	// https://github.com/Uniswap/v2-periphery/blob/0335e8f7e1bd1e8d8329fd300aea2ef2f36dd19f/contracts/UniswapV2Router02.sol#L61
@@ -780,7 +806,8 @@ protected:
 			locals.assetOptimalAmount = quoteEquivalentAmountB(
 				locals.quAmountDesired,
 				locals.poolBasicState.reservedQuAmount,
-				locals.poolBasicState.reservedAssetAmount
+				locals.poolBasicState.reservedAssetAmount,
+				locals.i1
 			);
 			// overflow
 			if (locals.assetOptimalAmount == -1) {
@@ -799,7 +826,8 @@ protected:
 				locals.quOptimalAmount = quoteEquivalentAmountB(
 					input.assetAmountDesired,
 					locals.poolBasicState.reservedAssetAmount,
-					locals.poolBasicState.reservedQuAmount
+					locals.poolBasicState.reservedQuAmount,
+					locals.i1
 				);
 				// overflow
 				if (locals.quOptimalAmount == -1) {
@@ -841,7 +869,7 @@ protected:
 
 		// for pool's initial mint 
 		if (locals.poolBasicState.totalLiqudity == 0) {
-			locals.increaseLiqudity = sqrt(locals.quTransferAmount, locals.assetTransferAmount);
+			locals.increaseLiqudity = sqrt(locals.quTransferAmount, locals.assetTransferAmount, locals.i1, locals.i2, locals.i3);
 
 			if (locals.increaseLiqudity < QSWAP_MIN_LIQUDITY ){
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -890,20 +918,7 @@ protected:
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
 			output.userIncreaseLiqudity = locals.increaseLiqudity - QSWAP_MIN_LIQUDITY;
-
 		} else {
-			// locals.increaseLiqudity = min(
-			// 	sint64(div(
-			// 		uint128(locals.quTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
-			// 		uint128(locals.poolBasicState.reservedQuAmount)
-			// 	).low),
-
-			// 	sint64(div(
-			// 		uint128(locals.assetTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
-			// 		uint128(locals.poolBasicState.reservedAssetAmount)
-			// 	).low)
-			// );
-
 			locals.tmpIncLiq0 = div(
 				uint128(locals.quTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
 				uint128(locals.poolBasicState.reservedQuAmount)
@@ -921,8 +936,11 @@ protected:
 				return;
 			}
 
+			// increaseLiquity = min(
+			// 	quTransferAmount * totalLiquity / reserveQuAmount,
+			// 	assetTransferAmount * totalLiquity / reserveAssetAmount
+			// );
 			locals.increaseLiqudity = min(sint64(locals.tmpIncLiq0.low), sint64(locals.tmpIncLiq1.low));
-
 
 			// maybe too little input 
 			if (locals.increaseLiqudity == 0) {
@@ -1009,11 +1027,11 @@ protected:
 		PoolBasicState poolBasicState;
 		sint64 userLiqudityElementIndex;
 		sint64 poolSlot;
-		uint32 i0;
 		LiqudityInfo userLiqudity;
-
 		sint64 burnQuAmount;
 		sint64 burnAssetAmount;
+
+		uint32 i0;
 	};
 
 	// https://github.com/Uniswap/v2-periphery/blob/0335e8f7e1bd1e8d8329fd300aea2ef2f36dd19f/contracts/UniswapV2Router02.sol#L102
@@ -1131,6 +1149,7 @@ protected:
 		sint64 feeToProtocol;
 
 		uint32 i0;
+		uint128 i1, i2, i3, i4;
 	};
 
 	// given an input qu amountIn, only execute swap in case (amountOut >= amountOutMin)
@@ -1178,7 +1197,11 @@ protected:
 			locals.quAmountIn,
 			locals.poolBasicState.reservedQuAmount,
 			locals.poolBasicState.reservedAssetAmount,
-			state.swapFeeRate
+			state.swapFeeRate,
+			locals.i1,
+			locals.i2,
+			locals.i3,
+			locals.i4
 		);
 
 		// overflow
@@ -1233,7 +1256,9 @@ protected:
 		sint64 quAmountIn;
 		sint64 feeToProtocol;
 		sint64 transferredAssetAmount;
+
 		uint32 i0;
+		uint128 i1;
 	};
 
 	// https://docs.uniswap.org/contracts/v2/reference/smart-contracts/router-02#swaptokensforexacttokens
@@ -1285,7 +1310,8 @@ protected:
 			input.assetAmountOut,
 			locals.poolBasicState.reservedQuAmount,
 			locals.poolBasicState.reservedAssetAmount,
-			state.swapFeeRate
+			state.swapFeeRate,
+			locals.i1
 		);
 
 		// above call overflow
@@ -1354,7 +1380,9 @@ protected:
 		sint64 protocolFee;
 		sint64 transferredAssetAmountBefore;
 		sint64 transferredAssetAmountAfter;
+
 		uint32 i0;
+		uint128 i1, i2, i3;
 	};
 
 	// given an amount of asset swap in, only execute swaping if quAmountOut >= input.amountOutMin
@@ -1408,7 +1436,10 @@ protected:
 			input.assetAmountIn,
 			locals.poolBasicState.reservedAssetAmount,
 			locals.poolBasicState.reservedQuAmount,
-			state.swapFeeRate
+			state.swapFeeRate,
+			locals.i1,
+			locals.i2,
+			locals.i3
 		);
 
 		// above call overflow
@@ -1490,7 +1521,9 @@ protected:
 		sint64 protocolFee;
 		sint64 transferredAssetAmountBefore;
 		sint64 transferredAssetAmountAfter;
+
 		uint32 i0;
+		uint128 i1, i2, i3;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SwapAssetForExactQu)
@@ -1535,7 +1568,10 @@ protected:
 			input.quAmountOut,
 			locals.poolBasicState.reservedAssetAmount,
 			locals.poolBasicState.reservedQuAmount,
-			state.swapFeeRate
+			state.swapFeeRate,
+			locals.i1,
+			locals.i2,
+			locals.i3
 		);
 
 		// above call overflow
