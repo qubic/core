@@ -1329,6 +1329,13 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
             }
             break;
+
+            case SPECIAL_COMMAND_CONTINUE_SWITCH_EPOCH:
+            {
+                epochTransitionCleanMemoryFlag = 1;
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
             }
         }
     }
