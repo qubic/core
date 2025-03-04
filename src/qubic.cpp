@@ -1046,7 +1046,7 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
                         // tick storage messed up -> indicates bug such as buffer overflow
 #if !defined(NDEBUG)
                         CHAR16 dbgMsg[200];
-                        setText(dbgMsg, L"Invalid transaction found in processRequestTickTransactions(), tick ");
+                        setText(dbgMsg, L"ERROR: Invalid transaction found in processRequestTickTransactions(), tick ");
                         appendNumber(dbgMsg, request->tick, FALSE);
                         addDebugMessage(dbgMsg);
                         ts.checkStateConsistencyWithAssert();
@@ -2699,7 +2699,7 @@ static void processTick(unsigned long long processorNumber)
     updateSpectrumInfo(si);
     if (si.numberOfEntities != spectrumInfo.numberOfEntities || si.totalAmount != spectrumInfo.totalAmount)
     {
-        addDebugMessage(L"BUG DETECTED: Spectrum info of continuous updating is inconsistent with counting from scratch!");
+        addDebugMessage(L"ERROR: Spectrum info of continuous updating is inconsistent with counting from scratch!");
     }
 #endif
 
@@ -4523,7 +4523,7 @@ static void computeTxBodyDigestBase(const int tick)
 #if !defined(NDEBUG)
                             else
                             {
-                                setText(message, L"txBodyDigest: XKCP failed to create hash of tx");
+                                setText(message, L"ERROR: txBodyDigest: XKCP failed to create hash of tx");
                                 addDebugMessage(message);
                             }
 #endif
@@ -4533,7 +4533,7 @@ static void computeTxBodyDigestBase(const int tick)
 #if !defined(NDEBUG)
                 else
                 {
-                    setText(message, L"txBodyDigest: Transaction verification failed");
+                    setText(message, L"ERROR: txBodyDigest: Transaction verification failed");
                     addDebugMessage(message);
                 }
 #endif
@@ -4550,7 +4550,7 @@ static void computeTxBodyDigestBase(const int tick)
 #if !defined(NDEBUG)
         if(ret == 1)
         {
-            setText(message, L"txBodyDigest: XKCP failed to finalize hash");
+            setText(message, L"ERROR: txBodyDigest: XKCP failed to finalize hash");
             addDebugMessage(message);
         }
 #endif
