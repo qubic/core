@@ -5569,6 +5569,10 @@ static bool initialize()
         logToConsole(message);
     }
 
+    // For testing that ASSERT_ON_MAIN_PROC_WITH_FLUSH works
+    bool this_shows_that_asserts_are_enabled = false;
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(this_shows_that_asserts_are_enabled);
+
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
