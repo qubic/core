@@ -7,6 +7,9 @@
 
 #if defined(EXPECT_TRUE)
 
+// in gtest context, use EXPECT_TRUE as ASSERT_ON_MAIN_PROC_WITH_FLUSH
+#define ASSERT_ON_MAIN_PROC_WITH_FLUSH EXPECT_TRUE
+
 // In gtest context, print with standard library
 static void addDebugMessage(const CHAR16* msg)
 {
@@ -15,8 +18,18 @@ static void addDebugMessage(const CHAR16* msg)
 
 #elif defined(NDEBUG)
 
+// with NDEBUG, make ASSERT_ON_MAIN_PROC_WITH_FLUSH disappear
+#define ASSERT_ON_MAIN_PROC_WITH_FLUSH(expression) ((void)0)
+
 // static void addDebugMessage(const CHAR16* msg){} // empty impl
+
 #else
+
+// ASSERT variant that only can be used on main processor that writes its message to screen / file before returning.
+#define ASSERT_ON_MAIN_PROC_WITH_FLUSH(expression) (void)(                                                       \
+            (!!(expression)) ||                                                              \
+            (addDebugMessageAssert(L"ASSERT failed: " _CRT_WIDE(#expression), _CRT_WIDE(__FILE__), (unsigned int)(__LINE__)), printDebugMessages(), 0) \
+        )
 
 static constexpr unsigned int debugMessageMaxCount = 1024;
 static CHAR16 debugMessage[debugMessageMaxCount][16384];
