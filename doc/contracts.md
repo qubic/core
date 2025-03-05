@@ -446,7 +446,9 @@ Strings `"` and chars `'` are forbidden, because they can be used to jump to ran
 Variadic arguments are prohibited (character combination `...`).
 
 Double underscores `__` must not be used in a contract, because these are reserved for internal functions and compiler macros that are prohibited to be used directly.
-For similar reasons, `::`, `QpiContext`, and `const_cast` are prohibited too.
+For similar reasons, `QpiContext` and `const_cast` are prohibited too.
+
+The scope resolution operator `::` is also prohibited, except for structs, enums, and namespaces defined in contracts and `qpi.h`.
 
 The keywords `typedef` and `union` are prohibited to make the code easier to read and prevent tricking code audits.
 
