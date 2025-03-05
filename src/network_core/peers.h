@@ -119,6 +119,7 @@ static bool isWhiteListPeer(unsigned char address[4])
     return false;
 }
 
+// Close peer in any state. Can only be called from main processor.
 static void closePeer(Peer* peer)
 {
     if (((unsigned long long)peer->tcp4Protocol) > 1)
@@ -147,7 +148,7 @@ static void closePeer(Peer* peer)
             if (peer->isConnectedAccepted && peer->isIncommingConnection)
             {
                 numberOfAcceptedIncommingConnection--;
-                ASSERT(numberOfAcceptedIncommingConnection >= 0);
+                ASSERT_ON_MAIN_PROC_WITH_FLUSH(numberOfAcceptedIncommingConnection >= 0);
             }
 
             peer->isConnectedAccepted = FALSE;
@@ -418,8 +419,11 @@ static void addPublicPeer(const IPv4Address& address)
     RELEASE(publicPeersLock);
 }
 
+// Check if connection was newly established and handle it in this case. Can only be called from main processor.
 static bool peerConnectionNewlyEstablished(unsigned int i)
 {
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS);
+
     // handle new connections (called in main loop)
     if (((unsigned long long)peers[i].tcp4Protocol)
         && peers[i].connectAcceptToken.CompletionToken.Status != -1)
@@ -517,7 +521,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
             if (peers[i].isIncommingConnection)
             {
                 numberOfAcceptedIncommingConnection++;
-                ASSERT(numberOfAcceptedIncommingConnection <= NUMBER_OF_INCOMING_CONNECTIONS);
+                ASSERT_ON_MAIN_PROC_WITH_FLUSH(numberOfAcceptedIncommingConnection <= NUMBER_OF_INCOMING_CONNECTIONS);
             }
             return true;
         }
@@ -525,9 +529,16 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
     return false;
 }
 
+// Receive and transmit on this peer. Can only be called from main processor.
 static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
 {
     EFI_STATUS status;
+
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS);
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(peers[i].receiveToken.Packet.RxData == &peers[i].receiveData);
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(peers[i].transmitToken.Packet.TxData == &peers[i].transmitData);
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(peers[i].receiveData.FragmentCount == 1);
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(peers[i].transmitData.FragmentCount == 1);
 
     // poll to receive incoming data and transmit outgoing segments
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
@@ -555,11 +566,15 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                 }
                 else
                 {
+                    ASSERT_ON_MAIN_PROC_WITH_FLUSH(peers[i].receiveData.DataLength <= BUFFER_SIZE);
+
                     numberOfReceivedBytes += peers[i].receiveData.DataLength;
                     *((unsigned long long*) & peers[i].receiveData.FragmentTable[0].FragmentBuffer) += peers[i].receiveData.DataLength;
 
                 iteration:
                     unsigned int receivedDataSize = (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
+
+                    ASSERT_ON_MAIN_PROC_WITH_FLUSH(receivedDataSize <= BUFFER_SIZE);
 
                     if (receivedDataSize >= sizeof(RequestResponseHeader))
                     {
@@ -597,9 +612,9 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                                     {
                                         dejavu0[saltedId >> 6] |= (1ULL << (saltedId & 63));
 
-                                        ASSERT(requestQueueElementHead < REQUEST_QUEUE_LENGTH);
-                                        ASSERT(requestQueueBufferHead < REQUEST_QUEUE_BUFFER_SIZE);
-                                        ASSERT(requestQueueBufferHead + requestResponseHeader->size() < REQUEST_QUEUE_BUFFER_SIZE);
+                                        ASSERT_ON_MAIN_PROC_WITH_FLUSH(requestQueueElementHead < REQUEST_QUEUE_LENGTH);
+                                        ASSERT_ON_MAIN_PROC_WITH_FLUSH(requestQueueBufferHead < REQUEST_QUEUE_BUFFER_SIZE);
+                                        ASSERT_ON_MAIN_PROC_WITH_FLUSH(requestQueueBufferHead + requestResponseHeader->size() < REQUEST_QUEUE_BUFFER_SIZE);
 
                                         requestQueueElements[requestQueueElementHead].offset = requestQueueBufferHead;
                                         bs->CopyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
@@ -651,6 +666,9 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             if ((((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer)) < BUFFER_SIZE)
             {
                 peers[i].receiveData.DataLength = peers[i].receiveData.FragmentTable[0].FragmentLength = BUFFER_SIZE - (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
+
+                ASSERT_ON_MAIN_PROC_WITH_FLUSH(peers[i].receiveData.DataLength <= BUFFER_SIZE);
+
                 if (peers[i].receiveData.DataLength)
                 {
                     EFI_TCP4_CONNECTION_STATE state;
@@ -713,6 +731,8 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
     {
         if (peers[i].dataToTransmitSize && !peers[i].isTransmitting && peers[i].isConnectedAccepted && !peers[i].isClosing)
         {
+            ASSERT_ON_MAIN_PROC_WITH_FLUSH(peers[i].dataToTransmitSize <= BUFFER_SIZE);
+
             // initiate transmission
             bs->CopyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
             peers[i].dataToTransmitSize = 0;
@@ -730,8 +750,11 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
     }
 }
 
+// Reconnect if this peer is inactive. Can only be called from main processor.
 static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 {
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS);
+
     EFI_STATUS status;
     if (!peers[i].tcp4Protocol)
     {
