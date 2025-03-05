@@ -2,7 +2,7 @@
 
 #include "uefi.h"
 
-static bool disableConsoleLogging = false;
+static unsigned char consoleLoggingLevel = 1;
 
 // message buffers:
 // - message is for public use
