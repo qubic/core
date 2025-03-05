@@ -75,5 +75,6 @@ struct SpecialCommandGetMiningScoreRanking
 };
 
 #define SPECIAL_COMMAND_FORCE_SWITCH_EPOCH 15ULL // F7
+#define SPECIAL_COMMAND_CONTINUE_SWITCH_EPOCH 16ULL // F10 (only log-enabled nodes need this)
 
 #pragma pack(pop)
