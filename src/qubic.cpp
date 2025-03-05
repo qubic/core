@@ -6690,13 +6690,17 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     peerReconnectIfInactive(i, PORT);
                 }
 
-                if (curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
+#if !TICK_STORAGE_AUTOSAVE_MODE
+                // Only save system + score cache to file regularly here if on AUX and snapshot auto-save is disabled
+                if ((mainAuxStatus & 1) == 0
+                    && curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
                 {
                     systemDataSavingTick = curTimeTick;
 
                     saveSystem();
                     score->saveScoreCache(system.epoch);
                 }
+#endif
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
                 {
