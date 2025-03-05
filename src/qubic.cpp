@@ -6040,6 +6040,10 @@ static void logHealthStatus()
             appendIPv4Address(message, peers[i].address);
             appendText(message, L":");
             appendText(message, peers[i].isIncommingConnection ? L"i" : L"o");
+            if (peers[i].exchangedPublicPeers)
+            {
+                appendText(message, L"p");
+            }
             if (peers[i].isClosing)
             {
                 appendText(message, L"c");

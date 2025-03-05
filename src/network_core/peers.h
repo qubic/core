@@ -483,33 +483,27 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     }
                     else
                     {
-                        // Out of slot for preserse IPs. Only accept white list IPs
-                        if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS)
+                        EFI_TCP4_CONFIG_DATA tcp4ConfigData;
+                        if (peers[i].tcp4Protocol
+                            && !peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, NULL, &tcp4ConfigData, NULL, NULL, NULL))
                         {
-                            EFI_TCP4_CONFIG_DATA tcp4ConfigData;
-                            if (peers[i].tcp4Protocol 
-                                && !peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, NULL, &tcp4ConfigData, NULL, NULL, NULL))
-                            {
-                                if (!isWhiteListPeer(tcp4ConfigData.AccessPoint.RemoteAddress.Addr))
-                                {
-                                    closePeer(&peers[i]);
-                                    return false;
-                                }
-                                else
-                                {
-                                    peers[i].isConnectedAccepted = TRUE;
-                                    peers[i].address.u32 = *(unsigned int*)tcp4ConfigData.AccessPoint.RemoteAddress.Addr;
-                                }
-                            }
-                            else
+                            // If out of slot for preserse IPs, only accept white list IPs
+                            if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS
+                                &&!isWhiteListPeer(tcp4ConfigData.AccessPoint.RemoteAddress.Addr))
                             {
                                 closePeer(&peers[i]);
                                 return false;
                             }
+                            else
+                            {
+                                peers[i].isConnectedAccepted = TRUE;
+                                peers[i].address.u32 = *(unsigned int*)tcp4ConfigData.AccessPoint.RemoteAddress.Addr;
+                            }
                         }
                         else
                         {
-                            peers[i].isConnectedAccepted = TRUE;
+                            closePeer(&peers[i]);
+                            return false;
                         }
                     }
                 }
