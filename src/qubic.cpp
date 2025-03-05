@@ -291,7 +291,7 @@ static struct {
 
 static void logToConsole(const CHAR16* message)
 {
-    if (disableConsoleLogging)
+    if (consoleLoggingLevel == 0)
     {
         return;
     }
@@ -5688,6 +5688,11 @@ static void deinitialize()
 
 static void logInfo()
 {
+    if (consoleLoggingLevel == 0)
+    {
+        return;
+    }
+
     unsigned long long numberOfWaitingBytes = 0;
 
     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
@@ -5763,6 +5768,11 @@ static void logInfo()
     prevNumberOfDisseminatedRequests = numberOfDisseminatedRequests;
     prevNumberOfReceivedBytes = numberOfReceivedBytes;
     prevNumberOfTransmittedBytes = numberOfTransmittedBytes;
+
+    if (consoleLoggingLevel < 2)
+    {
+        return;
+    }
 
     setNumber(message, numberOfProcessors - 2, TRUE);
 
@@ -6413,11 +6423,11 @@ static void processKeyPresses()
 
         /*
         * PAUSE Key
-        * By Pressing the PAUSE Key you can toggle the log output
+        * By Pressing the PAUSE Key you can cycle through the log output verbosity level
         */
         case 0x48:
         {
-            disableConsoleLogging = !disableConsoleLogging;
+            consoleLoggingLevel = (consoleLoggingLevel + 1) % 3;
         }
         break;
         }
