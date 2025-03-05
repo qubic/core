@@ -7,6 +7,7 @@ constexpr uint64 QSWAP_MAX_USER_PER_POOL = 256;
 constexpr sint64 QSWAP_MIN_LIQUDITY = 1000;
 constexpr uint32 QSWAP_SWAP_FEE_BASE = 10000;
 constexpr uint32 QSWAP_PROTOCOL_FEE_BASE = 100;
+constexpr uint32 QSWAP_POOL_CREATION_FEE_BASE = 100; // poolCreataionFee = assetIssueFee / POOL_CREATION_RATIO
 
 struct QSWAP2 
 {
@@ -18,6 +19,7 @@ public:
 	struct Fees_input{};
 	struct Fees_output{
 		uint32 assetIssuanceFee; // Amount of qus
+		uint32 poolCreationFee; // Amount of qus
 		uint32 transferFee; // Amount of qus
 		uint32 swapFee; // Number of billionths
 		uint32 protocolFee;
@@ -185,7 +187,7 @@ public:
 protected:
 	uint32 swapFeeRate; 		// e.g. 30: 0.3% (base: 10_000)
 	uint32 protocolFeeRate; 	// e.g. 20: 20% (base: 100) only charge in qu
-	uint32 poolCreateFee;		// qu amount
+	uint32 poolCreationRate;	// e.g. 10: 10% (base: 100)
 
 	uint64 protocolEarnedFee;
 	uint64 distributedAmount;
@@ -320,7 +322,9 @@ protected:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(Fees)
 		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+
 		output.assetIssuanceFee = locals.feesOutput.assetIssuanceFee;
+		output.poolCreationFee = uint32(div(uint64(locals.feesOutput.assetIssuanceFee) * uint64(state.poolCreationRate), uint64(QSWAP_POOL_CREATION_FEE_BASE)));
 		output.transferFee = locals.feesOutput.transferFee;
 		output.swapFee = state.swapFeeRate;
 		output.protocolFee = state.protocolFeeRate;
@@ -666,6 +670,9 @@ protected:
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
+		uint32 poolCreationFee;
 
 		uint32 i0, i1;
 	};
@@ -675,8 +682,11 @@ protected:
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreatePool)
 		output.success = false;
 
+		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+		locals.poolCreationFee = uint32(div(uint64(locals.feesOutput.assetIssuanceFee) * uint64(state.poolCreationRate), uint64(QSWAP_POOL_CREATION_FEE_BASE)));
+
 		// fee check
-		if(qpi.invocationReward() < state.poolCreateFee ) {
+		if(qpi.invocationReward() < locals.poolCreationFee ) {
 			if(qpi.invocationReward() > 0) {
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
@@ -722,10 +732,10 @@ protected:
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 
-		if(qpi.invocationReward() > state.poolCreateFee) {
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.poolCreateFee );
+		if(qpi.invocationReward() > locals.poolCreationFee) {
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.poolCreationFee );
 		}
-		state.protocolEarnedFee += state.poolCreateFee;
+		state.protocolEarnedFee += locals.poolCreationFee;
 
 		output.success = true;
 	_
@@ -1729,7 +1739,7 @@ protected:
 	INITIALIZE
 		state.swapFeeRate = 30; 	// 0.3%, must less than 10000
 		state.protocolFeeRate = 20; // 20%, must less than 100
-		state.poolCreateFee = 10000000;
+		state.poolCreationRate = 20; // 20%, must less than 100
 	_
 
 	END_TICK
