@@ -210,7 +210,7 @@ public:
 
 		q = uint128_t(0, 0);
 		r = uint128_t(0, 0);
-		for(uint8_t x = lhs.bits(); x > 0; x--){
+		for(unsigned char x = lhs.bits(); x > 0; x--){
 			q <<= uint128_t(0, 1);
 			r <<= uint128_t(0, 1);
 

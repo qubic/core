@@ -1413,7 +1413,7 @@ namespace QPI
 		) const;
 
 		// Returns -1 if the current tick is empty, returns the number of the transactions in the tick otherwise, including 0.
-		sint32 numberOfTickTransactions(
+		inline sint32 numberOfTickTransactions(
 		) const;
 
 		// Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
