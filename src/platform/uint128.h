@@ -227,8 +227,8 @@ public:
 	}
 
 	uint128_t operator/(const uint128_t & rhs) const{
-		uint128_t q;
-		uint128_t r;
+		uint128_t q{ 0, 0 };
+		uint128_t r{ 0, 0 };
 		divmod(*this, rhs, q, r);
 		return q;
 	}
