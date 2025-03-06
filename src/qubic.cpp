@@ -1442,6 +1442,9 @@ static void requestProcessor(void* ProcedureArgument)
         }
         else
         {
+            ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(requestQueueBuffer);
+            ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(header);
+
             ACQUIRE(requestQueueTailLock);
 
             if (requestQueueElementTail == requestQueueElementHead)
@@ -1452,18 +1455,23 @@ static void requestProcessor(void* ProcedureArgument)
             {
                 const unsigned long long beginningTick = __rdtsc();
 
+                Peer* peer = requestQueueElements[requestQueueElementTail].peer;
+                const unsigned int offset = requestQueueElements[requestQueueElementTail].offset;
+                if (offset + RequestResponseHeader::max_size >= REQUEST_QUEUE_BUFFER_SIZE)
                 {
-                    RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
-                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(requestHeader);
-                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(header);
+                    RELEASE(requestQueueTailLock);
+#ifndef NDEBUG
+                    addDebugMessage(L"requestProcessor(): got invalid requestQueueBuffer offset");
+                    waitUntilPrintDebugMessagesCompleted();
+#endif
+                    continue;
+                }
+                {
+                    RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[offset];
                     static_assert(BUFFER_SIZE > RequestResponseHeader::max_size);
                     bs->CopyMem(header, requestHeader, requestHeader->size());
                     requestQueueBufferTail += requestHeader->size();
                 }
-
-                Peer* peer = requestQueueElements[requestQueueElementTail].peer;
-                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(peer);
-                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(peer->tcp4Protocol);
 
                 if (requestQueueBufferTail > REQUEST_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
                 {
@@ -1472,6 +1480,10 @@ static void requestProcessor(void* ProcedureArgument)
                 requestQueueElementTail++;
 
                 RELEASE(requestQueueTailLock);
+
+                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(peer);
+                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(peer->tcp4Protocol);
+
                 switch (header->type())
                 {
                 case ExchangePublicPeers::type:
@@ -1628,7 +1640,18 @@ static void requestProcessor(void* ProcedureArgument)
 #endif
 
                 default:
-                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(!header->type());
+#ifndef NDEBUG
+                    if (header->type() != 201)
+                    {
+                        CHAR16 dbgMsg[200];
+                        setText(dbgMsg, L"Unexpected packet header type in requestProcessor(): type=");
+                        appendNumber(dbgMsg, header->type(), FALSE);
+                        appendText(dbgMsg, L", size=");
+                        appendNumber(dbgMsg, header->size(), FALSE);
+                        addDebugMessage(dbgMsg);
+                        waitUntilPrintDebugMessagesCompleted();
+                    }
+#endif
                 }
 
                 queueProcessingNumerator += __rdtsc() - beginningTick;

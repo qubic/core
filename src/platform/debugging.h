@@ -38,6 +38,7 @@ static void addDebugMessage(const CHAR16* msg)
         )
 
 // ASSERT variant that only can be used on non-main processor that writes its message to screen / file before returning.
+// CAUTION: Don't use when locks are acquired that are also used in the main processor.
 #define ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(expression) (void)( \
             (!!(expression)) ||  \
             (addDebugMessageAssert(L"ASSERT failed: " _CRT_WIDE(#expression), _CRT_WIDE(__FILE__), (unsigned int)(__LINE__)), waitUntilPrintDebugMessagesCompleted(), 0) \
