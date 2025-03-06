@@ -4324,7 +4324,8 @@ static unsigned int countCurrentTickVote()
 
 // This function scans through all transactions digest in next tickData
 // and look for those txs in local memory (pending txs and tickstorage). If a transaction doesn't exist, it will try to update requestedTickTransactions
-// I main loop (MAIN thread), it will try to fetch missing txs based on the data inside requestedTickTransactions
+// The main loop (MAIN thread) will try to fetch missing txs based on the data inside requestedTickTransactions.
+// This function also counts numberOfNextTickTransactions and numberOfKnownNextTickTransactions for checking if all tx are in tick tx storage.
 // Current code assumes the limits:
 // - 1 tx per source publickey per tick
 // - 128 txs per computor publickey per tick
@@ -4396,7 +4397,8 @@ static void prepareNextTickTransactions()
                         if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
                         {
                             ts.tickTransactions.acquireLock();
-                            if (!tsPendingTransactionOffsets[j])
+                            // write tx to tick tx storage, no matter if tsNextTickTransactionOffsets[i] is 0 (new tx)
+                            // or not (tx with digest that doesn't match tickData needs to be overwritten)
                             {
                                 const unsigned int transactionSize = pendingTransaction->totalSize();
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
@@ -4404,11 +4406,12 @@ static void prepareNextTickTransactions()
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
                                     bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
+
+                                    numberOfKnownNextTickTransactions++;
                                 }
                             }
                             ts.tickTransactions.releaseLock();
 
-                            numberOfKnownNextTickTransactions++;
                             unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
 
                             break;
@@ -4436,7 +4439,8 @@ static void prepareNextTickTransactions()
                         if (&entityPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
                         {
                             ts.tickTransactions.acquireLock();
-                            if (!tsPendingTransactionOffsets[j])
+                            // write tx to tick tx storage, no matter if tsNextTickTransactionOffsets[i] is 0 (new tx)
+                            // or not (tx with digest that doesn't match tickData needs to be overwritten)
                             {
                                 const unsigned int transactionSize = pendingTransaction->totalSize();
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
@@ -4444,11 +4448,12 @@ static void prepareNextTickTransactions()
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
                                     bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
+
+                                    numberOfKnownNextTickTransactions++;
                                 }
                             }
                             ts.tickTransactions.releaseLock();
 
-                            numberOfKnownNextTickTransactions++;
                             unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
 
                             break;
@@ -6606,6 +6611,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (criticalSituation == 1)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
+                }
+                if (ts.nextTickTransactionOffset + MAX_TRANSACTION_SIZE > ts.tickTransactions.storageSpaceCurrentEpoch)
+                {
+                    logToConsole(L"Transaction storage is full!!!");
                 }
 
                 const unsigned long long curTimeTick = __rdtsc();
