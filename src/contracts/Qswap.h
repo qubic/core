@@ -241,7 +241,7 @@ protected:
 		}
 	}
 
-	// https://github.com/Uniswap/v2-periphery/blob/master/contracts/libraries/UniswapV2Library.sol#L43 
+	// reserveIn * reserveOut = (reserveIn + amountIn * (1-fee)) * (reserveOut - x)
 	// x = reserveOut * amountIn * (1-fee) / (reserveIn + amountIn * (1-fee))
 	inline static sint64 getAmountOutTakeFeeFromInToken(
 		sint64& amountIn,
@@ -257,7 +257,7 @@ protected:
 		numerator = uint128(reserveOut) * amountInWithFee;
 		denominator = uint128(reserveIn) * uint128(QSWAP_SWAP_FEE_BASE) + amountInWithFee;
 
-		// numerator / denominator;
+		// numerator / denominator
 		tmpRes = div(numerator, denominator);
 		if ((tmpRes.high != 0) || (tmpRes.low > 0x7FFFFFFFFFFFFFFF)) {
 			return -1;
@@ -266,7 +266,7 @@ protected:
 		}
 	}
 
-	// https://github.com/Uniswap/v2-periphery/blob/master/contracts/libraries/UniswapV2Library.sol#L53 
+	// reserveIn * reserveOut = (reserveIn + x * (1-fee)) * (reserveOut - amountOut)
 	// x = (reserveIn * amountOut)/((1-fee) * (reserveOut - amountOut)
 	inline static sint64 getAmountInTakeFeeFromInToken(sint64& amountOut, sint64& reserveIn, sint64& reserveOut, uint32 fee, uint128& tmpRes) {
 		// reserveIn*amountOut/(reserveOut - amountOut)*QSWAP_SWAP_FEE_BASE / (QSWAP_SWAP_FEE_BASE - fee)
@@ -969,7 +969,7 @@ protected:
 			}
 
 			// no more space for new liqudity item
-			if ((locals.userLiqudityElementIndex == NULL) && ( state.mLiquditys.population() == state.mLiquditys.capacity())) {
+			if ((locals.userLiqudityElementIndex == NULL_INDEX) && ( state.mLiquditys.population() == state.mLiquditys.capacity())) {
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
 			}
@@ -1087,7 +1087,7 @@ protected:
 			locals.userLiqudityElementIndex = state.mLiquditys.nextElementIndex(locals.userLiqudityElementIndex);
 		}
 
-		if (locals.userLiqudityElementIndex == NULL){
+		if (locals.userLiqudityElementIndex == NULL_INDEX){
 			return;
 		}
 

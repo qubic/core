@@ -1,11 +1,31 @@
+// Copyright (c) 2013 - 2018 Jason Lee @ calccrypto at gmail.com
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+// https://github.com/calccrypto/uint128_t/blob/master/uint128_t.cpp
+
 #define NO_UEFI
 
 #include "gtest/gtest.h"
 #include "../src/platform/uint128.h"
 
 
-// https://github.com/calccrypto/uint128_t/blob/master/tests/testcases/add.cpp
-TEST(Arithmetic, add){
+TEST(Uint128Arithmetic, add){
     uint128_t low (0, 1);
     uint128_t high(1, 0);
 
@@ -19,7 +39,7 @@ TEST(Arithmetic, add){
 }
 
 // https://github.com/calccrypto/uint128_t/blob/master/tests/testcases/sub.cpp
-TEST(Arithmetic, subtract){
+TEST(Uint128Arithmetic, subtract){
     uint128_t big  (0xffffffffffffffffULL, 0xffffffffffffffffULL);
     uint128_t small(1);
 
@@ -30,7 +50,7 @@ TEST(Arithmetic, subtract){
 }
 
 // https://github.com/calccrypto/uint128_t/blob/master/tests/testcases/div.cpp
-TEST(Arithmetic, divide){
+TEST(Uint128Arithmetic, divide){
     const uint128_t big_val  (0xfedbca9876543210ULL);
     const uint128_t small_val(0xffffULL);
     const uint128_t res_val  (0xfedcc9753fc9ULL);
@@ -43,7 +63,7 @@ TEST(Arithmetic, divide){
     // EXPECT_THROW(uint128_t(1) / uint128_t(0), std::domain_error);
 }
 
-TEST(Arithmetic, multiply){
+TEST(Uint128Arithmetic, multiply){
     uint128_t val(0xfedbca9876543210ULL);
 
     EXPECT_EQ(val * val, uint128_t(0xfdb8e2bacbfe7cefULL, 0x010e6cd7a44a4100ULL));
@@ -57,12 +77,12 @@ TEST(Arithmetic, multiply){
     EXPECT_EQ(one * val, val);
 }
 
-TEST(Comparison, equals){
+TEST(Uint128Comparison, equals){
     EXPECT_EQ( (uint128_t(0xdeadbeefULL) == uint128_t(0xdeadbeefULL)), true);
     EXPECT_EQ(!(uint128_t(0xdeadbeefULL) == uint128_t(0xfee1baadULL)), true);
 }
 
-TEST(Comparison, less_than){
+TEST(Uint128Comparison, less_than){
     const uint128_t big  (0xffffffffffffffffULL, 0xffffffffffffffffULL);
     const uint128_t small(0x0000000000000000ULL, 0x0000000000000000ULL);
 
@@ -74,7 +94,7 @@ TEST(Comparison, less_than){
 }
 
 
-TEST(Comparison, greater_than){
+TEST(Uint128Comparison, greater_than){
     const uint128_t big  (0xffffffffffffffffULL, 0xffffffffffffffffULL);
     const uint128_t small(0x0000000000000000ULL, 0x0000000000000000ULL);
 
@@ -85,7 +105,7 @@ TEST(Comparison, greater_than){
     EXPECT_EQ(big > big,         false);
 }
 
-TEST(Comparison, greater_than_or_equals){
+TEST(Uint128Comparison, greater_than_or_equals){
     const uint128_t big  (0xffffffffffffffffULL, 0xffffffffffffffffULL);
     const uint128_t small(0x0000000000000000ULL, 0x0000000000000000ULL);
 
@@ -96,7 +116,7 @@ TEST(Comparison, greater_than_or_equals){
     EXPECT_EQ(big >= big,      true);
 }
 
-TEST(Comparison, less_than_or_equals){
+TEST(Uint128Comparison, less_than_or_equals){
     const uint128_t big  (0xffffffffffffffffULL, 0xffffffffffffffffULL);
     const uint128_t small(0x0000000000000000ULL, 0x0000000000000000ULL);
 
@@ -107,7 +127,7 @@ TEST(Comparison, less_than_or_equals){
     EXPECT_EQ(big <= big,      true);
 }
 
-TEST(BitShift, left){
+TEST(Uint128BitShift, left){
     // operator<<
     uint128_t val(0x1);
     uint64_t exp_val = 1;
@@ -130,7 +150,7 @@ TEST(BitShift, left){
     }
 }
 
-TEST(BitShift, right){
+TEST(Uint128BitShift, right){
     // operator>>
     uint128_t val(0xffffffffffffffffULL);
     uint64_t exp = 0xffffffffffffffffULL;
@@ -153,7 +173,7 @@ TEST(BitShift, right){
     }
 }
 
-TEST(BitWise, and){
+TEST(Uint128BitWise, and){
     uint128_t t  ((bool)     true);
     uint128_t f  ((bool)     false);
     uint128_t u8 ((uint8_t)  0xaaULL);

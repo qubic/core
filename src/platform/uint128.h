@@ -1,8 +1,25 @@
+// Copyright (c) 2013 - 2018 Jason Lee @ calccrypto at gmail.com
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+// https://github.com/calccrypto/uint128_t/blob/master/uint128_t.cpp
+
 #pragma once
-
-#include <utility>
-
-// baseed on https://github.com/calccrypto/uint128_t/blob/master/uint128_t.cpp
 
 class uint128_t{
 public:
@@ -170,40 +187,50 @@ public:
 		return *this += uint128_t(0, 1);
 	}
 
-	std::pair <uint128_t, uint128_t> divmod(const uint128_t & lhs, const uint128_t & rhs) const{
+	void divmod(const uint128_t & lhs, const uint128_t & rhs, uint128_t& q, uint128_t& r) const{
 		// Save some calculations /////////////////////
 		//if (rhs == uint128_0){
 		//	throw std::domain_error("Error: division or modulus by 0");
 		//}
 		if (rhs == uint128_t(0, 1)){
-			return std::pair <uint128_t, uint128_t> (lhs, uint128_t(0, 0));
+			q = lhs;
+			r = uint128_t(0, 0);
+			return;
 		}
 		else if (lhs == rhs){
-			return std::pair <uint128_t, uint128_t> (uint128_t(0, 1), uint128_t(0, 0));
+			q = uint128_t(0, 1);
+			r = uint128_t(0, 0);
+			return;
 		}
 		else if ((lhs == uint128_t(0, 0)) || (lhs < rhs)){
-			return std::pair <uint128_t, uint128_t> (uint128_t(0, 0), lhs);
+			q = uint128_t(0, 0);
+			r = lhs;
+			return;
 		}
 
-		std::pair <uint128_t, uint128_t> qr (uint128_t(0, 0), uint128_t(0, 0));
+		q = uint128_t(0, 0);
+		r = uint128_t(0, 0);
 		for(uint8_t x = lhs.bits(); x > 0; x--){
-			qr.first  <<= uint128_t(0, 1);
-			qr.second <<= uint128_t(0, 1);
+			q <<= uint128_t(0, 1);
+			r <<= uint128_t(0, 1);
 
 			if ((lhs >> (x - 1U)) & 1){
-				++qr.second;
+				// ++qr.second;
+				++r;
 			}
 
-			if (qr.second >= rhs){
-				qr.second -= rhs;
-				++qr.first;
+			if (r >= rhs) {
+				r -= rhs;
+				++q;
 			}
 		}
-		return qr;
 	}
 
 	uint128_t operator/(const uint128_t & rhs) const{
-		return divmod(*this, rhs).first;
+		uint128_t q;
+		uint128_t r;
+		divmod(*this, rhs, q, r);
+		return q;
 	}
 
 	uint128_t operator*(const uint128_t& rhs) const{
