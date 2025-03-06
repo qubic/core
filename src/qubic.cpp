@@ -1719,12 +1719,12 @@ static void contractProcessor(void*)
     case USER_PROCEDURE_CALL:
     {
         const Transaction* transaction = contractProcessorTransaction;
-        ASSERT(transaction && transaction->checkValidity());
+        ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction && transaction->checkValidity());
 
         unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
-        ASSERT(system.epoch >= contractDescriptions[contractIndex].constructionEpoch);
-        ASSERT(system.epoch < contractDescriptions[contractIndex].destructionEpoch);
-        ASSERT(contractUserProcedures[contractIndex][transaction->inputType]);
+        ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(system.epoch >= contractDescriptions[contractIndex].constructionEpoch);
+        ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(system.epoch < contractDescriptions[contractIndex].destructionEpoch);
+        ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(contractUserProcedures[contractIndex][transaction->inputType]);
 
         QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
         qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
@@ -1741,10 +1741,10 @@ static void contractProcessor(void*)
 
 static bool bidInContractIPO(long long price, unsigned short quantity, const m256i& sourcePublicKey, const int spectrumIndex, const unsigned int contractIndex)
 {
-    ASSERT(spectrumIndex >= 0);
-    ASSERT(spectrumIndex == ::spectrumIndex(sourcePublicKey));
-    ASSERT(contractIndex < contractCount);
-    ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(spectrumIndex >= 0);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(spectrumIndex == ::spectrumIndex(sourcePublicKey));
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(contractIndex < contractCount);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
 
     bool bidRegistered = false;
 
@@ -1858,14 +1858,14 @@ bool QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex, long 
 
 static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
 {
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(transaction->tick == system.tick);
-    ASSERT(!transaction->amount && transaction->inputSize == sizeof(ContractIPOBid));
-    ASSERT(spectrumIndex >= 0);
-    ASSERT(contractIndex < contractCount);
-    ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(nextTickData.epoch == system.epoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction != nullptr);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->checkValidity());
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->tick == system.tick);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(!transaction->amount && transaction->inputSize == sizeof(ContractIPOBid));
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(spectrumIndex >= 0);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(contractIndex < contractCount);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
 
     ContractIPOBid* contractIPOBid = (ContractIPOBid*)transaction->inputPtr();
     bidInContractIPO(contractIPOBid->price, contractIPOBid->quantity, transaction->sourcePublicKey, spectrumIndex, contractIndex);
@@ -1874,14 +1874,14 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
 // Return if money flew
 static bool processTickTransactionContractProcedure(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
 {
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(transaction->tick == system.tick);
-    ASSERT(spectrumIndex >= 0);
-    ASSERT(contractIndex < contractCount);
-    ASSERT(system.epoch >= contractDescriptions[contractIndex].constructionEpoch);
-    ASSERT(system.epoch < contractDescriptions[contractIndex].destructionEpoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(nextTickData.epoch == system.epoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction != nullptr);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->checkValidity());
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->tick == system.tick);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(spectrumIndex >= 0);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(contractIndex < contractCount);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(system.epoch >= contractDescriptions[contractIndex].constructionEpoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(system.epoch < contractDescriptions[contractIndex].destructionEpoch);
 
     if (contractUserProcedures[contractIndex][transaction->inputType])
     {
@@ -1904,12 +1904,12 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
 
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(transaction->tick == system.tick);
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->amount >=MiningSolutionTransaction::minAmount()
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(nextTickData.epoch == system.epoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction != nullptr);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->checkValidity());
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->tick == system.tick);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero(transaction->destinationPublicKey));
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->amount >=MiningSolutionTransaction::minAmount()
             && transaction->inputSize == 64
             && transaction->inputType == MiningSolutionTransaction::transactionType());
 
@@ -2108,32 +2108,32 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
 static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
 {
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->tick == system.tick);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(nextTickData.epoch == system.epoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction != nullptr);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->checkValidity());
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero(transaction->destinationPublicKey));
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->tick == system.tick);
 
     // TODO
 }
 
 static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTransactionPrefix* transaction)
 {
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->tick == system.tick);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(nextTickData.epoch == system.epoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction != nullptr);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->checkValidity());
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero(transaction->destinationPublicKey));
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->tick == system.tick);
 
     // TODO
 }
 
 static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, unsigned long long processorNumber)
 {
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(transaction->tick == system.tick);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(nextTickData.epoch == system.epoch);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction != nullptr);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->checkValidity());
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->tick == system.tick);
 
     // Record the tx with digest
     ts.transactionsDigestAccess.acquireLock();
@@ -2360,8 +2360,8 @@ static void processTick(unsigned long long processorNumber)
                 if (tsCurrentTickTransactionOffsets[transactionIndex])
                 {
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
-                    ASSERT(transaction->checkValidity());
-                    ASSERT(transaction->tick == system.tick);
+                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->checkValidity());
+                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->tick == system.tick);
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     if (spectrumIndex >= 0)
                     {
@@ -2509,7 +2509,7 @@ static void processTick(unsigned long long processorNumber)
                         const Transaction* pendingTransaction = ((Transaction*)&computorPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
                         if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
                         {
-                            ASSERT(pendingTransaction->checkValidity());
+                            ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
                             if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                             {
@@ -2540,7 +2540,7 @@ static void processTick(unsigned long long processorNumber)
                         const Transaction* pendingTransaction = ((Transaction*)&entityPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
                         if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
                         {
-                            ASSERT(pendingTransaction->checkValidity());
+                            ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
                             if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                             {
@@ -2950,7 +2950,7 @@ static void endEpoch()
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
         qpiContext.call(5, "", 0);
-        ASSERT(qpiContext.outputSize == sizeof(GQMPROP::RevenueDonationT));
+        ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(qpiContext.outputSize == sizeof(GQMPROP::RevenueDonationT));
         const GQMPROP::RevenueDonationT* emissionDist = (GQMPROP::RevenueDonationT*)qpiContext.outputBuffer;
 
         // Compute revenue of computors and arbitrator
@@ -4356,8 +4356,8 @@ static void prepareNextTickTransactions()
             if (tsNextTickTransactionOffsets[i])
             {
                 const Transaction* transaction = ts.tickTransactions(tsNextTickTransactionOffsets[i]);
-                ASSERT(transaction->checkValidity());
-                ASSERT(transaction->tick == nextTick);
+                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->checkValidity());
+                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(transaction->tick == nextTick);
                 unsigned char digest[32];
                 KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
                 if (digest == nextTickData.transactionDigests[i])
@@ -4387,7 +4387,7 @@ static void prepareNextTickTransactions()
             {
                 ACQUIRE(computorPendingTransactionsLock);
 
-                ASSERT(pendingTransaction->checkValidity());
+                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(pendingTransaction->checkValidity());
                 auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
                 for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                 {
@@ -4427,7 +4427,7 @@ static void prepareNextTickTransactions()
             {
                 ACQUIRE(entityPendingTransactionsLock);
 
-                ASSERT(pendingTransaction->checkValidity());
+                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(pendingTransaction->checkValidity());
                 auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
                 for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                 {
@@ -4486,7 +4486,7 @@ static void prepareNextTickTransactions()
 // This function can only be called by tickProcessor
 static void computeTxBodyDigestBase(const int tick)
 {
-    ASSERT(nextTickData.epoch == system.epoch); // nextTickData need to be valid
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(nextTickData.epoch == system.epoch); // nextTickData need to be valid
     constexpr size_t outputLen = 4; // output length in bytes
 
     XKCP::KangarooTwelve_Initialize(&g_k12_instance, 128, outputLen);
@@ -5098,17 +5098,17 @@ static void tickProcessor(void*)
                                     setNewMiningSeed();
 
                                     // Some debug checks that we are ready for the next epoch
-                                    ASSERT(system.numberOfSolutions == 0);
-                                    ASSERT(numberOfMiners == NUMBER_OF_COMPUTORS);
-                                    ASSERT(isZero(system.solutions, sizeof(system.solutions)));
-                                    ASSERT(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
-                                    ASSERT(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
-                                    ASSERT(isZero((void*)minerScores, sizeof(minerScores)));
-                                    ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
-                                    ASSERT(isZero(competitorScores, sizeof(competitorScores)));
-                                    ASSERT(isZero(competitorPublicKeys, sizeof(competitorPublicKeys)));
-                                    ASSERT(isZero(competitorComputorStatuses, sizeof(competitorComputorStatuses)));
-                                    ASSERT(minimumComputorScore == 0 && minimumCandidateScore == 0);
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(system.numberOfSolutions == 0);
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(numberOfMiners == NUMBER_OF_COMPUTORS);
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero(system.solutions, sizeof(system.solutions)));
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero((void*)minerScores, sizeof(minerScores)));
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero(competitorScores, sizeof(competitorScores)));
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero(competitorPublicKeys, sizeof(competitorPublicKeys)));
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(isZero(competitorComputorStatuses, sizeof(competitorComputorStatuses)));
+                                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(minimumComputorScore == 0 && minimumCandidateScore == 0);
 
                                     // instruct main loop to save files and wait until it is done
                                     spectrumMustBeSaved = true;
@@ -5128,7 +5128,7 @@ static void tickProcessor(void*)
 
                                     epochTransitionState = 0;
                                 }
-                                ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
+                                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
                                 gTickNumberOfComputors = 0;
                                 gTickTotalNumberOfComputors = 0;
