@@ -4727,7 +4727,7 @@ static void tickProcessor(void*)
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
     bool this_shows_that_non_main_proc_asserts_are_enabled = false;
-    ASSERT_ON_MAIN_PROC_WITH_FLUSH(this_shows_that_non_main_proc_asserts_are_enabled);
+    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(this_shows_that_non_main_proc_asserts_are_enabled);
 
 #if !START_NETWORK_FROM_SCRATCH
     // only init first tick if it doesn't load all node states from file
