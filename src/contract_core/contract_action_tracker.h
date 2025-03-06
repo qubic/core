@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../platform/m256.h"
+#include "platform/memory_util.h"
 
 struct ContractAction
 {
@@ -28,13 +29,30 @@ template <unsigned int maxActions>
 class ContractActionTracker
 {
 public:
+    bool allocBuffer()
+    {
+        actions = nullptr;
+        return allocPoolWithErrorLog(L"ContractActionTracker", maxActions * sizeof(ContractAction), (void**)&actions, __LINE__);
+    }
+
+    void freeBuffer()
+    {
+        if (actions)
+            freePool(actions);
+    }
+
+    // Called before every use, allocBuffer() needs to be called before.
     void init()
     {
+        ASSERT(actions != nullptr);
         numActions = 0;
     }
 
     bool addQuTransfer(const m256i& sourcePublicKey, const m256i& destinationPublicKey, long long amount)
     {
+        ASSERT(actions != nullptr);
+        ASSERT(numActions <= maxActions);
+
         if (numActions == maxActions)
             return false;
 
@@ -65,6 +83,6 @@ public:
     }
 
 private:
-    ContractAction actions[maxActions];
+    ContractAction* actions;
     unsigned int numActions;
 };

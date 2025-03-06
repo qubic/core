@@ -8,6 +8,7 @@ x64/
 /test/spectrum.*
 /test/universe.*
 /test/contract0???.???
+/test/tmp_file_*
 
 .DS_Store
 .clang-format

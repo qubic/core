@@ -28,6 +28,7 @@
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
     <ClInclude Include="contracts\math_lib.h" />
+    <ClInclude Include="contracts\MsVault.h" />
     <ClInclude Include="contracts\MyLastMatch.h" />
     <ClInclude Include="contracts\qpi.h" />
     <ClInclude Include="contracts\Quottery.h" />
@@ -46,6 +47,7 @@
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
     <ClInclude Include="contract_core\qpi_hash_map_impl.h" />
+    <ClInclude Include="contract_core\qpi_ticking_impl.h" />
     <ClInclude Include="contract_core\qpi_trivial_impl.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
     <ClInclude Include="contract_core\qpi_proposal_voting.h" />
@@ -64,6 +66,7 @@
     <ClInclude Include="network_messages\contract.h" />
     <ClInclude Include="network_messages\entity.h" />
     <ClInclude Include="network_messages\header.h" />
+    <ClInclude Include="network_messages\logging.h" />
     <ClInclude Include="network_messages\public_peers.h" />
     <ClInclude Include="network_messages\special_command.h" />
     <ClInclude Include="network_messages\system_info.h" />
@@ -75,6 +78,7 @@
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
+    <ClInclude Include="K12/kangaroo_twelve_xkcp.h" />
     <ClInclude Include="platform\custom_stack.h" />
     <ClInclude Include="platform\debugging.h" />
     <ClInclude Include="platform\file_io.h" />
@@ -91,14 +95,16 @@
     <ClInclude Include="platform\memory.h" />
     <ClInclude Include="platform\memory-util.h" />
     <ClInclude Include="score_cache.h" />
-    <ClInclude Include="spectrum.h" />
+    <ClInclude Include="spectrum\special_entities.h" />
+    <ClInclude Include="spectrum\spectrum.h" />
     <ClInclude Include="system.h" />
     <ClInclude Include="text_output.h" />
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />
     <ClInclude Include="platform\time.h" />
     <ClInclude Include="platform\uefi.h" />
-    <ClInclude Include="tick_storage.h" />
+    <ClInclude Include="ticking\ticking.h" />
+    <ClInclude Include="ticking\tick_storage.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>

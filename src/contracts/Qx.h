@@ -125,6 +125,7 @@ public:
 		sint64 addedNumberOfShares;
 	};
 
+	// Bid orders may be placed before an asset is issued (as part of IPO conducted on QX)
 	struct AddToBidOrder_input
 	{
 		id issuer;

@@ -45,6 +45,25 @@ constexpr sint32 QEARN_UNLOCK_SUCCESS = 5;
 constexpr sint32 QEARN_OVERFLOW_USER = 6;
 constexpr sint32 QEARN_LIMIT_LOCK = 7;
 
+enum QearnLogInfo {
+    QearnSuccessLocking = 0,
+    QearnFailedTransfer = 1,
+    QearnLimitLocking = 2,
+    QearnOverflowUser = 3,
+    QearnInvalidInput = 4,
+    QearnSuccessEarlyUnlocking = 5,
+    QearnSuccessFullyUnlocking = 6,
+};
+struct QearnLogger
+{
+    uint32 _contractIndex;
+    id sourcePublicKey;
+    id destinationPublicKey;
+    sint64 amount;
+    uint32 _type;
+    char _terminator; 
+};
+
 struct QEARN2
 {
 };
@@ -305,7 +324,7 @@ protected:
     PUBLIC_FUNCTION_WITH_LOCALS(getStatsPerEpoch)
 
         output.earlyUnlockedAmount = state._initialRoundInfo.get(input.epoch)._totalLockedAmount - state._currentRoundInfo.get(input.epoch)._totalLockedAmount;
-        output.earlyUnlockedPercent = QPI::div(output.earlyUnlockedAmount * 10000ULL, state._initialRoundInfo.get(input.epoch)._totalLockedAmount);
+        output.earlyUnlockedPercent = div(output.earlyUnlockedAmount * 10000ULL, state._initialRoundInfo.get(input.epoch)._totalLockedAmount);
 
         qpi.getEntity(SELF, locals.entity);
         output.totalLockedAmount = locals.entity.incomingAmount - locals.entity.outgoingAmount;
@@ -325,10 +344,10 @@ protected:
             }
 
             locals.cnt++;
-            output.averageAPY += QPI::div(state._currentRoundInfo.get(locals._t)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(locals._t)._totalLockedAmount);
+            output.averageAPY += div(state._currentRoundInfo.get(locals._t)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(locals._t)._totalLockedAmount);
         }
 
-        output.averageAPY = QPI::div(output.averageAPY, locals.cnt * 1ULL);
+        output.averageAPY = div(output.averageAPY, locals.cnt * 1ULL);
         
     _
 
@@ -462,6 +481,7 @@ protected:
         LockInfo newLocker;
         RoundInfo updatedRoundInfo;
         EpochIndexInfo tmpIndex;
+        QearnLogger log;
         uint32 t;
         uint32 endIndex;
         
@@ -473,6 +493,8 @@ protected:
         {
             output.returnCode = QEARN_INVALID_INPUT_AMOUNT;         // if the amount of locking is less than 10M, it should be failed to lock.
             
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), QearnInvalidInput, 0};
+            LOG_INFO(locals.log);
             if(qpi.invocationReward() > 0) 
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -490,6 +512,10 @@ protected:
                 if(state.locker.get(locals.t)._lockedAmount + qpi.invocationReward() > QEARN_MAX_LOCK_AMOUNT)
                 {
                     output.returnCode = QEARN_LIMIT_LOCK;
+
+                    locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), QearnLimitLocking, 0};
+                    LOG_INFO(locals.log);
+
                     if(qpi.invocationReward() > 0) 
                     {
                         qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -512,6 +538,9 @@ protected:
                 state._currentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
                 
                 output.returnCode = QEARN_LOCK_SUCCESS;          //  additional locking of this epoch is succeed
+
+                locals.log = {QEARN_CONTRACT_INDEX, qpi.invocator(), SELF, qpi.invocationReward(), QearnSuccessLocking, 0};
+                LOG_INFO(locals.log);
                 return ;
             }
 
@@ -520,6 +549,10 @@ protected:
         if(locals.endIndex == QEARN_MAX_LOCKS - 1) 
         {
             output.returnCode = QEARN_OVERFLOW_USER;
+
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), QearnOverflowUser, 0};
+            LOG_INFO(locals.log);
+
             if(qpi.invocationReward() > 0) 
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -530,6 +563,10 @@ protected:
         if(qpi.invocationReward() > QEARN_MAX_LOCK_AMOUNT)
         {
             output.returnCode = QEARN_LIMIT_LOCK;
+
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), qpi.invocationReward(), QearnLimitLocking, 0};
+            LOG_INFO(locals.log);
+
             if(qpi.invocationReward() > 0) 
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -556,6 +593,9 @@ protected:
         state._currentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
 
         output.returnCode = QEARN_LOCK_SUCCESS;            //  new locking of this epoch is succeed
+
+        locals.log = {QEARN_CONTRACT_INDEX, qpi.invocator(), SELF, qpi.invocationReward(), QearnSuccessLocking, 0};
+        LOG_INFO(locals.log);
     _
 
     struct unlock_locals {
@@ -564,11 +604,13 @@ protected:
         LockInfo updatedUserInfo;
         HistoryInfo unlockerInfo;
         StatsInfo tmpStats;
+        QearnLogger log;
         
         uint64 amountOfUnlocking;
         uint64 amountOfReward;
         uint64 amountOfburn;
         uint64 rewardPercent;
+        sint64 transferAmount;
         sint64 divCalcu;
         uint32 earlyUnlockingPercent;
         uint32 burnPercent;
@@ -587,6 +629,10 @@ protected:
         {
 
             output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
+            
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
+            LOG_INFO(locals.log);
+
             return ;
 
         }
@@ -595,6 +641,10 @@ protected:
         {
             
             output.returnCode = QEARN_INVALID_INPUT_AMOUNT;
+
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
+            LOG_INFO(locals.log);
+
             return ;
 
         }
@@ -612,6 +662,10 @@ protected:
                 {
 
                     output.returnCode = QEARN_INVALID_INPUT_UNLOCK_AMOUNT;  //  if the amount to be wanted to unlock is more than locked amount, it should be failed to unlock
+                    
+                    locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
+                    LOG_INFO(locals.log);
+
                     return ;  
 
                 }
@@ -628,6 +682,10 @@ protected:
         {
             
             output.returnCode = QEARN_EMPTY_LOCKED;     //   if there is no any locked info in state.Locker array, it shows this address didn't lock at the epoch (input.Locked_Epoch)
+            
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
+            LOG_INFO(locals.log);
+
             return ;  
         }
 
@@ -718,19 +776,24 @@ protected:
             locals.burnPercent = QEARN_BURN_PERCENT_48_51;
         }
 
-        locals.rewardPercent = QPI::div(state._currentRoundInfo.get(input.lockedEpoch)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(input.lockedEpoch)._totalLockedAmount);
-        locals.divCalcu = QPI::div(locals.rewardPercent * locals.amountOfUnlocking , 100ULL);
-        locals.amountOfReward = QPI::div(locals.divCalcu * locals.earlyUnlockingPercent * 1ULL , 10000000ULL);
-        locals.amountOfburn = QPI::div(locals.divCalcu * locals.burnPercent * 1ULL, 10000000ULL);
+        locals.rewardPercent = div(state._currentRoundInfo.get(input.lockedEpoch)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(input.lockedEpoch)._totalLockedAmount);
+        locals.divCalcu = div(locals.rewardPercent * locals.amountOfUnlocking , 100ULL);
+        locals.amountOfReward = div(locals.divCalcu * locals.earlyUnlockingPercent * 1ULL , 10000000ULL);
+        locals.amountOfburn = div(locals.divCalcu * locals.burnPercent * 1ULL, 10000000ULL);
 
         qpi.transfer(qpi.invocator(), locals.amountOfUnlocking + locals.amountOfReward);
+        locals.transferAmount = locals.amountOfUnlocking + locals.amountOfReward;
+        
+        locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, QearnSuccessEarlyUnlocking, 0};
+        LOG_INFO(locals.log);
+
         qpi.burn(locals.amountOfburn);
 
         if(input.lockedEpoch != qpi.epoch())
         {
             locals.tmpStats.burnedAmount = state.statsInfo.get(input.lockedEpoch).burnedAmount + locals.amountOfburn;
             locals.tmpStats.rewardedAmount = state.statsInfo.get(input.lockedEpoch).rewardedAmount + locals.amountOfReward;
-            locals.tmpStats.boostedAmount = state.statsInfo.get(input.lockedEpoch).boostedAmount + QPI::div(locals.divCalcu * (100 - locals.burnPercent - locals.earlyUnlockingPercent) * 1ULL, 10000000ULL);
+            locals.tmpStats.boostedAmount = state.statsInfo.get(input.lockedEpoch).boostedAmount + div(locals.divCalcu * (100 - locals.burnPercent - locals.earlyUnlockingPercent) * 1ULL, 10000000ULL);
 
             state.statsInfo.set(input.lockedEpoch, locals.tmpStats);
         }
@@ -874,10 +937,12 @@ protected:
         RoundInfo INITIALIZE_ROUNDINFO;
         EpochIndexInfo tmpEpochIndex;
         StatsInfo tmpStats; 
+        QearnLogger log;
 
         uint64 _rewardPercent;
         uint64 _rewardAmount;
         uint64 _burnAmount;
+        sint64 transferAmount;
         uint32 lockedEpoch;
         uint32 startEpoch;
         uint32 _t;
@@ -896,7 +961,7 @@ protected:
         
         locals._burnAmount = state._currentRoundInfo.get(locals.lockedEpoch)._epochBonusAmount;
         
-        locals._rewardPercent = QPI::div(state._currentRoundInfo.get(locals.lockedEpoch)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(locals.lockedEpoch)._totalLockedAmount);
+        locals._rewardPercent = div(state._currentRoundInfo.get(locals.lockedEpoch)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(locals.lockedEpoch)._totalLockedAmount);
         locals.tmpStats.rewardedAmount = state.statsInfo.get(locals.lockedEpoch).rewardedAmount;
 
         for(locals._t = state._epochIndex.get(locals.lockedEpoch).startIndex; locals._t < locals.endIndex; locals._t++) 
@@ -908,8 +973,12 @@ protected:
 
             ASSERT(state.locker.get(locals._t)._lockedEpoch == locals.lockedEpoch);
 
-            locals._rewardAmount = QPI::div(state.locker.get(locals._t)._lockedAmount * locals._rewardPercent, 10000000ULL);
+            locals._rewardAmount = div(state.locker.get(locals._t)._lockedAmount * locals._rewardPercent, 10000000ULL);
             qpi.transfer(state.locker.get(locals._t).ID, locals._rewardAmount + state.locker.get(locals._t)._lockedAmount);
+
+            locals.transferAmount = locals._rewardAmount + state.locker.get(locals._t)._lockedAmount;
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, QearnSuccessFullyUnlocking, 0};
+            LOG_INFO(locals.log);
 
             if(state._fullyUnlockedCnt < QEARN_MAX_USERS) 
             {

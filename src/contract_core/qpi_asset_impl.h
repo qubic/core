@@ -3,7 +3,107 @@
 #include "contracts/qpi.h"
 
 #include "assets/assets.h"
-#include "../spectrum.h"
+#include "spectrum/spectrum.h"
+
+
+
+// Start iteration with issuance filter (selects first record).
+void QPI::AssetIssuanceIterator::begin(const QPI::AssetIssuanceSelect& issuance)
+{
+    _issuance = issuance;
+    _issuanceIdx = NO_ASSET_INDEX;
+
+    next();
+}
+
+// Return if iteration with next() has reached end.
+bool QPI::AssetIssuanceIterator::reachedEnd() const
+{
+    return _issuanceIdx == NO_ASSET_INDEX;
+}
+
+// Step to next issuance record matching filtering criteria.
+bool QPI::AssetIssuanceIterator::next()
+{
+    ASSERT(_issuanceIdx < ASSETS_CAPACITY || _issuanceIdx == NO_ASSET_INDEX);
+
+    if (!_issuance.anyIssuer)
+    {
+        // searching for specific issuer -> use hash map
+        if (_issuanceIdx == NO_ASSET_INDEX)
+        {
+            // get first candidate for issuance in first call of next()
+            _issuanceIdx = _issuance.issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+        }
+        else
+        {
+            // get next candidate in following calls of next()
+            _issuanceIdx = (_issuanceIdx + 1) & (ASSETS_CAPACITY - 1);
+        }
+
+        // search entry in consecutive non-empty fields of hash map
+        while (assets[_issuanceIdx].varStruct.issuance.type != EMPTY)
+        {
+            if (assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE
+                && assets[_issuanceIdx].varStruct.issuance.publicKey == _issuance.issuer
+                && (_issuance.anyName || ((*((unsigned long long*)assets[_issuanceIdx].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == _issuance.assetName))
+            {
+                // found matching entry
+                return true;
+            }
+
+            _issuanceIdx = (_issuanceIdx + 1) & (ASSETS_CAPACITY - 1);
+        }
+
+        // no matching entry found
+        _issuanceIdx = NO_ASSET_INDEX;
+        return false;
+    }
+    else
+    {
+        // issuer is unknow -> use index lists instead of hash map to iterate through issuances
+        if (_issuanceIdx == NO_ASSET_INDEX)
+        {
+            // get first issuance
+            _issuanceIdx = as.indexLists.issuancesFirstIdx;
+        }
+        else
+        {
+            // get next issuance
+            _issuanceIdx = as.indexLists.nextIdx[_issuanceIdx];
+        }
+        ASSERT(_issuanceIdx == NO_ASSET_INDEX
+            || (_issuanceIdx < ASSETS_CAPACITY
+                && assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE));
+
+        // if specific asset name is requested, make sure the issuance matches
+        if (!_issuance.anyName)
+        {
+            while (_issuanceIdx != NO_ASSET_INDEX
+                && ((*((unsigned long long*)assets[_issuanceIdx].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) != _issuance.assetName)
+            {
+                _issuanceIdx = as.indexLists.nextIdx[_issuanceIdx];
+                ASSERT(_issuanceIdx == NO_ASSET_INDEX
+                    || (_issuanceIdx < ASSETS_CAPACITY
+                        && assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE));
+            }
+        }
+
+        return _issuanceIdx != NO_ASSET_INDEX;
+    }
+}
+
+id QPI::AssetIssuanceIterator::issuer() const
+{
+    ASSERT(_issuanceIdx == NO_ASSET_INDEX || (_issuanceIdx < ASSETS_CAPACITY && assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE));
+    return (_issuanceIdx < ASSETS_CAPACITY) ? assets[_issuanceIdx].varStruct.issuance.publicKey : id::zero();
+}
+
+uint64 QPI::AssetIssuanceIterator::assetName() const
+{
+    ASSERT(_issuanceIdx == NO_ASSET_INDEX || (_issuanceIdx < ASSETS_CAPACITY && assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE));
+    return (_issuanceIdx < ASSETS_CAPACITY) ? ((*((unsigned long long*)assets[_issuanceIdx].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) : 0;
+}
 
 
 // Start iteration with given issuance and given ownership filter (selects first record).
@@ -109,6 +209,12 @@ id QPI::AssetOwnershipIterator::issuer() const
 {
     ASSERT(_issuanceIdx == NO_ASSET_INDEX || (_issuanceIdx < ASSETS_CAPACITY && assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE));
     return (_issuanceIdx < ASSETS_CAPACITY) ? assets[_issuanceIdx].varStruct.issuance.publicKey : id::zero();
+}
+
+uint64 QPI::AssetOwnershipIterator::assetName() const
+{
+    ASSERT(_issuanceIdx == NO_ASSET_INDEX || (_issuanceIdx < ASSETS_CAPACITY && assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE));
+    return (_issuanceIdx < ASSETS_CAPACITY) ? ((*((unsigned long long*)assets[_issuanceIdx].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) : 0;
 }
 
 id QPI::AssetOwnershipIterator::owner() const

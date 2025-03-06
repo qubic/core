@@ -7,6 +7,7 @@
 #include "platform/debugging.h"
 
 #include "network_messages/header.h"
+#include "network_messages/logging.h"
 
 #include "private_settings.h"
 #include "public_settings.h"
@@ -30,80 +31,8 @@ struct Peer;
 #define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
 #endif
 #define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
-#define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
-#define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
 #define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
 #define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
-
-// Fetches log
-struct RequestLog
-{
-    unsigned long long passcode[4];
-    unsigned long long fromID;
-    unsigned long long toID; // inclusive
-
-    enum {
-        type = 44,
-    };
-};
-
-
-struct RespondLog
-{
-    // Variable-size log;
-
-    enum {
-        type = 45,
-    };
-};
-
-
-// Request logid ranges from tx hash
-struct RequestLogIdRangeFromTx
-{
-    unsigned long long passcode[4];
-    unsigned int tick;
-    unsigned int txId;
-
-    enum {
-        type = 48,
-    };
-};
-
-
-// Response logid ranges from tx hash
-struct ResponseLogIdRangeFromTx
-{
-    long long fromLogId;
-    long long length;
-
-    enum {
-        type = 49,
-    };
-};
-
-// Request logid ranges of all txs from a tick
-struct RequestAllLogIdRangesFromTick
-{
-    unsigned long long passcode[4];
-    unsigned int tick;
-
-    enum {
-        type = 50,
-    };
-};
-
-
-// Response logid ranges of all txs from a tick
-struct ResponseAllLogIdRangesFromTick
-{
-    long long fromLogId[LOG_TX_PER_TICK];
-    long long length[LOG_TX_PER_TICK];
-
-    enum {
-        type = 51,
-    };
-};
 
 #define QU_TRANSFER 0
 #define ASSET_ISSUANCE 1

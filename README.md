@@ -12,13 +12,14 @@ To run a qubic node, you need the following spec:
 - Bare Metal Server/Computer with at least 8 Cores (high CPU frequency with AVX2 support). AVX-512 support is recommended; check supported CPUs [here](https://www.epey.co.uk/cpu/e/YTozOntpOjUwOTc7YToxOntpOjA7czo2OiI0Mjg1NzUiO31pOjUwOTk7YToyOntpOjA7czoxOiI4IjtpOjE7czoyOiIzMiI7fWk6NTA4ODthOjY6e2k6MDtzOjY6IjQ1NjE1MCI7aToxO3M6NzoiMjM4Nzg2MSI7aToyO3M6NzoiMTkzOTE5OSI7aTozO3M6NzoiMTUwMjg4MyI7aTo0O3M6NzoiMjA2Nzk5MyI7aTo1O3M6NzoiMjE5OTc1OSI7fX1fYjowOw==/)
 - At least 2TB of RAM
 - 1Gb/s synchronous internet connection
-- A USB Stick or SSD/HD attached to the Computer (via NVMe M.2 or USB)
+- A NVME disk to store data (via NVMe M.2)
 - UEFI Bios 
 
 > You will need the current `spectrum, universe, and contract` files to be able to start Qubic. The latest files can be found in our #computor-operator channel on the Qubic Discord server: https://discord.gg/qubic (inquire there for the files).
 
-### Prepare your USB Stick/SSD/HD
+### Prepare your Disk
 1. Your Qubic Boot device should be formatted as FAT32 with the label QUBIC.
+If you name it `Qubic`, qubic will find the disk easier and know which device to use for storing data.
 ```bash
 # sample command in linux
 mkfs.fat -F 32 -n QUBIC /dev/sda
@@ -48,6 +49,7 @@ echo -e "o\nY\nd\nn\n\n\n+200G\n\nt\n\nef00\nw\nY" | gdisk /dev/sda
 /contract0008.XXX
 /contract0009.XXX
 /contract0010.XXX
+/contract0011.XXX
 /spectrum.XXX
 /system
 /universe.XXX
@@ -67,6 +69,7 @@ echo -e "o\nY\nd\nn\n\n\n+200G\n\nt\n\nef00\nw\nY" | gdisk /dev/sda
 - contract0008.XXX => must be the current contract #8 file. XXX must be replaced with the current epoch. (e.g. `contract0008.114`). Data from CCF.
 - contract0009.XXX => must be the current contract #9 file. XXX must be replaced with the current epoch. (e.g. `contract0009.114`). Data from QEarn.
 - contract0010.XXX => must be the current contract #10 file. XXX must be replaced with the current epoch. (e.g. `contract0010.114`). Data from QVault.
+- contract0011.XXX => must be the current contract #10 file. XXX must be replaced with the current epoch. (e.g. `contract0011.114`). Data from MSVault.
 - Other contract files with the same format as above. For now, we have 6 contracts.
 - universe.XXX => must be the current universe file. XXX must be replaced with the current epoch. (e.g `universe.114`)
 - spectrum.XXX => must be the current spectrum file. XXX must be replaced with the current epoch. (e.g `spectrum.114`)

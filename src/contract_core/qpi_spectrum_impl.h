@@ -1,7 +1,7 @@
 #pragma once
 
 #include "contract_core/contract_exec.h"
-#include "spectrum.h"
+#include "spectrum/spectrum.h"
 
 
 bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity) const
@@ -118,6 +118,21 @@ m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
         if (!isZero(nextId))
         {
             return nextId;
+        }
+    }
+
+    return m256i::zero();
+}
+
+m256i QPI::QpiContextFunctionCall::prevId(const m256i& currentId) const
+{
+    int index = spectrumIndex(currentId);
+    while (--index >= 0)
+    {
+        const m256i& prevId = spectrum[index].publicKey;
+        if (!isZero(prevId))
+        {
+            return prevId;
         }
     }
 
