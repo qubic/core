@@ -476,6 +476,13 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
                 if (peers[i].isClosing)
                 {
+#ifndef NDEBUG
+                    CHAR16 dbgMsg[200];
+                    setText(dbgMsg, L"peer isClosing: tcp4Protocol=");
+                    appendNumber(dbgMsg, (unsigned long long)peers[i].tcp4Protocol, FALSE);
+                    addDebugMessage(dbgMsg);
+                    printDebugMessages();
+#endif
                     closePeer(&peers[i]);
                 }
                 else
@@ -484,6 +491,11 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     if (status)
                     {
                         logStatusToConsole(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
+
+#ifndef NDEBUG
+                        addDebugMessage(L"Failed to establish incoming connection!");
+                        printDebugMessages();
+#endif
 
                         tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
                         peers[i].tcp4Protocol = NULL;
