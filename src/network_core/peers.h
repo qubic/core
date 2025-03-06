@@ -163,6 +163,9 @@ static void closePeer(Peer* peer)
 // Add message to sending buffer of specific peer, can only called from main thread (not thread-safe).
 static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 {
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(peer);
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(requestResponseHeader);
+
     // The sending buffer may queue multiple messages, each of which may need to transmitted in many small packets.
     if (peer->tcp4Protocol && peer->isConnectedAccepted && !peer->isClosing)
     {
@@ -188,6 +191,8 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 // Add message to sending buffer of random peer, can only called from main thread (not thread-safe).
 static void pushToAny(RequestResponseHeader* requestResponseHeader)
 {
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(requestResponseHeader);
+
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
     unsigned short numberOfSuitablePeers = 0;
     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
@@ -206,6 +211,8 @@ static void pushToAny(RequestResponseHeader* requestResponseHeader)
 // Add message to sending buffer of some random peers, can only called from main thread (not thread-safe).
 static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
 {
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(requestResponseHeader);
+
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
     unsigned short numberOfSuitablePeers = 0;
     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)

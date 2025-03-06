@@ -1454,11 +1454,16 @@ static void requestProcessor(void* ProcedureArgument)
 
                 {
                     RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
+                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(requestHeader);
+                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(header);
+                    static_assert(BUFFER_SIZE > RequestResponseHeader::max_size);
                     bs->CopyMem(header, requestHeader, requestHeader->size());
                     requestQueueBufferTail += requestHeader->size();
                 }
 
                 Peer* peer = requestQueueElements[requestQueueElementTail].peer;
+                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(peer);
+                ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(peer->tcp4Protocol);
 
                 if (requestQueueBufferTail > REQUEST_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
                 {
@@ -1622,6 +1627,8 @@ static void requestProcessor(void* ProcedureArgument)
                 break;
 #endif
 
+                default:
+                    ASSERT_OUTSIDE_MAIN_PROC_WITH_FLUSH(!header->type());
                 }
 
                 queueProcessingNumerator += __rdtsc() - beginningTick;
