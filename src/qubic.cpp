@@ -4726,6 +4726,9 @@ static void tickProcessor(void*)
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
 
+    bool this_shows_that_non_main_proc_asserts_are_enabled = false;
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(this_shows_that_non_main_proc_asserts_are_enabled);
+
 #if !START_NETWORK_FROM_SCRATCH
     // only init first tick if it doesn't load all node states from file
     if (!loadAllNodeStateFromFile)
@@ -5570,8 +5573,8 @@ static bool initialize()
     }
 
     // For testing that ASSERT_ON_MAIN_PROC_WITH_FLUSH works
-    bool this_shows_that_asserts_are_enabled = false;
-    ASSERT_ON_MAIN_PROC_WITH_FLUSH(this_shows_that_asserts_are_enabled);
+    bool this_shows_that_main_proc_asserts_are_enabled = false;
+    ASSERT_ON_MAIN_PROC_WITH_FLUSH(this_shows_that_main_proc_asserts_are_enabled);
 
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
