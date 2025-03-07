@@ -9,3 +9,7 @@ x64/
 /test/universe.*
 /test/contract0???.???
 /test/tmp_file_*
+
+.DS_Store
+.clang-format
+tmp
