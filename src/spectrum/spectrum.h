@@ -244,10 +244,10 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
         {
             // Update anti-dust burn thresholds (and log spectrum stats before burning)
             updateAndAnalzeEntityCategoryPopulations();
-#if LOG_SPECTRUM_STATS
+#if LOG_SPECTRUM
             logSpectrumStats();
 #endif
-#if LOG_DUST_BURNINGS
+#if LOG_SPECTRUM
             DustBurnLogger dbl;
 #endif
 
@@ -260,7 +260,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                     if (balance <= dustThresholdBurnAll && balance)
                     {
                         spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
-#if LOG_DUST_BURNINGS
+#if LOG_SPECTRUM
                         dbl.addDustBurn(spectrum[i].publicKey, balance);
 #endif
                     }
@@ -279,7 +279,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                         if (++countBurnCanadiates & 1)
                         {
                             spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
-#if LOG_DUST_BURNINGS
+#if LOG_SPECTRUM
                             dbl.addDustBurn(spectrum[i].publicKey, balance);
 #endif
                         }
@@ -287,7 +287,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 }
             }
 
-#if LOG_DUST_BURNINGS
+#if LOG_SPECTRUM
             // Finished dust burning (pass message to log)
             dbl.finished();
 #endif
@@ -295,7 +295,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
             // Remove entries with balance zero from hash map
             reorganizeSpectrum();
 
-#if LOG_SPECTRUM_STATS
+#if LOG_SPECTRUM
             // Log spectrum stats after burning (before increasing energy / potenitally creating entity)
             updateAndAnalzeEntityCategoryPopulations();
             logSpectrumStats();
@@ -323,7 +323,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 spectrumInfo.numberOfEntities++;
                 spectrumInfo.totalAmount += amount;
 
-#if LOG_SPECTRUM_STATS
+#if LOG_SPECTRUM
                 if ((spectrumInfo.numberOfEntities & 0x7ffff) == 1)
                 {
                     // Log spectrum stats when the number of entities hits the next half million

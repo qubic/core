@@ -16,8 +16,6 @@
 
 struct Peer;
 
-#define LOG_UNIVERSE (LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES | LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES)
-#define LOG_SPECTRUM (LOG_QU_TRANSFERS | LOG_BURNINGS | LOG_DUST_BURNINGS | LOG_SPECTRUM_STATS)
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
 #if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES
@@ -491,7 +489,7 @@ public:
     template <typename T>
     void logQuTransfer(T message)
     {
-#if LOG_QU_TRANSFERS
+#if LOG_SPECTRUM
         logMessage(offsetof(T, _terminator), QU_TRANSFER, &message);
 #endif
     }
@@ -499,7 +497,7 @@ public:
     template <typename T>
     void logAssetIssuance(T message)
     {
-#if LOG_ASSET_ISSUANCES
+#if LOG_UNIVERSE
         logMessage(offsetof(T, _terminator), ASSET_ISSUANCE, &message);
 #endif
     }
@@ -507,7 +505,7 @@ public:
     template <typename T>
     void logAssetOwnershipChange(T message)
     {
-#if LOG_ASSET_OWNERSHIP_CHANGES
+#if LOG_UNIVERSE
         logMessage(offsetof(T, _terminator), ASSET_OWNERSHIP_CHANGE, &message);
 #endif
     }
@@ -515,7 +513,7 @@ public:
     template <typename T>
     void logAssetPossessionChange(T message)
     {
-#if LOG_ASSET_POSSESSION_CHANGES
+#if LOG_UNIVERSE
         logMessage(offsetof(T, _terminator), ASSET_POSSESSION_CHANGE, &message);
 #endif
     }
@@ -523,7 +521,7 @@ public:
     template <typename T>
     void logAssetOwnershipManagingContractChange(const T& message)
     {
-#if LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES
+#if LOG_UNIVERSE
         logMessage(offsetof(T, _terminator), ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE, &message);
 #endif
     }
@@ -531,7 +529,7 @@ public:
     template <typename T>
     void logAssetPossessionManagingContractChange(const T& message)
     {
-#if LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES
+#if LOG_UNIVERSE
         logMessage(offsetof(T, _terminator), ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE, &message);
 #endif
     }
@@ -599,21 +597,21 @@ public:
     template <typename T>
     void logBurning(T message)
     {
-#if LOG_BURNINGS
+#if LOG_SPECTRUM
         logMessage(offsetof(T, _terminator), BURNING, &message);
 #endif
     }
 
     void logDustBurning(const DustBurning* message)
     {
-#if LOG_DUST_BURNINGS
+#if LOG_SPECTRUM
         logMessage(message->messageSize(), DUST_BURNING, message);
 #endif
     }
 
     void logSpectrumStats(const SpectrumStats& message)
     {
-#if LOG_SPECTRUM_STATS
+#if LOG_SPECTRUM
         logMessage(sizeof(SpectrumStats), SPECTRUM_STATS, &message);
 #endif
     }
