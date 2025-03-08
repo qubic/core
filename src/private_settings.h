@@ -24,15 +24,9 @@ static const unsigned char whiteListPeers[][4] = {
 };
 */
 
-#define LOG_QU_TRANSFERS 0 // "0" disables logging, "1" enables it
-#define LOG_BURNINGS 0
-#define LOG_DUST_BURNINGS 0
-#define LOG_SPECTRUM_STATS 0
-#define LOG_ASSET_ISSUANCES 0
-#define LOG_ASSET_OWNERSHIP_CHANGES 0
-#define LOG_ASSET_POSSESSION_CHANGES 0
-#define LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES 0
-#define LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES 0
+// "0" disables logging, "1" enables it
+#define LOG_UNIVERSE 1 // all universe activities/events (incl: issue, ownership/possession changes)
+#define LOG_SPECTRUM 1 // all spectrum activities/events (incl: transfers, burn, dust cleaning)
 #define LOG_CONTRACT_ERROR_MESSAGES 0
 #define LOG_CONTRACT_WARNING_MESSAGES 0
 #define LOG_CONTRACT_INFO_MESSAGES 0
