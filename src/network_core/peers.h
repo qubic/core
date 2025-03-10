@@ -103,6 +103,7 @@ static volatile char responseQueueHeadLock = 0;
 static volatile unsigned long long queueProcessingNumerator = 0, queueProcessingDenominator = 0;
 static volatile unsigned long long tickerLoopNumerator = 0, tickerLoopDenominator = 0;
 
+/*
 static bool isWhiteListPeer(unsigned char address[4])
 {
     for (unsigned int i = 0; i < NUMBER_OF_WHITE_LIST_PEERS; i++)
@@ -118,6 +119,7 @@ static bool isWhiteListPeer(unsigned char address[4])
     }
     return false;
 }
+*/
 
 static void closePeer(Peer* peer)
 {
