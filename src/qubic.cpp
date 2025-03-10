@@ -1337,6 +1337,14 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
             }
             break;
+
+            case SPECIAL_COMMAND_SET_CONSOLE_LOGGING_MODE:
+            {
+                const auto* _request = header->getPayload<SpecialCommandSetConsoleLoggingModeRequestAndResponse>();
+                consoleLoggingLevel = _request->loggingMode;
+                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+            }
+            break;
             }
         }
     }
