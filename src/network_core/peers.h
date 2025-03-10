@@ -103,6 +103,7 @@ static volatile char responseQueueHeadLock = 0;
 static volatile unsigned long long queueProcessingNumerator = 0, queueProcessingDenominator = 0;
 static volatile unsigned long long tickerLoopNumerator = 0, tickerLoopDenominator = 0;
 
+/*
 static bool isWhiteListPeer(unsigned char address[4])
 {
     for (unsigned int i = 0; i < NUMBER_OF_WHITE_LIST_PEERS; i++)
@@ -118,6 +119,7 @@ static bool isWhiteListPeer(unsigned char address[4])
     }
     return false;
 }
+*/
 
 static void closePeer(Peer* peer)
 {
@@ -479,7 +481,8 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     }
                     else
                     {
-                        // Out of slot for preserse IPs. Only accept white list IPs
+                        /* GetModeData() freezes the node occasionally: the quick-fix is to disable whitelisting
+                        // If number of unused incoming connection slots is low, only accept white list IPs
                         if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS)
                         {
                             EFI_TCP4_CONFIG_DATA tcp4ConfigData;
@@ -504,6 +507,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                             }
                         }
                         else
+                        */
                         {
                             peers[i].isConnectedAccepted = TRUE;
                         }
