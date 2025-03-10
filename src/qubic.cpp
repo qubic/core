@@ -337,7 +337,7 @@ static void logToConsole(const CHAR16* message)
     bool logAsDebugMessage = epochTransitionState
                                 || system.tick - system.initialTick < 3
                                 || system.tick % 10 == 0
-                                || misalignedState == 1
+                                || misalignedState == 2
                                 || forceLogToConsoleAsAddDebugMessage
         ;
     if (logAsDebugMessage)
@@ -6937,15 +6937,20 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (misalignedState == 0)
                         {
-                            // also log to debug.log
+                            // misaligned state detected the first time
                             misalignedState = 1;
                         }
+                        else if (misalignedState == 1)
+                        {
+                            // state persisting for at least a second -> also log to debug.log
+                            misalignedState = 2;
+                        }
                         logToConsole(L"MISALIGNED STATE DETECTED");
-                        if (misalignedState == 1)
+                        if (misalignedState == 2)
                         {
                             // print health status and stop repeated logging to debug.log
                             logHealthStatus();
-                            misalignedState = 2;
+                            misalignedState = 3;
                         }
                     }
                     else
