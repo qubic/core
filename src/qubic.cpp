@@ -291,7 +291,7 @@ static struct {
 
 static void logToConsole(const CHAR16* message)
 {
-    if (disableConsoleLogging)
+    if (consoleLoggingLevel == 0)
     {
         return;
     }
@@ -337,7 +337,7 @@ static void logToConsole(const CHAR16* message)
     bool logAsDebugMessage = epochTransitionState
                                 || system.tick - system.initialTick < 3
                                 || system.tick % 10 == 0
-                                || misalignedState == 1
+                                || misalignedState == 2
                                 || forceLogToConsoleAsAddDebugMessage
         ;
     if (logAsDebugMessage)
@@ -1335,6 +1335,14 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             {
                 epochTransitionCleanMemoryFlag = 1;
                 enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
+
+            case SPECIAL_COMMAND_SET_CONSOLE_LOGGING_MODE:
+            {
+                const auto* _request = header->getPayload<SpecialCommandSetConsoleLoggingModeRequestAndResponse>();
+                consoleLoggingLevel = _request->loggingMode;
+                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
             }
@@ -5688,6 +5696,11 @@ static void deinitialize()
 
 static void logInfo()
 {
+    if (consoleLoggingLevel == 0)
+    {
+        return;
+    }
+
     unsigned long long numberOfWaitingBytes = 0;
 
     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
@@ -5763,6 +5776,11 @@ static void logInfo()
     prevNumberOfDisseminatedRequests = numberOfDisseminatedRequests;
     prevNumberOfReceivedBytes = numberOfReceivedBytes;
     prevNumberOfTransmittedBytes = numberOfTransmittedBytes;
+
+    if (consoleLoggingLevel < 2)
+    {
+        return;
+    }
 
     setNumber(message, numberOfProcessors - 2, TRUE);
 
@@ -6412,12 +6430,12 @@ static void processKeyPresses()
         break;
 
         /*
-        * PAUSE Key
-        * By Pressing the PAUSE Key you can toggle the log output
+        * PAUSE key
+        * By pressing the PAUSE key you can cycle through the log output verbosity level
         */
         case 0x48:
         {
-            disableConsoleLogging = !disableConsoleLogging;
+            consoleLoggingLevel = (consoleLoggingLevel + 1) % 3;
         }
         break;
         }
@@ -6931,15 +6949,20 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (misalignedState == 0)
                         {
-                            // also log to debug.log
+                            // misaligned state detected the first time
                             misalignedState = 1;
                         }
+                        else if (misalignedState == 1)
+                        {
+                            // state persisting for at least a second -> also log to debug.log
+                            misalignedState = 2;
+                        }
                         logToConsole(L"MISALIGNED STATE DETECTED");
-                        if (misalignedState == 1)
+                        if (misalignedState == 2)
                         {
                             // print health status and stop repeated logging to debug.log
                             logHealthStatus();
-                            misalignedState = 2;
+                            misalignedState = 3;
                         }
                     }
                     else
