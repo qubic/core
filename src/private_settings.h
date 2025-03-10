@@ -18,7 +18,7 @@ static const unsigned char knownPublicPeers[][4] = {
 
 /* Whitelisting has been disabled, as requesting the IP of the incoming connection freezes the node occasionally
 // Enter static IPs that shall be prioritized in incoming connection
-// There are a connection slots reserved for those whitelist IPs
+// There are connection slots reserved for those whitelist IPs
 static const unsigned char whiteListPeers[][4] = {
      {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
 };

@@ -482,7 +482,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     else
                     {
                         /* GetModeData() freezes the node occasionally: the quick-fix is to disable whitelisting
-                        // Out of slot for preserse IPs. Only accept white list IPs
+                        // If number of unused incoming connection slots is low, only accept white list IPs
                         if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS)
                         {
                             EFI_TCP4_CONFIG_DATA tcp4ConfigData;
