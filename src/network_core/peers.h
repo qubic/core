@@ -574,6 +574,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                             setText(message, L"Forgetting ");
                             appendIPv4Address(message, peers[i].address);
                             appendText(message, L"...");
+                            logToConsole(message);
                             forgetPublicPeer(peers[i].address);
                             closePeer(&peers[i]);
                         }
