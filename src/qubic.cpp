@@ -6430,8 +6430,8 @@ static void processKeyPresses()
         break;
 
         /*
-        * PAUSE Key
-        * By Pressing the PAUSE Key you can cycle through the log output verbosity level
+        * PAUSE key
+        * By pressing the PAUSE key you can cycle through the log output verbosity level
         */
         case 0x48:
         {
