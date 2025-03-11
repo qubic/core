@@ -5782,11 +5782,6 @@ static void logInfo()
     prevNumberOfReceivedBytes = numberOfReceivedBytes;
     prevNumberOfTransmittedBytes = numberOfTransmittedBytes;
 
-    if (consoleLoggingLevel < 2)
-    {
-        return;
-    }
-
     setNumber(message, numberOfProcessors - 2, TRUE);
 
     appendText(message, L" | Tick = ");
@@ -5794,7 +5789,15 @@ static void logInfo()
     appendNumber(message, tickDuration / frequency, FALSE);
     appendText(message, L".");
     appendNumber(message, (tickDuration % frequency) * 10 / frequency, FALSE);
-    appendText(message, L" s | Indices = ");
+    appendText(message, L" s");
+
+    if (consoleLoggingLevel < 2)
+    {
+        logToConsole(message);
+        return;
+    }
+
+    appendText(message, L" | Indices = ");
     if (!numberOfOwnComputorIndices)
     {
         appendText(message, L"?.");
