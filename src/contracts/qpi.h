@@ -18,10 +18,10 @@ namespace QPI
 	#
 	%
 	'
-	* not as multiplication operator
+	* (not prohibited as multiplication operator)
 	...
 	/ as division operator
-	::
+	:: (not prohibited as scope operator for structs, enums, and namespaces defined in contracts and `qpi.h`)
 	[
 	]
 	__
@@ -885,10 +885,10 @@ namespace QPI
 	// Each proposal type is composed of a class and a number of options. As an alternative to having N options (option votes),
 	// some proposal classes (currently the one to set a variable) may allow to vote with a scalar value in a range defined
 	// by the proposal (scalar voting).
-	struct ProposalTypes
+	namespace ProposalTypes
 	{
 		// Class of proposal type
-		struct Class
+		namespace Class
 		{
 			// Options without extra data. Supported options: 2 <= N <= 8 with ProposalDataV1.
 			static constexpr uint16 GeneralOptions = 0;

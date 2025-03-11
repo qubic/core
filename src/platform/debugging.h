@@ -22,6 +22,7 @@ static CHAR16 debugMessage[128][16384];
 static int debugMessageCount = 0;
 static char volatile debugLogLock = 0;
 static bool volatile debugLogOnlyMainProcessorRunning = true;
+static bool forceLogToConsoleAsAddDebugMessage = false;
 
 #define WRITE_DEBUG_MESSAGES_TO_FILE 1
 

@@ -103,6 +103,7 @@ static volatile char responseQueueHeadLock = 0;
 static volatile unsigned long long queueProcessingNumerator = 0, queueProcessingDenominator = 0;
 static volatile unsigned long long tickerLoopNumerator = 0, tickerLoopDenominator = 0;
 
+/*
 static bool isWhiteListPeer(unsigned char address[4])
 {
     for (unsigned int i = 0; i < NUMBER_OF_WHITE_LIST_PEERS; i++)
@@ -118,6 +119,7 @@ static bool isWhiteListPeer(unsigned char address[4])
     }
     return false;
 }
+*/
 
 static void closePeer(Peer* peer)
 {
@@ -168,6 +170,9 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
         if (peer->dataToTransmitSize + requestResponseHeader->size() > BUFFER_SIZE)
         {
             // Buffer is full, which indicates a problem
+#ifndef NDEBUG
+            addDebugMessage(L"Warning: Peer transmit buffer overflow -> closing connection!");
+#endif
             closePeer(peer);
         }
         else
@@ -228,6 +233,10 @@ static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
     if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + responseHeader->size() < responseQueueBufferTail)
         && (unsigned short)(responseQueueElementHead + 1) != responseQueueElementTail)
     {
+        ASSERT(responseQueueElementHead < RESPONSE_QUEUE_LENGTH);
+        ASSERT(responseQueueBufferHead < RESPONSE_QUEUE_BUFFER_SIZE);
+        ASSERT(responseQueueBufferHead + responseHeader->size() < RESPONSE_QUEUE_BUFFER_SIZE);
+
         responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
         bs->CopyMem(&responseQueueBuffer[responseQueueBufferHead], responseHeader, responseHeader->size());
         responseQueueBufferHead += responseHeader->size();
@@ -250,6 +259,10 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
     if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + sizeof(RequestResponseHeader) + dataSize < responseQueueBufferTail)
         && (unsigned short)(responseQueueElementHead + 1) != responseQueueElementTail)
     {
+        ASSERT(responseQueueElementHead < RESPONSE_QUEUE_LENGTH);
+        ASSERT(responseQueueBufferHead < RESPONSE_QUEUE_BUFFER_SIZE);
+        ASSERT(responseQueueBufferHead + sizeof(RequestResponseHeader) + dataSize < RESPONSE_QUEUE_BUFFER_SIZE);
+
         responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueBufferHead];
         if (!responseHeader->checkAndSetSize(sizeof(RequestResponseHeader) + dataSize))
@@ -468,7 +481,8 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     }
                     else
                     {
-                        // Out of slot for preserse IPs. Only accept white list IPs
+                        /* GetModeData() freezes the node occasionally: the quick-fix is to disable whitelisting
+                        // If number of unused incoming connection slots is low, only accept white list IPs
                         if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS)
                         {
                             EFI_TCP4_CONFIG_DATA tcp4ConfigData;
@@ -483,6 +497,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                                 else
                                 {
                                     peers[i].isConnectedAccepted = TRUE;
+                                    peers[i].address.u32 = *(unsigned int*)tcp4ConfigData.AccessPoint.RemoteAddress.Addr;
                                 }
                             }
                             else
@@ -492,6 +507,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                             }
                         }
                         else
+                        */
                         {
                             peers[i].isConnectedAccepted = TRUE;
                         }
@@ -558,6 +574,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                             setText(message, L"Forgetting ");
                             appendIPv4Address(message, peers[i].address);
                             appendText(message, L"...");
+                            logToConsole(message);
                             forgetPublicPeer(peers[i].address);
                             closePeer(&peers[i]);
                         }
@@ -565,8 +582,12 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                         {
                             if (receivedDataSize >= requestResponseHeader->size())
                             {
+                                // Compute saltId of packet with K12 of payload and header (size + type temporarily
+                                // overwritten with salt). This is used recognized and skip packet duplicates with
+                                // dejavu0 (checking/setting flag for received package). After receiving a certain
+                                // number of packages (DEJAVU_SWAP_LIMIT), dejavu0 is moved to dejavu1 for checking
+                                // and dejavu0 is initialized with an empty buffer for checking/setting.
                                 unsigned int saltedId;
-
                                 const unsigned int header = *((unsigned int*)requestResponseHeader);
                                 *((unsigned int*)requestResponseHeader) = salt;
                                 KangarooTwelve(requestResponseHeader, header & 0xFFFFFF, &saltedId, sizeof(saltedId));
