@@ -248,7 +248,7 @@ public:
     {
         // first 10 bytes are: epoch(2) + tick(4)+ size/type(4)
         // next 8 bytes are logId
-        return *((unsigned long long*)(ptr+10));
+        return *((unsigned long long*)(ptr + 10));
     }
 
     static unsigned long long getLogDigest(const char* ptr)
@@ -381,7 +381,7 @@ public:
                 {
                     ASSERT(txInfo.startIndex != -1);
                     txInfo.length++;
-                }                
+                }
             }
         }
     } tx;
@@ -455,7 +455,7 @@ public:
         logBufferTail = 0;
         logId = 0;
         lastUpdatedTick = 0;
-        tickBegin = _tickBegin;        
+        tickBegin = _tickBegin;
         tickLoadedFrom = _tickLoadedFrom;
 #endif
     }
