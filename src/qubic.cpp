@@ -291,7 +291,7 @@ static struct {
 
 static void logToConsole(const CHAR16* message)
 {
-    if (disableConsoleLogging)
+    if (consoleLoggingLevel == 0)
     {
         return;
     }
@@ -337,7 +337,7 @@ static void logToConsole(const CHAR16* message)
     bool logAsDebugMessage = epochTransitionState
                                 || system.tick - system.initialTick < 3
                                 || system.tick % 10 == 0
-                                || misalignedState == 1
+                                || misalignedState == 2
                                 || forceLogToConsoleAsAddDebugMessage
         ;
     if (logAsDebugMessage)
@@ -1335,6 +1335,14 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             {
                 epochTransitionCleanMemoryFlag = 1;
                 enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
+
+            case SPECIAL_COMMAND_SET_CONSOLE_LOGGING_MODE:
+            {
+                const auto* _request = header->getPayload<SpecialCommandSetConsoleLoggingModeRequestAndResponse>();
+                consoleLoggingLevel = _request->loggingMode;
+                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
             }
@@ -4324,7 +4332,8 @@ static unsigned int countCurrentTickVote()
 
 // This function scans through all transactions digest in next tickData
 // and look for those txs in local memory (pending txs and tickstorage). If a transaction doesn't exist, it will try to update requestedTickTransactions
-// I main loop (MAIN thread), it will try to fetch missing txs based on the data inside requestedTickTransactions
+// The main loop (MAIN thread) will try to fetch missing txs based on the data inside requestedTickTransactions.
+// This function also counts numberOfNextTickTransactions and numberOfKnownNextTickTransactions for checking if all tx are in tick tx storage.
 // Current code assumes the limits:
 // - 1 tx per source publickey per tick
 // - 128 txs per computor publickey per tick
@@ -4396,7 +4405,8 @@ static void prepareNextTickTransactions()
                         if (&computorPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
                         {
                             ts.tickTransactions.acquireLock();
-                            if (!tsPendingTransactionOffsets[j])
+                            // write tx to tick tx storage, no matter if tsNextTickTransactionOffsets[i] is 0 (new tx)
+                            // or not (tx with digest that doesn't match tickData needs to be overwritten)
                             {
                                 const unsigned int transactionSize = pendingTransaction->totalSize();
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
@@ -4404,11 +4414,12 @@ static void prepareNextTickTransactions()
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
                                     bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
+
+                                    numberOfKnownNextTickTransactions++;
                                 }
                             }
                             ts.tickTransactions.releaseLock();
 
-                            numberOfKnownNextTickTransactions++;
                             unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
 
                             break;
@@ -4436,7 +4447,8 @@ static void prepareNextTickTransactions()
                         if (&entityPendingTransactionDigests[i * 32ULL] == nextTickData.transactionDigests[j])
                         {
                             ts.tickTransactions.acquireLock();
-                            if (!tsPendingTransactionOffsets[j])
+                            // write tx to tick tx storage, no matter if tsNextTickTransactionOffsets[i] is 0 (new tx)
+                            // or not (tx with digest that doesn't match tickData needs to be overwritten)
                             {
                                 const unsigned int transactionSize = pendingTransaction->totalSize();
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
@@ -4444,11 +4456,12 @@ static void prepareNextTickTransactions()
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
                                     bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
+
+                                    numberOfKnownNextTickTransactions++;
                                 }
                             }
                             ts.tickTransactions.releaseLock();
 
-                            numberOfKnownNextTickTransactions++;
                             unknownTransactions[j >> 6] &= ~(1ULL << (j & 63));
 
                             break;
@@ -5688,6 +5701,11 @@ static void deinitialize()
 
 static void logInfo()
 {
+    if (consoleLoggingLevel == 0)
+    {
+        return;
+    }
+
     unsigned long long numberOfWaitingBytes = 0;
 
     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
@@ -5771,7 +5789,15 @@ static void logInfo()
     appendNumber(message, tickDuration / frequency, FALSE);
     appendText(message, L".");
     appendNumber(message, (tickDuration % frequency) * 10 / frequency, FALSE);
-    appendText(message, L" s | Indices = ");
+    appendText(message, L" s");
+
+    if (consoleLoggingLevel < 2)
+    {
+        logToConsole(message);
+        return;
+    }
+
+    appendText(message, L" | Indices = ");
     if (!numberOfOwnComputorIndices)
     {
         appendText(message, L"?.");
@@ -6412,12 +6438,12 @@ static void processKeyPresses()
         break;
 
         /*
-        * PAUSE Key
-        * By Pressing the PAUSE Key you can toggle the log output
+        * PAUSE key
+        * By pressing the PAUSE key you can cycle through the log output verbosity level
         */
         case 0x48:
         {
-            disableConsoleLogging = !disableConsoleLogging;
+            consoleLoggingLevel = (consoleLoggingLevel + 1) % 3;
         }
         break;
         }
@@ -6596,6 +6622,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
                 }
+                if (ts.nextTickTransactionOffset + MAX_TRANSACTION_SIZE > ts.tickTransactions.storageSpaceCurrentEpoch)
+                {
+                    logToConsole(L"Transaction storage is full!!!");
+                }
 
                 const unsigned long long curTimeTick = __rdtsc();
 
@@ -6690,13 +6720,17 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     peerReconnectIfInactive(i, PORT);
                 }
 
-                if (curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
+#if !TICK_STORAGE_AUTOSAVE_MODE
+                // Only save system + score cache to file regularly here if on AUX and snapshot auto-save is disabled
+                if ((mainAuxStatus & 1) == 0
+                    && curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
                 {
                     systemDataSavingTick = curTimeTick;
 
                     saveSystem();
                     score->saveScoreCache(system.epoch);
                 }
+#endif
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
                 {
@@ -6927,15 +6961,20 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (misalignedState == 0)
                         {
-                            // also log to debug.log
+                            // misaligned state detected the first time
                             misalignedState = 1;
                         }
+                        else if (misalignedState == 1)
+                        {
+                            // state persisting for at least a second -> also log to debug.log
+                            misalignedState = 2;
+                        }
                         logToConsole(L"MISALIGNED STATE DETECTED");
-                        if (misalignedState == 1)
+                        if (misalignedState == 2)
                         {
                             // print health status and stop repeated logging to debug.log
                             logHealthStatus();
-                            misalignedState = 2;
+                            misalignedState = 3;
                         }
                     }
                     else
