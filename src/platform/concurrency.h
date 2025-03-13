@@ -14,3 +14,4 @@
 #define ATOMIC_STORE8(target, val) _InterlockedExchange8(&target, val)
 #define ATOMIC_INC64(target) _InterlockedIncrement64(&target)
 #define ATOMIC_AND64(target, val) _InterlockedAnd64(&target, val)
+#define ATOMIC_STORE64(target, val) _InterlockedExchange64(&target, val)

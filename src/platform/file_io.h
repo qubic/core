@@ -21,7 +21,7 @@
 
 // Size of buffer for non-blocking save, this size will divided into ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS.
 // Can set by zeros to save memory and don't use non-block save
-static constexpr unsigned long long ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE = 0;//8 * 1024 * 1024 * 1024ULL; // Set 0 if don't need non-blocking save
+static constexpr unsigned long long ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE = 8 * 1024 * 1024 * 1024ULL; // Set 0 if don't need non-blocking save
 static constexpr int ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS_2FACTOR = 10;
 static constexpr int ASYNC_FILE_IO_MAX_QUEUE_ITEMS_2FACTOR = 4;
 static constexpr int ASYNC_FILE_IO_MAX_FILE_NAME = 64;
@@ -325,6 +325,7 @@ struct FileItem
     const unsigned char* mpConstBuffer;
     char mState;
     unsigned long long mReservedSize;
+    long long mAge;
 
     void set(const CHAR16* fileName, unsigned long long fileSize, const CHAR16* directory)
     {
@@ -377,9 +378,73 @@ struct FileItem
             stateChange = FileItem::kFree;
         }
         setState(stateChange);
+        ATOMIC_STORE64(mAge, 0);
     }
 
 };
+
+template<typename KeyType, typename ValueType>
+struct PairStruct
+{
+    KeyType _key;
+    ValueType _value;
+};
+
+// Partition, move all element greater than pivot to the left
+template<typename KeyType, typename ValueType>
+int partition(PairStruct<KeyType, ValueType>* arr, int left, int right)
+{
+    ValueType pivot = arr[right]._value;  // Select pivot
+    int i = left - 1;
+
+    for (int j = left; j < right; j++)
+    {
+        if (arr[j]._value >= pivot)
+        {  // Sorting in descending order
+            i++;
+            PairStruct temp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = temp;
+        }
+    }
+
+    // Swap pivot
+    PairStruct temp = arr[i + 1];
+    arr[i + 1] = arr[right];
+    arr[right] = temp;
+
+    return i + 1;
+}
+
+// Find k largest elements in the array and but them in the left
+template<typename KeyType, typename ValueType>
+void findKLargest(PairStruct<KeyType, ValueType>* arr, int k, int dataSize)
+{
+    if (k <= 0 || k > dataSize)
+        return;
+
+    int left = 0;
+    int right = dataSize - 1;
+
+    while (left <= right)
+    {
+        int pivotIndex = partition(arr, left, right);
+
+        // If pivot is same as k, we found k largest elements in the left
+        if (pivotIndex == k)
+        {
+            break;
+        }
+        else if (pivotIndex > k) // If pivot is greater than k, update the right to find less elements
+        {
+            right = pivotIndex - 1;
+        }
+        else // If pivot is lower than k, update the right to find less elements
+        {
+            left = pivotIndex + 1;
+        }
+    }
+}
 
 template<int maxItems>
 class FileItemStorage
@@ -400,6 +465,7 @@ public:
             mFileItems[i].mReservedSize = (1ULL << 63);
             mFileItems[i].mState = FileItem::kFree;
             mFileItems[i].mHaveDirectory = false;
+            mFileItems[i].mAge = 0;
         }
 
         // If external buffer is provided, allow schedule write file later
@@ -430,9 +496,113 @@ public:
         return NULL;
     }
 protected:
+    // Real write happen here. This function expected call in main thread only. Need to flush all data in queue
+    int flushIO(bool isSave, int numberOfProcessedItems = 0)
+    {
+        if(numberOfProcessedItems == 1)
+        {
+            return flushIOMaxPriorityItem(isSave);
+        }
+
+        unsigned int processedItemsCount = numberOfProcessedItems > 0 ? numberOfProcessedItems : maxItems;
+        // Increase the age of items that waiting for process at current time
+        unsigned int numberOfWaitingItems = 0;
+        for (unsigned int i = 0; i < maxItems; i++)
+        {
+            FileItem& item = mFileItems[i];
+            if (item.waitForProcess())
+            {
+                mPriorityArray[numberOfWaitingItems]._key = i;
+                // Sort value will use age as indicator.
+                // TODO: it should be a combination between file size and age
+                mPriorityArray[numberOfWaitingItems]._value = item.mAge;
+
+                // Increase the age of the item
+                ATOMIC_INC64(item.mAge);
+                numberOfWaitingItems++;
+            }
+        }
+
+        // Pick k oldest items
+        if (numberOfWaitingItems > 0)
+        {
+            processedItemsCount = numberOfWaitingItems < processedItemsCount ? numberOfWaitingItems : processedItemsCount;
+            findKLargest(mPriorityArray, processedItemsCount, numberOfWaitingItems);
+            for (unsigned int i = 0; i < processedItemsCount; i++)
+            {
+                FileItem& item = mFileItems[mPriorityArray[i]._key];
+                long long sts = 0; 
+                if (isSave)
+                {
+                    sts = save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+                }
+                else
+                {
+                    sts = load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+                }
+                item.markAsDone();
+            }
+        }
+
+        // Clean up the index
+        ATOMIC_AND64(mCurrentIdx, maxItems - 1);
+
+        return (numberOfWaitingItems -  processedItemsCount);
+    }
+
+    // Flush largest priority item
+    int flushIOMaxPriorityItem(bool isSave)
+    {
+        int numberOfWaitingItems = 0;
+        // Increase the age of items that waiting for process at current time
+        long long maxAge = -1;
+        int maxIdx = -1;
+        for (unsigned int i = 0; i < maxItems; i++)
+        {
+            FileItem& item = mFileItems[i];
+            if (item.waitForProcess())
+            {
+                if (maxAge <= item.mAge)
+                {
+                    maxAge = item.mAge;
+                    maxIdx = i;
+                }
+                // Increase the age of the item
+                ATOMIC_INC64(item.mAge);
+                numberOfWaitingItems++;
+            }
+        }
+
+        // Pick k oldest items
+        if (maxIdx >= 0)
+        {
+            FileItem& item = mFileItems[maxIdx];
+            long long sts = 0;
+            if (isSave)
+            {
+                sts = save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+            }
+            else
+            {
+                sts = load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+            }
+            item.markAsDone();
+        }
+        else
+        {
+            numberOfWaitingItems = 0;
+        }
+
+        // Clean up the index
+        ATOMIC_AND64(mCurrentIdx, maxItems - 1);
+
+        return (numberOfWaitingItems - 1);
+    }
+
     // List of files need to be written
     FileItem mFileItems[maxItems];
     long long mCurrentIdx;
+    PairStruct<unsigned int, long long> mPriorityArray[maxItems];
 };
 
 template<int maxItems>
@@ -440,20 +610,9 @@ class LoadFileItemStorage : public FileItemStorage<maxItems>
 {
 public:
     // Real read happen here. This function expected call in main thread only
-    int flushRead()
+    int flushRead(int numberOfProcessedItems = 0)
     {
-        for (unsigned int i = 0; i < maxItems; i++)
-        {
-            FileItem& item = this->mFileItems[i];
-            if (item.waitForProcess())
-            {
-                long long sts = load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
-                item.markAsDone();
-            }
-        }
-        // Clean up the index
-        ATOMIC_AND64(this->mCurrentIdx, maxItems - 1);
-        return 0;
+        return this->flushIO(false, numberOfProcessedItems);
     }
 };
 
@@ -462,22 +621,9 @@ class SaveFileItemStorage : public FileItemStorage<maxItems>
 {
 public:
     // Real write happen here. This function expected call in main thread only. Need to flush all data in queue
-    int flushWrite()
+    int flushWrite(int numberOfProcessedItems = 0)
     {
-        for (unsigned int i = 0; i < maxItems; i++)
-        {
-            FileItem& item = this->mFileItems[i];
-            if (item.waitForProcess())
-            {
-                long long sts = save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
-                item.markAsDone();
-            }
-        }
-
-        // Clean up the index
-        ATOMIC_AND64(this->mCurrentIdx, maxItems - 1);
-
-        return 0;
+        return this->flushIO(true, numberOfProcessedItems);
     }
 };
 
@@ -592,6 +738,11 @@ public:
         FileItem* pFileItem = mFileWriteQueue.requestFreeSlot(totalSize);
         if (pFileItem == NULL)
         {
+            return kQueueFull;
+        }
+
+        if (pFileItem->mReservedSize < totalSize)
+        {
             return kBufferFull;
         }
 
@@ -677,15 +828,16 @@ public:
         return (long long)totalSize;
     }
 
-    int flush()
+    int flush(int numberOfItemsPerQueue = 0)
     {
-        mFileBlockingReadQueue.flushRead();
-        mFileBlockingWriteQueue.flushWrite();
+        int remainedItems = 0;
+        remainedItems = remainedItems + mFileBlockingReadQueue.flushRead(numberOfItemsPerQueue);
+        remainedItems = remainedItems + mFileBlockingWriteQueue.flushWrite(numberOfItemsPerQueue);
         if (mEnableNonBlockSave)
         {
-            mFileWriteQueue.flushWrite();
+            remainedItems = remainedItems + mFileWriteQueue.flushWrite(numberOfItemsPerQueue);
         }
-        return 0;
+        return remainedItems;
     }
 
 private:
@@ -873,12 +1025,13 @@ static void deInitFileSystem()
     }
 }
 
-static void flushAsyncFileIOBuffer()
+static int flushAsyncFileIOBuffer(int numberOfItemsPerQueue = 0)
 {
     if (gAsyncFileIO)
     {
-        gAsyncFileIO->flush();
+        return gAsyncFileIO->flush(numberOfItemsPerQueue);
     }
+    return 0;
 }
 #pragma optimize("", on)
 
