@@ -69,7 +69,7 @@ public:
     }
 
     template <typename InputType, typename OutputType>
-    void callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true) const
+    unsigned int callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true) const
     {
         EXPECT_LT(contractIndex, contractCount);
         EXPECT_NE(contractStates[contractIndex], nullptr);
@@ -79,14 +79,15 @@ public:
             unsigned short expectedInputSize = contractUserFunctionInputSizes[contractIndex][functionInputType];
             EXPECT_EQ((int)expectedInputSize, sizeof(input));
         }
-        qpiContext.call(functionInputType, &input, sizeof(input));
+        unsigned int errorCode = qpiContext.call(functionInputType, &input, sizeof(input));
         EXPECT_EQ((int)qpiContext.outputSize, sizeof(output));
         if (expectSuccess)
         {
-            EXPECT_EQ(contractError[contractIndex], 0);
+            EXPECT_EQ(errorCode, 0);
         }
         copyMem(&output, qpiContext.outputBuffer, sizeof(output));
         qpiContext.freeBuffer();
+        return errorCode;
     }
 
     template <typename InputType, typename OutputType>

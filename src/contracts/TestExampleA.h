@@ -121,6 +121,9 @@ struct TESTEXA : public ContractBase
 		sint64 transferredNumberOfShares;
 	};
 
+	typedef sint64 RunHeavyComputation_input;
+	typedef sint64 RunHeavyComputation_output;
+
 protected:
 
 	QpiFunctionsOutput qpiFunctionsOutputTemp;
@@ -137,6 +140,8 @@ protected:
 	PostManagementRightsTransfer_input prevPostAcquireSharesInput;
 	uint32 postReleaseSharesCounter;
 	uint32 postAcquireShareCounter;
+
+	sint64 heavyComputationResult;
 
 	PUBLIC_FUNCTION(QueryQpiFunctions)
 		output.qpiFunctionsOutput.year = qpi.year();
@@ -235,7 +240,41 @@ protected:
 			// success
 			output.transferredNumberOfShares = input.numberOfShares;
 		}
+	_
 
+	struct RunHeavyComputation_locals
+	{
+		id entityId;
+		Entity entity;
+		AssetIssuanceIterator issuanceIter;
+		AssetPossessionIterator possessionIter;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(RunHeavyComputation)
+		state.heavyComputationResult = input;
+		
+		// Iterate through spectrum
+		while (!isZero(locals.entityId = qpi.nextId(locals.entityId)))
+		{
+			qpi.getEntity(locals.entityId, locals.entity);
+			state.heavyComputationResult += locals.entity.incomingAmount;
+
+			// Iterate through universe
+			locals.issuanceIter.begin(AssetIssuanceSelect::any());
+			while (!locals.issuanceIter.reachedEnd())
+			{
+				locals.possessionIter.begin(locals.issuanceIter.asset(), AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(locals.entityId));
+				while (!locals.possessionIter.reachedEnd())
+				{
+					state.heavyComputationResult += locals.possessionIter.numberOfPossessedShares();
+					locals.possessionIter.next();
+				}
+
+				locals.issuanceIter.next();
+			}
+		}
+		
+		output = state.heavyComputationResult;
 	_
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
@@ -251,6 +290,7 @@ protected:
 		REGISTER_USER_PROCEDURE(SetPreAcquireSharesOutput, 5);
 		REGISTER_USER_PROCEDURE(AcquireShareManagementRights, 6);
 		REGISTER_USER_PROCEDURE(QueryQpiFunctionsToState, 7);
+		REGISTER_USER_PROCEDURE(RunHeavyComputation, 8);
 	_
 
 	BEGIN_TICK

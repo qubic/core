@@ -716,6 +716,12 @@ namespace QPI
 		// Asset name of current record
 		inline uint64 assetName() const;
 
+		// Return asset (pair of issuer and asset name)
+		inline Asset asset() const
+		{
+			return Asset{issuer(), assetName()};
+		}
+
 		// Index of issuance in universe. Should not be used by contracts, because it may change between contract calls.
 		// Changed by next(). NO_ASSET_INDEX if issuance has not been found.
 		inline unsigned int issuanceIndex() const

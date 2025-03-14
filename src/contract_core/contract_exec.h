@@ -338,9 +338,37 @@ void QPI::QpiContextFunctionCall::__qpiFreeContextOtherContract() const
     contractLocalsStack[_stackIndex].free();
 }
 
+static void addDebugMessageAboutContractStateLockChange(const CHAR16* functionName, unsigned int contractIdxCalling, unsigned int contractIdxToLock, unsigned char entryPoint)
+{
+#if !defined(NDEBUG)
+    CHAR16 dbgMsgBuf[200 + contractCount * 5];
+    setText(dbgMsgBuf, functionName);
+    appendText(dbgMsgBuf, L"(");
+    appendNumber(dbgMsgBuf, contractIdxToLock, FALSE);
+    appendText(dbgMsgBuf, L"), called by contract ");
+    appendNumber(dbgMsgBuf, contractIdxCalling, FALSE);
+    appendText(dbgMsgBuf, (entryPoint == USER_FUNCTION_CALL) ? L" function" : L" procedure");
+    appendText(dbgMsgBuf, L"; initial state: ");
+    for (unsigned int i = 0; i < contractCount; ++i)
+    {
+        int readerLockCount = contractStateLock[i].getCurrentReaderLockCount();
+        if (readerLockCount != 0)
+        {
+            appendNumber(dbgMsgBuf, i, FALSE);
+            appendText(dbgMsgBuf, (readerLockCount > 0) ? L"r " : L"w ");
+        }
+    }
+    addDebugMessage(dbgMsgBuf);
+#endif
+}
+
 // Used to acquire a contract state lock when one contract calls a function of a different contract
 void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int contractIndex) const
 {
+#if !defined(NDEBUG)
+    addDebugMessageAboutContractStateLockChange(L"__qpiAcquireStateForReading", _currentContractIndex, contractIndex, _entryPoint);
+#endif
+
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     ASSERT(contractIndex < contractCount);
     ASSERT(contractIndex < _currentContractIndex);
@@ -412,6 +440,10 @@ void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int cont
 // Used to release a contract state lock when one contract calls a function of a different contract
 void QPI::QpiContextFunctionCall::__qpiReleaseStateForReading(unsigned int contractIndex) const
 {
+#if !defined(NDEBUG)
+    addDebugMessageAboutContractStateLockChange(L"__qpiReleaseStateForReading", _currentContractIndex, contractIndex, _entryPoint);
+#endif
+
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     ASSERT(contractIndex < contractCount);
     ASSERT(contractIndex < _currentContractIndex);
@@ -446,6 +478,10 @@ void QPI::QpiContextFunctionCall::__qpiReleaseStateForReading(unsigned int contr
 // Used to acquire a contract state lock when one contract calls a procedure of a different contract
 void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int contractIndex) const
 {
+#if !defined(NDEBUG)
+    addDebugMessageAboutContractStateLockChange(L"__qpiAcquireStateForWriting", _currentContractIndex, contractIndex, _entryPoint);
+#endif
+
     // Entry point is procedure (running in contract processor), because functions cannot acquire write lock.
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
     ASSERT(contractIndex < contractCount);
@@ -503,6 +539,10 @@ void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int con
 // Used to release a contract state lock when one contract calls a procedure of a different contract
 void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int contractIndex) const
 {
+#if !defined(NDEBUG)
+    addDebugMessageAboutContractStateLockChange(L"__qpiReleaseStateForWriting", _currentContractIndex, contractIndex, _entryPoint);
+#endif
+
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
     ASSERT(contractIndex < contractCount);
@@ -863,7 +903,7 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
     }
 
     // call function
-    void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
+    unsigned int call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[300];
@@ -939,6 +979,8 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
 
         // release lock of contract state
         contractStateLock[_currentContractIndex].releaseRead();
+
+        return NoContractError;
     }
 
     // free buffer after output has been copied

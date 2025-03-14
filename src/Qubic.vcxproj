@@ -39,6 +39,7 @@
     <ClInclude Include="contracts\QBAY.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
+    <ClInclude Include="contracts\TestExampleC.h" />
     <ClInclude Include="contract_core\contract_action_tracker.h" />
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />

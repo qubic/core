@@ -203,6 +203,14 @@ constexpr unsigned short TESTEXB_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #define CONTRACT_STATE_TYPE TESTEXB
 #define CONTRACT_STATE2_TYPE TESTEXB2
 #include "contracts/TestExampleB.h"
+constexpr unsigned short TESTEXC_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+#define CONTRACT_INDEX TESTEXC_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE TESTEXC
+#define CONTRACT_STATE2_TYPE TESTEXC2
+#include "contracts/TestExampleC.h"
 #endif
 
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
@@ -264,6 +272,7 @@ constexpr struct ContractDescription
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
     {"TESTEXB", 138, 10000, sizeof(IPO)},
+    {"TESTEXC", 138, 10000, sizeof(IPO)},
 #endif
 };
 
@@ -359,5 +368,6 @@ static void initializeContracts()
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXC);
 #endif
 }
