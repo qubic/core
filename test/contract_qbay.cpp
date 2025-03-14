@@ -724,6 +724,21 @@ public:
         return output;
     }
 
+    QBAY::TransferShareManagementRights_output qbayTransferShareManagementRights(const id& user, sint64 numberOfShares, uint32 newManagingContractIndex, uint64 fee)
+    {
+        QBAY::TransferShareManagementRights_input input;
+        QBAY::TransferShareManagementRights_output output;
+
+        input.asset.assetName = QBAY_CFB_NAME;
+        input.asset.issuer = CFB_ISSUER;
+        input.newManagingContractIndex = newManagingContractIndex;
+        input.numberOfShares = numberOfShares;
+
+        invokeUserProcedure(QBAY_CONTRACT_INDEX, 16, input, output, user, fee);
+
+        return output;
+    }
+
     sint64 issueAsset(const id& issuer, uint64 assetName, sint64 numberOfShares, uint64 unitOfMeasurement, sint8 numberOfDecimalPlaces)
     {
         QX::IssueAsset_input input{ assetName, numberOfShares, unitOfMeasurement, numberOfDecimalPlaces };
@@ -1147,4 +1162,11 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
 
     // increased the amount of MARKETPLACE_OWNER in line 771, so the balance of marketPlaceOwner should be earnedQubic + 1.
     EXPECT_EQ(getBalance(MARKETPLACE_OWNER), earnedQubic + 1);
+
+    uint64 numberOfQXCFB = numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, CFB_ISSUER, CFB_ISSUER, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, 10000, CFB_ISSUER), 10000);
+    EXPECT_EQ(numberOfQXCFB - 10000, numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, CFB_ISSUER, CFB_ISSUER, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX));
+    increaseEnergy(CFB_ISSUER, 1000000);
+    EXPECT_EQ(pfp.qbayTransferShareManagementRights(CFB_ISSUER, 10000, QX_CONTRACT_INDEX, 1000000).transferredNumberOfShares, 10000);
+    EXPECT_EQ(numberOfQXCFB, numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, CFB_ISSUER, CFB_ISSUER, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX));
 }
