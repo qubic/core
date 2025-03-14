@@ -244,6 +244,18 @@ struct QBAY : public ContractBase
 		uint32 returnCode;
 	};
 
+	struct TransferShareManagementRights_input
+	{
+		Asset asset;
+		sint64 numberOfShares;
+		uint32 newManagingContractIndex;
+	};
+	struct TransferShareManagementRights_output
+	{
+		sint64 transferredNumberOfShares;
+		uint32 returnCode;
+	};
+
 	struct changeStatusOfMarketPlace_input
 	{
 		bit status;
@@ -431,6 +443,7 @@ protected:
 	uint64 earnedQubic;							// The amount of Qubic that the marketplace earned
 	uint64 earnedCFB;							// The amount of CFB that the marketplace earned
 	uint64 collectedShareHoldersFee;
+	sint64 transferRightsFee;
 	uint32 numberOfCollection;
 	uint32 numberOfNFT;
 	id cfbIssuer;
@@ -506,6 +519,8 @@ protected:
 		state.priceOfQubic = input.QubicPrice;
 
 		output.returnCode = QBAYLogInfo::success;
+		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
+		LOG_INFO(locals.log);
 	_
 
 	struct createCollection_locals 
@@ -1407,6 +1422,15 @@ protected:
 			return ;
 		}
 
+		if(state.NFTs.get(input.possessedNFT).possessor == qpi.invocator())
+		{
+			locals.updatedNFT = state.NFTs.get(input.possessedNFT);
+			locals.updatedNFT.NFTidForExchange = QBAY_MAX_NUMBER_NFT;
+			locals.updatedNFT.statusOfExchange = 0;
+
+			state.NFTs.set(input.possessedNFT, locals.updatedNFT);
+		}
+
 		if(state.NFTs.get(input.possessedNFT).possessor != qpi.invocator() || state.NFTs.get(input.anotherNFT).NFTidForExchange != input.possessedNFT)
 		{
 			output.returnCode = QBAYLogInfo::notPossessor;
@@ -2096,6 +2120,7 @@ protected:
 			output.returnCode = QBAYLogInfo::notOwner;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::notOwner, 0 };
 			LOG_INFO(locals.log);
+			return ;
 		}
 
 		state.statusOfMarketPlace = input.status;
@@ -2103,6 +2128,68 @@ protected:
 		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
+	_
+
+	struct TransferShareManagementRights_locals
+	{
+		QBAYLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
+
+		if (qpi.invocationReward() < state.transferRightsFee)
+		{
+			output.returnCode = QBAYLogInfo::insufficientQubic;
+			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientQubic, 0 };
+			LOG_INFO(locals.log);
+
+			return ;
+		}
+
+		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		{
+			// not enough shares available
+			output.transferredNumberOfShares = 0;
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.returnCode = QBAYLogInfo::insufficientCFB;
+			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::insufficientCFB, 0 };
+			LOG_INFO(locals.log);
+		}
+		else
+		{
+			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+				input.newManagingContractIndex, input.newManagingContractIndex, state.transferRightsFee) < 0)
+			{
+				// error
+				output.transferredNumberOfShares = 0;
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+
+				output.returnCode = QBAYLogInfo::errorTransferAsset;
+				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::errorTransferAsset, 0 };
+				LOG_INFO(locals.log);
+			}
+			else
+			{
+				// success
+				output.transferredNumberOfShares = input.numberOfShares;
+				qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), state.transferRightsFee);
+				if (qpi.invocationReward() > state.transferRightsFee)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.transferRightsFee);
+				}
+
+				output.returnCode = QBAYLogInfo::success;
+				locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
+				LOG_INFO(locals.log);
+			}
+		}
 	_
 
 	struct getNumberOfNFTForUser_locals
@@ -2409,6 +2496,7 @@ protected:
 		REGISTER_USER_PROCEDURE(cancelOffer, 13);
 		REGISTER_USER_PROCEDURE(createTraditionalAuction, 14);
 		REGISTER_USER_PROCEDURE(bidOnTraditionalAuction, 15);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 16);
 		REGISTER_USER_PROCEDURE(changeStatusOfMarketPlace, 17);
 
     _
@@ -2417,8 +2505,9 @@ protected:
 	
 		state.cfbIssuer = ID(_C, _F, _B, _M, _E, _M, _Z, _O, _I, _D, _E, _X, _Q, _A, _U, _X, _Y, _Y, _S, _Z, _I, _U, _R, _A, _D, _Q, _L, _A, _P, _W, _P, _M, _N, _J, _X, _Q, _S, _N, _V, _Q, _Z, _A, _H, _Y, _V, _O, _P, _Y, _U, _K, _K, _J, _B, _J, _U, _C);
 		state.marketPlaceOwner = ID(_R, _K, _D, _H, _C, _M, _R, _J, _Y, _C, _G, _K, _P, _D, _U, _Y, _R, _X, _G, _D, _Y, _Z, _C, _I, _Z, _I, _T, _A, _H, _Y, _O, _V, _G, _I, _U, _T, _K, _N, _D, _T, _E, _H, _P, _C, _C, _L, _W, _L, _Z, _X, _S, _H, _N, _F, _P, _D);
-		
-    _
+		state.transferRightsFee = 1000000;
+
+	_
 
 	struct END_EPOCH_locals
 	{
