@@ -57,6 +57,22 @@ Request processors and networking:
 - [Medium] Success rate of connection to the node: >90% Good. >70% OK. Acceptable >50%. Potentially bug <50%
 
 
+## Testing with Test Example SCs
+
+To enable testing of components that cannot be covered by unit tests, the Test Example SCs provide interfaces to run tests in a ticking testnet via qubic-cli's testing commands.
+At the moment, only the `TESTEXA` SC is used for this purpose.
+
+### Setup
+- Enable the testing SCs in the core code by adding `#define INCLUDE_CONTRACT_TEST_EXAMPLES` before including contract_def.h in qubic.cpp.
+- In qubic-cli testUtils.cpp file, make sure that `#define TESTEXA_CONTRACT_INDEX 12` and `#define TESTEXA_ADDRESS "MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWLWD"` still match the index and address of the `TESTEXA` SC (it will change when new SCs are added).
+- Run a test network with the adapted core code.
+
+### Tests to perform via qubic-cli
+- [High] Run the command `-testqpifunctionsoutput` with a computor seed. The computor seed is required because other entities have a limit of max. 1 pending tx and the command will send 15 txs for future ticks. The command will wait and print whether the txs were included in the respective ticks. Ideally, they should all be included but sometimes there might be missing ones which did not pass the consensus. Afterwards, the command will check if the output of QPI functions saved in the `TESTEXA` state match the TickData and quorum tick votes.
+- [High] The command `-testqpifunctionsoutputpast` will perform the same check as the previous test but only for past ticks (no seed required).
+A special case is testing the QPI functions output after loading the state from a snapshot. For this, wait until a snapshot is saved, re-start the node from the snapshot, then run the command.
+
+
 ## Google Tests
 
 For simplified, automated, and isolated testing of components, we use the "test" project.
