@@ -21,7 +21,7 @@
 
 // Size of buffer for non-blocking save, this size will divided into ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS.
 // Can set by zeros to save memory and don't use non-block save
-static constexpr unsigned long long ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE = 8 * 1024 * 1024 * 1024ULL; // Set 0 if don't need non-blocking save
+static constexpr unsigned long long ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE = 0;//8 * 1024 * 1024 * 1024ULL; // Set 0 if don't need non-blocking save
 static constexpr int ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS_2FACTOR = 10;
 static constexpr int ASYNC_FILE_IO_MAX_QUEUE_ITEMS_2FACTOR = 4;
 static constexpr int ASYNC_FILE_IO_MAX_FILE_NAME = 64;

@@ -7050,11 +7050,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 // Flush the file system. Only flush one item at a time to avoid the main loop stay too long
                 // Even if the time is not satisfied, when still flush at least some items to make sure the save/load not stuck forever
                 // TODO: profile the read/write speed of the file system at the begining and adjust the number of items to flush
+                int remainedItem = 1;
                 do
                 {
-                    flushAsyncFileIOBuffer(1);
-                } 
-                while ((__rdtsc() - curTimeTick) * 1000000 / frequency < TARGET_MAINTHREAD_LOOP_DURATION);
+                    remainedItem = flushAsyncFileIOBuffer(1);
+                }
+                while (remainedItem > 0 && ((__rdtsc() - curTimeTick) * 1000000 / frequency < TARGET_MAINTHREAD_LOOP_DURATION));
             }
 
             saveSystem();
