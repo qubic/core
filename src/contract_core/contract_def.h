@@ -175,6 +175,15 @@ struct __FunctionOrProcedureBeginEndGuard
 #include "contracts/MsVault.h"
 
 // new contracts should be added above this line
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QSWAP_CONTRACT_INDEX 11
+#define CONTRACT_INDEX QSWAP_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QSWAP
+#define CONTRACT_STATE2_TYPE QSWAP2
+#include "contracts/Qswap.h"
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
 constexpr unsigned short TESTEXA_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
@@ -250,6 +259,7 @@ constexpr struct ContractDescription
     {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
     {"MSVAULT", 149, 10000, sizeof(MSVAULT)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
     // new contracts should be added above this line
+    {"QSWAP", 139, 10000, sizeof(QSWAP)},
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
     {"TESTEXB", 138, 10000, sizeof(IPO)},
@@ -344,6 +354,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QVAULT);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MSVAULT);
     // new contracts should be added above this line
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSWAP);
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
