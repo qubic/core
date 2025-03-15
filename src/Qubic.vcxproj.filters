@@ -237,6 +237,10 @@
     <ClInclude Include="network_messages\logging.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="K12/kangaroo_twelve_xkcp.h" />
+    <ClInclude Include="contracts\HM25.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
