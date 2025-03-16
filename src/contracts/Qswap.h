@@ -615,7 +615,7 @@ protected:
 	_
 
 //
-// procudue
+// procedure
 // 
 	struct IssueAsset_locals{
 		QX::Fees_input feesInput;
