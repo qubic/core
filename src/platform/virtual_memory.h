@@ -29,6 +29,7 @@ private:
     unsigned long long cachePageId[numCachePage];
     unsigned int lastAccessedTick[numCachePage];
     unsigned long long currentId; // latest item index that has been added to this array
+    unsigned long long currentPageId; // current page index that's written on
 
     volatile char memLock; // every read/write needs a memory lock, can optimize later
 
@@ -45,16 +46,10 @@ private:
         appendText(pageName, L".pg");
     }
 
-    void generateCurrentPageName(CHAR16 pageName[64])
-    {
-        unsigned long long page_id = (currentId + pageCapacity - 1) / pageCapacity;
-        generatePageName(pageName, page_id);
-    }
-
     void writeCurrentPageToDisk()
     {
         CHAR16 pageName[64] = { 0 };
-        generateCurrentPageName(pageName);
+        generatePageName(pageName, currentPageId);
 #ifdef NO_UEFI
         auto sz = save(pageName, pageSize, (unsigned char*)currentPage, pageDir);
 #else
@@ -91,7 +86,7 @@ private:
     void copyCurrentPageToCache()
     {
         int page_id = getMostOutdatedCachePage();
-        copyMem(cache + page_id, &currentPage, pageSize);
+        copyMem(cache[page_id], currentPage, pageSize);
     }
 
     void cleanCurrentPage()
@@ -107,7 +102,10 @@ private:
         {
             if (cachePageId[i] == requested_page_id)
             {
+#ifdef NO_UEFI
+#else
                 lastAccessedTick[i] = system.tick;
+#endif
                 return i;
             }
         }
@@ -129,12 +127,14 @@ private:
         cache_page_id = getMostOutdatedCachePage();
 #ifdef NO_UEFI
         auto sz = load(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
+        lastAccessedTick[cache_page_id] = 0;
 #else
         auto sz = asyncLoad(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir, true);
+        lastAccessedTick[cache_page_id] = system.tick;
 #endif
         
         cachePageId[cache_page_id] = pageId;
-        lastAccessedTick[cache_page_id] = system.tick;
+        
 #if !defined(NDEBUG)
         if (sz != pageSize)
         {
@@ -145,6 +145,7 @@ private:
         return cache_page_id;
     }
 
+    // only call after append
     // check if current page is full
     // if yes, write current page to disk and cache
     // then clean current page
@@ -156,6 +157,7 @@ private:
             copyCurrentPageToCache();
             cleanCurrentPage();
             cachePageId[0] = currentId / pageCapacity;
+            currentPageId++;
         }
     }
 
@@ -168,6 +170,7 @@ public:
     {
         setMem(currentPage, pageSize * (numCachePage+1), 0);
         currentId = 0;
+        currentPageId = 0;
         memLock = 0;
     }
 
@@ -182,7 +185,7 @@ public:
             cache[0] = currentPage;
             for (int i = 1; i <= numCachePage; i++)
             {
-                cache[i] = cache[i - 1] + pageSize;
+                cache[i] = cache[i - 1] + pageCapacity;
             }
         }
 
@@ -202,6 +205,7 @@ public:
         }
         
         reset();
+        return true;
     }
 
     void deinit()
@@ -338,6 +342,11 @@ public:
         result = cache[cache_page_idx][index % pageCapacity];
         RELEASE(memLock);
         return result;
+    }
+
+    T operator[](unsigned int index)
+    {
+        return get(index);
     }
 
     // append (single) data to latest
