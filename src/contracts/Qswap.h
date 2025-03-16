@@ -118,7 +118,6 @@ public:
 	* @param	assetAmountBDesired		The amount of tokenB to add as liquidity if the A/B price is <= amountADesired/amountBDesired (B depreciates).
 	* @param	quAmountMin				Bounds the extent to which the B/A price can go up before the transaction reverts. Must be <= amountADesired.
 	* @param	assetAmountMin			Bounds the extent to which the A/B price can go up before the transaction reverts. Must be <= amountBDesired.
-	* https://docs.uniswap.org/contracts/v2/reference/smart-contracts/router-02#addliquidity
 	*/
 	struct AddLiqudity_input{
 		id assetIssuer;
@@ -766,7 +765,6 @@ protected:
 		uint128 i1, i2, i3;
 	};
 
-	// https://github.com/Uniswap/v2-periphery/blob/0335e8f7e1bd1e8d8329fd300aea2ef2f36dd19f/contracts/UniswapV2Router02.sol#L61
 	PUBLIC_PROCEDURE_WITH_LOCALS(AddLiqudity)
 		output.userIncreaseLiqudity = 0;
 		output.assetAmount = 0;
@@ -1044,7 +1042,6 @@ protected:
 		uint32 i0;
 	};
 
-	// https://github.com/Uniswap/v2-periphery/blob/0335e8f7e1bd1e8d8329fd300aea2ef2f36dd19f/contracts/UniswapV2Router02.sol#L102
 	PUBLIC_PROCEDURE_WITH_LOCALS(RemoveLiqudity)
 		output.quAmount = 0;
 		output.assetAmount = 0;
