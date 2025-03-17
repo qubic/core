@@ -48,11 +48,13 @@ TEST(TestVirtualMemory, TestVirtualMemory_NativeChar) {
         test_vm.getMany(fetcher.data(), offset, test_len);
         EXPECT_TRUE(memcmp(fetcher.data(), arr.data() + offset, test_len) == 0);
     }
+    
     for (int i = 0; i < 1024; i++)
     {
         int index = rand() % N;
         EXPECT_TRUE(test_vm[index] == arr[index]);
     }
+    test_vm.deinit();
 }
 
 #define IMAX_BITS(m) ((m)/((m)%255+1) / 255%255*8 + 7-86/((m)%255+12))
@@ -113,6 +115,7 @@ TEST(TestVirtualMemory, TestVirtualMemory_NativeU64) {
         int index = rand() % N;
         EXPECT_TRUE(test_vm[index] == arr[index]);
     }
+    test_vm.deinit();
 }
 
 TickData randTick()
@@ -177,4 +180,5 @@ TEST(TestVirtualMemory, TestVirtualMemory_TickStruct) {
         int index = rand() % N;
         EXPECT_TRUE(tickEqual(test_vm[index], arr[index]));
     }
+    test_vm.deinit();
 }

@@ -5,7 +5,7 @@
 
 
 // Request: ranges of log ID
-void qLogger::processRequestLog(Peer* peer, RequestResponseHeader* header)
+void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
     RequestLog* request = header->getPayload<RequestLog>();
@@ -53,7 +53,9 @@ void qLogger::processRequestLog(Peer* peer, RequestResponseHeader* header)
                     length -= endIdBufferRange.length;
                 }
             }
-            enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
+            char* rBuffer = responseBuffers[processorNumber];
+            logBuffer.getMany(rBuffer, startFrom, length);
+            enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), rBuffer);
         }
         else
         {

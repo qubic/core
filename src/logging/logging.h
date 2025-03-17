@@ -4,6 +4,7 @@
 #include "platform/concurrency.h"
 #include "platform/time.h"
 #include "platform/memory_util.h"
+#include "platform/virtual_memory.h"
 #include "platform/debugging.h"
 
 #include "network_messages/header.h"
@@ -25,10 +26,6 @@ struct Peer;
 #endif
 
 // Logger defines
-#ifndef LOG_BUFFER_SIZE
-#define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
-#endif
-#define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
 #define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
 #define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
 
@@ -216,7 +213,7 @@ struct SpectrumStats
 /*
  * LOGGING IMPLEMENTATION
  */
-
+#define MAXIMUM_LOG_EVENT_SIZE 512
 class qLogger
 {
 public:
@@ -226,9 +223,23 @@ public:
         long long length;
     };
 
-    inline static char* logBuffer = NULL;
     inline static BlobInfo* mapTxToLogId = NULL;
-    inline static BlobInfo* mapLogIdToBufferIndex = NULL;
+    // inline static char* logBuffer = NULL;
+    // inline static BlobInfo* mapLogIdToBufferIndex = NULL;
+    // Virtual memory with 10'000'000 items per page and 4 pages on cache
+#ifdef NO_UEFI
+#define TEXT_LOGS_AS_NUMBER 0 // L"logs"
+#define TEXT_MAP_AS_NUMBER 0       // L"map"
+#define TEXT_BUF_AS_NUMBER 0  // L"buff"
+#else
+#define TEXT_LOGS_AS_NUMBER 32370064710631532ULL // L"logs"
+#define TEXT_MAP_AS_NUMBER 481042694253ULL       // L"map"
+#define TEXT_BUF_AS_NUMBER 28710885718818914ULL  // L"buff"
+#endif
+    inline static VirtualMemory<char, TEXT_BUF_AS_NUMBER, TEXT_LOGS_AS_NUMBER, 10000000, 4> logBuffer;
+    inline static VirtualMemory<BlobInfo, TEXT_MAP_AS_NUMBER, TEXT_LOGS_AS_NUMBER, 10000000, 4> mapLogIdToBufferIndex;
+    inline static char responseBuffers[MAX_NUMBER_OF_PROCESSORS][RequestResponseHeader::max_size];
+    
     inline static unsigned long long logBufferTail;
     inline static unsigned long long logId;
     inline static unsigned int tickBegin; // initial tick of the epoch
@@ -267,7 +278,7 @@ public:
         return sizeAndType & 0xFFFFFF; // last 24 bits are message size
     }
 
-    // since we use round buffer, verifying digest for each log is needed to avoid sending out wrong log
+    // verify the log event with digests
     static bool verifyLog(const char* ptr, unsigned long long logId)
     {
 #if ENABLED_LOGGING
@@ -275,17 +286,10 @@ public:
         {
             return false;
         }
-        unsigned long long computedLogDigest = 0;
-        unsigned long long logDigest = getLogDigest(ptr);
         unsigned int msgSize = getLogSize(ptr);
         if (msgSize >= RequestResponseHeader::max_size)
         {
             // invalid size
-            return false;
-        }
-        KangarooTwelve(ptr + LOG_HEADER_SIZE, msgSize, &computedLogDigest, 8);
-        if (logDigest != computedLogDigest)
-        {
             return false;
         }
 #endif
@@ -298,16 +302,15 @@ public:
     {
         static void init()
         {
-            BlobInfo null_blob{ -1,-1 };
-            for (unsigned long long i = 0; i < LOG_MAX_STORAGE_ENTRIES; i++)
-            {
-                mapLogIdToBufferIndex[i] = null_blob;
-            }
+            mapLogIdToBufferIndex.init();
         }
         static long long getIndex(unsigned long long logId)
         {
-            BlobInfo res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
-            if (verifyLog(logBuffer + res.startIndex, logId))
+            char buf[LOG_HEADER_SIZE];
+            setMem(buf, sizeof(buf), 0);
+            BlobInfo res = mapLogIdToBufferIndex[logId];
+            logBuffer.getMany(buf, res.startIndex, LOG_HEADER_SIZE);
+            if (verifyLog(buf, logId))
             {
                 return res.startIndex;
             }
@@ -316,8 +319,11 @@ public:
 
         static BlobInfo getBlobInfo(unsigned long long logId)
         {
-            BlobInfo res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
-            if (verifyLog(logBuffer + res.startIndex, logId))
+            char buf[LOG_HEADER_SIZE];
+            setMem(buf, sizeof(buf), 0);
+            BlobInfo res = mapLogIdToBufferIndex[logId];
+            logBuffer.getMany(buf, res.startIndex, LOG_HEADER_SIZE);
+            if (verifyLog(buf, logId))
             {
                 return res;
             }
@@ -326,9 +332,11 @@ public:
 
         static void set(unsigned long long logId, long long index, long long length)
         {
-            BlobInfo& res = mapLogIdToBufferIndex[logId % LOG_MAX_STORAGE_ENTRIES];
+            ASSERT(logId == mapLogIdToBufferIndex.size());
+            BlobInfo res;
             res.startIndex = index;
             res.length = length;
+            mapLogIdToBufferIndex.append(res);
         }
     } logBuf;
 
@@ -398,25 +406,19 @@ public:
     static bool initLogging()
     {
 #if ENABLED_LOGGING
-        if (logBuffer == NULL)
+        if (!logBuffer.init())
         {
-            if (!allocPoolWithErrorLog(L"logBuffer", LOG_BUFFER_SIZE, (void**)&logBuffer, __LINE__))
-            {
-                return false;
-            }
+            return false;
+        }
+
+        if (!mapLogIdToBufferIndex.init())
+        {
+            return false;
         }
 
         if (mapTxToLogId == NULL)
         {
             if (!allocPoolWithErrorLog(L"mapTxToLogId", LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId, __LINE__))
-            {
-                return false;
-            }
-        }
-
-        if (mapLogIdToBufferIndex == NULL)
-        {
-            if (!allocPoolWithErrorLog(L"mapLogIdToBufferIndex", LOG_MAX_STORAGE_ENTRIES * sizeof(BlobInfo), (void**)&mapLogIdToBufferIndex, __LINE__))
             {
                 return false;
             }
@@ -429,20 +431,12 @@ public:
     static void deinitLogging()
     {
 #if ENABLED_LOGGING
-        if (logBuffer)
-        {
-            freePool(logBuffer);
-            logBuffer = nullptr;
-        }
+        logBuffer.deinit();
+        mapLogIdToBufferIndex.deinit();
         if (mapTxToLogId)
         {
             freePool(mapTxToLogId);
             mapTxToLogId = nullptr;
-        }
-        if (mapLogIdToBufferIndex)
-        {
-            freePool(mapLogIdToBufferIndex);
-            mapLogIdToBufferIndex = nullptr;
         }
 #endif
     }
@@ -468,21 +462,20 @@ public:
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
 #if ENABLED_LOGGING
+        char buffer[LOG_HEADER_SIZE];
+        setMem(buffer, sizeof(buffer), 0);
         tx.addLogId();
-        if (logBufferTail + LOG_HEADER_SIZE + messageSize >= LOG_BUFFER_SIZE)
-        {
-            logBufferTail = 0; // reset back to beginning
-        }
         logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
-        *((unsigned short*)(logBuffer + (logBufferTail))) = system.epoch;
-        *((unsigned int*)(logBuffer + (logBufferTail + 2))) = system.tick;
-        *((unsigned int*)(logBuffer + (logBufferTail + 6))) = messageSize | (messageType << 24);
-        *((unsigned long long*)(logBuffer + (logBufferTail + 10))) = logId++;
+        *((unsigned short*)(buffer)) = system.epoch;
+        *((unsigned int*)(buffer + 2)) = system.tick;
+        *((unsigned int*)(buffer + 6)) = messageSize | (messageType << 24);
+        *((unsigned long long*)(buffer + 10)) = logId++;
         unsigned long long logDigest = 0;
         KangarooTwelve(message, messageSize, &logDigest, 8);
-        *((unsigned long long*)(logBuffer + (logBufferTail + 18))) = logDigest;
-        copyMem(logBuffer + (logBufferTail + LOG_HEADER_SIZE), message, messageSize);
+        *((unsigned long long*)(buffer + 18)) = logDigest;        
         logBufferTail += LOG_HEADER_SIZE + messageSize;
+        logBuffer.appendMany(buffer, LOG_HEADER_SIZE);
+        logBuffer.appendMany((char*)message, messageSize);
 #endif
     }
 
@@ -627,13 +620,14 @@ public:
     }
 
     // get logging content from log ID
-    static void processRequestLog(Peer* peer, RequestResponseHeader* header);
+    static void processRequestLog(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header);
 
     // convert from tx id to log ID
     static void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header);
 
     // get all log ID (mapping to tx id) from a tick
     static void processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header);
+
 };
 
 GLOBAL_VAR_DECL qLogger logger;

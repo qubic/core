@@ -26,8 +26,8 @@ private:
     T* cache[numCachePage+1] = { NULL };
     CHAR16* pageDir = NULL;
 
-    unsigned long long cachePageId[numCachePage];
-    unsigned int lastAccessedTick[numCachePage];
+    unsigned long long cachePageId[numCachePage+1];
+    unsigned long long lastAccessedTick[numCachePage+1];
     unsigned long long currentId; // latest item index that has been added to this array
     unsigned long long currentPageId; // current page index that's written on
 
@@ -69,7 +69,7 @@ private:
     {
         // i = 1 because 0 is used for current page
         int min_index = 1;
-        for (int i = 1; i < numCachePage; i++)
+        for (int i = 1; i <= numCachePage; i++)
         {
             if (lastAccessedTick[i] == 0)
             {                
@@ -98,13 +98,13 @@ private:
     int findCachePage(unsigned long long requested_page_id)
     {
         // TODO: consider implementing a tree here for faster search
-        for (int i = 0; i < numCachePage; i++)
+        for (int i = 0; i <= numCachePage; i++)
         {
             if (cachePageId[i] == requested_page_id)
             {
 #ifdef NO_UEFI
 #else
-                lastAccessedTick[i] = system.tick;
+                lastAccessedTick[i] = now_ms();
 #endif
                 return i;
             }
@@ -119,7 +119,7 @@ private:
     {
         int cache_page_id = findCachePage(pageId);
         if (cache_page_id != -1)
-        {            
+        {
             return cache_page_id;
         }
         CHAR16 pageName[64] = { 0 };
@@ -129,12 +129,10 @@ private:
         auto sz = load(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
         lastAccessedTick[cache_page_id] = 0;
 #else
-        auto sz = asyncLoad(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir, true);
-        lastAccessedTick[cache_page_id] = system.tick;
+        auto sz = asyncLoad(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
+        lastAccessedTick[cache_page_id] = now_ms();
 #endif
-        
         cachePageId[cache_page_id] = pageId;
-        
 #if !defined(NDEBUG)
         if (sz != pageSize)
         {
@@ -166,9 +164,13 @@ public:
     {
 
     }
+
     void reset()
     {
         setMem(currentPage, pageSize * (numCachePage+1), 0);
+        setMem(cachePageId, sizeof(cachePageId), 0xff);
+        setMem(lastAccessedTick, sizeof(lastAccessedTick), 0);
+        cachePageId[0] = 0;
         currentId = 0;
         currentPageId = 0;
         memLock = 0;
@@ -207,14 +209,20 @@ public:
         reset();
         return true;
     }
-
     void deinit()
     {
         if (currentPage != NULL)
         {
             freePool(currentPage);
+            currentPage = NULL;
+        }
+        if (pageDir != NULL)
+        {
+            freePool(pageDir);
+            pageDir = NULL;
         }
     }
+
 #ifdef MIN
 #undef MIN
 #endif
@@ -344,7 +352,7 @@ public:
         return result;
     }
 
-    T operator[](unsigned int index)
+    T operator[](unsigned long long index)
     {
         return get(index);
     }
@@ -360,5 +368,10 @@ public:
         currentPage[currentId++] = data;
         tryPersistingPage();
         RELEASE(memLock);
+    }
+
+    unsigned long long size()
+    {
+        return currentId;
     }
 };

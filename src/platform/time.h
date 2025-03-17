@@ -49,3 +49,16 @@ inline long long ms(unsigned char year, unsigned char month, unsigned char day, 
 {
     return (((((long long)dayIndex(year, month, day)) * 24 + hour) * 60 + minute) * 60 + second) * 1000 + millisecond;
 }
+
+inline unsigned long long now_ms()
+{
+    EFI_TIME t;
+    if (!rs->GetTime(&t, NULL))
+    {
+        return ms(unsigned char(t.Year % 100), t.Month, t.Day, t.Hour, t.Minute, t.Second, t.Nanosecond / 1000000);
+    }
+    else
+    {
+        return 0;
+    }
+}

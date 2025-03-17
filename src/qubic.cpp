@@ -1598,7 +1598,7 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case RequestLog::type:
                 {
-                    logger.processRequestLog(peer, header);
+                    logger.processRequestLog(processorNumber, peer, header);
                 }
                 break;
 

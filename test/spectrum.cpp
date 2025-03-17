@@ -280,19 +280,23 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseAllInSameBin)
     test.afterAntiDust();
 }
 
-SpectrumStats* getSpectrumStatsLog(long long id)
+SpectrumStats getSpectrumStatsLog(long long id)
 {
+    SpectrumStats res;
     qLogger::BlobInfo bi = logger.logBuf.getBlobInfo(id);
     EXPECT_EQ(bi.length, LOG_HEADER_SIZE + sizeof(SpectrumStats));
-    return reinterpret_cast<SpectrumStats*>(logger.logBuffer + bi.startIndex + LOG_HEADER_SIZE);
+    logger.logBuffer.getMany((char*)&res, bi.startIndex + LOG_HEADER_SIZE, sizeof(SpectrumStats));
+    return res;
 }
 
-DustBurning* getDustBurningLog(long long id)
+void getDustBurningLog(long long id, char* ptr)
 {
+    DustBurning res;
     qLogger::BlobInfo bi = logger.logBuf.getBlobInfo(id);
-    DustBurning* db = reinterpret_cast<DustBurning*>(logger.logBuffer + bi.startIndex + LOG_HEADER_SIZE);
-    EXPECT_EQ(bi.length, LOG_HEADER_SIZE + db->messageSize());
-    return db;
+    logger.logBuffer.getMany((char*)&res, bi.startIndex + LOG_HEADER_SIZE, sizeof(DustBurning));
+    EXPECT_EQ(bi.length, LOG_HEADER_SIZE + res.messageSize());
+    copyMem(ptr, &res, sizeof(DustBurning));
+    logger.logBuffer.getMany(ptr + sizeof(DustBurning), bi.startIndex + LOG_HEADER_SIZE + sizeof(DustBurning), res.messageSize());
 }
 
 TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinsAndLogging)
@@ -318,10 +322,11 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinsAndLogging)
 
     // check logs:
     // first 24 are from building up spectrum
-    SpectrumStats* stats;
+    SpectrumStats statData;
+    SpectrumStats* stats = &statData;
     for (int i = 0; i < 24; ++i)
     {
-        stats = getSpectrumStatsLog(i);
+        statData = getSpectrumStatsLog(i);
         EXPECT_EQ(stats->numberOfEntities, i * 524288 + 1);
         EXPECT_EQ(stats->entityCategoryPopulations[6], std::min(i * 524288 + 1, int(SPECTRUM_CAPACITY / 4)));
         EXPECT_EQ(stats->entityCategoryPopulations[13], (i < 8) ? 0 : (i - 8) * 524288 + 1);
@@ -340,7 +345,8 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinsAndLogging)
     }
 
     // Check state before anti-dust
-    SpectrumStats* beforeAntidustStats = getSpectrumStatsLog(24);
+    statData = getSpectrumStatsLog(24);
+    SpectrumStats* beforeAntidustStats = &statData;
     EXPECT_EQ(beforeAntidustStats->numberOfEntities, 24 * 524288);
     EXPECT_EQ(beforeAntidustStats->entityCategoryPopulations[6], SPECTRUM_CAPACITY / 4);
     EXPECT_EQ(beforeAntidustStats->entityCategoryPopulations[13], SPECTRUM_CAPACITY / 2);
@@ -351,9 +357,12 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinsAndLogging)
     // Check dust burning log messages
     int balancesBurned = 0;
     int logId = 25;
+    std::vector<char> buffer;
+    buffer.resize(1024 * 1024 * 1024); // mimic the scratchpad, allocated 1GiB here
     while (balancesBurned < 8 * 1048576)
     {
-        DustBurning* db = getDustBurningLog(logId);
+        DustBurning* db = (DustBurning*) (buffer.data());
+        getDustBurningLog(logId, buffer.data());
         for (int i = 0; i < db->numberOfBurns; ++i)
         {
             // Of the first 4M entities, all are burned (amount 100), of the following every second is burned.
@@ -370,7 +379,8 @@ TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinsAndLogging)
     }
 
     // Finally, check state logged after dust burning (logged before increaing energy / adding new entity)
-    SpectrumStats* afterAntidustStats = getSpectrumStatsLog(logId);
+    statData = getSpectrumStatsLog(logId);;
+    SpectrumStats* afterAntidustStats = &statData;
     EXPECT_EQ(afterAntidustStats->numberOfEntities, 4194304);
     EXPECT_EQ(afterAntidustStats->entityCategoryPopulations[9], 0);
     EXPECT_EQ(afterAntidustStats->entityCategoryPopulations[13], 4 * 1048576);
