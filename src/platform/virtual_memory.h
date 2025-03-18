@@ -195,15 +195,26 @@ public:
         {
             if (prefixName != 0 && pageDirectory != 0)
             {
-                if (!allocPoolWithErrorLog(L"PageDir", 16, (void**)&pageDir, __LINE__))
+                if (!allocPoolWithErrorLog(L"PageDir", 32, (void**)&pageDir, __LINE__))
                 {
                     return false;
                 }
+                setMem(pageDir, sizeof(pageDir), 0);
                 unsigned long long tmp = prefixName;
                 copyMem(pageDir, &tmp, 8);
                 tmp = pageDirectory;
                 copyMem(pageDir + 4, &tmp, 8);
-            }            
+                appendText(pageDir, L".");
+            }   
+        }
+
+        if (pageDir != NULL)
+        {
+            addEpochToFileName(pageDir, 12, system.epoch);
+            if (!checkDir(pageDir))
+            {
+                createDir(pageDir);
+            }
         }
         
         reset();

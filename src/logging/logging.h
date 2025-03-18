@@ -4,7 +4,6 @@
 #include "platform/concurrency.h"
 #include "platform/time.h"
 #include "platform/memory_util.h"
-#include "platform/virtual_memory.h"
 #include "platform/debugging.h"
 
 #include "network_messages/header.h"
@@ -15,6 +14,7 @@
 #include "system.h"
 #include "kangaroo_twelve.h"
 
+#include "platform/virtual_memory.h"
 struct Peer;
 
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
@@ -213,7 +213,6 @@ struct SpectrumStats
 /*
  * LOGGING IMPLEMENTATION
  */
-#define MAXIMUM_LOG_EVENT_SIZE 512
 class qLogger
 {
 public:
