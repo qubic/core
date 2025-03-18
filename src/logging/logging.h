@@ -627,6 +627,8 @@ public:
     // get all log ID (mapping to tx id) from a tick
     static void processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header);
 
+    // prune unused page files to save disk storage
+    static void processRequestPrunePageFile(Peer* peer, RequestResponseHeader* header);
 };
 
 GLOBAL_VAR_DECL qLogger logger;

@@ -387,13 +387,14 @@ public:
     }
 
     // delete a page on disk given pageId
-    void prune(unsigned long long pageId)
+    bool prune(unsigned long long pageId)
     {
         CHAR16 pageName[64];
         generatePageName(pageName, pageId);
         ACQUIRE(memLock);
-        removeFile(pageDir, pageName);
+        bool success = removeFile(pageDir, pageName);
         RELEASE(memLock);
+        return success;
     }
 
     // delete pages data on disk given (fromId, toId)
@@ -401,13 +402,24 @@ public:
     // fromPageId = (fromId + pageCapacity - 1) // pageCapacity
     // toPageId = (toId + 1) // pageCapacity
     // eg: pageCapacity is 50'000. To delete the second page, call prune(50000, 99999)
-    void pruneRange(unsigned long long fromId, unsigned long long toId)
+    bool pruneRange(unsigned long long fromId, unsigned long long toId)
     {
         unsigned long long fromPageId = (fromId + pageCapacity - 1) / pageCapacity;
         unsigned long long toPageId = (toId + 1) / pageCapacity;
+        if (fromPageId > toPageId)
+        {
+            return false;
+        }
+        bool success = true;
         for (unsigned long long i = fromPageId; i <= toPageId; i++)
         {
-            prune(i);
+            success &= prune(i);
         }
+        return success;
+    }
+
+    unsigned long long pageCap()
+    {
+        return pageCapacity;
     }
 };

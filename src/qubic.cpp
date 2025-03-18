@@ -1614,6 +1614,12 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestPruningPageFiles::type:
+                {
+                    logger.processRequestPrunePageFile(peer, header);
+                }
+                break;
+
                 case REQUEST_SYSTEM_INFO:
                 {
                     processRequestSystemInfo(peer, header);

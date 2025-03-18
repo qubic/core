@@ -157,3 +157,42 @@ void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* hea
 #endif
     enqueueResponse(peer, 0, ResponseAllLogIdRangesFromTick::type, header->dejavu(), NULL);
 }
+
+void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* header)
+{
+#if ENABLED_LOGGING
+    RequestPruningPageFiles* request = header->getPayload<RequestPruningPageFiles>();
+    if (request->passcode[0] == logReaderPasscodes[0]
+        && request->passcode[1] == logReaderPasscodes[1]
+        && request->passcode[2] == logReaderPasscodes[2]
+        && request->passcode[3] == logReaderPasscodes[3])
+    {
+        ResponsePruningPageFiles resp;
+        auto pageCap = mapLogIdToBufferIndex.pageCap();
+        unsigned long long fromPageId = (request->fromLogId + pageCap - 1) / pageCap;
+        unsigned long long toPageId = (request->toLogId + 1) / pageCap;
+
+        unsigned long long fromLogId = fromPageId * pageCap;
+        unsigned long long toLogId = toPageId * (pageCap + 1) - 1;
+
+        BlobInfo bis = mapLogIdToBufferIndex[fromLogId];
+        BlobInfo bie = mapLogIdToBufferIndex[toLogId];
+        unsigned long long logBufferStart = bis.startIndex;
+        unsigned long long logBufferEnd = bie.startIndex + bie.length;
+        resp.success = 0;
+        bool res0 = mapLogIdToBufferIndex.pruneRange(fromLogId, toLogId);
+        bool res1 = logBuffer.pruneRange(logBufferStart, logBufferEnd);
+        if (!res0)
+        {
+            resp.success = 1;
+        }
+        if (!res1)
+        {
+            resp.success = (resp.success << 1) | 1;
+        }
+        enqueueResponse(peer, sizeof(ResponsePruningPageFiles), ResponsePruningPageFiles::type, header->dejavu(), &resp);
+        return;
+    }
+#endif
+    enqueueResponse(peer, 0, ResponsePruningPageFiles::type, header->dejavu(), NULL);
+}

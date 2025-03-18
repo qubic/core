@@ -74,3 +74,24 @@ struct ResponseAllLogIdRangesFromTick
         type = 51,
     };
 };
+
+// Request logid ranges of all txs from a tick
+struct RequestPruningPageFiles
+{
+    unsigned long long passcode[4];
+    unsigned long long fromLogId;
+    unsigned long long toLogId;
+
+    enum {
+        type = 56,
+    };
+};
+
+// Response 0 if success, otherwise error code will be returned
+struct ResponsePruningPageFiles
+{
+    long long success;
+    enum {
+        type = 57,
+    };
+};
