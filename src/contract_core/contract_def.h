@@ -31,6 +31,9 @@ constexpr unsigned int MAX_SIZE_OF_CONTRACT_LOCALS = 32 * 1024;
 // TODO: make sure the limit of nested calls is not violated
 constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
 
+// Size of the contract action tracker, limits the number of transfers that one contract call can execute.
+constexpr unsigned long long CONTRACT_ACTION_TRACKER_SIZE = 16 * 1024 * 1024;
+
 
 static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);
@@ -161,6 +164,49 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE QVAULT2
 #include "contracts/QVAULT.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define MSVAULT_CONTRACT_INDEX 11
+#define CONTRACT_INDEX MSVAULT_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE MSVAULT
+#define CONTRACT_STATE2_TYPE MSVAULT2
+#include "contracts/MsVault.h"
+
+#ifndef NO_QBAY
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QBAY_CONTRACT_INDEX 12
+#define CONTRACT_INDEX QBAY_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QBAY
+#define CONTRACT_STATE2_TYPE QBAY2
+#include "contracts/Qbay.h"
+#endif
+
+// new contracts should be added above this line
+
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+constexpr unsigned short TESTEXA_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+#define CONTRACT_INDEX TESTEXA_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE TESTEXA
+#define CONTRACT_STATE2_TYPE TESTEXA2
+#include "contracts/TestExampleA.h"
+constexpr unsigned short TESTEXB_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+#define CONTRACT_INDEX TESTEXB_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE TESTEXB
+#define CONTRACT_STATE2_TYPE TESTEXB2
+#include "contracts/TestExampleB.h"
+#endif
+
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
 
 #undef INITIALIZE
@@ -214,6 +260,15 @@ constexpr struct ContractDescription
     {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
     {"QEARN", 137, 10000, sizeof(QEARN)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
     {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
+    {"MSVAULT", 149, 10000, sizeof(MSVAULT)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
+#ifndef NO_QBAY
+    {"QBAY", 154, 10000, sizeof(QBAY)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
+#endif
+    // new contracts should be added above this line
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    {"TESTEXA", 138, 10000, sizeof(IPO)},
+    {"TESTEXB", 138, 10000, sizeof(IPO)},
+#endif
 };
 
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
@@ -252,10 +307,12 @@ enum SystemProcedureID
     contractSystemProcedureCount,
 };
 
-enum MoreProcedureIDs
+enum OtherEntryPointIDs
 {
-    // Used together with SystemProcedureID values, so there must be not overlap!
+    // Used together with SystemProcedureID values, so there must be no overlap!
     USER_PROCEDURE_CALL = contractSystemProcedureCount + 1,
+    USER_FUNCTION_CALL = contractSystemProcedureCount + 2,
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3
 };
 
 GLOBAL_VAR_DECL SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
@@ -300,4 +357,13 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(CCF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QEARN);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QVAULT);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MSVAULT);
+#ifndef NO_QBAY
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBAY);
+#endif
+    // new contracts should be added above this line
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
+#endif
 }

@@ -75,5 +75,14 @@ struct SpecialCommandGetMiningScoreRanking
 };
 
 #define SPECIAL_COMMAND_FORCE_SWITCH_EPOCH 15ULL // F7
+#define SPECIAL_COMMAND_CONTINUE_SWITCH_EPOCH 16ULL // F10 (only log-enabled nodes need this)
+
+#define SPECIAL_COMMAND_SET_CONSOLE_LOGGING_MODE 17ULL // PAUSE key
+struct SpecialCommandSetConsoleLoggingModeRequestAndResponse
+{
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned char loggingMode; // 0 disabled, 1 low computational cost, 2 full logging
+    unsigned char padding[7];
+};
 
 #pragma pack(pop)

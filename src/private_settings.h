@@ -16,11 +16,13 @@ static const unsigned char knownPublicPeers[][4] = {
     {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
 };
 
+/* Whitelisting has been disabled, as requesting the IP of the incoming connection freezes the node occasionally
 // Enter static IPs that shall be prioritized in incoming connection
-// There are a connection slots reserved for those whitelist IPs
+// There are connection slots reserved for those whitelist IPs
 static const unsigned char whiteListPeers[][4] = {
      {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
 };
+*/
 
 #define LOG_QU_TRANSFERS 0 // "0" disables logging, "1" enables it
 #define LOG_BURNINGS 0
@@ -29,6 +31,8 @@ static const unsigned char whiteListPeers[][4] = {
 #define LOG_ASSET_ISSUANCES 0
 #define LOG_ASSET_OWNERSHIP_CHANGES 0
 #define LOG_ASSET_POSSESSION_CHANGES 0
+#define LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES 0
+#define LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES 0
 #define LOG_CONTRACT_ERROR_MESSAGES 0
 #define LOG_CONTRACT_WARNING_MESSAGES 0
 #define LOG_CONTRACT_INFO_MESSAGES 0

@@ -125,6 +125,7 @@ public:
 		sint64 addedNumberOfShares;
 	};
 
+	// Bid orders may be placed before an asset is issued (as part of IPO conducted on QX)
 	struct AddToBidOrder_input
 	{
 		id issuer;
@@ -160,6 +161,18 @@ public:
 	{
 		sint64 removedNumberOfShares;
 	};
+
+	struct TransferShareManagementRights_input
+	{
+		Asset asset;
+		sint64 numberOfShares;
+		uint32 newManagingContractIndex;
+	};
+	struct TransferShareManagementRights_output
+	{
+		sint64 transferredNumberOfShares;
+	};
+
 
 protected:
 	uint64 _earnedAmount;
@@ -1025,6 +1038,38 @@ protected:
 		}
 	_
 
+	PUBLIC_PROCEDURE(TransferShareManagementRights)
+
+		// no fee
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+	
+		state._numberOfReservedShares_input.issuer = input.asset.issuer;
+		state._numberOfReservedShares_input.assetName = input.asset.assetName;
+		CALL(_NumberOfReservedShares, state._numberOfReservedShares_input, state._numberOfReservedShares_output);
+		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
+		{
+			// not enough shares available
+			output.transferredNumberOfShares = 0;
+		}
+		else
+		{
+			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+				input.newManagingContractIndex, input.newManagingContractIndex, 0) < 0)
+			{
+				// error
+				output.transferredNumberOfShares = 0;
+			}
+			else
+			{
+				// success
+				output.transferredNumberOfShares = input.numberOfShares;
+			}
+		}
+	_
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 
 		REGISTER_USER_FUNCTION(Fees, 1);
@@ -1041,6 +1086,8 @@ protected:
 		REGISTER_USER_PROCEDURE(AddToBidOrder, 6);
 		REGISTER_USER_PROCEDURE(RemoveFromAskOrder, 7);
 		REGISTER_USER_PROCEDURE(RemoveFromBidOrder, 8);
+
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 9);
 	_
 
 	INITIALIZE
@@ -1050,13 +1097,11 @@ protected:
 		state._assetIssuanceFee = 1000000000;
 		state._transferFee = 1000000;
 		state._tradeFee = 5000000; // 0.5%
-	_
 
-	BEGIN_EPOCH
-
-		// TODO: Remove this and the following 2 lines after epoch 138 has begun
+		/* New values since epoch 138
 		state._transferFee = 100;
 		state._tradeFee = 3000000; // 0.3%
+		*/
 	_
 
 	END_TICK
@@ -1069,16 +1114,24 @@ protected:
 		}
 	_
 
-	PRE_ACQUIRE_SHARES
-	_
-
-	POST_ACQUIRE_SHARES
-	_
-
 	PRE_RELEASE_SHARES
+		// system procedure called before releasing asset management rights
+		// when another contract wants to acquire asset management rights from QX
+		// -> always reject (default); rights can only be transferred upon user request via TransferShareManagementRights
 	_
 
 	POST_RELEASE_SHARES
+	_
+
+	PRE_ACQUIRE_SHARES
+		// system procedure called before acquiring asset management rights
+		// when another contract wants to release asset management rights to QX
+		// -> always accept given the fee is paid
+		output.requestedFee = state._transferFee;
+		output.allowTransfer = true;
+	_
+
+	POST_ACQUIRE_SHARES
 	_
 };
 

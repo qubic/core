@@ -7,6 +7,7 @@
 #include "platform/debugging.h"
 
 #include "network_messages/header.h"
+#include "network_messages/logging.h"
 
 #include "private_settings.h"
 #include "public_settings.h"
@@ -15,7 +16,7 @@
 
 struct Peer;
 
-#define LOG_UNIVERSE (LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES)
+#define LOG_UNIVERSE (LOG_ASSET_ISSUANCES | LOG_ASSET_OWNERSHIP_CHANGES | LOG_ASSET_POSSESSION_CHANGES | LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES | LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES)
 #define LOG_SPECTRUM (LOG_QU_TRANSFERS | LOG_BURNINGS | LOG_DUST_BURNINGS | LOG_SPECTRUM_STATS)
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
@@ -30,80 +31,8 @@ struct Peer;
 #define LOG_BUFFER_SIZE 8589934592ULL // 8GiB
 #endif
 #define LOG_MAX_STORAGE_ENTRIES (LOG_BUFFER_SIZE / sizeof(QuTransfer)) // Adjustable: here we assume most of logs are just qu transfer
-#define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
-#define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
 #define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
 #define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
-
-// Fetches log
-struct RequestLog
-{
-    unsigned long long passcode[4];
-    unsigned long long fromID;
-    unsigned long long toID; // inclusive
-
-    enum {
-        type = 44,
-    };
-};
-
-
-struct RespondLog
-{
-    // Variable-size log;
-
-    enum {
-        type = 45,
-    };
-};
-
-
-// Request logid ranges from tx hash
-struct RequestLogIdRangeFromTx
-{
-    unsigned long long passcode[4];
-    unsigned int tick;
-    unsigned int txId;
-
-    enum {
-        type = 48,
-    };
-};
-
-
-// Response logid ranges from tx hash
-struct ResponseLogIdRangeFromTx
-{
-    long long fromLogId;
-    long long length;
-
-    enum {
-        type = 49,
-    };
-};
-
-// Request logid ranges of all txs from a tick
-struct RequestAllLogIdRangesFromTick
-{
-    unsigned long long passcode[4];
-    unsigned int tick;
-
-    enum {
-        type = 50,
-    };
-};
-
-
-// Response logid ranges of all txs from a tick
-struct ResponseAllLogIdRangesFromTick
-{
-    long long fromLogId[LOG_TX_PER_TICK];
-    long long length[LOG_TX_PER_TICK];
-
-    enum {
-        type = 51,
-    };
-};
 
 #define QU_TRANSFER 0
 #define ASSET_ISSUANCE 1
@@ -116,6 +45,8 @@ struct ResponseAllLogIdRangesFromTick
 #define BURNING 8
 #define DUST_BURNING 9
 #define SPECTRUM_STATS 10
+#define ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE 11
+#define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CUSTOM_MESSAGE 255
 
 /*
@@ -162,6 +93,31 @@ struct AssetPossessionChange
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+struct AssetOwnershipManagingContractChange
+{
+    m256i ownershipPublicKey;
+    m256i issuerPublicKey;
+    unsigned int sourceContractIndex;
+    unsigned int destinationContractIndex;
+    long long numberOfShares;
+    char assetName[7];
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+struct AssetPossessionManagingContractChange
+{
+    m256i possessionPublicKey;
+    m256i ownershipPublicKey;
+    m256i issuerPublicKey;
+    unsigned int sourceContractIndex;
+    unsigned int destinationContractIndex;
+    long long numberOfShares;
+    char assetName[7];
 
     char _terminator; // Only data before "_terminator" are logged
 };
@@ -565,6 +521,22 @@ public:
     }
 
     template <typename T>
+    void logAssetOwnershipManagingContractChange(const T& message)
+    {
+#if LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES
+        logMessage(offsetof(T, _terminator), ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE, &message);
+#endif
+    }
+
+    template <typename T>
+    void logAssetPossessionManagingContractChange(const T& message)
+    {
+#if LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES
+        logMessage(offsetof(T, _terminator), ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE, &message);
+#endif
+    }
+
+    template <typename T>
     void __logContractErrorMessage(unsigned int contractIndex, T& message)
     {
         static_assert(offsetof(T, _terminator) >= 8, "Invalid contract error message structure");
@@ -666,22 +638,26 @@ public:
     static void processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header);
 };
 
-static qLogger logger;
+GLOBAL_VAR_DECL qLogger logger;
 
 // For smartcontract logging
-template <typename T> void __logContractDebugMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractDebugMessage(unsigned int size, T& msg)
 {
     logger.__logContractDebugMessage(size, msg);
 }
-template <typename T> void __logContractErrorMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractErrorMessage(unsigned int size, T& msg)
 {
     logger.__logContractErrorMessage(size, msg);
 }
-template <typename T> void __logContractInfoMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractInfoMessage(unsigned int size, T& msg)
 {
     logger.__logContractInfoMessage(size, msg);
 }
-template <typename T> void __logContractWarningMessage(unsigned int size, T& msg)
+template <typename T>
+static void __logContractWarningMessage(unsigned int size, T& msg)
 {
     logger.__logContractWarningMessage(size, msg);
 }

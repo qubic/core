@@ -18,10 +18,10 @@ namespace QPI
 	#
 	%
 	'
-	* not as multiplication operator
+	* (not prohibited as multiplication operator)
 	...
 	/ as division operator
-	::
+	:: (not prohibited as scope operator for structs, enums, and namespaces defined in contracts and `qpi.h`)
 	[
 	]
 	__
@@ -50,6 +50,8 @@ namespace QPI
 
 #define NULL_ID id::zero()
 	constexpr sint64 NULL_INDEX = -1;
+
+	constexpr sint64 INVALID_AMOUNT = 0x8000000000000000;
 
 #define _A 0
 #define _B 1
@@ -172,6 +174,25 @@ namespace QPI
 			for (uint64 i = 0; i < _elements; ++i)
 				_values[i] = setValue;
 		}
+
+
+        bool operator==(const BitArray<L>& other) const
+        {
+            for (uint64 i = 0; i < _elements; ++i)
+            {
+                if (_values[i] != other._values[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool operator!=(const BitArray<L>& other) const
+        {
+            return !(*this == other);
+        }
+
 	};
 
 	// Bit array convenience definitions
@@ -599,6 +620,27 @@ namespace QPI
 		uint64 assetName;
 	};
 
+	struct AssetIssuanceSelect : public Asset
+	{
+		bool anyIssuer;
+		bool anyName;
+
+		inline static AssetIssuanceSelect any()
+		{
+			return { id::zero(), 0, true, true };
+		}
+
+		inline static AssetIssuanceSelect byIssuer(const id& owner)
+		{
+			return { owner, 0, false, true };
+		}
+
+		inline static AssetIssuanceSelect byName(uint64 assetName)
+		{
+			return { m256i::zero(), assetName, true, false };
+		}
+	};
+
 	struct AssetOwnershipSelect
 	{
 		id owner;
@@ -645,8 +687,45 @@ namespace QPI
 		}
 	};
 
-	// Iterator for ownership records of specific issuance also providing filtering options.
+	// Iterator for asset issuance records.
 	// CAUTION CORE DEVS: DOES NOT TAKE CARE FOR LOCKING! (not relevant for contract devs)
+	class AssetIssuanceIterator
+	{
+	protected:
+		AssetIssuanceSelect _issuance;
+		unsigned int _issuanceIdx;
+
+	public:
+		AssetIssuanceIterator(const AssetIssuanceSelect& issuance = AssetIssuanceSelect::any())
+		{
+			begin(issuance);
+		}
+
+		// Start iteration with issuance filter (selects first record).
+		inline void begin(const AssetIssuanceSelect& issuance);
+
+		// Return if iteration with next() has reached end.
+		inline bool reachedEnd() const;
+
+		// Step to next issuance record matching filtering criteria.
+		inline bool next();
+
+		// Issuer of current record
+		inline id issuer() const;
+
+		// Asset name of current record
+		inline uint64 assetName() const;
+
+		// Index of issuance in universe. Should not be used by contracts, because it may change between contract calls.
+		// Changed by next(). NO_ASSET_INDEX if issuance has not been found.
+		inline unsigned int issuanceIndex() const
+		{
+			return _issuanceIdx;
+		}
+	};
+
+	// Iterator for ownership records of specific issuance also providing filtering options.
+	// CAUTION CORE DEVS: DOES NOT TAKE CARE OF LOCKING! (not relevant for contract devs)
 	class AssetOwnershipIterator
 	{
 	protected:
@@ -678,12 +757,17 @@ namespace QPI
 		// Issuer of current record
 		inline id issuer() const;
 
+		// Asset name of current record
+		inline uint64 assetName() const;
+
 		// Owner of current record
 		inline id owner() const;
 
 		// Number of shares in current ownership record
 		inline sint64 numberOfOwnedShares() const;
 
+		// Contract index of contract having management rights (can transfer ownership)
+		inline uint16 ownershipManagingContract() const;
 
 		// Index of issuance in universe. Should not be used by contracts, because it may change between contract calls.
 		// Constant not changed by next(). NO_ASSET_INDEX if issuance has not been found.
@@ -701,7 +785,7 @@ namespace QPI
 	};
 
 	// Iterator for possession records of specific issuance also providing filtering options.
-	// CAUTION CORE DEVS: DOES NOT TAKE CARE FOR LOCKING! (not relevant for contract devs)
+	// CAUTION CORE DEVS: DOES NOT TAKE CARE OF LOCKING! (not relevant for contract devs)
 	class AssetPossessionIterator : public AssetOwnershipIterator
 	{
 	protected:
@@ -723,14 +807,21 @@ namespace QPI
 		// Step to next possession record matching filtering criteria.
 		inline bool next();
 
+		// Owner of current record
 		inline id possessor() const;
 
+		// Number of shares in current possession record
 		inline sint64 numberOfPossessedShares() const;
 
+		// Index of possession record in universe. Should not be used by contracts, because it may change between contract calls.
+		// Changed by next(). NO_ASSET_INDEX if no (more) matching ownership has not been found.
 		inline unsigned int possessionIndex() const
 		{
 			return _possessionIdx;
 		}
+
+		// Contract index of contract having management rights (can transfer possession)
+		inline uint16 possessionManagingContract() const;
 	};
 
 	//////////
@@ -794,10 +885,10 @@ namespace QPI
 	// Each proposal type is composed of a class and a number of options. As an alternative to having N options (option votes),
 	// some proposal classes (currently the one to set a variable) may allow to vote with a scalar value in a range defined
 	// by the proposal (scalar voting).
-	struct ProposalTypes
+	namespace ProposalTypes
 	{
 		// Class of proposal type
-		struct Class
+		namespace Class
 		{
 			// Options without extra data. Supported options: 2 <= N <= 8 with ProposalDataV1.
 			static constexpr uint16 GeneralOptions = 0;
@@ -1201,16 +1292,19 @@ namespace QPI
 			unsigned int contractIndex,
 			const m256i& originator,
 			const m256i& invocator,
-			long long invocationReward
+			long long invocationReward,
+			unsigned char entryPoint
 		) {
-			init(contractIndex, originator, invocator, invocationReward);
+			init(contractIndex, originator, invocator, invocationReward, entryPoint, -1);
 		}
 
 		void init(
 			unsigned int contractIndex,
 			const m256i& originator,
 			const m256i& invocator,
-			long long invocationReward
+			long long invocationReward,
+			unsigned char entryPoint,
+			int stackIndex
 		) {
 			ASSERT(invocationReward >= 0);
 			_currentContractIndex = contractIndex;
@@ -1218,13 +1312,15 @@ namespace QPI
 			_originator = originator;
 			_invocator = invocator;
 			_invocationReward = invocationReward;
-			_stackIndex = -1;
+			_entryPoint = entryPoint;
+			_stackIndex = stackIndex;
 		}
 
 		unsigned int _currentContractIndex;
+		int _stackIndex;
 		m256i _currentContractId, _originator, _invocator;
 		long long _invocationReward;
-		int _stackIndex;
+		unsigned char _entryPoint;
 
 	private:
 		// Disabling copy and move
@@ -1237,21 +1333,21 @@ namespace QPI
 	// QPI function available to contract functions and procedures
 	struct QpiContextFunctionCall : public QpiContext
 	{
-		id arbitrator(
+		inline id arbitrator(
 		) const;
 
-		id computor(
+		inline id computor(
 			uint16 computorIndex // [0..675]
 		) const;
 
-		uint8 day(
+		inline uint8 day(
 		) const; // [1..31]
 
-		uint8 dayOfWeek(
+		inline uint8 dayOfWeek(
 			uint8 year, // (0 = 2000, 1 = 2001, ..., 99 = 2099)
 			uint8 month,
 			uint8 day
-		) const; // [0..6]
+		) const; // [0..6] (0 = Wednesday)
 
 		inline uint16 epoch(
 		) const; // [0..9'999]
@@ -1261,7 +1357,7 @@ namespace QPI
 			Entity& entity
 		) const; // Returns "true" if the entity has been found, returns "false" otherwise
 
-		uint8 hour(
+		inline uint8 hour(
 		) const; // [0..23]
 
 		// Return the invocation reward (amount transferred to contract immediately before invoking)
@@ -1271,20 +1367,24 @@ namespace QPI
 		id invocator() const { return _invocator; }
 
 		template <typename T>
-		id K12(
+		inline id K12(
 			const T& data
 		) const;
 
-		uint16 millisecond(
+		inline uint16 millisecond(
 		) const; // [0..999]
 
-		uint8 minute(
+		inline uint8 minute(
 		) const; // [0..59]
 
-		uint8 month(
+		inline uint8 month(
 		) const; // [1..12]
 
 		inline id nextId(
+			const id& currentId
+		) const;
+
+		inline id prevId(
 			const id& currentId
 		) const;
 
@@ -1298,21 +1398,22 @@ namespace QPI
 		) const;
 
 		inline sint64 numberOfShares(
-			const Asset& issuanceId,
+			const Asset& asset,
 			const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
 		) const;
 
-		sint32 numberOfTickTransactions(
+		// Returns -1 if the current tick is empty, returns the number of the transactions in the tick otherwise, including 0.
+		inline sint32 numberOfTickTransactions(
 		) const;
 
 		// Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
 		id originator() const { return _originator; }
 
-		uint8 second(
+		inline uint8 second(
 		) const; // [0..59]
 
-		bit signatureValidity(
+		inline bit signatureValidity(
 			const id& entity,
 			const id& digest,
 			const Array<sint8, 64>& signature
@@ -1321,7 +1422,7 @@ namespace QPI
 		inline uint32 tick(
 		) const; // [0..999'999'999]
 
-		uint8 year(
+		inline uint8 year(
 		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 
 		// Access proposal functions with qpi(proposalVotingObject).func().
@@ -1341,21 +1442,21 @@ namespace QPI
 
 	protected:
 		// Construction is done in core, not allowed in contracts
-		QpiContextFunctionCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContext(contractIndex, originator, originator, invocationReward) {}
+		QpiContextFunctionCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContext(contractIndex, originator, originator, invocationReward, entryPoint) {}
 	};
 
 	// QPI procedures available to contract procedures (not to contract functions)
 	struct QpiContextProcedureCall : public QPI::QpiContextFunctionCall
 	{
-		inline bool acquireShares(
-			uint64 assetName,
-			const id& issuer,
+		inline sint64 acquireShares(
+			const Asset& asset,
 			const id& owner,
 			const id& possessor,
 			sint64 numberOfShares,
 			uint16 sourceOwnershipManagingContractIndex,
-			uint16 sourcePossessionManagingContractIndex
-		) const;
+			uint16 sourcePossessionManagingContractIndex,
+			sint64 offeredTransferFee
+		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
 
 		inline sint64 burn(
 			sint64 amount
@@ -1373,15 +1474,21 @@ namespace QPI
 			uint64 unitOfMeasurement
 		) const; // Returns number of shares or 0 on error
 
-		inline bool releaseShares(
-			uint64 assetName,
-			const id& issuer,
+		inline bool bidInIPO(
+			uint32 IPOContractIndex,
+			sint64 price,
+			uint32 quantity
+		) const; // "true" if the bid is succeed, "false" otherwise
+
+		inline sint64 releaseShares(
+			const Asset& asset,
 			const id& owner,
 			const id& possessor,
 			sint64 numberOfShares,
 			uint16 destinationOwnershipManagingContractIndex,
-			uint16 destinationPossessionManagingContractIndex
-		) const;
+			uint16 destinationPossessionManagingContractIndex,
+			sint64 offeredTransferFee
+		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
 
 		inline sint64 transfer( // Attempts to transfer energy from this qubic
 			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
@@ -1413,7 +1520,7 @@ namespace QPI
 
 	protected:
 		// Construction is done in core, not allowed in contracts
-		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward) : QpiContextFunctionCall(contractIndex, originator, invocationReward) {}
+		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContextFunctionCall(contractIndex, originator, invocationReward, entryPoint) {}
 	};
 
 	// QPI available in REGISTER_USER_FUNCTIONS_AND_PROCEDURES
@@ -1423,7 +1530,7 @@ namespace QPI
 		inline void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
 
 		// Construction is done in core, not allowed in contracts
-		QpiContextForInit(unsigned int contractIndex) : QpiContext(contractIndex, NULL_ID, NULL_ID, 0) {}
+		inline QpiContextForInit(unsigned int contractIndex);
 	};
 
 	// Used if no locals, input, or output is needed in a procedure or function
@@ -1432,27 +1539,30 @@ namespace QPI
 	// Management rights transfer: pre-transfer input
 	struct PreManagementRightsTransfer_input
 	{
-		uint64 assetName;
-		id issuer;
+		Asset asset;
 		id owner;
 		id possessor;
 		sint64 numberOfShares;
+		sint64 offeredFee;
+		uint16 otherContractIndex;
 	};
 
-	// Management rights transfer: pre-transfer output
+	// Management rights transfer: pre-transfer output (default is all-zeroed = don't allow transfer)
 	struct PreManagementRightsTransfer_output
 	{
-		bool ok;
+		bool allowTransfer;
+		sint64 requestedFee;
 	};
 
 	// Management rights transfer: post-transfer input
 	struct PostManagementRightsTransfer_input
 	{
-		uint64 assetName;
-		id issuer;
+		Asset asset;
 		id owner;
 		id possessor;
 		sint64 numberOfShares;
+		sint64 receivedFee;
+		uint16 otherContractIndex;
 	};
 
 	//////////
@@ -1613,30 +1723,33 @@ namespace QPI
 
 	#define REGISTER_USER_FUNCTION(userFunction, inputType) \
 		static_assert(__is_function_##userFunction, #userFunction " is procedure"); \
-		static_assert(inputType >= 1 && inputType <= 65536, "inputType must be >= 1 and <= 65536"); \
-		static_assert(sizeof(userFunction##_output) <= 65536, #userFunction "_output size too large"); \
-		static_assert(sizeof(userFunction##_input) <= 65536, #userFunction "_input size too large"); \
+		static_assert(inputType >= 1 && inputType <= 65535, "inputType must be >= 1 and <= 65535"); \
+		static_assert(sizeof(userFunction##_output) <= 65535, #userFunction "_output size too large"); \
+		static_assert(sizeof(userFunction##_input) <= 65535, #userFunction "_input size too large"); \
 		static_assert(sizeof(userFunction##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userFunction "_locals size too large"); \
 		qpi.__registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output), sizeof(userFunction##_locals));
 
 	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) \
 		static_assert(!__is_function_##userProcedure, #userProcedure " is function"); \
-		static_assert(inputType >= 1 && inputType <= 65536, "inputType must be >= 1 and <= 65536"); \
-		static_assert(sizeof(userProcedure##_output) <= 65536, #userProcedure "_output size too large"); \
-		static_assert(sizeof(userProcedure##_input) <= 65536, #userProcedure "_input size too large"); \
+		static_assert(inputType >= 1 && inputType <= 65535, "inputType must be >= 1 and <= 65535"); \
+		static_assert(sizeof(userProcedure##_output) <= 65535, #userProcedure "_output size too large"); \
+		static_assert(sizeof(userProcedure##_input) <= 65535, #userProcedure "_input size too large"); \
 		static_assert(sizeof(userProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userProcedure "_locals size too large"); \
 		qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
 
 	// Call function or procedure of current contract (without changing invocation reward)
+	// WARNING: input may be changed by called function
 	#define CALL(functionOrProcedure, input, output) \
 		static_assert(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #functionOrProcedure "_locals size too large"); \
 		functionOrProcedure(qpi, state, input, output, *(functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals))); \
 		qpi.__qpiFreeLocals()
 
 	// Invoke procedure of current contract with changed invocation reward
+	// WARNING: input may be changed by called function
 	// TODO: INVOKE
 
 	// Call function of other contract
+	// WARNING: input may be changed by called function
 	#define CALL_OTHER_CONTRACT_FUNCTION(contractStateType, function, input, output) \
 		static_assert(sizeof(contractStateType::function##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #function "_locals size too large"); \
 		static_assert(contractStateType::__is_function_##function, "CALL_OTHER_CONTRACT_FUNCTION() cannot be used to invoke procedures."); \
@@ -1647,24 +1760,24 @@ namespace QPI
 			*(contractStateType*)qpi.__qpiAcquireStateForReading(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
-		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
 	// Transfer invocation reward and invoke of other contract (procedure only)
+	// WARNING: input may be changed by called function
 	#define INVOKE_OTHER_CONTRACT_PROCEDURE(contractStateType, procedure, input, output, invocationReward) \
 		static_assert(sizeof(contractStateType::procedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #procedure "_locals size too large"); \
 		static_assert(!contractStateType::__is_function_##procedure, "INVOKE_OTHER_CONTRACT_PROCEDURE() cannot be used to call functions."); \
 		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function/procedure of this contract."); \
 		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
-		static_assert(invocationReward >= 0, "The invocationReward cannot be negative!"); \
 		contractStateType::procedure( \
 			qpi.__qpiConstructContextOtherContractProcedureCall(contractStateType::__contract_index, invocationReward), \
 			*(contractStateType*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
-		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
 		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
 	#define QUERY_ORACLE(oracle, query) // TODO

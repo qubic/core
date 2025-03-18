@@ -2,6 +2,8 @@
 
 #ifdef NO_UEFI
 
+// Defined in test/stdlib_impl.cpp
+
 void setMem(void* buffer, unsigned long long size, unsigned char value);
 
 void copyMem(void* destination, const void* source, unsigned long long length);

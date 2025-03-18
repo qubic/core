@@ -2,7 +2,7 @@
 
 #include "uefi.h"
 
-static bool disableConsoleLogging = false;
+static unsigned char consoleLoggingLevel = 1;
 
 // message buffers:
 // - message is for public use
@@ -24,7 +24,7 @@ static inline void outputStringToConsole(const CHAR16* str)
 // Log message to console (with line break) on non-UEFI platform
 static void logToConsole(const CHAR16* message)
 {
-    if (disableConsoleLogging)
+    if (consoleLoggingLevel == 0)
         return;
     wprintf(L"%ls\n", message);
 }

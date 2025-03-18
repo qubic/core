@@ -126,6 +126,22 @@ public:
         readers = 0;
     }
 
+    // Return if currently locked for writing. Note that the status may change any time.
+    bool isLockedForWriting() const
+    {
+        ASSERT(readers >= -1);
+        ASSERT(writersWaiting >= 0);
+        return readers == -1;
+    }
+
+    // Return number of reader who have currently locked the resource or -1 if locked for writing. Note that the status may change any time.
+    long getCurrentReaderLockCount() const
+    {
+        ASSERT(readers >= -1);
+        ASSERT(writersWaiting >= 0);
+        return readers;
+    }
+
 private:
     // Positive values means number of readers using having acquired a read lock; -1 means writer has acquired lock; 0 mean no lock is active
     volatile long readers;

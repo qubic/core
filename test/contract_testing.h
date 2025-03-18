@@ -8,25 +8,30 @@
 // reduced size of logging buffer (512 MB instead of 8 GB)
 #define LOG_BUFFER_SIZE (2*268435456ULL)
 
+// make test example contracts available in all compile units
+#define INCLUDE_CONTRACT_TEST_EXAMPLES
+
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
 
 #include "contract_core/qpi_spectrum_impl.h"
 #include "contract_core/qpi_asset_impl.h"
 #include "contract_core/qpi_system_impl.h"
+#include "contract_core/qpi_ticking_impl.h"
 
-#include "logging/logging.h"
+#include "logging_test.h"
 
 #include "test_util.h"
 
 
-class ContractTesting
+class ContractTesting : public LoggingTest
 {
 public:
     ContractTesting()
     {
         initCommonBuffers();
         initContractExec();
+        initSpecialEntities();
 
         contractStates[0] = (unsigned char*)malloc(contractDescriptions[0].stateSize);
         setMem(contractStates[0], contractDescriptions[0].stateSize, 0);
@@ -34,9 +39,11 @@ public:
 
     ~ContractTesting()
     {
+        deinitSpecialEntities();
         deinitAssets();
         deinitSpectrum();
         deinitCommonBuffers();
+        deinitContractExec();
         for (unsigned int i = 0; i < contractCount; ++i)
         {
             if (contractStates[i])
@@ -116,8 +123,8 @@ public:
     {
         EXPECT_LT(contractIndex, contractCount);
         EXPECT_NE(contractStates[contractIndex], nullptr);
-        QpiContextSystemProcedureCall qpiContext(contractIndex);
-        qpiContext.call(sysProcId);
+        QpiContextSystemProcedureCall qpiContext(contractIndex, sysProcId);
+        qpiContext.call();
         if (expectSuccess)
         {
             EXPECT_EQ(contractError[contractIndex], 0);
@@ -142,4 +149,16 @@ static inline long long getBalance(const id& pubKey)
     long long balance = energy(index);
     EXPECT_GE(balance, 0ll);
     return balance;
+}
+
+// Update time returned by QPI functions based on utcTime, which can be set to current time with updateTime().
+static inline void updateQpiTime()
+{
+    etalonTick.millisecond = utcTime.Nanosecond / 1000000;
+    etalonTick.second = utcTime.Second;
+    etalonTick.minute = utcTime.Minute;
+    etalonTick.hour = utcTime.Hour;
+    etalonTick.day = utcTime.Day;
+    etalonTick.month = utcTime.Month;
+    etalonTick.year = utcTime.Year - 2000;
 }

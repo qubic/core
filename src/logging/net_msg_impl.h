@@ -19,17 +19,19 @@ void qLogger::processRequestLog(Peer* peer, RequestResponseHeader* header)
         if (startIdBufferRange.startIndex != -1 && startIdBufferRange.length != -1
             && endIdBufferRange.startIndex != -1 && endIdBufferRange.length != -1)
         {
+            unsigned long long toID = request->toID;
             if (endIdBufferRange.startIndex < startIdBufferRange.startIndex)
             {
                 // round buffer case, only response first packet - let the client figure out and request the rest
-                for (unsigned long long i = request->fromID; i <= request->toID; i++)
+                for (unsigned long long i = request->fromID + 1; i <= request->toID; i++)
                 {
                     BlobInfo iBufferRange = logBuf.getBlobInfo(i);
                     ASSERT(iBufferRange.startIndex >= 0);
                     ASSERT(iBufferRange.length >= 0);
                     if (iBufferRange.startIndex < startIdBufferRange.startIndex)
                     {
-                        endIdBufferRange = logBuf.getBlobInfo(i - 1);
+                        toID = i - 1;
+                        endIdBufferRange = logBuf.getBlobInfo(toID);
                         break;
                     }
                 }
@@ -39,11 +41,11 @@ void qLogger::processRequestLog(Peer* peer, RequestResponseHeader* header)
 
             long long startFrom = startIdBufferRange.startIndex;
             long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
-            if (length > RequestResponseHeader::max_size)
+            constexpr long long maxPayloadSize = RequestResponseHeader::max_size - sizeof(sizeof(RequestResponseHeader));
+            if (length > maxPayloadSize)
             {
-                unsigned long long toID = request->toID;
                 length -= endIdBufferRange.length;
-                while (length > RequestResponseHeader::max_size)
+                while (length > maxPayloadSize)
                 {
                     ASSERT(toID > request->fromID);
                     --toID;
@@ -112,7 +114,6 @@ void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* hea
         && request->passcode[1] == logReaderPasscodes[1]
         && request->passcode[2] == logReaderPasscodes[2]
         && request->passcode[3] == logReaderPasscodes[3]
-        && request->tick <= lastUpdatedTick
         && request->tick >= tickBegin
         )
     {
