@@ -130,6 +130,53 @@ static bool createDir(const CHAR16* dirName)
 #endif
 }
 
+static bool removeFile(const CHAR16* directory, const CHAR16* fileName)
+{
+#ifdef NO_UEFI
+    logToConsole(L"NO_UEFI implementation of removeFile() is missing! No directory checked!");
+    return false;
+#else
+    EFI_STATUS status;
+    EFI_FILE_PROTOCOL* file;
+    EFI_FILE_PROTOCOL* directoryProtocol;
+    // Check if there is a directory provided
+    if (NULL != directory)
+    {
+        // Open the directory
+        if (status = root->Open(root, (void**)&directoryProtocol, (CHAR16*)directory, EFI_FILE_MODE_READ, 0))
+        {
+            logStatusToConsole(L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            return false;
+        }
+
+        // Open the file from the directory.
+        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ, 0))
+        {
+            logStatusToConsole(L"FileIOLoad:OpenDir:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            directoryProtocol->Close(directoryProtocol);
+            return false;
+        }
+
+        // No need the directory handle. Close it
+        directoryProtocol->Close(directoryProtocol);
+    }
+    else
+    {
+        if (status = root->Open(root, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ, 0))
+        {
+            logStatusToConsole(L"FileIOLoad:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            return false;
+        }
+    }
+    if ((status = file->Delete(file)))
+    {
+        logStatusToConsole(L"Failed to delete file: ", status, __LINE__);
+        return false;
+    }
+    return true;
+#endif
+}
+
 static long long load(const CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, const CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI

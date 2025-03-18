@@ -48,7 +48,7 @@ private:
 
     void writeCurrentPageToDisk()
     {
-        CHAR16 pageName[64] = { 0 };
+        CHAR16 pageName[64];
         generatePageName(pageName, currentPageId);
 #ifdef NO_UEFI
         auto sz = save(pageName, pageSize, (unsigned char*)currentPage, pageDir);
@@ -384,5 +384,30 @@ public:
     unsigned long long size()
     {
         return currentId;
+    }
+
+    // delete a page on disk given pageId
+    void prune(unsigned long long pageId)
+    {
+        CHAR16 pageName[64];
+        generatePageName(pageName, pageId);
+        ACQUIRE(memLock);
+        removeFile(pageDir, pageName);
+        RELEASE(memLock);
+    }
+
+    // delete pages data on disk given (fromId, toId)
+    // Since we store the whole page on disk, pageId will be rounded up for fromId and rounded down for toId
+    // fromPageId = (fromId + pageCapacity - 1) // pageCapacity
+    // toPageId = (toId + 1) // pageCapacity
+    // eg: pageCapacity is 50'000. To delete the second page, call prune(50000, 99999)
+    void pruneRange(unsigned long long fromId, unsigned long long toId)
+    {
+        unsigned long long fromPageId = (fromId + pageCapacity - 1) / pageCapacity;
+        unsigned long long toPageId = (toId + 1) / pageCapacity;
+        for (unsigned long long i = fromPageId; i <= toPageId; i++)
+        {
+            prune(i);
+        }
     }
 };
