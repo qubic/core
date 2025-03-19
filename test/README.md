@@ -64,7 +64,7 @@ At the moment, only the `TESTEXA` SC is used for this purpose.
 
 ### Setup
 - Enable the testing SCs in the core code by adding `#define INCLUDE_CONTRACT_TEST_EXAMPLES` before including contract_def.h in qubic.cpp.
-- In qubic-cli testUtils.cpp file, make sure that `#define TESTEXA_CONTRACT_INDEX 12` and `#define TESTEXA_ADDRESS "MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWLWD"` still match the index and address of the `TESTEXA` SC (it will change when new SCs are added).
+- In qubic-cli testUtils.cpp file, make sure that `#define TESTEXA_CONTRACT_INDEX <contract_index>` and `#define TESTEXA_ADDRESS "<contract_address>"` still match the index and address of the `TESTEXA` SC (it will change when new SCs are added).
 - Run a test network with the adapted core code.
 
 ### Tests to perform via qubic-cli
