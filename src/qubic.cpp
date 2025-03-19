@@ -1620,6 +1620,12 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestLogStateDigest::type:
+                {
+                    logger.processRequestGetLogDigest(peer, header);
+                }
+                break;
+
                 case REQUEST_SYSTEM_INFO:
                 {
                     processRequestSystemInfo(peer, header);

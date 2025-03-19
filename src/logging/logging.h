@@ -1,5 +1,4 @@
 #pragma once
-
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/time.h"
@@ -23,6 +22,21 @@ struct Peer;
 #define ENABLED_LOGGING 1
 #else
 #define ENABLED_LOGGING 0
+#endif
+
+
+#if LOG_SPECTRUM && LOG_UNIVERSE
+#define LOG_STATE_DIGEST 1
+#else
+#define LOG_STATE_DIGEST 0
+#endif
+
+#ifdef NO_UEFI
+#undef LOG_STATE_DIGEST
+#define LOG_STATE_DIGEST 0
+#else
+// if we include xkcp "outside" it will break the gtest
+#include "K12/kangaroo_twelve_xkcp.h"
 #endif
 
 // Logger defines
@@ -238,7 +252,15 @@ public:
     inline static VirtualMemory<char, TEXT_BUF_AS_NUMBER, TEXT_LOGS_AS_NUMBER, 10000000, 4> logBuffer;
     inline static VirtualMemory<BlobInfo, TEXT_MAP_AS_NUMBER, TEXT_LOGS_AS_NUMBER, 10000000, 4> mapLogIdToBufferIndex;
     inline static char responseBuffers[MAX_NUMBER_OF_PROCESSORS][RequestResponseHeader::max_size];
-    
+
+#if LOG_STATE_DIGEST
+    // Digests of log data:
+    // d(i) = K12(concat(d(i-1), log(spectrum), log(universe))
+    // custom log from smart contracts are not included in the digest computation
+    inline static m256i digests[MAX_NUMBER_OF_TICKS_PER_EPOCH];
+    inline static XKCP::KangarooTwelve_Instance k12;
+#endif
+
     inline static unsigned long long logBufferTail;
     inline static unsigned long long logId;
     inline static unsigned int tickBegin; // initial tick of the epoch
@@ -450,11 +472,23 @@ public:
         lastUpdatedTick = 0;
         tickBegin = _tickBegin;
         tickLoadedFrom = _tickLoadedFrom;
+#if LOG_STATE_DIGEST
+        XKCP::KangarooTwelve_Initialize(&k12, 128, 32);
+        m256i zeroHash = m256i::zero();
+        XKCP::KangarooTwelve_Update(&k12, zeroHash.m256i_u8, 32); // init tick, feed zero hash
+#endif
 #endif
     }
 
     static void updateTick(unsigned int _tick)
     {
+        ASSERT(_tick == lastUpdatedTick + 1);
+#if LOG_STATE_DIGEST
+        unsigned long long index = tickBegin - lastUpdatedTick;
+        XKCP::KangarooTwelve_Final(&k12, digests[index].m256i_u8, (const unsigned char*)"", 0);
+        XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
+        XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
+#endif
         lastUpdatedTick = _tick;
     }
 
@@ -475,6 +509,20 @@ public:
         logBufferTail += LOG_HEADER_SIZE + messageSize;
         logBuffer.appendMany(buffer, LOG_HEADER_SIZE);
         logBuffer.appendMany((char*)message, messageSize);
+#if LOG_STATE_DIGEST
+        if (messageType == QU_TRANSFER || messageType == ASSET_ISSUANCE || messageType == ASSET_OWNERSHIP_CHANGE || messageType == ASSET_POSSESSION_CHANGE ||
+            messageType == BURNING || messageType == DUST_BURNING || messageType == SPECTRUM_STATS || messageType == ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE ||
+            messageType == ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE)
+        {
+            auto ret = XKCP::KangarooTwelve_Update(&k12, reinterpret_cast<const unsigned char*>(message), messageSize);
+#ifndef NDEBUG
+            if (ret != 0)
+            {
+                addDebugMessage(L"Failed to update log digests k12");
+            }
+#endif
+        }
+#endif
 #endif
     }
 
@@ -629,6 +677,9 @@ public:
 
     // prune unused page files to save disk storage
     static void processRequestPrunePageFile(Peer* peer, RequestResponseHeader* header);
+
+    // get log state digest
+    static void processRequestGetLogDigest(Peer* peer, RequestResponseHeader* header);
 };
 
 GLOBAL_VAR_DECL qLogger logger;

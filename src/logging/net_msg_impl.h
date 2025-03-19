@@ -196,3 +196,24 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
 #endif
     enqueueResponse(peer, 0, ResponsePruningPageFiles::type, header->dejavu(), NULL);
 }
+
+
+void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* header)
+{
+#if LOG_STATE_DIGEST
+    RequestLogStateDigest* request = header->getPayload<RequestLogStateDigest>();
+    if (request->passcode[0] == logReaderPasscodes[0]
+        && request->passcode[1] == logReaderPasscodes[1]
+        && request->passcode[2] == logReaderPasscodes[2]
+        && request->passcode[3] == logReaderPasscodes[3]
+        && request->requestedTick >= tickBegin
+        && request->requestedTick <= lastUpdatedTick)
+    {
+        ResponseLogStateDigest resp;
+        resp.digest = digests[request->requestedTick];
+        enqueueResponse(peer, sizeof(ResponseLogStateDigest), ResponseLogStateDigest::type, header->dejavu(), &resp);
+        return;
+    }
+#endif
+    enqueueResponse(peer, 0, ResponseLogStateDigest::type, header->dejavu(), NULL);
+}

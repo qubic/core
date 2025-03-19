@@ -95,3 +95,23 @@ struct ResponsePruningPageFiles
         type = 57,
     };
 };
+
+// Request logid ranges of all txs from a tick
+struct RequestLogStateDigest
+{
+    unsigned long long passcode[4];
+    unsigned int requestedTick;
+
+    enum {
+        type = 58,
+    };
+};
+
+// Response 0 if success, otherwise error code will be returned
+struct ResponseLogStateDigest
+{
+    m256i digest;
+    enum {
+        type = 59,
+    };
+};

@@ -210,7 +210,11 @@ public:
 
         if (pageDir != NULL)
         {
+#ifdef NO_UEFI
+            addEpochToFileName(pageDir, 12, 0);
+#else
             addEpochToFileName(pageDir, 12, system.epoch);
+#endif
             if (!checkDir(pageDir))
             {
                 createDir(pageDir);
