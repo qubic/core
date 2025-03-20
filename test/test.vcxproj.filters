@@ -19,6 +19,7 @@
     <ClCompile Include="kangaroo_twelve.cpp" />
     <ClCompile Include="contract_qearn.cpp" />
     <ClCompile Include="contract_qx.cpp" />
+    <ClCompile Include="contract_swap.cpp" />
     <ClCompile Include="contract_qvault.cpp" />
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="assets.cpp" />
