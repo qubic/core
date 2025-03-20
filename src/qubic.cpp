@@ -2182,12 +2182,13 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
         if (decreaseEnergy(spectrumIndex, transaction->amount))
         {
             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
-
+            {
+                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
+                logger.logQuTransfer(quTransfer);
+            }
             if (transaction->amount)
             {
                 moneyFlew = true;
-                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
-                logger.logQuTransfer(quTransfer);
             }
 
             if (isZero(transaction->destinationPublicKey))
