@@ -25,7 +25,7 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 //
 // Include processor specific binding
 //
-#include <ProcessorBind.h>
+#include <lib/platform_common/edk2_mdepkg/Include/X64/ProcessorBind.h> // <ProcessorBind.h>
 
 #if defined(_MSC_EXTENSIONS)
 //

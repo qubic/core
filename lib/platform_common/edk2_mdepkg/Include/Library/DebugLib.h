@@ -268,6 +268,9 @@ DebugPrintLevelEnabled(
         DebugPrint (PrintLevel, ##__VA_ARGS__);      \
       }                                              \
     } while (FALSE)
+#ifdef _DEBUG
+#undef _DEBUG
+#endif
 #define _DEBUG(Expression)   _DEBUG_PRINT Expression
 #else
 #define _DEBUG(Expression)   DebugPrint Expression

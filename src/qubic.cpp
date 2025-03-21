@@ -20,7 +20,7 @@
 // TODO: Use "long long" instead of "int" for DB indices
 
 
-#include "platform/uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "platform/time.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"

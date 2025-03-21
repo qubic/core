@@ -19,9 +19,6 @@
     <ClInclude Include="platform\memory.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="platform\uefi.h">
-      <Filter>platform</Filter>
-    </ClInclude>
     <ClInclude Include="platform\time.h">
       <Filter>platform</Filter>
     </ClInclude>

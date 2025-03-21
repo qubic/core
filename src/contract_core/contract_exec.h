@@ -19,8 +19,7 @@
 // TODO: remove, only for debug output
 #include "system.h"
 
-// TODO: replace by own implementation that also works for UEFI
-#include <csetjmp>
+#include <lib/platform_common/long_jump.h>
 
 
 enum ContractError
@@ -44,8 +43,9 @@ GLOBAL_VAR_DECL long contractLocalsStackLockWaitingCountMax;
 
 struct ContractExecErrorData
 {
-    std::jmp_buf longJumpBuffer;
+    LongJumpBuffer longJumpBuffer;
     unsigned int errorCode;
+    unsigned int _paddingTo8;
 };
 GLOBAL_VAR_DECL ContractExecErrorData contractExecutionErrorData[contractCount];
 
@@ -679,7 +679,7 @@ void QPI::QpiContextFunctionCall::__qpiAbort(unsigned int errorCode) const
     if (_entryPoint == USER_FUNCTION_CALL)
     {
         contractExecutionErrorData[_stackIndex].errorCode = errorCode;
-        std::longjmp(contractExecutionErrorData[_stackIndex].longJumpBuffer, 1);
+        LongJump(&contractExecutionErrorData[_stackIndex].longJumpBuffer, 1);
     }
     else
     {
@@ -1009,7 +1009,7 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
 
         // set error handler for canceling
         contractExecutionErrorData[_stackIndex].errorCode = NoContractError;
-        if (std::setjmp(contractExecutionErrorData[_stackIndex].longJumpBuffer) > 0)
+        if (SetJump(&contractExecutionErrorData[_stackIndex].longJumpBuffer) > 0)
         {
             // error handling code (long jump returns to here from somewhere inside the call of
             // contractUserFunctions() below)
