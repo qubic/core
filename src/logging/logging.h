@@ -246,7 +246,7 @@ public:
 #define TEXT_BUF_AS_NUMBER 0  // L"buff"
 #else
 #define TEXT_LOGS_AS_NUMBER 32370064710631532ULL // L"logs"
-#define TEXT_MAP_AS_NUMBER 481042694253ULL       // L"map"
+#define TEXT_MAP_AS_NUMBER 31525614010564720ULL       // L"pmap"
 #define TEXT_BUF_AS_NUMBER 28710885718818914ULL  // L"buff"
 #endif
     inline static VirtualMemory<char, TEXT_BUF_AS_NUMBER, TEXT_LOGS_AS_NUMBER, 10000000, 4> logBuffer;
@@ -484,7 +484,7 @@ public:
     {
         ASSERT(_tick == lastUpdatedTick + 1);
 #if LOG_STATE_DIGEST
-        unsigned long long index = tickBegin - lastUpdatedTick;
+        unsigned long long index = lastUpdatedTick - tickBegin;
         XKCP::KangarooTwelve_Final(&k12, digests[index].m256i_u8, (const unsigned char*)"", 0);
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this

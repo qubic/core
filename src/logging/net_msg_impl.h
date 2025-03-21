@@ -20,25 +20,6 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
             && endIdBufferRange.startIndex != -1 && endIdBufferRange.length != -1)
         {
             unsigned long long toID = request->toID;
-            if (endIdBufferRange.startIndex < startIdBufferRange.startIndex)
-            {
-                // round buffer case, only response first packet - let the client figure out and request the rest
-                for (unsigned long long i = request->fromID + 1; i <= request->toID; i++)
-                {
-                    BlobInfo iBufferRange = logBuf.getBlobInfo(i);
-                    ASSERT(iBufferRange.startIndex >= 0);
-                    ASSERT(iBufferRange.length >= 0);
-                    if (iBufferRange.startIndex < startIdBufferRange.startIndex)
-                    {
-                        toID = i - 1;
-                        endIdBufferRange = logBuf.getBlobInfo(toID);
-                        break;
-                    }
-                }
-                // first packet: from startID to end of buffer IS SENT BELOW
-                // second packet: from start buffer to endID IS NOT SENT FROM HERE, but requested by client later
-            }
-
             long long startFrom = startIdBufferRange.startIndex;
             long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
             constexpr long long maxPayloadSize = RequestResponseHeader::max_size - sizeof(sizeof(RequestResponseHeader));
@@ -210,7 +191,7 @@ void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* head
         && request->requestedTick <= lastUpdatedTick)
     {
         ResponseLogStateDigest resp;
-        resp.digest = digests[request->requestedTick];
+        resp.digest = digests[request->requestedTick - tickBegin];
         enqueueResponse(peer, sizeof(ResponseLogStateDigest), ResponseLogStateDigest::type, header->dejavu(), &resp);
         return;
     }

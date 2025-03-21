@@ -9,6 +9,17 @@
 #include "four_q.h"
 #include "kangaroo_twelve.h"
 
+
+#ifdef MIN
+#undef MIN
+#endif
+#define MIN(a,b) (a < b ? a : b)
+
+#ifdef MAX
+#undef MAX
+#endif
+#define MAX(a,b) (a > b ? a : b)
+
 // an util to use disk as RAM to reduce hardware requirement for qubic core node
 // this VirtualMemory doesn't (yet) support amend operation. That means data stay persisted once they are written
 // template variables meaning:
@@ -23,7 +34,7 @@ class VirtualMemory
 private:
 	// on RAM
 	T* currentPage = NULL; // current page is cache[0]
-    T* cache[numCachePage+1] = { NULL };
+    T* cache[numCachePage + 1];
     CHAR16* pageDir = NULL;
 
     unsigned long long cachePageId[numCachePage+1];
@@ -36,7 +47,8 @@ private:
     void generatePageName(CHAR16 pageName[64], unsigned long long page_id)
     {
         setMem(pageName, sizeof(pageName), 0);
-        char input[32] = { 0 };
+        char input[32];
+        setMem(input, sizeof(input), 0);
         unsigned long long prefix_name = prefixName;
         copyMem(input, &prefix_name, 8);
         copyMem(input + 8, &page_id, 8);
@@ -122,7 +134,7 @@ private:
         {
             return cache_page_id;
         }
-        CHAR16 pageName[64] = { 0 };
+        CHAR16 pageName[64];
         generatePageName(pageName, pageId);
         cache_page_id = getMostOutdatedCachePage();
 #ifdef NO_UEFI
@@ -137,7 +149,7 @@ private:
         if (sz != pageSize)
         {
             addDebugMessage(L"Failed to load virtualMemory from disk");
-            return -1;
+            return 0;
         }
 #endif  
         return cache_page_id;
@@ -213,7 +225,7 @@ public:
 #ifdef NO_UEFI
             addEpochToFileName(pageDir, 12, 0);
 #else
-            addEpochToFileName(pageDir, 12, system.epoch);
+            addEpochToFileName(pageDir, 12, MAX(EPOCH, system.epoch));
 #endif
             if (!checkDir(pageDir))
             {
@@ -238,17 +250,14 @@ public:
         }
     }
 
-#ifdef MIN
-#undef MIN
-#endif
-#define MIN(a,b) (a < b ? a : b)
     // getMany: 
     // this operation copies numItems * sizeof(T) bytes from [src+offset] to [dst] - note that src and dst are T* not char*
     // offset + numItems must be less than currentId
     // return number of items has been copied
     unsigned long long getMany(T* dst, unsigned long long offset, unsigned long long numItems)
     {
-        if (offset + numItems >= currentId)
+        ASSERT(offset + numItems < currentId);
+        if (offset + numItems > currentId)
         {
             return 0;
         }
@@ -380,7 +389,8 @@ public:
     void append(T data)
     {
         ACQUIRE(memLock);
-        currentPage[currentId++] = data;
+        currentPage[currentId % pageCapacity] = data;
+        currentId++;
         tryPersistingPage();
         RELEASE(memLock);
     }
