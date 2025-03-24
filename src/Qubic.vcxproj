@@ -228,7 +228,7 @@
       <DataExecutionPrevention>false</DataExecutionPrevention>
       <StackReserveSize>131072</StackReserveSize>
       <StackCommitSize>131072</StackCommitSize>
-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseAVX512|x64'">
@@ -278,7 +278,7 @@
       <DataExecutionPrevention>false</DataExecutionPrevention>
       <StackReserveSize>131072</StackReserveSize>
       <StackCommitSize>131072</StackCommitSize>
-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -313,6 +313,7 @@
       <AssemblerOutput>All</AssemblerOutput>
       <AssemblerListingLocation>$(IntDir)Qubic.asm</AssemblerListingLocation>
       <AdditionalIncludeDirectories>$(MSBuildStartupDirectory);$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>
@@ -327,7 +328,7 @@
       <DataExecutionPrevention>false</DataExecutionPrevention>
       <StackReserveSize>131072</StackReserveSize>
       <StackCommitSize>131072</StackCommitSize>
-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
