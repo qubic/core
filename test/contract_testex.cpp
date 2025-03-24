@@ -121,12 +121,15 @@ public:
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
         qLogger::initLogging();
 
+        checkContractExecCleanup();
+
         // query QX fees
         callFunction(QX_CONTRACT_INDEX, 1, QX::Fees_input(), qxFees);
     }
 
     ~ContractTestingTestEx()
     {
+        checkContractExecCleanup();
         qLogger::deinitLogging();
     }
 
@@ -285,6 +288,13 @@ public:
     unsigned int callFunctionOfTestExampleAFromTextExampleB(const TESTEXA::QueryQpiFunctions_input& input, TESTEXA::QueryQpiFunctions_output& output, bool expectSuccess)
     {
         return callFunction(TESTEXB_CONTRACT_INDEX, 1, input, output, true, expectSuccess);
+    }
+
+    unsigned int callErrorTriggerFunction()
+    {
+        TESTEXA::ErrorTriggerFunction_input input;
+        TESTEXA::ErrorTriggerFunction_output output;
+        return callFunction(TESTEXA_CONTRACT_INDEX, 5, input, output, true, false);
     }
 };
 
@@ -668,7 +678,19 @@ TEST(ContractTestEx, GetManagementRightsByInvokingOtherContractsRelease)
     EXPECT_EQ(numberOfShares(asset1, { TESTEXB_CONTRACT_ID, TESTEXB_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, TESTEXB_CONTRACT_INDEX }), transferShareCount);
 }
 
-// TODO: Test stopping / cleanup of contract functions for all qpiAbort in single thread (single thread)
+// Test stopping + cleanup of contract functions execution for recursive function leading to stack overflow
+TEST(ContractTestEx, AbortFunction)
+{
+    ContractTestingTestEx test;
+
+    // Successfully run function
+    TESTEXA::QueryQpiFunctions_input input{};
+    TESTEXA::QueryQpiFunctions_output output{};
+    EXPECT_EQ(test.callFunctionOfTestExampleAFromTextExampleB(input, output, true), NoContractError);
+
+    // Check that error handling works when error is supposed to happen
+    EXPECT_EQ(test.callErrorTriggerFunction(), ContractErrorAllocLocalsFailed);
+}
 
 static id getUser(unsigned long long i)
 {
@@ -788,7 +810,6 @@ TEST(ContractTestEx, ResolveDeadlockCallbackProcedureAndConcurrentFunction)
     }
 }
 
-
 TEST(ContractTestEx, QueryBasicQpiFunctions)
 {
     ContractTestingTestEx test;
@@ -871,7 +892,3 @@ TEST(ContractTestEx, QueryBasicQpiFunctions)
     EXPECT_EQ(qpiReturned2.inputDataK12, digest2);
     EXPECT_FALSE(qpiReturned2.inputSignatureValid);
 }
-
-// Test stopping / cleanup of contract functions for all qpiAbort in single thread (single thread)
-
-// Add test contract C to allow checking for deadlock pattern with concurrent function call (2 threads needed)

@@ -69,6 +69,9 @@ struct TESTEXA : public ContractBase
 		QpiFunctionsOutput qpiFunctionsOutput;
 	};
 
+	typedef NoData ErrorTriggerFunction_input;
+	typedef NoData ErrorTriggerFunction_output;
+
 	struct IssueAsset_input
 	{
 		uint64 assetName;
@@ -200,6 +203,16 @@ protected:
             output.qpiFunctionsOutput = state.qpiFunctionsOutputUserProc.get(input.tick);
 	_
 
+	typedef Array<sint8, 32 * 1024> ErrorTriggerFunction_locals;
+
+#pragma warning(push)
+#pragma warning(disable: 4717)
+	PUBLIC_FUNCTION_WITH_LOCALS(ErrorTriggerFunction)
+		// Recursively call itself to trigger error for testing error handling
+		CALL(ErrorTriggerFunction, input, output);
+	_
+#pragma warning(pop)
+
 	PUBLIC_PROCEDURE(IssueAsset)
 		output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
 	_
@@ -282,6 +295,7 @@ protected:
 		REGISTER_USER_FUNCTION(ReturnQpiFunctionsOutputBeginTick, 2);
 		REGISTER_USER_FUNCTION(ReturnQpiFunctionsOutputEndTick, 3);
 		REGISTER_USER_FUNCTION(ReturnQpiFunctionsOutputUserProc, 4);
+		REGISTER_USER_FUNCTION(ErrorTriggerFunction, 5);
 
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
 		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);

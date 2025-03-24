@@ -163,3 +163,20 @@ static inline void updateQpiTime()
     etalonTick.month = utcTime.Month;
     etalonTick.year = utcTime.Year - 2000;
 }
+
+// Check that the contract execution system state is clean (before / after running contracts).
+static inline void checkContractExecCleanup()
+{
+    for (unsigned int i = 0; i < contractCount; ++i)
+    {
+        EXPECT_EQ(contractStateLock[i].getCurrentReaderLockCount(), 0);
+    }
+
+    for (unsigned int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS; ++i)
+    {
+        EXPECT_EQ(contractLocalsStack[i].size(), 0);
+        EXPECT_EQ(contractLocalsStackLock[i], 0);
+    }
+    EXPECT_EQ(contractLocalsStackLockWaitingCount, 0);
+    EXPECT_EQ(contractCallbacksRunning, NoContractCallback);
+}
