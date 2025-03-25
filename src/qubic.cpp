@@ -20,7 +20,7 @@
 // TODO: Use "long long" instead of "int" for DB indices
 
 
-#include "platform/uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "platform/time.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
@@ -1174,8 +1174,21 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
     else
     {
         QpiContextUserFunctionCall qpiContext(request->contractIndex);
-        qpiContext.call(request->inputType, (((unsigned char*)request) + sizeof(RequestContractFunction)), request->inputSize);
-        enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type, header->dejavu(), qpiContext.outputBuffer);
+        auto errorCode = qpiContext.call(request->inputType, (((unsigned char*)request) + sizeof(RequestContractFunction)), request->inputSize);
+        if (errorCode == NoContractError)
+        {
+            // success: respond with function output
+            enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type, header->dejavu(), qpiContext.outputBuffer);
+        }
+        else
+        {
+            // error: respond with empty output, send TryAgain if the function was stopped to resolve a potential
+            // deadlock
+            unsigned char type = RespondContractFunction::type;
+            if (errorCode == ContractErrorStoppedToResolveDeadlock)
+                type = TryAgain::type;
+            enqueueResponse(peer, 0, type, header->dejavu(), NULL);
+        }
     }
 }
 

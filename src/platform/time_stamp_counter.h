@@ -9,6 +9,8 @@
 
 #include "console_logging.h"
 
+#include <lib/platform_common/sleep.h>
+
 // frequency of CPU clock
 static unsigned long long frequency;
 
@@ -30,7 +32,7 @@ static void initTimeStampCounter()
     }
 
     frequency = __rdtsc();
-    bs->Stall(1000000);
+    sleepMilliseconds(1000);
     frequency = __rdtsc() - frequency;
     setText(message, L"Practical TSC frequency = ");
     appendNumber(message, frequency, TRUE);

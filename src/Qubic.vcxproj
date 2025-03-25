@@ -39,6 +39,7 @@
     <ClInclude Include="contracts\QBAY.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
+    <ClInclude Include="contracts\TestExampleC.h" />
     <ClInclude Include="contract_core\contract_action_tracker.h" />
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
@@ -101,7 +102,6 @@
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />
     <ClInclude Include="platform\time.h" />
-    <ClInclude Include="platform\uefi.h" />
     <ClInclude Include="ticking\ticking.h" />
     <ClInclude Include="ticking\tick_storage.h" />
     <ClInclude Include="vote_counter.h" />
@@ -113,6 +113,14 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAVX512|x64'">false</ExcludedFromBuild>
       <FileType>Document</FileType>
     </MASM>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\lib\platform_common\platform_common.vcxproj">
+      <Project>{61270221-bd41-438e-8f74-48aec8c3f9a5}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\lib\platform_efi\platform_efi.vcxproj">
+      <Project>{e8755f8f-3ad0-435a-992a-b05dcc188f6f}</Project>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -205,7 +213,8 @@
       <GuardEHContMetadata>false</GuardEHContMetadata>
       <AssemblerOutput>All</AssemblerOutput>
       <AssemblerListingLocation>$(IntDir)Qubic.asm</AssemblerListingLocation>
-      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildStartupDirectory);$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>
@@ -219,7 +228,7 @@
       <DataExecutionPrevention>false</DataExecutionPrevention>
       <StackReserveSize>131072</StackReserveSize>
       <StackCommitSize>131072</StackCommitSize>
-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseAVX512|x64'">
@@ -253,7 +262,8 @@
       <GuardEHContMetadata>false</GuardEHContMetadata>
       <AssemblerOutput>All</AssemblerOutput>
       <AssemblerListingLocation>$(IntDir)Qubic.asm</AssemblerListingLocation>
-      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildStartupDirectory);$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>
@@ -268,7 +278,7 @@
       <DataExecutionPrevention>false</DataExecutionPrevention>
       <StackReserveSize>131072</StackReserveSize>
       <StackCommitSize>131072</StackCommitSize>
-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -302,7 +312,8 @@
       <GuardEHContMetadata>false</GuardEHContMetadata>
       <AssemblerOutput>All</AssemblerOutput>
       <AssemblerListingLocation>$(IntDir)Qubic.asm</AssemblerListingLocation>
-      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildStartupDirectory);$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <SubSystem>EFI Application</SubSystem>
@@ -317,7 +328,7 @@
       <DataExecutionPrevention>false</DataExecutionPrevention>
       <StackReserveSize>131072</StackReserveSize>
       <StackCommitSize>131072</StackCommitSize>
-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

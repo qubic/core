@@ -6,7 +6,7 @@
 #include <cstdio>
 #endif
 
-#include "uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "console_logging.h"
 #include "concurrency.h"
 #include "memory.h"
