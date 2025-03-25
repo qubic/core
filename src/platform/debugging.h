@@ -13,9 +13,14 @@ static void addDebugMessage(const CHAR16* msg)
     wprintf(L"%ls\n", msg);
 }
 
+#define DEBUG_ONLY_CODE(code)
+
 #elif defined(NDEBUG)
 
 // static void addDebugMessage(const CHAR16* msg){} // empty impl
+
+#define DEBUG_ONLY_CODE(code)
+
 #else
 
 static CHAR16 debugMessage[128][16384];
@@ -141,5 +146,7 @@ static void addDebugMessageAssert(const CHAR16* message, const CHAR16* file, con
         debugLogOnlyMainProcessorRunning = true;
     }
 }
+
+#define DEBUG_ONLY_CODE(code) code
 
 #endif

@@ -283,6 +283,8 @@ static struct {
     unsigned char second;
 } threadTimeCheckin[MAX_NUMBER_OF_PROCESSORS];
 
+DEBUG_ONLY_CODE(volatile unsigned long long threadExecutionPhase[MAX_NUMBER_OF_PROCESSORS]);
+
 static struct {
     unsigned int tick;
     unsigned long long clock;
@@ -1434,12 +1436,15 @@ static void requestProcessor(void* ProcedureArgument)
 
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    ASSERT(processorNumber < MAX_NUMBER_OF_PROCESSORS);
 
     Processor* processor = (Processor*)ProcedureArgument;
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
     {
+        DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 0);
         checkinTime(processorNumber);
+
         // in epoch transition, wait here
         if (epochTransitionState)
         {
@@ -1452,6 +1457,7 @@ static void requestProcessor(void* ProcedureArgument)
         }
 
         // try to compute a solution if any is queued and this thread is assigned to compute solution
+        DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 100);
         if (solutionProcessorFlags[processorNumber])
         {
             score->tryProcessSolution(processorNumber);
@@ -1463,6 +1469,7 @@ static void requestProcessor(void* ProcedureArgument)
         }
         else
         {
+            DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 200);
             ACQUIRE(requestQueueTailLock);
 
             if (requestQueueElementTail == requestQueueElementHead)
@@ -1471,6 +1478,7 @@ static void requestProcessor(void* ProcedureArgument)
             }
             else
             {
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 300);
                 const unsigned long long beginningTick = __rdtsc();
 
                 {
@@ -1488,6 +1496,8 @@ static void requestProcessor(void* ProcedureArgument)
                 requestQueueElementTail++;
 
                 RELEASE(requestQueueTailLock);
+
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 400);
                 switch (header->type())
                 {
                 case ExchangePublicPeers::type:
@@ -4757,6 +4767,7 @@ static void tickProcessor(void*)
     enableAVX();
     unsigned long long processorNumber;
     mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    ASSERT(processorNumber < MAX_NUMBER_OF_PROCESSORS);
 
 #if !START_NETWORK_FROM_SCRATCH
     // only init first tick if it doesn't load all node states from file
@@ -4770,6 +4781,7 @@ static void tickProcessor(void*)
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
+        DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 100);
         checkinTime(processorNumber);
 
         const unsigned long long curTimeTick = __rdtsc();
@@ -4778,6 +4790,8 @@ static void tickProcessor(void*)
         if (broadcastedComputors.computors.epoch == system.epoch
             && ts.tickInCurrentEpochStorage(nextTick))
         {
+            DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 200);
+
             const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
             const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
 
@@ -4785,6 +4799,8 @@ static void tickProcessor(void*)
 
             if (system.tick > latestProcessedTick)
             {
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 300);
+
                 // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
                 // thus, pausing here and doing the state persisting is the best choice.
                 if (requestPersistingNodeState)
@@ -4793,20 +4809,25 @@ static void tickProcessor(void*)
                     while (requestPersistingNodeState) _mm_pause();
                     persistingNodeStateTickProcWaiting = 0;
                 }
+
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 400);
                 processTick(processorNumber);
                 latestProcessedTick = system.tick;
             }
 
             if (gFutureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
             {
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 500);
                 findNextTickDataDigestFromNextTickVotes();
             }
 
             if (!targetNextTickDataDigestIsKnown)
             {
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 600);
                 findNextTickDataDigestFromCurrentTickVotes();
             }
 
+            DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 700);
             ts.tickData.acquireLock();
             bs->CopyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
             ts.tickData.releaseLock();
@@ -4814,6 +4835,7 @@ static void tickProcessor(void*)
             // This time lock ensures tickData is crafted 2 ticks "ago"
             if (nextTickData.epoch == system.epoch)
             {
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 800);
                 m256i timelockPreimage[3];
                 timelockPreimage[0] = etalonTick.prevSpectrumDigest;
                 timelockPreimage[1] = etalonTick.prevUniverseDigest;
@@ -4829,6 +4851,7 @@ static void tickProcessor(void*)
                 }
             }
 
+            DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 900);
             bool tickDataSuits; // a flag to tell if tickData is suitable to be included with this node states
             if (!targetNextTickDataDigestIsKnown) // Next tick digest is still unknown
             {
@@ -4903,6 +4926,7 @@ static void tickProcessor(void*)
 
             if (!tickDataSuits)
             {
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 1000);
                 // if we have problem regarding lacking of tickData, then wait for MAIN loop to fetch those missing data
                 // Here only need to update the stats and rerun the loop again
                 gTickNumberOfComputors = 0;
@@ -4910,6 +4934,7 @@ static void tickProcessor(void*)
             }
             else
             {
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 1100);
                 // tickData is suitable to be included (either non-empty or empty), now we need to verify all transactions in that tickData
                 // The node needs to have all of transactions data
                 numberOfNextTickTransactions = 0;
@@ -4920,6 +4945,7 @@ static void tickProcessor(void*)
                     prepareNextTickTransactions();
                 }
 
+                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 1200);
                 if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
                 {
                     if (!targetNextTickDataDigestIsKnown
@@ -4944,6 +4970,7 @@ static void tickProcessor(void*)
                 else
                 {
                     // This node has all required transactions
+                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 2000);
                     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
                     if (ts.tickData[currentTickIndex].epoch == system.epoch)
@@ -4955,6 +4982,7 @@ static void tickProcessor(void*)
                         etalonTick.transactionDigest = m256i::zero();
                     }
 
+                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 2100);
                     if (nextTickData.epoch == system.epoch)
                     {
                         if (!targetNextTickDataDigestIsKnown)
@@ -4968,6 +4996,7 @@ static void tickProcessor(void*)
                         // Compute the txBodyDigest if expectedNextTickTransactionDigest changed
                         if (lastExpectedTickTransactionDigest != etalonTick.expectedNextTickTransactionDigest)
                         {
+                            DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 2150);
                             computeTxBodyDigestBase(nextTick);
                             lastExpectedTickTransactionDigest = etalonTick.expectedNextTickTransactionDigest;
                         }
@@ -4979,7 +5008,7 @@ static void tickProcessor(void*)
                         lastExpectedTickTransactionDigest = etalonTick.expectedNextTickTransactionDigest;
                     }
 
-
+                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 2200);
                     if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
                     {
                         if (mainAuxStatus & 1)
@@ -4993,6 +5022,7 @@ static void tickProcessor(void*)
                         }
                     }
 
+                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 2300);
                     unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0;
                     updateVotesCount(tickNumberOfComputors, tickTotalNumberOfComputors);
 
@@ -5001,10 +5031,12 @@ static void tickProcessor(void*)
 
                     if (tickNumberOfComputors >= QUORUM)
                     {
+                        DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3000);
                         tryForceEmptyNextTick();
 
                         if (targetNextTickDataDigestIsKnown)
                         {
+                            DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3100);
                             tickDataSuits = false;
                             if (isZero(targetNextTickDataDigest))
                             {
@@ -5027,6 +5059,8 @@ static void tickProcessor(void*)
                                     tickDataSuits = (etalonTick.expectedNextTickTransactionDigest == targetNextTickDataDigest);
                                 }
                             }
+
+                            DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3200);
                             if (tickDataSuits)
                             {
                                 const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
@@ -5100,12 +5134,15 @@ static void tickProcessor(void*)
 
                                 system.tick++;
 
+                                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3300);
                                 updateNumberOfTickTransactions();
 
+                                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3400);
                                 checkAndSwitchMiningPhase();
 
                                 if (epochTransitionState == 1)
                                 {
+                                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3500);
 
                                     // wait until all request processors are in waiting state
                                     while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
@@ -5114,9 +5151,11 @@ static void tickProcessor(void*)
                                     }
 
                                     // end current epoch
+                                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3510);
                                     endEpoch();
 
                                     // instruct main loop to save system and wait until it is done
+                                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3520);
                                     systemMustBeSaved = true;
                                     while (systemMustBeSaved)
                                     {
@@ -5124,6 +5163,7 @@ static void tickProcessor(void*)
                                     }
                                     epochTransitionState = 2;
 
+                                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3530);
                                     beginEpoch();
                                     setNewMiningSeed();
 
@@ -5141,6 +5181,7 @@ static void tickProcessor(void*)
                                     ASSERT(minimumComputorScore == 0 && minimumCandidateScore == 0);
 
                                     // instruct main loop to save files and wait until it is done
+                                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3540);
                                     spectrumMustBeSaved = true;
                                     universeMustBeSaved = true;
                                     computerMustBeSaved = true;
@@ -5150,6 +5191,7 @@ static void tickProcessor(void*)
                                     }
 
                                     // update etalon tick
+                                    DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3550);
                                     etalonTick.epoch++;
                                     etalonTick.tick++;
                                     etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
@@ -5160,6 +5202,7 @@ static void tickProcessor(void*)
                                 }
                                 ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
+                                DEBUG_ONLY_CODE(threadExecutionPhase[processorNumber] = 3600);
                                 gTickNumberOfComputors = 0;
                                 gTickTotalNumberOfComputors = 0;
                                 targetNextTickDataDigestIsKnown = false;
@@ -5959,7 +6002,9 @@ static void logHealthStatus()
             allThreadsAreGood = false;
             appendText(message, L"Tick Processor #");
             appendNumber(message, tid, false);
-            appendText(message, L" is not responsive | ");
+            appendText(message, L" is not responsive ");
+            DEBUG_ONLY_CODE(appendNumber(message, threadExecutionPhase[tid], FALSE));
+            appendText(message, L"| ");
         }
     }
 
@@ -5973,7 +6018,9 @@ static void logHealthStatus()
             allThreadsAreGood = false;
             appendText(message, L"Request Processor #");
             appendNumber(message, tid, false);
-            appendText(message, L" is not responsive | ");
+            appendText(message, L" is not responsive ");
+            DEBUG_ONLY_CODE(appendNumber(message, threadExecutionPhase[tid], FALSE));
+            appendText(message, L"| ");
         }
     }
     if (allThreadsAreGood)
