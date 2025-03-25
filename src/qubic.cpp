@@ -4712,7 +4712,6 @@ static void tryForceEmptyNextTick()
         // - the network was stuck for a certain time, (10x of target tick duration by default)
         // then:
         // - randomly (8% chance) force next tick to be empty every sec
-        // - refresh the network (try to resolve bad topology)
         if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
         {
             if (emptyTickResolver.tick != system.tick)
@@ -4947,6 +4946,7 @@ static void tickProcessor(void*)
                     else
                     {
                         etalonTick.transactionDigest = m256i::zero();
+                        etalonTick.prevTransactionBodyDigest = 0;
                     }
 
                     if (nextTickData.epoch == system.epoch)
@@ -5004,7 +5004,7 @@ static void tickProcessor(void*)
                             {
                                 // Empty tick
                                 ts.tickData.acquireLock();
-                                ts.tickData[nextTickIndex].epoch = 0;
+                                ts.tickData[nextTickIndex].epoch = INVALIDATED_TICK_DATA;
                                 ts.tickData.releaseLock();
                                 nextTickData.epoch = 0;
                                 tickDataSuits = true;
