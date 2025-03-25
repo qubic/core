@@ -406,7 +406,7 @@ public:
         CHAR16 pageName[64];
         generatePageName(pageName, pageId);
         ACQUIRE(memLock);
-        bool success = removeFile(pageDir, pageName);
+        bool success = (asyncRem(pageDir, pageName)) == 0;
         RELEASE(memLock);
         return success;
     }
