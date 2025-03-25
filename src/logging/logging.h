@@ -37,10 +37,10 @@ struct Peer;
 #else
 // if we include xkcp "outside" it will break the gtest
 #include "K12/kangaroo_twelve_xkcp.h"
+#include "common_buffers.h"
 #endif
 
 // Logger defines
-#define LOG_TX_INFO_STORAGE (MAX_NUMBER_OF_TICKS_PER_EPOCH * LOG_TX_PER_TICK) 
 #define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
 
 #define QU_TRANSFER 0
@@ -227,6 +227,23 @@ struct SpectrumStats
 /*
  * LOGGING IMPLEMENTATION
  */
+#define LOG_BUFFER_PAGE_SIZE 100000000ULL
+#define PMAP_LOG_PAGE_SIZE 10000000ULL
+#define IMAP_LOG_PAGE_SIZE 10000ULL
+#define VM_NUM_CACHE_PAGE 4
+ // Virtual memory with 100'000'000 items per page and 4 pages on cache
+#ifdef NO_UEFI
+#define TEXT_LOGS_AS_NUMBER 0
+#define TEXT_PMAP_AS_NUMBER 0
+#define TEXT_BUF_AS_NUMBER 0
+#define TEXT_IMAP_AS_NUMBER 0 
+#else
+#define TEXT_LOGS_AS_NUMBER 32370064710631532ULL // L"logs"
+#define TEXT_PMAP_AS_NUMBER 31525614010564720ULL // L"pmap"
+#define TEXT_IMAP_AS_NUMBER 31525614010564713ULL // L"imap"
+#define TEXT_BUF_AS_NUMBER 28710885718818914ULL  // L"buff"
+#endif
+
 class qLogger
 {
 public:
@@ -235,22 +252,16 @@ public:
         long long startIndex;
         long long length;
     };
+    struct TickBlobInfo
+    {
+        BlobInfo data[LOG_TX_PER_TICK];
+    };
 
-    inline static BlobInfo* mapTxToLogId = NULL;
-    // inline static char* logBuffer = NULL;
-    // inline static BlobInfo* mapLogIdToBufferIndex = NULL;
-    // Virtual memory with 10'000'000 items per page and 4 pages on cache
-#ifdef NO_UEFI
-#define TEXT_LOGS_AS_NUMBER 0 // L"logs"
-#define TEXT_MAP_AS_NUMBER 0       // L"map"
-#define TEXT_BUF_AS_NUMBER 0  // L"buff"
-#else
-#define TEXT_LOGS_AS_NUMBER 32370064710631532ULL // L"logs"
-#define TEXT_MAP_AS_NUMBER 31525614010564720ULL       // L"pmap"
-#define TEXT_BUF_AS_NUMBER 28710885718818914ULL  // L"buff"
-#endif
-    inline static VirtualMemory<char, TEXT_BUF_AS_NUMBER, TEXT_LOGS_AS_NUMBER, 10000000, 4> logBuffer;
-    inline static VirtualMemory<BlobInfo, TEXT_MAP_AS_NUMBER, TEXT_LOGS_AS_NUMBER, 10000000, 4> mapLogIdToBufferIndex;
+private:
+    inline static VirtualMemory<char, TEXT_BUF_AS_NUMBER, TEXT_LOGS_AS_NUMBER, LOG_BUFFER_PAGE_SIZE, VM_NUM_CACHE_PAGE> logBuffer;
+    inline static VirtualMemory<BlobInfo, TEXT_PMAP_AS_NUMBER, TEXT_LOGS_AS_NUMBER, PMAP_LOG_PAGE_SIZE, VM_NUM_CACHE_PAGE> mapLogIdToBufferIndex;
+    inline static VirtualMemory<TickBlobInfo, TEXT_IMAP_AS_NUMBER, TEXT_LOGS_AS_NUMBER, IMAP_LOG_PAGE_SIZE, VM_NUM_CACHE_PAGE> mapTxToLogId;
+    inline static TickBlobInfo currentTickTxToId;
     inline static char responseBuffers[MAX_NUMBER_OF_PROCESSORS][RequestResponseHeader::max_size];
 
 #if LOG_STATE_DIGEST
@@ -264,17 +275,9 @@ public:
     inline static unsigned long long logBufferTail;
     inline static unsigned long long logId;
     inline static unsigned int tickBegin; // initial tick of the epoch
-    inline static unsigned int tickLoadedFrom; // tick that this node load from (save/load state feature)
     inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
-    inline static BlobInfo currentTxInfo;
-    // 5 special txs for 5 special events in qubic
-    inline static unsigned int SC_INITIALIZE_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 0;
-    inline static unsigned int SC_BEGIN_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 1;
-    inline static unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
-    inline static unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
-    inline static unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
 
     static unsigned long long getLogId(const char* ptr)
     {
@@ -317,14 +320,61 @@ public:
         return true;
     }
 
+    static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
+    {
+#if ENABLED_LOGGING
+        char buffer[LOG_HEADER_SIZE];
+        setMem(buffer, sizeof(buffer), 0);
+        tx.addLogId();
+        logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
+        *((unsigned short*)(buffer)) = system.epoch;
+        *((unsigned int*)(buffer + 2)) = system.tick;
+        *((unsigned int*)(buffer + 6)) = messageSize | (messageType << 24);
+        *((unsigned long long*)(buffer + 10)) = logId++;
+        unsigned long long logDigest = 0;
+        KangarooTwelve(message, messageSize, &logDigest, 8);
+        *((unsigned long long*)(buffer + 18)) = logDigest;
+        logBufferTail += LOG_HEADER_SIZE + messageSize;
+        logBuffer.appendMany(buffer, LOG_HEADER_SIZE);
+        logBuffer.appendMany((char*)message, messageSize);
+#if LOG_STATE_DIGEST
+        if (messageType == QU_TRANSFER || messageType == ASSET_ISSUANCE || messageType == ASSET_OWNERSHIP_CHANGE || messageType == ASSET_POSSESSION_CHANGE ||
+            messageType == BURNING || messageType == DUST_BURNING || messageType == SPECTRUM_STATS || messageType == ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE ||
+            messageType == ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE)
+        {
+            auto ret = XKCP::KangarooTwelve_Update(&k12, reinterpret_cast<const unsigned char*>(message), messageSize);
+#ifndef NDEBUG
+            if (ret != 0)
+            {
+                addDebugMessage(L"Failed to update log digests k12");
+            }
+#endif
+        }
+#endif
+#endif
+    }
+public:
+    // 5 special txs for 5 special events in qubic
+    inline static unsigned int SC_INITIALIZE_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 0;
+    inline static unsigned int SC_BEGIN_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 1;
+    inline static unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
+    inline static unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
+    inline static unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
+
 #if ENABLED_LOGGING
     // Struct to map log buffer from log id    
     static struct mapLogIdToBuffer
     {
-        static void init()
+        static bool init()
         {
-            mapLogIdToBufferIndex.init();
+            return mapLogIdToBufferIndex.init();
         }
+
+        static void deinit()
+        {
+            mapLogIdToBufferIndex.deinit();
+        }
+
         static long long getIndex(unsigned long long logId)
         {
             char buf[LOG_HEADER_SIZE];
@@ -359,19 +409,29 @@ public:
             res.length = length;
             mapLogIdToBufferIndex.append(res);
         }
+
+        static void get(char* dst, unsigned long long logId)
+        {
+            BlobInfo bi = logBuf.getBlobInfo(logId);
+            logBuffer.getMany((char*)dst, bi.startIndex, bi.length);
+        }
+
+        static void getMany(char* dst, unsigned long long offset, unsigned long long numItems)
+        {
+            logBuffer.getMany((char*)dst, offset, numItems);
+        }
     } logBuf;
-
-
     // Struct to map log id ranges from tx hash
     static struct mapTxToLogIdAccess
     {
-        static void init()
+        static bool init()
         {
-            BlobInfo null_blob{ -1,-1 };
-            for (unsigned long long i = 0; i < LOG_TX_INFO_STORAGE; i++)
-            {
-                mapTxToLogId[i] = null_blob;
-            }
+            return mapTxToLogId.init();
+        }
+
+        static void deinit()
+        {
+            mapTxToLogId.deinit();
         }
 
         // return the logID ranges of a tx hash
@@ -379,8 +439,10 @@ public:
         {
             unsigned long long tickOffset = tick - tickBegin;
             if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH && txId < LOG_TX_PER_TICK)
-            {
-                return mapTxToLogId[tickOffset * LOG_TX_PER_TICK + txId];
+            {                
+                TickBlobInfo res;
+                mapTxToLogId.getMany(&res, tickOffset, 1); // bypass MSVC compiler (auto optimize to memcpy and memset)
+                return res.data[txId];
             }
             return BlobInfo{ -1,-1 };
         }
@@ -400,7 +462,7 @@ public:
             ASSERT(offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH);
             if (offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH)
             {
-                auto& txInfo = mapTxToLogId[offsetTick * LOG_TX_PER_TICK + currentTxId];
+                auto& txInfo = currentTickTxToId.data[currentTxId];
                 if (txInfo.startIndex == -1)
                 {
                     txInfo.startIndex = logId;
@@ -413,6 +475,28 @@ public:
                 }
             }
         }
+
+        static void cleanCurrentTickTxToId()
+        {
+            BlobInfo bi;
+            bi.length = -1;
+            bi.startIndex = -1;
+            for (int i = 0; i < LOG_TX_PER_TICK; i++)
+            {
+                currentTickTxToId.data[i] = bi;
+            }
+        }
+
+        static void _commit()
+        {
+            mapTxToLogId.append(currentTickTxToId);
+        }
+
+        static void commitAndCleanCurrentTxToLogId()
+        {
+            _commit();
+            cleanCurrentTickTxToId();
+        }
     } tx;
 #endif
 
@@ -423,7 +507,6 @@ public:
 #endif
     }
 
-
     static bool initLogging()
     {
 #if ENABLED_LOGGING
@@ -432,19 +515,17 @@ public:
             return false;
         }
 
-        if (!mapLogIdToBufferIndex.init())
+        if (!logBuf.init())
         {
             return false;
         }
 
-        if (mapTxToLogId == NULL)
+        if (!tx.init())
         {
-            if (!allocPoolWithErrorLog(L"mapTxToLogId", LOG_TX_INFO_STORAGE * sizeof(BlobInfo), (void**)&mapTxToLogId, __LINE__))
-            {
-                return false;
-            }
+            return false;
         }
-        reset(0, 0);
+
+        reset(0);
 #endif
         return true;
     }
@@ -453,25 +534,22 @@ public:
     {
 #if ENABLED_LOGGING
         logBuffer.deinit();
-        mapLogIdToBufferIndex.deinit();
-        if (mapTxToLogId)
-        {
-            freePool(mapTxToLogId);
-            mapTxToLogId = nullptr;
-        }
+        logBuf.deinit();
+        tx.deinit();
 #endif
     }
 
-    static void reset(unsigned int _tickBegin, unsigned int _tickLoadedFrom)
+    static void reset(unsigned int _tickBegin)
     {
 #if ENABLED_LOGGING
         logBuf.init();
         tx.init();
+        mapTxToLogId.init();
         logBufferTail = 0;
         logId = 0;
         lastUpdatedTick = 0;
         tickBegin = _tickBegin;
-        tickLoadedFrom = _tickLoadedFrom;
+        tx.cleanCurrentTickTxToId();
 #if LOG_STATE_DIGEST
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32);
         m256i zeroHash = m256i::zero();
@@ -488,43 +566,115 @@ public:
         XKCP::KangarooTwelve_Final(&k12, digests[index].m256i_u8, (const unsigned char*)"", 0);
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
-#endif
+#endif        
+        tx.commitAndCleanCurrentTxToLogId();
         lastUpdatedTick = _tick;
     }
-
-    static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
+    
+#ifdef NO_UEFI
+#else
+    bool saveCurrentLoggingStates(CHAR16* dir)
     {
-#if ENABLED_LOGGING
-        char buffer[LOG_HEADER_SIZE];
-        setMem(buffer, sizeof(buffer), 0);
-        tx.addLogId();
-        logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
-        *((unsigned short*)(buffer)) = system.epoch;
-        *((unsigned int*)(buffer + 2)) = system.tick;
-        *((unsigned int*)(buffer + 6)) = messageSize | (messageType << 24);
-        *((unsigned long long*)(buffer + 10)) = logId++;
-        unsigned long long logDigest = 0;
-        KangarooTwelve(message, messageSize, &logDigest, 8);
-        *((unsigned long long*)(buffer + 18)) = logDigest;        
-        logBufferTail += LOG_HEADER_SIZE + messageSize;
-        logBuffer.appendMany(buffer, LOG_HEADER_SIZE);
-        logBuffer.appendMany((char*)message, messageSize);
-#if LOG_STATE_DIGEST
-        if (messageType == QU_TRANSFER || messageType == ASSET_ISSUANCE || messageType == ASSET_OWNERSHIP_CHANGE || messageType == ASSET_POSSESSION_CHANGE ||
-            messageType == BURNING || messageType == DUST_BURNING || messageType == SPECTRUM_STATS || messageType == ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE ||
-            messageType == ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE)
+        unsigned char* buffer = (unsigned char*)__scratchpad();        
+        static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
+            + sizeof(digests) + 600, "scratchpad is too small");
+        unsigned long long writeSz = 0;
+        // copy currentPage of log buffer ~ 100MiB
+        unsigned long long sz = logBuffer.dumpVMState(buffer);
+        buffer += sz;
+        writeSz += sz;
+
+        // copy current page of mapLogIdToBufferIndex ~ 80MiB
+        mapLogIdToBufferIndex.dumpVMState(buffer);
+        buffer += sz;
+        writeSz += sz;
+
+        // mapTxToLogId ~ 150MiB
+        mapTxToLogId.dumpVMState(buffer);
+        buffer += sz;
+        writeSz += sz;
+
+        // copy digests ~ 13MiB
+        copyMem(buffer, digests, sizeof(digests));
+        buffer += sizeof(digests);
+        writeSz += sizeof(digests);
+
+        // copy k12 instance
+        copyMem(buffer, &k12, sizeof(k12));
+        buffer += sizeof(digests);
+        writeSz += sizeof(digests);
+
+        // copy variables
+        *((unsigned long long*)buffer) = logBufferTail; buffer += 8;
+        *((unsigned long long*)buffer) = logId; buffer += 8;
+        *((unsigned int*)buffer) = tickBegin; buffer += 4;
+        *((unsigned int*)buffer) = lastUpdatedTick; buffer += 4;
+        *((unsigned int*)buffer) = currentTxId; buffer += 4;
+        *((unsigned int*)buffer) = currentTick;
+        writeSz += 8 + 8 + 4 + 4 + 4;
+        sz = save(L"logEventState.db", writeSz, buffer, dir);
+        if (sz != writeSz)
         {
-            auto ret = XKCP::KangarooTwelve_Update(&k12, reinterpret_cast<const unsigned char*>(message), messageSize);
-#ifndef NDEBUG
-            if (ret != 0)
-            {
-                addDebugMessage(L"Failed to update log digests k12");
-            }
-#endif
+            logToConsole(L"Failed to save logging event data!");
+            return false;
         }
-#endif
-#endif
+        
+        return true;
     }
+
+    void loadLastLoggingStates(CHAR16* dir)
+    {
+        unsigned char* buffer = (unsigned char*)__scratchpad();
+        static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
+            + sizeof(digests) + 600, "scratchpad is too small");
+        CHAR16 fileName[] = L"logEventState.db";
+        const long long fileSz = getFileSize(fileName, dir);
+        if (fileSz == -1)
+        {
+            return;
+        }
+        unsigned long long sz = load(fileName, fileSz, buffer, dir);
+        if (fileSz != sz)
+        {
+            // failed to load
+            return;
+        }
+
+        unsigned long long readSz = 0;
+        // copy currentPage of log buffer ~ 100MiB
+        sz = logBuffer.loadVMState(buffer);
+        buffer += sz;
+        readSz += sz;
+
+        // copy current page of mapLogIdToBufferIndex ~ 80MiB
+        mapLogIdToBufferIndex.loadVMState(buffer);
+        buffer += sz;
+        readSz += sz;
+
+        // mapTxToLogId ~ 150MiB
+        mapTxToLogId.loadVMState(buffer);
+        buffer += sz;
+        readSz += sz;
+
+        // copy digests ~ 13MiB
+        copyMem(digests, buffer, sizeof(digests));
+        buffer += sizeof(digests);
+        readSz += sizeof(digests);
+
+        // copy k12 instance
+        copyMem(&k12, buffer, sizeof(k12));
+        buffer += sizeof(digests);
+        readSz += sizeof(digests);
+
+        // copy variables
+        logBufferTail = *((unsigned long long*)buffer); buffer += 8;
+        logId = *((unsigned long long*)buffer); buffer += 8;
+        tickBegin = *((unsigned int*)buffer); buffer += 4;
+        lastUpdatedTick = *((unsigned int*)buffer); buffer += 4;
+        currentTxId = *((unsigned int*)buffer); buffer += 4;
+        currentTick = *((unsigned int*)buffer);
+    }
+#endif
 
     template <typename T>
     void logQuTransfer(T message)

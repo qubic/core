@@ -285,7 +285,7 @@ SpectrumStats getSpectrumStatsLog(long long id)
     SpectrumStats res;
     qLogger::BlobInfo bi = logger.logBuf.getBlobInfo(id);
     EXPECT_EQ(bi.length, LOG_HEADER_SIZE + sizeof(SpectrumStats));
-    logger.logBuffer.getMany((char*)&res, bi.startIndex + LOG_HEADER_SIZE, sizeof(SpectrumStats));
+    logger.logBuf.getMany((char*)&res, bi.startIndex + LOG_HEADER_SIZE, sizeof(SpectrumStats));
     return res;
 }
 
@@ -293,10 +293,10 @@ void getDustBurningLog(long long id, char* ptr)
 {
     DustBurning res;
     qLogger::BlobInfo bi = logger.logBuf.getBlobInfo(id);
-    logger.logBuffer.getMany((char*)&res, bi.startIndex + LOG_HEADER_SIZE, sizeof(DustBurning));
+    logger.logBuf.getMany((char*)&res, bi.startIndex + LOG_HEADER_SIZE, sizeof(DustBurning));
     EXPECT_EQ(bi.length, LOG_HEADER_SIZE + res.messageSize());
     copyMem(ptr, &res, sizeof(DustBurning));
-    logger.logBuffer.getMany(ptr + sizeof(DustBurning), bi.startIndex + LOG_HEADER_SIZE + sizeof(DustBurning), res.messageSize());
+    logger.logBuf.getMany(ptr + sizeof(DustBurning), bi.startIndex + LOG_HEADER_SIZE + sizeof(DustBurning), res.messageSize());
 }
 
 TEST(TestCoreSpectrum, AntiDustEdgeCaseHugeBinsAndLogging)

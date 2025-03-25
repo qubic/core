@@ -389,7 +389,7 @@ public:
     void append(T data)
     {
         ACQUIRE(memLock);
-        currentPage[currentId % pageCapacity] = data;
+        copyMem(&currentPage[currentId % pageCapacity], &data, sizeof(T));
         currentId++;
         tryPersistingPage();
         RELEASE(memLock);
@@ -435,5 +435,49 @@ public:
     unsigned long long pageCap()
     {
         return pageCapacity;
+    }
+
+    unsigned long long getPageSize()
+    {
+        return pageCapacity * sizeof(T);
+    }
+
+    const T* getCurrentPagePtr()
+    {
+        return currentPage;
+    }
+
+    unsigned long long dumpVMState(unsigned char* buffer)
+    {
+        unsigned long long ret = 0;
+        copyMem(buffer, currentPage, pageSize);
+        ret += pageSize;
+        buffer += pageSize;
+
+        *((unsigned long long*)buffer) = currentId;
+        buffer += 8;
+        ret += 8;
+
+        *((unsigned long long*)buffer) = currentPageId;
+        buffer += 8;
+        ret += 8;
+        return ret;
+    }
+
+    unsigned long long loadVMState(unsigned char* buffer)
+    {
+        unsigned long long ret = 0;
+        copyMem(currentPage, buffer, pageSize);
+        ret += pageSize;
+        buffer += pageSize;
+
+        currentId = *((unsigned long long*)buffer);
+        buffer += 8;
+        ret += 8;
+
+        currentPageId = *((unsigned long long*)buffer);
+        buffer += 8;
+        ret += 8;
+        return ret;
     }
 };

@@ -62,18 +62,9 @@ void qLogger::processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
         ResponseLogIdRangeFromTx resp;
         if (request->tick <= lastUpdatedTick)
         {
-            if (request->tick < tickLoadedFrom)
-            {
-                // unknown logging because the whole node memory is loaded from files
-                resp.fromLogId = -2;
-                resp.length = -2;
-            }
-            else
-            {
-                BlobInfo info = tx.getLogIdInfo(request->tick, request->txId);
-                resp.fromLogId = info.startIndex;
-                resp.length = info.length;
-            }
+            BlobInfo info = tx.getLogIdInfo(request->tick, request->txId);
+            resp.fromLogId = info.startIndex;
+            resp.length = info.length;
         }
         else
         {
@@ -104,23 +95,11 @@ void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* hea
         int txId = 0;
         if (request->tick <= lastUpdatedTick)
         {
-            if (request->tick < tickLoadedFrom)
+            for (txId = 0; txId < LOG_TX_PER_TICK; txId++)
             {
-                // unknown logging because the whole node memory is loaded from files
-                for (txId = 0; txId < LOG_TX_PER_TICK; txId++)
-                {
-                    resp.fromLogId[txId] = -2;
-                    resp.length[txId] = -2;
-                }
-            }
-            else
-            {
-                for (txId = 0; txId < LOG_TX_PER_TICK; txId++)
-                {
-                    BlobInfo info = tx.getLogIdInfo(request->tick, txId);
-                    resp.fromLogId[txId] = info.startIndex;
-                    resp.length[txId] = info.length;
-                }
+                BlobInfo info = tx.getLogIdInfo(request->tick, txId);
+                resp.fromLogId[txId] = info.startIndex;
+                resp.length[txId] = info.length;
             }
         }
         else

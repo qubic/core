@@ -229,7 +229,6 @@ struct
     unsigned int resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
-    unsigned long long lastLogId;
 } nodeStateBuffer;
 #endif
 static bool saveComputer(CHAR16* directory = NULL);
@@ -2345,7 +2344,7 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick, system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
+        logger.reset(system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
@@ -3967,8 +3966,7 @@ static bool saveAllNodeStates()
     copyMem(&nodeStateBuffer.resourceTestingDigest, &resourceTestingDigest, sizeof(resourceTestingDigest));
     nodeStateBuffer.currentRandomSeed = score->currentRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
-    nodeStateBuffer.numberOfTransactions = numberOfTransactions;
-    nodeStateBuffer.lastLogId = logger.logId;
+    nodeStateBuffer.numberOfTransactions = numberOfTransactions;    
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
@@ -4031,7 +4029,9 @@ static bool saveAllNodeStates()
         return false;
     }
 #endif
-
+#if ENABLED_LOGGING
+    logger.saveCurrentLoggingStates(directory);
+#endif
     return true;
 }
 
@@ -4105,7 +4105,6 @@ static bool loadAllNodeStates()
     numberOfMiners = nodeStateBuffer.numberOfMiners;
     initialRandomSeedFromPersistingState = nodeStateBuffer.currentRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
-    logger.logId = nodeStateBuffer.lastLogId;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
@@ -4180,8 +4179,9 @@ static bool loadAllNodeStates()
 #endif
 
 #if ENABLED_LOGGING
-    logToConsole(L"Initializing logger");
-    logger.reset(system.initialTick, system.tick); // initialize the logger
+    logToConsole(L"Loading old logger...");
+    logger.initLogging();
+    logger.loadLastLoggingStates(directory);
 #endif
     return true;
 }
