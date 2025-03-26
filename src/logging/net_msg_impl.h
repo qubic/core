@@ -48,7 +48,7 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
     enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
 }
 
-void qLogger::processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
+void qLogger::processRequestTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
     RequestLogIdRangeFromTx* request = header->getPayload<RequestLogIdRangeFromTx>();
@@ -62,7 +62,7 @@ void qLogger::processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
         ResponseLogIdRangeFromTx resp;
         if (request->tick <= lastUpdatedTick)
         {
-            BlobInfo info = tx.getLogIdInfo(request->tick, request->txId);
+            BlobInfo info = tx.getLogIdInfo(processorNumber, request->tick, request->txId);
             resp.fromLogId = info.startIndex;
             resp.length = info.length;
         }
@@ -80,7 +80,7 @@ void qLogger::processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, 0, ResponseLogIdRangeFromTx::type, header->dejavu(), NULL);
 }
 
-void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header)
+void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
     RequestAllLogIdRangesFromTick* request = header->getPayload<RequestAllLogIdRangesFromTick>();
@@ -91,27 +91,22 @@ void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* hea
         && request->tick >= tickBegin
         )
     {
-        ResponseAllLogIdRangesFromTick resp;
+        ResponseAllLogIdRangesFromTick* resp = (ResponseAllLogIdRangesFromTick * )responseBuffers[processorNumber];
         int txId = 0;
         if (request->tick <= lastUpdatedTick)
         {
-            for (txId = 0; txId < LOG_TX_PER_TICK; txId++)
-            {
-                BlobInfo info = tx.getLogIdInfo(request->tick, txId);
-                resp.fromLogId[txId] = info.startIndex;
-                resp.length[txId] = info.length;
-            }
+            tx.getTickLogIdInfo((TickBlobInfo*)resp, request->tick);
         }
         else
         {
             // logging of this tick hasn't generated
             for (txId = 0; txId < LOG_TX_PER_TICK; txId++)
             {
-                resp.fromLogId[txId] = -3;
-                resp.length[txId] = -3;
+                resp->fromLogId[txId] = -3;
+                resp->length[txId] = -3;
             }
-        }    
-        enqueueResponse(peer, sizeof(ResponseAllLogIdRangesFromTick), ResponseAllLogIdRangesFromTick::type, header->dejavu(), &resp);
+        }
+        enqueueResponse(peer, sizeof(ResponseAllLogIdRangesFromTick), ResponseAllLogIdRangesFromTick::type, header->dejavu(), resp);
         return;
     }
 #endif

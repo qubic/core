@@ -1603,13 +1603,13 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case RequestLogIdRangeFromTx::type:
                 {
-                    logger.processRequestTxLogInfo(peer, header);
+                    logger.processRequestTxLogInfo(processorNumber, peer, header);
                 }
                 break;
 
                 case RequestAllLogIdRangesFromTick::type:
                 {
-                    logger.processRequestTickTxLogInfo(peer, header);
+                    logger.processRequestTickTxLogInfo(processorNumber, peer, header);
                 }
                 break;
 
@@ -4180,7 +4180,6 @@ static bool loadAllNodeStates()
 
 #if ENABLED_LOGGING
     logToConsole(L"Loading old logger...");
-    logger.initLogging();
     logger.loadLastLoggingStates(directory);
 #endif
     return true;

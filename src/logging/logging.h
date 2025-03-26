@@ -254,7 +254,8 @@ public:
     };
     struct TickBlobInfo
     {
-        BlobInfo data[LOG_TX_PER_TICK];
+        long long fromLogId[LOG_TX_PER_TICK];
+        long long length[LOG_TX_PER_TICK];
     };
 
 private:
@@ -367,12 +368,13 @@ public:
     {
         static bool init()
         {
-            return mapLogIdToBufferIndex.init();
+            return mapLogIdToBufferIndex.init() && logBuffer.init();
         }
 
         static void deinit()
         {
             mapLogIdToBufferIndex.deinit();
+            logBuffer.deinit();
         }
 
         static long long getIndex(unsigned long long logId)
@@ -435,16 +437,41 @@ public:
         }
 
         // return the logID ranges of a tx hash
-        static BlobInfo getLogIdInfo(unsigned int tick, unsigned int txId)
+        static BlobInfo getLogIdInfo(unsigned long long processorNumber, unsigned int tick, unsigned int txId)
         {
             unsigned long long tickOffset = tick - tickBegin;
-            if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH && txId < LOG_TX_PER_TICK)
-            {                
-                TickBlobInfo res;
-                mapTxToLogId.getMany(&res, tickOffset, 1); // bypass MSVC compiler (auto optimize to memcpy and memset)
-                return res.data[txId];
+            if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH && txId < LOG_TX_PER_TICK && tick <= lastUpdatedTick)
+            {
+                TickBlobInfo* res = (TickBlobInfo * )responseBuffers[processorNumber];
+                {
+                    for (int i = 0; i < LOG_TX_PER_TICK; i++)
+                    {
+                        res->fromLogId[i] = -1;
+                        res->length[i] = -1;
+                    }
+                }
+                unsigned long long sz = mapTxToLogId.getMany(res, tickOffset, 1); // bypass MSVC compiler (auto optimize to memcpy and memset)
+                ASSERT(sz != 0);
+                BlobInfo result = { res->fromLogId[txId], res->length[txId] };
+                return result;
             }
             return BlobInfo{ -1,-1 };
+        }
+
+        static void getTickLogIdInfo(TickBlobInfo* output, const unsigned int tick)
+        {
+            unsigned long long tickOffset = tick - tickBegin;
+            for (int i = 0; i < LOG_TX_PER_TICK; i++)
+            {
+                output->fromLogId[i] = -1;
+                output->length[i] = -1;
+            }
+            if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH && tick <= lastUpdatedTick)
+            {
+                unsigned long long sz = mapTxToLogId.getMany(output, tickOffset, 1); // bypass MSVC compiler (auto optimize to memcpy and memset)
+                ASSERT(sz != 0);
+            }
+            return;
         }
 
         static void _registerNewTx(const unsigned int tick, const unsigned int txId)
@@ -460,30 +487,30 @@ public:
         {
             unsigned long long offsetTick = currentTick - tickBegin;
             ASSERT(offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH);
-            if (offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH)
+            ASSERT(currentTxId < LOG_TX_PER_TICK);
+            if (offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH && currentTxId < LOG_TX_PER_TICK)
             {
-                auto& txInfo = currentTickTxToId.data[currentTxId];
-                if (txInfo.startIndex == -1)
+                auto& startIndex = currentTickTxToId.fromLogId[currentTxId];
+                auto& length = currentTickTxToId.length[currentTxId];
+                if (startIndex == -1)
                 {
-                    txInfo.startIndex = logId;
-                    txInfo.length = 1;
+                    startIndex = logId;
+                    length = 1;
                 }
                 else
                 {
-                    ASSERT(txInfo.startIndex != -1);
-                    txInfo.length++;
+                    ASSERT(startIndex != -1);
+                    length++;
                 }
             }
         }
 
         static void cleanCurrentTickTxToId()
         {
-            BlobInfo bi;
-            bi.length = -1;
-            bi.startIndex = -1;
             for (int i = 0; i < LOG_TX_PER_TICK; i++)
             {
-                currentTickTxToId.data[i] = bi;
+                currentTickTxToId.fromLogId[i] = -1;
+                currentTickTxToId.length[i] = -1;
             }
         }
 
@@ -510,11 +537,6 @@ public:
     static bool initLogging()
     {
 #if ENABLED_LOGGING
-        if (!logBuffer.init())
-        {
-            return false;
-        }
-
         if (!logBuf.init())
         {
             return false;
@@ -533,7 +555,6 @@ public:
     static void deinitLogging()
     {
 #if ENABLED_LOGGING
-        logBuffer.deinit();
         logBuf.deinit();
         tx.deinit();
 #endif
@@ -544,7 +565,6 @@ public:
 #if ENABLED_LOGGING
         logBuf.init();
         tx.init();
-        mapTxToLogId.init();
         logBufferTail = 0;
         logId = 0;
         lastUpdatedTick = 0;
@@ -568,6 +588,7 @@ public:
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
 #endif        
         tx.commitAndCleanCurrentTxToLogId();
+        ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
         lastUpdatedTick = _tick;
     }
     
@@ -585,12 +606,12 @@ public:
         writeSz += sz;
 
         // copy current page of mapLogIdToBufferIndex ~ 80MiB
-        mapLogIdToBufferIndex.dumpVMState(buffer);
+        sz = mapLogIdToBufferIndex.dumpVMState(buffer);
         buffer += sz;
         writeSz += sz;
 
         // mapTxToLogId ~ 150MiB
-        mapTxToLogId.dumpVMState(buffer);
+        sz = mapTxToLogId.dumpVMState(buffer);
         buffer += sz;
         writeSz += sz;
 
@@ -601,8 +622,8 @@ public:
 
         // copy k12 instance
         copyMem(buffer, &k12, sizeof(k12));
-        buffer += sizeof(digests);
-        writeSz += sizeof(digests);
+        buffer += sizeof(k12);
+        writeSz += sizeof(k12);
 
         // copy variables
         *((unsigned long long*)buffer) = logBufferTail; buffer += 8;
@@ -610,8 +631,9 @@ public:
         *((unsigned int*)buffer) = tickBegin; buffer += 4;
         *((unsigned int*)buffer) = lastUpdatedTick; buffer += 4;
         *((unsigned int*)buffer) = currentTxId; buffer += 4;
-        *((unsigned int*)buffer) = currentTick;
-        writeSz += 8 + 8 + 4 + 4 + 4;
+        *((unsigned int*)buffer) = currentTick; buffer += 4;
+        writeSz += 8 + 8 + 4 + 4 + 4 + 4;
+        buffer = (unsigned char*)__scratchpad(); // reset back to original pos
         sz = save(L"logEventState.db", writeSz, buffer, dir);
         if (sz != writeSz)
         {
@@ -631,12 +653,14 @@ public:
         const long long fileSz = getFileSize(fileName, dir);
         if (fileSz == -1)
         {
+            logToConsole(L"[1] Failed to load logging events");
             return;
         }
         unsigned long long sz = load(fileName, fileSz, buffer, dir);
         if (fileSz != sz)
         {
             // failed to load
+            logToConsole(L"[2] Failed to load logging events");
             return;
         }
 
@@ -647,12 +671,12 @@ public:
         readSz += sz;
 
         // copy current page of mapLogIdToBufferIndex ~ 80MiB
-        mapLogIdToBufferIndex.loadVMState(buffer);
+        sz = mapLogIdToBufferIndex.loadVMState(buffer);
         buffer += sz;
         readSz += sz;
 
         // mapTxToLogId ~ 150MiB
-        mapTxToLogId.loadVMState(buffer);
+        sz = mapTxToLogId.loadVMState(buffer);
         buffer += sz;
         readSz += sz;
 
@@ -663,8 +687,8 @@ public:
 
         // copy k12 instance
         copyMem(&k12, buffer, sizeof(k12));
-        buffer += sizeof(digests);
-        readSz += sizeof(digests);
+        buffer += sizeof(k12);
+        readSz += sizeof(k12);
 
         // copy variables
         logBufferTail = *((unsigned long long*)buffer); buffer += 8;
@@ -820,10 +844,10 @@ public:
     static void processRequestLog(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header);
 
     // convert from tx id to log ID
-    static void processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header);
+    static void processRequestTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header);
 
     // get all log ID (mapping to tx id) from a tick
-    static void processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header);
+    static void processRequestTickTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header);
 
     // prune unused page files to save disk storage
     static void processRequestPrunePageFile(Peer* peer, RequestResponseHeader* header);

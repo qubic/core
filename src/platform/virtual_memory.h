@@ -256,11 +256,15 @@ public:
     // return number of items has been copied
     unsigned long long getMany(T* dst, unsigned long long offset, unsigned long long numItems)
     {
-        ASSERT(offset + numItems < currentId);
-        if (offset + numItems > currentId)
+        ACQUIRE(memLock);
+        ASSERT(offset + numItems - 1 < currentId);
+        if (offset + numItems - 1 >= currentId)
         {
+            RELEASE(memLock);
             return 0;
         }
+        RELEASE(memLock);
+
         // processing
         unsigned long long c_bytes = 0;
         unsigned long long p_start = offset;
@@ -388,6 +392,7 @@ public:
     // (3) clean current page for new data
     void append(T data)
     {
+        ASSERT(currentPage != NULL);
         ACQUIRE(memLock);
         copyMem(&currentPage[currentId % pageCapacity], &data, sizeof(T));
         currentId++;
@@ -449,6 +454,7 @@ public:
 
     unsigned long long dumpVMState(unsigned char* buffer)
     {
+        ACQUIRE(memLock);
         unsigned long long ret = 0;
         copyMem(buffer, currentPage, pageSize);
         ret += pageSize;
@@ -461,11 +467,13 @@ public:
         *((unsigned long long*)buffer) = currentPageId;
         buffer += 8;
         ret += 8;
+        RELEASE(memLock);
         return ret;
     }
 
     unsigned long long loadVMState(unsigned char* buffer)
     {
+        ACQUIRE(memLock);
         unsigned long long ret = 0;
         copyMem(currentPage, buffer, pageSize);
         ret += pageSize;
@@ -478,6 +486,7 @@ public:
         currentPageId = *((unsigned long long*)buffer);
         buffer += 8;
         ret += 8;
+        RELEASE(memLock);
         return ret;
     }
 };
