@@ -72,7 +72,6 @@ constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
-#define PEER_REFRESHING_PERIOD 120000ULL
 #define PORT 21841
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
@@ -4916,7 +4915,7 @@ static void tickProcessor(void*)
                 if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
                 {
                     if (!targetNextTickDataDigestIsKnown
-                        && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * 5 * frequency / 1000)
+                        && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * NEXT_TICK_TIMEOUT_THRESHOLD * frequency / 1000)
                     {
                         // If we don't have enough txs data for the next tick, and next tick digest is unknown (not reach quorum)
                         // and tick duration exceed 5*TARGET_TICK_DURATION, then this tick is forced to be empty.
