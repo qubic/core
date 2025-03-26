@@ -35,12 +35,19 @@
 #define PROBABILITY_TO_FORCE_EMPTY_TICK 800 // after (AUTO_FORCE_NEXT_TICK_THRESHOLD x TARGET_TICK_DURATION) seconds, the node will start casting F5 randomly every second with this probability
                                             // to prevent bad actor causing misalignment, operators should set this number in this range [700, 900] (aka [7%, 9%])
 
-
+#define NEXT_TICK_TIMEOUT_THRESHOLD 5ULL // Multiplier of TARGET_TICK_DURATION for the system to discard next tick in tickData.
+                                         // This will lead to zero `expectedNextTickTransactionDigest` in consensus
+             
+#define PEER_REFRESHING_PERIOD 120000ULL
+#if AUTO_FORCE_NEXT_TICK_THRESHOLD != 0
+static_assert(NEXT_TICK_TIMEOUT_THRESHOLD < AUTO_FORCE_NEXT_TICK_THRESHOLD, "Timeout threshold must be smaller than auto F5 threshold");
+static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRESHING_PERIOD, "AutoF5 threshold must be greater than PEER_REFRESHING_PERIOD");
+#endif
 // Set START_NETWORK_FROM_SCRATCH to 0 if you start the node for syncing with the already ticking network.
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 1
+#define START_NETWORK_FROM_SCRATCH 0
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -49,12 +56,12 @@
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 238
-#define VERSION_C 0
+#define VERSION_B 239
+#define VERSION_C 1
 
 // Epoch and initial tick for node startup
-#define EPOCH 153
-#define TICK 21660000
+#define EPOCH 154
+#define TICK 22175000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 #define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "platform/uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "platform/console_logging.h"
 
 #include "network_messages/header.h"

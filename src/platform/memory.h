@@ -14,7 +14,7 @@ void freePool(void* buffer);
 
 #else
 
-#include "uefi.h"
+#include <lib/platform_efi/uefi_globals.h>
 
 static inline void setMem(void* buffer, unsigned long long size, unsigned char value)
 {

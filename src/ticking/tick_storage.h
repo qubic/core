@@ -17,6 +17,7 @@ static unsigned short SNAPSHOT_TICKS_FILE_NAME[] = L"snapshotTicks.???";
 static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
 static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
 #endif
+constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
 // The number of ticks to keep from the previous epoch is TICKS_TO_KEEP_FROM_PRIOR_EPOCH (defined in public_settings.h).
 //
@@ -805,7 +806,10 @@ public:
                 return nullptr;
 
             TickData* td = tickDataPtr + index;
-            if (td->epoch == 0)
+            // td->epoch == 0: not yet received or temporarily disabled
+            // td->epoch == INVALIDATED_TICK_DATA: invalidated by this node
+            // in both cases, this data shouldn't be sent out
+            if (td->epoch == 0 || td->epoch == INVALIDATED_TICK_DATA)
                 return nullptr;
 
             return td;

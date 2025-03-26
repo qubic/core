@@ -1,7 +1,7 @@
 #pragma once
 
 #include "global_var.h"
-#include "uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "memory.h"
 #include <stddef.h>
 
@@ -15,6 +15,8 @@ GLOBAL_VAR_DECL EFI_TIME utcTime;
 void updateTime();
 
 #else
+
+#include <lib/platform_efi/uefi_globals.h>
 
 static void updateTime()
 {

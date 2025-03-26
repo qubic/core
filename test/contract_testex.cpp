@@ -1,9 +1,13 @@
 #define NO_UEFI
 
+#include <thread>
+#include <chrono>
+
 #include "contract_testing.h"
 
 static const id TESTEXA_CONTRACT_ID(TESTEXA_CONTRACT_INDEX, 0, 0, 0);
 static const id TESTEXB_CONTRACT_ID(TESTEXB_CONTRACT_INDEX, 0, 0, 0);
+static const id TESTEXC_CONTRACT_ID(TESTEXC_CONTRACT_INDEX, 0, 0, 0);
 static const id USER1(123, 456, 789, 876);
 static const id USER2(42, 424, 4242, 42424);
 static const id USER3(98, 76, 54, 3210);
@@ -111,9 +115,13 @@ public:
         callSystemProcedure(TESTEXA_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(TESTEXB);
         callSystemProcedure(TESTEXB_CONTRACT_INDEX, INITIALIZE);
+        INIT_CONTRACT(TESTEXC);
+        callSystemProcedure(TESTEXC_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
         qLogger::initLogging();
+
+        checkContractExecCleanup();
 
         // query QX fees
         callFunction(QX_CONTRACT_INDEX, 1, QX::Fees_input(), qxFees);
@@ -121,6 +129,7 @@ public:
 
     ~ContractTestingTestEx()
     {
+        checkContractExecCleanup();
         qLogger::deinitLogging();
     }
 
@@ -256,11 +265,36 @@ public:
         return output.transferredNumberOfShares;
     }
 
+    sint64 getTestExAsShareManagementRightsByInvokingTestExC(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, sint64 fee = 0)
+    {
+        TESTEXC::GetTestExampleAShareManagementRights_input input;
+        TESTEXC::GetTestExampleAShareManagementRights_output output;
+
+        input.asset = asset;
+        input.numberOfShares = numberOfShares;
+
+        invokeUserProcedure(TESTEXC::__contract_index, 7, input, output, currentOwnerAndPossesor, fee);
+
+        return output.transferredNumberOfShares;
+    }
+
     TESTEXA::QueryQpiFunctions_output queryQpiFunctions(const TESTEXA::QueryQpiFunctions_input& input)
     {
         TESTEXA::QueryQpiFunctions_output output;
         callFunction(TESTEXA_CONTRACT_INDEX, 1, input, output);
         return output;
+    }
+
+    unsigned int callFunctionOfTestExampleAFromTextExampleB(const TESTEXA::QueryQpiFunctions_input& input, TESTEXA::QueryQpiFunctions_output& output, bool expectSuccess)
+    {
+        return callFunction(TESTEXB_CONTRACT_INDEX, 1, input, output, true, expectSuccess);
+    }
+
+    unsigned int callErrorTriggerFunction()
+    {
+        TESTEXA::ErrorTriggerFunction_input input;
+        TESTEXA::ErrorTriggerFunction_output output;
+        return callFunction(TESTEXA_CONTRACT_INDEX, 5, input, output, true, false);
     }
 };
 
@@ -642,6 +676,138 @@ TEST(ContractTestEx, GetManagementRightsByInvokingOtherContractsRelease)
     EXPECT_EQ(test.getTestExAsShareManagementRightsByInvokingTestExB(asset1, USER1, transferShareCount, 15), transferShareCount);
     EXPECT_EQ(numberOfShares(asset1, { USER1, TESTEXA_CONTRACT_INDEX }, { USER1, TESTEXA_CONTRACT_INDEX }), totalShareCount - transferShareCount);
     EXPECT_EQ(numberOfShares(asset1, { TESTEXB_CONTRACT_ID, TESTEXB_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, TESTEXB_CONTRACT_INDEX }), transferShareCount);
+}
+
+// Test stopping + cleanup of contract functions execution for recursive function leading to stack overflow
+TEST(ContractTestEx, AbortFunction)
+{
+    ContractTestingTestEx test;
+
+    // Successfully run function
+    TESTEXA::QueryQpiFunctions_input input{};
+    TESTEXA::QueryQpiFunctions_output output{};
+    EXPECT_EQ(test.callFunctionOfTestExampleAFromTextExampleB(input, output, true), NoContractError);
+
+    // Check that error handling works when error is supposed to happen
+    EXPECT_EQ(test.callErrorTriggerFunction(), ContractErrorAllocLocalsFailed);
+}
+
+static id getUser(unsigned long long i)
+{
+    return id(i, i / 2 + 4, i + 10, i * 3 + 8);
+}
+
+static void concurrentContractFunctionCall(ContractTestingTestEx* test)
+{
+    // This calls a user function in contract TestExampleA that calls a function in TestExampleB.
+    // When running concurrently with a management rights transfer, this may trigger a deadlock
+    // that needs to be resolved.
+    for (int i = 0; i < 3; ++i)
+    {
+        TESTEXA::QueryQpiFunctions_input queryQpiFuncInput;
+        TESTEXA::QueryQpiFunctions_output qpiReturned;
+        setMemory(utcTime, 0);
+        utcTime.Year = 2022;
+        utcTime.Month = 4;
+        utcTime.Day = 13;
+        utcTime.Hour = 12;
+        updateQpiTime();
+        bool expectSuccess = false;
+        unsigned int errorCode = test->callFunctionOfTestExampleAFromTextExampleB(queryQpiFuncInput, qpiReturned, expectSuccess);
+        ASSERT(errorCode == ContractErrorStoppedToResolveDeadlock || errorCode == NoContractError);
+        if (errorCode == NoContractError)
+        {
+            EXPECT_EQ(qpiReturned.qpiFunctionsOutput.year, 22);
+            EXPECT_EQ(qpiReturned.qpiFunctionsOutput.month, 4);
+            EXPECT_EQ(qpiReturned.qpiFunctionsOutput.day, 13);
+            EXPECT_EQ(qpiReturned.qpiFunctionsOutput.hour, 12);
+        }
+    }
+}
+
+TEST(ContractTestEx, ResolveDeadlockCallbackProcedureAndConcurrentFunction)
+{
+    // deadlock pattern (with index of TestExC > TestExB > TestExA):
+    // 1. TestExC procedure invokes TestExA procedure, which runs qpi.releaseShares() to TestExC leading to a call of
+    //    PRE_ACQUIRE_SHARES in TestExC
+    //    -> solution to resolve deadlock: reusing lock
+    // 2. PRE_ACQUIRE_SHARES in TestExC invokes a TestExA procedure (this runs a lot of computation to wait for
+    //    concurrent execution of contract function needed for test 3)
+    //    -> solution to resolve deadlock: reusing lock
+    // 3. PRE_ACQUIRE_SHARES in TestExC tries to invoke a procedure of TestExB; this leads to a deadlock if a contract
+    //    function of TextExB is running in parallel that tries to run a function of TextExA:
+    //    -> contract function of TestExB running in request processor is waiting for a read lock of TestExA
+    //    -> read lock of TestExA cannot be acquired before qpi.releaseShares() returns, which it doesn't because
+    //       PRE_ACQUIRE_SHARES is waiting for a write lock of TestExB, which cannot be acquired before the contract
+    //       function of TestExB is finished
+    //    -> solution to resolve deadlock: cancel contract function of TestExB
+
+    ContractTestingTestEx test;
+
+    const Asset asset1{ USER1, assetNameFromString("WOBBL") };
+    const sint64 totalShareCount = 100000000;
+    const int numberOfUsers = 500;
+    const sint64 transferShareCount = totalShareCount / numberOfUsers / 10;
+
+    // populate spectrum
+    increaseEnergy(USER1, test.qxFees.assetIssuanceFee * 10);
+    increaseEnergy(TESTEXC_CONTRACT_ID, test.qxFees.assetIssuanceFee * 10);
+    for (int i = 0; i < numberOfUsers; ++i)
+        increaseEnergy(getUser(i), test.qxFees.assetIssuanceFee * (i % 1000 + 1));
+
+    // issueAsset with TestExampleA
+    EXPECT_EQ(test.issueAssetTestExA(asset1, totalShareCount, 0, 0), totalShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { USER1, TESTEXA_CONTRACT_INDEX }, { USER1, TESTEXA_CONTRACT_INDEX }), totalShareCount);
+
+    // run ownership/possession transfer to TestExC in TestExA (needed to run deadlock test below)
+    EXPECT_EQ(test.transferShareOwnershipAndPossession<TESTEXA>(asset1, asset1.issuer, TESTEXC_CONTRACT_ID, transferShareCount), transferShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { USER1, TESTEXA_CONTRACT_INDEX }, { USER1, TESTEXA_CONTRACT_INDEX }), totalShareCount - transferShareCount);
+    EXPECT_EQ(numberOfShares(asset1, { TESTEXC_CONTRACT_ID, TESTEXA_CONTRACT_INDEX }, { TESTEXC_CONTRACT_ID, TESTEXA_CONTRACT_INDEX }), transferShareCount);
+
+    // populate universe
+    for (int i = 0; i < numberOfUsers; ++i)
+        EXPECT_EQ(test.transferShareOwnershipAndPossession<TESTEXA>(asset1, asset1.issuer, getUser(i), transferShareCount), transferShareCount);
+
+    // start procedure call for deadlock test (baseline without concurrent function call)
+    {
+        std::cout << "Test callback procedure without concurrent function ..." << std::endl;
+        auto startTime = std::chrono::high_resolution_clock::now();
+        test.getTestExAsShareManagementRightsByInvokingTestExC(asset1, TESTEXC_CONTRACT_ID, 1, 0);
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+        std::cout << "Run-time of procedure without concurrent function: " << durationMilliSec << " milliseconds\n" << std::endl;
+    }
+
+    // start function call (baseline without concurrent procedure call)
+    {
+        std::cout << "Test function without concurrent procedure ..." << std::endl;
+        auto startTime = std::chrono::high_resolution_clock::now();
+        TESTEXA::QueryQpiFunctions_input input;
+        TESTEXA::QueryQpiFunctions_output output;
+        test.callFunctionOfTestExampleAFromTextExampleB(input, output, true);
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+        std::cout << "Run-time of function without concurrent procedure: " << durationMilliSec << " milliseconds\n" << std::endl;
+    }
+
+    // deadlock test with procedure and concurrent function call
+    for (int i = 0; i < 3; ++i)
+    {
+        std::cout << "Test callback procedure with concurrent function ..." << std::endl;
+        auto startTime = std::chrono::high_resolution_clock::now();
+
+        auto lambda = [](ContractTestingTestEx* test, const Asset& asset1) { test->getTestExAsShareManagementRightsByInvokingTestExC(asset1, TESTEXC_CONTRACT_ID, 1, 0); };
+
+        auto userProcedureThread = std::thread(lambda, &test, asset1);
+        auto userFunctionThread = std::thread(concurrentContractFunctionCall, &test);
+
+        userProcedureThread.join();
+        userFunctionThread.join();
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+        std::cout << "Run-time of procedure with concurrent function: " << durationMilliSec << " milliseconds\n" << std::endl;
+    }
 }
 
 TEST(ContractTestEx, QueryBasicQpiFunctions)
