@@ -1,6 +1,6 @@
 #pragma once
 
-#include "uefi.h"
+#include <lib/platform_efi/uefi.h>
 
 static unsigned char consoleLoggingLevel = 1;
 

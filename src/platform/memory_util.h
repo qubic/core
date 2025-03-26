@@ -1,7 +1,7 @@
 #pragma once
 
 #include "console_logging.h"
-#include "platform/uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "memory.h"
 
 #ifdef NO_UEFI

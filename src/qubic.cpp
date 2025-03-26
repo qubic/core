@@ -1,7 +1,5 @@
 #define SINGLE_COMPILE_UNIT
 
-//#define NO_QBAY
-
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -22,7 +20,7 @@
 // TODO: Use "long long" instead of "int" for DB indices
 
 
-#include "platform/uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "platform/time.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
@@ -74,7 +72,6 @@ constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
-#define PEER_REFRESHING_PERIOD 120000ULL
 #define PORT 21841
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
@@ -1176,8 +1173,21 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
     else
     {
         QpiContextUserFunctionCall qpiContext(request->contractIndex);
-        qpiContext.call(request->inputType, (((unsigned char*)request) + sizeof(RequestContractFunction)), request->inputSize);
-        enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type, header->dejavu(), qpiContext.outputBuffer);
+        auto errorCode = qpiContext.call(request->inputType, (((unsigned char*)request) + sizeof(RequestContractFunction)), request->inputSize);
+        if (errorCode == NoContractError)
+        {
+            // success: respond with function output
+            enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type, header->dejavu(), qpiContext.outputBuffer);
+        }
+        else
+        {
+            // error: respond with empty output, send TryAgain if the function was stopped to resolve a potential
+            // deadlock
+            unsigned char type = RespondContractFunction::type;
+            if (errorCode == ContractErrorStoppedToResolveDeadlock)
+                type = TryAgain::type;
+            enqueueResponse(peer, 0, type, header->dejavu(), NULL);
+        }
     }
 }
 
@@ -4701,7 +4711,9 @@ static void tryForceEmptyNextTick()
         // - the network was stuck for a certain time, (10x of target tick duration by default)
         // then:
         // - randomly (8% chance) force next tick to be empty every sec
-        // - refresh the network (try to resolve bad topology)
+        // This will force the node to set: 
+        // (1) currentTick.expectedNextTickTransactionDigest  = 0
+        // (2) nextTick.transactionDigest = 0 - it invalidates ts.tickData, no way to recover
         if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
         {
             if (emptyTickResolver.tick != system.tick)
@@ -4718,7 +4730,16 @@ static void tryForceEmptyNextTick()
                         unsigned int randNumber = random(10000);
                         if (randNumber < PROBABILITY_TO_FORCE_EMPTY_TICK)
                         {
+
                             forceNextTick = true; // auto-F5
+#if !defined(NDEBUG)
+                            {
+                                CHAR16 dbgMsg[200];
+                                setText(dbgMsg, L"Consensus: activated auto-F5 at tick ");
+                                appendNumber(dbgMsg, system.tick, true);
+                                addDebugMessage(dbgMsg);
+                            }                            
+#endif
                         }
                         emptyTickResolver.lastTryClock = __rdtsc();
                     }
@@ -4733,6 +4754,11 @@ static void tryForceEmptyNextTick()
         }
     }
     forceNextTick = false;
+}
+
+static bool isTickTimeOut()
+{
+    return (__rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * NEXT_TICK_TIMEOUT_THRESHOLD * frequency / 1000);
 }
 
 static void tickProcessor(void*)
@@ -4843,6 +4869,7 @@ static void tickProcessor(void*)
                     if (nextTickData.epoch != system.epoch)
                     {
                         // not yet received or malformed next tick data
+                        // or the tick data has been discarded because of timeout
                         tickDataSuits = false;
                     }
                     else
@@ -4906,10 +4933,13 @@ static void tickProcessor(void*)
                 if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
                 {
                     if (!targetNextTickDataDigestIsKnown
-                        && __rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * 5 * frequency / 1000)
+                        && isTickTimeOut())
                     {
-                        // If we don't have enough txs data for the next tick, and next tick digest is unknown (not reach quorum)
-                        // and tick duration exceed 5*TARGET_TICK_DURATION, then this tick is forced to be empty.
+                        // If we don't have enough txs data for the next tick, and current/next tick votes not reach quorum
+                        // and tick duration exceed 5*TARGET_TICK_DURATION, then it will temporarily discard next tickData, that will lead to zero expectedNextTickTransactionDigest
+                        // That doesn't mean next tick has to be empty. Node is still waiting for votes from others to reach quorum
+                        // and "refresh" this tickData again
+                        // [dkat]: should we add a flag here to discard it once? Is updating ts.tickData needed?
                         ts.tickData.acquireLock();
                         ts.tickData[nextTickIndex].epoch = 0;
                         ts.tickData.releaseLock();
@@ -4917,6 +4947,15 @@ static void tickProcessor(void*)
 
                         numberOfNextTickTransactions = 0;
                         numberOfKnownNextTickTransactions = 0;
+
+#if !defined(NDEBUG)
+                        {
+                            CHAR16 dbgMsg[200];
+                            setText(dbgMsg, L"Consensus: TIMEOUT at tick ");
+                            appendNumber(dbgMsg, system.tick, true);
+                            addDebugMessage(dbgMsg);
+                        }
+#endif
                     }
                 }
 
@@ -4936,6 +4975,7 @@ static void tickProcessor(void*)
                     else
                     {
                         etalonTick.transactionDigest = m256i::zero();
+                        etalonTick.prevTransactionBodyDigest = 0;
                     }
 
                     if (nextTickData.epoch == system.epoch)
@@ -4993,7 +5033,7 @@ static void tickProcessor(void*)
                             {
                                 // Empty tick
                                 ts.tickData.acquireLock();
-                                ts.tickData[nextTickIndex].epoch = 0;
+                                ts.tickData[nextTickIndex].epoch = INVALIDATED_TICK_DATA;
                                 ts.tickData.releaseLock();
                                 nextTickData.epoch = 0;
                                 tickDataSuits = true;

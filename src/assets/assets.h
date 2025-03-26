@@ -3,7 +3,7 @@
 #include "platform/global_var.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
-#include "platform/uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
 #include "platform/memory_util.h"
