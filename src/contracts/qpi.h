@@ -1441,7 +1441,7 @@ namespace QPI
 		inline void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
 		inline void __qpiFreeLocals() const;
 		inline const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
-		inline void __qpiFreeContextOtherContract() const;
+		inline void __qpiFreeContext() const;
 		inline void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
 		inline void __qpiReleaseStateForReading(unsigned int contractIndex) const;
 		inline void __qpiAbort(unsigned int errorCode) const;
@@ -1518,11 +1518,12 @@ namespace QPI
 
 
 		// Internal functions, calling not allowed in contracts
-		inline const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
+		inline const QpiContextProcedureCall& __qpiConstructProcedureCallContext(unsigned int otherContractIndex, sint64 invocationReward) const;
 		inline void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
 		inline void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 		template <unsigned int sysProcId, typename InputType, typename OutputType>
-		void __qpiCallSystemProcOfOtherContract(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
+		void __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
+		inline void __qpiNotifyPostIncomingTransfer(const id& source, const id& dest, sint64 amount, uint8 type) const;
 
 	protected:
 		// Construction is done in core, not allowed in contracts
@@ -1571,6 +1572,24 @@ namespace QPI
 		uint16 otherContractIndex;
 	};
 
+	namespace TransferType
+	{
+		constexpr uint8 standardTransaction = 0;
+		constexpr uint8 procedureTransaction = 1;
+		constexpr uint8 qpiTransfer = 2;
+		constexpr uint8 qpiDistributeDividends = 3;
+		constexpr uint8 revenueDonation = 4;
+		constexpr uint8 ipoBidRefund = 5;
+	};
+
+	// Input of POST_INCOMING_TRANSFER notification system call
+	struct PostIncomingTransfer_input
+	{
+		id sourceId;
+		sint64 amount;
+		uint8 type;
+	};
+
 	//////////
 	
 	struct ContractBase
@@ -1593,6 +1612,8 @@ namespace QPI
 		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __postReleaseSharesEmpty = 1, __postReleaseSharesLocalsSize = sizeof(NoData) };
 		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __postIncomingTransferEmpty = 1, __postIncomingTransferLocalsSize = sizeof(NoData) };
+		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplyLocalsSize = sizeof(NoData) };
 		static void __acceptOracleTrueReply(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplyLocalsSize = sizeof(NoData) };
@@ -1666,6 +1687,10 @@ namespace QPI
 	#define POST_RELEASE_SHARES  NO_IO_SYSTEM_PROC(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, NoData)
 
 	#define POST_RELEASE_SHARES_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, NoData)
+
+	#define POST_INCOMING_TRANSFER  NO_IO_SYSTEM_PROC(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, NoData)
+
+	#define POST_INCOMING_TRANSFER_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, NoData)
 
 
 	#define EXPAND public: enum { __expandEmpty = 0 }; \
@@ -1766,7 +1791,7 @@ namespace QPI
 			*(contractStateType*)qpi.__qpiAcquireStateForReading(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
-		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiFreeContext(); \
 		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
@@ -1778,11 +1803,11 @@ namespace QPI
 		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function/procedure of this contract."); \
 		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
 		contractStateType::procedure( \
-			qpi.__qpiConstructContextOtherContractProcedureCall(contractStateType::__contract_index, invocationReward), \
+			qpi.__qpiConstructProcedureCallContext(contractStateType::__contract_index, invocationReward), \
 			*(contractStateType*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
-		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiFreeContext(); \
 		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 

@@ -141,8 +141,9 @@ static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsign
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
-static const Transaction* contractProcessorTransaction = 0;
+static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
+static unsigned char contractProcessorPostIncomingTransferType = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
@@ -1736,25 +1737,89 @@ static void contractProcessor(void*)
 
     // TODO: rename to invoke (with option to have amount)
     case USER_PROCEDURE_CALL:
+    case POST_INCOMING_TRANSFER:
     {
         const Transaction* transaction = contractProcessorTransaction;
         ASSERT(transaction && transaction->checkValidity());
 
+        ASSERT(transaction->destinationPublicKey.m256i_u64[0] < contractCount);
+        ASSERT(transaction->destinationPublicKey.m256i_u64[1] == 0);
+        ASSERT(transaction->destinationPublicKey.m256i_u64[2] == 0);
+        ASSERT(transaction->destinationPublicKey.m256i_u64[3] == 0);
+
         unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
         ASSERT(system.epoch >= contractDescriptions[contractIndex].constructionEpoch);
         ASSERT(system.epoch < contractDescriptions[contractIndex].destructionEpoch);
-        ASSERT(contractUserProcedures[contractIndex][transaction->inputType]);
 
-        QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
-        qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
+        if (transaction->amount > 0 && contractSystemProcedures[contractIndex][POST_INCOMING_TRANSFER])
+        {
+            // Run callback system procedure POST_INCOMING_TRANSFER
+            const unsigned char type = contractProcessorPostIncomingTransferType;
+            if (contractProcessorPhase == USER_PROCEDURE_CALL)
+            {
+                ASSERT(type == QPI::TransferType::procedureTransaction);
+            }
+            else
+            {
+                ASSERT(
+                    type == QPI::TransferType::standardTransaction
+                    || type == QPI::TransferType::revenueDonation
+                    || type == QPI::TransferType::ipoBidRefund
+                );
+            }
 
-        if (contractActionTracker.getOverallQuTransferBalance(transaction->sourcePublicKey) == 0)
-            contractProcessorTransactionMoneyflew = 0;
-        else
-            contractProcessorTransactionMoneyflew = 1;
+            QpiContextSystemProcedureCall qpiContext(contractIndex, POST_INCOMING_TRANSFER);
+            QPI::PostIncomingTransfer_input input{ transaction->sourcePublicKey, transaction->amount, type };
+            qpiContext.call(input);
+        }
+
+        if (contractProcessorPhase == USER_PROCEDURE_CALL)
+        {
+            // Run user procedure
+            ASSERT(contractUserProcedures[contractIndex][transaction->inputType]);
+
+            QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
+            qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
+
+            if (contractActionTracker.getOverallQuTransferBalance(transaction->sourcePublicKey) == 0)
+                contractProcessorTransactionMoneyflew = 0;
+            else
+                contractProcessorTransactionMoneyflew = 1;
+        }
+
         contractProcessorTransaction = 0;
     }
     break;
+    }
+}
+
+// If destinationPublicKey is contract, it needs to be notified of incoming transfers.
+// Cannot be called from contract processor or main processor!
+static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& dest, long long amount, unsigned char type)
+{
+    // Only notify if amount > 0 and dest is contract
+    if (amount <= 0 || dest.u64._0 >= contractCount || dest.u64._1 || dest.u64._2 || dest.u64._3)
+        return;
+
+    ASSERT(type == QPI::TransferType::revenueDonation || type == QPI::TransferType::ipoBidRefund);
+
+    // Caution: Transaction has no signature, because it is a pseudo-transaction just used to hand over information to
+    // the contract processor.
+    Transaction tx;
+    tx.sourcePublicKey = source;
+    tx.destinationPublicKey = dest;
+    tx.amount = amount;
+    tx.tick = system.tick;
+    tx.inputType = 0;
+    tx.inputSize = 0;
+
+    contractProcessorTransaction = &tx;
+    contractProcessorPostIncomingTransferType = type;
+    contractProcessorPhase = POST_INCOMING_TRANSFER;
+    contractProcessorState = 1;
+    while (contractProcessorState)
+    {
+        _mm_pause();
     }
 }
 
@@ -1844,6 +1909,7 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
+                notifyContractOfIncomingTransfer(m256i::zero(), releasedPublicKeys[i], releasedAmounts[i], QPI::TransferType::ipoBidRefund);
                 const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
@@ -1906,7 +1972,10 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
     {
         // Run user procedure call of transaction in contract processor
         // and wait for completion
+        // With USER_PROCEDURE_CALL, contract processor also notifies the contract
+        // of the incoming transfer if the invocation reward = amount > 0.
         contractProcessorTransaction = transaction;
+        contractProcessorPostIncomingTransferType = QPI::TransferType::procedureTransaction;
         contractProcessorPhase = USER_PROCEDURE_CALL;
         contractProcessorState = 1;
         while (contractProcessorState)
@@ -1915,6 +1984,19 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
         }
 
         return contractProcessorTransactionMoneyflew;
+    }
+    else if (transaction->amount > 0)
+    {
+        // Transaction sending qu to contract without invoking registered user procedure:
+        // Run POST_INCOMING_TRANSFER notification in contract processor and wait for completion.
+        contractProcessorTransaction = transaction;
+        contractProcessorPostIncomingTransferType = QPI::TransferType::standardTransaction;
+        contractProcessorPhase = POST_INCOMING_TRANSFER;
+        contractProcessorState = 1;
+        while (contractProcessorState)
+        {
+            _mm_pause();
+        }
     }
 
     // if transaction tries to invoke non-registered procedure, transaction amount is not reimbursed
@@ -2180,6 +2262,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
             if (isZero(transaction->destinationPublicKey))
             {
+                // Destination is system
                 switch (transaction->inputType)
                 {
                 case VOTE_COUNTER_INPUT_TYPE:
@@ -2259,6 +2342,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
             }
             else
             {
+                // Destination is a contract or any other entity.
                 // Contracts are identified by their index stored in the first 64 bits of the id, all
                 // other bits are zeroed. However, the max number of contracts is limited to 2^32 - 1,
                 // only 32 bits are used for the contract index.
@@ -2879,6 +2963,7 @@ static void endEpoch()
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
+                notifyContractOfIncomingTransfer(m256i::zero(), releasedPublicKeys[i], releasedAmounts[i], QPI::TransferType::ipoBidRefund);
                 const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
@@ -3020,6 +3105,7 @@ static void endEpoch()
                     increaseEnergy(rdEntry.destinationPublicKey, donation);
                     if (revenue)
                     {
+                        notifyContractOfIncomingTransfer(m256i::zero(), rdEntry.destinationPublicKey, donation, QPI::TransferType::revenueDonation);
                         const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
                         logger.logQuTransfer(quTransfer);
                     }
@@ -3037,7 +3123,7 @@ static void endEpoch()
         emissionDist = nullptr; qpiContext.freeBuffer(); // Free buffer holding revenue donation table, because we don't need it anymore
 
         // Generate arbitrator revenue
-        increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
+        increaseEnergy(arbitratorPublicKey, arbitratorRevenue);
         const QuTransfer quTransfer = { m256i::zero(), arbitratorPublicKey, arbitratorRevenue };
         logger.logQuTransfer(quTransfer);
     }
