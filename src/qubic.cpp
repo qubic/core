@@ -203,6 +203,10 @@ static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningSc
 
 
 static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0 };
+static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
+static CustomMiningSharesCounter gCustomMiningSharesCounter;
+static char customMiningSharesCountLock = 0;
+unsigned long long revenueScoreWithCustomMining[NUMBER_OF_COMPUTORS] = { 0 };
 
 
 // variables and declare for persisting state
@@ -250,6 +254,13 @@ static struct
 	unsigned char data[VOTE_COUNTER_DATA_SIZE_IN_BYTES];
 	unsigned char signature[SIGNATURE_SIZE];
 } voteCounterPayload;
+
+static struct
+{
+    Transaction transaction;
+    unsigned char packedScore[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES];
+    unsigned char signature[SIGNATURE_SIZE];
+} customMiningSharePayload;
 
 static struct
 {
@@ -345,6 +356,11 @@ static void logToConsole(const CHAR16* message)
 #endif
 }
 
+
+static unsigned int getTickInMiningPhaseCycle()
+{
+    return (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+}
 
 static int computorIndex(m256i computor)
 {
@@ -513,6 +529,20 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             if (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
                             {
                                 customMiningMessageCounters[i]++;
+
+                                // Only record shares in idle phase
+                                if (getTickInMiningPhaseCycle() != 0)
+                                {
+                                    // Record the solution
+                                    const CustomMiningSolution solution = *((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
+
+                                    // Check the computor idx of this solution
+                                    unsigned short computorID = solution.nonce % NUMBER_OF_COMPUTORS;
+
+                                    ACQUIRE(customMiningSharesCountLock);
+                                    gCustomMiningSharesCount[computorID]++;
+                                    RELEASE(customMiningSharesCountLock);
+                                }
                             }
 
                             break;
@@ -1373,11 +1403,6 @@ static void checkinTime(unsigned long long processorNumber)
 static void setNewMiningSeed()
 {
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
-}
-
-static unsigned int getTickInMiningPhaseCycle()
-{
-    return (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
 }
 
 static void checkAndSwitchMiningPhase()
@@ -2255,6 +2280,18 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     }
                 }
                 break;
+
+                case CustomMiningSolutionTransaction::transactionType():
+                {
+                    int compIndex = computorIndex(transaction->sourcePublicKey);
+                    if (compIndex >= 0
+                        && transaction->inputSize == CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES)
+                    {
+                        gCustomMiningSharesCounter.addShares(transaction->inputPtr(), compIndex);
+                    }
+                }
+                break;
+
                 }
             }
             else
@@ -2712,6 +2749,37 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
+    // Broadcast custom mining shares 
+    if (mainAuxStatus & 1)
+    {
+        for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+        {
+            // Offset the idle phase by 3
+            if (getTickInMiningPhaseCycle() == INTERNAL_COMPUTATIONS_INTERVAL + 3)
+            {
+                // Update the custom mining share counter and reset it counter
+                ACQUIRE(customMiningSharesCountLock);
+                gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
+                bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+                RELEASE(customMiningSharesCountLock);
+
+                auto& payload = customMiningSharePayload;
+                payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
+                payload.transaction.destinationPublicKey = m256i::zero();
+                payload.transaction.amount = 0;
+                payload.transaction.tick = system.tick + TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET;
+                payload.transaction.inputType = CUSTOM_MINING_SHARE_COUNTER_INPUT_TYPE;
+                payload.transaction.inputSize = sizeof(payload.packedScore);
+                gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
+
+                unsigned char digest[32];
+                KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.packedScore), digest, sizeof(digest));
+                sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
+                enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
+            }
+        }
+    }
+
 #ifndef NDEBUG
     // Check that continuous updating of spectrum info is consistent with counting from scratch
     SpectrumInfo si;
@@ -2799,6 +2867,9 @@ static void beginEpoch()
     system.numberOfSolutions = 0;
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
+
+    gCustomMiningSharesCounter.init();
+    bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
 
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
@@ -2924,6 +2995,19 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
+        // Experiment code. Expect it has not impact any reveneue yet, only record the reveneu with custom solution
+        {
+            // Calculate the rev score with custom mining
+            bs->CopyMem(revenueScoreWithCustomMining, revenueScore, sizeof(revenueScoreWithCustomMining));
+            // This function doesn't impact reveneue yet
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                unsigned long long shareScore = gCustomMiningSharesCounter.getSharesCount(i);
+                revenueScoreWithCustomMining[i] = shareScore;
+            }
+            bs->CopyMem(system.revenueWithCustomMining, revenueScoreWithCustomMining, sizeof(revenueScoreWithCustomMining));
+        }
+
         // Merge votecount to final rev score
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
@@ -2945,6 +3029,7 @@ static void endEpoch()
                 revenueScore[i] = 0;
             }
         }
+
 
         // Sort revenue scores to get lowest score of quorum
         unsigned long long sortedRevenueScore[QUORUM + 1];
