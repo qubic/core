@@ -6,6 +6,9 @@ struct TESTEXC2
 
 struct TESTEXC : public ContractBase
 {
+	//---------------------------------------------------------------
+	// ASSET MANAGEMENT RIGHTS TRANSFER
+
 	struct GetTestExampleAShareManagementRights_input
 	{
 		Asset asset;
@@ -34,10 +37,6 @@ protected:
 		output.transferredNumberOfShares = locals.output.transferredNumberOfShares;
 	_
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-		REGISTER_USER_PROCEDURE(GetTestExampleAShareManagementRights, 7);
-	_
-
 	struct PRE_ACQUIRE_SHARES_locals
 	{
 		TESTEXA::RunHeavyComputation_input heavyComputationInput;
@@ -64,5 +63,13 @@ protected:
 		// bug check regarding size of locals
 		ASSERT(!locals.textExBInput.allowTransfer);
 		ASSERT(!locals.textExBInput.requestedFee);
+	_
+
+
+	//---------------------------------------------------------------
+	// COMMON PARTS
+
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+		REGISTER_USER_PROCEDURE(GetTestExampleAShareManagementRights, 7);
 	_
 };

@@ -6,6 +6,9 @@ struct TESTEXB2
 
 struct TESTEXB : public ContractBase
 {
+	//---------------------------------------------------------------
+	// ASSET MANAGEMENT RIGHTS TRANSFER
+
 	struct IssueAsset_input
 	{
 		uint64 assetName;
@@ -68,9 +71,6 @@ struct TESTEXB : public ContractBase
 		sint64 transferredNumberOfShares;
 	};
 
-	typedef TESTEXA::QueryQpiFunctions_input CallFunctionOfTestExampleA_input;
-	typedef TESTEXA::QueryQpiFunctions_output CallFunctionOfTestExampleA_output;
-
 protected:
 	
 	PreManagementRightsTransfer_output preReleaseSharesOutput;
@@ -114,7 +114,7 @@ protected:
 
 	PUBLIC_PROCEDURE(SetPreAcquireSharesOutput)
         state.preAcquireSharesOutput = input;
-_
+	_
 
 	PUBLIC_PROCEDURE(AcquireShareManagementRights)
 		if (qpi.acquireShares(input.asset, input.ownerAndPossessor, input.ownerAndPossessor, input.numberOfShares,
@@ -137,28 +137,6 @@ _
 		locals.input.newManagingContractIndex = SELF_INDEX;
 		INVOKE_OTHER_CONTRACT_PROCEDURE(TESTEXA, TransferShareManagementRights, locals.input, locals.output, qpi.invocationReward());
 		output.transferredNumberOfShares = locals.output.transferredNumberOfShares;
-	_
-
-	PUBLIC_FUNCTION(CallFunctionOfTestExampleA)
-#ifdef NO_UEFI
-		printf("Before wait/deadlock in contract %u function\n", CONTRACT_INDEX);
-#endif
-		CALL_OTHER_CONTRACT_FUNCTION(TESTEXA, QueryQpiFunctions, input, output);
-#ifdef NO_UEFI
-		printf("After wait/deadlock in contract %u function\n", CONTRACT_INDEX);
-#endif
-	_
-
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-		REGISTER_USER_FUNCTION(CallFunctionOfTestExampleA, 1);
-
-		REGISTER_USER_PROCEDURE(IssueAsset, 1);
-		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);
-		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 3);
-		REGISTER_USER_PROCEDURE(SetPreReleaseSharesOutput, 4);
-		REGISTER_USER_PROCEDURE(SetPreAcquireSharesOutput, 5);
-		REGISTER_USER_PROCEDURE(AcquireShareManagementRights, 6);
-		REGISTER_USER_PROCEDURE(GetTestExampleAShareManagementRights, 7);
 	_
 
 	PRE_RELEASE_SHARES
@@ -220,5 +198,37 @@ _
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
+	_
+
+	//---------------------------------------------------------------
+	// CONTRACT INTERACTION / RESOLVING DEADLOCKS
+
+public:
+	typedef TESTEXA::QueryQpiFunctions_input CallFunctionOfTestExampleA_input;
+	typedef TESTEXA::QueryQpiFunctions_output CallFunctionOfTestExampleA_output;
+
+	PUBLIC_FUNCTION(CallFunctionOfTestExampleA)
+#ifdef NO_UEFI
+		printf("Before wait/deadlock in contract %u function\n", CONTRACT_INDEX);
+#endif
+		CALL_OTHER_CONTRACT_FUNCTION(TESTEXA, QueryQpiFunctions, input, output);
+#ifdef NO_UEFI
+		printf("After wait/deadlock in contract %u function\n", CONTRACT_INDEX);
+#endif
+	_
+
+	//---------------------------------------------------------------
+	// COMMON PARTS
+
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+		REGISTER_USER_FUNCTION(CallFunctionOfTestExampleA, 1);
+
+		REGISTER_USER_PROCEDURE(IssueAsset, 1);
+		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 3);
+		REGISTER_USER_PROCEDURE(SetPreReleaseSharesOutput, 4);
+		REGISTER_USER_PROCEDURE(SetPreAcquireSharesOutput, 5);
+		REGISTER_USER_PROCEDURE(AcquireShareManagementRights, 6);
+		REGISTER_USER_PROCEDURE(GetTestExampleAShareManagementRights, 7);
 	_
 };
