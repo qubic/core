@@ -580,22 +580,26 @@ public:
 
     static void updateTick(unsigned int _tick)
     {
-        ASSERT(_tick == lastUpdatedTick + 1);
+        ASSERT((_tick == lastUpdatedTick + 1) || (_tick == tickBegin));
 #if LOG_STATE_DIGEST
         unsigned long long index = lastUpdatedTick - tickBegin;
         XKCP::KangarooTwelve_Final(&k12, digests[index].m256i_u8, (const unsigned char*)"", 0);
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
-#endif        
+#endif
+#if ENABLED_LOGGING
         tx.commitAndCleanCurrentTxToLogId();
+#endif  
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
         lastUpdatedTick = _tick;
     }
     
 #ifdef NO_UEFI
 #else
+
     bool saveCurrentLoggingStates(CHAR16* dir)
     {
+#if ENABLED_LOGGING
         unsigned char* buffer = (unsigned char*)__scratchpad();        
         static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
             + sizeof(digests) + 600, "scratchpad is too small");
@@ -640,12 +644,13 @@ public:
             logToConsole(L"Failed to save logging event data!");
             return false;
         }
-        
+#endif
         return true;
     }
 
     void loadLastLoggingStates(CHAR16* dir)
     {
+#if ENABLED_LOGGING
         unsigned char* buffer = (unsigned char*)__scratchpad();
         static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
             + sizeof(digests) + 600, "scratchpad is too small");
@@ -697,7 +702,9 @@ public:
         lastUpdatedTick = *((unsigned int*)buffer); buffer += 4;
         currentTxId = *((unsigned int*)buffer); buffer += 4;
         currentTick = *((unsigned int*)buffer);
+#endif
     }
+
 #endif
 
     template <typename T>

@@ -649,7 +649,7 @@ public:
         for (unsigned int tickId = oldTickBegin; tickId < oldTickEnd; ++tickId)
         {
             const TickData& tickData = TickDataAccess::getByTickInPreviousEpoch(tickId);
-            ASSERT(tickData.epoch == 0 || (tickData.tick == tickId));
+            ASSERT(tickData.epoch == 0 || (tickData.tick == tickId) || (tickData.tick == INVALIDATED_TICK_DATA));
 
             const Tick* computorsTicks = TicksAccess::getByTickInPreviousEpoch(tickId);
             for (unsigned int computor = 0; computor < NUMBER_OF_COMPUTORS; ++computor)
@@ -702,7 +702,7 @@ public:
         for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
         {
             const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);
-            ASSERT(tickData.epoch == 0 || (tickData.tick == tickId));
+            ASSERT(tickData.epoch == 0 || (tickData.tick == tickId) || (tickData.tick == INVALIDATED_TICK_DATA));
 
             const Tick* computorsTicks = TicksAccess::getByTickInCurrentEpoch(tickId);
             for (unsigned int computor = 0; computor < NUMBER_OF_COMPUTORS; ++computor)
