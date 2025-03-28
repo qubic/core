@@ -71,6 +71,7 @@ struct CustomMiningSolution
 #define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
 static_assert((1 << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) >= NUMBER_OF_COMPUTORS, "Invalid number of bit per datum");
 static_assert(CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES * 8 >= NUMBER_OF_COMPUTORS * CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP, "Invalid data size");
+static char accumulatedSharedCountLock = 0;
 
 class CustomMiningSharesCounter
 {
@@ -122,17 +123,13 @@ public:
 
     void registerNewShareCount(const unsigned int* sharesCount)
     {
-        for (int j = 0; j < NUMBER_OF_COMPUTORS; j++)
-        {
-            _shareCount[j] = sharesCount[j];
-            accumulateSharesCount(j, sharesCount[j]);
-        }
+        copyMem(_shareCount, sharesCount, sizeof(_shareCount));
     }
 
     // get and compress number of shares of 676 computors to 676x10 bit numbers
-    void compressNewSharesPacket(unsigned int ownComputorIdx, unsigned char votePacket[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES])
+    void compressNewSharesPacket(unsigned int ownComputorIdx, unsigned char customMiningShareCountPacket[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES])
     {
-        setMem(votePacket, sizeof(votePacket), 0);
+        setMem(customMiningShareCountPacket, sizeof(customMiningShareCountPacket), 0);
         setMem(buffer, sizeof(buffer), 0);
         for (int j = 0; j < NUMBER_OF_COMPUTORS; j++)
         {
@@ -142,16 +139,16 @@ public:
         buffer[ownComputorIdx] = 0; // remove self-report
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            update10Bit(votePacket, i, buffer[i]);
+            update10Bit(customMiningShareCountPacket, i, buffer[i]);
         }
     }
 
-    bool validateNewSharesPacket(const unsigned char* votePacket, unsigned int computorIdx)
+    bool validateNewSharesPacket(const unsigned char* customMiningShareCountPacket, unsigned int computorIdx)
     {
         //unsigned long long sum = 0;
         //for (int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         //{
-        //    buffer[i] = extract10Bit(votePacket, i);
+        //    buffer[i] = extract10Bit(customMiningShareCountPacket, i);
         //    if (buffer[i] > NUMBER_OF_COMPUTORS)
         //    {
         //        return false;
