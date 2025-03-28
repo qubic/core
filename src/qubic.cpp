@@ -2771,7 +2771,7 @@ static void processTick(unsigned long long processorNumber)
                 payload.transaction.destinationPublicKey = m256i::zero();
                 payload.transaction.amount = 0;
                 payload.transaction.tick = system.tick + publishingTickOffset;
-                payload.transaction.inputType = CUSTOM_MINING_SHARE_COUNTER_INPUT_TYPE;
+                payload.transaction.inputType = CustomMiningSolutionTransaction::transactionType();
                 payload.transaction.inputSize = sizeof(payload.packedScore);
                 gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
 

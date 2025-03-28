@@ -32,20 +32,6 @@ struct CustomMiningSolutionTransaction : public Transaction
     {
         return CUSTOM_MINING_SHARE_COUNTER_INPUT_TYPE;
     }
-
-    static constexpr long long minAmount()
-    {
-        return 0;
-    }
-
-    static constexpr unsigned short minInputSize()
-    {
-        return sizeof(miningSeed) + sizeof(nonce);
-    }
-
-    m256i miningSeed;
-    m256i nonce;
-    unsigned char signature[SIGNATURE_SIZE];
 };
 
 struct CustomMiningTask
