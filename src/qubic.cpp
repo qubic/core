@@ -207,6 +207,7 @@ static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
 static char customMiningSharesCountLock = 0;
 unsigned long long revenueScoreWithCustomMining[NUMBER_OF_COMPUTORS] = { 0 };
+static char gSharePackageSumitted = 0;
 
 
 // variables and declare for persisting state
@@ -2752,22 +2753,22 @@ static void processTick(unsigned long long processorNumber)
     // Broadcast custom mining shares 
     if (mainAuxStatus & 1)
     {
-        for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+        // In mining phase
+        if (getTickInMiningPhaseCycle() == 0 && !gSharePackageSumitted)
         {
-            // Offset the idle phase by 3
-            if (getTickInMiningPhaseCycle() == INTERNAL_COMPUTATIONS_INTERVAL + 3)
+            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
-                // Update the custom mining share counter and reset it counter
-                ACQUIRE(customMiningSharesCountLock);
+                // In mining state, randomly publish the tx
+                unsigned int publishingTickOffset = TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET + random(NUMBER_OF_COMPUTORS / 2);
+
+                // Update the custom mining share counter 
                 gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
-                bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
-                RELEASE(customMiningSharesCountLock);
 
                 auto& payload = customMiningSharePayload;
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
                 payload.transaction.destinationPublicKey = m256i::zero();
                 payload.transaction.amount = 0;
-                payload.transaction.tick = system.tick + TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET;
+                payload.transaction.tick = system.tick + publishingTickOffset;
                 payload.transaction.inputType = CUSTOM_MINING_SHARE_COUNTER_INPUT_TYPE;
                 payload.transaction.inputSize = sizeof(payload.packedScore);
                 gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
@@ -2776,7 +2777,18 @@ static void processTick(unsigned long long processorNumber)
                 KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.packedScore), digest, sizeof(digest));
                 sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
                 enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
+
             }
+
+            // reset it counter
+            bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+
+            // Mark date as submited
+            gSharePackageSumitted = 1;
+        }
+        else // In idle phase, reset the gSharePackageSumitted flag
+        {
+            gSharePackageSumitted = 0;
         }
     }
 
