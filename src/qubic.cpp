@@ -206,8 +206,7 @@ static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
 static char customMiningSharesCountLock = 0;
-unsigned long long revenueScoreWithCustomMining[NUMBER_OF_COMPUTORS] = { 0 };
-static char gSharePackageSumitted = 0;
+unsigned long long gRevenueScoreWithCustomMining[NUMBER_OF_COMPUTORS] = { 0 };
 
 
 // variables and declare for persisting state
@@ -240,6 +239,7 @@ struct
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+static bool saveCustomMiningRevenue(CHAR16* directory = NULL);
 
 #if ENABLED_LOGGING
 #define PAUSE_BEFORE_CLEAR_MEMORY 1 // Requiring operators to press F10 to clear memory (before switching epoch)
@@ -532,7 +532,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 customMiningMessageCounters[i]++;
 
                                 // Only record shares in idle phase
-                                if (getTickInMiningPhaseCycle() != 0)
+                                if (getTickInMiningPhaseCycle() >= INTERNAL_COMPUTATIONS_INTERVAL)
                                 {
                                     // Record the solution
                                     const CustomMiningSolution solution = *((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
@@ -2753,16 +2753,18 @@ static void processTick(unsigned long long processorNumber)
     // Broadcast custom mining shares 
     if (mainAuxStatus & 1)
     {
-        // In mining phase
-        if (getTickInMiningPhaseCycle() == 0 && !gSharePackageSumitted)
+        // In the begining of mining phase
+        if (getTickInMiningPhaseCycle() == 0)
         {
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
-                // In mining state, randomly publish the tx
+                // Randomly schedule the tick to publish the tx
                 unsigned int publishingTickOffset = TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET + random(NUMBER_OF_COMPUTORS / 2);
 
-                // Update the custom mining share counter 
+                // Update the custom mining share counter
+                ACQUIRE(customMiningSharesCountLock);
                 gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
+                RELEASE(customMiningSharesCountLock);
 
                 auto& payload = customMiningSharePayload;
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
@@ -2780,15 +2782,10 @@ static void processTick(unsigned long long processorNumber)
 
             }
 
-            // reset it counter
+            // reset the phase counter
+            ACQUIRE(customMiningSharesCountLock);
             bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
-
-            // Mark date as submited
-            gSharePackageSumitted = 1;
-        }
-        else // In idle phase, reset the gSharePackageSumitted flag
-        {
-            gSharePackageSumitted = 0;
+            RELEASE(customMiningSharesCountLock);
         }
     }
 
@@ -3007,17 +3004,16 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
-        // Experiment code. Expect it has not impact any reveneue yet, only record the reveneu with custom solution
+        // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution
         {
             // Calculate the rev score with custom mining
-            bs->CopyMem(revenueScoreWithCustomMining, revenueScore, sizeof(revenueScoreWithCustomMining));
-            // This function doesn't impact reveneue yet
+            bs->CopyMem(gRevenueScoreWithCustomMining, revenueScore, sizeof(gRevenueScoreWithCustomMining));
+            // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
                 unsigned long long shareScore = gCustomMiningSharesCounter.getSharesCount(i);
-                revenueScoreWithCustomMining[i] = shareScore;
+                gRevenueScoreWithCustomMining[i] = shareScore;
             }
-            bs->CopyMem(system.revenueWithCustomMining, revenueScoreWithCustomMining, sizeof(revenueScoreWithCustomMining));
         }
 
         // Merge votecount to final rev score
@@ -5234,6 +5230,9 @@ static void tickProcessor(void*)
                                     // end current epoch
                                     endEpoch();
 
+                                    // Save the file of revenue. This blocking save can be called from any thread
+                                    saveCustomMiningRevenue(NULL);
+
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;
                                     while (systemMustBeSaved)
@@ -5419,6 +5418,17 @@ static bool saveSystem(CHAR16* directory)
     return false;
 }
 
+static bool saveCustomMiningRevenue(CHAR16* directory)
+{
+    const unsigned long long beginningTick = __rdtsc();
+    CHAR16* fn = (epochTransitionState == 1) ? CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME : CUSTOM_MINING_REVENUE_FILE_NAME;
+    long long savedSize = asyncSave(fn, sizeof(gRevenueScoreWithCustomMining), (unsigned char*)&gRevenueScoreWithCustomMining, directory);
+    if (savedSize == sizeof(system))
+    {
+        return true;
+    }
+    return false;
+}
 
 static bool initialize()
 {
