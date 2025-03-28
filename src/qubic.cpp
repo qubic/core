@@ -2820,6 +2820,8 @@ static void beginEpoch()
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
 #endif
+
+    logger.initLogging();
 }
 
 
