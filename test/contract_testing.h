@@ -96,20 +96,35 @@ public:
         const id& user, sint64 amount,
         bool checkInputSize = true, bool expectSuccess = true)
     {
+        // check inputs and init output
         EXPECT_LT(contractIndex, contractCount);
         EXPECT_NE(contractStates[contractIndex], nullptr);
-        setMemory(output, 0);
-        int userSpectrumIndex = spectrumIndex(user);
-        if (userSpectrumIndex < 0 || !decreaseEnergy(userSpectrumIndex, amount))
-            return false;
-        increaseEnergy(id(contractIndex, 0, 0, 0), amount);
-        QpiContextUserProcedureCall qpiContext(contractIndex, user, amount);
         if (checkInputSize)
         {
             unsigned short expectedInputSize = contractUserProcedureInputSizes[contractIndex][procedureInputType];
             EXPECT_EQ((int)expectedInputSize, sizeof(input));
         }
+        setMemory(output, 0);
+
+        // transfer amount (fee / invocation reward)
+        int userSpectrumIndex = spectrumIndex(user);
+        if (userSpectrumIndex < 0 || !decreaseEnergy(userSpectrumIndex, amount))
+            return false;
+        increaseEnergy(id(contractIndex, 0, 0, 0), amount);
+
+        // run callback for incoming transfer of amount / fee / invocation reward
+        if (amount > 0 && contractSystemProcedures[contractIndex][POST_INCOMING_TRANSFER])
+        {
+            QpiContextSystemProcedureCall qpiContext(contractIndex, POST_INCOMING_TRANSFER);
+            QPI::PostIncomingTransfer_input input{ user, amount, QPI::TransferType::procedureTransaction };
+            qpiContext.call(input);
+        }
+
+        // run user procedure
+        QpiContextUserProcedureCall qpiContext(contractIndex, user, amount);
         qpiContext.call(procedureInputType, &input, sizeof(input));
+
+        // check results, copy output and cleanup
         EXPECT_EQ((int)qpiContext.outputSize, sizeof(output));
         if (expectSuccess)
         {
@@ -179,4 +194,26 @@ static inline void checkContractExecCleanup()
     }
     EXPECT_EQ(contractLocalsStackLockWaitingCount, 0);
     EXPECT_EQ(contractCallbacksRunning, NoContractCallback);
+}
+
+// Issue contract shares and transfer ownership/possession of all shares to one entity
+static inline void issueContractShares(unsigned int contractIndex, std::vector<std::pair<m256i, unsigned int>>& initialOwnerShares)
+{
+    int issuanceIndex, ownershipIndex, possessionIndex, dstOwnershipIndex, dstPossessionIndex;
+    EXPECT_EQ(issueAsset(m256i::zero(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex), NUMBER_OF_COMPUTORS);
+
+    int totalShareCount = 0;
+    for (const auto& ownerShareCountPair : initialOwnerShares)
+        totalShareCount += ownerShareCountPair.second;
+    EXPECT_LE(totalShareCount, NUMBER_OF_COMPUTORS);
+    if (totalShareCount < NUMBER_OF_COMPUTORS)
+    {
+        std::cout << "Warning: issueContractShares() called with " << NUMBER_OF_COMPUTORS - totalShareCount << " less then expected shares, adding remaining shares to first owner." << std::endl;
+        initialOwnerShares[0].second += NUMBER_OF_COMPUTORS - totalShareCount;
+    }
+
+    for (const auto& ownerShareCountPair : initialOwnerShares)
+    {
+        EXPECT_TRUE(transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, ownerShareCountPair.first, ownerShareCountPair.second, &dstOwnershipIndex, &dstPossessionIndex, true));
+    }
 }
