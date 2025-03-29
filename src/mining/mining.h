@@ -131,23 +131,8 @@ public:
 
     bool validateNewSharesPacket(const unsigned char* customMiningShareCountPacket, unsigned int computorIdx)
     {
-        //unsigned long long sum = 0;
-        //for (int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-        //{
-        //    buffer[i] = extract10Bit(customMiningShareCountPacket, i);
-        //    if (buffer[i] > NUMBER_OF_COMPUTORS)
-        //    {
-        //        return false;
-        //    }
-        //    sum += buffer[i];
-        //}
-        //// check #0: sum of all vote must be >= 675*451 (vote of the tick leader is removed)
-        //if (sum < (NUMBER_OF_COMPUTORS - 1) * QUORUM)
-        //{
-        //    return false;
-        //}
-        // check #1: own number of vote must be zero
-        if (buffer[computorIdx] != 0)
+        // check #1: own number of share must be zero
+        if (extract10Bit(customMiningShareCountPacket, computorIdx) != 0)
         {
             return false;
         }
