@@ -590,6 +590,7 @@ public:
 #if ENABLED_LOGGING
         tx.commitAndCleanCurrentTxToLogId();
 #endif  
+        
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
         lastUpdatedTick = _tick;
     }
