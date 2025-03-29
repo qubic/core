@@ -587,7 +587,7 @@ public:
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
 #endif
-#if ENABLE_LOGGING
+#if ENABLED_LOGGING
         tx.commitAndCleanCurrentTxToLogId();
 #endif  
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));

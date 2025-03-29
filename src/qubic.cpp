@@ -2344,7 +2344,6 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
@@ -2821,7 +2820,7 @@ static void beginEpoch()
     ts.initMetaData(system.epoch); // for save/load state
 #endif
 
-    logger.initLogging();
+    logger.reset(system.initialTick);
 }
 
 
