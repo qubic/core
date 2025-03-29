@@ -321,9 +321,7 @@ bool verifyResult(int id, bool largeFile = false)
     return testPass;
 }
 
-#if 0
-
-TEST(TestAsyncFileIO, AsyncNonBlockingSaveFile)
+int runTestAsyncSaveFile(bool blocking, bool largeFile, bool limitItem)
 {
     fileSystem.initTestData();
 
@@ -332,7 +330,38 @@ TEST(TestAsyncFileIO, AsyncNonBlockingSaveFile)
     for (int i = 0; i < THREAD_COUNT; i++)
     {
         threadFinish[i] = 0;
-        threadVec[i].reset(new std::thread(runAsyncSaveFile, i, false, false));
+        threadVec[i].reset(new std::thread(runAsyncSaveFile, i, blocking, largeFile));
+    }
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+    int readyCount = 0;
+    while (readyCount < THREAD_COUNT)
+    {
+        // Don't flush right away. Wait sometimes for simulate
+        if (limitItem)
+        {
+            flushAsyncFileIOBuffer(2);
+        }
+        else
+        {
+            unsigned long long waitingTimeInMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime).count();
+            if (waitingTimeInMs > 1000)
+            {
+                startTime = std::chrono::high_resolution_clock::now();
+                flushAsyncFileIOBuffer();
+            }
+        }
+
+        readyCount = 0;
+        for (int i = 0; i < THREAD_COUNT; i++)
+        {
+            char readyFlag = 0;
+            readyFlag = threadFinish[i];
+            if (readyFlag)
+            {
+                readyCount++;
+            }
+        }
     }
 
     for (int i = 0; i < THREAD_COUNT; i++)
@@ -342,277 +371,174 @@ TEST(TestAsyncFileIO, AsyncNonBlockingSaveFile)
             threadVec[i]->join();
         }
     }
-    // Actually write happen here
-    flushAsyncFileIOBuffer();
+
+    // Non blocking, need to flush all data
+    if (!blocking)
+    {
+        flushAsyncFileIOBuffer();
+    }
 
     // Verify result
     int testPass = 0;
     for (int i = 0; i < THREAD_COUNT; i++)
     {
-        if (verifyResult(i))
+        if (verifyResult(i, largeFile))
         {
             testPass++;
         }
     }
-    EXPECT_EQ(testPass, THREAD_COUNT);
+    return testPass;
+}
+
+
+int runTestAsyncLoadFile(bool blocking, bool largeFile, bool limitItem)
+{
+    prepareAsyncLoadFile(largeFile);
+
+    // Run the test
+    std::vector<std::unique_ptr<std::thread>> threadVec(THREAD_COUNT);
+    for (int i = 0; i < THREAD_COUNT; i++)
+    {
+        threadFinish[i] = 0;
+        threadVec[i].reset(new std::thread(runAsyncLoadFile, i, largeFile));
+    }
+    auto startTime = std::chrono::high_resolution_clock::now();
+    int readyCount = 0;
+    while (readyCount < THREAD_COUNT)
+    {
+        // Don't flush right away. Wait sometimes for simulate
+        if (limitItem)
+        {
+            flushAsyncFileIOBuffer(2);
+        }
+        else
+        {
+            unsigned long long waitingTimeInMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime).count();
+            if (waitingTimeInMs > 1000)
+            {
+                startTime = std::chrono::high_resolution_clock::now();
+                flushAsyncFileIOBuffer();
+            }
+        }
+
+        readyCount = 0;
+        for (int i = 0; i < THREAD_COUNT; i++)
+        {
+            char readyFlag = 0;
+            readyFlag = threadFinish[i];
+            if (readyFlag)
+            {
+                readyCount++;
+            }
+        }
+    }
+
+    for (int i = 0; i < THREAD_COUNT; i++)
+    {
+        if (threadVec[i]->joinable())
+        {
+            threadVec[i]->join();
+        }
+    }
+
+    // Verify result
+    int testPass = 0;
+    for (int i = 0; i < THREAD_COUNT; i++)
+    {
+        if (verifyResult(i, largeFile))
+        {
+            testPass++;
+        }
+    }
+    return testPass;
+}
+
+TEST(TestAsyncFileIO, AsyncNonBlockingSaveFile)
+{
+    if (ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE > 0)
+    {
+        EXPECT_EQ(runTestAsyncSaveFile(false, false, false), THREAD_COUNT);
+    }
+    else
+    {
+        EXPECT_TRUE(true);
+    }
 }
 
 TEST(TestAsyncFileIO, AsyncNonBlockingSaveLargeFile)
 {
-    fileSystem.initTestData();
-
-    // Run the test
-    std::vector<std::unique_ptr<std::thread>> threadVec(THREAD_COUNT);
-    for (int i = 0; i < THREAD_COUNT; i++)
+    if (ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE > 0)
     {
-        threadFinish[i] = 0;
-        threadVec[i].reset(new std::thread(runAsyncSaveFile, i, false, true));
+        EXPECT_EQ(runTestAsyncSaveFile(false, true, false), THREAD_COUNT);
     }
-
-    for (int i = 0; i < THREAD_COUNT; i++)
+    else
     {
-        if (threadVec[i]->joinable())
-        {
-            threadVec[i]->join();
-        }
+        EXPECT_TRUE(true);
     }
-    // Actually write happen here
-    flushAsyncFileIOBuffer();
-
-    // Verify result
-    int testPass = 0;
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        if (verifyResult(i, true))
-        {
-            testPass++;
-        }
-    }
-    EXPECT_EQ(testPass, THREAD_COUNT);
 }
 
-#endif
+TEST(TestAsyncFileIO, AsyncNonBlockingSaveFileWithLimitItems)
+{
+    if (ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE > 0)
+    {
+        EXPECT_EQ(runTestAsyncSaveFile(false, false, true), THREAD_COUNT);
+    }
+    else
+    {
+        EXPECT_TRUE(true);
+    }
+}
+
+TEST(TestAsyncFileIO, AsyncNonBlockingSaveLargeFileWithLimitItems)
+{
+    if (ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE > 0)
+    {
+        EXPECT_EQ(runTestAsyncSaveFile(false, true, true), THREAD_COUNT);
+    }
+    else
+    {
+        EXPECT_TRUE(true);
+    }
+}
+
 
 TEST(TestAsyncFileIO, AsyncSaveFile)
 {
-    fileSystem.initTestData();
-
-    // Run the test
-    std::vector<std::unique_ptr<std::thread>> threadVec(THREAD_COUNT);
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        threadFinish[i] = 0;
-        threadVec[i].reset(new std::thread(runAsyncSaveFile, i, true, false));
-    }
-
-    auto startTime = std::chrono::high_resolution_clock::now();
-    int readyCount = 0;
-    while (readyCount < THREAD_COUNT)
-    {
-        // Don't flush right away. Wait sometimes for simulate
-        unsigned long long waitingTimeInMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime).count();
-        if (waitingTimeInMs > 10000)
-        {
-            startTime = std::chrono::high_resolution_clock::now();
-            flushAsyncFileIOBuffer();
-        }
-
-        readyCount = 0;
-        for (int i = 0; i < THREAD_COUNT; i++)
-        {
-            char readyFlag = 0;
-            readyFlag = threadFinish[i];
-            if (readyFlag)
-            {
-                readyCount++;
-            }
-        }
-    }
-
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        if (threadVec[i]->joinable())
-        {
-            threadVec[i]->join();
-        }
-    }
-
-    // Verify result
-    int testPass = 0;
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        if (verifyResult(i))
-        {
-            testPass++;
-        }
-    }
-    EXPECT_EQ(testPass, THREAD_COUNT);
+    EXPECT_EQ(runTestAsyncSaveFile(true, false, false), THREAD_COUNT);
 }
 
 TEST(TestAsyncFileIO, AsyncSaveLargeFile)
 {
-    fileSystem.initTestData();
+    EXPECT_EQ(runTestAsyncSaveFile(true, true, false), THREAD_COUNT);
+}
 
-    // Run the test
-    std::vector<std::unique_ptr<std::thread>> threadVec(THREAD_COUNT);
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        threadFinish[i] = 0;
-        threadVec[i].reset(new std::thread(runAsyncSaveFile, i, true, true));
-    }
+TEST(TestAsyncFileIO, AsyncSaveFileWithLimitItems)
+{
+    EXPECT_EQ(runTestAsyncSaveFile(true, false, true), THREAD_COUNT);
+}
 
-    auto startTime = std::chrono::high_resolution_clock::now();
-    int readyCount = 0;
-    while (readyCount < THREAD_COUNT)
-    {
-        // Don't flush right away. Wait sometimes for simulate
-        unsigned long long waitingTimeInMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime).count();
-        if (waitingTimeInMs > 10000)
-        {
-            startTime = std::chrono::high_resolution_clock::now();
-            flushAsyncFileIOBuffer();
-        }
-
-        readyCount = 0;
-        for (int i = 0; i < THREAD_COUNT; i++)
-        {
-            char readyFlag = 0;
-            readyFlag = threadFinish[i];
-            if (readyFlag)
-            {
-                readyCount++;
-            }
-        }
-    }
-
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        if (threadVec[i]->joinable())
-        {
-            threadVec[i]->join();
-        }
-    }
-
-    // Verify result
-    int testPass = 0;
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        if (verifyResult(i, true))
-        {
-            testPass++;
-        }
-    }
-    EXPECT_EQ(testPass, THREAD_COUNT);
+TEST(TestAsyncFileIO, AsyncSaveLargeFileWithLimitItems)
+{
+    EXPECT_EQ(runTestAsyncSaveFile(true, true, true), THREAD_COUNT);
 }
 
 TEST(TestAsyncFileIO, AsyncLoadFile)
 {
-    prepareAsyncLoadFile(false);
-
-    // Run the test
-    std::vector<std::unique_ptr<std::thread>> threadVec(THREAD_COUNT);
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        threadFinish[i] = 0;
-        threadVec[i].reset(new std::thread(runAsyncLoadFile, i, false));
-    }
-
-    auto startTime = std::chrono::high_resolution_clock::now();
-    int readyCount = 0;
-    while (readyCount < THREAD_COUNT)
-    {
-        // Don't flush right away. Wait sometimes for simulate
-        unsigned long long waitingTimeInMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime).count();
-        if (waitingTimeInMs > 10000)
-        {
-            startTime = std::chrono::high_resolution_clock::now();
-            flushAsyncFileIOBuffer();
-        }
-
-        readyCount = 0;
-        for (int i = 0; i < THREAD_COUNT; i++)
-        {
-            char readyFlag = 0;
-            readyFlag = threadFinish[i];
-            if (readyFlag)
-            {
-                readyCount++;
-            }
-        }
-    }
-
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        if (threadVec[i]->joinable())
-        {
-            threadVec[i]->join();
-        }
-    }
-
-    // Verify result
-    int testPass = 0;
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        if (verifyResult(i))
-        {
-            testPass++;
-        }
-    }
-    EXPECT_EQ(testPass, THREAD_COUNT);
+    EXPECT_EQ(runTestAsyncLoadFile(true, false, false), THREAD_COUNT);
 }
 
 TEST(TestAsyncFileIO, AsyncLoadLargeFile)
 {
-    prepareAsyncLoadFile(true);
-
-    // Run the test
-    std::vector<std::unique_ptr<std::thread>> threadVec(THREAD_COUNT);
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        threadFinish[i] = 0;
-        threadVec[i].reset(new std::thread(runAsyncLoadFile, i, true));
-    }
-
-    auto startTime = std::chrono::high_resolution_clock::now();
-    int readyCount = 0;
-    while (readyCount < THREAD_COUNT)
-    {
-        // Don't flush right away. Wait sometimes for simulate
-        unsigned long long waitingTimeInMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime).count();
-        if (waitingTimeInMs > 10000)
-        {
-            startTime = std::chrono::high_resolution_clock::now();
-            flushAsyncFileIOBuffer();
-        }
-
-        readyCount = 0;
-        for (int i = 0; i < THREAD_COUNT; i++)
-        {
-            char readyFlag = 0;
-            readyFlag = threadFinish[i];
-            if (readyFlag)
-            {
-                readyCount++;
-            }
-        }
-    }
-
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        if (threadVec[i]->joinable())
-        {
-            threadVec[i]->join();
-        }
-    }
-
-    // Verify result
-    int testPass = 0;
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        if (verifyResult(i, true))
-        {
-            testPass++;
-        }
-    }
-    EXPECT_EQ(testPass, THREAD_COUNT);
+    EXPECT_EQ(runTestAsyncLoadFile(true, true, false), THREAD_COUNT);
 }
+
+TEST(TestAsyncFileIO, AsyncLoadFileWithLimitItems)
+{
+    EXPECT_EQ(runTestAsyncLoadFile(true, false, true), THREAD_COUNT);
+}
+
+TEST(TestAsyncFileIO, AsyncLoadLargeFileWithLimitItems)
+{
+    EXPECT_EQ(runTestAsyncLoadFile(true, true, true), THREAD_COUNT);
+}
+
