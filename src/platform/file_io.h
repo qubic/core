@@ -416,7 +416,7 @@ int partition(PairStruct<KeyType, ValueType>* arr, int left, int right)
     return i + 1;
 }
 
-// Find k largest elements in the array and but them in the left
+// Find k largest elements in the array and put them in the left
 template<typename KeyType, typename ValueType>
 void findKLargest(PairStruct<KeyType, ValueType>* arr, int k, int dataSize)
 {

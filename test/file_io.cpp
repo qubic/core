@@ -542,3 +542,30 @@ TEST(TestAsyncFileIO, AsyncLoadLargeFileWithLimitItems)
     EXPECT_EQ(runTestAsyncLoadFile(true, true, true), THREAD_COUNT);
 }
 
+TEST(TestAsyncFileIO, FindKLargest)
+{
+    constexpr int NUMBER_OF_ELEMENTS = 2025;
+    constexpr int K_NUMBER = 245;
+
+    PairStruct<unsigned int, long long> priorityArray[NUMBER_OF_ELEMENTS];
+
+    // Generate the elements
+    for (int i = 0; i < NUMBER_OF_ELEMENTS; i++)
+    {
+        priorityArray[i]._key = i;
+        priorityArray[i]._value = random(NUMBER_OF_ELEMENTS);
+    }
+   
+    // Find K largest in priorityArray
+    findKLargest(priorityArray, K_NUMBER, NUMBER_OF_ELEMENTS);
+    
+    // Comparison. Expect all K left items are greater than remained items
+    for (int i = 0; i < K_NUMBER; i++)
+    {
+        for (int j = K_NUMBER; j < NUMBER_OF_ELEMENTS; j++)
+        {
+            EXPECT_GE(priorityArray[i]._value, priorityArray[j]._value);
+        }
+    }
+}
+
