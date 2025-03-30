@@ -569,3 +569,116 @@ TEST(TestAsyncFileIO, FindKLargest)
     }
 }
 
+TEST(TestAsyncFileIO, FindKLargestOneItemArray)
+{
+    constexpr int NUMBER_OF_ELEMENTS = 1;
+    constexpr int K_NUMBER = 1;
+
+    PairStruct<unsigned int, long long> priorityArray[NUMBER_OF_ELEMENTS];
+    priorityArray[0]._value = random(1000);
+
+    // Find K largest in priorityArray
+    findKLargest(priorityArray, K_NUMBER, NUMBER_OF_ELEMENTS);
+
+    // Comparison. Expect all K left items are greater than remained items
+    for (int i = 0; i < K_NUMBER; i++)
+    {
+        for (int j = K_NUMBER; j < NUMBER_OF_ELEMENTS; j++)
+        {
+            EXPECT_GE(priorityArray[i]._value, priorityArray[j]._value);
+        }
+    }
+}
+
+TEST(TestAsyncFileIO, FindKLargestDuplicatedItems)
+{
+    constexpr int NUMBER_OF_ELEMENTS = 1000;
+    constexpr int K_NUMBER = 100;
+
+    PairStruct<unsigned int, long long> priorityArray[NUMBER_OF_ELEMENTS];
+
+    // Generate the elements
+    const int value = random(NUMBER_OF_ELEMENTS);
+    for (int i = 0; i < NUMBER_OF_ELEMENTS; i++)
+    {
+        priorityArray[i]._key = i;
+        priorityArray[i]._value = value;
+    }
+
+    // Find K largest in priorityArray
+    findKLargest(priorityArray, K_NUMBER, NUMBER_OF_ELEMENTS);
+
+    // Comparison. Expect all K left items are greater than remained items
+    for (int i = 0; i < K_NUMBER; i++)
+    {
+        for (int j = K_NUMBER; j < NUMBER_OF_ELEMENTS; j++)
+        {
+            EXPECT_GE(priorityArray[i]._value, priorityArray[j]._value);
+        }
+    }
+}
+
+TEST(TestAsyncFileIO, FindKLargestK1)
+{
+    constexpr int NUMBER_OF_ELEMENTS = 1000;
+    constexpr int K_NUMBER = 1;
+
+    PairStruct<unsigned int, long long> priorityArray[NUMBER_OF_ELEMENTS];
+
+    // Generate the elements
+    for (int i = 0; i < NUMBER_OF_ELEMENTS; i++)
+    {
+        priorityArray[i]._key = i;
+        priorityArray[i]._value = random(NUMBER_OF_ELEMENTS);
+    }
+
+    // Find K largest in priorityArray
+    findKLargest(priorityArray, K_NUMBER, NUMBER_OF_ELEMENTS);
+
+    // Comparison. The first item is the largest one
+    for (int j = 1; j < NUMBER_OF_ELEMENTS; j++)
+    {
+        EXPECT_GE(priorityArray[0]._value, priorityArray[j]._value);
+    }
+}
+
+TEST(TestAsyncFileIO, FindKLargestKDuplicated)
+{
+    constexpr int NUMBER_OF_ELEMENTS = 1000;
+    constexpr int K_NUMBER = 100;
+
+    PairStruct<unsigned int, long long> priorityArray[NUMBER_OF_ELEMENTS];
+
+    // Generate the elements
+    std::vector<long long> numbers(NUMBER_OF_ELEMENTS);
+
+    // Constant value for first K_NUMBER + 1 element
+    const int value = NUMBER_OF_ELEMENTS + 1;
+    for (int i =0; i < K_NUMBER + 1; i++)
+    {
+        priorityArray[i]._value = value;
+    }
+    for (int i = K_NUMBER + 1; i < NUMBER_OF_ELEMENTS; i++)
+    {
+        priorityArray[i]._value = random(NUMBER_OF_ELEMENTS);
+    }
+
+    // Shuffle the array
+    for (int i = 0; i < NUMBER_OF_ELEMENTS; i++)
+    {
+        int newLocation = random(NUMBER_OF_ELEMENTS);
+        long long tempValue = priorityArray[i]._value;
+        priorityArray[i]._value = priorityArray[newLocation]._value;
+        priorityArray[newLocation]._value = tempValue;
+    }
+
+    // Find K largest in priorityArray
+    findKLargest(priorityArray, K_NUMBER, NUMBER_OF_ELEMENTS);
+
+    // Comparison. The first item is the largest one
+    for (int j = 0; j < K_NUMBER; j++)
+    {
+        EXPECT_EQ(priorityArray[j]._value, value);
+    }
+}
+
