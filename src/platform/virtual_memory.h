@@ -142,16 +142,16 @@ private:
         lastAccessedTick[cache_page_id] = 0;
 #else
         auto sz = asyncLoad(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
+        if (sz != pageSize)
+        {
+#if !defined(NDEBUG)
+            addDebugMessage(L"Failed to load virtualMemory from disk");
+#endif
+            return -1;
+        }
         lastAccessedTick[cache_page_id] = now_ms();
 #endif
         cachePageId[cache_page_id] = pageId;
-#if !defined(NDEBUG)
-        if (sz != pageSize)
-        {
-            addDebugMessage(L"Failed to load virtualMemory from disk");
-            return 0;
-        }
-#endif  
         return cache_page_id;
     }
 
@@ -283,6 +283,15 @@ public:
         unsigned long long n_item = he - hs; // copy [hs, he)
         ACQUIRE(memLock);
         int cache_page_idx = loadPageToCache(r_page_id);
+        if (cache_page_idx == -1)
+        {
+#if !defined(NDEBUG)
+            addDebugMessage(L"Invalid cache page index, return zeroes array");
+#endif
+            setMem(dst, numItems * sizeof(T), 0);
+            RELEASE(memLock);
+            return 0;
+        }
         copyMem(dst, cache[cache_page_idx] + (hs % pageCapacity), n_item * sizeof(T));
         dst += n_item;
         c_bytes += n_item * sizeof(T);
@@ -296,6 +305,15 @@ public:
                 r_page_id = bs / pageCapacity;
                 ACQUIRE(memLock);
                 cache_page_idx = loadPageToCache(r_page_id);
+                if (cache_page_idx == -1)
+                {
+#if !defined(NDEBUG)
+                    addDebugMessage(L"Invalid cache page index, return zeroes array");
+#endif
+                    setMem(dst, numItems * sizeof(T), 0);
+                    RELEASE(memLock);
+                    return 0;
+                }
                 copyMem(dst, cache[cache_page_idx], pageSize);
                 dst += pageCapacity;
                 c_bytes += pageSize;
@@ -309,6 +327,15 @@ public:
             n_item = p_end - bs; // copy [bs, p_end)
             ACQUIRE(memLock);
             int cache_page_idx = loadPageToCache(r_page_id);
+            if (cache_page_idx == -1)
+            {
+#if !defined(NDEBUG)
+                addDebugMessage(L"Invalid cache page index, return zeroes array");
+#endif
+                setMem(dst, numItems * sizeof(T), 0);
+                RELEASE(memLock);
+                return 0;
+            }
             copyMem(dst, cache[cache_page_idx], n_item * sizeof(T));
             dst += n_item;
             c_bytes += n_item * sizeof(T);
@@ -375,6 +402,15 @@ public:
         ACQUIRE(memLock);
         unsigned long long requested_page_id = index / pageCapacity;
         int cache_page_idx = loadPageToCache(requested_page_id);
+        if (cache_page_idx == -1)
+        {
+#if !defined(NDEBUG)
+            addDebugMessage(L"Invalid cache page index, return zeroes array");
+#endif
+            setMem(&result, sizeof(T), 0);
+            RELEASE(memLock);
+            return result;
+        }
         result = cache[cache_page_idx][index % pageCapacity];
         RELEASE(memLock);
         return result;
