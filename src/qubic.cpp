@@ -77,6 +77,7 @@
 #define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 4 // Must be at least 3+: 1+ for tx propagation + 1 for tickData propagation + 1 for vote propagation
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
+constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
 
 
 struct Processor : public CustomStack
@@ -7059,8 +7060,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #if !defined(NDEBUG)
                 printDebugMessages();
 #endif
-                // Flush the file system
-                flushAsyncFileIOBuffer();
+                // Flush the file system. Only flush one item at a time to avoid the main loop stay too long
+                // Even if the time is not satisfied, when still flush at least some items to make sure the save/load not stuck forever
+                // TODO: profile the read/write speed of the file system at the begining and adjust the number of items to flush
+                int remainedItem = 1;
+                do
+                {
+                    remainedItem = flushAsyncFileIOBuffer(1);
+                }
+                while (remainedItem > 0 && ((__rdtsc() - curTimeTick) * 1000000 / frequency < TARGET_MAINTHREAD_LOOP_DURATION));
             }
 
             saveSystem();
