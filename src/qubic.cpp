@@ -206,6 +206,8 @@ static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
 static char customMiningSharesCountLock = 0;
+static char gIsInCustomMiningState = 0;
+static char gIsInCustomMiningStateLock = 0;
 
 struct revenueScore
 {
@@ -537,7 +539,12 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 customMiningMessageCounters[i]++;
 
                                 // Only record shares in idle phase
-                                if (getTickInMiningPhaseCycle() >= INTERNAL_COMPUTATIONS_INTERVAL)
+                                char recordSolutions = 0;
+                                ACQUIRE(gIsInCustomMiningStateLock);
+                                recordSolutions = gIsInCustomMiningState;
+                                RELEASE(gIsInCustomMiningStateLock);
+
+                                if (recordSolutions)
                                 {
                                     // Record the solution
                                     const CustomMiningSolution solution = *((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
@@ -1425,6 +1432,22 @@ static void checkAndSwitchMiningPhase()
             score->initMiningData(m256i::zero());
         }
     }
+}
+
+static void checkAndSwitchCustomMiningPhase()
+{
+    const unsigned int r = getTickInMiningPhaseCycle();
+
+    ACQUIRE(gIsInCustomMiningStateLock);
+    if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+    {
+        gIsInCustomMiningState = 1;
+    }
+    else
+    {
+        gIsInCustomMiningState = 0;
+    }
+    RELEASE(gIsInCustomMiningStateLock);
 }
 
 // Updates the global numberTickTransactions based on the tick data in the tick storage.
@@ -5221,6 +5244,8 @@ static void tickProcessor(void*)
                                 updateNumberOfTickTransactions();
 
                                 checkAndSwitchMiningPhase();
+
+                                checkAndSwitchCustomMiningPhase();
 
                                 if (epochTransitionState == 1)
                                 {
