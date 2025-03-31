@@ -716,6 +716,12 @@ namespace QPI
 		// Asset name of current record
 		inline uint64 assetName() const;
 
+		// Return asset (pair of issuer and asset name)
+		inline Asset asset() const
+		{
+			return Asset{issuer(), assetName()};
+		}
+
 		// Index of issuance in universe. Should not be used by contracts, because it may change between contract calls.
 		// Changed by next(). NO_ASSET_INDEX if issuance has not been found.
 		inline unsigned int issuanceIndex() const
@@ -1579,19 +1585,19 @@ namespace QPI
 		static void __beginTick(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __endTickEmpty = 1, __endTickLocalsSize = sizeof(NoData) };
 		static void __endTick(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __preAcquireSharesEmpty = 1, __preAcquireSharesSize = sizeof(NoData) };
+		enum { __preAcquireSharesEmpty = 1, __preAcquireSharesLocalsSize = sizeof(NoData) };
 		static void __preAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __preReleaseSharesEmpty = 1, __preReleaseSharesSize = sizeof(NoData) };
+		enum { __preReleaseSharesEmpty = 1, __preReleaseSharesLocalsSize = sizeof(NoData) };
 		static void __preReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __postAcquireSharesEmpty = 1, __postAcquireSharesSize = sizeof(NoData) };
+		enum { __postAcquireSharesEmpty = 1, __postAcquireSharesLocalsSize = sizeof(NoData) };
 		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __postReleaseSharesEmpty = 1, __postReleaseSharesSize = sizeof(NoData) };
+		enum { __postReleaseSharesEmpty = 1, __postReleaseSharesLocalsSize = sizeof(NoData) };
 		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplySize = sizeof(NoData) };
+		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplyLocalsSize = sizeof(NoData) };
 		static void __acceptOracleTrueReply(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplySize = sizeof(NoData) };
+		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplyLocalsSize = sizeof(NoData) };
 		static void __acceptOracleFalseReply(const QpiContextProcedureCall&, void*, void*) {}
-		enum { __acceptOracleUnknownReplyEmpty = 1, __acceptOracleUnknownReplySize = sizeof(NoData) };
+		enum { __acceptOracleUnknownReplyEmpty = 1, __acceptOracleUnknownReplyLocalsSize = sizeof(NoData) };
 		static void __acceptOracleUnknownReply(const QpiContextProcedureCall&, void*, void*) {}
 		enum { __expandEmpty = 1 };
 		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}

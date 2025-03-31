@@ -165,3 +165,5 @@ TEST(TestCoreCustomStack, SimpleTest)
     auto size4 = s.maxStackUsed();
     EXPECT_GT(size4, size3);
 }
+
+// Add test of SetJump/LongJump

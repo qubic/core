@@ -203,6 +203,14 @@ constexpr unsigned short TESTEXB_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #define CONTRACT_STATE_TYPE TESTEXB
 #define CONTRACT_STATE2_TYPE TESTEXB2
 #include "contracts/TestExampleB.h"
+constexpr unsigned short TESTEXC_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+#define CONTRACT_INDEX TESTEXC_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE TESTEXC
+#define CONTRACT_STATE2_TYPE TESTEXC2
+#include "contracts/TestExampleC.h"
 #endif
 
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
@@ -264,6 +272,7 @@ constexpr struct ContractDescription
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
     {"TESTEXB", 138, 10000, sizeof(IPO)},
+    {"TESTEXC", 138, 10000, sizeof(IPO)},
 #endif
 };
 
@@ -328,13 +337,13 @@ contractSystemProcedureLocalsSizes[contractIndex][BEGIN_TICK] = contractName::__
 if (!contractName::__endTickEmpty) contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
 contractSystemProcedureLocalsSizes[contractIndex][END_TICK] = contractName::__endTickLocalsSize; \
 if (!contractName::__preAcquireSharesEmpty) contractSystemProcedures[contractIndex][PRE_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preAcquireShares;\
-contractSystemProcedureLocalsSizes[contractIndex][PRE_ACQUIRE_SHARES] = contractName::__preAcquireSharesSize; \
+contractSystemProcedureLocalsSizes[contractIndex][PRE_ACQUIRE_SHARES] = contractName::__preAcquireSharesLocalsSize; \
 if (!contractName::__preReleaseSharesEmpty) contractSystemProcedures[contractIndex][PRE_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preReleaseShares;\
-contractSystemProcedureLocalsSizes[contractIndex][PRE_RELEASE_SHARES] = contractName::__preReleaseSharesSize; \
+contractSystemProcedureLocalsSizes[contractIndex][PRE_RELEASE_SHARES] = contractName::__preReleaseSharesLocalsSize; \
 if (!contractName::__postAcquireSharesEmpty) contractSystemProcedures[contractIndex][POST_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postAcquireShares;\
-contractSystemProcedureLocalsSizes[contractIndex][POST_ACQUIRE_SHARES] = contractName::__postAcquireSharesSize; \
+contractSystemProcedureLocalsSizes[contractIndex][POST_ACQUIRE_SHARES] = contractName::__postAcquireSharesLocalsSize; \
 if (!contractName::__postReleaseSharesEmpty) contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
-contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesSize; \
+contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesLocalsSize; \
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
@@ -359,5 +368,6 @@ static void initializeContracts()
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXC);
 #endif
 }

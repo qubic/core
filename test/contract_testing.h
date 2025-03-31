@@ -69,7 +69,7 @@ public:
     }
 
     template <typename InputType, typename OutputType>
-    void callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true) const
+    unsigned int callFunction(unsigned int contractIndex, unsigned short functionInputType, const InputType& input, OutputType& output, bool checkInputSize = true, bool expectSuccess = true) const
     {
         EXPECT_LT(contractIndex, contractCount);
         EXPECT_NE(contractStates[contractIndex], nullptr);
@@ -79,14 +79,15 @@ public:
             unsigned short expectedInputSize = contractUserFunctionInputSizes[contractIndex][functionInputType];
             EXPECT_EQ((int)expectedInputSize, sizeof(input));
         }
-        qpiContext.call(functionInputType, &input, sizeof(input));
+        unsigned int errorCode = qpiContext.call(functionInputType, &input, sizeof(input));
         EXPECT_EQ((int)qpiContext.outputSize, sizeof(output));
         if (expectSuccess)
         {
-            EXPECT_EQ(contractError[contractIndex], 0);
+            EXPECT_EQ(errorCode, 0);
         }
         copyMem(&output, qpiContext.outputBuffer, sizeof(output));
         qpiContext.freeBuffer();
+        return errorCode;
     }
 
     template <typename InputType, typename OutputType>
@@ -161,4 +162,21 @@ static inline void updateQpiTime()
     etalonTick.day = utcTime.Day;
     etalonTick.month = utcTime.Month;
     etalonTick.year = utcTime.Year - 2000;
+}
+
+// Check that the contract execution system state is clean (before / after running contracts).
+static inline void checkContractExecCleanup()
+{
+    for (unsigned int i = 0; i < contractCount; ++i)
+    {
+        EXPECT_EQ(contractStateLock[i].getCurrentReaderLockCount(), 0);
+    }
+
+    for (unsigned int i = 0; i < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS; ++i)
+    {
+        EXPECT_EQ(contractLocalsStack[i].size(), 0);
+        EXPECT_EQ(contractLocalsStackLock[i], 0);
+    }
+    EXPECT_EQ(contractLocalsStackLockWaitingCount, 0);
+    EXPECT_EQ(contractCallbacksRunning, NoContractCallback);
 }
