@@ -206,7 +206,12 @@ static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
 static char customMiningSharesCountLock = 0;
-unsigned long long gRevenueScoreWithCustomMining[NUMBER_OF_COMPUTORS] = { 0 };
+
+struct revenueScore
+{
+    unsigned long long _oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
+    unsigned long long _customMiningScore[NUMBER_OF_COMPUTORS]; // the new score with customming
+} gRevenueScoreWithCustomMining;
 
 
 // variables and declare for persisting state
@@ -3004,18 +3009,6 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
-        // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution
-        {
-            // Calculate the rev score with custom mining
-            bs->CopyMem(gRevenueScoreWithCustomMining, revenueScore, sizeof(gRevenueScoreWithCustomMining));
-            // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                unsigned long long shareScore = gCustomMiningSharesCounter.getSharesCount(i);
-                gRevenueScoreWithCustomMining[i] = shareScore;
-            }
-        }
-
         // Merge votecount to final rev score
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
@@ -3035,6 +3028,17 @@ static void endEpoch()
             else
             {
                 revenueScore[i] = 0;
+            }
+        }
+
+        // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution and old score
+        {
+            bs->CopyMem(gRevenueScoreWithCustomMining._oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining._oldFinalScore));
+            // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                unsigned long long shareScore = gCustomMiningSharesCounter.getSharesCount(i);
+                gRevenueScoreWithCustomMining._customMiningScore[i] = shareScore;
             }
         }
 
@@ -5423,7 +5427,7 @@ static bool saveCustomMiningRevenue(CHAR16* directory)
     const unsigned long long beginningTick = __rdtsc();
     CHAR16* fn = CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME;
     long long savedSize = asyncSave(fn, sizeof(gRevenueScoreWithCustomMining), (unsigned char*)&gRevenueScoreWithCustomMining, directory);
-    if (savedSize == sizeof(system))
+    if (savedSize == sizeof(gRevenueScoreWithCustomMining))
     {
         return true;
     }
