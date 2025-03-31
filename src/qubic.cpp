@@ -205,9 +205,9 @@ static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningSc
 static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0 };
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
-static char customMiningSharesCountLock = 0;
+static volatile char gCustomMiningSharesCountLock = 0;
 static char gIsInCustomMiningState = 0;
-static char gIsInCustomMiningStateLock = 0;
+static volatile char gIsInCustomMiningStateLock = 0;
 
 struct revenueScore
 {
@@ -547,14 +547,14 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 if (recordSolutions)
                                 {
                                     // Record the solution
-                                    const CustomMiningSolution solution = *((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
+                                    const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
 
                                     // Check the computor idx of this solution
-                                    unsigned short computorID = solution.nonce % NUMBER_OF_COMPUTORS;
+                                    unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
 
-                                    ACQUIRE(customMiningSharesCountLock);
+                                    ACQUIRE(gCustomMiningSharesCountLock);
                                     gCustomMiningSharesCount[computorID]++;
-                                    RELEASE(customMiningSharesCountLock);
+                                    RELEASE(gCustomMiningSharesCountLock);
                                 }
                             }
 
@@ -2790,9 +2790,9 @@ static void processTick(unsigned long long processorNumber)
                 unsigned int publishingTickOffset = TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET + random(NUMBER_OF_COMPUTORS / 2);
 
                 // Update the custom mining share counter
-                ACQUIRE(customMiningSharesCountLock);
+                ACQUIRE(gCustomMiningSharesCountLock);
                 gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
-                RELEASE(customMiningSharesCountLock);
+                RELEASE(gCustomMiningSharesCountLock);
 
                 auto& payload = customMiningSharePayload;
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
@@ -2811,9 +2811,9 @@ static void processTick(unsigned long long processorNumber)
             }
 
             // reset the phase counter
-            ACQUIRE(customMiningSharesCountLock);
+            ACQUIRE(gCustomMiningSharesCountLock);
             bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
-            RELEASE(customMiningSharesCountLock);
+            RELEASE(gCustomMiningSharesCountLock);
         }
     }
 
@@ -5449,7 +5449,6 @@ static bool saveSystem(CHAR16* directory)
 
 static bool saveCustomMiningRevenue(CHAR16* directory)
 {
-    const unsigned long long beginningTick = __rdtsc();
     CHAR16* fn = CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME;
     long long savedSize = asyncSave(fn, sizeof(gRevenueScoreWithCustomMining), (unsigned char*)&gRevenueScoreWithCustomMining, directory);
     if (savedSize == sizeof(gRevenueScoreWithCustomMining))

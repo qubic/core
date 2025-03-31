@@ -38,12 +38,12 @@ struct CustomMiningTask
 {
     unsigned long long taskIndex; // ever increasing number (unix timestamp in ms)
 
-    unsigned char m_blob[408]; // Job data from pool
-    unsigned long long m_size;  // length of the blob
-    unsigned long long m_target; // Pool difficulty
-    unsigned long long m_height; // Block height
-    unsigned char m_seed[32]; // Seed hash for XMR
-    unsigned int m_extraNonce;
+    unsigned char blob[408]; // Job data from pool
+    unsigned long long size;  // length of the blob
+    unsigned long long target; // Pool difficulty
+    unsigned long long height; // Block height
+    unsigned char seed[32]; // Seed hash for XMR
+    unsigned int extraNonce;
 };
 
 struct CustomMiningSolution
@@ -64,7 +64,7 @@ class CustomMiningSharesCounter
 private:
     unsigned int _shareCount[NUMBER_OF_COMPUTORS];
     unsigned long long _accumulatedSharesCount[NUMBER_OF_COMPUTORS];
-    unsigned int buffer[NUMBER_OF_COMPUTORS];
+    unsigned int _buffer[NUMBER_OF_COMPUTORS];
 protected:
     unsigned int extract10Bit(const unsigned char* data, unsigned int idx)
     {
@@ -100,7 +100,7 @@ protected:
     }
 
 public:
-    static constexpr unsigned int CustomMiningSolutionCounterDataSize = sizeof(_shareCount) + sizeof(_accumulatedSharesCount);
+    static constexpr unsigned int _customMiningSolutionCounterDataSize = sizeof(_shareCount) + sizeof(_accumulatedSharesCount);
     void init()
     {
         setMem(_shareCount, sizeof(_shareCount), 0);
@@ -116,16 +116,16 @@ public:
     void compressNewSharesPacket(unsigned int ownComputorIdx, unsigned char customMiningShareCountPacket[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES])
     {
         setMem(customMiningShareCountPacket, sizeof(customMiningShareCountPacket), 0);
-        setMem(buffer, sizeof(buffer), 0);
+        setMem(_buffer, sizeof(_buffer), 0);
         for (int j = 0; j < NUMBER_OF_COMPUTORS; j++)
         {
-            buffer[j] = _shareCount[j];
+            _buffer[j] = _shareCount[j];
         }
 
-        buffer[ownComputorIdx] = 0; // remove self-report
+        _buffer[ownComputorIdx] = 0; // remove self-report
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            update10Bit(customMiningShareCountPacket, i, buffer[i]);
+            update10Bit(customMiningShareCountPacket, i, _buffer[i]);
         }
     }
 
