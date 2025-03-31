@@ -5421,7 +5421,7 @@ static bool saveSystem(CHAR16* directory)
 static bool saveCustomMiningRevenue(CHAR16* directory)
 {
     const unsigned long long beginningTick = __rdtsc();
-    CHAR16* fn = (epochTransitionState == 1) ? CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME : CUSTOM_MINING_REVENUE_FILE_NAME;
+    CHAR16* fn = CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME;
     long long savedSize = asyncSave(fn, sizeof(gRevenueScoreWithCustomMining), (unsigned char*)&gRevenueScoreWithCustomMining, directory);
     if (savedSize == sizeof(system))
     {

@@ -72,7 +72,6 @@ static unsigned short SPECTRUM_FILE_NAME[] = L"spectrum.???";
 static unsigned short UNIVERSE_FILE_NAME[] = L"universe.???";
 static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";
 static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
-static unsigned short CUSTOM_MINING_REVENUE_FILE_NAME[] = L"custom_revenue";
 static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_revenue.eoe";
 
 #define DATA_LENGTH 256
