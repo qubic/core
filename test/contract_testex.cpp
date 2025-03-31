@@ -296,6 +296,31 @@ public:
         TESTEXA::ErrorTriggerFunction_output output;
         return callFunction(TESTEXA_CONTRACT_INDEX, 5, input, output, true, false);
     }
+
+    template <typename StateStruct>
+    typename StateStruct::IncomingTransferAmounts_output getIncomingTransferAmounts()
+    {
+        typename StateStruct::IncomingTransferAmounts_input input;
+        typename StateStruct::IncomingTransferAmounts_output output;
+        EXPECT_EQ(callFunction(StateStruct::__contract_index, 20, input, output), NoContractError);
+        return output;
+    }
+
+    template <typename StateStruct>
+    bool qpiTransfer(const id& destinationPublicKey, sint64 amount, sint64 fee = 0, const id& originator = USER1)
+    {
+        typename StateStruct::QpiTransfer_input input{ destinationPublicKey, amount };
+        typename StateStruct::QpiTransfer_output output;
+        return invokeUserProcedure(StateStruct::__contract_index, 20, input, output, originator, fee);
+    }
+
+    template <typename StateStruct>
+    bool qpiDistributeDividends(sint64 amountPerShare, sint64 fee = 0, const id& originator = USER1)
+    {
+        typename StateStruct::QpiDistributeDividends_input input{ amountPerShare };
+        typename StateStruct::QpiDistributeDividends_output output;
+        return invokeUserProcedure(StateStruct::__contract_index, 21, input, output, originator, fee);
+    }
 };
 
 TEST(ContractTestEx, QpiReleaseShares)
@@ -891,4 +916,187 @@ TEST(ContractTestEx, QueryBasicQpiFunctions)
     EXPECT_EQ(qpiReturned2.qpiFunctionsOutput.tick, system.tick);
     EXPECT_EQ(qpiReturned2.inputDataK12, digest2);
     EXPECT_FALSE(qpiReturned2.inputSignatureValid);
+}
+
+//-------------------------------------------------------------------
+// Test CallbackPostIncomingTransfer
+
+class ContractTestCallbackPostIncomingTransfer : public ContractTestingTestEx
+{
+public:
+    // test qpi.transfer() on contract SrcStateStruct. DstStateStruct is another contract to check.
+    template <typename SrcStateStruct, typename DstStateStruct>
+    void testQpiTransfer(const id& dstPublicKey, sint64 amount, sint64 fee = 0, const id& originator = USER1)
+    {
+        const id srcPublicKey(SrcStateStruct::__contract_index, 0, 0, 0);
+        const sint64 originatorBalanceBefore = getBalance(originator);
+        const sint64 srcBalanceBefore = getBalance(srcPublicKey);
+        const sint64 dstBalanceBefore = getBalance(dstPublicKey);
+        const auto srcBefore = getIncomingTransferAmounts<SrcStateStruct>();
+        const auto dstBefore = getIncomingTransferAmounts<DstStateStruct>();
+
+        EXPECT_GE(originatorBalanceBefore, fee);
+        bool success = qpiTransfer<SrcStateStruct>(dstPublicKey, amount, fee, originator);
+        EXPECT_TRUE(success);
+
+        if (success)
+        {
+            const sint64 originatorBalanceAfter = getBalance(originator);
+            const sint64 srcBalanceAfter = getBalance(srcPublicKey);
+            const sint64 dstBalanceAfter = getBalance(dstPublicKey);
+            EXPECT_EQ(originatorBalanceAfter, originatorBalanceBefore - fee);
+            if (srcPublicKey != dstPublicKey)
+            {
+                EXPECT_EQ(srcBalanceAfter, srcBalanceBefore + fee - amount);
+                EXPECT_EQ(dstBalanceAfter, dstBalanceBefore + amount);
+            }
+            else
+            {
+                EXPECT_EQ(srcBalanceAfter, srcBalanceBefore + fee);
+            }
+
+            const auto srcAfter = getIncomingTransferAmounts<SrcStateStruct>();
+            const auto dstAfter = getIncomingTransferAmounts<DstStateStruct>();
+            EXPECT_EQ(srcAfter.procedureTransactionAmount, srcBefore.procedureTransactionAmount + fee);
+            if (srcPublicKey != dstPublicKey)
+            {
+                EXPECT_EQ(dstAfter.procedureTransactionAmount, dstBefore.procedureTransactionAmount);
+                EXPECT_EQ(srcAfter.qpiTransferAmount, srcBefore.qpiTransferAmount);
+            }
+            if (dstPublicKey == id(DstStateStruct::__contract_index, 0, 0, 0))
+            {
+                EXPECT_EQ(dstAfter.qpiTransferAmount, dstBefore.qpiTransferAmount + amount);
+            }
+            else
+            {
+                EXPECT_EQ(dstAfter.qpiTransferAmount, dstBefore.qpiTransferAmount);
+            }
+            EXPECT_EQ(srcAfter.standardTransactionAmount, srcBefore.standardTransactionAmount);
+            EXPECT_EQ(dstAfter.standardTransactionAmount, dstBefore.standardTransactionAmount);
+            EXPECT_EQ(srcAfter.qpiDistributeDividendsAmount, srcBefore.qpiDistributeDividendsAmount);
+            EXPECT_EQ(dstAfter.qpiDistributeDividendsAmount, dstBefore.qpiDistributeDividendsAmount);
+            EXPECT_EQ(srcAfter.revenueDonationAmount, srcBefore.revenueDonationAmount);
+            EXPECT_EQ(dstAfter.revenueDonationAmount, dstBefore.revenueDonationAmount);
+            EXPECT_EQ(srcAfter.ipoBidRefundAmount, srcBefore.ipoBidRefundAmount);
+            EXPECT_EQ(dstAfter.ipoBidRefundAmount, dstBefore.ipoBidRefundAmount);
+        }
+    }
+
+    // test qpi.distributeDividends() on contract SrcStateStruct. DstStateStruct is another contract to check.
+    template <typename SrcStateStruct, typename DstStateStruct>
+    void testQpiDistributeDividends(sint64 amountPerShare, const std::vector<std::pair<m256i, unsigned int>>& shareholders, sint64 fee = 0, const id& originator = USER1)
+    {
+        // check number of shares
+        unsigned int totalShareCount = 0;
+        for (const auto& ownerShareCountPair : shareholders)
+            totalShareCount += ownerShareCountPair.second;
+        EXPECT_EQ(totalShareCount, NUMBER_OF_COMPUTORS);
+
+        // get state before call and compute state expected after call
+        const id srcPublicKey(SrcStateStruct::__contract_index, 0, 0, 0);
+        const id dstPublicKey(DstStateStruct::__contract_index, 0, 0, 0);
+        std::map<id, sint64> expectedBalances;
+        expectedBalances[originator] = getBalance(originator);
+        EXPECT_GE(expectedBalances[originator], fee);
+        expectedBalances[srcPublicKey] = getBalance(srcPublicKey);
+        expectedBalances[dstPublicKey] = getBalance(dstPublicKey);
+        for (const auto& ownerShareCountPair : shareholders)
+            expectedBalances[ownerShareCountPair.first] = getBalance(ownerShareCountPair.first);
+        expectedBalances[originator] -= fee;
+        expectedBalances[srcPublicKey] += fee - amountPerShare * NUMBER_OF_COMPUTORS;
+        auto expectedIncomingSrc = getIncomingTransferAmounts<SrcStateStruct>();
+        auto expectedIncomingDst = getIncomingTransferAmounts<DstStateStruct>();
+        expectedIncomingSrc.procedureTransactionAmount += fee;
+        if (srcPublicKey == dstPublicKey)
+            expectedIncomingDst.procedureTransactionAmount += fee;
+        for (const auto& ownerShareCountPair : shareholders)
+        {
+            const sint64 dividend = amountPerShare * ownerShareCountPair.second;
+            expectedBalances[ownerShareCountPair.first] += dividend;
+            if (ownerShareCountPair.first == srcPublicKey)
+                expectedIncomingSrc.qpiDistributeDividendsAmount += dividend;
+            if (ownerShareCountPair.first == dstPublicKey)
+                expectedIncomingDst.qpiDistributeDividendsAmount += dividend;
+        }
+
+        bool success = qpiDistributeDividends<SrcStateStruct>(amountPerShare, fee, originator);
+        EXPECT_TRUE(success);
+
+        if (success)
+        {
+            for (const auto& idBalancePair : expectedBalances)
+            {
+                EXPECT_EQ(getBalance(idBalancePair.first), idBalancePair.second);
+            }
+
+            const auto observedIncomingSrc = getIncomingTransferAmounts<SrcStateStruct>();
+            const auto observedIncomingDst = getIncomingTransferAmounts<DstStateStruct>();
+            EXPECT_EQ(expectedIncomingSrc.standardTransactionAmount, observedIncomingSrc.standardTransactionAmount);
+            EXPECT_EQ(expectedIncomingDst.standardTransactionAmount, observedIncomingDst.standardTransactionAmount);
+            EXPECT_EQ(expectedIncomingSrc.procedureTransactionAmount, observedIncomingSrc.procedureTransactionAmount);
+            EXPECT_EQ(expectedIncomingDst.procedureTransactionAmount, observedIncomingDst.procedureTransactionAmount);
+            EXPECT_EQ(expectedIncomingSrc.qpiTransferAmount, observedIncomingSrc.qpiTransferAmount);
+            EXPECT_EQ(expectedIncomingDst.qpiTransferAmount, observedIncomingDst.qpiTransferAmount);
+            EXPECT_EQ(expectedIncomingSrc.qpiDistributeDividendsAmount, observedIncomingSrc.qpiDistributeDividendsAmount);
+            EXPECT_EQ(expectedIncomingDst.qpiDistributeDividendsAmount, observedIncomingDst.qpiDistributeDividendsAmount);
+            EXPECT_EQ(expectedIncomingSrc.revenueDonationAmount, observedIncomingSrc.revenueDonationAmount);
+            EXPECT_EQ(expectedIncomingDst.revenueDonationAmount, observedIncomingDst.revenueDonationAmount);
+            EXPECT_EQ(expectedIncomingSrc.ipoBidRefundAmount, observedIncomingSrc.ipoBidRefundAmount);
+            EXPECT_EQ(expectedIncomingDst.ipoBidRefundAmount, observedIncomingDst.ipoBidRefundAmount);
+        }
+    }
+};
+
+TEST(ContractTestEx, CallbackPostIncomingTransfer)
+{
+    // Tested types of incoming transfers (should be also tested in testnet):
+    // - TransferType::qpiTransfer (including transfer to oneself)
+    // - TransferType::qpiDistributeDividends (including dividends to oneself)
+    // - TransferType::procedureTransaction
+    //
+    // Important test: triggering callback from callback must be prevented (checked by ASSERTs in contracts)
+    //
+    // The following cannot be tested with Google Test at the moment and have to be tested in the testnet.
+    // - TransferType::standardTransaction
+    // - TransferType::revenueDonation
+    // - TransferType::ipoBidRefund
+    ContractTestCallbackPostIncomingTransfer test;
+
+    increaseEnergy(USER1, 12345678);
+    increaseEnergy(USER2, 31427);
+    increaseEnergy(USER3, 218000);
+    increaseEnergy(TESTEXB_CONTRACT_ID, 19283764);
+    increaseEnergy(TESTEXC_CONTRACT_ID, 987654321);
+
+    // qpi.transfer() to other contract
+    test.testQpiTransfer<TESTEXB, TESTEXC>(TESTEXC_CONTRACT_ID, 100, 1000, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXB>(TESTEXB_CONTRACT_ID, 2000, 200, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXB>(TESTEXB_CONTRACT_ID, 300, 3000, USER1);
+    test.testQpiTransfer<TESTEXB, TESTEXC>(TESTEXC_CONTRACT_ID, 4000, 400, USER1);
+
+    // qpi.transfer() to self
+    test.testQpiTransfer<TESTEXB, TESTEXB>(TESTEXB_CONTRACT_ID, 50, 500, USER1);
+    test.testQpiTransfer<TESTEXB, TESTEXB>(TESTEXB_CONTRACT_ID, 600, 60, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXC>(TESTEXC_CONTRACT_ID, 700, 7000, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXC>(TESTEXC_CONTRACT_ID, 8000, 800, USER1);
+
+    // qpi.transfer() to non-contract entity
+    test.testQpiTransfer<TESTEXB, TESTEXC>(getUser(0), 900, 9000, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXB>(getUser(1), 10000, 1000, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXB>(getUser(2), 11000, 1100, USER1);
+    test.testQpiTransfer<TESTEXB, TESTEXC>(getUser(3), 12000, 1200, USER1);
+
+    // issue contract shares
+    std::vector<std::pair<m256i, unsigned int>> sharesTestExB{ {USER1, 356}, {TESTEXC_CONTRACT_ID, 200}, {TESTEXB_CONTRACT_ID, 100}, {TESTEXA_CONTRACT_ID, 20} };
+    issueContractShares(TESTEXB_CONTRACT_INDEX, sharesTestExB);
+    std::vector<std::pair<m256i, unsigned int>> sharesTestExC{ {USER2, 576}, {USER3, 40}, {TESTEXC_CONTRACT_ID, 30}, {TESTEXB_CONTRACT_ID, 20}, {TESTEXA_CONTRACT_ID, 10} };
+    issueContractShares(TESTEXC_CONTRACT_INDEX, sharesTestExC);
+
+    // test qpi.distributeDividends()
+    test.testQpiDistributeDividends<TESTEXB, TESTEXC>(1, sharesTestExB, 1234, USER1);
+    test.testQpiDistributeDividends<TESTEXB, TESTEXC>(11, sharesTestExB, 9764, USER2);
+    test.testQpiDistributeDividends<TESTEXB, TESTEXB>(3, sharesTestExB, 42, USER3);
+    test.testQpiDistributeDividends<TESTEXC, TESTEXB>(2, sharesTestExC, 12345, USER1);
+    test.testQpiDistributeDividends<TESTEXC, TESTEXB>(13, sharesTestExC, 98, USER2);
+    test.testQpiDistributeDividends<TESTEXC, TESTEXC>(4, sharesTestExC, 9, USER3);
 }

@@ -224,6 +224,8 @@ constexpr unsigned short TESTEXC_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef PRE_ACQUIRE_SHARES
 #undef POST_RELEASE_SHARES
 #undef POST_ACQUIRE_SHARES
+#undef POST_INCOMING_TRANSFER
+
 
 // The following are included after the contracts to keep their definitions and dependencies
 // inaccessible for contracts
@@ -309,6 +311,7 @@ enum SystemProcedureID
     PRE_ACQUIRE_SHARES,
     POST_RELEASE_SHARES,
     POST_ACQUIRE_SHARES,
+    POST_INCOMING_TRANSFER,
     contractSystemProcedureCount,
 };
 
@@ -344,6 +347,8 @@ if (!contractName::__postAcquireSharesEmpty) contractSystemProcedures[contractIn
 contractSystemProcedureLocalsSizes[contractIndex][POST_ACQUIRE_SHARES] = contractName::__postAcquireSharesLocalsSize; \
 if (!contractName::__postReleaseSharesEmpty) contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
 contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesLocalsSize; \
+if (!contractName::__postIncomingTransferEmpty) contractSystemProcedures[contractIndex][POST_INCOMING_TRANSFER] = (SYSTEM_PROCEDURE)contractName::__postIncomingTransfer;\
+contractSystemProcedureLocalsSizes[contractIndex][POST_INCOMING_TRANSFER] = contractName::__postIncomingTransferLocalsSize; \
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
