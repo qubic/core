@@ -3032,11 +3032,8 @@ static void endEpoch()
 
                     // Generate revenue donation
                     increaseEnergy(rdEntry.destinationPublicKey, donation);
-                    if (revenue)
-                    {
-                        const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
-                        logger.logQuTransfer(quTransfer);
-                    }
+                    const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
+                    logger.logQuTransfer(quTransfer);
                 }
             }
 
