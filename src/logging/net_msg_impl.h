@@ -123,28 +123,38 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
         && request->passcode[3] == logReaderPasscodes[3])
     {
         ResponsePruningLog resp;
-        auto pageCap = mapLogIdToBufferIndex.pageCap();
-        unsigned long long fromPageId = (request->fromLogId + pageCap - 1) / pageCap;
-        unsigned long long toPageId = (request->toLogId + 1) / pageCap;
-
-        unsigned long long fromLogId = fromPageId * pageCap;
-        unsigned long long toLogId = toPageId * (pageCap + 1) - 1;
-
-        BlobInfo bis = mapLogIdToBufferIndex[fromLogId];
-        BlobInfo bie = mapLogIdToBufferIndex[toLogId];
-        unsigned long long logBufferStart = bis.startIndex;
-        unsigned long long logBufferEnd = bie.startIndex + bie.length;
-        resp.success = 0;
-        bool res0 = mapLogIdToBufferIndex.pruneRange(fromLogId, toLogId);
-        bool res1 = logBuffer.pruneRange(logBufferStart, logBufferEnd);
-        if (!res0)
+        bool isValidRange = mapLogIdToBufferIndex.isIndexValid(request->fromLogId) && mapLogIdToBufferIndex.isIndexValid(request->toLogId);
+        if (!isValidRange)
         {
-            resp.success = 1;
+            resp.success = 4;
         }
-        if (!res1)
+        else
         {
-            resp.success = (resp.success << 1) | 1;
+            auto pageCap = mapLogIdToBufferIndex.pageCap();
+            // here we round up FROM but round down TO
+            unsigned long long fromPageId = (request->fromLogId + pageCap - 1) / pageCap;
+            unsigned long long toPageId = request->toLogId / pageCap;
+            unsigned long long fromLogId = fromPageId * pageCap;
+            unsigned long long toLogId = toPageId * pageCap;
+
+            BlobInfo bis = mapLogIdToBufferIndex[fromLogId];
+            BlobInfo bie = mapLogIdToBufferIndex[toLogId];
+            unsigned long long logBufferStart = bis.startIndex;
+            unsigned long long logBufferEnd = bie.startIndex + bie.length;
+            resp.success = 0;
+            bool res0 = mapLogIdToBufferIndex.pruneRange(fromLogId, toLogId);
+            if (!res0)
+            {
+                resp.success = 1;
+            }
+
+            bool res1 = logBuffer.pruneRange(logBufferStart, logBufferEnd);
+            if (!res1)
+            {
+                resp.success = (resp.success << 1) | 1;
+            }
         }
+        
         enqueueResponse(peer, sizeof(ResponsePruningLog), ResponsePruningLog::type, header->dejavu(), &resp);
         return;
     }

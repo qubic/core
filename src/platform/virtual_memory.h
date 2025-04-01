@@ -41,7 +41,7 @@ private:
 
     unsigned long long cachePageId[numCachePage+1];
     unsigned long long lastAccessedTimestamp[numCachePage+1]; // in millisecond
-    unsigned long long currentId; // latest item index that has been added to this array
+    unsigned long long currentId; // total items in this array, aka: latest item index + 1
     unsigned long long currentPageId; // current page index that's written on
 
     volatile char memLock; // every read/write needs a memory lock, can optimize later
@@ -401,6 +401,12 @@ public:
     {
         T result;
         ACQUIRE(memLock);
+        if (index >= currentId) // out of bound
+        {
+            setMem(&result, sizeof(T), 0);
+            RELEASE(memLock);
+            return result;
+        }
         unsigned long long requested_page_id = index / pageCapacity;
         int cache_page_idx = loadPageToCache(requested_page_id);
         if (cache_page_idx == -1)
@@ -461,17 +467,39 @@ public:
     bool pruneRange(unsigned long long fromId, unsigned long long toId)
     {
         unsigned long long fromPageId = (fromId + pageCapacity - 1) / pageCapacity;
-        unsigned long long toPageId = (toId + 1) / pageCapacity;
+        unsigned long long toPageId = toId / pageCapacity;
         if (fromPageId > toPageId)
+        {
+            return false;
+        }
+        if (!isPageIdValid(fromPageId))
+        {
+            return false;
+        }
+        if (!isPageIdValid(toPageId))
         {
             return false;
         }
         bool success = true;
         for (unsigned long long i = fromPageId; i <= toPageId; i++)
         {
-            success &= prune(i);
+            bool ret = prune(i);
+            success &= ret;
+            if (!ret) return success;
         }
         return success;
+    }
+
+    // checking if an index is in valid range of this array
+    bool isIndexValid(unsigned long long index)
+    {
+        return index < currentId;
+    }
+
+    // checking if a page id is in valid range of this array
+    bool isPageIdValid(unsigned long long index)
+    {
+        return index <= currentPageId;
     }
 
     unsigned long long pageCap()
