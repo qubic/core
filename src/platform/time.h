@@ -50,12 +50,7 @@ inline long long ms(unsigned char year, unsigned char month, unsigned char day, 
     return (((((long long)dayIndex(year, month, day)) * 24 + hour) * 60 + minute) * 60 + second) * 1000 + millisecond;
 }
 
-#ifdef NO_UEFI
-inline unsigned long long now_ms()
-{
-    return 0;
-}
-#else
+#ifndef NO_UEFI
 inline unsigned long long now_ms()
 {
     EFI_TIME t;

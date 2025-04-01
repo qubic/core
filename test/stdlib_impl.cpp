@@ -50,3 +50,10 @@ void updateTime()
     utcTime.TimeZone = 0;
     utcTime.Daylight = 0;
 }
+
+inline unsigned long long now_ms()
+{
+    std::time_t t = std::time(nullptr);
+    std::tm* tm = std::gmtime(&t);
+    return ms(unsigned char(tm->tm_year % 100), tm->tm_mon, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec, 0);
+}

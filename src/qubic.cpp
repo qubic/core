@@ -1614,7 +1614,7 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                case RequestPruningPageFiles::type:
+                case RequestPruningLog::type:
                 {
                     logger.processRequestPrunePageFile(peer, header);
                 }
