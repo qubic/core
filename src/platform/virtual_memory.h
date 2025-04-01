@@ -10,15 +10,17 @@
 #include "kangaroo_twelve.h"
 
 
-#ifdef MIN
-#undef MIN
-#endif
-#define MIN(a,b) (a < b ? a : b)
+template <class T>
+inline constexpr const T& max(const T& left, const T& right)
+{
+    return (left < right) ? right : left;
+}
 
-#ifdef MAX
-#undef MAX
-#endif
-#define MAX(a,b) (a > b ? a : b)
+template <class T>
+inline constexpr const T& min(const T& left, const T& right)
+{
+    return (left < right) ? left : right;
+}
 
 // an util to use disk as RAM to reduce hardware requirement for qubic core node
 // this VirtualMemory doesn't (yet) support amend operation. That means data stay persisted once they are written
@@ -38,7 +40,7 @@ private:
     CHAR16* pageDir = NULL;
 
     unsigned long long cachePageId[numCachePage+1];
-    unsigned long long lastAccessedTick[numCachePage+1];
+    unsigned long long lastAccessedTimestamp[numCachePage+1]; // in millisecond
     unsigned long long currentId; // latest item index that has been added to this array
     unsigned long long currentPageId; // current page index that's written on
 
@@ -83,11 +85,11 @@ private:
         int min_index = 1;
         for (int i = 1; i <= numCachePage; i++)
         {
-            if (lastAccessedTick[i] == 0)
+            if (lastAccessedTimestamp[i] == 0)
             {                
                 return i;
             }
-            if ((lastAccessedTick[i] < lastAccessedTick[min_index]) || (lastAccessedTick[i] == lastAccessedTick[min_index] && cachePageId[i] < cachePageId[min_index]))
+            if ((lastAccessedTimestamp[i] < lastAccessedTimestamp[min_index]) || (lastAccessedTimestamp[i] == lastAccessedTimestamp[min_index] && cachePageId[i] < cachePageId[min_index]))
             {
                 min_index = i;
             }
@@ -116,7 +118,7 @@ private:
             {
 #ifdef NO_UEFI
 #else
-                lastAccessedTick[i] = now_ms();
+                lastAccessedTimestamp[i] = now_ms();
 #endif
                 return i;
             }
@@ -139,7 +141,7 @@ private:
         cache_page_id = getMostOutdatedCachePage();
 #ifdef NO_UEFI
         auto sz = load(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
-        lastAccessedTick[cache_page_id] = 0;
+        lastAccessedTimestamp[cache_page_id] = 0;
 #else
         auto sz = asyncLoad(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
         if (sz != pageSize)
@@ -149,7 +151,7 @@ private:
 #endif
             return -1;
         }
-        lastAccessedTick[cache_page_id] = now_ms();
+        lastAccessedTimestamp[cache_page_id] = now_ms();
 #endif
         cachePageId[cache_page_id] = pageId;
         return cache_page_id;
@@ -181,7 +183,7 @@ public:
     {
         setMem(currentPage, pageSize * (numCachePage+1), 0);
         setMem(cachePageId, sizeof(cachePageId), 0xff);
-        setMem(lastAccessedTick, sizeof(lastAccessedTick), 0);
+        setMem(lastAccessedTimestamp, sizeof(lastAccessedTimestamp), 0);
         cachePageId[0] = 0;
         currentId = 0;
         currentPageId = 0;
@@ -225,7 +227,7 @@ public:
 #ifdef NO_UEFI
             addEpochToFileName(pageDir, 12, 0);
 #else
-            addEpochToFileName(pageDir, 12, MAX(EPOCH, system.epoch));
+            addEpochToFileName(pageDir, 12, max(EPOCH, int(system.epoch)));
 #endif
             if (!checkDir(pageDir))
             {
@@ -279,7 +281,7 @@ public:
         unsigned long long hs = offset; // head start
         unsigned long long rhs = (hs / pageCapacity) * pageCapacity; // rounded hs
         unsigned long long r_page_id = rhs / pageCapacity;
-        unsigned long long he = MIN(rhs + pageCapacity, offset + numItems); // head end
+        unsigned long long he = min(rhs + pageCapacity, offset + numItems); // head end
         unsigned long long n_item = he - hs; // copy [hs, he)
         ACQUIRE(memLock);
         int cache_page_idx = loadPageToCache(r_page_id);
@@ -358,7 +360,7 @@ public:
         unsigned long long hs = currentId; // head start
         unsigned long long rhs = (hs / pageCapacity) * pageCapacity; // rounded hs
         unsigned long long r_page_id = rhs / pageCapacity;
-        unsigned long long he = MIN(rhs + pageCapacity, p_end); // head end
+        unsigned long long he = min(rhs + pageCapacity, p_end); // head end
         unsigned long long n_item = he - hs; // copy [hs, he)
         copyMem(currentPage + (currentId % pageCapacity), src, n_item * sizeof(T));
         currentId += n_item;
@@ -398,7 +400,6 @@ public:
     T get(unsigned long long index)
     {
         T result;
-        setMem(&result, sizeof(T), 0);
         ACQUIRE(memLock);
         unsigned long long requested_page_id = index / pageCapacity;
         int cache_page_idx = loadPageToCache(requested_page_id);
@@ -426,7 +427,7 @@ public:
     // (1) write current page to disk
     // (2) copy current page to cache
     // (3) clean current page for new data
-    void append(T data)
+    void append(const T& data)
     {
         ASSERT(currentPage != NULL);
         ACQUIRE(memLock);
@@ -447,7 +448,7 @@ public:
         CHAR16 pageName[64];
         generatePageName(pageName, pageId);
         ACQUIRE(memLock);
-        bool success = (asyncRem(pageDir, pageName)) == 0;
+        bool success = (asyncRemoveFile(pageDir, pageName)) == 0;
         RELEASE(memLock);
         return success;
     }

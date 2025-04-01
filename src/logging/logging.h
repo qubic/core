@@ -325,7 +325,6 @@ private:
     {
 #if ENABLED_LOGGING
         char buffer[LOG_HEADER_SIZE];
-        setMem(buffer, sizeof(buffer), 0);
         tx.addLogId();
         logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
         *((unsigned short*)(buffer)) = system.epoch;
@@ -356,11 +355,11 @@ private:
     }
 public:
     // 5 special txs for 5 special events in qubic
-    inline static unsigned int SC_INITIALIZE_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 0;
-    inline static unsigned int SC_BEGIN_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 1;
-    inline static unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
-    inline static unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
-    inline static unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
+    static constexpr unsigned int SC_INITIALIZE_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 0;
+    static constexpr unsigned int SC_BEGIN_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 1;
+    static constexpr unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
+    static constexpr unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
+    static constexpr unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
 
 #if ENABLED_LOGGING
     // Struct to map log buffer from log id    
@@ -597,6 +596,7 @@ public:
 #ifdef NO_UEFI
 #else
 
+    // This function is part of save/load feature and can only be called from main thread
     bool saveCurrentLoggingStates(CHAR16* dir)
     {
 #if ENABLED_LOGGING
@@ -648,6 +648,7 @@ public:
         return true;
     }
 
+    // This function is part of save/load feature and can only be called from main thread
     void loadLastLoggingStates(CHAR16* dir)
     {
 #if ENABLED_LOGGING

@@ -915,6 +915,8 @@ public:
         setText(mRemoveFileDirQueue[index], directory);
         mRemoveFilePathQueueCount++;
         RELEASE(mRemoveFilePathQueueLock);
+        // Note: if this remove operation is used by more modules,
+        // consider upgrade this design because mRemoveFilePathQueueCount may never hit 0
         while (mRemoveFilePathQueueCount != 0)
         {
             sleep(10);
@@ -994,7 +996,7 @@ static long long asyncLoad(const CHAR16* fileName, unsigned long long totalSize,
 // Asynchorous remove a file
 // This function can be called from any thread and is a blocking function
 // To avoid lock and the actual remove happen, flushAsyncFileIOBuffer must be called in main thread
-static long long asyncRem(const CHAR16* fileName, const CHAR16* directory = NULL)
+static long long asyncRemoveFile(const CHAR16* fileName, const CHAR16* directory = NULL)
 {
     if (gAsyncFileIO)
     {

@@ -116,13 +116,13 @@ void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Pe
 void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
-    RequestPruningPageFiles* request = header->getPayload<RequestPruningPageFiles>();
+    RequestPruningLog* request = header->getPayload<RequestPruningLog>();
     if (request->passcode[0] == logReaderPasscodes[0]
         && request->passcode[1] == logReaderPasscodes[1]
         && request->passcode[2] == logReaderPasscodes[2]
         && request->passcode[3] == logReaderPasscodes[3])
     {
-        ResponsePruningPageFiles resp;
+        ResponsePruningLog resp;
         auto pageCap = mapLogIdToBufferIndex.pageCap();
         unsigned long long fromPageId = (request->fromLogId + pageCap - 1) / pageCap;
         unsigned long long toPageId = (request->toLogId + 1) / pageCap;
@@ -145,11 +145,11 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
         {
             resp.success = (resp.success << 1) | 1;
         }
-        enqueueResponse(peer, sizeof(ResponsePruningPageFiles), ResponsePruningPageFiles::type, header->dejavu(), &resp);
+        enqueueResponse(peer, sizeof(ResponsePruningLog), ResponsePruningLog::type, header->dejavu(), &resp);
         return;
     }
 #endif
-    enqueueResponse(peer, 0, ResponsePruningPageFiles::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, ResponsePruningLog::type, header->dejavu(), NULL);
 }
 
 

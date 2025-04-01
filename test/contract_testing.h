@@ -5,9 +5,6 @@
 // workaround for name clash with stdlib
 #define system qubicSystemStruct
 
-// reduced size of logging buffer (512 MB instead of 8 GB)
-#define LOG_BUFFER_SIZE (2*268435456ULL)
-
 // make test example contracts available in all compile units
 #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
