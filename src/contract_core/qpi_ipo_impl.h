@@ -21,5 +21,5 @@ bool QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex, long 
         return false;
     }
 
-    return bidInContractIPO(price, quantity, _currentContractId, spectrumIndex, IPOContractIndex);
+    return bidInContractIPO(price, quantity, _currentContractId, spectrumIndex, IPOContractIndex, this);
 }

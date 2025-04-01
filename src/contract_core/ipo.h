@@ -6,6 +6,9 @@
 #include "contract_core/qpi_spectrum_impl.h"
 
 
+// Notify dest of incoming transfer if dest is a contract. This is for outside QPI context only!
+void notifyContractOfIncomingTransfer(const m256i& source, const m256i& dest, long long amount, unsigned char type);
+
 static m256i releasedPublicKeys[NUMBER_OF_COMPUTORS];
 static long long releasedAmounts[NUMBER_OF_COMPUTORS];
 static unsigned int numberOfReleasedEntities;
@@ -13,7 +16,8 @@ static unsigned int numberOfReleasedEntities;
 
 // Bid in contract IPO (caller has to ensure that contractIndex is in IPO phase).
 // This can be either called through QPI (contract procedure running in contract processor) or through a transaction (tick processor).
-static bool bidInContractIPO(long long price, unsigned short quantity, const m256i& sourcePublicKey, const int spectrumIndex, const unsigned int contractIndex)
+// If called by QPI, you must pass QPI context.
+static bool bidInContractIPO(long long price, unsigned short quantity, const m256i& sourcePublicKey, const int spectrumIndex, const unsigned int contractIndex, const QPI::QpiContextProcedureCall* qpiContext = nullptr)
 {
     ASSERT(spectrumIndex >= 0);
     ASSERT(spectrumIndex == ::spectrumIndex(sourcePublicKey));
@@ -99,8 +103,10 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                // TODO: facilitate calling either contract processor notification (QPI version) or tick processor notification
-                //notifyContractOfIncomingTransfer(m256i::zero(), releasedPublicKeys[i], releasedAmounts[i], QPI::TransferType::ipoBidRefund);
+                if (qpiContext)
+                    qpiContext->__qpiNotifyPostIncomingTransfer(m256i::zero(), releasedPublicKeys[i], releasedAmounts[i], QPI::TransferType::ipoBidRefund);
+                else
+                    notifyContractOfIncomingTransfer(m256i::zero(), releasedPublicKeys[i], releasedAmounts[i], QPI::TransferType::ipoBidRefund);
                 const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }
@@ -160,8 +166,7 @@ static void finishIPOs()
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                // TODO: enable notification
-                //notifyContractOfIncomingTransfer(m256i::zero(), releasedPublicKeys[i], releasedAmounts[i], QPI::TransferType::ipoBidRefund);
+                notifyContractOfIncomingTransfer(m256i::zero(), releasedPublicKeys[i], releasedAmounts[i], QPI::TransferType::ipoBidRefund);
                 const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
                 logger.logQuTransfer(quTransfer);
             }

@@ -1792,8 +1792,8 @@ static void contractProcessor(void*)
     }
 }
 
-// If destinationPublicKey is contract, it needs to be notified of incoming transfers.
-// Cannot be called from contract processor or main processor!
+// Notify dest of incoming transfer if dest is a contract.
+// CAUTION: Cannot be called from contract processor or main processor! If called from QPI functions, it will get stuck.
 static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& dest, long long amount, unsigned char type)
 {
     // Only notify if amount > 0 and dest is contract
