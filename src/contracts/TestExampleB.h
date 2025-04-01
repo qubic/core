@@ -297,12 +297,44 @@ protected:
 	_
 
 	//---------------------------------------------------------------
+	// IPO TEST
+public:
+	struct GetIpoBid_input
+	{
+		uint32 ipoContractIndex;
+		uint32 bidIndex;
+	};
+	struct GetIpoBid_output
+	{
+		id publicKey;
+		sint64 price;
+	};
+
+	struct QpiBidInIpo_input
+	{
+		uint32 ipoContractIndex;
+		sint64 pricePerShare;
+		uint16 numberOfShares;
+	};
+	typedef bool QpiBidInIpo_output;
+
+	PUBLIC_FUNCTION(GetIpoBid)
+		output.price = qpi.ipoBidPrice(input.ipoContractIndex, input.bidIndex);
+		output.publicKey = qpi.ipoBidId(input.ipoContractIndex, input.bidIndex);
+	_
+
+	PUBLIC_PROCEDURE(QpiBidInIpo)
+		output = qpi.bidInIPO(input.ipoContractIndex, input.pricePerShare, input.numberOfShares);
+	_
+
+	//---------------------------------------------------------------
 	// COMMON PARTS
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
 		REGISTER_USER_FUNCTION(CallFunctionOfTestExampleA, 1);
 
 		REGISTER_USER_FUNCTION(IncomingTransferAmounts, 20);
+		REGISTER_USER_FUNCTION(GetIpoBid, 30);
 
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
 		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);
@@ -314,5 +346,6 @@ protected:
 
 		REGISTER_USER_PROCEDURE(QpiTransfer, 20);
 		REGISTER_USER_PROCEDURE(QpiDistributeDividends, 21);
+		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
 	_
 };

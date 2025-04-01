@@ -18,6 +18,7 @@
 #include "contract_core/qpi_asset_impl.h"
 #include "contract_core/qpi_system_impl.h"
 #include "contract_core/qpi_ticking_impl.h"
+#include "contract_core/qpi_ipo_impl.h"
 
 #include "logging_test.h"
 
