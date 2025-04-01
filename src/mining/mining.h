@@ -50,6 +50,7 @@ struct CustomMiningSolution
 {
     unsigned long long taskIndex; // should match the index from task
     unsigned int nonce;         // xmrig::JobResult.nonce
+    unsigned int padding;
     m256i result;               // xmrig::JobResult.result, 32 bytes
 };
 
