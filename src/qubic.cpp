@@ -551,7 +551,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
 
                                     // Check the computor idx of this solution
-                                    unsigned short computorID = (solution->nonce & 0xFFFFFFFF) % NUMBER_OF_COMPUTORS;
+                                    unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
 
                                     ACQUIRE(gCustomMiningSharesCountLock);
                                     gCustomMiningSharesCount[computorID]++;
