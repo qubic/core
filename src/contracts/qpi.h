@@ -1372,6 +1372,18 @@ namespace QPI
 		// Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
 		id invocator() const { return _invocator; }
 
+		// Returns the ID of the entity who has made this IPO bid or NULL_ID if the ipoContractIndex or ipoBidIndex are invalid.
+		inline id ipoBidId(
+			uint32 ipoContractIndex,
+			uint32 ipoBidIndex
+		) const;
+
+		// Returns the price of an IPO bid, -1 if contract index is invalid, -2 if contract is not in IPO, -3 if bid index is invalid.
+		inline sint64 ipoBidPrice(
+			uint32 ipoContractIndex,
+			uint32 ipoBidIndex
+		) const;
+
 		template <typename T>
 		inline id K12(
 			const T& data

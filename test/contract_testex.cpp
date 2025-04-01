@@ -117,6 +117,8 @@ public:
         callSystemProcedure(TESTEXB_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(TESTEXC);
         callSystemProcedure(TESTEXC_CONTRACT_INDEX, INITIALIZE);
+        INIT_CONTRACT(TESTEXD);
+        callSystemProcedure(TESTEXD_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
         qLogger::initLogging();
@@ -320,6 +322,23 @@ public:
         typename StateStruct::QpiDistributeDividends_input input{ amountPerShare };
         typename StateStruct::QpiDistributeDividends_output output;
         return invokeUserProcedure(StateStruct::__contract_index, 21, input, output, originator, fee);
+    }
+
+    template <typename StateStruct>
+    typename StateStruct::GetIpoBid_output getIpoBid(unsigned int ipoContractIndex, unsigned int bidIndex)
+    {
+        typename StateStruct::GetIpoBid_input input{ ipoContractIndex, bidIndex };
+        typename StateStruct::GetIpoBid_output output;
+        EXPECT_EQ(callFunction(StateStruct::__contract_index, 30, input, output), NoContractError);
+        return output;
+    }
+
+    template <typename StateStruct>
+    bool qpiBidInIpo(unsigned int ipoContractIndex, long long pricePerShare, unsigned short numberOfShares, sint64 fee = 0, const id& originator = USER1)
+    {
+        typename StateStruct::QpiBidInIpo_input input{ ipoContractIndex, pricePerShare, numberOfShares };
+        typename StateStruct::QpiBidInIpo_output output;
+        return invokeUserProcedure(StateStruct::__contract_index, 30, input, output, originator, fee) && output;
     }
 };
 
@@ -916,6 +935,102 @@ TEST(ContractTestEx, QueryBasicQpiFunctions)
     EXPECT_EQ(qpiReturned2.qpiFunctionsOutput.tick, system.tick);
     EXPECT_EQ(qpiReturned2.inputDataK12, digest2);
     EXPECT_FALSE(qpiReturned2.inputSignatureValid);
+}
+
+TEST(ContractTestEx, QpiFunctionsIPO)
+{
+    // test IPO functions with IPO of TESTEXD
+    ContractTestingTestEx test;
+    system.epoch = contractDescriptions[TESTEXD_CONTRACT_INDEX].constructionEpoch - 1;
+    constexpr long long initialBalance = 12345678;
+    increaseEnergy(USER1, initialBalance);
+    increaseEnergy(TESTEXB_CONTRACT_ID, initialBalance);
+    increaseEnergy(TESTEXC_CONTRACT_ID, initialBalance);
+
+    // Test output of qpi functions for invalid contract index
+    for (int i = 0; i < NUMBER_OF_COMPUTORS + 2; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(contractCount, i);
+        EXPECT_TRUE(isZero(bid.publicKey));
+        EXPECT_EQ(bid.price, -1);
+    }
+
+    // Test output of qpi functions for contract that is not in IPO
+    for (int i = 0; i < NUMBER_OF_COMPUTORS + 2; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXB_CONTRACT_INDEX, i);
+        EXPECT_TRUE(isZero(bid.publicKey));
+        EXPECT_EQ(bid.price, -2);
+    }
+
+    // Test output of qpi functions without any bids
+    for (int i = 0; i < NUMBER_OF_COMPUTORS + 2; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        EXPECT_TRUE(isZero(bid.publicKey));
+        EXPECT_EQ(bid.price, (i < NUMBER_OF_COMPUTORS) ? 0 : -3);
+    }
+
+    // Test bids with invalid contract, price, and quantity
+    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(contractCount, 10, 100));
+    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXC_CONTRACT_INDEX, 10, 100));
+    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0, 100));
+    EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
+    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, MAX_AMOUNT, 100));
+    EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
+    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, 0));
+    EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
+    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, NUMBER_OF_COMPUTORS + 1));
+    EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
+
+    // Successfully bid in IPO
+    EXPECT_TRUE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, 100));
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        EXPECT_EQ(bid.publicKey, (i < 100) ? TESTEXC_CONTRACT_ID : NULL_ID);
+        EXPECT_EQ(bid.price, (i < 100) ? 10 : 0);
+    }
+    EXPECT_TRUE(test.qpiBidInIpo<TESTEXB>(TESTEXD_CONTRACT_INDEX, 100, 600));
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        EXPECT_EQ(bid.publicKey, (i < 600) ? TESTEXB_CONTRACT_ID : TESTEXC_CONTRACT_ID);
+        EXPECT_EQ(bid.price, (i < 600) ? 100 : 10);
+    }
+    EXPECT_TRUE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 1000, 10));
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        if (i < 10)
+        {
+            EXPECT_EQ(bid.publicKey, TESTEXC_CONTRACT_ID);
+            EXPECT_EQ(bid.price, 1000);
+        }
+        else if (i < 10 + 600)
+        {
+            EXPECT_EQ(bid.publicKey, TESTEXB_CONTRACT_ID);
+            EXPECT_EQ(bid.price, 100);
+        }
+        else
+        {
+            EXPECT_EQ(bid.publicKey, TESTEXC_CONTRACT_ID);
+            EXPECT_EQ(bid.price, 10);
+        }
+    }
+
+    // Simulate end of IPO
+    finishIPOs();
+
+    // Check contract shares
+    Asset asset{NULL_ID, assetNameFromString("TESTEXD")};
+    EXPECT_EQ(600, numberOfShares(asset, { TESTEXB_CONTRACT_ID, QX_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, QX_CONTRACT_INDEX }));
+    EXPECT_EQ(76, numberOfShares(asset, { TESTEXC_CONTRACT_ID, QX_CONTRACT_INDEX }, { TESTEXC_CONTRACT_ID, QX_CONTRACT_INDEX }));
+
+    // Check balances
+    const long long finalPrice = 10;
+    EXPECT_EQ(getBalance(TESTEXB_CONTRACT_ID), initialBalance - 600 * finalPrice);
+    EXPECT_EQ(getBalance(TESTEXC_CONTRACT_ID), initialBalance - 76 * finalPrice);
 }
 
 //-------------------------------------------------------------------
