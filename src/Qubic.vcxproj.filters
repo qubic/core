@@ -241,6 +241,12 @@
     <ClInclude Include="contracts\TestExampleC.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contract_core\ipo.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_ipo_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
