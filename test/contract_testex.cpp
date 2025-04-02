@@ -334,11 +334,14 @@ public:
     }
 
     template <typename StateStruct>
-    bool qpiBidInIpo(unsigned int ipoContractIndex, long long pricePerShare, unsigned short numberOfShares, sint64 fee = 0, const id& originator = USER1)
+    long long qpiBidInIpo(unsigned int ipoContractIndex, long long pricePerShare, unsigned short numberOfShares, sint64 fee = 0, const id& originator = USER1)
     {
         typename StateStruct::QpiBidInIpo_input input{ ipoContractIndex, pricePerShare, numberOfShares };
         typename StateStruct::QpiBidInIpo_output output;
-        return invokeUserProcedure(StateStruct::__contract_index, 30, input, output, originator, fee) && output;
+        if (invokeUserProcedure(StateStruct::__contract_index, 30, input, output, originator, fee))
+            return output;
+        else
+            return -2;
     }
 };
 
@@ -972,33 +975,33 @@ TEST(ContractTestEx, QpiFunctionsIPO)
     }
 
     // Test bids with invalid contract, price, and quantity
-    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(contractCount, 10, 100));
-    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXC_CONTRACT_INDEX, 10, 100));
-    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0, 100));
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(contractCount, 10, 100), -1);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXC_CONTRACT_INDEX, 10, 100), -1);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0, 100), -1);
     EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
-    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, MAX_AMOUNT, 100));
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, MAX_AMOUNT, 100), -1);
     EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
-    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, 0));
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, 0), -1);
     EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
-    EXPECT_FALSE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, NUMBER_OF_COMPUTORS + 1));
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, NUMBER_OF_COMPUTORS + 1), -1);
     EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
 
     // Successfully bid in IPO
-    EXPECT_TRUE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, 100));
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, 100), 100);
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
         EXPECT_EQ(bid.publicKey, (i < 100) ? TESTEXC_CONTRACT_ID : NULL_ID);
         EXPECT_EQ(bid.price, (i < 100) ? 10 : 0);
     }
-    EXPECT_TRUE(test.qpiBidInIpo<TESTEXB>(TESTEXD_CONTRACT_INDEX, 100, 600));
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXB>(TESTEXD_CONTRACT_INDEX, 100, 600), 600);
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
         EXPECT_EQ(bid.publicKey, (i < 600) ? TESTEXB_CONTRACT_ID : TESTEXC_CONTRACT_ID);
         EXPECT_EQ(bid.price, (i < 600) ? 100 : 10);
     }
-    EXPECT_TRUE(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 1000, 10));
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 1000, 10), 10);
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
@@ -1018,6 +1021,10 @@ TEST(ContractTestEx, QpiFunctionsIPO)
             EXPECT_EQ(bid.price, 10);
         }
     }
+
+    // Test too low bids
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXB>(TESTEXD_CONTRACT_INDEX, 1, 10), 0);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 2, 10), 0);
 
     // Simulate end of IPO
     finishIPOs();

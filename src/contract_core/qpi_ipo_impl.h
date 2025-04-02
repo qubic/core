@@ -2,23 +2,26 @@
 
 #include "contract_core/ipo.h"
 
-bool QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex, long long price, unsigned int quantity) const
+QPI::sint64 QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex, long long price, unsigned int quantity) const
 {
+    if (contractCallbacksRunning != NoContractCallback)
+        return -1;
+
     if (_currentContractIndex >= contractCount || IPOContractIndex >= contractCount || _currentContractIndex >= IPOContractIndex)
     {
-        return false;
+        return -1;
     }
 
     if (system.epoch >= contractDescriptions[IPOContractIndex].constructionEpoch)  // IPO is finished.
     {
-        return false;
+        return -1;
     }
 
     const int spectrumIndex = ::spectrumIndex(_currentContractId);
 
-    if (contractCallbacksRunning != NoContractCallback || spectrumIndex < 0)
+    if (spectrumIndex < 0)
     {
-        return false;
+        return -1;
     }
 
     return bidInContractIPO(price, quantity, _currentContractId, spectrumIndex, IPOContractIndex, this);
