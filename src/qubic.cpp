@@ -677,10 +677,10 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 {
     BroadcastComputors* request = header->getPayload<BroadcastComputors>();
 
-    // Only accept computor list from current epoch (important in seamless epoch transition if this node is
+    // Only accept computorlist from current epoch (important in seamless epoch transition if this node is
     // lagging behind the others that already switched epoch).
-    // Only accept a new list once per epoch
-    // If we are in a critical Situation 2 (ARB List does not match self Computed one) manuel intervention is needed.
+    // Only accept a new list once per epoch.
+    // If node has a criticalsituation #2 (ARB computorlist does not match self-generated computorlist) manual intervention is needed.
     if (request->computors.epoch == system.epoch && (request->computors.epoch > broadcastedComputors.computors.epoch || system.useSelfGeneratedComputors))
     {
         // Verify that all addresses are non-zeroes. Otherwise, discard it even if ARB broadcasted it.
@@ -710,7 +710,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 
             if (system.useSelfGeneratedComputors)
             {
-                // Compare received computorlist (signed by ARB) and self generated computorlist
+                // Compare received computorlist (signed by ARB) and self-generated computorlist
                 bool listMatches = true;
 
                 for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -722,12 +722,12 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                     }
                 }
 
-                // No matter if the received computorlist matches the selfgenerated computorlist or not, broadcastedComputors is overwritten with the list of ARB, so that the node broadcasts ABR's list on request.
+                // No matter if the received computorlist matches the self-generated computorlist or not, broadcastedComputors is overwritten with the list of ARB, so that the node broadcasts ABR's list on request.
                 copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
 
                 if (!listMatches)
                 {
-                    // If list from ARB does not match self computed list, raise criticalSituation #2 and stop ticking.
+                    // If computorlist from ARB does not match self-generated computorlist, raise criticalSituation #2 and stop ticking.
                     criticalSituation = 2;
 #ifndef NDEBUG
                     addDebugMessage(L"COMPLIST: Computorlist received from ARB does not match self-generated computorlist. Raise criticalSituation #2.");
@@ -741,7 +741,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                     system.useSelfGeneratedComputors = false;
                 }
             }
-            else // No self generated computorlist available
+            else // No self-generated computorlist available
             {
                 // Copy computorlist
                 copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
@@ -2960,7 +2960,7 @@ static void beginEpoch()
     if (system.useSelfGeneratedComputors)
     {
 #ifndef NDEBUG
-        addDebugMessage(L"COMPLIST: Using selfcomputed computorlist");
+        addDebugMessage(L"COMPLIST: Using self-generated computorlist");
 #endif
         broadcastedComputors.computors.epoch = system.epoch;
         copyMem(&broadcastedComputors.computors.publicKeys, system.selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i));
@@ -5419,11 +5419,7 @@ static void tickProcessor(void*)
                                     }
                                     epochTransitionState = 2;
 
-#ifndef NDEBUG
-                                    addDebugMessage(L"Calculate computor list"); // TODO: remove after testing
-#endif
                                     calculateComputorIndex();
-
 
                                     beginEpoch();
                                     setNewMiningSeed();
@@ -6957,7 +6953,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
                 }
-
 
                 if (ts.nextTickTransactionOffset + MAX_TRANSACTION_SIZE > ts.tickTransactions.storageSpaceCurrentEpoch)
                 {
