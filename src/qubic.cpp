@@ -77,6 +77,7 @@
 #define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 4 // Must be at least 3+: 1+ for tx propagation + 1 for tickData propagation + 1 for vote propagation
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
+constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
 
 
 struct Processor : public CustomStack
@@ -203,6 +204,17 @@ static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningSc
 
 
 static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0 };
+static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
+static CustomMiningSharesCounter gCustomMiningSharesCounter;
+static volatile char gCustomMiningSharesCountLock = 0;
+static char gIsInCustomMiningState = 0;
+static volatile char gIsInCustomMiningStateLock = 0;
+
+struct revenueScore
+{
+    unsigned long long _oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
+    unsigned long long _customMiningScore[NUMBER_OF_COMPUTORS]; // the new score with customming
+} gRevenueScoreWithCustomMining;
 
 
 // variables and declare for persisting state
@@ -235,6 +247,7 @@ struct
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+static bool saveCustomMiningRevenue(CHAR16* directory = NULL);
 
 #if ENABLED_LOGGING
 #define PAUSE_BEFORE_CLEAR_MEMORY 1 // Requiring operators to press F10 to clear memory (before switching epoch)
@@ -250,6 +263,13 @@ static struct
 	unsigned char data[VOTE_COUNTER_DATA_SIZE_IN_BYTES];
 	unsigned char signature[SIGNATURE_SIZE];
 } voteCounterPayload;
+
+static struct
+{
+    Transaction transaction;
+    unsigned char packedScore[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES];
+    unsigned char signature[SIGNATURE_SIZE];
+} customMiningSharePayload;
 
 static struct
 {
@@ -345,6 +365,11 @@ static void logToConsole(const CHAR16* message)
 #endif
 }
 
+
+static unsigned int getTickInMiningPhaseCycle()
+{
+    return (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+}
 
 static int computorIndex(m256i computor)
 {
@@ -513,6 +538,25 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             if (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
                             {
                                 customMiningMessageCounters[i]++;
+
+                                // Only record shares in idle phase
+                                char recordSolutions = 0;
+                                ACQUIRE(gIsInCustomMiningStateLock);
+                                recordSolutions = gIsInCustomMiningState;
+                                RELEASE(gIsInCustomMiningStateLock);
+
+                                if (recordSolutions)
+                                {
+                                    // Record the solution
+                                    const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
+
+                                    // Check the computor idx of this solution
+                                    unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
+
+                                    ACQUIRE(gCustomMiningSharesCountLock);
+                                    gCustomMiningSharesCount[computorID]++;
+                                    RELEASE(gCustomMiningSharesCountLock);
+                                }
                             }
 
                             break;
@@ -1375,11 +1419,6 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
-static unsigned int getTickInMiningPhaseCycle()
-{
-    return (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
-}
-
 static void checkAndSwitchMiningPhase()
 {
     const unsigned int r = getTickInMiningPhaseCycle();
@@ -1394,6 +1433,22 @@ static void checkAndSwitchMiningPhase()
             score->initMiningData(m256i::zero());
         }
     }
+}
+
+static void checkAndSwitchCustomMiningPhase()
+{
+    const unsigned int r = getTickInMiningPhaseCycle();
+
+    ACQUIRE(gIsInCustomMiningStateLock);
+    if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+    {
+        gIsInCustomMiningState = 1;
+    }
+    else
+    {
+        gIsInCustomMiningState = 0;
+    }
+    RELEASE(gIsInCustomMiningStateLock);
 }
 
 // Updates the global numberTickTransactions based on the tick data in the tick storage.
@@ -2255,6 +2310,18 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     }
                 }
                 break;
+
+                case CustomMiningSolutionTransaction::transactionType():
+                {
+                    int compIndex = computorIndex(transaction->sourcePublicKey);
+                    if (compIndex >= 0
+                        && transaction->inputSize == CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES)
+                    {
+                        gCustomMiningSharesCounter.addShares(transaction->inputPtr(), compIndex);
+                    }
+                }
+                break;
+
                 }
             }
             else
@@ -2712,6 +2779,45 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
+    // Broadcast custom mining shares 
+    if (mainAuxStatus & 1)
+    {
+        // In the begining of mining phase
+        if (getTickInMiningPhaseCycle() == 0)
+        {
+            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+            {
+                // Randomly schedule the tick to publish the tx
+                unsigned int publishingTickOffset = TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET + random(NUMBER_OF_COMPUTORS / 2);
+
+                // Update the custom mining share counter
+                ACQUIRE(gCustomMiningSharesCountLock);
+                gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
+                RELEASE(gCustomMiningSharesCountLock);
+
+                auto& payload = customMiningSharePayload;
+                payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
+                payload.transaction.destinationPublicKey = m256i::zero();
+                payload.transaction.amount = 0;
+                payload.transaction.tick = system.tick + publishingTickOffset;
+                payload.transaction.inputType = CustomMiningSolutionTransaction::transactionType();
+                payload.transaction.inputSize = sizeof(payload.packedScore);
+                gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
+
+                unsigned char digest[32];
+                KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.packedScore), digest, sizeof(digest));
+                sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
+                enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
+
+            }
+
+            // reset the phase counter
+            ACQUIRE(gCustomMiningSharesCountLock);
+            bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+            RELEASE(gCustomMiningSharesCountLock);
+        }
+    }
+
 #ifndef NDEBUG
     // Check that continuous updating of spectrum info is consistent with counting from scratch
     SpectrumInfo si;
@@ -2799,6 +2905,9 @@ static void beginEpoch()
     system.numberOfSolutions = 0;
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
+
+    gCustomMiningSharesCounter.init();
+    bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
 
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
@@ -2945,6 +3054,18 @@ static void endEpoch()
                 revenueScore[i] = 0;
             }
         }
+
+        // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution and old score
+        {
+            bs->CopyMem(gRevenueScoreWithCustomMining._oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining._oldFinalScore));
+            // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                unsigned long long shareScore = gCustomMiningSharesCounter.getSharesCount(i);
+                gRevenueScoreWithCustomMining._customMiningScore[i] = shareScore;
+            }
+        }
+
 
         // Sort revenue scores to get lowest score of quorum
         unsigned long long sortedRevenueScore[QUORUM + 1];
@@ -5125,6 +5246,8 @@ static void tickProcessor(void*)
 
                                 checkAndSwitchMiningPhase();
 
+                                checkAndSwitchCustomMiningPhase();
+
                                 if (epochTransitionState == 1)
                                 {
 
@@ -5136,6 +5259,9 @@ static void tickProcessor(void*)
 
                                     // end current epoch
                                     endEpoch();
+
+                                    // Save the file of revenue. This blocking save can be called from any thread
+                                    saveCustomMiningRevenue(NULL);
 
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;
@@ -5322,6 +5448,16 @@ static bool saveSystem(CHAR16* directory)
     return false;
 }
 
+static bool saveCustomMiningRevenue(CHAR16* directory)
+{
+    CHAR16* fn = CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME;
+    long long savedSize = asyncSave(fn, sizeof(gRevenueScoreWithCustomMining), (unsigned char*)&gRevenueScoreWithCustomMining, directory);
+    if (savedSize == sizeof(gRevenueScoreWithCustomMining))
+    {
+        return true;
+    }
+    return false;
+}
 
 static bool initialize()
 {
@@ -7046,8 +7182,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #if !defined(NDEBUG)
                 printDebugMessages();
 #endif
-                // Flush the file system
-                flushAsyncFileIOBuffer();
+                // Flush the file system. Only flush one item at a time to avoid the main loop stay too long
+                // Even if the time is not satisfied, when still flush at least some items to make sure the save/load not stuck forever
+                // TODO: profile the read/write speed of the file system at the begining and adjust the number of items to flush
+                int remainedItem = 1;
+                do
+                {
+                    remainedItem = flushAsyncFileIOBuffer(1);
+                }
+                while (remainedItem > 0 && ((__rdtsc() - curTimeTick) * 1000000 / frequency < TARGET_MAINTHREAD_LOOP_DURATION));
             }
 
             saveSystem();
