@@ -451,6 +451,10 @@ public:
     // delete a page on disk given pageId
     bool prune(unsigned long long pageId)
     {
+        if (pageId > currentPageId)
+        {
+            return false;
+        }
         CHAR16 pageName[64];
         generatePageName(pageName, pageId);
         ACQUIRE(memLock);
