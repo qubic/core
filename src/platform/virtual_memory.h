@@ -143,6 +143,14 @@ private:
         auto sz = load(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
         lastAccessedTimestamp[cache_page_id] = 0;
 #else
+#if !defined(NDEBUG)
+        {
+            CHAR16 debugMsg[128];
+            setText(debugMsg, L"Trying to load OLD page: ");
+            appendNumber(debugMsg, pageId, true);
+            addDebugMessage(debugMsg);
+        }
+#endif
         auto sz = asyncLoad(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
         if (sz != pageSize)
         {
@@ -154,6 +162,16 @@ private:
         lastAccessedTimestamp[cache_page_id] = now_ms();
 #endif
         cachePageId[cache_page_id] = pageId;
+#if !defined(NDEBUG)
+        {
+            CHAR16 debugMsg[128];
+            setText(debugMsg, L"Load complete. Page ");
+            appendNumber(debugMsg, pageId, true);
+            appendText(debugMsg, " is loaded into slot ");
+            appendNumber(debugMsg, cache_page_id, true);
+            addDebugMessage(debugMsg);
+        }
+#endif
         return cache_page_id;
     }
 
