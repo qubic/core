@@ -167,7 +167,7 @@ private:
             CHAR16 debugMsg[128];
             setText(debugMsg, L"Load complete. Page ");
             appendNumber(debugMsg, pageId, true);
-            appendText(debugMsg, " is loaded into slot ");
+            appendText(debugMsg, L" is loaded into slot ");
             appendNumber(debugMsg, cache_page_id, true);
             addDebugMessage(debugMsg);
         }
