@@ -236,9 +236,6 @@ static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
 
-static m256i selfGeneratedComputors[NUMBER_OF_COMPUTORS];
-static bool useSelfGeneratedComputors = false;
-
 #if ENABLED_LOGGING
 #define PAUSE_BEFORE_CLEAR_MEMORY 1 // Requiring operators to press F10 to clear memory (before switching epoch)
 #else
@@ -640,7 +637,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
     // lagging behind the others that already switched epoch).
     // Only accept a new list once per epoch
     // If we are in a critical Situation 2 (ARB List does not match self Computed one) manuel intervention is needed.
-    if (request->computors.epoch == system.epoch && (request->computors.epoch > broadcastedComputors.computors.epoch || useSelfGeneratedComputors) && !(criticalSituation == 2))
+    if (request->computors.epoch == system.epoch && (request->computors.epoch > broadcastedComputors.computors.epoch || system.useSelfGeneratedComputors))
     {
         // Verify that all addresses are non-zeroes. Otherwise, discard it even if ARB broadcasted it.
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -656,14 +653,20 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         KangarooTwelve(request, sizeof(BroadcastComputors) - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify((unsigned char*)&arbitratorPublicKey, digest, request->computors.signature))
         {
+            // If computorlist is signed by the ARB we propagate the computorlist through the network
             if (header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
             }
 
-            if (useSelfGeneratedComputors)
+            // If node is in criticalSituation #2 it will not accept anye other computorlist
+            if(criticalSituation == 2){
+                return;
+            }
+
+            if (system.useSelfGeneratedComputors)
             {
-                // Compare received computor list (signed by ARB) and self generated computor list
+                // Compare received computorlist (signed by ARB) and self generated computorlist
                 bool listMatches = true;
 
                 for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -674,49 +677,51 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                         break;
                     }
                 }
+
+                // No matter if the received computorlist matches the selfgenerated computorlist or not, broadcastedComputors is overwritten with the list of ARB, so that the node broadcasts ABR's list on request.
+                copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+
                 if (!listMatches)
                 {
-                    // Stop tickProcessor due to mismatch
+                    // If list from ARB does not match self computed list, raise criticalSituation #2 and stop ticking.
                     criticalSituation = 2;
 #ifndef NDEBUG
-                    addDebugMessage(L"Error: Computor list received from ARB does not match self-generated list. Raise criticalSituation #2.");
+                    addDebugMessage(L"COMPLIST: Computorlist received from ARB does not match self-generated computorlist. Raise criticalSituation #2.");
 #endif
                 }
                 else
                 {
-                    // Accept list of arbitrator and mark as signed
-                    copyMem(&broadcastedComputors.computors.signature, request->computors.signature, SIGNATURE_SIZE);
-                    useSelfGeneratedComputors = false;
+#ifndef NDEBUG
+                    addDebugMessage(L"COMPLIST: Accept computorlist of ARB");
+#endif
+                    system.useSelfGeneratedComputors = false;
                 }
             }
-            else // No self generated computor list available
+            else // No self generated computorlist available
             {
-                // Copy computor list
+                // Copy computorlist
                 copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
                 copyMem(system.futureComputors, broadcastedComputors.computors.publicKeys, NUMBER_OF_COMPUTORS * sizeof(m256i));
 
                 // Update ownComputorIndices and minerPublicKeys
-                if (request->computors.epoch == system.epoch)
+                numberOfOwnComputorIndices = 0;
+                ACQUIRE(minerScoreArrayLock);
+                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
-                    numberOfOwnComputorIndices = 0;
-                    ACQUIRE(minerScoreArrayLock);
-                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                    minerPublicKeys[i] = request->computors.publicKeys[i];
+
+                    for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
                     {
-                        minerPublicKeys[i] = request->computors.publicKeys[i];
-
-                        for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+                        if (request->computors.publicKeys[i] == computorPublicKeys[j])
                         {
-                            if (request->computors.publicKeys[i] == computorPublicKeys[j])
-                            {
-                                ownComputorIndices[numberOfOwnComputorIndices] = i;
-                                ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
+                            ownComputorIndices[numberOfOwnComputorIndices] = i;
+                            ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
 
-                                break;
-                            }
+                            break;
                         }
                     }
-                    RELEASE(minerScoreArrayLock);
                 }
+                RELEASE(minerScoreArrayLock);
             }
         }
     }
@@ -2842,11 +2847,14 @@ static void beginEpoch()
     // there are many global variables that were init at declaration, may need to re-check all of them again
     resourceTestingDigest = 0;
 
-    // Use self generated computor list
-    if (useSelfGeneratedComputors)
+    // Use self-generated computorlist
+    if (system.useSelfGeneratedComputors)
     {
+#ifndef NDEBUG
+        addDebugMessage(L"COMPLIST: Using selfcomputed computorlist");
+#endif
         broadcastedComputors.computors.epoch = system.epoch;
-        copyMem(&broadcastedComputors.computors.publicKeys, selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i));
+        copyMem(&broadcastedComputors.computors.publicKeys, system.selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i));
         copyMem(system.futureComputors, broadcastedComputors.computors.publicKeys, NUMBER_OF_COMPUTORS * sizeof(m256i));
 
         // Update ownComputorIndices and minerPublicKeys
@@ -2854,11 +2862,11 @@ static void beginEpoch()
         ACQUIRE(minerScoreArrayLock);
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            minerPublicKeys[i] = selfGeneratedComputors[i];
+            minerPublicKeys[i] = system.selfGeneratedComputors[i];
 
             for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
             {
-                if (selfGeneratedComputors[i] == computorPublicKeys[j])
+                if (system.selfGeneratedComputors[i] == computorPublicKeys[j])
                 {
                     ownComputorIndices[numberOfOwnComputorIndices] = i;
                     ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
@@ -4162,7 +4170,20 @@ static bool loadAllNodeStates()
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
+    static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
+    loadedSize = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
+    if (loadedSize != sizeof(system))
+    {
+        logToConsole(L"Failed to load system");
+        return false;
+    }
+    updateNumberOfTickTransactions();
+
+    if(system.useSelfGeneratedComputors){
+        copyMem(&broadcastedComputors.computors.publicKeys, &system.selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i));
+    }
     // update own computor indices
+    numberOfOwnComputorIndices = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
         for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
@@ -4176,15 +4197,6 @@ static bool loadAllNodeStates()
             }
         }
     }
-
-    static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
-    loadedSize = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
-    if (loadedSize != sizeof(system))
-    {
-        logToConsole(L"Failed to load system");
-        return false;
-    }
-    updateNumberOfTickTransactions();
 
     setMem(assetChangeFlags, sizeof(assetChangeFlags), 0);
     setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
@@ -4803,7 +4815,7 @@ static void tryForceEmptyNextTick()
                                 setText(dbgMsg, L"Consensus: activated auto-F5 at tick ");
                                 appendNumber(dbgMsg, system.tick, true);
                                 addDebugMessage(dbgMsg);
-                            }                            
+                            }
 #endif
                         }
                         emptyTickResolver.lastTryClock = __rdtsc();
@@ -4834,7 +4846,7 @@ static void calculateComputorIndex()
     setMem(tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
     setMem(isIndexTaken, NUMBER_OF_COMPUTORS, false);
     setMem(isFComputorUsed, NUMBER_OF_COMPUTORS, false);
-    setMem(selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
+    setMem(system.selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
 
     // Check if computor is keeping its status and keep its index
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4858,7 +4870,7 @@ static void calculateComputorIndex()
     {
         if (!isIndexTaken[i])
         {
-            // Find new Computor in futureComputors
+            // Find new computor in futureComputors
             while (futureComputorIdx < NUMBER_OF_COMPUTORS)
             {
                 if (isFComputorUsed[futureComputorIdx] == false)
@@ -4880,10 +4892,10 @@ static void calculateComputorIndex()
         }
     }
 
-    // Save Future Computors in seperate array as beginEpoch randomly initializes broadcastedComputors
-    copyMem(selfGeneratedComputors, tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i));
+    // Save self-generated computorlist in seperate array as beginEpoch randomly initializes broadcastedComputors
+    copyMem(system.selfGeneratedComputors, tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i));
 
-    useSelfGeneratedComputors = true;
+    system.useSelfGeneratedComputors = true;
 };
 
 static bool isTickTimeOut()
@@ -5297,7 +5309,7 @@ static void tickProcessor(void*)
                                     ASSERT(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
                                     ASSERT(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
                                     ASSERT(isZero((void*)minerScores, sizeof(minerScores)));
-                                    if(!useSelfGeneratedComputors){
+                                    if(!system.useSelfGeneratedComputors){
                                         ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
                                     }
                                     ASSERT(isZero(competitorScores, sizeof(competitorScores)));
@@ -5583,7 +5595,9 @@ static bool initialize()
         system.tick = system.initialTick;
 
         lastExpectedTickTransactionDigest = m256i::zero();
-
+        if(system.useSelfGeneratedComputors){
+            logToConsole(L"Use of self-generated computorlist from system file.");
+        }
         beginEpoch();
 
         // needs to be called after ts.beginEpoch() because it looks up tickIndex, which requires to setup begin of epoch in ts
@@ -6807,10 +6821,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     logToConsole(L"CRITICAL SITUATION #1!!!");
                 }
-                else if (criticalSituation == 2)
-                {
-                    logToConsole(L"CRITICAL SITUATION #2: Self-generated computorlist does not match computorlist of ARB, manual intervention is needed!");
-                }
 
 
                 if (ts.nextTickTransactionOffset + MAX_TRANSACTION_SIZE > ts.tickTransactions.storageSpaceCurrentEpoch)
@@ -6896,7 +6906,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         // send RequestComputors message at beginning of epoch
                         if (!broadcastedComputors.computors.epoch
                             || broadcastedComputors.computors.epoch != system.epoch
-                            || useSelfGeneratedComputors)
+                            || system.useSelfGeneratedComputors)
                         {
                             requestedComputors.header.randomizeDejavu();
                             bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
@@ -7148,9 +7158,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     tickerLoopNumerator = 0;
                     tickerLoopDenominator = 0;
 
-                    if (useSelfGeneratedComputors)
+                    if (system.useSelfGeneratedComputors)
                     {
                         logToConsole(L"Computorlist is self-generated and not signed by ARB");
+                    }
+                    if (criticalSituation == 2)
+                    {
+                        logToConsole(L"CRITICAL SITUATION #2: Self-generated computorlist does not match computorlist of ARB, manual intervention is needed!");
                     }
 
                     // output if misalignment happened
