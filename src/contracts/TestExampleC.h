@@ -72,11 +72,11 @@ public:
 	struct IncomingTransferAmounts_output
 	{
 		sint64 standardTransactionAmount;
-		uint64 procedureTransactionAmount;
-		uint64 qpiTransferAmount;
-		uint64 qpiDistributeDividendsAmount;
-		uint64 revenueDonationAmount;
-		uint64 ipoBidRefundAmount;
+		sint64 procedureTransactionAmount;
+		sint64 qpiTransferAmount;
+		sint64 qpiDistributeDividendsAmount;
+		sint64 revenueDonationAmount;
+		sint64 ipoBidRefundAmount;
 	};
 
 	struct QpiTransfer_input
