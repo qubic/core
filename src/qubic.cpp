@@ -5023,7 +5023,10 @@ static void calculateComputorIndex()
     // Save self-generated computorlist in seperate array as beginEpoch randomly initializes broadcastedComputors
     copyMem(system.selfGeneratedComputors, tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i));
 
-    system.useSelfGeneratedComputors = true;
+
+    // Change to true as soon as selfGeneratedComputors shall be used!
+    // Currently set to false so that nodes compute the list but never use it to allow to compare self-generated lists
+    system.useSelfGeneratedComputors = false;
 };
 
 static bool isTickTimeOut()
