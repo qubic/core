@@ -101,6 +101,7 @@ private:
     {
         int page_id = getMostOutdatedCachePage();
         copyMem(cache[page_id], currentPage, pageSize);
+        lastAccessedTimestamp[page_id] = now_ms();
     }
 
     void cleanCurrentPage()
