@@ -130,6 +130,54 @@ static bool createDir(const CHAR16* dirName)
 #endif
 }
 
+// Can only be called from mainthread
+static bool removeFile(const CHAR16* directory, const CHAR16* fileName)
+{
+#ifdef NO_UEFI
+    logToConsole(L"NO_UEFI implementation of removeFile() is missing! No directory checked!");
+    return false;
+#else
+    EFI_STATUS status;
+    EFI_FILE_PROTOCOL* file;
+    EFI_FILE_PROTOCOL* directoryProtocol;
+    // Check if there is a directory provided
+    if (NULL != directory)
+    {
+        // Open the directory
+        if (status = root->Open(root, (void**)&directoryProtocol, (CHAR16*)directory, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        {
+            logStatusToConsole(L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            return false;
+        }
+
+        // Open the file from the directory.
+        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        {
+            logStatusToConsole(L"FileIOLoad:OpenDir:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            directoryProtocol->Close(directoryProtocol);
+            return false;
+        }
+
+        // No need the directory handle. Close it
+        directoryProtocol->Close(directoryProtocol);
+    }
+    else
+    {
+        if (status = root->Open(root, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        {
+            logStatusToConsole(L"FileIOLoad:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            return false;
+        }
+    }
+    if ((status = file->Delete(file)))
+    {
+        logStatusToConsole(L"FileIORem: Failed to delete file: ", status, __LINE__);
+        return false;
+    }
+    return true;
+#endif
+}
+
 static long long load(const CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, const CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
@@ -687,6 +735,11 @@ public:
             mEnableNonBlockSave = true;
         }
 
+        setMem(mRemoveFileNameQueue, sizeof(mRemoveFileNameQueue), 0);
+        setMem(mRemoveFileDirQueue, sizeof(mRemoveFileDirQueue), 0);
+        mRemoveFilePathQueueCount = 0;
+        mRemoveFilePathQueueLock = 0;
+
         return true;
     }
 
@@ -828,6 +881,48 @@ public:
         return (long long)totalSize;
     }
 
+    void flushRem()
+    {
+        ACQUIRE(mRemoveFilePathQueueLock);
+        if (mRemoveFilePathQueueCount)
+        {
+            for (int i = 0; i < mRemoveFilePathQueueCount; i++)
+            {
+                removeFile(mRemoveFileDirQueue[i], mRemoveFileNameQueue[i]);
+            }
+            setMem(mRemoveFileNameQueue, sizeof(mRemoveFileNameQueue), 0);
+            setMem(mRemoveFileDirQueue, sizeof(mRemoveFileDirQueue), 0);
+            mRemoveFilePathQueueCount = 0;
+        }
+        RELEASE(mRemoveFilePathQueueLock);
+    }
+
+    void asyncRem(const CHAR16* directory, const CHAR16* fileName)
+    {
+        if (mIsStop)
+        {
+            return;
+        }
+        bool mainThread = isMainThread();
+        if (mainThread)
+        {
+            flushRem();
+            return;
+        }
+        ACQUIRE(mRemoveFilePathQueueLock);
+        int index = mRemoveFilePathQueueCount;
+        setText(mRemoveFileNameQueue[index], fileName);
+        setText(mRemoveFileDirQueue[index], directory);
+        mRemoveFilePathQueueCount++;
+        RELEASE(mRemoveFilePathQueueLock);
+        // Note: if this remove operation is used by more modules,
+        // consider upgrade this design because mRemoveFilePathQueueCount may never hit 0
+        while (mRemoveFilePathQueueCount != 0)
+        {
+            sleep(10);
+        }
+    }
+
     int flush(int numberOfItemsPerQueue = 0)
     {
         int remainedItems = 0;
@@ -837,6 +932,7 @@ public:
         {
             remainedItems = remainedItems + mFileWriteQueue.flushWrite(numberOfItemsPerQueue);
         }
+        flushRem();
         return remainedItems;
     }
 
@@ -854,6 +950,12 @@ private:
     SaveFileItemStorage<ASYNC_FILE_IO_MAX_QUEUE_ITEMS> mFileWriteQueue;
     SaveFileItemStorage<ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS> mFileBlockingWriteQueue;
     LoadFileItemStorage<ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS> mFileBlockingReadQueue;
+
+    // remove queue: rare operation, only need a simple queue
+    CHAR16 mRemoveFileNameQueue[1024][1024];
+    CHAR16 mRemoveFileDirQueue[1024][1024];
+    int mRemoveFilePathQueueCount;
+    volatile char mRemoveFilePathQueueLock;
 };
 
 #pragma optimize("", on)
@@ -889,6 +991,19 @@ static long long asyncLoad(const CHAR16* fileName, unsigned long long totalSize,
         return gAsyncFileIO->asyncLoad(fileName, totalSize, buffer, directory);
     }
     return 0;
+}
+
+// Asynchorous remove a file
+// This function can be called from any thread and is a blocking function
+// To avoid lock and the actual remove happen, flushAsyncFileIOBuffer must be called in main thread
+static long long asyncRemoveFile(const CHAR16* fileName, const CHAR16* directory = NULL)
+{
+    if (gAsyncFileIO)
+    {
+        gAsyncFileIO->asyncRem(fileName, directory);
+        return 0;
+    }
+    return -1;
 }
 
 static bool initFilesystem()

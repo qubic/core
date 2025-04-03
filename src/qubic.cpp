@@ -241,7 +241,6 @@ struct
     unsigned int resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
-    unsigned long long lastLogId;
 } nodeStateBuffer;
 #endif
 static bool saveComputer(CHAR16* directory = NULL);
@@ -1653,19 +1652,31 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case RequestLog::type:
                 {
-                    logger.processRequestLog(peer, header);
+                    logger.processRequestLog(processorNumber, peer, header);
                 }
                 break;
 
                 case RequestLogIdRangeFromTx::type:
                 {
-                    logger.processRequestTxLogInfo(peer, header);
+                    logger.processRequestTxLogInfo(processorNumber, peer, header);
                 }
                 break;
 
                 case RequestAllLogIdRangesFromTick::type:
                 {
-                    logger.processRequestTickTxLogInfo(peer, header);
+                    logger.processRequestTickTxLogInfo(processorNumber, peer, header);
+                }
+                break;
+
+                case RequestPruningLog::type:
+                {
+                    logger.processRequestPrunePageFile(peer, header);
+                }
+                break;
+
+                case RequestLogStateDigest::type:
+                {
+                    logger.processRequestGetLogDigest(peer, header);
                 }
                 break;
 
@@ -2225,12 +2236,13 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
         if (decreaseEnergy(spectrumIndex, transaction->amount))
         {
             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
-
+            {
+                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
+                logger.logQuTransfer(quTransfer);
+            }
             if (transaction->amount)
             {
                 moneyFlew = true;
-                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
-                logger.logQuTransfer(quTransfer);
             }
 
             if (isZero(transaction->destinationPublicKey))
@@ -2399,7 +2411,6 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick, system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
@@ -2917,6 +2928,8 @@ static void beginEpoch()
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
 #endif
+
+    logger.reset(system.initialTick);
 }
 
 
@@ -3139,11 +3152,8 @@ static void endEpoch()
 
                     // Generate revenue donation
                     increaseEnergy(rdEntry.destinationPublicKey, donation);
-                    if (revenue)
-                    {
-                        const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
-                        logger.logQuTransfer(quTransfer);
-                    }
+                    const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
+                    logger.logQuTransfer(quTransfer);
                 }
             }
 
@@ -4075,8 +4085,7 @@ static bool saveAllNodeStates()
     copyMem(&nodeStateBuffer.resourceTestingDigest, &resourceTestingDigest, sizeof(resourceTestingDigest));
     nodeStateBuffer.currentRandomSeed = score->currentRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
-    nodeStateBuffer.numberOfTransactions = numberOfTransactions;
-    nodeStateBuffer.lastLogId = logger.logId;
+    nodeStateBuffer.numberOfTransactions = numberOfTransactions;    
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
@@ -4139,7 +4148,9 @@ static bool saveAllNodeStates()
         return false;
     }
 #endif
-
+#if ENABLED_LOGGING
+    logger.saveCurrentLoggingStates(directory);
+#endif
     return true;
 }
 
@@ -4213,7 +4224,6 @@ static bool loadAllNodeStates()
     numberOfMiners = nodeStateBuffer.numberOfMiners;
     initialRandomSeedFromPersistingState = nodeStateBuffer.currentRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
-    logger.logId = nodeStateBuffer.lastLogId;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
@@ -4288,8 +4298,8 @@ static bool loadAllNodeStates()
 #endif
 
 #if ENABLED_LOGGING
-    logToConsole(L"Initializing logger");
-    logger.reset(system.initialTick, system.tick); // initialize the logger
+    logToConsole(L"Loading old logger...");
+    logger.loadLastLoggingStates(directory);
 #endif
     return true;
 }

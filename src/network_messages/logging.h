@@ -52,7 +52,7 @@ struct ResponseLogIdRangeFromTx
     };
 };
 
-// Request logid ranges of all txs from a tick
+// Request logId ranges (fromLogId, length) of all txs from a tick
 struct RequestAllLogIdRangesFromTick
 {
     unsigned long long passcode[4];
@@ -64,7 +64,7 @@ struct RequestAllLogIdRangesFromTick
 };
 
 
-// Response logid ranges of all txs from a tick
+// Response logId ranges (fromLogId, length) of all txs from a tick
 struct ResponseAllLogIdRangesFromTick
 {
     long long fromLogId[LOG_TX_PER_TICK];
@@ -72,5 +72,46 @@ struct ResponseAllLogIdRangesFromTick
 
     enum {
         type = 51,
+    };
+};
+
+// Request the node to prune logs (to save disk)
+struct RequestPruningLog
+{
+    unsigned long long passcode[4];
+    unsigned long long fromLogId;
+    unsigned long long toLogId;
+
+    enum {
+        type = 56,
+    };
+};
+
+// Response to above request, 0 if success, otherwise error code will be returned
+struct ResponsePruningLog
+{
+    long long success;
+    enum {
+        type = 57,
+    };
+};
+
+// Request the digest of log event state, given requestedTick
+struct RequestLogStateDigest
+{
+    unsigned long long passcode[4];
+    unsigned int requestedTick;
+
+    enum {
+        type = 58,
+    };
+};
+
+// Response above request, a 32 bytes digest
+struct ResponseLogStateDigest
+{
+    m256i digest;
+    enum {
+        type = 59,
     };
 };

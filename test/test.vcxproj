@@ -143,6 +143,7 @@
     <ClCompile Include="score.cpp" />
     <ClCompile Include="score_cache.cpp" />
     <ClCompile Include="tick_storage.cpp" />
+    <ClCompile Include="virtual_memory.cpp" />
     <ClCompile Include="vote_counter.cpp" />
   </ItemGroup>
   <ItemGroup>
