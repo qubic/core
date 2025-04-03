@@ -51,7 +51,7 @@ void updateTime()
     utcTime.Daylight = 0;
 }
 
-inline unsigned long long now_ms()
+unsigned long long now_ms()
 {
     std::time_t t = std::time(nullptr);
     std::tm* tm = std::gmtime(&t);

@@ -63,4 +63,7 @@ inline unsigned long long now_ms()
         return 0;
     }
 }
+#else
+// Defined in test/stdlib_impl.cpp
+unsigned long long now_ms();
 #endif
