@@ -101,6 +101,7 @@ private:
     {
         int page_id = getMostOutdatedCachePage();
         copyMem(cache[page_id], currentPage, pageSize);
+        lastAccessedTimestamp[page_id] = now_ms();
     }
 
     void cleanCurrentPage()
@@ -191,15 +192,9 @@ private:
         }
     }
 
-public:
-    VirtualMemory()
-    {
-
-    }
-
     void reset()
     {
-        setMem(currentPage, pageSize * (numCachePage+1), 0);
+        setMem(currentPage, pageSize * (numCachePage + 1), 0);
         setMem(cachePageId, sizeof(cachePageId), 0xff);
         setMem(lastAccessedTimestamp, sizeof(lastAccessedTimestamp), 0);
         cachePageId[0] = 0;
@@ -208,8 +203,15 @@ public:
         memLock = 0;
     }
 
+public:
+    VirtualMemory()
+    {
+        memLock = 0;
+    }
+
     bool init()
     {
+        ACQUIRE(memLock);
         if (currentPage == NULL)
         {
             if (!allocPoolWithErrorLog(L"VirtualMemory.Page", pageSize * (numCachePage+1), (void**)&currentPage, __LINE__))
@@ -254,6 +256,7 @@ public:
         }
         
         reset();
+        RELEASE(memLock);
         return true;
     }
     void deinit()
