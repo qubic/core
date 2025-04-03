@@ -313,7 +313,7 @@
       <GuardEHContMetadata>false</GuardEHContMetadata>
       <AssemblerOutput>All</AssemblerOutput>
       <AssemblerListingLocation>$(IntDir)Qubic.asm</AssemblerListingLocation>
-      <AdditionalIncludeDirectories>$(MSBuildStartupDirectory);$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildStartupDirectory);$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
