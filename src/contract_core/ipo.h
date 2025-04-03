@@ -15,16 +15,20 @@ static unsigned int numberOfReleasedEntities;
 
 
 // Bid in contract IPO (caller has to ensure that contractIndex is in IPO phase).
+// This deducts price * quantity QU. Bids that don't get shares are refunded.
+// Returns number of bids registered or -1 if any invalid value is passed or the owned funds aren't sufficient.
+// If the return value >= 0, the full amount has been deducted, but if return value < quantity it has been partially
+// refunded.
 // This can be either called through QPI (contract procedure running in contract processor) or through a transaction (tick processor).
 // If called by QPI, you must pass QPI context.
-static bool bidInContractIPO(long long price, unsigned short quantity, const m256i& sourcePublicKey, const int spectrumIndex, const unsigned int contractIndex, const QPI::QpiContextProcedureCall* qpiContext = nullptr)
+static long long bidInContractIPO(long long price, unsigned short quantity, const m256i& sourcePublicKey, const int spectrumIndex, const unsigned int contractIndex, const QPI::QpiContextProcedureCall* qpiContext = nullptr)
 {
     ASSERT(spectrumIndex >= 0);
     ASSERT(spectrumIndex == ::spectrumIndex(sourcePublicKey));
     ASSERT(contractIndex < contractCount);
     ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
 
-    bool bidRegistered = false;
+    long long registeredBids = -1;
 
     if (price > 0 && price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
         && quantity > 0 && quantity <= NUMBER_OF_COMPUTORS)
@@ -35,6 +39,7 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
             const QuTransfer quTransfer = { sourcePublicKey, m256i::zero(), amount };
             logger.logQuTransfer(quTransfer);
 
+            registeredBids = 0;
             numberOfReleasedEntities = 0;
             contractStateLock[contractIndex].acquireWrite();
             IPO* ipo = (IPO*)contractStates[contractIndex];
@@ -95,13 +100,15 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
                     }
 
                     contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
-                    bidRegistered = true;
+                    ++registeredBids;
                 }
             }
             contractStateLock[contractIndex].releaseWrite();
 
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
+                if (!releasedAmounts[i])
+                    continue;
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
                 if (qpiContext)
                     qpiContext->__qpiNotifyPostIncomingTransfer(m256i::zero(), releasedPublicKeys[i], releasedAmounts[i], QPI::TransferType::ipoBidRefund);
@@ -113,7 +120,7 @@ static bool bidInContractIPO(long long price, unsigned short quantity, const m25
         }
     }
 
-    return bidRegistered;
+    return registeredBids;
 }
 
 // Finish all current IPOs at the end of the epoch. Can only be called from tick processor.
@@ -165,6 +172,7 @@ static void finishIPOs()
             }
             for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
             {
+                ASSERT(releasedAmounts[i] > 0);
                 increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
                 notifyContractOfIncomingTransfer(m256i::zero(), releasedPublicKeys[i], releasedAmounts[i], QPI::TransferType::ipoBidRefund);
                 const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };

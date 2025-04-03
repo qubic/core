@@ -316,7 +316,7 @@ public:
 		sint64 pricePerShare;
 		uint16 numberOfShares;
 	};
-	typedef bool QpiBidInIpo_output;
+	typedef sint64 QpiBidInIpo_output;
 
 	PUBLIC_FUNCTION(GetIpoBid)
 		output.price = qpi.ipoBidPrice(input.ipoContractIndex, input.bidIndex);

@@ -1492,11 +1492,15 @@ namespace QPI
 			uint64 unitOfMeasurement
 		) const; // Returns number of shares or 0 on error
 
-		inline bool bidInIPO(
+		// Bid in contract IPO, deducting price * quantity QU. Bids that don't get shares are refunded.
+		// Returns number of bids registered or -1 if any invalid value is passed or the owned funds aren't sufficient.
+		// If the return value >= 0, the full amount has been deducted, but if return value < quantity it has been partially
+		// refunded.
+		inline sint64 bidInIPO(
 			uint32 IPOContractIndex,
 			sint64 price,
 			uint32 quantity
-		) const; // "true" if the bid is succeed, "false" otherwise
+		) const;
 
 		inline sint64 releaseShares(
 			const Asset& asset,
