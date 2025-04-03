@@ -5012,6 +5012,10 @@ static void calculateComputorIndex()
 #ifndef NDEBUG
                 addDebugMessage(L"COMPLIST: Somthing went wrong during computation of self-generated computorlist. futureComputorIdx > NUMBER_OF_COMPUTORS");
 #endif
+
+                // TODO: Maybe abort computation and fall back to waiting for ARB list.
+                // system.useSelfgeneratedcomputors = false;
+                // return;
             }
         }
     }
