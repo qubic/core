@@ -5418,6 +5418,8 @@ static void tickProcessor(void*)
                                     // Save the file of revenue. This blocking save can be called from any thread
                                     saveCustomMiningRevenue(NULL);
 
+                                    calculateComputorIndex();
+
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;
                                     while (systemMustBeSaved)
@@ -5426,7 +5428,6 @@ static void tickProcessor(void*)
                                     }
                                     epochTransitionState = 2;
 
-                                    calculateComputorIndex();
 
                                     beginEpoch();
                                     setNewMiningSeed();
