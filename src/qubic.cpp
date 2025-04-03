@@ -5009,6 +5009,9 @@ static void calculateComputorIndex()
             else
             {
                 // Handle error; something went wrong
+#ifndef NDEBUG
+                addDebugMessage(L"COMPLIST: Somthing went wrong during computation of self-generated computorlist. futureComputorIdx > NUMBER_OF_COMPUTORS");
+#endif
             }
         }
     }
