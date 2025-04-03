@@ -680,7 +680,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
     // Only accept computorlist from current epoch (important in seamless epoch transition if this node is
     // lagging behind the others that already switched epoch).
     // Only accept a new list once per epoch.
-    // If node has a criticalsituation #2 (ARB computorlist does not match self-generated computorlist) manual intervention is needed.
+    // If node has a criticalsituation #2 (ARB computorlist does not match self-generated computorlist), manual intervention is needed.
     if (request->computors.epoch == system.epoch && (request->computors.epoch > broadcastedComputors.computors.epoch || system.useSelfGeneratedComputors))
     {
         // Verify that all addresses are non-zeroes. Otherwise, discard it even if ARB broadcasted it.
@@ -697,13 +697,13 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         KangarooTwelve(request, sizeof(BroadcastComputors) - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify((unsigned char*)&arbitratorPublicKey, digest, request->computors.signature))
         {
-            // If computorlist is signed by the ARB we propagate the computorlist through the network
+            // If computorlist is signed by the ARB, we propagate the computorlist through the network
             if (header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
             }
 
-            // If node is in criticalSituation #2 it will not accept anye other computorlist
+            // If node is in criticalSituation #2, it will not accept anye other computorlist
             if(criticalSituation == 2){
                 return;
             }
