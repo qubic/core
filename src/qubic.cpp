@@ -2906,6 +2906,10 @@ static void beginEpoch()
         ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
     }
 
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+    addDebugMessageSync(L"beginEpoch: finish memset computorPendingTransactions & entityPendingTransactions");
+#endif
+
     bs->SetMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
     bs->SetMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
 
@@ -2921,8 +2925,17 @@ static void beginEpoch()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
 
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+    addDebugMessageSync(L"beginEpoch: finish memset filenames and solutionPublicationTicks & faultyComputorFlags");
+#endif
+
     score->initMemory();
     score->resetTaskQueue();
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+    addDebugMessageSync(L"beginEpoch: finish reseting score verifier");
+#endif
+
     bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     bs->SetMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
     bs->SetMem((void*)minerScores, sizeof(minerScores), 0);
@@ -2932,7 +2945,9 @@ static void beginEpoch()
     bs->SetMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
-
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+    addDebugMessageSync(L"beginEpoch: finish reseting mining variables");
+#endif
     if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > DATA_LENGTH)) { // invalid threshold
         solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
     }
@@ -2945,6 +2960,10 @@ static void beginEpoch()
     gCustomMiningSharesCounter.init();
     bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
 
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+    addDebugMessageSync(L"beginEpoch: finish reseting custom mining variables");
+#endif
+
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
     resourceTestingDigest = 0;
@@ -2955,6 +2974,9 @@ static void beginEpoch()
 #endif
 
     logger.reset(system.initialTick);
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+    addDebugMessageSync(L"beginEpoch: finish reseting logger");
+#endif
 }
 
 
