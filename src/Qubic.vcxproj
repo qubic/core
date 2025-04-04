@@ -68,6 +68,7 @@
     <ClInclude Include="network_messages\common_response.h" />
     <ClInclude Include="network_messages\computors.h" />
     <ClInclude Include="network_messages\contract.h" />
+    <ClInclude Include="network_messages\custom_mining.h" />
     <ClInclude Include="network_messages\entity.h" />
     <ClInclude Include="network_messages\header.h" />
     <ClInclude Include="network_messages\logging.h" />

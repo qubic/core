@@ -15,3 +15,4 @@
 #include "tick.h"
 #include "transactions.h"
 #include "system_info.h"
+#include "custom_mining.h"
