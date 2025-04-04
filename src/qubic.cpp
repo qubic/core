@@ -1498,6 +1498,31 @@ static void requestProcessor(void* ProcedureArgument)
             _InterlockedIncrement(&epochTransitionWaitingRequestProcessors);
             while (epochTransitionState)
             {
+                {
+                    // consume the queue without processing
+                    ACQUIRE(requestQueueTailLock);
+                    if (requestQueueElementTail == requestQueueElementHead)
+                    {
+                        RELEASE(requestQueueTailLock);
+                    }
+                    else
+                    {
+                        {
+                            RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
+                            bs->CopyMem(header, requestHeader, requestHeader->size());
+                            requestQueueBufferTail += requestHeader->size();
+                        }
+
+                        Peer* peer = requestQueueElements[requestQueueElementTail].peer;
+
+                        if (requestQueueBufferTail > REQUEST_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
+                        {
+                            requestQueueBufferTail = 0;
+                        }
+                        requestQueueElementTail++;
+                        RELEASE(requestQueueTailLock);
+                    }
+                }
                 _mm_pause();
             }
             _InterlockedDecrement(&epochTransitionWaitingRequestProcessors);
