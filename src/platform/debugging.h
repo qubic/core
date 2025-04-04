@@ -119,6 +119,16 @@ static void addDebugMessage(const CHAR16* msg)
     }
 }
 
+// Add a message for logging from arbitrary thread and wait for the message to be written into file
+static void addDebugMessageSync(const CHAR16* msg)
+{
+    addDebugMessage(msg);
+    while (debugMessageCount != 0)
+    {
+        _mm_pause();
+    }
+}
+
 // Add a assert message for logging from arbitrary thread
 static void addDebugMessageAssert(const CHAR16* message, const CHAR16* file, const unsigned int lineNumber)
 {
