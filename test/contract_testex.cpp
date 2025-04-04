@@ -121,7 +121,6 @@ public:
         callSystemProcedure(TESTEXD_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
-        qLogger::initLogging();
 
         checkContractExecCleanup();
 
@@ -132,7 +131,6 @@ public:
     ~ContractTestingTestEx()
     {
         checkContractExecCleanup();
-        qLogger::deinitLogging();
     }
 
     StateCheckerTestExampleA* getStateTestExampleA()

@@ -1,12 +1,12 @@
 #pragma once
 
+// Include this first, to ensure "logging/logging.h" isn't included before the custom LOG_BUFFER_SIZE has been defined
+#include "logging_test.h"
+
 #include "gtest/gtest.h"
 
 // workaround for name clash with stdlib
 #define system qubicSystemStruct
-
-// reduced size of logging buffer (512 MB instead of 8 GB)
-#define LOG_BUFFER_SIZE (2*268435456ULL)
 
 // make test example contracts available in all compile units
 #define INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -19,8 +19,6 @@
 #include "contract_core/qpi_system_impl.h"
 #include "contract_core/qpi_ticking_impl.h"
 #include "contract_core/qpi_ipo_impl.h"
-
-#include "logging_test.h"
 
 #include "test_util.h"
 
