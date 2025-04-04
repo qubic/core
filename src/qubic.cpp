@@ -1498,6 +1498,31 @@ static void requestProcessor(void* ProcedureArgument)
             _InterlockedIncrement(&epochTransitionWaitingRequestProcessors);
             while (epochTransitionState)
             {
+                {
+                    // consume the queue without processing
+                    ACQUIRE(requestQueueTailLock);
+                    if (requestQueueElementTail == requestQueueElementHead)
+                    {
+                        RELEASE(requestQueueTailLock);
+                    }
+                    else
+                    {
+                        {
+                            RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
+                            bs->CopyMem(header, requestHeader, requestHeader->size());
+                            requestQueueBufferTail += requestHeader->size();
+                        }
+
+                        Peer* peer = requestQueueElements[requestQueueElementTail].peer;
+
+                        if (requestQueueBufferTail > REQUEST_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
+                        {
+                            requestQueueBufferTail = 0;
+                        }
+                        requestQueueElementTail++;
+                        RELEASE(requestQueueTailLock);
+                    }
+                }
                 _mm_pause();
             }
             _InterlockedDecrement(&epochTransitionWaitingRequestProcessors);
@@ -5720,9 +5745,9 @@ static bool initialize()
     {
         peers[i].receiveData.FragmentCount = 1;
         peers[i].transmitData.FragmentCount = 1;
-        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE, &peers[i].receiveBuffer, __LINE__))  ||
-            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer, __LINE__)) ||
-            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE, (void**)&peers[i].dataToTransmit, __LINE__)))
+        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE * 2, &peers[i].receiveBuffer, __LINE__))  ||
+            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE * 2, &peers[i].transmitData.FragmentTable[0].FragmentBuffer, __LINE__)) ||
+            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE * 2, (void**)&peers[i].dataToTransmit, __LINE__)))
         {
             return false;
         }
