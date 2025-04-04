@@ -209,6 +209,7 @@ static CustomMiningSharesCounter gCustomMiningSharesCounter;
 static volatile char gCustomMiningSharesCountLock = 0;
 static char gIsInCustomMiningState = 0;
 static volatile char gIsInCustomMiningStateLock = 0;
+static unsigned long long gCustomMinninglatestOperatorNonce = 0;
 
 struct revenueScore
 {
@@ -541,23 +542,23 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 customMiningMessageCounters[i]++;
 
                                 // Only record shares in idle phase
-                                char recordSolutions = 0;
-                                ACQUIRE(gIsInCustomMiningStateLock);
-                                recordSolutions = gIsInCustomMiningState;
-                                RELEASE(gIsInCustomMiningStateLock);
+                                //char recordSolutions = 0;
+                                //ACQUIRE(gIsInCustomMiningStateLock);
+                                //recordSolutions = gIsInCustomMiningState;
+                                //RELEASE(gIsInCustomMiningStateLock);
 
-                                if (recordSolutions)
-                                {
-                                    // Record the solution
-                                    const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
+                                //if (recordSolutions)
+                                //{
+                                //    // Record the solution
+                                //    const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
 
-                                    // Check the computor idx of this solution
-                                    unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
+                                //    // Check the computor idx of this solution
+                                //    unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
 
-                                    ACQUIRE(gCustomMiningSharesCountLock);
-                                    gCustomMiningSharesCount[computorID]++;
-                                    RELEASE(gCustomMiningSharesCountLock);
-                                }
+                                //    ACQUIRE(gCustomMiningSharesCountLock);
+                                //    gCustomMiningSharesCount[computorID]++;
+                                //    RELEASE(gCustomMiningSharesCountLock);
+                                //}
                             }
 
                             break;
@@ -1265,6 +1266,39 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
 }
 
+static void processCustomMiningRequest(Peer* peer, RequestResponseHeader* header)
+{
+    RequestedCustomMiningVerification* request = header->getPayload<RequestedCustomMiningVerification>();
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningVerification) + SIGNATURE_SIZE
+        && (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) > gCustomMinninglatestOperatorNonce)
+    {
+        unsigned char digest[32];
+        KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
+        if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
+        {
+            gCustomMinninglatestOperatorNonce = request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF;
+
+            // Update the share counting
+            // Only record shares in idle phase
+            char recordSolutions = 0;
+            ACQUIRE(gIsInCustomMiningStateLock);
+            recordSolutions = gIsInCustomMiningState;
+            RELEASE(gIsInCustomMiningStateLock);
+
+            if (recordSolutions)
+            {
+                // Check the computor idx of this solution
+                const unsigned short computorID = request->nonce % NUMBER_OF_COMPUTORS;
+
+                ACQUIRE(gCustomMiningSharesCountLock);
+                gCustomMiningSharesCount[computorID]++;
+                RELEASE(gCustomMiningSharesCountLock);
+            }
+
+        }
+    }
+}
+
 static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 {
     SpecialCommand* request = header->getPayload<SpecialCommand>();
@@ -1679,6 +1713,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case RequestAssets::type:
                 {
                     processRequestAssets(peer, header);
+                }
+                break;
+
+                case RequestedCustomMiningVerification::type:
+                {
+                    processCustomMiningRequest(peer, header);
                 }
                 break;
 
