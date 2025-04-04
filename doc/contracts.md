@@ -5,12 +5,15 @@ For a general introduction to Smart Contracts in Qubic, we recommend to read [th
 This developer documentation is structured as follows:
 
 1.  [Overview](#overview)
-2.  [Development](#development)
-3.  [Review and tests](#review-and-tests)
-4.  [Procedures and Functions](#procedures-and-functions)
-5.  [Assets and shares](#assets-and-shares)
-6.  [Restrictions of C++ Language Features](#restrictions-of-c-language-features)
-7.  [General Change Management](#general-change-management)
+1.  [Development](#development)
+1.  [Review and tests](#review-and-tests)
+1.  [Deployment](#deployment)
+1.  [Procedures and Functions](#procedures-and-functions)
+1.  [Assets and shares](#assets-and-shares)
+1.  [Other QPI features](#other-qpi-features)
+1.  [Restrictions of C++ Language Features](#restrictions-of-c-language-features)
+1.  [General Change Management](#general-change-management)
+1.  [Interface in qubic-cli](#interface-in-qubic-cli)
 
 ## Overview
 
@@ -153,6 +156,17 @@ Use the macro with the postfix `_WITH_LOCALS` if the function needs local variab
 With these macros, you have to define the struct `[NAME]_locals`.
 A reference to an instance of `[NAME]_locals` named `locals` is passed to the function (initialized with zeros).
 
+An instance of the class `QpiContextFunctionCall` named `qpi` is passed to the function, enabling QPI function calls for obtaining various information, for example:
+
+- `qpi.epoch()` returns the current epoch,
+- `qpi.tick()` returns the current tick,
+- `qpi.getEntity()` allows to get information about an entity (user or contract) given by its `id` (32 byte public key).
+  The information includes the `incomingAmount` and `outgoingAmount`, whose difference is the balance of QUs that this entity possesses at the moment.
+  The `id` of your contract is available through the macro `SELF`.
+- `numberOfShares()` returns the number of shares that exist of a specific asset, optionally further restricting the search with a filtering criterion, such as the owner or the managing contract.
+
+Search for `struct QpiContextFunctionCall` in `qpi.h` to see all QPI functions available for implementing contract user functions.
+
 
 ### User procedures
 
@@ -181,6 +195,26 @@ Use the macro with the postfix `_WITH_LOCALS` if the procedure needs local varia
 With these macros, you have to define the struct `[NAME]_locals`.
 A reference to an instance of `[NAME]_locals` named `locals` is passed to the procedure (initialized with zeros).
 
+An instance of the class `QpiContextProcedureCall` named `qpi` is passed to the procedure.
+It inherits all QPI functions of `QpiContextFunctionCall`.
+Additionally, QPI procedures are provided, such as:
+
+- `qpi.transfer()` transfers QUs from this contract to another entity (user or contract),
+- `qpi.burn()` burns QUs owned by this contract, filling the contract execution fee reserve,
+- `qpi.issueAsset()` issues a new asset with a fixed number of shares,
+- `qpi.transferShareOwnershipAndPossession()` transfers ownership and possession of a certain number of asset shares to another entity.
+
+The following QPI functions are highly relevant for user procedures:
+
+- `invocator()` returns the `id` of the entity that has invoked this user procedure.
+  If it has been invoked through a transaction, this returns the public key of the source user, who has created and signed the transaction.
+  If it has been invoked from another contract procedure, this returns the public key of the caller contract.
+- `invocationReward()` returns the invocation reward, which is the amount of QU transferred to invoked contract by the invoking entity (immediately before invoking the procedure).
+- `originator()` returns the `id` of the user, who has created and signed the transaction that led to executing this procedure or function.
+
+All three, `invocator()`, `invocationReward()`, and `originator()` are also available in contract user functions, but they only return non-zero if the user function has been called by a procedure.
+
+Search for `struct QpiContextProcedureCall` and `struct QpiContextFunctionCall` in `qpi.h` to see all QPI functions available for implementing contract procedures.
 
 ### System procedures
 
@@ -197,6 +231,7 @@ They are defined with the following macros:
 7. `PRE_ACQUIRE_SHARES`: Called before asset management rights are transferred to this contract from another contract that called `qpi.releaseShare()`.
 8. `POST_RELEASE_SHARES`: Called after asset management rights were transferred from this contract to another contract that called `qpi.acquireShare()`
 9. `POST_ACQUIRE_SHARES`: Called after asset management rights were transferred to this contract from another contract that called `qpi.releaseShare()`.
+10. `POST_INCOMING_TRANSFER`: Called after QUs have been transferred to this contract. [More details...](#callback-post_incoming_transfer)
 
 System procedures 1 to 5 have no input and output.
 The input and output of system procedures 6 to 9 are discussed in the section about [management rights transfer](#management-rights-transfer).
@@ -209,8 +244,11 @@ These can be used, if the procedure needs local variables, because creating loca
 With these, you have to define the struct `[NAME]_locals`.
 A reference to an instance of `[NAME]_locals` named `locals` is passed to the procedure (initialized with zeros).
 
-The QPI function `qpi.invocator()` returns `NULL_ID` / `id::zero()` for system procedures 1 to 5.
-For system procedures 6 to 9, it returns the contract ID of the contract calling `qpi.releaseShares()` or `qpi.acquireShares()`.
+An instance of the class `QpiContextProcedureCall` named `qpi` is passed to the system procedure, providing the same QPI features as for user procedures.
+
+The QPI functions `qpi.invocator()` and `originator()` return `NULL_ID` / `id::zero()` for system procedures 1 to 5.
+
+For system procedures 6 to 9, `qpi.invocator()` returns the contract ID of the contract calling `qpi.releaseShares()` or `qpi.acquireShares()`.
 
 Each of `INITIALIZE`, `BEGIN_EPOCH`, and `BEGIN_TICK` is executed for all contracts in ascending order, that is, it is executed for the contract with contract index 1 before that with index 2, followed by contract 3 etc.
 
@@ -421,6 +459,56 @@ QX never releases shares passively (following call of `qpi.acquireShares()` by a
 The callbacks `PRE_RELEASE_SHARES` and `PRE_ACQUIRE_SHARES` may also check that the `qpi.originator()` initiating the transfer is the owner/possessor.
 
 
+## Other QPI features
+
+### Calling other user functions and  procedures
+
+TODO: invoking procedures, calling functions, including those of other contracts
+
+### Callback `POST_INCOMING_TRANSFER`
+
+If defined in a contract, the contract system procedure `POST_INCOMING_TRANSFER` (or `POST_INCOMING_TRANSFER_WITH_LOCALS`) is run to notify the contract about an incoming transfer of QU to the contract entity (increasing the balance of the contract).
+
+Outgoing transfers (decreasing the balance) are always initiated by the contract itself.
+So the contract has all the information needed to keep track of outgoing transfers without requiring a dedicated callback procedure.
+
+An instance `input` of the following struct is passed to `POST_INCOMING_TRANSFER` / `POST_INCOMING_TRANSFER_WITH_LOCALS`:
+
+```
+struct PostIncomingTransfer_input
+{
+    id sourceId;    // id of entity that the QUs came from
+    sint64 amount;  // number of QUs transferred to SELF
+    uint8 type;     // type of transfer, see below
+};
+```
+
+The type of transfer has one of the following values:
+
+- `TransferType::procedureTransaction`: The callback is run with this transfer type while processing a transaction that invokes a procedure of this contract.
+  Specifically, it is run after transferring the transaction amount (= invocation reward) but before invoking the procedure.
+
+- `TransferType::standardTransaction`: This transfer type means processing a transaction that does not invoke a procedure, usually with `inputType == 0`.
+
+- `TransferType::qpiTransfer`: This transfer type is triggered by a call to `qpi.transfer()`.
+  Please note that transferring to `SELF` triggers this, although it does NOT increase the balance overall, because the balance is decreased by the same amount before.
+  This special case can be detected by checking `input.sourceId == SELF`.
+
+- `TransferType::qpiDistributeDividends`: This transfer type is triggered by a call to `qpi.distributeDividends()`.
+  Please note the special case when the contract distributing dividends holds shares of itself, similar to the special case of `TransferType::qpiTransfer` mentioned above (next to the incoming transfer of `input.amount` the outgoing transfer needs to be considered to completely track the balance of the contract).
+
+- `TransferType::revenueDonation`: This transfer type occurs when a contract receives a revenue donation.
+  It only happens at the end of an epoch, when the computor revenue is generated, after `END_EPOCH` and before `BEGIN_EPOCH`.
+
+- `TransferType::ipoBidRefund`: This transfer type is triggered if the contract has placed a bid in a contract IPO with `qpi.bidInIPO()` and QUs are refunded.
+  This can happen in while executing `qpi.bidInIPO()`, when an IPO bid transaction is processed, and when the IPO is finished at the end of the epoch (after `END_EPOCH` and before `BEGIN_EPOCH`).
+
+In the implementation of the callback procedure, you cannot run `qpi.transfer()`, `qpi.distributeDividends()`, and `qpi.bidInIPO()`.
+That is, calls to these QPI procedures will fail to prevent nested callbacks.
+If you invoke a user procedure from the callback, the fee / invocation reward cannot be transferred.
+In consequence, the procedure is executed but with `qpi.invocationReward() == 0`.
+
+
 ## Restrictions of C++ Language Features
 
 It is prohibited to locally instantiating objects or variables on the function call stack.
@@ -457,6 +545,10 @@ Global constants must begin with the name of the contract state struct.
 
 There is a limit for recursion and depth of nested contract function / procedure calls (the limit is 10 at the moment).
 
+The input and output structs of contract user procedures and functions may only use integer and boolean types (such as `uint64`, `sint8`, `bit`) as well as `id`, `Array`, and `BitArray`.
+Complex types that may have an inconsistent internal state, such as `Collection`, are forbidden in the public interface of a contract.
+
+
 ## General Change Management
 Smart Contract code in Qubic is generally immutable. This ensures stable quality and security across the network.
 However there are situations where you want to change your SC.
@@ -466,3 +558,36 @@ A bugfix is possible at any time. It can be applied during the epoch (if no stat
 
 ### New Features
 If you want to add new features, this needs to be approved by the computors again. Please refer to the [Deployment](#deployment) for the needed steps. The IPO is not anymore needed for an update of your SC.
+
+
+## Interface in qubic-cli
+
+One way of interacting with the contract in the Qubic Core is via the command line tool [qubic-cli](https://github.com/qubic/qubic-cli).
+This tool is used a lot by the Core developers and the Core test team.
+
+You may add an your contract interface to qubic-cli by forking the repo, creating your feature branch in your repo, and implementing it in this branch.
+If you would like to have it included in the official qubic-cli, open a pull request after testing it successfully.
+
+For implementing your contract in qubic-cli, add a new file named like your contract.
+
+Contract procedures are invoked by creating transactions, which can be easily done with the function `makeContractTransaction()`.
+Contract functions can be run by calling the function `runContractFunction()`.
+Both are declared in the header file `walletUtils.h`:
+
+```
+void makeContractTransaction(const char* nodeIp, int nodePort,
+                             const char* seed,
+                             uint64_t contractIndex, uint16_t txType, uint64_t amount,
+                             int extraDataSize, const void* extraData,
+                             uint32_t scheduledTickOffset);
+bool runContractFunction(const char* nodeIp, int nodePort,
+                         unsigned int contractIndex, unsigned short funcNumber,
+                         void* inputPtr, size_t inputSize,
+                         void* outputPtr, size_t outputSize,
+                         QCPtr* qcPtr = nullptr);`
+```
+
+The file `proposal.cpp` has a lot of examples showing how to use both functions.
+For example, `getProposalIndices()` shows how to call a contract function requiring input and providing output with `runContractFunction()`.
+An example use case of `makeContractTransaction()` can be found in `gqmpropSetProposal()`.
+The function `castVote()` is a more complex example combining both, calling a contract function and invoking a contract procedure.

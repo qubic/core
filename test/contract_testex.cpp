@@ -117,9 +117,10 @@ public:
         callSystemProcedure(TESTEXB_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(TESTEXC);
         callSystemProcedure(TESTEXC_CONTRACT_INDEX, INITIALIZE);
+        INIT_CONTRACT(TESTEXD);
+        callSystemProcedure(TESTEXD_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
-        qLogger::initLogging();
 
         checkContractExecCleanup();
 
@@ -130,7 +131,6 @@ public:
     ~ContractTestingTestEx()
     {
         checkContractExecCleanup();
-        qLogger::deinitLogging();
     }
 
     StateCheckerTestExampleA* getStateTestExampleA()
@@ -295,6 +295,51 @@ public:
         TESTEXA::ErrorTriggerFunction_input input;
         TESTEXA::ErrorTriggerFunction_output output;
         return callFunction(TESTEXA_CONTRACT_INDEX, 5, input, output, true, false);
+    }
+
+    template <typename StateStruct>
+    typename StateStruct::IncomingTransferAmounts_output getIncomingTransferAmounts()
+    {
+        typename StateStruct::IncomingTransferAmounts_input input;
+        typename StateStruct::IncomingTransferAmounts_output output;
+        EXPECT_EQ(callFunction(StateStruct::__contract_index, 20, input, output), NoContractError);
+        return output;
+    }
+
+    template <typename StateStruct>
+    bool qpiTransfer(const id& destinationPublicKey, sint64 amount, sint64 fee = 0, const id& originator = USER1)
+    {
+        typename StateStruct::QpiTransfer_input input{ destinationPublicKey, amount };
+        typename StateStruct::QpiTransfer_output output;
+        return invokeUserProcedure(StateStruct::__contract_index, 20, input, output, originator, fee);
+    }
+
+    template <typename StateStruct>
+    bool qpiDistributeDividends(sint64 amountPerShare, sint64 fee = 0, const id& originator = USER1)
+    {
+        typename StateStruct::QpiDistributeDividends_input input{ amountPerShare };
+        typename StateStruct::QpiDistributeDividends_output output;
+        return invokeUserProcedure(StateStruct::__contract_index, 21, input, output, originator, fee);
+    }
+
+    template <typename StateStruct>
+    typename StateStruct::GetIpoBid_output getIpoBid(unsigned int ipoContractIndex, unsigned int bidIndex)
+    {
+        typename StateStruct::GetIpoBid_input input{ ipoContractIndex, bidIndex };
+        typename StateStruct::GetIpoBid_output output;
+        EXPECT_EQ(callFunction(StateStruct::__contract_index, 30, input, output), NoContractError);
+        return output;
+    }
+
+    template <typename StateStruct>
+    long long qpiBidInIpo(unsigned int ipoContractIndex, long long pricePerShare, unsigned short numberOfShares, sint64 fee = 0, const id& originator = USER1)
+    {
+        typename StateStruct::QpiBidInIpo_input input{ ipoContractIndex, pricePerShare, numberOfShares };
+        typename StateStruct::QpiBidInIpo_output output;
+        if (invokeUserProcedure(StateStruct::__contract_index, 30, input, output, originator, fee))
+            return output;
+        else
+            return -2;
     }
 };
 
@@ -891,4 +936,358 @@ TEST(ContractTestEx, QueryBasicQpiFunctions)
     EXPECT_EQ(qpiReturned2.qpiFunctionsOutput.tick, system.tick);
     EXPECT_EQ(qpiReturned2.inputDataK12, digest2);
     EXPECT_FALSE(qpiReturned2.inputSignatureValid);
+}
+
+TEST(ContractTestEx, QpiFunctionsIPO)
+{
+    // test IPO functions with IPO of TESTEXD
+    ContractTestingTestEx test;
+    system.epoch = contractDescriptions[TESTEXD_CONTRACT_INDEX].constructionEpoch - 1;
+    constexpr long long initialBalance = 12345678;
+    increaseEnergy(USER1, initialBalance);
+    increaseEnergy(TESTEXB_CONTRACT_ID, initialBalance);
+    increaseEnergy(TESTEXC_CONTRACT_ID, initialBalance);
+
+    // Test output of qpi functions for invalid contract index
+    for (int i = 0; i < NUMBER_OF_COMPUTORS + 2; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(contractCount, i);
+        EXPECT_TRUE(isZero(bid.publicKey));
+        EXPECT_EQ(bid.price, -1);
+    }
+
+    // Test output of qpi functions for contract that is not in IPO
+    for (int i = 0; i < NUMBER_OF_COMPUTORS + 2; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXB_CONTRACT_INDEX, i);
+        EXPECT_TRUE(isZero(bid.publicKey));
+        EXPECT_EQ(bid.price, -2);
+    }
+
+    // Test output of qpi functions without any bids
+    for (int i = 0; i < NUMBER_OF_COMPUTORS + 2; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        EXPECT_TRUE(isZero(bid.publicKey));
+        EXPECT_EQ(bid.price, (i < NUMBER_OF_COMPUTORS) ? 0 : -3);
+    }
+
+    // Test bids with invalid contract, price, and quantity
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(contractCount, 10, 100), -1);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXC_CONTRACT_INDEX, 10, 100), -1);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0, 100), -1);
+    EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, MAX_AMOUNT, 100), -1);
+    EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, 0), -1);
+    EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, NUMBER_OF_COMPUTORS + 1), -1);
+    EXPECT_EQ(test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, 0).price, 0);
+
+    // Successfully bid in IPO
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 10, 100), 100);
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        EXPECT_EQ(bid.publicKey, (i < 100) ? TESTEXC_CONTRACT_ID : NULL_ID);
+        EXPECT_EQ(bid.price, (i < 100) ? 10 : 0);
+    }
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXB>(TESTEXD_CONTRACT_INDEX, 100, 600), 600);
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        EXPECT_EQ(bid.publicKey, (i < 600) ? TESTEXB_CONTRACT_ID : TESTEXC_CONTRACT_ID);
+        EXPECT_EQ(bid.price, (i < 600) ? 100 : 10);
+    }
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 1000, 10), 10);
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        if (i < 10)
+        {
+            EXPECT_EQ(bid.publicKey, TESTEXC_CONTRACT_ID);
+            EXPECT_EQ(bid.price, 1000);
+        }
+        else if (i < 10 + 600)
+        {
+            EXPECT_EQ(bid.publicKey, TESTEXB_CONTRACT_ID);
+            EXPECT_EQ(bid.price, 100);
+        }
+        else
+        {
+            EXPECT_EQ(bid.publicKey, TESTEXC_CONTRACT_ID);
+            EXPECT_EQ(bid.price, 10);
+        }
+    }
+
+    // Test too low bids
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXB>(TESTEXD_CONTRACT_INDEX, 1, 10), 0);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 2, 10), 0);
+
+    // Simulate end of IPO
+    finishIPOs();
+
+    // Check contract shares
+    Asset asset{NULL_ID, assetNameFromString("TESTEXD")};
+    EXPECT_EQ(600, numberOfShares(asset, { TESTEXB_CONTRACT_ID, QX_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, QX_CONTRACT_INDEX }));
+    EXPECT_EQ(76, numberOfShares(asset, { TESTEXC_CONTRACT_ID, QX_CONTRACT_INDEX }, { TESTEXC_CONTRACT_ID, QX_CONTRACT_INDEX }));
+
+    // Check balances
+    const long long finalPrice = 10;
+    EXPECT_EQ(getBalance(TESTEXB_CONTRACT_ID), initialBalance - 600 * finalPrice);
+    EXPECT_EQ(getBalance(TESTEXC_CONTRACT_ID), initialBalance - 76 * finalPrice);
+}
+
+//-------------------------------------------------------------------
+// Test CallbackPostIncomingTransfer
+
+class ContractTestCallbackPostIncomingTransfer : public ContractTestingTestEx
+{
+public:
+    // test qpi.transfer() on contract SrcStateStruct. DstStateStruct is another contract to check.
+    template <typename SrcStateStruct, typename DstStateStruct>
+    void testQpiTransfer(const id& dstPublicKey, sint64 amount, sint64 fee = 0, const id& originator = USER1)
+    {
+        const id srcPublicKey(SrcStateStruct::__contract_index, 0, 0, 0);
+        const sint64 originatorBalanceBefore = getBalance(originator);
+        const sint64 srcBalanceBefore = getBalance(srcPublicKey);
+        const sint64 dstBalanceBefore = getBalance(dstPublicKey);
+        const auto srcBefore = getIncomingTransferAmounts<SrcStateStruct>();
+        const auto dstBefore = getIncomingTransferAmounts<DstStateStruct>();
+
+        EXPECT_GE(originatorBalanceBefore, fee);
+        bool success = qpiTransfer<SrcStateStruct>(dstPublicKey, amount, fee, originator);
+        EXPECT_TRUE(success);
+
+        if (success)
+        {
+            const sint64 originatorBalanceAfter = getBalance(originator);
+            const sint64 srcBalanceAfter = getBalance(srcPublicKey);
+            const sint64 dstBalanceAfter = getBalance(dstPublicKey);
+            EXPECT_EQ(originatorBalanceAfter, originatorBalanceBefore - fee);
+            if (srcPublicKey != dstPublicKey)
+            {
+                EXPECT_EQ(srcBalanceAfter, srcBalanceBefore + fee - amount);
+                EXPECT_EQ(dstBalanceAfter, dstBalanceBefore + amount);
+            }
+            else
+            {
+                EXPECT_EQ(srcBalanceAfter, srcBalanceBefore + fee);
+            }
+
+            const auto srcAfter = getIncomingTransferAmounts<SrcStateStruct>();
+            const auto dstAfter = getIncomingTransferAmounts<DstStateStruct>();
+            EXPECT_EQ(srcAfter.procedureTransactionAmount, srcBefore.procedureTransactionAmount + fee);
+            if (srcPublicKey != dstPublicKey)
+            {
+                EXPECT_EQ(dstAfter.procedureTransactionAmount, dstBefore.procedureTransactionAmount);
+                EXPECT_EQ(srcAfter.qpiTransferAmount, srcBefore.qpiTransferAmount);
+            }
+            if (dstPublicKey == id(DstStateStruct::__contract_index, 0, 0, 0))
+            {
+                EXPECT_EQ(dstAfter.qpiTransferAmount, dstBefore.qpiTransferAmount + amount);
+            }
+            else
+            {
+                EXPECT_EQ(dstAfter.qpiTransferAmount, dstBefore.qpiTransferAmount);
+            }
+            EXPECT_EQ(srcAfter.standardTransactionAmount, srcBefore.standardTransactionAmount);
+            EXPECT_EQ(dstAfter.standardTransactionAmount, dstBefore.standardTransactionAmount);
+            EXPECT_EQ(srcAfter.qpiDistributeDividendsAmount, srcBefore.qpiDistributeDividendsAmount);
+            EXPECT_EQ(dstAfter.qpiDistributeDividendsAmount, dstBefore.qpiDistributeDividendsAmount);
+            EXPECT_EQ(srcAfter.revenueDonationAmount, srcBefore.revenueDonationAmount);
+            EXPECT_EQ(dstAfter.revenueDonationAmount, dstBefore.revenueDonationAmount);
+            EXPECT_EQ(srcAfter.ipoBidRefundAmount, srcBefore.ipoBidRefundAmount);
+            EXPECT_EQ(dstAfter.ipoBidRefundAmount, dstBefore.ipoBidRefundAmount);
+        }
+    }
+
+    // test qpi.distributeDividends() on contract SrcStateStruct. DstStateStruct is another contract to check.
+    template <typename SrcStateStruct, typename DstStateStruct>
+    void testQpiDistributeDividends(sint64 amountPerShare, const std::vector<std::pair<m256i, unsigned int>>& shareholders, sint64 fee = 0, const id& originator = USER1)
+    {
+        // check number of shares
+        unsigned int totalShareCount = 0;
+        for (const auto& ownerShareCountPair : shareholders)
+            totalShareCount += ownerShareCountPair.second;
+        EXPECT_EQ(totalShareCount, NUMBER_OF_COMPUTORS);
+
+        // get state before call and compute state expected after call
+        const id srcPublicKey(SrcStateStruct::__contract_index, 0, 0, 0);
+        const id dstPublicKey(DstStateStruct::__contract_index, 0, 0, 0);
+        std::map<id, sint64> expectedBalances;
+        expectedBalances[originator] = getBalance(originator);
+        EXPECT_GE(expectedBalances[originator], fee);
+        expectedBalances[srcPublicKey] = getBalance(srcPublicKey);
+        expectedBalances[dstPublicKey] = getBalance(dstPublicKey);
+        for (const auto& ownerShareCountPair : shareholders)
+            expectedBalances[ownerShareCountPair.first] = getBalance(ownerShareCountPair.first);
+        expectedBalances[originator] -= fee;
+        expectedBalances[srcPublicKey] += fee - amountPerShare * NUMBER_OF_COMPUTORS;
+        auto expectedIncomingSrc = getIncomingTransferAmounts<SrcStateStruct>();
+        auto expectedIncomingDst = getIncomingTransferAmounts<DstStateStruct>();
+        expectedIncomingSrc.procedureTransactionAmount += fee;
+        if (srcPublicKey == dstPublicKey)
+            expectedIncomingDst.procedureTransactionAmount += fee;
+        for (const auto& ownerShareCountPair : shareholders)
+        {
+            const sint64 dividend = amountPerShare * ownerShareCountPair.second;
+            expectedBalances[ownerShareCountPair.first] += dividend;
+            if (ownerShareCountPair.first == srcPublicKey)
+                expectedIncomingSrc.qpiDistributeDividendsAmount += dividend;
+            if (ownerShareCountPair.first == dstPublicKey)
+                expectedIncomingDst.qpiDistributeDividendsAmount += dividend;
+        }
+
+        bool success = qpiDistributeDividends<SrcStateStruct>(amountPerShare, fee, originator);
+        EXPECT_TRUE(success);
+
+        if (success)
+        {
+            for (const auto& idBalancePair : expectedBalances)
+            {
+                EXPECT_EQ(getBalance(idBalancePair.first), idBalancePair.second);
+            }
+
+            const auto observedIncomingSrc = getIncomingTransferAmounts<SrcStateStruct>();
+            const auto observedIncomingDst = getIncomingTransferAmounts<DstStateStruct>();
+            EXPECT_EQ(expectedIncomingSrc.standardTransactionAmount, observedIncomingSrc.standardTransactionAmount);
+            EXPECT_EQ(expectedIncomingDst.standardTransactionAmount, observedIncomingDst.standardTransactionAmount);
+            EXPECT_EQ(expectedIncomingSrc.procedureTransactionAmount, observedIncomingSrc.procedureTransactionAmount);
+            EXPECT_EQ(expectedIncomingDst.procedureTransactionAmount, observedIncomingDst.procedureTransactionAmount);
+            EXPECT_EQ(expectedIncomingSrc.qpiTransferAmount, observedIncomingSrc.qpiTransferAmount);
+            EXPECT_EQ(expectedIncomingDst.qpiTransferAmount, observedIncomingDst.qpiTransferAmount);
+            EXPECT_EQ(expectedIncomingSrc.qpiDistributeDividendsAmount, observedIncomingSrc.qpiDistributeDividendsAmount);
+            EXPECT_EQ(expectedIncomingDst.qpiDistributeDividendsAmount, observedIncomingDst.qpiDistributeDividendsAmount);
+            EXPECT_EQ(expectedIncomingSrc.revenueDonationAmount, observedIncomingSrc.revenueDonationAmount);
+            EXPECT_EQ(expectedIncomingDst.revenueDonationAmount, observedIncomingDst.revenueDonationAmount);
+            EXPECT_EQ(expectedIncomingSrc.ipoBidRefundAmount, observedIncomingSrc.ipoBidRefundAmount);
+            EXPECT_EQ(expectedIncomingDst.ipoBidRefundAmount, observedIncomingDst.ipoBidRefundAmount);
+        }
+    }
+};
+
+TEST(ContractTestEx, CallbackPostIncomingTransfer)
+{
+    // Tested types of incoming transfers (should be also tested in testnet):
+    // - TransferType::qpiTransfer (including transfer to oneself)
+    // - TransferType::qpiDistributeDividends (including dividends to oneself)
+    // - TransferType::procedureTransaction
+    // - TransferType::ipoBidRefund through qpi.bidInIpo()
+    //
+    // Important test: triggering callback from callback must be prevented (checked by ASSERTs in contracts)
+    //
+    // The following cannot be tested with Google Test at the moment and have to be tested in the testnet.
+    // - TransferType::standardTransaction
+    // - TransferType::revenueDonation
+    // - TransferType::ipoBidRefund through transaction
+    ContractTestCallbackPostIncomingTransfer test;
+
+    increaseEnergy(USER1, 12345678);
+    increaseEnergy(USER2, 31427);
+    increaseEnergy(USER3, 218000);
+    increaseEnergy(TESTEXB_CONTRACT_ID, 19283764);
+    increaseEnergy(TESTEXC_CONTRACT_ID, 987654321);
+
+    // qpi.transfer() to other contract
+    test.testQpiTransfer<TESTEXB, TESTEXC>(TESTEXC_CONTRACT_ID, 100, 1000, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXB>(TESTEXB_CONTRACT_ID, 2000, 200, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXB>(TESTEXB_CONTRACT_ID, 300, 3000, USER1);
+    test.testQpiTransfer<TESTEXB, TESTEXC>(TESTEXC_CONTRACT_ID, 4000, 400, USER1);
+
+    // qpi.transfer() to self
+    test.testQpiTransfer<TESTEXB, TESTEXB>(TESTEXB_CONTRACT_ID, 50, 500, USER1);
+    test.testQpiTransfer<TESTEXB, TESTEXB>(TESTEXB_CONTRACT_ID, 600, 60, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXC>(TESTEXC_CONTRACT_ID, 700, 7000, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXC>(TESTEXC_CONTRACT_ID, 8000, 800, USER1);
+
+    // qpi.transfer() to non-contract entity
+    test.testQpiTransfer<TESTEXB, TESTEXC>(getUser(0), 900, 9000, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXB>(getUser(1), 10000, 1000, USER1);
+    test.testQpiTransfer<TESTEXC, TESTEXB>(getUser(2), 11000, 1100, USER1);
+    test.testQpiTransfer<TESTEXB, TESTEXC>(getUser(3), 12000, 1200, USER1);
+
+    // issue contract shares
+    std::vector<std::pair<m256i, unsigned int>> sharesTestExB{ {USER1, 356}, {TESTEXC_CONTRACT_ID, 200}, {TESTEXB_CONTRACT_ID, 100}, {TESTEXA_CONTRACT_ID, 20} };
+    issueContractShares(TESTEXB_CONTRACT_INDEX, sharesTestExB);
+    std::vector<std::pair<m256i, unsigned int>> sharesTestExC{ {USER2, 576}, {USER3, 40}, {TESTEXC_CONTRACT_ID, 30}, {TESTEXB_CONTRACT_ID, 20}, {TESTEXA_CONTRACT_ID, 10} };
+    issueContractShares(TESTEXC_CONTRACT_INDEX, sharesTestExC);
+
+    // test qpi.distributeDividends()
+    test.testQpiDistributeDividends<TESTEXB, TESTEXC>(1, sharesTestExB, 1234, USER1);
+    test.testQpiDistributeDividends<TESTEXB, TESTEXC>(11, sharesTestExB, 9764, USER2);
+    test.testQpiDistributeDividends<TESTEXB, TESTEXB>(3, sharesTestExB, 42, USER3);
+    test.testQpiDistributeDividends<TESTEXC, TESTEXB>(2, sharesTestExC, 12345, USER1);
+    test.testQpiDistributeDividends<TESTEXC, TESTEXB>(13, sharesTestExC, 98, USER2);
+    test.testQpiDistributeDividends<TESTEXC, TESTEXC>(4, sharesTestExC, 9, USER3);
+
+    // test refund in qpi.bidInIPO() and finalizeIpo()
+    system.epoch = contractDescriptions[TESTEXD_CONTRACT_INDEX].constructionEpoch - 1;
+    auto itaB1 = test.getIncomingTransferAmounts<TESTEXB>();
+    auto itaC1 = test.getIncomingTransferAmounts<TESTEXC>();
+    EXPECT_EQ(itaB1.ipoBidRefundAmount, 0);
+    EXPECT_EQ(itaC1.ipoBidRefundAmount, 0);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXB>(TESTEXD_CONTRACT_INDEX, 20, NUMBER_OF_COMPUTORS, 42), NUMBER_OF_COMPUTORS);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 30, NUMBER_OF_COMPUTORS * 3 / 4, 13), NUMBER_OF_COMPUTORS * 3 / 4);
+    auto itaB2 = test.getIncomingTransferAmounts<TESTEXB>();
+    auto itaC2 = test.getIncomingTransferAmounts<TESTEXC>();
+    // -> in 75% 30 (C), in 25% 20 (B), refund 75% 20 (B)
+    EXPECT_EQ(itaB2.ipoBidRefundAmount, 20 * NUMBER_OF_COMPUTORS * 3 / 4);
+    EXPECT_EQ(itaC2.ipoBidRefundAmount, 0);
+    EXPECT_EQ(itaB2.procedureTransactionAmount, itaB1.procedureTransactionAmount + 42);
+    EXPECT_EQ(itaC2.procedureTransactionAmount, itaC1.procedureTransactionAmount + 13);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 50, NUMBER_OF_COMPUTORS / 2, 3), NUMBER_OF_COMPUTORS / 2);
+    auto itaB3 = test.getIncomingTransferAmounts<TESTEXB>();
+    auto itaC3 = test.getIncomingTransferAmounts<TESTEXC>();
+    // -> in 50% 50 (C), in 50% 30 (C), ex 25% 30 (C), ex 25% 20 (B)
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        EXPECT_EQ(bid.publicKey, TESTEXC_CONTRACT_ID);
+        EXPECT_EQ(bid.price, (i < NUMBER_OF_COMPUTORS / 2) ? 50 : 30);
+    }
+    EXPECT_EQ(itaB3.ipoBidRefundAmount, itaB2.ipoBidRefundAmount + 20 * NUMBER_OF_COMPUTORS / 4);
+    EXPECT_EQ(itaC3.ipoBidRefundAmount, itaC2.ipoBidRefundAmount + 30 * NUMBER_OF_COMPUTORS / 4);
+    EXPECT_EQ(itaB3.procedureTransactionAmount, itaB2.procedureTransactionAmount);
+    EXPECT_EQ(itaC3.procedureTransactionAmount, itaC2.procedureTransactionAmount + 3);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXB>(TESTEXD_CONTRACT_INDEX, 99, NUMBER_OF_COMPUTORS * 3 / 4, 14), NUMBER_OF_COMPUTORS * 3 / 4);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXB>(TESTEXD_CONTRACT_INDEX, 9, NUMBER_OF_COMPUTORS / 2, 123), 0);
+    EXPECT_EQ(test.qpiBidInIpo<TESTEXC>(TESTEXD_CONTRACT_INDEX, 60, NUMBER_OF_COMPUTORS, 654), NUMBER_OF_COMPUTORS / 4);
+    auto itaB4 = test.getIncomingTransferAmounts<TESTEXB>();
+    auto itaC4 = test.getIncomingTransferAmounts<TESTEXC>();
+    // -> in 75% 99 (B), in 25% 60 (C), ex 75% 60 (C), ex 50% 50 (C), ex 50% 30 (C), ex 50% 9 (B)
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        const auto bid = test.getIpoBid<TESTEXC>(TESTEXD_CONTRACT_INDEX, i);
+        EXPECT_EQ(bid.publicKey, (i < NUMBER_OF_COMPUTORS * 3 / 4) ? TESTEXB_CONTRACT_ID : TESTEXC_CONTRACT_ID);
+        EXPECT_EQ(bid.price, (i < NUMBER_OF_COMPUTORS * 3 / 4) ? 99 : 60);
+    }
+    EXPECT_EQ(itaB4.ipoBidRefundAmount, itaB3.ipoBidRefundAmount + 9 * NUMBER_OF_COMPUTORS / 2);
+    EXPECT_EQ(itaC4.ipoBidRefundAmount, itaC3.ipoBidRefundAmount + 60 * NUMBER_OF_COMPUTORS * 3 / 4 + 50 * NUMBER_OF_COMPUTORS / 2 + 30 * NUMBER_OF_COMPUTORS / 2);
+    EXPECT_EQ(itaB4.procedureTransactionAmount, itaB3.procedureTransactionAmount + 14 + 123);
+    EXPECT_EQ(itaC4.procedureTransactionAmount, itaC3.procedureTransactionAmount + 654);
+
+    // simulate end of IPO
+    finishIPOs();
+
+    // check contract shares
+    Asset asset{ NULL_ID, assetNameFromString("TESTEXD") };
+    EXPECT_EQ(NUMBER_OF_COMPUTORS * 3 / 4, numberOfShares(asset, { TESTEXB_CONTRACT_ID, QX_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, QX_CONTRACT_INDEX }));
+    EXPECT_EQ(NUMBER_OF_COMPUTORS * 1 / 4, numberOfShares(asset, { TESTEXC_CONTRACT_ID, QX_CONTRACT_INDEX }, { TESTEXC_CONTRACT_ID, QX_CONTRACT_INDEX }));
+
+    // check refunds (finalPrice = 60)
+    auto itaB5 = test.getIncomingTransferAmounts<TESTEXB>();
+    auto itaC5 = test.getIncomingTransferAmounts<TESTEXC>();
+    EXPECT_EQ(itaB5.ipoBidRefundAmount, itaB4.ipoBidRefundAmount + NUMBER_OF_COMPUTORS * 3 / 4 * (99 - 60));
+    EXPECT_EQ(itaC5.ipoBidRefundAmount, itaC4.ipoBidRefundAmount);
+    EXPECT_EQ(itaB5.procedureTransactionAmount, itaB4.procedureTransactionAmount);
+    EXPECT_EQ(itaC5.procedureTransactionAmount, itaC4.procedureTransactionAmount);
+    EXPECT_EQ(itaB5.standardTransactionAmount, itaB1.standardTransactionAmount);
+    EXPECT_EQ(itaC5.standardTransactionAmount, itaC1.standardTransactionAmount);
+    EXPECT_EQ(itaB5.qpiDistributeDividendsAmount, itaB1.qpiDistributeDividendsAmount);
+    EXPECT_EQ(itaC5.qpiDistributeDividendsAmount, itaC1.qpiDistributeDividendsAmount);
+    EXPECT_EQ(itaB5.qpiTransferAmount, itaB1.qpiTransferAmount);
+    EXPECT_EQ(itaC5.qpiTransferAmount, itaC1.qpiTransferAmount);
+    EXPECT_EQ(itaB5.revenueDonationAmount, itaB1.revenueDonationAmount);
+    EXPECT_EQ(itaC5.revenueDonationAmount, itaC1.revenueDonationAmount);
 }

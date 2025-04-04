@@ -76,6 +76,11 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
 
 long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
 {
+    if (contractCallbacksRunning & ContractCallbackPostIncomingTransfer)
+    {
+        return INVALID_AMOUNT;
+    }
+
     if (amount < 0 || amount > MAX_AMOUNT)
     {
         return -((long long)(MAX_AMOUNT + 1));
@@ -101,6 +106,8 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
 
         if (!contractActionTracker.addQuTransfer(_currentContractId, destination, amount))
             __qpiAbort(ContractErrorTooManyActions);
+
+        __qpiNotifyPostIncomingTransfer(_currentContractId, destination, amount, TransferType::qpiTransfer);
 
         const QuTransfer quTransfer = { _currentContractId , destination , amount };
         logger.logQuTransfer(quTransfer);
