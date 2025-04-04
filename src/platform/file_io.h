@@ -10,6 +10,7 @@
 #include "console_logging.h"
 #include "concurrency.h"
 #include "memory.h"
+#include "debugging.h"
 
 // If you get an error reading and writing files, set the chunk sizes below to
 // the cluster size set for formatting you disk. If you have no idea about the
@@ -87,6 +88,7 @@ static bool checkDir(const CHAR16* dirName)
     logToConsole(L"NO_UEFI implementation of checkDir() is missing! No directory checked!");
     return false;
 #else
+    assertMainThread();
     EFI_FILE_PROTOCOL* file;
 
     // Check if the directory exist or not
@@ -106,6 +108,7 @@ static bool createDir(const CHAR16* dirName)
     logToConsole(L"NO_UEFI implementation of createDir() is missing! No directory created!");
     return false;
 #else
+    assertMainThread();
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
 
@@ -137,6 +140,7 @@ static bool removeFile(const CHAR16* directory, const CHAR16* fileName)
     logToConsole(L"NO_UEFI implementation of removeFile() is missing! No directory checked!");
     return false;
 #else
+    assertMainThread();
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
     EFI_FILE_PROTOCOL* directoryProtocol;
@@ -547,6 +551,7 @@ protected:
     // Real write happen here. This function expected call in main thread only. Need to flush all data in queue
     int flushIO(bool isSave, int numberOfProcessedItems = 0)
     {
+        assertMainThread();
         if(numberOfProcessedItems == 1)
         {
             return flushIOMaxPriorityItem(isSave);
@@ -660,6 +665,7 @@ public:
     // Real read happen here. This function expected call in main thread only
     int flushRead(int numberOfProcessedItems = 0)
     {
+        assertMainThread();
         return this->flushIO(false, numberOfProcessedItems);
     }
 };
@@ -671,6 +677,7 @@ public:
     // Real write happen here. This function expected call in main thread only. Need to flush all data in queue
     int flushWrite(int numberOfProcessedItems = 0)
     {
+        assertMainThread();
         return this->flushIO(true, numberOfProcessedItems);
     }
 };
