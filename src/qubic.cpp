@@ -242,6 +242,7 @@ struct
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
     unsigned long long lastLogId;
+    unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
 static bool saveComputer(CHAR16* directory = NULL);
@@ -4018,6 +4019,7 @@ static bool saveAllNodeStates()
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;
     nodeStateBuffer.lastLogId = logger.logId;
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
+    gCustomMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.customMiningSharesCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
@@ -4156,6 +4158,7 @@ static bool loadAllNodeStates()
     logger.logId = nodeStateBuffer.lastLogId;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
+    gCustomMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.customMiningSharesCounterData);
 
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
