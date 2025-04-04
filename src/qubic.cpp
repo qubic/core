@@ -374,9 +374,12 @@ static void assertMainThread()
 // network and device IO can only be used by main thread
 static void assertMainThread()
 {
-    unsigned long long processorNumber;
-    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
-    ASSERT(processorNumber == mainThreadProcessorID);
+    if (mpServicesProtocol) // if mpServicesProtocol isn't created, we can be sure that this is still main thread
+    {
+        unsigned long long processorNumber;
+        mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+        ASSERT(processorNumber == mainThreadProcessorID);
+    }
 }
 #endif
 
