@@ -249,10 +249,7 @@ public:
 #else
             addEpochToFileName(pageDir, 12, max(EPOCH, int(system.epoch)));
 #endif
-            if (!checkDir(pageDir))
-            {
-                createDir(pageDir);
-            }
+            asyncCreateDir(pageDir);
         }
         
         reset();
