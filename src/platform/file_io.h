@@ -88,6 +88,7 @@ static bool checkDir(const CHAR16* dirName)
     logToConsole(L"NO_UEFI implementation of checkDir() is missing! No directory checked!");
     return false;
 #else
+    assertMainThread();
     EFI_FILE_PROTOCOL* file;
 
     // Check if the directory exist or not
