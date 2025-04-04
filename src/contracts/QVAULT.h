@@ -224,7 +224,7 @@ protected:
     uint32 newQCAPHolderPermille3, newReinvestingPermille3, newDevPermille3;
 
     PUBLIC_PROCEDURE(submitAuthAddress)
-
+    {
         if(qpi.invocator() == state.authAddress1)
         {
             state.newAuthAddress1 = input.newAddress;
@@ -238,14 +238,14 @@ protected:
             state.newAuthAddress3 = input.newAddress;
         }
 
-    _
+    }
 
     struct changeAuthAddress_locals {
         bit succeed;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(changeAuthAddress)
-
+    {
         if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
         {
             return ;
@@ -277,10 +277,10 @@ protected:
             state.newAuthAddress2 = NULL_ID;
             state.newAuthAddress3 = NULL_ID;
         }
-    _
+    }
 
     PUBLIC_PROCEDURE(submitDistributionPermille)
-
+    {
         if(input.newDevPermille + input.newQCAPHolderPermille + input.newReinvestingPermille + state.shareholderDividend + state.burnPermille != 1000)
         {
             return ;
@@ -307,10 +307,10 @@ protected:
             state.newReinvestingPermille3 = input.newReinvestingPermille;
         }
 
-    _
+    }
 
     PUBLIC_PROCEDURE(changeDistributionPermille)
-
+    {
         if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
         {
             return ;
@@ -351,10 +351,10 @@ protected:
         state.newReinvestingPermille1 = 0;
         state.newReinvestingPermille2 = 0;
         state.newReinvestingPermille3 = 0;
-    _
+    }
 
     PUBLIC_PROCEDURE(submitReinvestingAddress)
-
+    {
         if(qpi.invocator() == state.authAddress1)
         {
             state.newReinvestingAddress1 = input.newAddress;
@@ -367,10 +367,10 @@ protected:
         {
             state.newReinvestingAddress3 = input.newAddress;
         }
-    _
+    }
 
     PUBLIC_PROCEDURE(changeReinvestingAddress)
-
+    {
         if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
         {
             return ;
@@ -386,10 +386,10 @@ protected:
         state.newReinvestingAddress1 = NULL_ID;
         state.newReinvestingAddress2 = NULL_ID;
         state.newReinvestingAddress3 = NULL_ID;
-    _
+    }
 
     PUBLIC_FUNCTION(getData)
-
+    {
         output.authAddress1 = state.authAddress1;
         output.authAddress2 = state.authAddress2;
         output.authAddress3 = state.authAddress3;
@@ -416,10 +416,10 @@ protected:
         output.unbannedAddress2 = state.unbannedAddress2;
         output.unbannedAddress3 = state.unbannedAddress3;
 
-    _
+    }
 
     PUBLIC_PROCEDURE(submitAdminAddress)
-
+    {
         if(qpi.invocator() == state.authAddress1)
         {
             state.newAdminAddress1 = input.newAddress;
@@ -433,10 +433,10 @@ protected:
             state.newAdminAddress3 = input.newAddress;
         }
 
-    _
+    }
 
     PUBLIC_PROCEDURE(changeAdminAddress)
-
+    {
         if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
         {
             return ;
@@ -452,11 +452,11 @@ protected:
         state.newAdminAddress1 = NULL_ID;
         state.newAdminAddress2 = NULL_ID;
         state.newAdminAddress3 = NULL_ID;
-    _
+    }
 
 
     PUBLIC_PROCEDURE(submitBannedAddress)
-
+    {
         if(qpi.invocator() == state.authAddress1)
         {
             state.bannedAddress1 = input.bannedAddress;
@@ -470,10 +470,10 @@ protected:
             state.bannedAddress3 = input.bannedAddress;
         }
 
-    _
+    }
 
     PUBLIC_PROCEDURE(saveBannedAddress)
-
+    {
         if(state.numberOfBannedAddress >= QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES)
         {
             return ;
@@ -496,10 +496,10 @@ protected:
         state.newAdminAddress2 = NULL_ID;
         state.newAdminAddress3 = NULL_ID;
 
-    _
+    }
 
     PUBLIC_PROCEDURE(submitUnbannedAddress)
-
+    {
         if(qpi.invocator() == state.authAddress1)
         {
             state.unbannedAddress1 = input.unbannedAddress;
@@ -513,7 +513,7 @@ protected:
             state.unbannedAddress3 = input.unbannedAddress;
         }
 
-    _
+    }
 
     struct unblockBannedAddress_locals
     {
@@ -521,7 +521,7 @@ protected:
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(unblockBannedAddress)
-
+    {
         if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
         {
             return ;
@@ -557,10 +557,10 @@ protected:
         state.unbannedAddress2 = NULL_ID;
         state.unbannedAddress3 = NULL_ID;
 
-    _
+    }
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-
+    {
         REGISTER_USER_FUNCTION(getData, 1);
 
         REGISTER_USER_PROCEDURE(submitAuthAddress, 1);
@@ -576,10 +576,10 @@ protected:
         REGISTER_USER_PROCEDURE(submitUnbannedAddress, 11);
         REGISTER_USER_PROCEDURE(unblockBannedAddress, 12);
 
-	_
+	}
 
 	INITIALIZE
-
+    {
         state.QCAP_ISSUER = ID(_Q, _C, _A, _P, _W, _M, _Y, _R, _S, _H, _L, _B, _J, _H, _S, _T, _T, _Z, _Q, _V, _C, _I, _B, _A, _R, _V, _O, _A, _S, _K, _D, _E, _N, _A, _S, _A, _K, _N, _O, _B, _R, _G, _P, _F, _W, _W, _K, _R, _C, _U, _V, _U, _A, _X, _Y, _E);
         state.authAddress1 = ID(_T, _K, _U, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
 		state.authAddress2 = ID(_F, _X, _J, _F, _B, _T, _J, _M, _Y, _F, _J, _H, _P, _B, _X, _C, _D, _Q, _T, _L, _Y, _U, _K, _G, _M, _H, _B, _B, _Z, _A, _A, _F, _T, _I, _C, _W, _U, _K, _R, _B, _M, _E, _K, _Y, _N, _U, _P, _M, _R, _M, _B, _D, _N, _D, _R, _G);
@@ -600,7 +600,7 @@ protected:
         state.bannedAddress.set(1, ID(_E, _S, _C, _R, _O, _W, _B, _O, _T, _F, _T, _F, _I, _C, _I, _F, _P, _U, _X, _O, _J, _K, _G, _Q, _P, _Y, _X, _C, _A, _B, _L, _Z, _V, _M, _M, _U, _C, _M, _J, _F, _S, _G, _S, _A, _I, _A, _T, _Y, _I, _N, _V, _T, _Y, _G, _O, _A));
         state.numberOfBannedAddress = 2;
 
-	_
+	}
 
     struct END_EPOCH_locals 
     {
@@ -619,7 +619,7 @@ protected:
     };
 
     END_EPOCH_WITH_LOCALS
-
+    {
         qpi.getEntity(SELF, locals.entity);
         locals.revenue = locals.entity.incomingAmount - locals.entity.outgoingAmount;
 
@@ -671,5 +671,5 @@ protected:
             locals.iter.next();
         }
 
-    _
+    }
 };
