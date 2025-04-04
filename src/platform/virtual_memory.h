@@ -248,9 +248,14 @@ public:
 #else
             addEpochToFileName(pageDir, 12, max(EPOCH, int(system.epoch)));
 #endif
-            if (!checkDir(pageDir))
+            if (asyncCreateDir(pageDir) != 0)
             {
-                createDir(pageDir);
+#if !defined(NDEBUG)
+                CHAR16 dbg[128];
+                setText(dbg, L"WARNING: Failed to create dir ");
+                appendText(dbg, pageDir);
+                addDebugMessage(dbg);
+#endif
             }
         }
         

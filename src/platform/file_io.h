@@ -747,6 +747,11 @@ public:
         mRemoveFilePathQueueCount = 0;
         mRemoveFilePathQueueLock = 0;
 
+
+        setMem(mCreateDirQueue, sizeof(mCreateDirQueue), 0);
+        mCreateDirQueueCount = 0;
+        mCreateDirQueueLock = 0;
+
         return true;
     }
 
@@ -904,16 +909,25 @@ public:
         RELEASE(mRemoveFilePathQueueLock);
     }
 
+    void flushCreateDir()
+    {
+        ACQUIRE(mCreateDirQueueLock);
+        if (mCreateDirQueueCount)
+        {
+            for (int i = 0; i < mCreateDirQueueCount; i++)
+            {
+                createDir(mCreateDirQueue[i]);
+            }
+            setMem(mCreateDirQueue, sizeof(mCreateDirQueue), 0);
+            mCreateDirQueueCount = 0;
+        }
+        RELEASE(mCreateDirQueueLock);
+    }
+
     void asyncRem(const CHAR16* directory, const CHAR16* fileName)
     {
         if (mIsStop)
         {
-            return;
-        }
-        bool mainThread = isMainThread();
-        if (mainThread)
-        {
-            flushRem();
             return;
         }
         ACQUIRE(mRemoveFilePathQueueLock);
@@ -922,9 +936,43 @@ public:
         setText(mRemoveFileDirQueue[index], directory);
         mRemoveFilePathQueueCount++;
         RELEASE(mRemoveFilePathQueueLock);
+
+        bool mainThread = isMainThread();
+        if (mainThread)
+        {
+            flushRem();
+            return;
+        }        
         // Note: if this remove operation is used by more modules,
         // consider upgrade this design because mRemoveFilePathQueueCount may never hit 0
         while (mRemoveFilePathQueueCount != 0)
+        {
+            sleep(10);
+        }
+    }
+
+    void asyncCreateDir(const CHAR16* directory)
+    {
+        if (mIsStop)
+        {
+            return;
+        }
+
+        ACQUIRE(mCreateDirQueueLock);
+        int index = mCreateDirQueueCount;
+        setText(mCreateDirQueue[index], directory);
+        mCreateDirQueueCount++;
+        RELEASE(mCreateDirQueueLock);
+
+        bool mainThread = isMainThread();
+        if (mainThread)
+        {
+            flushCreateDir();
+            return;
+        }
+        // Note: if this remove operation is used by more modules,
+        // consider upgrade this design because mCreateDirQueueCount may never hit 0
+        while (mCreateDirQueueCount != 0)
         {
             sleep(10);
         }
@@ -940,6 +988,7 @@ public:
             remainedItems = remainedItems + mFileWriteQueue.flushWrite(numberOfItemsPerQueue);
         }
         flushRem();
+        flushCreateDir();
         return remainedItems;
     }
 
@@ -963,6 +1012,11 @@ private:
     CHAR16 mRemoveFileDirQueue[1024][1024];
     int mRemoveFilePathQueueCount;
     volatile char mRemoveFilePathQueueLock;
+
+    // Create directory queue: rare operation, only need a simple queue
+    CHAR16 mCreateDirQueue[1024][1024];
+    int mCreateDirQueueCount;
+    volatile char mCreateDirQueueLock;
 };
 
 #pragma optimize("", on)
@@ -1005,9 +1059,39 @@ static long long asyncLoad(const CHAR16* fileName, unsigned long long totalSize,
 // To avoid lock and the actual remove happen, flushAsyncFileIOBuffer must be called in main thread
 static long long asyncRemoveFile(const CHAR16* fileName, const CHAR16* directory = NULL)
 {
+    if (!fileName)
+    {
+        return -1;
+    }
     if (gAsyncFileIO)
     {
-        gAsyncFileIO->asyncRem(fileName, directory);
+        gAsyncFileIO->asyncRem(directory, fileName);
+        return 0;
+    }
+    // the only case that gAsyncFileIO == NULL is when main thread initializing => can run rem file directly
+    else if (removeFile(directory, fileName))
+    {
+        return 0;
+    }
+    return -1;
+}
+
+// Asynchorous create a dir if it doesn't exist
+// This function can be called from any thread and is a blocking function
+static long long asyncCreateDir(const CHAR16* directory)
+{
+    if (!directory)
+    {
+        return -1;
+    }
+    if (gAsyncFileIO)
+    {
+        gAsyncFileIO->asyncCreateDir(directory);
+        return 0;
+    } 
+    // the only case that gAsyncFileIO == NULL is when main thread initializing => can run create dir directly
+    else if (createDir(directory)) 
+    {
         return 0;
     }
     return -1;
