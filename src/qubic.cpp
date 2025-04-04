@@ -364,6 +364,22 @@ static void logToConsole(const CHAR16* message)
 #endif
 }
 
+#ifdef NDEBUG
+static void assertMainThread()
+{
+    return;
+}
+#else
+// debug util to make sure current thread is the main thread
+// network and device IO can only be used by main thread
+static void assertMainThread()
+{
+    unsigned long long processorNumber;
+    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    ASSERT(processorNumber == mainThreadProcessorID);
+}
+#endif
+
 
 static unsigned int getTickInMiningPhaseCycle()
 {
@@ -6824,7 +6840,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             // Use random tick offset to reduce risk of several nodes doing auto-save in parallel (which can lead to bad topology and misalignment)
             nextPersistingNodeStateTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
 #endif
-
+            
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
             logToConsole(L"Init complete! Entering main loop ...");

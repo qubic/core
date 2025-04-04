@@ -19,5 +19,5 @@
         )
 
 static void addDebugMessageAssert(const wchar_t* message, const wchar_t* file, const unsigned int lineNumber);
-
+static void assertMainThread();
 #endif
