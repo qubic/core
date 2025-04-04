@@ -1059,9 +1059,18 @@ static long long asyncLoad(const CHAR16* fileName, unsigned long long totalSize,
 // To avoid lock and the actual remove happen, flushAsyncFileIOBuffer must be called in main thread
 static long long asyncRemoveFile(const CHAR16* fileName, const CHAR16* directory = NULL)
 {
+    if (!fileName)
+    {
+        return -1;
+    }
     if (gAsyncFileIO)
     {
-        gAsyncFileIO->asyncRem(fileName, directory);
+        gAsyncFileIO->asyncRem(directory, fileName);
+        return 0;
+    }
+    // the only case that gAsyncFileIO == NULL is when main thread initializing => can run rem file directly
+    else if (removeFile(directory, fileName))
+    {
         return 0;
     }
     return -1;
@@ -1078,6 +1087,11 @@ static long long asyncCreateDir(const CHAR16* directory)
     if (gAsyncFileIO)
     {
         gAsyncFileIO->asyncCreateDir(directory);
+        return 0;
+    } 
+    // the only case that gAsyncFileIO == NULL is when main thread initializing => can run create dir directly
+    else if (createDir(directory)) 
+    {
         return 0;
     }
     return -1;
