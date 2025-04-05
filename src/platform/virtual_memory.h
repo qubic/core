@@ -57,6 +57,7 @@ private:
         unsigned char digest[32];
         KangarooTwelve(input, 32, digest, 32);
         getIdentity(digest, pageName, true);
+        setMem(pageName + 8, 8, 0); // too long file name will cause crash on some system
         appendText(pageName, L".pg");
     }
 
