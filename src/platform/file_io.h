@@ -1,11 +1,10 @@
 #pragma once
 
 #include <intrin.h>
-
+#include "platform/assert.h"
 #ifdef NO_UEFI
 #include <cstdio>
 #endif
-
 #include <lib/platform_efi/uefi.h>
 #include "console_logging.h"
 #include "concurrency.h"

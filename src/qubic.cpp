@@ -364,11 +364,7 @@ static void logToConsole(const CHAR16* message)
 #endif
 }
 
-#ifdef NDEBUG
-static void assertMainThread()
-{
-    return;
-}
+#if defined(NDEBUG)
 #else
 // debug util to make sure current thread is the main thread
 // network and device IO can only be used by main thread

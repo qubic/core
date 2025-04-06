@@ -4,7 +4,6 @@
 
 // in gtest context, use EXPECT_TRUE as ASSERT
 #define ASSERT EXPECT_TRUE
-
 #elif defined(NDEBUG)
 
 // with NDEBUG, make ASSERT disappear
@@ -19,5 +18,12 @@
         )
 
 static void addDebugMessageAssert(const wchar_t* message, const wchar_t* file, const unsigned int lineNumber);
+#endif
+#if defined(EXPECT_TRUE) || defined(NDEBUG)
+static void assertMainThread()
+{
+    return;
+}
+#else
 static void assertMainThread();
 #endif
