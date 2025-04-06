@@ -63,4 +63,6 @@ inline unsigned long long now_ms()
         return 0;
     }
 }
+#else
+unsigned long long now_ms();
 #endif
