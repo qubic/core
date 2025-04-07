@@ -1800,6 +1800,10 @@ static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& d
     if (amount <= 0 || dest.u64._0 >= contractCount || dest.u64._1 || dest.u64._2 || dest.u64._3)
         return;
 
+    // Also don't run contract processor if the callback isn't implemented in the dest contract
+    if (!contractSystemProcedures[dest.u64._0][POST_INCOMING_TRANSFER])
+        return;
+
     ASSERT(type == QPI::TransferType::revenueDonation || type == QPI::TransferType::ipoBidRefund);
 
     // Caution: Transaction has no signature, because it is a pseudo-transaction just used to hand over information to
