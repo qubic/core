@@ -76,6 +76,20 @@ private:
         {
             addDebugMessage(L"Failed to store virtualMemory to disk. Old data maybe lost");
         }
+        else
+        {
+            CHAR16 debugMsg[128];
+            unsigned long long tmp = prefixName;
+            debugMsg[0] = L'[';
+            copyMem(debugMsg + 1, &tmp, 8);
+            debugMsg[5] = L']';
+            debugMsg[6] = L' ';
+            debugMsg[7] = 0;
+            appendText(debugMsg, L"page ");
+            appendNumber(debugMsg, currentPageId, true);
+            appendText(debugMsg, L" is written into disk");
+            addDebugMessage(debugMsg);
+        }
 #endif
     }
 
@@ -100,9 +114,26 @@ private:
 
     void copyCurrentPageToCache()
     {
-        int page_id = getMostOutdatedCachePage();
-        copyMem(cache[page_id], currentPage, pageSize);
-        lastAccessedTimestamp[page_id] = now_ms();
+        int cache_slot_idx = getMostOutdatedCachePage();
+        copyMem(cache[cache_slot_idx], currentPage, pageSize);
+        lastAccessedTimestamp[cache_slot_idx] = now_ms();
+        cachePageId[cache_slot_idx] = currentPageId;
+#ifndef NDEBUG
+        {
+            CHAR16 debugMsg[128];
+            unsigned long long tmp = prefixName;
+            debugMsg[0] = L'[';
+            copyMem(debugMsg + 1, &tmp, 8);
+            debugMsg[5] = L']';
+            debugMsg[6] = L' ';
+            debugMsg[7] = 0;
+            appendText(debugMsg, L"page ");
+            appendNumber(debugMsg, currentPageId, true);
+            appendText(debugMsg, L" is moved to cache slot ");
+            appendNumber(debugMsg, cache_slot_idx, true);
+            addDebugMessage(debugMsg);
+        }
+#endif
     }
 
     void cleanCurrentPage()
@@ -167,7 +198,13 @@ private:
 #if !defined(NDEBUG)
         {
             CHAR16 debugMsg[128];
-            setText(debugMsg, L"Load complete. Page ");
+            unsigned long long tmp = prefixName;
+            debugMsg[0] = L'[';
+            copyMem(debugMsg+1, &tmp, 8);
+            debugMsg[5] = L']';
+            debugMsg[6] = L' ';
+            debugMsg[7] = 0;
+            appendText(debugMsg, L"Load complete. Page ");
             appendNumber(debugMsg, pageId, true);
             appendText(debugMsg, L" is loaded into slot ");
             appendNumber(debugMsg, cache_page_id, true);
@@ -580,7 +617,10 @@ public:
         currentPageId = *((unsigned long long*)buffer);
         buffer += 8;
         ret += 8;
-        RELEASE(memLock);
+
+        cachePageId[0] = currentPageId;
+        lastAccessedTimestamp[0] = now_ms();
+        RELEASE(memLock);        
         return ret;
     }
 };

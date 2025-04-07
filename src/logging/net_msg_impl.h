@@ -23,20 +23,26 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
             long long startFrom = startIdBufferRange.startIndex;
             long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
             constexpr long long maxPayloadSize = RequestResponseHeader::max_size - sizeof(sizeof(RequestResponseHeader));
+
             if (length > maxPayloadSize)
             {
-                length -= endIdBufferRange.length;
-                while (length > maxPayloadSize)
+                while (length > maxPayloadSize && toID > request->fromID)
                 {
-                    ASSERT(toID > request->fromID);
-                    --toID;
+                    toID = request->fromID + (toID - request->fromID) / 2;
                     endIdBufferRange = logBuf.getBlobInfo(toID);
-                    length -= endIdBufferRange.length;
+                    length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
                 }
             }
-            char* rBuffer = responseBuffers[processorNumber];
-            logBuffer.getMany(rBuffer, startFrom, length);
-            enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), rBuffer);
+            if (length < maxPayloadSize)
+            {
+                char* rBuffer = responseBuffers[processorNumber];
+                logBuffer.getMany(rBuffer, startFrom, length);
+                enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), rBuffer);
+            }
+            else
+            {
+                enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
+            }
         }
         else
         {
