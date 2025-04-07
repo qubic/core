@@ -23,6 +23,7 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
             long long startFrom = startIdBufferRange.startIndex;
             long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
             constexpr long long maxPayloadSize = RequestResponseHeader::max_size - sizeof(sizeof(RequestResponseHeader));
+            // TODO: use binary jumping here
             if (length > maxPayloadSize)
             {
                 length -= endIdBufferRange.length;
