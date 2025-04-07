@@ -96,3 +96,7 @@ static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
+
+// The self-generated computorlist will be computed regardless of this define
+// but the self-generated computorlist will not be used if this define is commented
+// #define ENABLE_SELFGENERATED_COMPUTORLIST

@@ -5026,7 +5026,11 @@ static void calculateComputorIndex()
 
     // Change to true as soon as selfGeneratedComputors shall be used!
     // Currently set to false so that nodes compute the list but never use it to allow to compare self-generated lists
+#ifdef ENABLE_SELFGENERATED_COMPUTORLIST
+    system.useSelfGeneratedComputors = true;
+#else
     system.useSelfGeneratedComputors = false;
+#endif
 };
 
 static bool isTickTimeOut()
