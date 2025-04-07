@@ -703,7 +703,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(NULL, header);
             }
 
-            // If node is in criticalSituation #2, it will not accept anye other computorlist
+            // If node is in criticalSituation #2, it will not accept any other computorlist
             if(criticalSituation == 2){
                 return;
             }
@@ -5028,14 +5028,12 @@ static void calculateComputorIndex()
             }
             else
             {
-                // Handle error; something went wrong
 #ifndef NDEBUG
                 addDebugMessage(L"COMPLIST: Somthing went wrong during computation of self-generated computorlist. futureComputorIdx > NUMBER_OF_COMPUTORS");
 #endif
-
-                // TODO: Maybe abort computation and fall back to waiting for ARB list.
-                // system.useSelfgeneratedcomputors = false;
-                // return;
+                // Abort computation and fall back to waiting for ARB list.
+                system.useSelfGeneratedComputors = false;
+                return;
             }
         }
     }
