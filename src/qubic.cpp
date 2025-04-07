@@ -241,7 +241,6 @@ struct
     unsigned int resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
-    unsigned long long lastLogId;
 } nodeStateBuffer;
 #endif
 static bool saveComputer(CHAR16* directory = NULL);
@@ -364,6 +363,21 @@ static void logToConsole(const CHAR16* message)
         outputStringToConsole(timestampedMessage);
 #endif
 }
+
+#if defined(NDEBUG)
+#else
+// debug util to make sure current thread is the main thread
+// network and device IO can only be used by main thread
+static void assertMainThread()
+{
+    if (mpServicesProtocol) // if mpServicesProtocol isn't created, we can be sure that this is still main thread
+    {
+        unsigned long long processorNumber;
+        mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+        ASSERT(processorNumber == mainThreadProcessorID);
+    }
+}
+#endif
 
 
 static unsigned int getTickInMiningPhaseCycle()
@@ -1678,19 +1692,31 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case RequestLog::type:
                 {
-                    logger.processRequestLog(peer, header);
+                    logger.processRequestLog(processorNumber, peer, header);
                 }
                 break;
 
                 case RequestLogIdRangeFromTx::type:
                 {
-                    logger.processRequestTxLogInfo(peer, header);
+                    logger.processRequestTxLogInfo(processorNumber, peer, header);
                 }
                 break;
 
                 case RequestAllLogIdRangesFromTick::type:
                 {
-                    logger.processRequestTickTxLogInfo(peer, header);
+                    logger.processRequestTickTxLogInfo(processorNumber, peer, header);
+                }
+                break;
+
+                case RequestPruningLog::type:
+                {
+                    logger.processRequestPrunePageFile(peer, header);
+                }
+                break;
+
+                case RequestLogStateDigest::type:
+                {
+                    logger.processRequestGetLogDigest(peer, header);
                 }
                 break;
 
@@ -2250,12 +2276,13 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
         if (decreaseEnergy(spectrumIndex, transaction->amount))
         {
             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
-
+            {
+                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
+                logger.logQuTransfer(quTransfer);
+            }
             if (transaction->amount)
             {
                 moneyFlew = true;
-                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
-                logger.logQuTransfer(quTransfer);
             }
 
             if (isZero(transaction->destinationPublicKey))
@@ -2424,7 +2451,6 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick, system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
@@ -2942,6 +2968,8 @@ static void beginEpoch()
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
 #endif
+
+    logger.reset(system.initialTick);
 }
 
 
@@ -3164,11 +3192,8 @@ static void endEpoch()
 
                     // Generate revenue donation
                     increaseEnergy(rdEntry.destinationPublicKey, donation);
-                    if (revenue)
-                    {
-                        const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
-                        logger.logQuTransfer(quTransfer);
-                    }
+                    const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
+                    logger.logQuTransfer(quTransfer);
                 }
             }
 
@@ -4100,8 +4125,7 @@ static bool saveAllNodeStates()
     copyMem(&nodeStateBuffer.resourceTestingDigest, &resourceTestingDigest, sizeof(resourceTestingDigest));
     nodeStateBuffer.currentRandomSeed = score->currentRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
-    nodeStateBuffer.numberOfTransactions = numberOfTransactions;
-    nodeStateBuffer.lastLogId = logger.logId;
+    nodeStateBuffer.numberOfTransactions = numberOfTransactions;    
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
@@ -4164,7 +4188,9 @@ static bool saveAllNodeStates()
         return false;
     }
 #endif
-
+#if ENABLED_LOGGING
+    logger.saveCurrentLoggingStates(directory);
+#endif
     return true;
 }
 
@@ -4238,7 +4264,6 @@ static bool loadAllNodeStates()
     numberOfMiners = nodeStateBuffer.numberOfMiners;
     initialRandomSeedFromPersistingState = nodeStateBuffer.currentRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
-    logger.logId = nodeStateBuffer.lastLogId;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
@@ -4313,8 +4338,8 @@ static bool loadAllNodeStates()
 #endif
 
 #if ENABLED_LOGGING
-    logToConsole(L"Initializing logger");
-    logger.reset(system.initialTick, system.tick); // initialize the logger
+    logToConsole(L"Loading old logger...");
+    logger.loadLastLoggingStates(directory);
 #endif
     return true;
 }
@@ -6817,7 +6842,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             // Use random tick offset to reduce risk of several nodes doing auto-save in parallel (which can lead to bad topology and misalignment)
             nextPersistingNodeStateTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
 #endif
-
+            
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
             logToConsole(L"Init complete! Entering main loop ...");

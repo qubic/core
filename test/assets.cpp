@@ -3,6 +3,7 @@
 #define PRINT_TEST_INFO 0
 
 #include "gtest/gtest.h"
+#include "test_util.h"
 
 #include "logging_test.h"
 
@@ -10,7 +11,7 @@
 #include "contract_core/contract_exec.h"
 #include "contract_core/qpi_asset_impl.h"
 
-#include "test_util.h"
+
 
 
 class AssetsTest : public AssetStorage, LoggingTest
