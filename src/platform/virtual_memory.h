@@ -619,7 +619,10 @@ public:
         currentPageId = *((unsigned long long*)buffer);
         buffer += 8;
         ret += 8;
-        RELEASE(memLock);
+
+        cachePageId[0] = currentPageId;
+        lastAccessedTimestamp[0] = now_ms();
+        RELEASE(memLock);        
         return ret;
     }
 };
