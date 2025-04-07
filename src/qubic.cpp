@@ -1514,7 +1514,7 @@ static void requestProcessor(void* ProcedureArgument)
             while (epochTransitionState)
             {
                 {
-                    // consume the queue without processing
+                    // to avoid potential overflow: consume the queue without processing requests
                     ACQUIRE(requestQueueTailLock);
                     if (requestQueueElementTail == requestQueueElementHead)
                     {
@@ -5760,6 +5760,9 @@ static bool initialize()
     {
         peers[i].receiveData.FragmentCount = 1;
         peers[i].transmitData.FragmentCount = 1;
+        // [dkat]: here is a hacky way to avoid network corruption on some hardware
+        // by allocating the buffer bigger than needed: `BUFFER_SIZE * 2` instead of `BUFFER_SIZE`
+        // we have not found out the root cause, but it's likely the uefi system use more buffer than what we tell them to use
         if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE * 2, &peers[i].receiveBuffer, __LINE__))  ||
             (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE * 2, &peers[i].transmitData.FragmentTable[0].FragmentBuffer, __LINE__)) ||
             (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE * 2, (void**)&peers[i].dataToTransmit, __LINE__)))
