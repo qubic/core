@@ -6,7 +6,7 @@ struct SWATCH2
 
 struct SWATCH : public ContractBase
 {
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
     }
 
@@ -16,7 +16,7 @@ struct SWATCH : public ContractBase
         sint64 ownBalance;
     };
 
-    BEGIN_EPOCH_WITH_LOCALS
+    BEGIN_EPOCH_WITH_LOCALS()
     {
         // Burn all coins of this contract. According to agreement of the quorum, a part of the
         // computor revenue is donated to this contract for burning.

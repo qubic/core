@@ -1070,7 +1070,7 @@ protected:
 		}
 	}
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(Fees, 1);
 		REGISTER_USER_FUNCTION(AssetAskOrders, 2);
@@ -1090,7 +1090,7 @@ protected:
 		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 9);
 	}
 
-	INITIALIZE
+	INITIALIZE()
 	{
 
 		// No need to initialize _earnedAmount and other variables with 0, whole contract state is zeroed before initialization is invoked
@@ -1105,7 +1105,7 @@ protected:
 		*/
 	}
 
-	END_TICK
+	END_TICK()
 	{
 		if ((div((state._earnedAmount - state._distributedAmount), 676ULL) > 0) && (state._earnedAmount > state._distributedAmount))
 		{
@@ -1116,18 +1116,18 @@ protected:
 		}
 	}
 
-	PRE_RELEASE_SHARES
+	PRE_RELEASE_SHARES()
 	{
 		// system procedure called before releasing asset management rights
 		// when another contract wants to acquire asset management rights from QX
 		// -> always reject (default); rights can only be transferred upon user request via TransferShareManagementRights
 	}
 
-	POST_RELEASE_SHARES
+	POST_RELEASE_SHARES()
 	{
 	}
 
-	PRE_ACQUIRE_SHARES
+	PRE_ACQUIRE_SHARES()
 	{
 		// system procedure called before acquiring asset management rights
 		// when another contract wants to release asset management rights to QX
@@ -1136,7 +1136,7 @@ protected:
 		output.allowTransfer = true;
 	}
 
-	POST_ACQUIRE_SHARES
+	POST_ACQUIRE_SHARES()
 	{
 	}
 };

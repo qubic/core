@@ -559,7 +559,7 @@ protected:
 
     }
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getData, 1);
 
@@ -578,7 +578,7 @@ protected:
 
 	}
 
-	INITIALIZE
+	INITIALIZE()
     {
         state.QCAP_ISSUER = ID(_Q, _C, _A, _P, _W, _M, _Y, _R, _S, _H, _L, _B, _J, _H, _S, _T, _T, _Z, _Q, _V, _C, _I, _B, _A, _R, _V, _O, _A, _S, _K, _D, _E, _N, _A, _S, _A, _K, _N, _O, _B, _R, _G, _P, _F, _W, _W, _K, _R, _C, _U, _V, _U, _A, _X, _Y, _E);
         state.authAddress1 = ID(_T, _K, _U, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
@@ -618,7 +618,7 @@ protected:
         id possessorPubkey;
     };
 
-    END_EPOCH_WITH_LOCALS
+    END_EPOCH_WITH_LOCALS()
     {
         qpi.getEntity(SELF, locals.entity);
         locals.revenue = locals.entity.incomingAmount - locals.entity.outgoingAmount;

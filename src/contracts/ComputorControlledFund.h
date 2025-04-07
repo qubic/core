@@ -230,7 +230,7 @@ public:
 	}
 
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(GetProposalIndices, 1);
 		REGISTER_USER_FUNCTION(GetProposal, 2);
@@ -244,7 +244,7 @@ public:
 	}
 
 
-	INITIALIZE
+	INITIALIZE()
 	{
 		state.setProposalFee = 1000000;
 	}
@@ -258,7 +258,7 @@ public:
 		LatestTransfersEntry transfer;
 	};
 
-	END_EPOCH_WITH_LOCALS
+	END_EPOCH_WITH_LOCALS()
 	{
 		// Analyze transfer proposal results
 

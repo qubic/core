@@ -1066,7 +1066,7 @@ protected:
     //    }
     }
 
-    INITIALIZE
+    INITIALIZE()
     {
         state.numberOfActiveVaults = 0ULL;
         state.totalRevenue = 0ULL;
@@ -1080,7 +1080,7 @@ protected:
         state.liveDepositFee = 0ULL;
     }
 
-    END_EPOCH_WITH_LOCALS
+    END_EPOCH_WITH_LOCALS()
     {
         for (locals.i = 0ULL; locals.i < MSVAULT_MAX_VAULTS; locals.i++)
         {
@@ -1150,7 +1150,7 @@ protected:
         }
     }
 
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_PROCEDURE(registerVault, 1);
         REGISTER_USER_PROCEDURE(deposit, 2);

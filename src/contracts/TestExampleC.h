@@ -46,7 +46,7 @@ protected:
 		TESTEXB::SetPreAcquireSharesOutput_output textExBOutput;
 	};
 
-	PRE_ACQUIRE_SHARES_WITH_LOCALS
+	PRE_ACQUIRE_SHARES_WITH_LOCALS()
 	{
 		// This is for the ResolveDeadlockCallbackProcedureAndConcurrentFunction in test/contract_testex.cpp:
 		// 1. Check reuse of already owned write lock of TESTEXA and delay execution in order to make sure that the
@@ -110,7 +110,7 @@ protected:
 		TESTEXB::QpiTransfer_output output;
 	};
 
-	POST_INCOMING_TRANSFER_WITH_LOCALS
+	POST_INCOMING_TRANSFER_WITH_LOCALS()
 	{
 		ASSERT(input.amount > 0);
 		switch (input.type)
@@ -194,7 +194,7 @@ public:
 	//---------------------------------------------------------------
 	// COMMON PARTS
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(IncomingTransferAmounts, 20);
 		REGISTER_USER_FUNCTION(GetIpoBid, 30);

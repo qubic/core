@@ -140,7 +140,7 @@ protected:
 			output.qpiFunctionsOutput = state.qpiFunctionsOutputUserProc.get(input.tick);
 	}
 
-	BEGIN_TICK
+	BEGIN_TICK()
 	{
 		state.qpiFunctionsOutputTemp.year = qpi.year();
 		state.qpiFunctionsOutputTemp.month = qpi.month();
@@ -162,7 +162,7 @@ protected:
 		state.qpiFunctionsOutputBeginTick.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
 	}
 
-	END_TICK
+	END_TICK()
 	{
 		state.qpiFunctionsOutputTemp.year = qpi.year();
 		state.qpiFunctionsOutputTemp.month = qpi.month();
@@ -299,7 +299,7 @@ protected:
 		}
 	}
 
-	PRE_RELEASE_SHARES
+	PRE_RELEASE_SHARES()
 	{
 		// check that qpi.acquireShares() leading to this callback is triggered by owner,
 		// otherwise allowing another contract to acquire management rights is risky
@@ -319,7 +319,7 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 	}
 
-	POST_RELEASE_SHARES
+	POST_RELEASE_SHARES()
 	{
 		state.postReleaseSharesCounter++;
 		state.prevPostReleaseSharesInput = input;
@@ -334,7 +334,7 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 	}
 
-	PRE_ACQUIRE_SHARES
+	PRE_ACQUIRE_SHARES()
 	{
 		output = state.preAcquireSharesOutput;
 		state.prevPreAcquireSharesInput = input;
@@ -349,7 +349,7 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 	}
 
-	POST_ACQUIRE_SHARES
+	POST_ACQUIRE_SHARES()
 	{
 		state.postAcquireShareCounter++;
 		state.prevPostAcquireSharesInput = input;
@@ -427,7 +427,7 @@ protected:
 	//---------------------------------------------------------------
 	// COMMON PARTS
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(QueryQpiFunctions, 1);
 		REGISTER_USER_FUNCTION(ReturnQpiFunctionsOutputBeginTick, 2);

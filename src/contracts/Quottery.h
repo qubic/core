@@ -1357,7 +1357,7 @@ public:
     }
 
         
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(basicInfo, 1);
         REGISTER_USER_FUNCTION(getBetInfo, 2);
@@ -1371,7 +1371,7 @@ public:
         REGISTER_USER_PROCEDURE(publishResult, 4);
     }
 
-    BEGIN_EPOCH
+    BEGIN_EPOCH()
     {
         state.mFeePerSlotPerHour = QUOTTERY_FEE_PER_SLOT_PER_HOUR;
         state.mMinAmountPerBetSlot = QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_;
@@ -1381,7 +1381,7 @@ public:
         state.mGameOperatorId = id(0x63a7317950fa8886ULL, 0x4dbdf78085364aa7ULL, 0x21c6ca41e95bfa65ULL, 0xcbc1886b3ea8e647ULL);
     }
 
-    END_EPOCH
+    END_EPOCH()
     {
         if ((div(state.mEarnedAmountForShareHolder - state.mPaidAmountForShareHolder, uint64(NUMBER_OF_COMPUTORS)) > 0) && (state.mEarnedAmountForShareHolder > state.mPaidAmountForShareHolder))
         {

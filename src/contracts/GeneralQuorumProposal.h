@@ -236,7 +236,7 @@ public:
 	}
 
 
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
         REGISTER_USER_FUNCTION(GetProposalIndices, 1);
         REGISTER_USER_FUNCTION(GetProposal, 2);
@@ -262,7 +262,7 @@ public:
 		Success_output success;
 	};
 
-	BEGIN_EPOCH_WITH_LOCALS
+	BEGIN_EPOCH_WITH_LOCALS()
 	{
 		// Analyze transfer proposal results
 
@@ -318,7 +318,7 @@ public:
 		Success_output success;
 	};
 
-	INITIALIZE_WITH_LOCALS
+	INITIALIZE_WITH_LOCALS()
 	{
 		// All works with zeroed state, but:
 		// In the construction epoch 123, directly add the 15% revenue donation to the Supply Watcher contract,

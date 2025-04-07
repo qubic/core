@@ -12,7 +12,7 @@ struct TESTEXD : public ContractBase
 		sint64 balance;
 	};
 
-	END_TICK_WITH_LOCALS
+	END_TICK_WITH_LOCALS()
 	{
 		// Distribute balance to sharesholders at the end of each tick
 		qpi.getEntity(SELF, locals.entity);
@@ -23,7 +23,7 @@ struct TESTEXD : public ContractBase
 		}
 	}
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 	}
 };

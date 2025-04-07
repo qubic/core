@@ -403,7 +403,7 @@ public:
         return;
     }
 
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
 

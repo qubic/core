@@ -28,12 +28,12 @@ private:
 		qpi.transfer(qpi.invocator(), qpi.invocationReward());
 	}
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_PROCEDURE(RevealAndCommit, 1);
 	}
 
-	INITIALIZE
+	INITIALIZE()
 	{
 		state._bitFee = 1000;
 	}

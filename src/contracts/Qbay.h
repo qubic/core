@@ -2470,7 +2470,7 @@ protected:
 	}
 	}
 
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(getNumberOfNFTForUser, 1);
 		REGISTER_USER_FUNCTION(getInfoOfNFTUserPossessed, 2);
@@ -2502,7 +2502,7 @@ protected:
 
     }
 
-	INITIALIZE
+	INITIALIZE()
 	{
 		state.cfbIssuer = ID(_C, _F, _B, _M, _E, _M, _Z, _O, _I, _D, _E, _X, _Q, _A, _U, _X, _Y, _Y, _S, _Z, _I, _U, _R, _A, _D, _Q, _L, _A, _P, _W, _P, _M, _N, _J, _X, _Q, _S, _N, _V, _Q, _Z, _A, _H, _Y, _V, _O, _P, _Y, _U, _K, _K, _J, _B, _J, _U, _C);
 		state.marketPlaceOwner = ID(_R, _K, _D, _H, _C, _M, _R, _J, _Y, _C, _G, _K, _P, _D, _U, _Y, _R, _X, _G, _D, _Y, _Z, _C, _I, _Z, _I, _T, _A, _H, _Y, _O, _V, _G, _I, _U, _T, _K, _N, _D, _T, _E, _H, _P, _C, _C, _L, _W, _L, _Z, _X, _S, _H, _N, _F, _P, _D);
@@ -2516,7 +2516,7 @@ protected:
 		QX::TransferShareManagementRights_output transferShareManagementRights_output;
 	};
 
-	END_EPOCH_WITH_LOCALS
+	END_EPOCH_WITH_LOCALS()
 	{
 		qpi.distributeDividends(div(state.collectedShareHoldersFee * 1ULL, 676ULL));
 		qpi.burn(state.collectedShareHoldersFee - div(state.collectedShareHoldersFee, 676ULL) * 676ULL);
@@ -2538,7 +2538,7 @@ protected:
 
 	}
 
-    PRE_ACQUIRE_SHARES
+    PRE_ACQUIRE_SHARES()
 	{
 		output.allowTransfer = true;
 	}

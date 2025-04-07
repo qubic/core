@@ -873,7 +873,7 @@ protected:
         output.returnCode = QEARN_UNLOCK_SUCCESS; //  unlock is succeed
     }
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getLockInfoPerEpoch, 1);
         REGISTER_USER_FUNCTION(getUserLockedInfo, 2);
@@ -904,7 +904,7 @@ protected:
         uint32 locked_epoch;
     };
 
-    BEGIN_EPOCH_WITH_LOCALS
+    BEGIN_EPOCH_WITH_LOCALS()
     {
         qpi.getEntity(SELF, locals.entity);
         locals.current_balance = locals.entity.incomingAmount - locals.entity.outgoingAmount;
@@ -953,7 +953,7 @@ protected:
 
     };
 
-	END_EPOCH_WITH_LOCALS
+	END_EPOCH_WITH_LOCALS()
     {
         state._earlyUnlockedCnt = 0;
         state._fullyUnlockedCnt = 0;
