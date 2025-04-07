@@ -1442,6 +1442,16 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
+            case SPECIAL_COMMAND_SET_IGNORE_SELFGENERATED_COMPUTORLIST:
+            {
+                const auto* _request = header->getPayload<SpecialCommandSetIgnoreSelfGeneratedComputorsRequestAndResponse>();
+                system.ignoreSelfGeneratedComputorsNextStart = _request->ignoreSelfGeneratedComputorsNextStart;
+#ifndef NDEBUG
+                addDebugMessage(L"Set ignore self generated computor list!");
+#endif
+                enqueueResponse(peer, sizeof(SpecialCommandSetIgnoreSelfGeneratedComputorsRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+            }
+            break;
             }
         }
     }
@@ -4291,6 +4301,11 @@ static bool loadAllNodeStates()
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
 
+    // Allow to overwrite value of ignoreSelfGeneratedComputorNextStart in snp from systemfile
+    // This allows to recover from a CirticalSituation #2 while using a snapshot
+    // Before shutting down, send Specialcommand to set ignoreSelfGeneratedComputorsNextStart and exit with ESC to write systemfile
+    bool ignoreSelfGeneratedComputorsNextStartSystemFile = system.ignoreSelfGeneratedComputorsNextStart;
+
     static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
     loadedSize = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
     if (loadedSize != sizeof(system))
@@ -4299,8 +4314,13 @@ static bool loadAllNodeStates()
         return false;
     }
     updateNumberOfTickTransactions();
-
-    if(system.useSelfGeneratedComputors){
+    if(ignoreSelfGeneratedComputorsNextStartSystemFile){
+        system.useSelfGeneratedComputors = false;
+        logToConsole(L"Self-generated computorlist is ignored.");
+    }
+    else if(system.useSelfGeneratedComputors)
+    {
+        logToConsole(L"Load and use self-generated computorlist.");
         copyMem(&broadcastedComputors.computors.publicKeys, &system.selfGeneratedComputors, NUMBER_OF_COMPUTORS * sizeof(m256i));
     }
     // update own computor indices
@@ -5742,8 +5762,17 @@ static bool initialize()
         system.tick = system.initialTick;
 
         lastExpectedTickTransactionDigest = m256i::zero();
-        if(system.useSelfGeneratedComputors){
-            logToConsole(L"Use of self-generated computorlist from system file.");
+
+        // Force to disable the use of self-generated computor
+        // Allows a node to start after a critical situation #2 without using the self-generated computorlist
+        // Can be set by a special command
+        if(system.ignoreSelfGeneratedComputorsNextStart){
+            system.useSelfGeneratedComputors = false;
+            logToConsole(L"Self-generated computorlist is ignored.");
+        }
+        else if(system.useSelfGeneratedComputors)
+        {
+            logToConsole(L"Load and use self-generated computorlist from system file.");
         }
         beginEpoch();
 
@@ -5845,6 +5874,7 @@ static bool initialize()
             loadAllNodeStateFromFile = true;
             logToConsole(L"Loaded node state from snapshot, if you want to start from scratch please delete all snapshot files.");
         }
+        system.ignoreSelfGeneratedComputorsNextStart = false;
     }
 
     initializeContracts();
