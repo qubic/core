@@ -85,6 +85,10 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining.???";
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
+// Custom mining storage configuration
+constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_SIZE = 8ULL << 30; // 1GB for custom mining solution storage. If set zeros, node will not record any custom mining solution
+constexpr unsigned int CUSTOM_MINING_TASK_STORAGE_RESET_PHASE = 100; // the number of custom mining phase that the task storage will be reset
+
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
