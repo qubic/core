@@ -19,8 +19,8 @@
 
 #define DEJAVU_SWAP_LIMIT 1000000
 #define DISSEMINATION_MULTIPLIER 6
-#define NUMBER_OF_OUTGOING_CONNECTIONS 8
-#define NUMBER_OF_INCOMING_CONNECTIONS 88
+#define NUMBER_OF_OUTGOING_CONNECTIONS 2
+#define NUMBER_OF_INCOMING_CONNECTIONS 22
 #define MAX_NUMBER_OF_PUBLIC_PEERS 1024
 #define REQUEST_QUEUE_BUFFER_SIZE 1073741824
 #define REQUEST_QUEUE_LENGTH 65536 // Must be 65536
@@ -578,7 +578,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                     if (receivedDataSize >= sizeof(RequestResponseHeader))
                     {
                         RequestResponseHeader* requestResponseHeader = (RequestResponseHeader*)peers[i].receiveBuffer;
-                        if (requestResponseHeader->size() < sizeof(RequestResponseHeader))
+                        if (requestResponseHeader->size() < sizeof(RequestResponseHeader)) 
                         {
                             // protocol violation -> forget peer
                             setText(message, L"Forgetting ");
@@ -590,6 +590,16 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                         }
                         else
                         {
+                            if (requestResponseHeader->size() >= 240000)
+                            {
+                                setText(message, L"Big rrh from ");
+                                appendIPv4Address(message, peers[i].address);
+                                appendText(message, L" size: ");
+                                appendNumber(message, requestResponseHeader->size(), true);
+                                appendText(message, L" type: ");
+                                appendNumber(message, requestResponseHeader->type(), true);
+                                addDebugMessage(message);
+                            }
                             if (receivedDataSize >= requestResponseHeader->size())
                             {
                                 // Compute saltId of packet with K12 of payload and header (size + type temporarily

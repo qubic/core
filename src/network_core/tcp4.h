@@ -65,7 +65,27 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
                 && status != EFI_NO_MAPPING)
             {
                 logStatusToConsole(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
-
+                {
+                    CHAR16 dbg[256];
+                    setText(dbg, L"Network error: tcp4Protocol ");
+                    if ((*tcp4Protocol) == NULL) appendText(dbg, L"is null |");
+                    else appendText(dbg, L"is not null | station address: ");
+                    appendIPv4Address(dbg, configData.AccessPoint.StationAddress);
+                    appendText(dbg, L" | UseDefaultAddress: ");
+                    if (configData.AccessPoint.UseDefaultAddress) appendText(dbg, L" TRUE |");
+                    else appendText(dbg, L" FALSE |");
+                    appendText(dbg, L" SubnetMask : ");
+                    appendIPv4Address(dbg, configData.AccessPoint.SubnetMask);
+                    appendText(dbg, L" | RemoteAddress: ");
+                    appendIPv4Address(dbg, configData.AccessPoint.RemoteAddress);
+                    appendText(dbg, L" | RemotePort : ");
+                    appendNumber(dbg, configData.AccessPoint.RemotePort, true);
+                    appendText(dbg, L" | ActiveFlag  : ");
+                    if (configData.AccessPoint.ActiveFlag) appendText(dbg, L" TRUE |");
+                    else appendText(dbg, L" FALSE |");
+                    logToConsole(dbg);
+                    addDebugMessage(dbg);
+                }
                 return NULL;
             }
             else
