@@ -210,6 +210,10 @@ static volatile char gCustomMiningSharesCountLock = 0;
 static char gIsInCustomMiningState = 0;
 static volatile char gIsInCustomMiningStateLock = 0;
 static unsigned long long gCustomMinninglatestOperatorNonce = 0;
+static CustomMiningTaskStorage gCustomMiningTaskStorage;
+static volatile char gCustomMiningStorageLock = 0;
+
+static RespondCustomMiningTask<CustomMiningTask> gRespondCustomMiningTask;
 
 struct revenueScore
 {
@@ -525,6 +529,22 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                 {
                     // See CustomMiningTaskMessage structure
                     // MESSAGE_TYPE_CUSTOM_MINING_TASK
+
+                    // Only record task message in idle phase
+                    char recordCustomMining = 0;
+                    ACQUIRE(gIsInCustomMiningStateLock);
+                    recordCustomMining = gIsInCustomMiningState;
+                    RELEASE(gIsInCustomMiningStateLock);
+                    
+                    // Record the task emitted by dispatcher
+                    if (recordCustomMining)
+                    {
+                        // Record the task message
+                        const CustomMiningTask* task = ((CustomMiningTask*)((unsigned char*)request + sizeof(BroadcastMessage)));
+                        ACQUIRE(gCustomMiningStorageLock);
+                        gCustomMiningTaskStorage.addTask(*task);
+                        RELEASE(gCustomMiningStorageLock);
+                    }
                 }
                 else
                 {
@@ -540,12 +560,6 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             if (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
                             {
                                 customMiningMessageCounters[i]++;
-
-                                // Only record shares in idle phase
-                                //char recordSolutions = 0;
-                                //ACQUIRE(gIsInCustomMiningStateLock);
-                                //recordSolutions = gIsInCustomMiningState;
-                                //RELEASE(gIsInCustomMiningStateLock);
 
                                 //if (recordSolutions)
                                 //{
@@ -1299,6 +1313,57 @@ static void processCustomMiningRequest(Peer* peer, RequestResponseHeader* header
     }
 }
 
+static void processCustomMiningTaskRequest(Peer* peer, RequestResponseHeader* header)
+{
+    RequestedCustomMiningTask* request = header->getPayload<RequestedCustomMiningTask>();
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningTask) + SIGNATURE_SIZE)
+    {
+        unsigned char digest[32];
+        KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
+        if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
+        {
+            const unsigned long long fromTaskIndex = request->fromTaskIndex;
+            unsigned long long tasksCount = 0;
+
+            RespondCustomMiningTask<CustomMiningTask> response;
+            {
+                ACQUIRE(gCustomMiningStorageLock);
+
+                unsigned long long storageIdx = gCustomMiningTaskStorage.lookForTaskGE(fromTaskIndex);
+                
+                // Found task
+                if (storageIdx != CustomMiningTaskStorage::_invalidTaskIndex)
+                {
+                    tasksCount = gCustomMiningTaskStorage.getTaskCount() - storageIdx;
+
+                    // Only send max of the tasks
+                    if (tasksCount > RespondCustomMiningTask<CustomMiningTask>::_maxNumberOfTasks)
+                    {
+                        tasksCount = RespondCustomMiningTask<CustomMiningTask>::_maxNumberOfTasks;
+                    }
+
+                    // Way to indicate to the client that there are more tasks
+                    response._maxTaskCount = RespondCustomMiningTask<CustomMiningTask>::_maxNumberOfTasks;
+                    response._taskCount = tasksCount;
+                    for (int i = 0; i < tasksCount; i++)
+                    {
+                        // Copy the task
+                        CustomMiningTask* task = gCustomMiningTaskStorage.getTaskByIndex(storageIdx + i);
+                        if (task)
+                        {
+                            response._task[i] = *task;
+                        }
+                    }
+                }
+
+                RELEASE(gCustomMiningStorageLock);
+            }
+            
+            enqueueResponse(peer, sizeof(RespondCustomMiningTask<CustomMiningTask>), RespondCustomMiningTask<CustomMiningTask>::type, header->dejavu(), &response);
+        }
+    }
+}
+
 static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 {
     SpecialCommand* request = header->getPayload<SpecialCommand>();
@@ -1719,6 +1784,11 @@ static void requestProcessor(void* ProcedureArgument)
                 case RequestedCustomMiningVerification::type:
                 {
                     processCustomMiningRequest(peer, header);
+                }
+                break;
+                case RequestedCustomMiningTask::type:
+                {
+                    processCustomMiningTaskRequest(peer, header);
                 }
                 break;
 
@@ -5809,6 +5879,8 @@ static bool initialize()
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
+
+    gCustomMiningTaskStorage.init();
     
     return true;
 }
@@ -5917,6 +5989,8 @@ static void deinitialize()
             bs->CloseEvent(peers[i].transmitToken.CompletionToken.Event);
         }
     }
+
+    gCustomMiningTaskStorage.deinit();
 }
 
 static void logInfo()

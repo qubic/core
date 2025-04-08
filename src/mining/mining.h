@@ -169,3 +169,168 @@ public:
         copyMem(&_accumulatedSharesCount[0], src + sizeof(_shareCount), sizeof(_accumulatedSharesCount));
     }
 };
+
+// In charge of storing custom mining tasks
+constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = CUSTOM_MINING_TASK_STORAGE_SIZE / sizeof(CustomMiningTask);
+class CustomMiningTaskStorage
+{
+public:
+    static constexpr unsigned long long _invalidTaskIndex = 0xFFFFFFFFFFFFFFFFULL;
+    void init()
+    {
+        allocatePool(CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask), (void**)&_customMiningTasks);
+        allocatePool(CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(unsigned long long), (void**)&_taskIndices);
+        _storageIndex = 0;
+    }
+
+    void deinit()
+    {
+        if (NULL != _customMiningTasks)
+        {
+            freePool(_customMiningTasks);
+            _customMiningTasks = NULL;
+        }
+        if (NULL != _taskIndices)
+        {
+            freePool(_taskIndices);
+            _taskIndices = NULL;
+        }
+    }
+
+    void reset()
+    {
+        _storageIndex = 0;
+        //setMem(_taskIndices, sizeof(_taskIndices), 0xFF);
+    }
+
+    // Binary search for taskIndex or closest less-than index
+    unsigned long long searchTaskIndex(unsigned long long taskIndex, bool& exactMatch) const
+    {
+        unsigned long long left = 0, right = (_storageIndex > 0) ? _storageIndex - 1 : 0;
+        unsigned long long result = _invalidTaskIndex;
+        exactMatch = false;
+
+        while (left <= right && left < _storageIndex)
+        {
+            unsigned long long mid = (left + right) / 2;
+            unsigned long long midTaskIndex = _customMiningTasks[_taskIndices[mid]].taskIndex;
+
+            if (midTaskIndex == taskIndex)
+            {
+                exactMatch = true;
+                return mid;
+            }
+            else if (midTaskIndex < taskIndex)
+            {
+                left = mid + 1;
+            }
+            else
+            {
+                result = mid;
+                if (mid == 0)
+                {
+                    break; // prevent underflow
+                }
+                right = mid - 1;
+            }
+        }
+
+        return result;
+    }
+
+
+    // Return the task whose task index >= taskIndex
+    unsigned long long lookForTaskGE(unsigned long long taskIndex)
+    {
+        bool exactMatch = false;
+        unsigned long long idx = searchTaskIndex(taskIndex, exactMatch);
+        return idx;
+    }
+
+    // Return the task whose task index == taskIndex
+    unsigned long long lookForTask(unsigned long long taskIndex)
+    {
+        bool exactMatch = false;
+        unsigned long long idx = searchTaskIndex(taskIndex, exactMatch);
+        if (exactMatch)
+        {
+            return idx;
+        }
+        return _invalidTaskIndex;
+    }
+
+    bool taskExisted(const CustomMiningTask& task)
+    {
+        bool exactMatch = false;
+        searchTaskIndex(task.taskIndex, exactMatch);
+        return exactMatch;
+    }
+
+    // Add the task to the storage
+    void addTask(const CustomMiningTask& task)
+    {
+        // Don't added if the task already existed
+        if (taskExisted(task))
+        {
+            return;
+        }
+        
+        // Reset the storage if the number of tasks exceeds the limit
+        if (_storageIndex >= CUSTOM_MINING_TASK_STORAGE_COUNT)
+        {
+            reset();
+        }
+
+        unsigned long long newIndex = _storageIndex;
+        _customMiningTasks[newIndex] = task;
+
+        unsigned long long insertPos = 0;
+        unsigned long long left = 0, right = (_storageIndex > 0) ? _storageIndex - 1 : 0;
+
+        while (left <= right && left < _storageIndex)
+        {
+            unsigned long long mid = (left + right) / 2;
+            if (_customMiningTasks[_taskIndices[mid]].taskIndex < task.taskIndex)
+            {
+                left = mid + 1;
+            }
+            else
+            {
+                if (mid == 0) break;
+                right = mid - 1;
+            }
+        }
+        insertPos = left;
+
+        // Shift indices right
+        for (unsigned long long i = _storageIndex; i > insertPos; --i)
+        {
+            _taskIndices[i] = _taskIndices[i - 1];
+        }
+
+        _taskIndices[insertPos] = newIndex;
+        _storageIndex++;
+
+    }
+
+    // Get the task from raw index
+    CustomMiningTask* getTaskByIndex(unsigned long long index)
+    {
+        if (index >= _storageIndex)
+        {
+            return NULL;
+        }
+        return &_customMiningTasks[_taskIndices[index]];
+    }
+
+    // Get the total number of tasks
+    unsigned long long getTaskCount() const
+    {
+        return _storageIndex;
+    }
+
+private:
+    CustomMiningTask* _customMiningTasks;
+    unsigned long long* _taskIndices;
+    unsigned long long _storageIndex;
+};

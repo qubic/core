@@ -84,6 +84,10 @@ static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
+// Custom mining storage configuration
+constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_SIZE = 8ULL << 30; // 8GB for custom mining task storage. If set zeros, node will not record any custom mining task
+constexpr unsigned int CUSTOM_MINING_TASK_STORAGE_RESET_PHASE = 100; // the number of custom mining phase that the task storage will be reset
+
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
