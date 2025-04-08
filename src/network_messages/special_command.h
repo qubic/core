@@ -85,4 +85,12 @@ struct SpecialCommandSetConsoleLoggingModeRequestAndResponse
     unsigned char padding[7];
 };
 
+#define SPECIAL_COMMAND_SET_IGNORE_SELFGENERATED_COMPUTORLIST 18ULL
+struct SpecialCommandSetIgnoreSelfGeneratedComputorsRequestAndResponse
+{
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned char ignoreSelfGeneratedComputorsNextStart; // 0 Use self-generated computors, 1 ignore self-generated computorlist
+    unsigned char padding[7];
+};
+
 #pragma pack(pop)
