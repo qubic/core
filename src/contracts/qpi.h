@@ -1658,70 +1658,89 @@ namespace QPI
 			inline static void FuncName(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, InputType& input, OutputType& output, CapLetterName##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##FuncName(qpi, state, input, output, locals); } \
 			static void __impl_##FuncName(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, InputType& input, OutputType& output, CapLetterName##_locals& locals)
 
-	// Begin contract system procedure called to initalize contract state after IPO
+	// Define contract system procedure called to initialize contract state after IPO
 	#define INITIALIZE()  NO_IO_SYSTEM_PROC(INITIALIZE, __initialize, NoData, NoData)
 
-	// Begin contract system procedure called to initalize contract state after IPO, provides zeroed instance of INITIALIZE_locals struct
+	// Define contract system procedure called to initialize contract state after IPO, provides zeroed instance of INITIALIZE_locals struct
 	#define INITIALIZE_WITH_LOCALS()  NO_IO_SYSTEM_PROC_WITH_LOCALS(INITIALIZE, __initialize, NoData, NoData)
 
-	// Begin contract system procedure called at beginning of each epoch
+	// Define contract system procedure called at beginning of each epoch
 	#define BEGIN_EPOCH()  NO_IO_SYSTEM_PROC(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
 
-	// Begin contract system procedure called at beginning of each epoch, provides zeroed instance of BEGIN_EPOCH_locals struct
+	// Define contract system procedure called at beginning of each epoch, provides zeroed instance of BEGIN_EPOCH_locals struct
 	#define BEGIN_EPOCH_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
 
-	// Begin contract system procedure called at end of each epoch
+	// Define contract system procedure called at end of each epoch
 	#define END_EPOCH() NO_IO_SYSTEM_PROC(END_EPOCH, __endEpoch, NoData, NoData)
 
-	// Begin contract system procedure called at end of each epoch, provides zeroed instance of END_EPOCH_locals struct
+	// Define contract system procedure called at end of each epoch, provides zeroed instance of END_EPOCH_locals struct
 	#define END_EPOCH_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(END_EPOCH, __endEpoch, NoData, NoData)
 
-	// Begin contract system procedure called at beginning of each tick
+	// Define contract system procedure called at beginning of each tick
 	#define BEGIN_TICK() NO_IO_SYSTEM_PROC(BEGIN_TICK, __beginTick, NoData, NoData)
 
-	// Begin contract system procedure called at beginning of each tick, provides zeroed instance of BEGIN_TICK_locals struct
+	// Define contract system procedure called at beginning of each tick, provides zeroed instance of BEGIN_TICK_locals struct
 	#define BEGIN_TICK_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_TICK, __beginTick, NoData, NoData)
 
-	// Begin contract system procedure called at end of each tick
+	// Define contract system procedure called at end of each tick
 	#define END_TICK() NO_IO_SYSTEM_PROC(END_TICK, __endTick, NoData, NoData)
 
-	// Begin contract system procedure called at end of each tick, provides zeroed instance of BEGIN_TICK_locals struct
+	// Define contract system procedure called at end of each tick, provides zeroed instance of BEGIN_TICK_locals struct
 	#define END_TICK_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(END_TICK, __endTick, NoData, NoData)
 
-
+	// Define contract system procedure called before asset management rights transfer with `qpi.releaseShares(). See
+	// `doc/contracts.md` for details.
 	#define PRE_ACQUIRE_SHARES() \
         NO_IO_SYSTEM_PROC(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, \
                           PreManagementRightsTransfer_output)
 
+	// Define contract system procedure called before asset management rights transfer with `qpi.releaseShares(). Provides
+	// zeroed instance of PRE_ACQUIRE_SHARES_locals struct. See `doc/contracts.md` for details.
 	#define PRE_ACQUIRE_SHARES_WITH_LOCALS() \
         NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, \
                                       PreManagementRightsTransfer_output)
 
+	// Define contract system procedure called before asset management rights transfer with `qpi.acquireShares(). See
+	// `doc/contracts.md` for details.
 	#define PRE_RELEASE_SHARES() \
         NO_IO_SYSTEM_PROC(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, \
                           PreManagementRightsTransfer_output)
 
+	// Define contract system procedure called before asset management rights transfer with `qpi.acquireShares(). Provides
+	// zeroed instance of PRE_RELEASE_SHARES_locals struct. See `doc/contracts.md` for details.
 	#define PRE_RELEASE_SHARES_WITH_LOCALS() \
         NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, \
                                       PreManagementRightsTransfer_output)
 
+	// Define contract system procedure called after asset management rights transfer with `qpi.releaseShares(). See
+	// `doc/contracts.md` for details.
 	#define POST_ACQUIRE_SHARES() \
         NO_IO_SYSTEM_PROC(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, NoData)
 
+	// Define contract system procedure called after asset management rights transfer with `qpi.releaseShares(). Provides
+	// zeroed instance of POST_ACQUIRE_SHARES_locals struct. See `doc/contracts.md` for details.
 	#define POST_ACQUIRE_SHARES_WITH_LOCALS() \
         NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, \
                                       NoData)
 
+	// Define contract system procedure called after asset management rights transfer with `qpi.acquireShares(). See
+	// `doc/contracts.md` for details.
 	#define POST_RELEASE_SHARES() \
         NO_IO_SYSTEM_PROC(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, NoData)
 
+	// Define contract system procedure called after asset management rights transfer with `qpi.acquireShares(). Provides
+	// zeroed instance of POST_RELEASE_SHARES_locals struct. See `doc/contracts.md` for details.
 	#define POST_RELEASE_SHARES_WITH_LOCALS() \
         NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, \
                                       NoData)
 
+	// Define contract system procedure called when QUs are transferred to the contract. See `doc/contracts.md` for
+	// details.
 	#define POST_INCOMING_TRANSFER() \
         NO_IO_SYSTEM_PROC(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, NoData)
 
+	// Define contract system procedure called when QUs are transferred to the contract. Provides zeroed instance of
+	// POST_INCOMING_TRANSFER_locals struct. See `doc/contracts.md` for details.
 	#define POST_INCOMING_TRANSFER_WITH_LOCALS() \
         NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, \
                                       NoData)
