@@ -12,7 +12,8 @@ struct TESTEXD : public ContractBase
 		sint64 balance;
 	};
 
-	END_TICK_WITH_LOCALS
+	END_TICK_WITH_LOCALS()
+	{
 		// Distribute balance to sharesholders at the end of each tick
 		qpi.getEntity(SELF, locals.entity);
 		locals.balance = locals.entity.incomingAmount - locals.entity.outgoingAmount;
@@ -20,8 +21,9 @@ struct TESTEXD : public ContractBase
 		{
 			qpi.distributeDividends(locals.balance / NUMBER_OF_COMPUTORS);
 		}
-	_
+	}
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-	_
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
+	}
 };

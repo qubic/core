@@ -79,6 +79,7 @@ protected:
 	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputUserProc; // Output of QPI functions queried by the USER_PROCEDURE
 
 	PUBLIC_FUNCTION(QueryQpiFunctions)
+	{
 		output.qpiFunctionsOutput.year = qpi.year();
 		output.qpiFunctionsOutput.month = qpi.month();
 		output.qpiFunctionsOutput.day = qpi.day();
@@ -97,9 +98,10 @@ protected:
 		output.qpiFunctionsOutput.tick = qpi.tick();
 		output.inputDataK12 = qpi.K12(input.data);
 		output.inputSignatureValid = qpi.signatureValidity(input.entity, output.inputDataK12, input.signature);
-	_
+	}
 
 	PUBLIC_PROCEDURE(QueryQpiFunctionsToState)
+	{
 		state.qpiFunctionsOutputTemp.year = qpi.year();
 		state.qpiFunctionsOutputTemp.month = qpi.month();
 		state.qpiFunctionsOutputTemp.day = qpi.day();
@@ -118,24 +120,28 @@ protected:
 		state.qpiFunctionsOutputTemp.tick = qpi.tick();
 
 		state.qpiFunctionsOutputUserProc.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
-	_
+	}
 
 	PUBLIC_FUNCTION(ReturnQpiFunctionsOutputBeginTick)
+	{
 		if (state.qpiFunctionsOutputBeginTick.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
 			output.qpiFunctionsOutput = state.qpiFunctionsOutputBeginTick.get(input.tick);
-	_
+	}
 
 	PUBLIC_FUNCTION(ReturnQpiFunctionsOutputEndTick)
+	{
 		if (state.qpiFunctionsOutputEndTick.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
 			output.qpiFunctionsOutput = state.qpiFunctionsOutputEndTick.get(input.tick);
-	_
+	}
 
 	PUBLIC_FUNCTION(ReturnQpiFunctionsOutputUserProc)
+	{
 		if (state.qpiFunctionsOutputUserProc.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
 			output.qpiFunctionsOutput = state.qpiFunctionsOutputUserProc.get(input.tick);
-	_
+	}
 
-	BEGIN_TICK
+	BEGIN_TICK()
+	{
 		state.qpiFunctionsOutputTemp.year = qpi.year();
 		state.qpiFunctionsOutputTemp.month = qpi.month();
 		state.qpiFunctionsOutputTemp.day = qpi.day();
@@ -154,9 +160,10 @@ protected:
 		state.qpiFunctionsOutputTemp.tick = qpi.tick();
 
 		state.qpiFunctionsOutputBeginTick.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
-	_
+	}
 
-	END_TICK
+	END_TICK()
+	{
 		state.qpiFunctionsOutputTemp.year = qpi.year();
 		state.qpiFunctionsOutputTemp.month = qpi.month();
 		state.qpiFunctionsOutputTemp.day = qpi.day();
@@ -175,7 +182,7 @@ protected:
 		state.qpiFunctionsOutputTemp.tick = qpi.tick();
 
 		state.qpiFunctionsOutputEndTick.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
-	_
+	}
 
 	//---------------------------------------------------------------
 	// ASSET MANAGEMENT RIGHTS TRANSFER
@@ -245,17 +252,20 @@ protected:
 	uint32 postAcquireShareCounter;
 
 	PUBLIC_PROCEDURE(IssueAsset)
+	{
 		output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
-	_
+	}
 
 	PUBLIC_PROCEDURE(TransferShareOwnershipAndPossession)
+	{
 		if (qpi.transferShareOwnershipAndPossession(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newOwnerAndPossessor) > 0)
 		{
 			output.transferredNumberOfShares = input.numberOfShares;
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(TransferShareManagementRights)
+	{
 		if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
 			input.newManagingContractIndex, input.newManagingContractIndex, qpi.invocationReward()) < 0)
 		{
@@ -267,26 +277,30 @@ protected:
 			// success
 			output.transferredNumberOfShares = input.numberOfShares;
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(SetPreReleaseSharesOutput)
+	{
 		state.preReleaseSharesOutput = input;
-	_
+	}
 
 	PUBLIC_PROCEDURE(SetPreAcquireSharesOutput)
+	{
 		state.preAcquireSharesOutput = input;
-	_
+	}
 
 	PUBLIC_PROCEDURE(AcquireShareManagementRights)
+	{
 		if (qpi.acquireShares(input.asset, input.ownerAndPossessor, input.ownerAndPossessor, input.numberOfShares,
 			input.oldManagingContractIndex, input.oldManagingContractIndex, qpi.invocationReward()) >= 0)
 		{
 			// success
 			output.transferredNumberOfShares = input.numberOfShares;
 		}
-	_
+	}
 
-	PRE_RELEASE_SHARES
+	PRE_RELEASE_SHARES()
+	{
 		// check that qpi.acquireShares() leading to this callback is triggered by owner,
 		// otherwise allowing another contract to acquire management rights is risky
 		if (qpi.originator() == input.owner)
@@ -303,9 +317,10 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
-	_
+	}
 
-	POST_RELEASE_SHARES
+	POST_RELEASE_SHARES()
+	{
 		state.postReleaseSharesCounter++;
 		state.prevPostReleaseSharesInput = input;
 
@@ -317,9 +332,10 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
-	_
+	}
 
-	PRE_ACQUIRE_SHARES
+	PRE_ACQUIRE_SHARES()
+	{
 		output = state.preAcquireSharesOutput;
 		state.prevPreAcquireSharesInput = input;
 
@@ -331,9 +347,10 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
-	_
+	}
 
-	POST_ACQUIRE_SHARES
+	POST_ACQUIRE_SHARES()
+	{
 		state.postAcquireShareCounter++;
 		state.prevPostAcquireSharesInput = input;
 
@@ -345,7 +362,7 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
-	_
+	}
 
 	//---------------------------------------------------------------
 	// CONTRACT INTERACTION / RESOLVING DEADLOCKS / ERROR HANDLING
@@ -365,9 +382,10 @@ protected:
 #pragma warning(push)
 #pragma warning(disable: 4717)
 	PUBLIC_FUNCTION_WITH_LOCALS(ErrorTriggerFunction)
+	{
 		// Recursively call itself to trigger error for testing error handling
 		CALL(ErrorTriggerFunction, input, output);
-	_
+	}
 #pragma warning(pop)
 
 	struct RunHeavyComputation_locals
@@ -379,6 +397,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(RunHeavyComputation)
+	{
 		state.heavyComputationResult = input;
 		
 		// Iterate through spectrum
@@ -403,12 +422,13 @@ protected:
 		}
 		
 		output = state.heavyComputationResult;
-	_
+	}
 
 	//---------------------------------------------------------------
 	// COMMON PARTS
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
 		REGISTER_USER_FUNCTION(QueryQpiFunctions, 1);
 		REGISTER_USER_FUNCTION(ReturnQpiFunctionsOutputBeginTick, 2);
 		REGISTER_USER_FUNCTION(ReturnQpiFunctionsOutputEndTick, 3);
@@ -423,5 +443,5 @@ protected:
 		REGISTER_USER_PROCEDURE(AcquireShareManagementRights, 6);
 		REGISTER_USER_PROCEDURE(QueryQpiFunctionsToState, 7);
 		REGISTER_USER_PROCEDURE(RunHeavyComputation, 8);
-	_
+	}
 };

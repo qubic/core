@@ -29,7 +29,7 @@ Each contract is implemented in one C++ header file in the directory `src/contra
 A contract has a state struct, containing all its data as member variables.
 The memory available to the contract is allocated statically, but extending the state will be possible between epochs through special `EXPAND` events.
 
-The state struct also includes the procedures and functions of the contract, which have to be defined using special macros such as `PUBLIC_PROCEDURE`, `PRIVATE_FUNCTION`, or `BEGIN_EPOCH`.
+The state struct also includes the procedures and functions of the contract, which have to be defined using special macros such as `PUBLIC_PROCEDURE()`, `PRIVATE_FUNCTION()`, or `BEGIN_EPOCH()`.
 Functions cannot modify the state, but they are useful to query information with the network message `RequestContractFunction`.
 Procedures can modify the state and are either invoked by special transactions (user procedures) or internal core events (system procedures).
 
@@ -129,7 +129,16 @@ If the IPO is successful, epoch 152 will be the construction epoch, the first ep
 
 ## Procedures and Functions
 
-In Qubic contracts, procedures and functions are defined starting with a special macro and ending with the footer macro `_` (single underscore).
+In Qubic contracts, procedures and functions are defined with special macros, such as `PUBLIC_PROCEDURE(ProcedureName)`.
+The macro is followed by a block framed with `{` and `}` that contains the implementation.
+Here is an example:
+
+```
+PUBLIC_PROCEDURE(ProcedureName)
+{
+    // code
+}
+```
 
 ### User functions
 
@@ -222,16 +231,16 @@ System procedures can modify the state and are invoked by the Qubic Core (the sy
 
 They are defined with the following macros:
 
-1. `INITIALIZE`: Called once after successful IPO, immediately before the beginning of the construction epoch in order to initialize the state.
-2. `BEGIN_EPOCH`: Called before each epoch, after node startup or seamless epoch transition, before the `BEGIN_TICK` of the epoch's initial tick.
-3. `END_EPOCH`: Called after each epoch, after the last `END_TICK` but before (1) contract shares are generated in case of IPO, (2) revenue and revenue donations are distributed, and (3) the epoch counter is incremented and the next epoch's initial tick is set.
-4. `BEGIN_TICK`: Called before a tick is processed, that is before the transactions of the tick are executed.
-5. `END_TICK`: Called after finishing to execute all transactions of a tick.
-6. `PRE_RELEASE_SHARES`: Called before asset management rights are transferred from this contract to another contract that called `qpi.acquireShare()`.
-7. `PRE_ACQUIRE_SHARES`: Called before asset management rights are transferred to this contract from another contract that called `qpi.releaseShare()`.
-8. `POST_RELEASE_SHARES`: Called after asset management rights were transferred from this contract to another contract that called `qpi.acquireShare()`
-9. `POST_ACQUIRE_SHARES`: Called after asset management rights were transferred to this contract from another contract that called `qpi.releaseShare()`.
-10. `POST_INCOMING_TRANSFER`: Called after QUs have been transferred to this contract. [More details...](#callback-post_incoming_transfer)
+1. `INITIALIZE()`: Called once after successful IPO, immediately before the beginning of the construction epoch in order to initialize the state.
+2. `BEGIN_EPOCH()`: Called before each epoch, after node startup or seamless epoch transition, before the `BEGIN_TICK()` of the epoch's initial tick.
+3. `END_EPOCH()`: Called after each epoch, after the last `END_TICK()` but before (1) contract shares are generated in case of IPO, (2) revenue and revenue donations are distributed, and (3) the epoch counter is incremented and the next epoch's initial tick is set.
+4. `BEGIN_TICK()`: Called before a tick is processed, that is before the transactions of the tick are executed.
+5. `END_TICK()`: Called after finishing to execute all transactions of a tick.
+6. `PRE_RELEASE_SHARES()`: Called before asset management rights are transferred from this contract to another contract that called `qpi.acquireShare()`.
+7. `PRE_ACQUIRE_SHARES()`: Called before asset management rights are transferred to this contract from another contract that called `qpi.releaseShare()`.
+8. `POST_RELEASE_SHARES()`: Called after asset management rights were transferred from this contract to another contract that called `qpi.acquireShare()`
+9. `POST_ACQUIRE_SHARES()`: Called after asset management rights were transferred to this contract from another contract that called `qpi.releaseShare()`.
+10. `POST_INCOMING_TRANSFER()`: Called after QUs have been transferred to this contract. [More details...](#callback-post_incoming_transfer)
 
 System procedures 1 to 5 have no input and output.
 The input and output of system procedures 6 to 9 are discussed in the section about [management rights transfer](#management-rights-transfer).
@@ -250,9 +259,9 @@ The QPI functions `qpi.invocator()` and `originator()` return `NULL_ID` / `id::z
 
 For system procedures 6 to 9, `qpi.invocator()` returns the contract ID of the contract calling `qpi.releaseShares()` or `qpi.acquireShares()`.
 
-Each of `INITIALIZE`, `BEGIN_EPOCH`, and `BEGIN_TICK` is executed for all contracts in ascending order, that is, it is executed for the contract with contract index 1 before that with index 2, followed by contract 3 etc.
+Each of `INITIALIZE()`, `BEGIN_EPOCH()`, and `BEGIN_TICK()` is executed for all contracts in ascending order, that is, it is executed for the contract with contract index 1 before that with index 2, followed by contract 3 etc.
 
-Each of  `END_TICK` and `END_EPOCH` is executed for all contracts in descending order, that is, it is executed for the contract with the highest contract index first; the contract with index 1 is executed last.
+Each of  `END_TICK()` and `END_EPOCH()` is executed for all contracts in descending order, that is, it is executed for the contract with the highest contract index first; the contract with index 1 is executed last.
 
 
 ## Assets and shares
@@ -299,9 +308,9 @@ In this call, the following happens:
 
 ![qpi.releaseShares()](releaseShares.png "qpi.releaseShares()")
 
-After checking the inputs passed to `qpi.releaseShares()` by contract A, the system calls `PRE_ACQUIRE_SHARES` of contract B to (1) query if it is willing to acquire the management rights and (2) query the fee that A needs to pay to B for the rights transfer.
+After checking the inputs passed to `qpi.releaseShares()` by contract A, the system calls `PRE_ACQUIRE_SHARES()` of contract B to (1) query if it is willing to acquire the management rights and (2) query the fee that A needs to pay to B for the rights transfer.
 
-An instance of the following struct is passed to the system procedure `PRE_ACQUIRE_SHARES` of contract B as `input`:
+An instance of the following struct is passed to the system procedure `PRE_ACQUIRE_SHARES()` of contract B as `input`:
 
 ```
 struct PreManagementRightsTransfer_input
@@ -315,7 +324,7 @@ struct PreManagementRightsTransfer_input
 };
 ```
 
-An instance of the following struct is passed to the system procedure `PRE_ACQUIRE_SHARES` of contract B as `output`:
+An instance of the following struct is passed to the system procedure `PRE_ACQUIRE_SHARES()` of contract B as `output`:
 
 ```
 struct PreManagementRightsTransfer_output
@@ -326,13 +335,13 @@ struct PreManagementRightsTransfer_output
 ```
 
 By default, all of `output` is set to zero, that is, `allowTransfer = false`.
-Thus, if `PRE_ACQUIRE_SHARES` is not defined or empty, all transfers are rejected.
+Thus, if `PRE_ACQUIRE_SHARES()` is not defined or empty, all transfers are rejected.
 Set `output.allowTransfer = true` in order to accept the rights transfer.
 
 If `allowTransfer` is `false` or `requestedFee > offeredFee`, the transfer is canceled.
 Otherwise, the `requestedFee` is transferred from contract A to B, followed by the transfer of the management rights from contract A to B.
 
-Finally, the system procedure `POST_ACQUIRE_SHARES` is called in contract B, passing an instance of the following struct as `input`:
+Finally, the system procedure `POST_ACQUIRE_SHARES()` is called in contract B, passing an instance of the following struct as `input`:
 
 ```
 struct PostManagementRightsTransfer_input
@@ -346,9 +355,9 @@ struct PostManagementRightsTransfer_input
 };
 ```
 
-The output of `POST_ACQUIRE_SHARES` is empty (`NoData`).
+The output of `POST_ACQUIRE_SHARES()` is empty (`NoData`).
 
-Calling `qpi.releaseShares()` and `qpi.acquireShares()` is not permitted in the system procedures `PRE_ACQUIRE_SHARES` and `POST_ACQUIRE_SHARES`, that is, they will return with an error in such a context.
+Calling `qpi.releaseShares()` and `qpi.acquireShares()` is not permitted in the system procedures `PRE_ACQUIRE_SHARES()` and `POST_ACQUIRE_SHARES()`, that is, they will return with an error in such a context.
 
 The function `qpi.releaseShares()` has the following parameters and return value:
 
@@ -379,9 +388,9 @@ In this call, the following happens:
 
 ![qpi.acquireShares()](acquireShares.png "qpi.acquireShares()")
 
-After checking the inputs passed to `qpi.acquireShares()` by contract B, the system calls `PRE_RELEASE_SHARES` of contract A to (1) query if it is willing to release the management rights and (2) query the fee that B needs to pay to A for the rights transfer.
+After checking the inputs passed to `qpi.acquireShares()` by contract B, the system calls `PRE_RELEASE_SHARES()` of contract A to (1) query if it is willing to release the management rights and (2) query the fee that B needs to pay to A for the rights transfer.
 
-An instance of the following struct is passed to the system procedure `PRE_RELEASE_SHARES` of contract A as `input`:
+An instance of the following struct is passed to the system procedure `PRE_RELEASE_SHARES()` of contract A as `input`:
 
 ```
 struct PreManagementRightsTransfer_input
@@ -395,7 +404,7 @@ struct PreManagementRightsTransfer_input
 };
 ```
 
-An instance of the following struct is passed to the system procedure `PRE_RELEASE_SHARES` of contract A as `output`:
+An instance of the following struct is passed to the system procedure `PRE_RELEASE_SHARES()` of contract A as `output`:
 
 ```
 struct PreManagementRightsTransfer_output
@@ -406,13 +415,13 @@ struct PreManagementRightsTransfer_output
 ```
 
 By default, all of `output` is set to zero, that is, `allowTransfer = false`.
-Thus, if `PRE_RELEASE_SHARES` is not defined or empty, all transfers are rejected.
+Thus, if `PRE_RELEASE_SHARES()` is not defined or empty, all transfers are rejected.
 Set `output.allowTransfer = true` in order to accept the rights transfer.
 
 If `allowTransfer` is `false` or `requestedFee > offeredFee`, the transfer is canceled.
 Otherwise, the `requestedFee` is transferred from contract B to A, followed by the transfer of the management rights from contract A to B.
 
-Finally, the system procedure `POST_RELEASE_SHARES` is called in contract A, passing an instance of the following struct as `input`:
+Finally, the system procedure `POST_RELEASE_SHARES()` is called in contract A, passing an instance of the following struct as `input`:
 
 ```
 struct PostManagementRightsTransfer_input
@@ -426,9 +435,9 @@ struct PostManagementRightsTransfer_input
 };
 ```
 
-The output of `POST_RELEASE_SHARES` is empty (`NoData`).
+The output of `POST_RELEASE_SHARES()` is empty (`NoData`).
 
-Calling `qpi.releaseShares()` and `qpi.acquireShares()` is not permitted in the system procedures `PRE_RELEASE_SHARES` and `POST_RELEASE_SHARES`, that is, they will return with an error in such a context.
+Calling `qpi.releaseShares()` and `qpi.acquireShares()` is not permitted in the system procedures `PRE_RELEASE_SHARES()` and `POST_RELEASE_SHARES()`, that is, they will return with an error in such a context.
 
 The function `qpi.acquireShares()` has the following parameters and return value:
 
@@ -456,7 +465,7 @@ By default, management rights of shares can be transferred without the agreement
 However, this feature is to be used with caution, because there is a risk of hijacking management rights, requesting a high fee for getting (back) management rights of shares.
 This is why the recommended way (that is implemented in QX) is that the owner/possessor needs to invoke a user procedure that actively releases the management rights by calling `qpi.releaseShares()`.
 QX never releases shares passively (following call of `qpi.acquireShares()` by another contract).
-The callbacks `PRE_RELEASE_SHARES` and `PRE_ACQUIRE_SHARES` may also check that the `qpi.originator()` initiating the transfer is the owner/possessor.
+The callbacks `PRE_RELEASE_SHARES()` and `PRE_ACQUIRE_SHARES()` may also check that the `qpi.originator()` initiating the transfer is the owner/possessor.
 
 
 ## Other QPI features
@@ -465,14 +474,14 @@ The callbacks `PRE_RELEASE_SHARES` and `PRE_ACQUIRE_SHARES` may also check that 
 
 TODO: invoking procedures, calling functions, including those of other contracts
 
-### Callback `POST_INCOMING_TRANSFER`
+### Callback `POST_INCOMING_TRANSFER()`
 
-If defined in a contract, the contract system procedure `POST_INCOMING_TRANSFER` (or `POST_INCOMING_TRANSFER_WITH_LOCALS`) is run to notify the contract about an incoming transfer of QU to the contract entity (increasing the balance of the contract).
+If defined in a contract, the contract system procedure `POST_INCOMING_TRANSFER()` (or `POST_INCOMING_TRANSFER_WITH_LOCALS()`) is run to notify the contract about an incoming transfer of QU to the contract entity (increasing the balance of the contract).
 
 Outgoing transfers (decreasing the balance) are always initiated by the contract itself.
 So the contract has all the information needed to keep track of outgoing transfers without requiring a dedicated callback procedure.
 
-An instance `input` of the following struct is passed to `POST_INCOMING_TRANSFER` / `POST_INCOMING_TRANSFER_WITH_LOCALS`:
+An instance `input` of the following struct is passed to `POST_INCOMING_TRANSFER()` / `POST_INCOMING_TRANSFER_WITH_LOCALS()`:
 
 ```
 struct PostIncomingTransfer_input
@@ -498,10 +507,10 @@ The type of transfer has one of the following values:
   Please note the special case when the contract distributing dividends holds shares of itself, similar to the special case of `TransferType::qpiTransfer` mentioned above (next to the incoming transfer of `input.amount` the outgoing transfer needs to be considered to completely track the balance of the contract).
 
 - `TransferType::revenueDonation`: This transfer type occurs when a contract receives a revenue donation.
-  It only happens at the end of an epoch, when the computor revenue is generated, after `END_EPOCH` and before `BEGIN_EPOCH`.
+  It only happens at the end of an epoch, when the computor revenue is generated, after `END_EPOCH()` and before `BEGIN_EPOCH()`.
 
 - `TransferType::ipoBidRefund`: This transfer type is triggered if the contract has placed a bid in a contract IPO with `qpi.bidInIPO()` and QUs are refunded.
-  This can happen in while executing `qpi.bidInIPO()`, when an IPO bid transaction is processed, and when the IPO is finished at the end of the epoch (after `END_EPOCH` and before `BEGIN_EPOCH`).
+  This can happen in while executing `qpi.bidInIPO()`, when an IPO bid transaction is processed, and when the IPO is finished at the end of the epoch (after `END_EPOCH()` and before `BEGIN_EPOCH()`).
 
 In the implementation of the callback procedure, you cannot run `qpi.transfer()`, `qpi.distributeDividends()`, and `qpi.bidInIPO()`.
 That is, calls to these QPI procedures will fail to prevent nested callbacks.
