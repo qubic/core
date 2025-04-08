@@ -423,8 +423,8 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
 
     // run PRE_RELEASE_SHARES callback in other contract (without invocation reward)
     QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee, currentContractIndex };
-    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
-    __qpiCallSystemProcOfOtherContract<PRE_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, pre_input, pre_output, 0);
+    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProc
+    __qpiCallSystemProc<PRE_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, pre_input, pre_output, 0);
     if (!pre_output.allowTransfer || pre_output.requestedFee < 0 || pre_output.requestedFee > MAX_AMOUNT)
     {
         return INVALID_AMOUNT;
@@ -451,7 +451,7 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
     // run POST_RELEASE_SHARES in other contract (without invocation reward)
     QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee, currentContractIndex };
     QPI::NoData post_output;
-    __qpiCallSystemProcOfOtherContract<POST_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, post_input, post_output, 0);
+    __qpiCallSystemProc<POST_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, post_input, post_output, 0);
 
     // bug check: no other record matches filter criteria
     ASSERT(!it.next());
@@ -462,6 +462,11 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
 
 bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare) const
 {
+    if (contractCallbacksRunning & ContractCallbackPostIncomingTransfer)
+    {
+        return false;
+    }
+
     if (amountPerShare < 0 || amountPerShare * NUMBER_OF_COMPUTORS > MAX_AMOUNT)
     {
         return false;
@@ -506,14 +511,19 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
                             if (assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
                                 && assets[possessionIndex].varStruct.possession.type == POSSESSION)
                             {
-                                possessorCounter += assets[possessionIndex].varStruct.possession.numberOfShares;
+                                const auto& possession = assets[possessionIndex].varStruct.possession;
+                                const long long dividend = amountPerShare * possession.numberOfShares;
 
-                                increaseEnergy(assets[possessionIndex].varStruct.possession.publicKey, amountPerShare * assets[possessionIndex].varStruct.possession.numberOfShares);
+                                possessorCounter += possession.numberOfShares;
 
-                                if (!contractActionTracker.addQuTransfer(_currentContractId, assets[possessionIndex].varStruct.possession.publicKey, amountPerShare * assets[possessionIndex].varStruct.possession.numberOfShares))
+                                increaseEnergy(possession.publicKey, dividend);
+
+                                if (!contractActionTracker.addQuTransfer(_currentContractId, possession.publicKey, dividend))
                                     __qpiAbort(ContractErrorTooManyActions);
 
-                                const QuTransfer quTransfer = { _currentContractId , assets[possessionIndex].varStruct.possession.publicKey , amountPerShare * assets[possessionIndex].varStruct.possession.numberOfShares };
+                                __qpiNotifyPostIncomingTransfer(_currentContractId, possession.publicKey, dividend, TransferType::qpiDistributeDividends);
+
+                                const QuTransfer quTransfer = { _currentContractId, possession.publicKey, dividend };
                                 logger.logQuTransfer(quTransfer);
                             }
                         }
@@ -652,8 +662,8 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
 
     // run PRE_ACQUIRE_SHARES callback in other contract (without invocation reward)
     QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee, currentContractIndex };
-    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
-    __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, pre_input, pre_output, 0);
+    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProc
+    __qpiCallSystemProc<PRE_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, pre_input, pre_output, 0);
     if (!pre_output.allowTransfer || pre_output.requestedFee < 0 || pre_output.requestedFee > MAX_AMOUNT)
     {
         return INVALID_AMOUNT;
@@ -680,7 +690,7 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
     // run POST_ACQUIRE_SHARES in other contract (without invocation reward)
     QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee, currentContractIndex };
     QPI::NoData post_output;
-    __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, post_input, post_output, 0);
+    __qpiCallSystemProc<POST_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, post_input, post_output, 0);
 
     // bug check: no other record matches filter criteria
     ASSERT(!it.next());

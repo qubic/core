@@ -36,6 +36,9 @@ struct CNAME : public ContractBase
 	POST_RELEASE_SHARES
 	_
 
+	POST_INCOMING_TRANSFER
+	_
+
 	EXPAND
 	_
 };

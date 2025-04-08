@@ -211,6 +211,14 @@ constexpr unsigned short TESTEXC_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #define CONTRACT_STATE_TYPE TESTEXC
 #define CONTRACT_STATE2_TYPE TESTEXC2
 #include "contracts/TestExampleC.h"
+constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+#define CONTRACT_INDEX TESTEXD_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE TESTEXD
+#define CONTRACT_STATE2_TYPE TESTEXD2
+#include "contracts/TestExampleD.h"
 #endif
 
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
@@ -224,6 +232,8 @@ constexpr unsigned short TESTEXC_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef PRE_ACQUIRE_SHARES
 #undef POST_RELEASE_SHARES
 #undef POST_ACQUIRE_SHARES
+#undef POST_INCOMING_TRANSFER
+
 
 // The following are included after the contracts to keep their definitions and dependencies
 // inaccessible for contracts
@@ -273,6 +283,7 @@ constexpr struct ContractDescription
     {"TESTEXA", 138, 10000, sizeof(IPO)},
     {"TESTEXB", 138, 10000, sizeof(IPO)},
     {"TESTEXC", 138, 10000, sizeof(IPO)},
+    {"TESTEXD", 155, 10000, sizeof(IPO)},
 #endif
 };
 
@@ -309,6 +320,7 @@ enum SystemProcedureID
     PRE_ACQUIRE_SHARES,
     POST_RELEASE_SHARES,
     POST_ACQUIRE_SHARES,
+    POST_INCOMING_TRANSFER,
     contractSystemProcedureCount,
 };
 
@@ -344,6 +356,8 @@ if (!contractName::__postAcquireSharesEmpty) contractSystemProcedures[contractIn
 contractSystemProcedureLocalsSizes[contractIndex][POST_ACQUIRE_SHARES] = contractName::__postAcquireSharesLocalsSize; \
 if (!contractName::__postReleaseSharesEmpty) contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
 contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesLocalsSize; \
+if (!contractName::__postIncomingTransferEmpty) contractSystemProcedures[contractIndex][POST_INCOMING_TRANSFER] = (SYSTEM_PROCEDURE)contractName::__postIncomingTransfer;\
+contractSystemProcedureLocalsSizes[contractIndex][POST_INCOMING_TRANSFER] = contractName::__postIncomingTransferLocalsSize; \
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
@@ -369,5 +383,6 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXC);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
 #endif
 }
