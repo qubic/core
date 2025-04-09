@@ -506,7 +506,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(settingCFBAndQubicPrice)
-
+	{
 		if(qpi.invocator() != state.marketPlaceOwner)
 		{
 			output.returnCode = QBAYLogInfo::notOwner;
@@ -521,7 +521,7 @@ protected:
 		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
-	_
+	}
 
 	struct createCollection_locals 
 	{
@@ -535,7 +535,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(createCollection)
-
+	{
 		if(state.statusOfMarketPlace == 0 && qpi.invocator() != state.marketPlaceOwner)
 		{
 			output.returnCode = QBAYLogInfo::notAvailableCreateAndMint;
@@ -650,7 +650,7 @@ protected:
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
-	_
+	}
 
 	struct mint_locals 
 	{
@@ -662,7 +662,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(mint)
-
+	{
 		if(state.statusOfMarketPlace == 0)
 		{
 			output.returnCode = QBAYLogInfo::notAvailableCreateAndMint;
@@ -794,7 +794,7 @@ protected:
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
-	_
+	}
 
 	struct mintOfDrop_locals 
 	{
@@ -807,7 +807,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(mintOfDrop)
-
+	{
 		if(state.Collections.get(input.collectionId).typeOfCollection == 1)
 		{
 			output.returnCode = QBAYLogInfo::notCollectionForDrop;
@@ -921,7 +921,7 @@ protected:
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
-	_
+	}
 
 	struct transfer_locals 
 	{
@@ -932,7 +932,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(transfer)
-
+	{
 		if(qpi.invocationReward() > 0) 
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1007,7 +1007,7 @@ protected:
 		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
-	_
+	}
 
 	struct listInMarket_locals 
 	{
@@ -1018,7 +1018,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(listInMarket)
-
+	{
 		if(qpi.invocationReward() > 0) 
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1075,7 +1075,7 @@ protected:
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
-	_
+	}
 
 	struct buy_locals 
 	{
@@ -1094,7 +1094,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(buy)
-
+	{
 		if(input.NFTid >= QBAY_MAX_NUMBER_NFT)									//			NFTid should be less than MAX_NUMBER_NFT
 		{
 			output.returnCode = QBAYLogInfo::wrongNFTId; 
@@ -1221,7 +1221,7 @@ protected:
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
-	_
+	}
 
 	struct cancelSale_locals
 	{
@@ -1232,7 +1232,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(cancelSale)
-
+	{
 		if(qpi.invocationReward() > 0) 
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1277,7 +1277,7 @@ protected:
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
-	_
+	}
 
 	struct listInExchange_locals 
 	{
@@ -1289,7 +1289,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(listInExchange)
-
+	{
 		if(qpi.invocationReward() > 0) 
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1385,7 +1385,7 @@ protected:
 		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
-	_
+	}
 
 	struct cancelExchange_locals
 	{
@@ -1396,7 +1396,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(cancelExchange)
-
+	{
 		if(qpi.invocationReward() > 0) 
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1449,7 +1449,7 @@ protected:
 		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
-	_
+	}
 
 	struct makeOffer_locals 
 	{
@@ -1463,7 +1463,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(makeOffer)
-
+	{
 		if(input.NFTid >= QBAY_MAX_NUMBER_NFT || input.askPrice == 0)
 		{
 			output.returnCode = QBAYLogInfo::invalidInput;
@@ -1597,7 +1597,7 @@ protected:
 
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
-	_
+	}
 
 	struct acceptOffer_locals
 	{
@@ -1614,7 +1614,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(acceptOffer)
-
+	{
 		if(qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1699,7 +1699,7 @@ protected:
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
 
-	_
+	}
 
 	struct cancelOffer_locals
 	{
@@ -1713,7 +1713,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(cancelOffer)
-
+	{
 		if(qpi.invocationReward() > 0) 
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1784,7 +1784,7 @@ protected:
 		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
-	_
+	}
 
 	struct createTraditionalAuction_locals
 	{
@@ -1797,7 +1797,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(createTraditionalAuction)
-
+	{
 		if(qpi.invocationReward() > 0) 
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1878,7 +1878,7 @@ protected:
 		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
-	_
+	}
 
 
 	struct bidOnTraditionalAuction_locals
@@ -1896,7 +1896,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(bidOnTraditionalAuction)
-
+	{
 		if(input.NFTId >= QBAY_MAX_NUMBER_NFT)
 		{
 			output.returnCode = QBAYLogInfo::invalidInput;
@@ -2101,7 +2101,7 @@ protected:
 		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
-	_
+	}
 
 	struct changeStatusOfMarketPlace_locals
 	{
@@ -2109,7 +2109,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(changeStatusOfMarketPlace)
-
+	{
 		if(qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -2128,7 +2128,7 @@ protected:
 		output.returnCode = QBAYLogInfo::success;
 		locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::success, 0 };
 		LOG_INFO(locals.log);
-	_
+	}
 
 	struct TransferShareManagementRights_locals
 	{
@@ -2136,7 +2136,7 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
-
+	{
 		if (qpi.invocationReward() < state.transferRightsFee)
 		{
 			output.returnCode = QBAYLogInfo::insufficientQubic;
@@ -2190,7 +2190,7 @@ protected:
 				LOG_INFO(locals.log);
 			}
 		}
-	_
+	}
 
 	struct getNumberOfNFTForUser_locals
 	{
@@ -2199,7 +2199,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getNumberOfNFTForUser)
-
+	{
 		getCurrentDate(qpi, locals.curDate);
 
 		output.numberOfNFT = 0;
@@ -2211,7 +2211,7 @@ protected:
 				output.numberOfNFT++;
 			}
 		}
-	_
+	}
 
 	struct getInfoOfNFTUserPossessed_locals
 	{
@@ -2221,7 +2221,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getInfoOfNFTUserPossessed)
-
+	{
 		getCurrentDate(qpi, locals.curDate);
 
 		locals.cnt = 0;
@@ -2260,10 +2260,10 @@ protected:
 				}
 			}
 		}
-	_
+	}
 
 	PUBLIC_FUNCTION(getInfoOfMarketplace)
-
+	{
 		output.numberOfCollection = state.numberOfCollection;
 		output.numberOfNFT = state.numberOfNFT;
 		output.numberOfNFTIncoming = state.numberOfNFTIncoming;
@@ -2273,7 +2273,7 @@ protected:
 		output.earnedCFB = state.earnedCFB;
 		output.statusOfMarketPlace = state.statusOfMarketPlace;
 
-	_
+	}
 
 	struct getInfoOfCollectionByCreator_locals
 	{
@@ -2281,7 +2281,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getInfoOfCollectionByCreator)
-
+	{
 		locals.cnt = 0;
 
 		for(locals._t = 0 ; locals._t < state.numberOfCollection; locals._t++)
@@ -2308,7 +2308,7 @@ protected:
 			}
 		}
 
-	_
+	}
 
 	struct getInfoOfCollectionById_locals
 	{
@@ -2316,7 +2316,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getInfoOfCollectionById)
-
+	{
 		if(input.idOfCollection>= state.numberOfCollection)
 		{
 			return ;
@@ -2334,7 +2334,7 @@ protected:
 			output.URI.set(locals._t, state.Collections.get(input.idOfCollection).URI.get(locals._t));
 		}
 
-	_
+	}
 
 	struct getIncomingAuctions_locals
 	{
@@ -2343,7 +2343,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getIncomingAuctions)
-
+	{
 		if(input.offset + input.count >= state.numberOfNFT || input.count > 1024)
 		{
 			return ;
@@ -2371,7 +2371,7 @@ protected:
 			}
 		}
 
-	_
+	}
 
 	struct getInfoOfNFTById_locals
 	{
@@ -2379,7 +2379,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getInfoOfNFTById)
-
+	{
 		output.salePrice = state.NFTs.get(input.NFTId).salePrice;
 		output.askMaxPrice = state.NFTs.get(input.NFTId).askMaxPrice;
 		output.currentPriceOfAuction = state.NFTs.get(input.NFTId).currentPriceOfAuction;
@@ -2403,7 +2403,7 @@ protected:
 			output.URI.set(locals._r, state.NFTs.get(input.NFTId).URI.get(locals._r));
 		}
 
-	_
+	}
 
 	struct getUserCreatedCollection_locals
 	{
@@ -2411,7 +2411,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getUserCreatedCollection)
-
+	{
 		if(input.offset + input.count > state.numberOfCollection || input.count > 1024)
 		{
 			return ;
@@ -2435,7 +2435,7 @@ protected:
 				}
 			}
 		}
-	_
+	}
 
 	struct getUserCreatedNFT_locals
 	{
@@ -2443,6 +2443,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getUserCreatedNFT)
+	{
 
 	if(input.offset + input.count > state.numberOfNFT || input.count > 1024)
 	{
@@ -2467,10 +2468,10 @@ protected:
 			}
 		}
 	}
-	_
+	}
 
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
 		REGISTER_USER_FUNCTION(getNumberOfNFTForUser, 1);
 		REGISTER_USER_FUNCTION(getInfoOfNFTUserPossessed, 2);
 		REGISTER_USER_FUNCTION(getInfoOfMarketplace, 3);
@@ -2499,15 +2500,15 @@ protected:
 		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 16);
 		REGISTER_USER_PROCEDURE(changeStatusOfMarketPlace, 17);
 
-    _
+    }
 
-	INITIALIZE
-	
+	INITIALIZE()
+	{
 		state.cfbIssuer = ID(_C, _F, _B, _M, _E, _M, _Z, _O, _I, _D, _E, _X, _Q, _A, _U, _X, _Y, _Y, _S, _Z, _I, _U, _R, _A, _D, _Q, _L, _A, _P, _W, _P, _M, _N, _J, _X, _Q, _S, _N, _V, _Q, _Z, _A, _H, _Y, _V, _O, _P, _Y, _U, _K, _K, _J, _B, _J, _U, _C);
 		state.marketPlaceOwner = ID(_R, _K, _D, _H, _C, _M, _R, _J, _Y, _C, _G, _K, _P, _D, _U, _Y, _R, _X, _G, _D, _Y, _Z, _C, _I, _Z, _I, _T, _A, _H, _Y, _O, _V, _G, _I, _U, _T, _K, _N, _D, _T, _E, _H, _P, _C, _C, _L, _W, _L, _Z, _X, _S, _H, _N, _F, _P, _D);
 		state.transferRightsFee = 1000000;
 
-	_
+	}
 
 	struct END_EPOCH_locals
 	{
@@ -2515,8 +2516,8 @@ protected:
 		QX::TransferShareManagementRights_output transferShareManagementRights_output;
 	};
 
-	END_EPOCH_WITH_LOCALS
-
+	END_EPOCH_WITH_LOCALS()
+	{
 		qpi.distributeDividends(div(state.collectedShareHoldersFee * 1ULL, 676ULL));
 		qpi.burn(state.collectedShareHoldersFee - div(state.collectedShareHoldersFee, 676ULL) * 676ULL);
 		state.collectedShareHoldersFee = 0;
@@ -2535,9 +2536,10 @@ protected:
 		state.earnedCFB = 0;
 		state.earnedQubic = 0;
 
-	_
+	}
 
-    PRE_ACQUIRE_SHARES
+    PRE_ACQUIRE_SHARES()
+	{
 		output.allowTransfer = true;
-	_
+	}
 };

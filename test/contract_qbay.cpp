@@ -362,12 +362,10 @@ public:
         callSystemProcedure(QBAY_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
-        qLogger::initLogging();
     }
 
     ~ContractTestingQBAY()
     {
-        qLogger::deinitLogging();
     }
 
     QBAYChecker* getState()

@@ -1372,6 +1372,18 @@ namespace QPI
 		// Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
 		id invocator() const { return _invocator; }
 
+		// Returns the ID of the entity who has made this IPO bid or NULL_ID if the ipoContractIndex or ipoBidIndex are invalid.
+		inline id ipoBidId(
+			uint32 ipoContractIndex,
+			uint32 ipoBidIndex
+		) const;
+
+		// Returns the price of an IPO bid, -1 if contract index is invalid, -2 if contract is not in IPO, -3 if bid index is invalid.
+		inline sint64 ipoBidPrice(
+			uint32 ipoContractIndex,
+			uint32 ipoBidIndex
+		) const;
+
 		template <typename T>
 		inline id K12(
 			const T& data
@@ -1441,7 +1453,7 @@ namespace QPI
 		inline void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
 		inline void __qpiFreeLocals() const;
 		inline const QpiContextFunctionCall& __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const;
-		inline void __qpiFreeContextOtherContract() const;
+		inline void __qpiFreeContext() const;
 		inline void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
 		inline void __qpiReleaseStateForReading(unsigned int contractIndex) const;
 		inline void __qpiAbort(unsigned int errorCode) const;
@@ -1480,11 +1492,15 @@ namespace QPI
 			uint64 unitOfMeasurement
 		) const; // Returns number of shares or 0 on error
 
-		inline bool bidInIPO(
+		// Bid in contract IPO, deducting price * quantity QU. Bids that don't get shares are refunded.
+		// Returns number of bids registered or -1 if any invalid value is passed or the owned funds aren't sufficient.
+		// If the return value >= 0, the full amount has been deducted, but if return value < quantity it has been partially
+		// refunded.
+		inline sint64 bidInIPO(
 			uint32 IPOContractIndex,
 			sint64 price,
 			uint32 quantity
-		) const; // "true" if the bid is succeed, "false" otherwise
+		) const;
 
 		inline sint64 releaseShares(
 			const Asset& asset,
@@ -1518,11 +1534,12 @@ namespace QPI
 
 
 		// Internal functions, calling not allowed in contracts
-		inline const QpiContextProcedureCall& __qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, sint64 invocationReward) const;
+		inline const QpiContextProcedureCall& __qpiConstructProcedureCallContext(unsigned int otherContractIndex, sint64 invocationReward) const;
 		inline void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
 		inline void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 		template <unsigned int sysProcId, typename InputType, typename OutputType>
-		void __qpiCallSystemProcOfOtherContract(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
+		void __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
+		inline void __qpiNotifyPostIncomingTransfer(const id& source, const id& dest, sint64 amount, uint8 type) const;
 
 	protected:
 		// Construction is done in core, not allowed in contracts
@@ -1571,6 +1588,24 @@ namespace QPI
 		uint16 otherContractIndex;
 	};
 
+	namespace TransferType
+	{
+		constexpr uint8 standardTransaction = 0;
+		constexpr uint8 procedureTransaction = 1;
+		constexpr uint8 qpiTransfer = 2;
+		constexpr uint8 qpiDistributeDividends = 3;
+		constexpr uint8 revenueDonation = 4;
+		constexpr uint8 ipoBidRefund = 5;
+	};
+
+	// Input of POST_INCOMING_TRANSFER notification system call
+	struct PostIncomingTransfer_input
+	{
+		id sourceId;
+		sint64 amount;
+		uint8 type;
+	};
+
 	//////////
 	
 	struct ContractBase
@@ -1593,6 +1628,8 @@ namespace QPI
 		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __postReleaseSharesEmpty = 1, __postReleaseSharesLocalsSize = sizeof(NoData) };
 		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __postIncomingTransferEmpty = 1, __postIncomingTransferLocalsSize = sizeof(NoData) };
+		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplyLocalsSize = sizeof(NoData) };
 		static void __acceptOracleTrueReply(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplyLocalsSize = sizeof(NoData) };
@@ -1618,57 +1655,100 @@ namespace QPI
 		 public: \
 			enum { FuncName##Empty = 0, FuncName##LocalsSize = sizeof(CapLetterName##_locals) }; \
 			static_assert(sizeof(CapLetterName##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #CapLetterName "_locals size too large"); \
-			static void FuncName(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, InputType& input, OutputType& output, CapLetterName##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+			inline static void FuncName(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, InputType& input, OutputType& output, CapLetterName##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##FuncName(qpi, state, input, output, locals); } \
+			static void __impl_##FuncName(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, InputType& input, OutputType& output, CapLetterName##_locals& locals)
 
-	// Begin contract system procedure called to initalize contract state after IPO
-	#define INITIALIZE  NO_IO_SYSTEM_PROC(INITIALIZE, __initialize, NoData, NoData)
+	// Define contract system procedure called to initialize contract state after IPO
+	#define INITIALIZE()  NO_IO_SYSTEM_PROC(INITIALIZE, __initialize, NoData, NoData)
 
-	// Begin contract system procedure called to initalize contract state after IPO, provides zeroed instance of INITIALIZE_locals struct
-	#define INITIALIZE_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(INITIALIZE, __initialize, NoData, NoData)
+	// Define contract system procedure called to initialize contract state after IPO, provides zeroed instance of INITIALIZE_locals struct
+	#define INITIALIZE_WITH_LOCALS()  NO_IO_SYSTEM_PROC_WITH_LOCALS(INITIALIZE, __initialize, NoData, NoData)
 
-	// Begin contract system procedure called at beginning of each epoch
-	#define BEGIN_EPOCH  NO_IO_SYSTEM_PROC(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
+	// Define contract system procedure called at beginning of each epoch
+	#define BEGIN_EPOCH()  NO_IO_SYSTEM_PROC(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
 
-	// Begin contract system procedure called at beginning of each epoch, provides zeroed instance of BEGIN_EPOCH_locals struct
-	#define BEGIN_EPOCH_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
+	// Define contract system procedure called at beginning of each epoch, provides zeroed instance of BEGIN_EPOCH_locals struct
+	#define BEGIN_EPOCH_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
 
-	// Begin contract system procedure called at end of each epoch
-	#define END_EPOCH  NO_IO_SYSTEM_PROC(END_EPOCH, __endEpoch, NoData, NoData)
+	// Define contract system procedure called at end of each epoch
+	#define END_EPOCH() NO_IO_SYSTEM_PROC(END_EPOCH, __endEpoch, NoData, NoData)
 
-	// Begin contract system procedure called at end of each epoch, provides zeroed instance of END_EPOCH_locals struct
-	#define END_EPOCH_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(END_EPOCH, __endEpoch, NoData, NoData)
+	// Define contract system procedure called at end of each epoch, provides zeroed instance of END_EPOCH_locals struct
+	#define END_EPOCH_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(END_EPOCH, __endEpoch, NoData, NoData)
 
-	// Begin contract system procedure called at beginning of each tick
-	#define BEGIN_TICK  NO_IO_SYSTEM_PROC(BEGIN_TICK, __beginTick, NoData, NoData)
+	// Define contract system procedure called at beginning of each tick
+	#define BEGIN_TICK() NO_IO_SYSTEM_PROC(BEGIN_TICK, __beginTick, NoData, NoData)
 
-	// Begin contract system procedure called at beginning of each tick, provides zeroed instance of BEGIN_TICK_locals struct
-	#define BEGIN_TICK_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_TICK, __beginTick, NoData, NoData)
+	// Define contract system procedure called at beginning of each tick, provides zeroed instance of BEGIN_TICK_locals struct
+	#define BEGIN_TICK_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_TICK, __beginTick, NoData, NoData)
 
-	// Begin contract system procedure called at end of each tick
-	#define END_TICK  NO_IO_SYSTEM_PROC(END_TICK, __endTick, NoData, NoData)
+	// Define contract system procedure called at end of each tick
+	#define END_TICK() NO_IO_SYSTEM_PROC(END_TICK, __endTick, NoData, NoData)
 
-	// Begin contract system procedure called at end of each tick, provides zeroed instance of BEGIN_TICK_locals struct
-	#define END_TICK_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(END_TICK, __endTick, NoData, NoData)
+	// Define contract system procedure called at end of each tick, provides zeroed instance of BEGIN_TICK_locals struct
+	#define END_TICK_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(END_TICK, __endTick, NoData, NoData)
+
+	// Define contract system procedure called before asset management rights transfer with `qpi.releaseShares(). See
+	// `doc/contracts.md` for details.
+	#define PRE_ACQUIRE_SHARES() \
+        NO_IO_SYSTEM_PROC(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, \
+                          PreManagementRightsTransfer_output)
+
+	// Define contract system procedure called before asset management rights transfer with `qpi.releaseShares(). Provides
+	// zeroed instance of PRE_ACQUIRE_SHARES_locals struct. See `doc/contracts.md` for details.
+	#define PRE_ACQUIRE_SHARES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, \
+                                      PreManagementRightsTransfer_output)
+
+	// Define contract system procedure called before asset management rights transfer with `qpi.acquireShares(). See
+	// `doc/contracts.md` for details.
+	#define PRE_RELEASE_SHARES() \
+        NO_IO_SYSTEM_PROC(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, \
+                          PreManagementRightsTransfer_output)
+
+	// Define contract system procedure called before asset management rights transfer with `qpi.acquireShares(). Provides
+	// zeroed instance of PRE_RELEASE_SHARES_locals struct. See `doc/contracts.md` for details.
+	#define PRE_RELEASE_SHARES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, \
+                                      PreManagementRightsTransfer_output)
+
+	// Define contract system procedure called after asset management rights transfer with `qpi.releaseShares(). See
+	// `doc/contracts.md` for details.
+	#define POST_ACQUIRE_SHARES() \
+        NO_IO_SYSTEM_PROC(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, NoData)
+
+	// Define contract system procedure called after asset management rights transfer with `qpi.releaseShares(). Provides
+	// zeroed instance of POST_ACQUIRE_SHARES_locals struct. See `doc/contracts.md` for details.
+	#define POST_ACQUIRE_SHARES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, \
+                                      NoData)
+
+	// Define contract system procedure called after asset management rights transfer with `qpi.acquireShares(). See
+	// `doc/contracts.md` for details.
+	#define POST_RELEASE_SHARES() \
+        NO_IO_SYSTEM_PROC(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, NoData)
+
+	// Define contract system procedure called after asset management rights transfer with `qpi.acquireShares(). Provides
+	// zeroed instance of POST_RELEASE_SHARES_locals struct. See `doc/contracts.md` for details.
+	#define POST_RELEASE_SHARES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, \
+                                      NoData)
+
+	// Define contract system procedure called when QUs are transferred to the contract. See `doc/contracts.md` for
+	// details.
+	#define POST_INCOMING_TRANSFER() \
+        NO_IO_SYSTEM_PROC(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, NoData)
+
+	// Define contract system procedure called when QUs are transferred to the contract. Provides zeroed instance of
+	// POST_INCOMING_TRANSFER_locals struct. See `doc/contracts.md` for details.
+	#define POST_INCOMING_TRANSFER_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, \
+                                      NoData)
 
 
-	#define PRE_ACQUIRE_SHARES  NO_IO_SYSTEM_PROC(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, PreManagementRightsTransfer_output)
-
-	#define PRE_ACQUIRE_SHARES_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, PreManagementRightsTransfer_output)
-
-	#define PRE_RELEASE_SHARES  NO_IO_SYSTEM_PROC(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, PreManagementRightsTransfer_output)
-
-	#define PRE_RELEASE_SHARES_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, PreManagementRightsTransfer_output)
-
-	#define POST_ACQUIRE_SHARES  NO_IO_SYSTEM_PROC(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, NoData)
-
-	#define POST_ACQUIRE_SHARES_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, NoData)
-
-	#define POST_RELEASE_SHARES  NO_IO_SYSTEM_PROC(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, NoData)
-
-	#define POST_RELEASE_SHARES_WITH_LOCALS  NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, NoData)
-
-
-	#define EXPAND public: enum { __expandEmpty = 0 }; \
+	#define EXPAND() \
+      public: \
+        enum { __expandEmpty = 0 }; \
 		static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 
@@ -1688,44 +1768,47 @@ namespace QPI
 	#define PRIVATE_FUNCTION_WITH_LOCALS(function) \
 		private: \
 			enum { __is_function_##function = true }; \
-			static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+			inline static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##function(qpi, state, input, output, locals); } \
+			static void __impl_##function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals)
 
 	#define PRIVATE_PROCEDURE(procedure) \
 		private: \
 			typedef QPI::NoData procedure##_locals; \
-			PRIVATE_PROCEDURE_WITH_LOCALS(procedure);
+			PRIVATE_PROCEDURE_WITH_LOCALS(procedure)
 
 	#define PRIVATE_PROCEDURE_WITH_LOCALS(procedure) \
 		private: \
 			enum { __is_function_##procedure = false }; \
-			static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
+			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
 
 	#define PUBLIC_FUNCTION(function) \
 		public: \
 			typedef QPI::NoData function##_locals; \
-			PUBLIC_FUNCTION_WITH_LOCALS(function);
+			PUBLIC_FUNCTION_WITH_LOCALS(function)
 
 	#define PUBLIC_FUNCTION_WITH_LOCALS(function) \
 		public: \
 			enum { __is_function_##function = true }; \
-			static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+			inline static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##function(qpi, state, input, output, locals); } \
+			static void __impl_##function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals)
 
 	#define PUBLIC_PROCEDURE(procedure) \
 		public: \
 			typedef QPI::NoData procedure##_locals; \
-			PUBLIC_PROCEDURE_WITH_LOCALS(procedure);
+			PUBLIC_PROCEDURE_WITH_LOCALS(procedure)
 
 	#define PUBLIC_PROCEDURE_WITH_LOCALS(procedure) \
 		public: \
 			enum { __is_function_##procedure = false }; \
-			static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
+			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
 
-	#define REGISTER_USER_FUNCTIONS_AND_PROCEDURES \
+	#define REGISTER_USER_FUNCTIONS_AND_PROCEDURES() \
 		public: \
 			enum { __contract_index = CONTRACT_INDEX }; \
-			static void __registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
-
-	#define _ }
+			inline static void __registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl___registerUserFunctionsAndProcedures(qpi); } \
+			static void __impl___registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi)
 
 	#define REGISTER_USER_FUNCTION(userFunction, inputType) \
 		static_assert(__is_function_##userFunction, #userFunction " is procedure"); \
@@ -1766,7 +1849,7 @@ namespace QPI
 			*(contractStateType*)qpi.__qpiAcquireStateForReading(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals))); \
-		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiFreeContext(); \
 		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
@@ -1778,11 +1861,11 @@ namespace QPI
 		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function/procedure of this contract."); \
 		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
 		contractStateType::procedure( \
-			qpi.__qpiConstructContextOtherContractProcedureCall(contractStateType::__contract_index, invocationReward), \
+			qpi.__qpiConstructProcedureCallContext(contractStateType::__contract_index, invocationReward), \
 			*(contractStateType*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index), \
 			input, output, \
 			*(contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals))); \
-		qpi.__qpiFreeContextOtherContract(); \
+		qpi.__qpiFreeContext(); \
 		qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
