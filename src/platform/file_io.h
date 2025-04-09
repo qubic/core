@@ -149,14 +149,20 @@ static bool removeFile(const CHAR16* directory, const CHAR16* fileName)
         // Open the directory
         if (status = root->Open(root, (void**)&directoryProtocol, (CHAR16*)directory, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
         {
-            logStatusToConsole(L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            setText(message, L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails - Cannot open dir: ");
+            appendText(message, directory);
+            logStatusToConsole(message, status, __LINE__);
             return false;
         }
 
         // Open the file from the directory.
         if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
         {
-            logStatusToConsole(L"FileIOLoad:OpenDir:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            setText(message, L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails - Cannot open file: ");
+            appendText(message, directory);
+            appendText(message, L"/");
+            appendText(message, fileName);
+            logStatusToConsole(message, status, __LINE__);
             directoryProtocol->Close(directoryProtocol);
             return false;
         }
@@ -168,15 +174,26 @@ static bool removeFile(const CHAR16* directory, const CHAR16* fileName)
     {
         if (status = root->Open(root, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
         {
+            setText(message, L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails - Cannot open file: ");
+            appendText(message, fileName);
             logStatusToConsole(L"FileIOLoad:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
             return false;
         }
     }
     if ((status = file->Delete(file)))
     {
-        logStatusToConsole(L"FileIORem: Failed to delete file: ", status, __LINE__);
+        setText(message, L"FileIORem: Failed - Cannot delete file: ");
+        if (directory)
+        {
+            appendText(message, directory);
+            appendText(message, L"/");
+        }
+        appendText(message, fileName);
+        logStatusToConsole(message, status, __LINE__);
         return false;
     }
+    // close hdl
+    file->Close(file);
     return true;
 #endif
 }
