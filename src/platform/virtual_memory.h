@@ -530,12 +530,16 @@ public:
     // delete pages data on disk given (fromId, toId)
     // Since we store the whole page on disk, pageId will be rounded up for fromId and rounded down for toId
     // fromPageId = (fromId + pageCapacity - 1) // pageCapacity
-    // toPageId = (toId + 1) // pageCapacity
+    // toPageId = (toId   - pageCapacity + 1) // pageCapacity
     // eg: pageCapacity is 50'000. To delete the second page, call prune(50000, 99999)
-    bool pruneRange(unsigned long long fromId, unsigned long long toId)
+    bool pruneRange(long long fromId, long long toId)
     {
-        unsigned long long fromPageId = (fromId + pageCapacity - 1) / pageCapacity;
-        unsigned long long toPageId = toId / pageCapacity;
+        long long fromPageId = (fromId + pageCapacity - 1) / pageCapacity;
+        long long toPageId   = (toId   - pageCapacity + 1) / pageCapacity;
+        if (fromPageId < 0 || toPageId < 0)
+        {
+            return false;
+        }
         if (fromPageId > toPageId)
         {
             return false;
@@ -549,7 +553,7 @@ public:
             return false;
         }
         bool success = true;
-        for (unsigned long long i = fromPageId; i <= toPageId; i++)
+        for (long long i = fromPageId; i <= toPageId; i++)
         {
             bool ret = prune(i);
             success &= ret;

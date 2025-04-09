@@ -588,8 +588,8 @@ public:
 #endif
 #if ENABLED_LOGGING
         tx.commitAndCleanCurrentTxToLogId();
-#endif  
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
+#endif  
         lastUpdatedTick = _tick;
     }
     

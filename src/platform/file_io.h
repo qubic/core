@@ -31,7 +31,7 @@ static constexpr int ASYNC_FILE_IO_MAX_QUEUE_ITEMS = (1ULL << ASYNC_FILE_IO_MAX_
 static EFI_FILE_PROTOCOL* root = NULL;
 class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
-
+static void addDebugMessage(const CHAR16* msg);
 static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
@@ -133,13 +133,18 @@ static bool createDir(const CHAR16* dirName)
 }
 
 // Can only be called from mainthread
-static bool removeFile(const CHAR16* directory, const CHAR16* fileName)
+static bool removeFile(CHAR16* directory, CHAR16* fileName)
 {
 #ifdef NO_UEFI
     logToConsole(L"NO_UEFI implementation of removeFile() is missing! No directory checked!");
     return false;
 #else
     assertMainThread();
+    long long fileSz = getFileSize(fileName, directory);
+    if (fileSz == -1) // file doesn't exist
+    {
+        return true;
+    }
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
     EFI_FILE_PROTOCOL* directoryProtocol;
@@ -147,23 +152,33 @@ static bool removeFile(const CHAR16* directory, const CHAR16* fileName)
     if (NULL != directory)
     {
         // Open the directory
-        if (status = root->Open(root, (void**)&directoryProtocol, (CHAR16*)directory, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        if (status = root->Open(root, (void**)&directoryProtocol, (CHAR16*)directory, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0))
         {
             setText(message, L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails - Cannot open dir: ");
             appendText(message, directory);
-            logStatusToConsole(message, status, __LINE__);
+            appendText(message, L" near line ");
+            appendNumber(message, __LINE__, FALSE);
+            logToConsole(message);
+#ifndef NDEBUG
+            addDebugMessage(message);
+#endif
             return false;
         }
 
         // Open the file from the directory.
-        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        if (status = directoryProtocol->Open(directoryProtocol, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0))
         {
             setText(message, L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails - Cannot open file: ");
             appendText(message, directory);
             appendText(message, L"/");
             appendText(message, fileName);
-            logStatusToConsole(message, status, __LINE__);
+            appendText(message, L" near line ");
+            appendNumber(message, __LINE__, FALSE);
+            logToConsole(message);
             directoryProtocol->Close(directoryProtocol);
+#ifndef NDEBUG
+            addDebugMessage(message);
+#endif
             return false;
         }
 
@@ -172,14 +187,20 @@ static bool removeFile(const CHAR16* directory, const CHAR16* fileName)
     }
     else
     {
-        if (status = root->Open(root, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
+        if (status = root->Open(root, (void**)&file, (CHAR16*)fileName, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0))
         {
             setText(message, L"FileIOLoad:OpenDir EFI_FILE_PROTOCOL.Open() fails - Cannot open file: ");
             appendText(message, fileName);
-            logStatusToConsole(L"FileIOLoad:OpenFile EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+            appendText(message, L" near line ");
+            appendNumber(message, __LINE__, FALSE);
+            logToConsole(message);
+#ifndef NDEBUG
+            addDebugMessage(message);
+#endif
             return false;
         }
     }
+
     if ((status = file->Delete(file)))
     {
         setText(message, L"FileIORem: Failed - Cannot delete file: ");
@@ -189,11 +210,14 @@ static bool removeFile(const CHAR16* directory, const CHAR16* fileName)
             appendText(message, L"/");
         }
         appendText(message, fileName);
-        logStatusToConsole(message, status, __LINE__);
+        appendText(message, L" near line ");
+        appendNumber(message, __LINE__, FALSE);
+        logToConsole(message);
+#ifndef NDEBUG
+        addDebugMessage(message);
+#endif
         return false;
     }
-    // close hdl
-    file->Close(file);
     return true;
 #endif
 }
@@ -1073,7 +1097,7 @@ static long long asyncLoad(const CHAR16* fileName, unsigned long long totalSize,
 // Asynchorous remove a file
 // This function can be called from any thread and is a blocking function
 // To avoid lock and the actual remove happen, flushAsyncFileIOBuffer must be called in main thread
-static long long asyncRemoveFile(const CHAR16* fileName, const CHAR16* directory = NULL)
+static long long asyncRemoveFile(CHAR16* fileName, CHAR16* directory = NULL)
 {
     if (!fileName)
     {
