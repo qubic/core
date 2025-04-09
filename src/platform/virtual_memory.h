@@ -522,7 +522,7 @@ public:
         CHAR16 pageName[64];
         generatePageName(pageName, pageId);
         ACQUIRE(memLock);
-        bool success = (asyncRemoveFile(pageDir, pageName)) == 0;
+        bool success = (asyncRemoveFile(pageName, pageDir)) == 0;
         RELEASE(memLock);
         return success;
     }
