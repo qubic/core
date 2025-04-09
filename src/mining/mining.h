@@ -181,6 +181,7 @@ public:
         allocatePool(CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask), (void**)&_customMiningTasks);
         allocatePool(CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(unsigned long long), (void**)&_taskIndices);
         _storageIndex = 0;
+        _customMiningPhaseCount = 0;
     }
 
     void deinit()
@@ -200,7 +201,17 @@ public:
     void reset()
     {
         _storageIndex = 0;
+        _customMiningPhaseCount = 0;
         //setMem(_taskIndices, sizeof(_taskIndices), 0xFF);
+    }
+
+    void checkAndReset()
+    {
+        _customMiningPhaseCount++;
+        if (_customMiningPhaseCount % CUSTOM_MINING_TASK_STORAGE_RESET_PHASE == 0)
+        {
+            reset();
+        }
     }
 
     // Binary search for taskIndex or closest less-than index
@@ -333,4 +344,5 @@ private:
     CustomMiningTask* _customMiningTasks;
     unsigned long long* _taskIndices;
     unsigned long long _storageIndex;
+    unsigned long long _customMiningPhaseCount;
 };

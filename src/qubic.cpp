@@ -1326,6 +1326,7 @@ static void processCustomMiningTaskRequest(Peer* peer, RequestResponseHeader* he
             unsigned long long tasksCount = 0;
 
             RespondCustomMiningTask<CustomMiningTask> response;
+            response._taskCount = 0;
             {
                 ACQUIRE(gCustomMiningStorageLock);
 
@@ -2890,11 +2891,16 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
-    // Broadcast custom mining shares 
-    if (mainAuxStatus & 1)
+    // In the begining of mining phase
+    if (getTickInMiningPhaseCycle() == 0)
     {
-        // In the begining of mining phase
-        if (getTickInMiningPhaseCycle() == 0)
+        // Reset the custom mining task storage
+        ACQUIRE(gCustomMiningStorageLock);
+        gCustomMiningTaskStorage.checkAndReset();
+        RELEASE(gCustomMiningStorageLock);
+
+        // Broadcast custom mining shares 
+        if (mainAuxStatus & 1)
         {
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
