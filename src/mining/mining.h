@@ -172,6 +172,8 @@ public:
 
 // In charge of storing custom mining tasks
 constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = CUSTOM_MINING_TASK_STORAGE_SIZE / sizeof(CustomMiningTask);
+constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_COUNT = CUSTOM_MINING_SOLUTION_STORAGE_SIZE / sizeof(CustomMiningSolution);
+
 class CustomMiningTaskStorage
 {
 public:
@@ -181,7 +183,7 @@ public:
         allocatePool(CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask), (void**)&_customMiningTasks);
         allocatePool(CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(unsigned long long), (void**)&_taskIndices);
         _storageIndex = 0;
-        _customMiningPhaseCount = 0;
+        _customMiningPhaseCount = 1;
     }
 
     void deinit()
@@ -201,8 +203,7 @@ public:
     void reset()
     {
         _storageIndex = 0;
-        _customMiningPhaseCount = 0;
-        //setMem(_taskIndices, sizeof(_taskIndices), 0xFF);
+        _customMiningPhaseCount = 1;
     }
 
     void checkAndReset()
@@ -214,7 +215,7 @@ public:
         }
     }
 
-    // Binary search for taskIndex or closest less-than index
+    // Binary search for taskIndex or closest greater-than task index
     unsigned long long searchTaskIndex(unsigned long long taskIndex, bool& exactMatch) const
     {
         unsigned long long left = 0, right = (_storageIndex > 0) ? _storageIndex - 1 : 0;
@@ -345,4 +346,197 @@ private:
     unsigned long long* _taskIndices;
     unsigned long long _storageIndex;
     unsigned long long _customMiningPhaseCount;
+};
+
+template <typename DataType, unsigned long long maxItems, unsigned long long resetPeriod>
+class CustomMiningSortedStorage
+{
+public:
+    static constexpr unsigned long long _invalidIndex = 0xFFFFFFFFFFFFFFFFULL;
+    void init()
+    {
+        allocatePool(maxItems * sizeof(DataType), (void**)&_data);
+        allocatePool(maxItems * sizeof(unsigned long long), (void**)&_indices);
+        _storageIndex = 0;
+        _phaseCount = 0;
+    }
+
+    void deinit()
+    {
+        if (NULL != _data)
+        {
+            freePool(_data);
+            _data = NULL;
+        }
+        if (NULL != _indices)
+        {
+            freePool(_indices);
+            _indices = NULL;
+        }
+    }
+
+    void reset()
+    {
+        _storageIndex = 0;
+        _phaseCount = 1;
+    }
+
+    void checkAndReset()
+    {
+        _phaseCount++;
+        if (_phaseCount % resetPeriod == 0)
+        {
+            reset();
+        }
+    }
+
+    // Binary search for taskIndex or closest greater-than task index
+    unsigned long long searchTaskIndex(unsigned long long taskIndex, bool& exactMatch) const
+    {
+        unsigned long long left = 0, right = (_storageIndex > 0) ? _storageIndex - 1 : 0;
+        unsigned long long result = _invalidIndex;
+        exactMatch = false;
+
+        while (left <= right && left < _storageIndex)
+        {
+            unsigned long long mid = (left + right) / 2;
+            unsigned long long midTaskIndex = _data[_indices[mid]].taskIndex;
+
+            if (midTaskIndex == taskIndex)
+            {
+                exactMatch = true;
+                return mid;
+            }
+            else if (midTaskIndex < taskIndex)
+            {
+                left = mid + 1;
+            }
+            else
+            {
+                result = mid;
+                if (mid == 0)
+                {
+                    break; // prevent underflow
+                }
+                right = mid - 1;
+            }
+        }
+
+        return result;
+    }
+
+
+    // Return the task whose task index >= taskIndex
+    unsigned long long lookForTaskGE(unsigned long long taskIndex)
+    {
+        bool exactMatch = false;
+        unsigned long long idx = searchTaskIndex(taskIndex, exactMatch);
+        return idx;
+    }
+
+    // Return the task whose task index == taskIndex
+    unsigned long long lookForTask(unsigned long long taskIndex)
+    {
+        bool exactMatch = false;
+        unsigned long long idx = searchTaskIndex(taskIndex, exactMatch);
+        if (exactMatch)
+        {
+            return idx;
+        }
+        return _invalidIndex;
+    }
+
+    bool dataExisted(const DataType& data)
+    {
+        bool exactMatch = false;
+        searchTaskIndex(data.taskIndex, exactMatch);
+        return exactMatch;
+    }
+
+    // Add the task to the storage
+    void addData(const DataType& data)
+    {
+        // Don't added if the task already existed
+        if (dataExisted(data))
+        {
+            return;
+        }
+
+        // Reset the storage if the number of tasks exceeds the limit
+        if (_storageIndex >= maxItems)
+        {
+            reset();
+        }
+
+        unsigned long long newIndex = _storageIndex;
+        _data[newIndex] = data;
+
+        unsigned long long insertPos = 0;
+        unsigned long long left = 0, right = (_storageIndex > 0) ? _storageIndex - 1 : 0;
+
+        while (left <= right && left < _storageIndex)
+        {
+            unsigned long long mid = (left + right) / 2;
+            if (_data[_indices[mid]].taskIndex < data.taskIndex)
+            {
+                left = mid + 1;
+            }
+            else
+            {
+                if (mid == 0) break;
+                right = mid - 1;
+            }
+        }
+        insertPos = left;
+
+        // Shift indices right
+        for (unsigned long long i = _storageIndex; i > insertPos; --i)
+        {
+            _indices[i] = _indices[i - 1];
+        }
+
+        _indices[insertPos] = newIndex;
+        _storageIndex++;
+
+    }
+
+    // Get the data from index
+    DataType* getDataByIndex(unsigned long long index)
+    {
+        if (index >= _storageIndex)
+        {
+            return NULL;
+        }
+        return &_data[_indices[index]];
+    }
+
+    // Get the total number of tasks
+    unsigned long long getCount() const
+    {
+        return _storageIndex;
+    }
+
+private:
+    DataType* _data;
+    unsigned long long* _indices;
+    unsigned long long _storageIndex;
+    unsigned long long _phaseCount;
+};
+
+class CustomMiningStorage
+{
+public:
+    void init()
+    {
+        _taskStorage.init();
+        _solutionStorage.init();
+    }
+    void deinit()
+    {
+        _taskStorage.deinit();
+        _solutionStorage.deinit();
+    }
+
+    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE> _taskStorage;
+    CustomMiningSortedStorage<CustomMiningSolution, CUSTOM_MINING_TASK_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE> _solutionStorage;
 };

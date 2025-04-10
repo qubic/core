@@ -4,7 +4,7 @@
 
 // Do NOT share the data of "Private Settings" section with anybody!!!
 
-#define OPERATOR "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+#define OPERATOR "YRZVDJHUSNYBQFIWUWCVSEQVBLWBIMNOUUVJKWXLSAAODNHMZYQASNWDMQNA"
 
 static unsigned char computorSeeds[][55 + 1] = {
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
