@@ -42,11 +42,27 @@ add_compile_options(
 
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/lib)
 
 add_executable(
   Qubic
   qubic.cpp
-    )
+)
+
+# Link with platform libraries
+if(BUILD_TESTS)
+  # When building for tests, link only with platform_common and platform_os
+  target_link_libraries(Qubic
+    platform_common
+    platform_os
+  )
+else()
+  # When building the application, link with platform_common and platform_efi
+  target_link_libraries(Qubic
+    platform_common
+    platform_efi
+  )
+endif()
 
 
 set(CMAKE_LINKER "lld")
