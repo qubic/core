@@ -2947,7 +2947,7 @@ static void processTick(unsigned long long processorNumber)
 
     // In the begining of mining phase.
     // Also skip the begining of the epoch, because the no thing to do
-    if (getTickInMiningPhaseCycle() == 0)
+    if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
     {
         // Reset the custom mining task storage
         ACQUIRE(gCustomMiningTaskStorageLock);
