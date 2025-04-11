@@ -2817,8 +2817,8 @@ static void processTick(unsigned long long processorNumber)
     // Broadcast custom mining shares 
     if (mainAuxStatus & 1)
     {
-        // In the begining of mining phase
-        if (getTickInMiningPhaseCycle() == 0)
+        // In the begining of mining phase. Calculate the transaction need to be broadcasted
+        if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
         {
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
