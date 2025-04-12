@@ -2779,9 +2779,9 @@ static void processTick(unsigned long long processorNumber)
         {
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
-                unsigned int schedule_tick = system.tick + TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET + random(NUMBER_OF_COMPUTORS / 2);
-
-                static_assert(TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET + NUMBER_OF_COMPUTORS / 2 < INTERNAL_COMPUTATIONS_INTERVAL);
+                unsigned int schedule_tick = system.tick
+                    + TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET
+                    + random(NUMBER_OF_COMPUTORS - TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET);
 
                 // Update the custom mining share counter
                 ACQUIRE(gCustomMiningSharesCountLock);
@@ -2817,7 +2817,8 @@ static void processTick(unsigned long long processorNumber)
         {
             if (!gCustomMiningBroadcastTxBuffer[i].isBroadcasted)
             {
-                if (system.tick == (gCustomMiningBroadcastTxBuffer[i].payload.transaction.tick + TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET))
+                ASSERT(gCustomMiningBroadcastTxBuffer[i].payload.transaction.tick >= system.tick);
+                if (gCustomMiningBroadcastTxBuffer[i].payload.transaction.tick - system.tick == TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET)
                 {
                     enqueueResponse(NULL, sizeof(gCustomMiningBroadcastTxBuffer[i].payload), BROADCAST_TRANSACTION, 0, &gCustomMiningBroadcastTxBuffer[i].payload);
                     gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
