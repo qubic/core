@@ -54,11 +54,27 @@ struct CustomMiningSolution
     m256i result;               // xmrig::JobResult.result, 32 bytes
 };
 
+
 #define CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES 848
 #define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
 static_assert((1 << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) >= NUMBER_OF_COMPUTORS, "Invalid number of bit per datum");
 static_assert(CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES * 8 >= NUMBER_OF_COMPUTORS * CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP, "Invalid data size");
 static char accumulatedSharedCountLock = 0;
+
+struct CustomMiningSharePayload
+{
+    Transaction transaction;
+    unsigned char packedScore[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES];
+    unsigned char signature[SIGNATURE_SIZE];
+};
+
+struct BroadcastCustomMiningTransaction
+{
+    CustomMiningSharePayload payload;
+    bool isBroadcasted;
+};
+
+BroadcastCustomMiningTransaction gCustomMiningBroadcastTxBuffer[NUMBER_OF_COMPUTORS];
 
 class CustomMiningSharesCounter
 {
@@ -169,3 +185,12 @@ public:
         copyMem(&_accumulatedSharesCount[0], src + sizeof(_shareCount), sizeof(_accumulatedSharesCount));
     }
 };
+
+void initCustomMining()
+{
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
+        gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
+    }
+}
