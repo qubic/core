@@ -212,8 +212,10 @@ static volatile char gIsInCustomMiningStateLock = 0;
 
 struct revenueScore
 {
-    unsigned long long _oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
-    unsigned long long _customMiningScore[NUMBER_OF_COMPUTORS]; // the new score with customming
+    unsigned long long oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
+    unsigned long long customMiningSharesCount[NUMBER_OF_COMPUTORS]; // the shares count with custom mining
+    unsigned long long currentRev[NUMBER_OF_COMPUTORS]; // old revenue
+    unsigned long long customMiningRev[NUMBER_OF_COMPUTORS]; // reveneu with custom mining
 } gRevenueScoreWithCustomMining;
 
 
@@ -3007,13 +3009,17 @@ static void endEpoch()
 
         // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution and old score
         {
-            bs->CopyMem(gRevenueScoreWithCustomMining._oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining._oldFinalScore));
+            bs->CopyMem(gRevenueScoreWithCustomMining.oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining.oldFinalScore));
             // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
-                unsigned long long shareScore = gCustomMiningSharesCounter.getSharesCount(i);
-                gRevenueScoreWithCustomMining._customMiningScore[i] = shareScore;
+                gRevenueScoreWithCustomMining.customMiningSharesCount[i] = gCustomMiningSharesCounter.getSharesCount(i);
             }
+            computeRevWithCustomMining(
+                gRevenueScoreWithCustomMining.oldFinalScore,
+                gRevenueScoreWithCustomMining.customMiningSharesCount,
+                gRevenueScoreWithCustomMining.currentRev,
+                gRevenueScoreWithCustomMining.customMiningRev);
         }
 
 
