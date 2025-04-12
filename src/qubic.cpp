@@ -2817,7 +2817,7 @@ static void processTick(unsigned long long processorNumber)
         {
             if (!gCustomMiningBroadcastTxBuffer[i].isBroadcasted)
             {
-                if (system.tick - gCustomMiningBroadcastTxBuffer[i].payload.transaction.tick == TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET)
+                if (system.tick == (gCustomMiningBroadcastTxBuffer[i].payload.transaction.tick + TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET))
                 {
                     enqueueResponse(NULL, sizeof(gCustomMiningBroadcastTxBuffer[i].payload), BROADCAST_TRANSACTION, 0, &gCustomMiningBroadcastTxBuffer[i].payload);
                     gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
