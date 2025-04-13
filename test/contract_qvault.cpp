@@ -53,202 +53,7 @@ static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxN
 class QVAULTChecker : public QVAULT
 {
 public:
-    void endEpochChecker(uint64 revenue, const std::vector<id>& QCAPHolders) 
-    {
-        uint64 paymentForShareholders = QPI::div(revenue * shareholderDividend, 1000ULL);
-        uint64 paymentForQCAPHolders = QPI::div(revenue * QCAPHolderPermille, 1000ULL);
-        uint64 paymentForReinvest = QPI::div(revenue * reinvestingPermille, 1000ULL);
-        uint64 amountOfBurn = QPI::div(revenue * burnPermille, 1000ULL);
-        uint64 paymentForDevelopment = revenue - paymentForShareholders - paymentForQCAPHolders - paymentForReinvest - amountOfBurn;
-
-        if(paymentForReinvest > QVAULT_MAX_REINVEST_AMOUNT)
-        {
-            paymentForQCAPHolders += paymentForReinvest - QVAULT_MAX_REINVEST_AMOUNT;
-            paymentForReinvest = QVAULT_MAX_REINVEST_AMOUNT;
-        }
-
-        uint64 QCAPCirculatedSupply = QVAULT_QCAP_MAX_SUPPLY;
-
-        for(uint64 i = 0 ; i < QCAPHolders.size(); i++)
-        {
-            for(uint64 j = 0 ; j < numberOfBannedAddress; j++)
-            {
-                if(QCAPHolders[i] == bannedAddress.get(j))
-                {
-                    QCAPCirculatedSupply -= numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, QCAP_ISSUER, QCAPHolders[i], QCAPHolders[i], QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
-                    break;
-                }
-            }
-        }
-
-        QCAPCirculatedSupply -= numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, QCAP_ISSUER, QVAULT_initialBannedAddress1, QVAULT_initialBannedAddress1, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
-        QCAPCirculatedSupply -= numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, QCAP_ISSUER, QVAULT_initialBannedAddress2, QVAULT_initialBannedAddress2, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
-        /*
-            This for loop will check the revenue distributed to QCAPHolders.
-        */
-        for (const auto& user : QCAPHolders)
-        {
-            uint64 j = 0;
-            for(j = 0 ; j < numberOfBannedAddress; j++)
-            {
-                if(user == bannedAddress.get(j))
-                {
-                    break;
-                }
-            }
-            if(j != numberOfBannedAddress)
-            {
-                continue;
-            }
-            EXPECT_EQ(QPI::div(paymentForQCAPHolders, QCAPCirculatedSupply) * numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, QCAP_ISSUER, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), getBalance(user) - 1);
-        }
-        if(paymentForReinvest > QVAULT_MAX_REINVEST_AMOUNT)
-        {
-            EXPECT_EQ(QVAULT_MAX_REINVEST_AMOUNT, getBalance(reinvestingAddress));
-        }
-        else 
-        {
-            EXPECT_EQ(paymentForReinvest, getBalance(reinvestingAddress));
-        }
-        EXPECT_EQ(paymentForDevelopment, getBalance(adminAddress));
-    }
-
-    void balanceChecker(const id& user)
-    {
-        EXPECT_EQ(getBalance(user), 1);
-    }
-
-    void submitAuthAddressChecker()
-    {
-        EXPECT_EQ(NULL_ID, newAuthAddress1);
-        EXPECT_EQ(NULL_ID, newAuthAddress2);
-        EXPECT_EQ(NULL_ID, newAuthAddress3);
-    }
-
-    void submitAuthAddressWithExactAuthId(const id& newAuthAddress)
-    {
-        EXPECT_EQ(newAuthAddress1, newAuthAddress);
-        EXPECT_EQ(newAuthAddress2, newAuthAddress);
-        EXPECT_EQ(newAuthAddress3, newAuthAddress);
-    }
-
-    void changeAuthAddressChecker(uint32 numberOfAuth, const id& newAuthAddress)
-    {
-        if(numberOfAuth == 1)
-        {
-            EXPECT_EQ(authAddress1, newAuthAddress);
-        }
-        else if(numberOfAuth == 2)
-        {
-            EXPECT_EQ(authAddress2, newAuthAddress);
-        }
-        else 
-        {
-            EXPECT_EQ(authAddress3, newAuthAddress);
-        }
-    }
-
-    void submitDistributionPermilleChecker(uint32 newQCAPHolderPt, uint32 newReinvestingPt, uint32 newDevPt)
-    {
-        EXPECT_EQ(newQCAPHolderPt, newQCAPHolderPermille1);
-        EXPECT_EQ(newQCAPHolderPt, newQCAPHolderPermille2);
-        EXPECT_EQ(newQCAPHolderPt, newQCAPHolderPermille3);
-
-        EXPECT_EQ(newReinvestingPt, newReinvestingPermille1);
-        EXPECT_EQ(newReinvestingPt, newReinvestingPermille2);
-        EXPECT_EQ(newReinvestingPt, newReinvestingPermille3);
-
-        EXPECT_EQ(newDevPt, newDevPermille1);
-        EXPECT_EQ(newDevPt, newDevPermille2);
-        EXPECT_EQ(newDevPt, newDevPermille3);
-    }
-
-    void changeDistributionPermilleChecker(uint32 newQCAPHolderPt, uint32 newReinvestingPt, uint32 newDevPt)
-    {
-        EXPECT_EQ(newQCAPHolderPt, QCAPHolderPermille);
-        EXPECT_EQ(newReinvestingPt, reinvestingPermille);
-        EXPECT_EQ(newDevPt, devPermille);
-    }
-
-    void submitReinvestingAddressChecker(const id& newReinvestingAddress)
-    {
-        EXPECT_EQ(newReinvestingAddress1, newReinvestingAddress);
-        EXPECT_EQ(newReinvestingAddress2, newReinvestingAddress);
-        EXPECT_EQ(newReinvestingAddress3, newReinvestingAddress);
-    }
-
-    void changeReinvestingAddressChecker(const id& newReinvestingAddress)
-    {
-        EXPECT_EQ(reinvestingAddress, newReinvestingAddress);
-    }
-
-    void submitAdminAddressChecker(const id& newAdminAddress)
-    {
-        EXPECT_EQ(newAdminAddress1, newAdminAddress);
-        EXPECT_EQ(newAdminAddress2, newAdminAddress);
-        EXPECT_EQ(newAdminAddress3, newAdminAddress);
-    }
-
-    void changeAdminAddressChecker(const id& newAdminAddress)
-    {
-        EXPECT_EQ(adminAddress, newAdminAddress);
-    }
-
-    void submitBannedAddressChecker(const id& newBannedAddress)
-    {
-        EXPECT_EQ(bannedAddress1, newBannedAddress);
-        EXPECT_EQ(bannedAddress2, newBannedAddress);
-        EXPECT_EQ(bannedAddress3, newBannedAddress);
-    }
-
-    void saveBannedAddressChecker(const id& newBannedAddress)
-    {
-        EXPECT_EQ(bannedAddress.get(numberOfBannedAddress - 1), newBannedAddress);
-    }
-
-    void submitUnbannedAddressChecker(const id& newUnbannedAddress)
-    {
-        EXPECT_EQ(unbannedAddress1, newUnbannedAddress);
-        EXPECT_EQ(unbannedAddress2, newUnbannedAddress);
-        EXPECT_EQ(unbannedAddress3, newUnbannedAddress);
-    }
-
-    void saveUnbannedAddressChecker(const id& unbannedAddress)
-    {
-        for(uint32 i = 0 ; i < numberOfBannedAddress; i++)
-        {
-            EXPECT_NE(unbannedAddress, bannedAddress.get(i));
-        }
-    }
-
-    void getDataChecker(const getData_output& output)
-    {
-        EXPECT_EQ(output.authAddress1, authAddress1);
-        EXPECT_EQ(output.authAddress2, authAddress2);
-        EXPECT_EQ(output.authAddress3, authAddress3);
-        EXPECT_EQ(output.reinvestingAddress, reinvestingAddress);
-        EXPECT_EQ(output.shareholderDividend, shareholderDividend);
-        EXPECT_EQ(output.devPermille, devPermille);
-        EXPECT_EQ(output.QCAPHolderPermille, QCAPHolderPermille);
-        EXPECT_EQ(output.reinvestingPermille, reinvestingPermille);
-        EXPECT_EQ(output.adminAddress, adminAddress);
-        EXPECT_EQ(output.newAuthAddress1, newAuthAddress1);
-        EXPECT_EQ(output.newAuthAddress2, newAuthAddress2);
-        EXPECT_EQ(output.newAuthAddress3, newAuthAddress3);
-        EXPECT_EQ(output.newAdminAddress1, newAdminAddress1);
-        EXPECT_EQ(output.newAdminAddress2, newAdminAddress2);
-        EXPECT_EQ(output.newAdminAddress3, newAdminAddress3);
-        EXPECT_EQ(output.newReinvestingAddress1, newReinvestingAddress1);
-        EXPECT_EQ(output.newReinvestingAddress2, newReinvestingAddress2);
-        EXPECT_EQ(output.newReinvestingAddress3, newReinvestingAddress3);
-        EXPECT_EQ(output.numberOfBannedAddress, numberOfBannedAddress);
-        EXPECT_EQ(output.bannedAddress1, bannedAddress1);
-        EXPECT_EQ(output.bannedAddress2, bannedAddress2);
-        EXPECT_EQ(output.bannedAddress3, bannedAddress3);
-        EXPECT_EQ(output.unbannedAddress1, unbannedAddress1);
-        EXPECT_EQ(output.unbannedAddress2, unbannedAddress2);
-        EXPECT_EQ(output.unbannedAddress3, unbannedAddress3);
-    }
+   
 };
 
 class ContractTestingQvault : protected ContractTesting
@@ -283,126 +88,144 @@ public:
         return output;
     }
 
-    void submitAuthAddress(const id& authAddress, const id& newAuthAddress)
+    void stake(const id& address, uint64 amount)
     {
-        QVAULT::submitAuthAddress_input input;
-        QVAULT::submitAuthAddress_output output;
+        QVAULT::stake_input input;
+        QVAULT::stake_output output;
 
-        input.newAddress = newAuthAddress;
+        input.amount = amount;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 1, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 1, input, output, address, 0);
     }
 
-    void changeAuthAddress(const id& authAddress, uint32 numberOfChangedAddress)
+    void unStake(const id& address, uint64 amount)
     {
-        QVAULT::changeAuthAddress_input input{numberOfChangedAddress};
-        QVAULT::changeAuthAddress_output output;
+        QVAULT::unStake_input input{amount};
+        QVAULT::unStake_output output;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 2, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 2, input, output, address, 0);
     }
 
-    void submitDistributionPermille(const id& authAddress, uint32 newQCAPHolderPermille, uint32 newReinvestingPermille, uint32 newDevPermille)
+    void submitGP(const id& address)
     {
         QVAULT::submitDistributionPermille_input input;
         QVAULT::submitDistributionPermille_output output;
 
-        input.newDevPermille = newDevPermille;
-        input.newQCAPHolderPermille = newQCAPHolderPermille;
-        input.newReinvestingPermille = newReinvestingPermille;
-
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 3, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 3, input, output, address, 0);
     }
 
-    void changeDistributionPermille(const id& authAddress, uint32 newQCAPHolderPermille, uint32 newReinvestingPermille, uint32 newDevPermille)
+    void submitQCP(const id& address, uint32 newQuorumPercent)
     {
-        QVAULT::changeDistributionPermille_input input;
-        QVAULT::changeDistributionPermille_output output;
+        QVAULT::submitQCP_input input;
+        QVAULT::submitQCP_output output;
 
-        input.newDevPermille = newDevPermille;
-        input.newQCAPHolderPermille = newQCAPHolderPermille;
-        input.newReinvestingPermille = newReinvestingPermille;
+        input.newQuorumPercent = newQuorumPercent;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 4, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 4, input, output, address, 10000000);
     }
 
-    void submitReinvestingAddress(const id& authAddress, const id& newReinvestingAddress)
+    void submitIPOP(const id& address, uint32 ipoContractIndex)
     {
-        QVAULT::submitReinvestingAddress_input input;
-        QVAULT::submitReinvestingAddress_output output;
+        QVAULT::submitIPOP_input input;
+        QVAULT::submitIPOP_output output;
 
-        input.newAddress = newReinvestingAddress;
+        input.ipoContractIndex = ipoContractIndex;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 5, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 5, input, output, address, 10000000);
     }
 
-    void changeReinvestingAddress(const id& authAddress, const id& newReinvestingAddress)
+    void submitQEarnP(const id& address, uint64 amountPerEpoch, uint32 numberOfEpoch)
     {
-        QVAULT::changeReinvestingAddress_input input;
-        QVAULT::changeReinvestingAddress_output output;
+        QVAULT::submitQEarnP_input input;
+        QVAULT::submitQEarnP_output output;
 
-        input.newAddress = newReinvestingAddress;
+        input.amountPerEpoch = amountPerEpoch;
+        input.numberOfEpoch = numberOfEpoch;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 6, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 6, input, output, authAddress, 10000000);
     }
 
-    void submitAdminAddress(const id& authAddress, const id& newAdminAddress)
+    void submitFundP(const id& address, uint64 amountOfQcap, uint64 priceOfOneQcap)
     {
-        QVAULT::submitAdminAddress_input input;
-        QVAULT::submitAdminAddress_output output;
+        QVAULT::submitFundP_input input;
+        QVAULT::submitFundP_output output;
 
-        input.newAddress = newAdminAddress;
+        input.amountOfQcap = amountOfQcap;
+        input.priceOfOneQcap = priceOfOneQcap;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 7, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 7, input, output, address, 10000000);
     }
 
-    void changeAdminAddress(const id& authAddress, const id& newAdminAddress)
+    void submitMKTP(const id& address, uint64 amountOfQcap, uint64 amountOfQubic, uint64 shareName, uint32 indexOfShare, uint32 amountOfShare)
     {
-        QVAULT::changeAdminAddress_input input;
-        QVAULT::changeAdminAddress_output output;
+        QVAULT::submitMKTP_input input;
+        QVAULT::submitMKTP_output output;
 
-        input.newAddress = newAdminAddress;
+        input.amountOfQcap = amountOfQcap;
+        input.amountOfQubic = amountOfQubic;
+        input.amountOfShare = amountOfShare;
+        input.indexOfShare = indexOfShare;
+        input.shareName = shareName;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 8, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 8, input, output, address, 10000000);
     }
 
-    void submitBannedAddress(const id& authAddress, const id& bannedAddress)
+    void submitAlloP(const id& address, uint8 reinvested, uint8 team, uint8 burn, uint8 distribute)
     {
-        QVAULT::submitBannedAddress_input input;
-        QVAULT::submitBannedAddress_output output;
+        QVAULT::submitAlloP_input input;
+        QVAULT::submitAlloP_output output;
 
-        input.bannedAddress = bannedAddress;
+        input.reinvested = reinvested;
+        input.team = team;
+        input.burn = burn ;
+        input.distribute = distribute;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 9, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 9, input, output, address, 10000000);
     }
 
-    void saveBannedAddress(const id& authAddress, const id& bannedAddress)
+    void voteInProposal(const id& address, uint64 priceOfIPO, uint32 proposalType, uint32 proposalId, bit yes)
     {
-        QVAULT::saveBannedAddress_input input;
-        QVAULT::saveBannedAddress_output output;
+        QVAULT::voteInProposal_input input;
+        QVAULT::voteInProposal_output output;
 
-        input.bannedAddress = bannedAddress;
+        input.priceOfIPO = priceOfIPO;
+        input.proposalType = proposalType;
+        input.proposalId = proposalId;
+        input.yes = yes;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 10, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 10, input, output, address, 10000000);
     }
 
-    void submitUnbannedAddress(const id& authAddress, const id& unbannedAddress)
+    void buyQcap(const id& address, uint32 amount, uint64 fund)
     {
-        QVAULT::submitUnbannedAddress_input input;
-        QVAULT::submitUnbannedAddress_output output;
+        QVAULT::buyQcap_input input;
+        QVAULT::buyQcap_output output
 
-        input.unbannedAddress = unbannedAddress;
-
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 11, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 11, input, output, address, fund);
     }
 
-    void saveUnbannedAddress(const id& authAddress, const id& unbannedAddress)
+    void buyQcap(const id& address, uint32 amount, uint64 fund)
+    void TransferShareManagementRights(Asset asset, sint64 numberOfShares, uint32 newManagingContractIndex)
     {
-        QVAULT::unblockBannedAddress_input input;
-        QVAULT::unblockBannedAddress_output output;
+        QVAULT::TransferShareManagementRights_input input;
+        QVAULT::TransferShareManagementRights_output output;
 
-        input.unbannedAddress = unbannedAddress;
+        input.asset.assetName = QVAULT_QCAP_ASSETNAME;
+        input.asset.issuer = QVAULT_QCAP_ISSUER;
+        input.numberOfShares = numberOfShares;
+        input.newManagingContractIndex = newManagingContractIndex;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 12, input, output, authAddress, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 12, input, output, address, 1000000);
+    }
+
+    void submitMuslimShare(const id& address, uint32 contractId)
+    {
+        QVAULT::submitMuslimShare_input input;
+        QVAULT::submitMuslimShare_output output;
+
+        input.contractId = contractId;
+
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 13, input, output, address, 1000000);
     }
 
     sint64 issueAsset(const id& issuer, uint64 assetName, sint64 numberOfShares, uint64 unitOfMeasurement, sint8 numberOfDecimalPlaces)
@@ -428,447 +251,3 @@ public:
         return output.transferredNumberOfShares;
     }
 };
-
-TEST(ContractQvault, END_EPOCH)
-{
-    ContractTestingQvault qvault;
-
-    id issuer = QVAULT_QCAP_ISSUER;
-    uint64 assetName = assetNameFromString("QCAP");
-    sint64 numberOfShares = QVAULT_QCAP_MAX_SUPPLY;
-
-
-    increaseEnergy(issuer, QVAULT_ISSUE_ASSET_FEE);
-    EXPECT_EQ(qvault.issueAsset(issuer, assetName, numberOfShares, 0, 0), numberOfShares);
-
-    uint64 currentAmount = QVAULT_QCAP_MAX_SUPPLY;
-    uint64 numberOfHolder = 0;
-    bool flag = 0;
-    auto QCAPHolders = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    std::map<id, bool> transferChecker;
-
-    /*
-        sending the QCAP token to bannedAddresses
-    */
-    increaseEnergy(issuer, QVAULT_TOKEN_TRANSFER_FEE);
-    increaseEnergy(QVAULT_initialBannedAddress1, 1);
-    currentAmount -= qvault.TransferShareOwnershipAndPossession(issuer, assetName, random(0, QVAULT_BIG_AMOUNT_QCAP_TRANSFER), QVAULT_initialBannedAddress1);
-
-    increaseEnergy(issuer, QVAULT_TOKEN_TRANSFER_FEE);
-    increaseEnergy(QVAULT_initialBannedAddress2, 1);
-    currentAmount -= qvault.TransferShareOwnershipAndPossession(issuer, assetName, random(0, QVAULT_BIG_AMOUNT_QCAP_TRANSFER), QVAULT_initialBannedAddress2);
-    /*
-        this while statement will distribute the QCAP token to holders.
-    */
-    while(1)
-    {
-        uint64 amountOfQCAPTransfer;
-        if(flag) 
-        {
-            amountOfQCAPTransfer = random(0, QVAULT_BIG_AMOUNT_QCAP_TRANSFER);
-        }
-        else 
-        {
-            amountOfQCAPTransfer = random(0, QVAULT_SMALL_AMOUNT_QCAP_TRANSFER);
-        }
-        if(currentAmount < amountOfQCAPTransfer || numberOfHolder == QCAPHolders.size())
-        {
-            break;
-        }
-
-        if(transferChecker[QCAPHolders[numberOfHolder]])
-        {
-            QCAPHolders.erase(QCAPHolders.begin() + numberOfHolder);
-            continue;
-        }
-        transferChecker[QCAPHolders[numberOfHolder]] = 1;
-        currentAmount -= amountOfQCAPTransfer;
-        increaseEnergy(issuer, QVAULT_TOKEN_TRANSFER_FEE);
-        increaseEnergy(QCAPHolders[numberOfHolder], 1);
-        qvault.getState()->balanceChecker(QCAPHolders[numberOfHolder]);
-        EXPECT_EQ(qvault.TransferShareOwnershipAndPossession(issuer, assetName, amountOfQCAPTransfer, QCAPHolders[numberOfHolder]), amountOfQCAPTransfer);
-        numberOfHolder++;
-    }
-
-    uint64 revenue = random(QVAULT_MIN_REVENUE, QVAULT_MAX_REVENUE);
-    increaseEnergy(QVAULT_CONTRACT_ID, revenue);
-    qvault.endEpoch();
-    qvault.getState()->endEpochChecker(revenue, QCAPHolders);
-}
-
-TEST(ContractQvault, submitAuthAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    for (const auto& user : randomAddresses)
-    {
-        // make sure that user exists in spectrum
-        increaseEnergy(user, 1);
-
-        // checking to change the auth address using the non-authAddress
-        qvault.submitAuthAddress(user, user);
-        qvault.getState()->submitAuthAddressChecker();
-    }
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to change the auth address using the exact authAddresss
-    qvault.submitAuthAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitAuthAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitAuthAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.getState()->submitAuthAddressWithExactAuthId(randomAddresses[0]);
-}
-
-TEST(ContractQvault, changeAuthAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to change the authAddress3 with exact process
-    qvault.submitAuthAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitAuthAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.changeAuthAddress(QVAULT_authAddress1, 3);
-    qvault.getState()->changeAuthAddressChecker(3, randomAddresses[0]);
-
-    qvault.submitAuthAddress(QVAULT_authAddress1, randomAddresses[1]);
-    qvault.submitAuthAddress(QVAULT_authAddress2, randomAddresses[1]);
-    qvault.changeAuthAddress(QVAULT_authAddress2, 3);
-    qvault.getState()->changeAuthAddressChecker(3, randomAddresses[1]);
-
-    qvault.submitAuthAddress(QVAULT_authAddress1, QVAULT_authAddress3);
-    qvault.submitAuthAddress(QVAULT_authAddress2, QVAULT_authAddress3);
-    qvault.changeAuthAddress(QVAULT_authAddress2, 3);
-    qvault.getState()->changeAuthAddressChecker(3, QVAULT_authAddress3);
-
-    // checking to change the authAddress2 with exact process
-    qvault.submitAuthAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitAuthAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.changeAuthAddress(QVAULT_authAddress1, 2);
-    qvault.getState()->changeAuthAddressChecker(2, randomAddresses[0]);
-
-    qvault.submitAuthAddress(QVAULT_authAddress1, randomAddresses[1]);
-    qvault.submitAuthAddress(QVAULT_authAddress3, randomAddresses[1]);
-    qvault.changeAuthAddress(QVAULT_authAddress3, 2);
-    qvault.getState()->changeAuthAddressChecker(2, randomAddresses[1]);
-
-    qvault.submitAuthAddress(QVAULT_authAddress1, QVAULT_authAddress2);
-    qvault.submitAuthAddress(QVAULT_authAddress3, QVAULT_authAddress2);
-    qvault.changeAuthAddress(QVAULT_authAddress3, 2);
-    qvault.getState()->changeAuthAddressChecker(2, QVAULT_authAddress2);
-
-    // checking to change the authAddress1 with exact process
-    qvault.submitAuthAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitAuthAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.changeAuthAddress(QVAULT_authAddress2, 1);
-    qvault.getState()->changeAuthAddressChecker(1, randomAddresses[0]);
-
-    qvault.submitAuthAddress(QVAULT_authAddress2, randomAddresses[1]);
-    qvault.submitAuthAddress(QVAULT_authAddress3, randomAddresses[1]);
-    qvault.changeAuthAddress(QVAULT_authAddress3, 1);
-    qvault.getState()->changeAuthAddressChecker(1, randomAddresses[1]);
-
-    qvault.submitAuthAddress(QVAULT_authAddress2, QVAULT_authAddress1);
-    qvault.submitAuthAddress(QVAULT_authAddress3, QVAULT_authAddress1);
-    qvault.changeAuthAddress(QVAULT_authAddress3, 1);
-    qvault.getState()->changeAuthAddressChecker(1, QVAULT_authAddress1);
-}
-
-TEST(ContractQvault, submitDistributionPermille)
-{
-    ContractTestingQvault qvault;
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to change the Permille
-    qvault.submitDistributionPermille(QVAULT_authAddress1, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress2, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress3, 500, 400, 70);
-    qvault.getState()->submitDistributionPermilleChecker(500, 400, 70);
-}
-
-TEST(ContractQvault, changeDistributionPermille)
-{
-    ContractTestingQvault qvault;
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to change the Permille
-    qvault.submitDistributionPermille(QVAULT_authAddress1, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress2, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress3, 500, 400, 70);
-    qvault.changeDistributionPermille(QVAULT_authAddress1, 500, 400, 70);
-    qvault.getState()->changeDistributionPermilleChecker(500, 400, 70);
-
-    qvault.submitDistributionPermille(QVAULT_authAddress1, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress2, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress3, 500, 400, 70);
-    qvault.changeDistributionPermille(QVAULT_authAddress2, 500, 400, 70);
-    qvault.getState()->changeDistributionPermilleChecker(500, 400, 70);
-
-    qvault.submitDistributionPermille(QVAULT_authAddress1, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress2, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress3, 500, 400, 70);
-    qvault.changeDistributionPermille(QVAULT_authAddress3, 500, 400, 70);
-    qvault.getState()->changeDistributionPermilleChecker(500, 400, 70);
-}
-
-TEST(ContractQvault, submitReinvestingAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to change the reinvestingAddress
-    qvault.submitReinvestingAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.getState()->submitReinvestingAddressChecker(randomAddresses[0]);
-}
-
-TEST(ContractQvault, changeReinvestingAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to change the reinvestingAddress
-    qvault.submitReinvestingAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.changeReinvestingAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.getState()->changeReinvestingAddressChecker(randomAddresses[0]);
-
-    qvault.submitReinvestingAddress(QVAULT_authAddress1, randomAddresses[1]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress2, randomAddresses[1]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress3, randomAddresses[1]);
-    qvault.changeReinvestingAddress(QVAULT_authAddress2, randomAddresses[1]);
-    qvault.getState()->changeReinvestingAddressChecker(randomAddresses[1]);
-
-    qvault.submitReinvestingAddress(QVAULT_authAddress1, randomAddresses[2]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress2, randomAddresses[2]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress3, randomAddresses[2]);
-    qvault.changeReinvestingAddress(QVAULT_authAddress3, randomAddresses[2]);
-    qvault.getState()->changeReinvestingAddressChecker(randomAddresses[2]);
-}
-
-TEST(ContractQvault, submitAdminAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to change the adminAddress
-    qvault.submitAdminAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitAdminAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitAdminAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.getState()->submitAdminAddressChecker(randomAddresses[0]);
-}
-
-TEST(ContractQvault, changeAdminAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to change the adminAddress
-    qvault.submitAdminAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitAdminAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitAdminAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.changeAdminAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.getState()->changeAdminAddressChecker(randomAddresses[0]);
-
-    qvault.submitAdminAddress(QVAULT_authAddress1, randomAddresses[1]);
-    qvault.submitAdminAddress(QVAULT_authAddress2, randomAddresses[1]);
-    qvault.submitAdminAddress(QVAULT_authAddress3, randomAddresses[1]);
-    qvault.changeAdminAddress(QVAULT_authAddress2, randomAddresses[1]);
-    qvault.getState()->changeAdminAddressChecker(randomAddresses[1]);
-
-    qvault.submitAdminAddress(QVAULT_authAddress1, randomAddresses[2]);
-    qvault.submitAdminAddress(QVAULT_authAddress2, randomAddresses[2]);
-    qvault.submitAdminAddress(QVAULT_authAddress3, randomAddresses[2]);
-    qvault.changeAdminAddress(QVAULT_authAddress3, randomAddresses[2]);
-    qvault.getState()->changeAdminAddressChecker(randomAddresses[2]);
-}
-
-TEST(ContractQvault, submitBannedAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to submit the bannedAddress
-    qvault.submitBannedAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitBannedAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitBannedAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.getState()->submitBannedAddressChecker(randomAddresses[0]);
-}
-
-TEST(ContractQvault, saveBannedAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to save the bannedAddress
-    qvault.submitBannedAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitBannedAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitBannedAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.saveBannedAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.getState()->saveBannedAddressChecker(randomAddresses[0]);
-
-    qvault.submitBannedAddress(QVAULT_authAddress1, randomAddresses[1]);
-    qvault.submitBannedAddress(QVAULT_authAddress2, randomAddresses[1]);
-    qvault.submitBannedAddress(QVAULT_authAddress3, randomAddresses[1]);
-    qvault.saveBannedAddress(QVAULT_authAddress2, randomAddresses[1]);
-    qvault.getState()->saveBannedAddressChecker(randomAddresses[1]);
-
-    qvault.submitBannedAddress(QVAULT_authAddress1, randomAddresses[2]);
-    qvault.submitBannedAddress(QVAULT_authAddress2, randomAddresses[2]);
-    qvault.submitBannedAddress(QVAULT_authAddress3, randomAddresses[2]);
-    qvault.saveBannedAddress(QVAULT_authAddress3, randomAddresses[2]);
-    qvault.getState()->saveBannedAddressChecker(randomAddresses[2]);
-}
-
-TEST(ContractQvault, submitUnbannedAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    // checking to submit unbannedAddress
-    qvault.submitUnbannedAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitUnbannedAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitUnbannedAddress(QVAULT_authAddress3, randomAddresses[0]);
-    qvault.getState()->submitUnbannedAddressChecker(randomAddresses[0]);
-}
-
-TEST(ContractQvault, unblockBannedAddress)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    for(uint32 i = 0 ; i < 10; i++)
-    {
-        qvault.submitBannedAddress(QVAULT_authAddress1, randomAddresses[i]);
-        qvault.submitBannedAddress(QVAULT_authAddress2, randomAddresses[i]);
-        qvault.submitBannedAddress(QVAULT_authAddress3, randomAddresses[i]);
-        qvault.saveBannedAddress(QVAULT_authAddress1, randomAddresses[i]);
-    }
-
-    // checking to unblock the bannedAddress
-    for(uint32 i = 0 ; i < 10; i++)
-    {
-        qvault.submitUnbannedAddress(QVAULT_authAddress1, randomAddresses[i]);
-        qvault.submitUnbannedAddress(QVAULT_authAddress2, randomAddresses[i]);
-        qvault.submitUnbannedAddress(QVAULT_authAddress3, randomAddresses[i]);
-        qvault.saveUnbannedAddress(QVAULT_authAddress1, randomAddresses[i]);
-        qvault.getState()->saveUnbannedAddressChecker(randomAddresses[i]);
-    }
-}
-
-TEST(ContractQvault, getData)
-{
-    ContractTestingQvault qvault;
-
-    auto randomAddresses = getRandomUsers(QVAULT_QCAP_MAX_HOLDERS, QVAULT_QCAP_MAX_HOLDERS);
-
-    // make sure that user exists in spectrum
-    increaseEnergy(QVAULT_authAddress1, 1);
-    increaseEnergy(QVAULT_authAddress2, 1);
-    increaseEnergy(QVAULT_authAddress3, 1);
-
-    qvault.submitAuthAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitAuthAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitAuthAddress(QVAULT_authAddress3, randomAddresses[0]);
-
-    qvault.submitDistributionPermille(QVAULT_authAddress1, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress2, 500, 400, 70);
-    qvault.submitDistributionPermille(QVAULT_authAddress3, 500, 400, 70);
-
-    qvault.submitReinvestingAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitReinvestingAddress(QVAULT_authAddress3, randomAddresses[0]);
-
-    qvault.submitAdminAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitAdminAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitAdminAddress(QVAULT_authAddress3, randomAddresses[0]);
-
-    qvault.submitBannedAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitBannedAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitBannedAddress(QVAULT_authAddress3, randomAddresses[0]);
-
-    qvault.submitUnbannedAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.submitUnbannedAddress(QVAULT_authAddress2, randomAddresses[0]);
-    qvault.submitUnbannedAddress(QVAULT_authAddress3, randomAddresses[0]);
-
-    auto output = qvault.getData();
-    qvault.getState()->getDataChecker(output);
-
-    qvault.changeAuthAddress(QVAULT_authAddress1, 3);
-    qvault.changeDistributionPermille(QVAULT_authAddress1, 500, 400, 70);
-    qvault.changeReinvestingAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.changeAdminAddress(QVAULT_authAddress1, randomAddresses[0]);
-    qvault.saveBannedAddress(QVAULT_authAddress1, randomAddresses[0]);
-
-    output = qvault.getData();
-    qvault.getState()->getDataChecker(output);
-}

@@ -1,9 +1,35 @@
 using namespace QPI;
 
-constexpr uint64 QVAULT_MAX_REINVEST_AMOUNT = 100000000000ULL;
 constexpr uint64 QVAULT_QCAP_ASSETNAME = 1346454353;
+constexpr uint64 QVAULT_QVAULT_ASSETNAME = 92686824592977;
 constexpr uint64 QVAULT_QCAP_MAX_SUPPLY = 21000000;
+constexpr uint64 QVAULT_PROPOSAL_FEE = 10000000;
 constexpr uint32 QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES = 16;
+constexpr uint32 QVAULT_MAX_NUMBER_OF_PROPOSAL = 65536;
+constexpr uint32 QVAULT_2025MAX_QCAP_SALE_AMOUNT = 10714286;
+constexpr uint32 QVAULT_2026MAX_QCAP_SALE_AMOUNT = 15571429;
+constexpr uint32 QVAULT_2027MAX_QCAP_SALE_AMOUNT = 18000000;
+
+constexpr sint32 QVAULT_SUCCESS = 0;
+constexpr sint32 QVAULT_INSUFFICIENT_QCAP = 1;
+constexpr sint32 QVAULT_NOT_ENOUGH_STAKE = 2;
+constexpr sint32 QVAULT_NOT_STAKER = 3;
+
+enum QVAULTLogInfo {
+    success = 0,
+    insufficientFund = 1,
+    notTransferredShare = 2,
+    endedProposal = 3,
+    notStaked = 4,
+    noVotingPower = 5,
+    overflowSaleAmount = 6,
+    notInTime = 7,
+    notFair = 8,
+    insufficientQcap = 9,
+    failed = 10,
+    insufficientShare = 11,
+    errorTransferAsset = 12,
+};
 
 struct QVAULT2
 {
@@ -14,98 +40,6 @@ struct QVAULT : public ContractBase
 
 public:
 
-    /*
-        submitAuthAddress PROCEDURE
-        multisig addresses can submit the new multisig address in this procedure.
-    */
-
-    struct submitAuthAddress_input 
-    {
-        id newAddress;
-    };
-
-    struct submitAuthAddress_output
-    {
-    };
-
-    /*
-        changeAuthAddress PROCEDURE 
-        the new multisig address can be changed by multisig address in this procedure.
-        the new multisig address should be submitted by the 2 multisig addresses in submitAuthAddress. if else, it will not be changed with new address
-    */
-
-    struct changeAuthAddress_input
-    {
-        uint32 numberOfChangedAddress;
-    };
-
-    struct changeAuthAddress_output
-    {
-    };
-
-    /*
-        submitDistributionPermille PROCEDURE
-        the new distribution Permilles can be submitted by the multisig addresses in this procedure.
-    */
-
-    struct submitDistributionPermille_input
-    {
-        uint32 newQCAPHolderPermille;
-        uint32 newReinvestingPermille;
-        uint32 newDevPermille;
-    };
-
-    struct submitDistributionPermille_output
-    {
-    };
-
-    /*
-        changeDistributionPermille PROCEDURE
-        the new distribution Permilles can be changed by multisig address in this procedure.
-        the new distribution Permilles should be submitted by multsig addresses in submitDistributionPermille PROCEDURE. if else, it will not be changed with new Permilles.
-    */
-
-    struct changeDistributionPermille_input
-    {
-        uint32 newQCAPHolderPermille;
-        uint32 newReinvestingPermille;
-        uint32 newDevPermille;
-    };
-
-    struct changeDistributionPermille_output
-    {
-    };
-
-    /*
-        submitReinvestingAddress PROCEDURE
-        the new reinvestingAddress can be submitted by the multisig addresses in this procedure.
-    */
-
-    struct submitReinvestingAddress_input
-    {
-        id newAddress;
-    };
-
-    struct submitReinvestingAddress_output
-    {
-    };
-
-    /*
-        changeReinvestingAddress PROCEDURE
-        the new reinvesting address can be changed by multisig address in this procedure.
-        the new reinvesting address should be submitted by multsig addresses in submitReinvestingAddress. if else, it will not be changed with new address.
-    */
-
-    struct changeReinvestingAddress_input
-    {
-        id newAddress;
-    };
-
-    struct changeReinvestingAddress_output
-    {
-
-    };
-
     struct getData_input
     {
     };
@@ -114,535 +48,1202 @@ public:
     {
         uint64 numberOfBannedAddress;
         uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille;
-        id authAddress1, authAddress2, authAddress3, reinvestingAddress, adminAddress;
-        id newAuthAddress1, newAuthAddress2, newAuthAddress3;
-        id newReinvestingAddress1, newReinvestingAddress2, newReinvestingAddress3;
-        id newAdminAddress1, newAdminAddress2, newAdminAddress3;
-        id bannedAddress1, bannedAddress2, bannedAddress3;
-        id unbannedAddress1, unbannedAddress2, unbannedAddress3;
+        id reinvestingAddress, adminAddress;
     };
 
-    /*
-        submitAdminAddress PROCEDURE
-        the new adminAddress can be submitted by the multisig addresses in this procedure.
-    */
-
-    struct submitAdminAddress_input
+    struct stake_input
     {
-        id newAddress;
+        uint64 amount;
     };
 
-    struct submitAdminAddress_output
+    struct stake_output
     {
+        uint32 returnCode;
     };
 
-    /*
-        changeAdminAddress PROCEDURE
-        the new admin address can be changed by multisig address in this procedure.
-        the new admin address should be submitted by multsig addresses in submitAdminAddress PROCEDURE. if else, it will not be changed with new address.
-    */
-
-    struct changeAdminAddress_input
+    struct unStake_input
     {
-        id newAddress;
+        uint64 amount;
     };
 
-    struct changeAdminAddress_output
+    struct unStake_output
     {
+        uint32 returnCode;
     };
 
-    /*
-        submitBannedAddress PROCEDURE
-        the banned addresses can be submitted by multisig address in this procedure.
-    */
-    struct submitBannedAddress_input
+    struct submitGP_input
     {
-        id bannedAddress;
+
     };
 
-    struct submitBannedAddress_output
+    struct submitGP_output
     {
+        uint32 returnCode;
     };
 
-    /*
-        saveBannedAddress PROCEDURE
-        the banned address can be changed by multisig address in this procedure.
-        the banned address should be submitted by multisig addresses in submitBannedAddress PROCEDURE.  if else, it will not be saved.
-    */
-
-    struct saveBannedAddress_input
+    struct submitQCP_input
     {
-        id bannedAddress;
+        uint32 newQuorumPercent;
     };
 
-    struct saveBannedAddress_output
+    struct submitQCP_output
     {
+        uint32 returnCode;
     };
 
-    /*
-        submitUnbannedAddress PROCEDURE
-        the unbanned addresses can be submitted by multisig address in this procedure.
-    */
-
-    struct submitUnbannedAddress_input
+    struct submitIPOP_input
     {
-        id unbannedAddress;
+        uint32 ipoContractIndex;
     };
 
-    struct submitUnbannedAddress_output
+    struct submitIPOP_output
     {
+        uint32 returnCode;
     };
 
-    /*
-        unblockBannedAddress PROCEDURE
-        the banned address can be unblocked by multisig address in this procedure.
-        the unbanned address should be submitted by multisig addresses in submitUnbannedAddress PROCEDURE.  if else, it will not be unblocked.
-    */
-
-    struct unblockBannedAddress_input
+    struct submitQEarnP_input
     {
-        id unbannedAddress;
+        uint64 amountPerEpoch;
+        uint32 numberOfEpoch;
     };
 
-    struct unblockBannedAddress_output
+    struct submitQEarnP_output
     {
+        uint32 returnCode;
+    };
+
+    struct submitFundP_input
+    {
+        uint64 amountOfQcap;
+        uint64 priceOfOneQcap;
+    };
+
+    struct submitFundP_output
+    {
+        uint32 returnCode;
+    };
+
+    struct submitMKTP_input
+    {
+        uint64 amountOfQcap;
+        uint64 amountOfQubic;
+        uint64 shareName;
+        uint32 indexOfShare;
+        uint32 amountOfShare;
+    };
+
+    struct submitMKTP_output
+    {
+        uint32 returnCode;
+    };
+
+    struct submitAlloP_input
+    {
+        uint8 reinvested;
+        uint8 team;
+        uint8 burn;
+        uint8 distribute;
+    };
+
+    struct submitAlloP_output
+    {
+        uint32 returnCode;
+    };
+
+    struct voteInProposal_input
+    {
+        uint64 priceOfIPO;
+        uint32 proposalType;
+        uint32 proposalId;
+        bit yes;
+    };
+
+    struct voteInProposal_output
+    {
+        uint32 returnCode;
+    };
+
+    struct buyQcap_input
+    {
+        uint32 amount;
+    };
+
+    struct buyQcap_output
+    {
+        uint32 returnCode;
+    };
+
+    struct TransferShareManagementRights_input
+	{
+		Asset asset;
+		sint64 numberOfShares;
+		uint32 newManagingContractIndex;
+	};
+	struct TransferShareManagementRights_output
+	{
+		sint64 transferredNumberOfShares;
+		uint32 returnCode;
+	};
+
+    struct submitMuslimShare_input
+    {
+        uint32 contractId;
+    };
+
+    struct submitMuslimShare_output
+    {
+        uint32 returnCode;
     };
 
 protected:
 
-    id QCAP_ISSUER;
-    id authAddress1, authAddress2, authAddress3, newAuthAddress1, newAuthAddress2, newAuthAddress3;
-    id reinvestingAddress, newReinvestingAddress1, newReinvestingAddress2, newReinvestingAddress3;
-    id adminAddress, newAdminAddress1, newAdminAddress2, newAdminAddress3;
-    id bannedAddress1, bannedAddress2, bannedAddress3;
-    id unbannedAddress1, unbannedAddress2, unbannedAddress3;
-    Array<id, QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES> bannedAddress;
-    uint32 numberOfBannedAddress;
-    uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille, burnPermille;
-    uint32 newQCAPHolderPermille1, newReinvestingPermille1, newDevPermille1;
-    uint32 newQCAPHolderPermille2, newReinvestingPermille2, newDevPermille2;
-    uint32 newQCAPHolderPermille3, newReinvestingPermille3, newDevPermille3;
-
-    PUBLIC_PROCEDURE(submitAuthAddress)
+    struct stakingInfo
     {
-        if(qpi.invocator() == state.authAddress1)
-        {
-            state.newAuthAddress1 = input.newAddress;
-        }
-        if(qpi.invocator() == state.authAddress2)
-        {
-            state.newAuthAddress2 = input.newAddress;
-        }
-        if(qpi.invocator() == state.authAddress3)
-        {
-            state.newAuthAddress3 = input.newAddress;
-        }
-
-    }
-
-    struct changeAuthAddress_locals {
-        bit succeed;
+        id stakerAddress;
+        uint64 amount;
     };
 
-    PUBLIC_PROCEDURE_WITH_LOCALS(changeAuthAddress)
+    Array<stakingInfo, QVAULT_QCAP_MAX_SUPPLY> staker;
+    Array<stakingInfo, QVAULT_QCAP_MAX_SUPPLY> votingPower;
+
+    struct GPInfo                   // General proposal
     {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
-        {
-            return ;
-        }
+        id proposer;
+        uint64 currentTotalVotingPower;
+        uint64 numberOfYes;
+        uint64 numberOfNo;
+        uint32 proposedEpoch;
+        uint8 currentQuorumPercent;
+        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum.
+    };
 
-        locals.succeed = 0;
+    Array<GPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> GP;
 
-        if(qpi.invocator() != state.authAddress1 && input.numberOfChangedAddress == 1 && state.newAuthAddress2 != NULL_ID && state.newAuthAddress2 == state.newAuthAddress3)
-        {
-            state.authAddress1 = state.newAuthAddress2;
-            locals.succeed = 1;
-        }
-
-        if(qpi.invocator() != state.authAddress2 && input.numberOfChangedAddress == 2 && state.newAuthAddress1 != NULL_ID && state.newAuthAddress1 == state.newAuthAddress3)
-        {
-            state.authAddress2 = state.newAuthAddress1;
-            locals.succeed = 1;
-        }
-
-        if(qpi.invocator() != state.authAddress3 && input.numberOfChangedAddress == 3 && state.newAuthAddress1 != NULL_ID && state.newAuthAddress1 == state.newAuthAddress2)
-        {
-            state.authAddress3 = state.newAuthAddress1;
-            locals.succeed = 1;
-        }
-
-        if(locals.succeed == 1)
-        {
-            state.newAuthAddress1 = NULL_ID;
-            state.newAuthAddress2 = NULL_ID;
-            state.newAuthAddress3 = NULL_ID;
-        }
-    }
-
-    PUBLIC_PROCEDURE(submitDistributionPermille)
+    struct QCPInfo                   // Quorum change proposal
     {
-        if(input.newDevPermille + input.newQCAPHolderPermille + input.newReinvestingPermille + state.shareholderDividend + state.burnPermille != 1000)
-        {
-            return ;
-        }
+        id proposer;
+        uint64 currentTotalVotingPower;
+        uint64 numberOfYes;
+        uint64 numberOfNo;
+        uint32 proposedEpoch;
+        uint8 currentQuorumPercent;
+        uint8 newQuorumPercent;
+        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum.
+    };
 
-        if(qpi.invocator() == state.authAddress1)
-        {
-            state.newDevPermille1 = input.newDevPermille;
-            state.newQCAPHolderPermille1 = input.newQCAPHolderPermille;
-            state.newReinvestingPermille1 = input.newReinvestingPermille;
-        }
+    Array<QCPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> QCP;
 
-        if(qpi.invocator() == state.authAddress2)
-        {
-            state.newDevPermille2 = input.newDevPermille;
-            state.newQCAPHolderPermille2 = input.newQCAPHolderPermille;
-            state.newReinvestingPermille2 = input.newReinvestingPermille;
-        }
-
-        if(qpi.invocator() == state.authAddress3)
-        {
-            state.newDevPermille3 = input.newDevPermille;
-            state.newQCAPHolderPermille3 = input.newQCAPHolderPermille;
-            state.newReinvestingPermille3 = input.newReinvestingPermille;
-        }
-
-    }
-
-    PUBLIC_PROCEDURE(changeDistributionPermille)
+    struct IPOPInfo         // IPO participation
     {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
-        {
-            return ;
-        }
+        id proposer;
+        uint64 currentTotalVotingPower;
+        uint64 numberOfYes;
+        uint64 numberOfNo;
+        uint64 totalWeight;
+        uint64 assignedFund;
+        uint32 proposedEpoch;
+        uint32 ipoContractIndex;
+        uint8 currentQuorumPercent;
+        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum. 3 is the insufficient invest funds.
+    };
 
-        if(input.newDevPermille + input.newQCAPHolderPermille + input.newReinvestingPermille + state.shareholderDividend + state.burnPermille != 1000)
-        {
-            return ;
-        }
+    Array<IPOPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> IPOP;
 
-        if(input.newDevPermille == 0 || input.newDevPermille != state.newDevPermille1 || state.newDevPermille1 != state.newDevPermille2 || state.newDevPermille2 != state.newDevPermille3)
-        {
-            return ;
-        }
-
-        if(input.newQCAPHolderPermille == 0 || input.newQCAPHolderPermille != state.newQCAPHolderPermille1 || state.newQCAPHolderPermille1 != state.newQCAPHolderPermille2 || state.newQCAPHolderPermille2 != state.newQCAPHolderPermille3)
-        {
-            return ;
-        }
-
-        if(input.newReinvestingPermille == 0 || input.newReinvestingPermille != state.newReinvestingPermille1 || state.newReinvestingPermille1 != state.newReinvestingPermille2 || state.newReinvestingPermille2 != state.newReinvestingPermille3)
-        {
-            return ;
-        }
-
-        state.devPermille = state.newDevPermille1;
-        state.QCAPHolderPermille = state.newQCAPHolderPermille1;
-        state.reinvestingPermille = state.newReinvestingPermille1;
-
-        state.newDevPermille1 = 0;
-        state.newDevPermille2 = 0;
-        state.newDevPermille3 = 0;
-
-        state.newQCAPHolderPermille1 = 0;
-        state.newQCAPHolderPermille2 = 0;
-        state.newQCAPHolderPermille3 = 0;
-
-        state.newReinvestingPermille1 = 0;
-        state.newReinvestingPermille2 = 0;
-        state.newReinvestingPermille3 = 0;
-    }
-
-    PUBLIC_PROCEDURE(submitReinvestingAddress)
+    struct QEarnPInfo       // Qearn participation proposal
     {
-        if(qpi.invocator() == state.authAddress1)
-        {
-            state.newReinvestingAddress1 = input.newAddress;
-        }
-        if(qpi.invocator() == state.authAddress2)
-        {
-            state.newReinvestingAddress2 = input.newAddress;
-        }
-        if(qpi.invocator() == state.authAddress3)
-        {
-            state.newReinvestingAddress3 = input.newAddress;
-        }
-    }
+        id proposer;
+        uint64 currentTotalVotingPower;
+        uint64 numberOfYes;
+        uint64 numberOfNo;
+        uint64 amountOfInvestPerEpoch;
+        uint64 assignedFundPerEpoch;
+        uint32 proposedEpoch;
+        uint8 numberOfEpoch;
+        uint8 currentQuorumPercent;
+        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum. 3 is the insufficient funds.
+    };
 
-    PUBLIC_PROCEDURE(changeReinvestingAddress)
+    Array<QEarnPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> QEarnP;
+
+    struct FundPInfo            // Fundraising proposal
     {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
-        {
-            return ;
-        }
+        id proposer;
+        uint64 currentTotalVotingPower;
+        uint64 numberOfYes;
+        uint64 numberOfNo;
+        uint64 pricePerOneQcap;
+        uint32 amountOfQcap;
+        uint32 restSaleAmount;
+        uint32 proposedEpoch;
+        uint8 currentQuorumPercent;
+        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum.
+    };
 
-        if(input.newAddress == NULL_ID || input.newAddress != state.newReinvestingAddress1 || state.newReinvestingAddress1 != state.newReinvestingAddress2  || state.newReinvestingAddress2 != state.newReinvestingAddress3)
-        {
-            return ;
-        }
+    Array<FundPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> FundP;
 
-        state.reinvestingAddress = state.newReinvestingAddress1;
+    struct MKTPInfo                 //  Marketplace proposal
+    {
+        id proposer;
+        uint64 currentTotalVotingPower;
+        uint64 numberOfYes;
+        uint64 numberOfNo;
+        uint64 amountOfQubic;
+        uint64 amountOfQcap;
+        uint32 proposedEpoch;
+        uint32 shareIndex;
+        uint32 amountOfShare;
+        uint32 shareName;
+        uint8 currentQuorumPercent;
+        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum. 3 is the insufficient funds. 4 is the insufficient Qcap.
+    };
 
-        state.newReinvestingAddress1 = NULL_ID;
-        state.newReinvestingAddress2 = NULL_ID;
-        state.newReinvestingAddress3 = NULL_ID;
+    Array<MKTPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> MKTP;
+    
+    struct AlloPInfo
+    {
+        id proposer;
+        uint64 currentTotalVotingPower;
+        uint64 numberOfYes;
+        uint64 numberOfNo;
+        uint32 proposedEpoch;
+        uint8 reinvested;
+        uint8 distributed;
+        uint8 team;
+        uint8 burnQcap;
+        uint8 currentQuorumPercent;
+        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum.
+    };
+
+    Array<AlloPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> AlloP;
+
+    struct muslimShareInfo
+    {
+        id address;
+        uint32 contractId;
+    };
+
+    Array<muslimShareInfo, 65536> muslim;
+
+    id QCAP_ISSUER, QVAULT_ISSUER;
+    id reinvestingAddress;
+    id adminAddress;
+    id contractIssuer;
+    Array<id, QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES> bannedAddress;
+    uint64 quorumPercent, totalVotingPower, proposalCreateFund, reinvestingFund, totalRevenue, totalMuslimRevenue;
+    uint32 numberOfBannedAddress;
+    uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille, burnPermille, qcapBurnPermille;
+    uint32 numberOfStaker, numberOfVotingPower, qcapSoldAmount;
+    uint32 numberOfGP;
+    uint32 numberOfQCP;
+    uint32 numberOfIPOP;
+    uint32 numberOfQEarnP;
+    uint32 numberOfFundP;
+    uint32 numberOfMKTP;
+    uint32 numberOfAlloP;
+    uint32 transferRightsFee;
+    uint32 numberOfMuslim;
+    
+    /**
+	* @return Current date from core node system
+	*/
+
+	inline static void getCurrentDate(const QPI::QpiContextFunctionCall& qpi, uint32& res) 
+	{
+        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
     }
 
     PUBLIC_FUNCTION(getData)
     {
-        output.authAddress1 = state.authAddress1;
-        output.authAddress2 = state.authAddress2;
-        output.authAddress3 = state.authAddress3;
         output.reinvestingAddress = state.reinvestingAddress;
         output.shareholderDividend = state.shareholderDividend;
         output.devPermille = state.devPermille;
         output.QCAPHolderPermille = state.QCAPHolderPermille;
         output.reinvestingPermille = state.reinvestingPermille;
         output.adminAddress = state.adminAddress;
-        output.newAuthAddress1 = state.newAuthAddress1;
-        output.newAuthAddress2 = state.newAuthAddress2;
-        output.newAuthAddress3 = state.newAuthAddress3;
-        output.newAdminAddress1 = state.newAdminAddress1;
-        output.newAdminAddress2 = state.newAdminAddress2;
-        output.newAdminAddress3 = state.newAdminAddress3;
-        output.newReinvestingAddress1 = state.newReinvestingAddress1;
-        output.newReinvestingAddress2 = state.newReinvestingAddress2;
-        output.newReinvestingAddress3 = state.newReinvestingAddress3;
         output.numberOfBannedAddress = state.numberOfBannedAddress;
-        output.bannedAddress1 = state.bannedAddress1;
-        output.bannedAddress2 = state.bannedAddress2;
-        output.bannedAddress3 = state.bannedAddress3;
-        output.unbannedAddress1 = state.unbannedAddress1;
-        output.unbannedAddress2 = state.unbannedAddress2;
-        output.unbannedAddress3 = state.unbannedAddress3;
 
     }
 
-    PUBLIC_PROCEDURE(submitAdminAddress)
+    struct stake_locals
     {
-        if(qpi.invocator() == state.authAddress1)
-        {
-            state.newAdminAddress1 = input.newAddress;
-        }
-        if(qpi.invocator() == state.authAddress2)
-        {
-            state.newAdminAddress2 = input.newAddress;
-        }
-        if(qpi.invocator() == state.authAddress3)
-        {
-            state.newAdminAddress3 = input.newAddress;
-        }
-
-    }
-
-    PUBLIC_PROCEDURE(changeAdminAddress)
-    {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
-        {
-            return ;
-        }
-
-        if(input.newAddress == NULL_ID || input.newAddress != state.newAdminAddress1 || state.newAdminAddress1 != state.newAdminAddress2  || state.newAdminAddress2 != state.newAdminAddress3)
-        {
-            return ;
-        }
-
-        state.adminAddress = state.newAdminAddress1;
-
-        state.newAdminAddress1 = NULL_ID;
-        state.newAdminAddress2 = NULL_ID;
-        state.newAdminAddress3 = NULL_ID;
-    }
-
-
-    PUBLIC_PROCEDURE(submitBannedAddress)
-    {
-        if(qpi.invocator() == state.authAddress1)
-        {
-            state.bannedAddress1 = input.bannedAddress;
-        }
-        if(qpi.invocator() == state.authAddress2)
-        {
-            state.bannedAddress2 = input.bannedAddress;
-        }
-        if(qpi.invocator() == state.authAddress3)
-        {
-            state.bannedAddress3 = input.bannedAddress;
-        }
-
-    }
-
-    PUBLIC_PROCEDURE(saveBannedAddress)
-    {
-        if(state.numberOfBannedAddress >= QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES)
-        {
-            return ;
-        }
-
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
-        {
-            return ;
-        }
-
-        if(input.bannedAddress == NULL_ID || input.bannedAddress != state.bannedAddress1 || state.bannedAddress1 != state.bannedAddress2  || state.bannedAddress2 != state.bannedAddress3)
-        {
-            return ;
-        }
-
-        state.bannedAddress.set(state.numberOfBannedAddress, input.bannedAddress);
-
-        state.numberOfBannedAddress++;
-        state.newAdminAddress1 = NULL_ID;
-        state.newAdminAddress2 = NULL_ID;
-        state.newAdminAddress3 = NULL_ID;
-
-    }
-
-    PUBLIC_PROCEDURE(submitUnbannedAddress)
-    {
-        if(qpi.invocator() == state.authAddress1)
-        {
-            state.unbannedAddress1 = input.unbannedAddress;
-        }
-        if(qpi.invocator() == state.authAddress2)
-        {
-            state.unbannedAddress2 = input.unbannedAddress;
-        }
-        if(qpi.invocator() == state.authAddress3)
-        {
-            state.unbannedAddress3 = input.unbannedAddress;
-        }
-
-    }
-
-    struct unblockBannedAddress_locals
-    {
-        uint32 _t, flag;
+        stakingInfo user;
+        uint32 _t;
     };
 
-    PUBLIC_PROCEDURE_WITH_LOCALS(unblockBannedAddress)
+    PUBLIC_PROCEDURE(stake)
     {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
+
+        if (input.amount > qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX))
         {
+            output.returnCode = QVAULT_INSUFFICIENT_QCAP;
             return ;
         }
 
-        if(input.unbannedAddress == NULL_ID || input.unbannedAddress != state.unbannedAddress1 || state.unbannedAddress1 != state.unbannedAddress2  || state.unbannedAddress2 != state.unbannedAddress3)
-        {
-            return ;
-        }
+        qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, qpi.invocator(), qpi.invocator(), input.amount, SELF);
 
-        locals.flag = 0;
-
-        for(locals._t = 0; locals._t < state.numberOfBannedAddress; locals._t++)
+        for (locals._t = 0 ; locals._t > state.numberOfStaker; locals._t++)
         {
-            if(locals.flag == 1 || input.unbannedAddress == state.bannedAddress.get(locals._t))
+            if (state.staker.get(locals._t).stakerAddress == qpi.invocator())
             {
-                if(locals._t == state.numberOfBannedAddress - 1) 
-                {
-                    state.bannedAddress.set(locals._t, NULL_ID);
-                    locals.flag = 1;
-                    break;
-                }
-                state.bannedAddress.set(locals._t, state.bannedAddress.get(locals._t + 1));
-                locals.flag = 1;
+                break;
             }
         }
 
-        if(locals.flag == 1) 
+        if (locals._t == state.numberOfStaker)
         {
-            state.numberOfBannedAddress--;
-        } 
-        state.unbannedAddress1 = NULL_ID;
-        state.unbannedAddress2 = NULL_ID;
-        state.unbannedAddress3 = NULL_ID;
+            locals.user.amount = input.amount;
+            locals.user.stakerAddress = qpi.invocator();
+            state.numberOfStaker++;
+        }
+        else 
+        {
+            locals.user.amount = state.staker.get(locals._t).amount + input.amount;
+            locals.user.stakerAddress = state.staker.get(locals._t).stakerAddress;
+        }
 
+        state.staker.set(locals._t, locals.user);
+        output.returnCode = QVAULT_SUCCESS;
     }
+
+    struct unStake_locals
+    {
+        stakingInfo user;
+        uint32 _t;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(unStake)
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfStaker; locals._t++)
+        {
+            if (state.staker.get(locals._t).stakerAddress == qpi.invocator())
+            {
+                if (state.staker.get(locals._t).amount < input.amount)
+                {
+                    output.returnCode = QVAULT_NOT_ENOUGH_STAKE;
+                }
+                else if (state.staker.get(locals._t).amount >= input.amount)
+                {
+                    locals.user.stakerAddress = state.staker.get(locals._t).stakerAddress;
+                    locals.user.amount = state.staker.get(locals._t).amount - input.amount;
+                    state.staker.set(locals._t, locals.user);
+                    qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, input.amount, qpi.invocator());
+
+                    output.returnCode = QVAULT_SUCCESS;
+                    if (locals.user.amount == 0)
+                    {
+                        for (locals._t += 1; locals._t < state.numberOfStaker; locals._t++)
+                        {
+                            if (locals._t == QVAULT_QCAP_MAX_SUPPLY)
+                            {
+                                return ;
+                            }
+                            state.staker.set(locals._t, state.staker.get(locals._t + 1));
+                        }
+                    }
+                }
+                return ;
+            }
+        }
+
+        output.returnCode = QVAULT_NOT_STAKER;
+    }
+
+    struct submitGP_locals
+    {
+        GPInfo newProposal;
+        uint32 _t;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(submitGP)
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        {
+            if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
+            {
+                if (state.votingPower.get(locals._t).amount >= 10000 || qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, state.QVAULT_ISSUER, qpi.invocator(), qpi.invocator(), 0, 0) > 0)
+                {
+                    break;
+                }
+                else 
+                {
+                    output.returnCode = QVAULTLogInfo::notStaked;
+                    return ;
+                }
+            }
+        }
+        
+        if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QVAULTLogInfo::insufficientFund;
+            return ;
+        }
+        if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QVAULT_PROPOSAL_FEE);
+        }
+        state.proposalCreateFund += QVAULT_PROPOSAL_FEE;
+
+        locals.newProposal.currentQuorumPercent = state.quorumPercent;
+        locals.newProposal.currentTotalVotingPower = state.totalVotingPower;
+        locals.newProposal.proposedEpoch = qpi.epoch();
+        locals.newProposal.numberOfYes = 0;
+        locals.newProposal.numberOfNo = 0;
+        locals.newProposal.proposer = qpi.invocator();
+        locals.newProposal.result = 0;
+
+        state.GP.set(state.numberOfGP++, locals.newProposal);
+        output.returnCode = QVAULTLogInfo::success;
+    }
+
+    struct submitQCP_locals
+    {
+        QCPInfo newProposal;
+        uint32 _t;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(submitQCP)
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        {
+            if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
+            {
+                if (state.votingPower.get(locals._t).amount >= 10000 || qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, state.QVAULT_ISSUER, qpi.invocator(), qpi.invocator(), 0, 0) > 0)
+                {
+                    break;
+                }
+                else 
+                {
+                    output.returnCode = QVAULTLogInfo::notStaked;
+                    return ;
+                }
+            }
+        }
+
+        if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QVAULTLogInfo::insufficientFund;
+            return ;
+        }
+        if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QVAULT_PROPOSAL_FEE);
+        }
+        state.proposalCreateFund += QVAULT_PROPOSAL_FEE;
+
+        locals.newProposal.currentQuorumPercent = state.quorumPercent;
+        locals.newProposal.currentTotalVotingPower = state.totalVotingPower;
+        locals.newProposal.proposedEpoch = qpi.epoch();
+        locals.newProposal.numberOfYes = 0;
+        locals.newProposal.numberOfNo = 0;
+        locals.newProposal.proposer = qpi.invocator();
+        locals.newProposal.result = 0;
+        
+        locals.newProposal.newQuorumPercent = input.newQuorumPercent;
+
+        state.QCP.set(state.numberOfQCP++, locals.newProposal);
+        output.returnCode = QVAULTLogInfo::success;
+    }
+
+    struct submitIPOP_locals
+    {
+        IPOPInfo newProposal;
+        uint32 _t;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(submitIPOP)
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        {
+            if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
+            {
+                if (state.votingPower.get(locals._t).amount >= 10000 || qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, state.QVAULT_ISSUER, qpi.invocator(), qpi.invocator(), 0, 0) > 0)
+                {
+                    break;
+                }
+                else 
+                {
+                    output.returnCode = QVAULTLogInfo::notStaked;
+                    return ;
+                }
+            }
+        }
+
+        if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QVAULTLogInfo::insufficientFund;
+            return ;
+        }
+        if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QVAULT_PROPOSAL_FEE);
+        }
+        state.proposalCreateFund += QVAULT_PROPOSAL_FEE;
+
+        locals.newProposal.currentQuorumPercent = state.quorumPercent;
+        locals.newProposal.currentTotalVotingPower = state.totalVotingPower;
+        locals.newProposal.proposedEpoch = qpi.epoch();
+        locals.newProposal.numberOfYes = 0;
+        locals.newProposal.numberOfNo = 0;
+        locals.newProposal.proposer = qpi.invocator();
+        locals.newProposal.result = 0;
+        locals.newProposal.assignedFund = 0;
+        
+        locals.newProposal.ipoContractIndex = input.ipoContractIndex;
+        locals.newProposal.totalWeight = 0;
+
+        state.IPOP.set(state.numberOfIPOP++, locals.newProposal);
+        output.returnCode = QVAULTLogInfo::success;
+    }
+
+    struct submitQEarnP_locals
+    {
+        QEarnPInfo newProposal;
+        uint32 _t;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(submitQEarnP)
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        {
+            if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
+            {
+                if (state.votingPower.get(locals._t).amount >= 10000 || qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, state.QVAULT_ISSUER, qpi.invocator(), qpi.invocator(), 0, 0) > 0)
+                {
+                    break;
+                }
+                else 
+                {
+                    output.returnCode = QVAULTLogInfo::notStaked;
+                    return ;
+                }
+            }
+        }
+
+        if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QVAULTLogInfo::insufficientFund;
+            return ;
+        }
+        if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QVAULT_PROPOSAL_FEE);
+        }
+        state.proposalCreateFund += QVAULT_PROPOSAL_FEE;
+
+        locals.newProposal.currentQuorumPercent = state.quorumPercent;
+        locals.newProposal.currentTotalVotingPower = state.totalVotingPower;
+        locals.newProposal.proposedEpoch = qpi.epoch();
+        locals.newProposal.numberOfYes = 0;
+        locals.newProposal.numberOfNo = 0;
+        locals.newProposal.proposer = qpi.invocator();
+        locals.newProposal.result = 0;
+        
+        locals.newProposal.assignedFundPerEpoch = input.amountPerEpoch;
+        locals.newProposal.amountOfInvestPerEpoch = input.amountPerEpoch;
+        locals.newProposal.numberOfEpoch = input.numberOfEpoch;
+
+        state.QEarnP.set(state.numberOfQEarnP++, locals.newProposal);
+        output.returnCode = QVAULTLogInfo::success;
+    }
+
+    struct submitFundP_locals
+    {
+        FundPInfo newProposal;
+        uint32 _t;
+        uint32 curDate;
+        uint8 year;
+        uint8 month;
+        uint8 day;
+        uint8 hour;
+        uint8 minute;
+        uint8 second;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(submitFundP)
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        {
+            if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
+            {
+                if (state.votingPower.get(locals._t).amount >= 10000 || qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, state.QVAULT_ISSUER, qpi.invocator(), qpi.invocator(), 0, 0) > 0)
+                {
+                    break;
+                }
+                else 
+                {
+                    output.returnCode = QVAULTLogInfo::notStaked;
+                    return ;
+                }
+            }
+        }
+
+        getCurrentDate(qpi, locals.curDate);
+        QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
+        if (locals.year == 25 && state.qcapSoldAmount + input.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
+        {
+            output.returnCode = QVAULTLogInfo::overflowSaleAmount;
+            return ;
+        }
+        else if (locals.year == 26 && state.qcapSoldAmount + input.amountOfQcap > QVAULT_2026MAX_QCAP_SALE_AMOUNT)
+        {
+            output.returnCode = QVAULTLogInfo::overflowSaleAmount;
+            return ;
+        }
+        else if (locals.year == 27 && state.qcapSoldAmount + input.amountOfQcap > QVAULT_2027MAX_QCAP_SALE_AMOUNT)
+        {
+            output.returnCode = QVAULTLogInfo::overflowSaleAmount;
+            return ;
+        }
+        else if (state.qcapSoldAmount + input.amountOfQcap > QVAULT_QCAP_MAX_SUPPLY)
+        {
+            output.returnCode = QVAULTLogInfo::overflowSaleAmount;
+            return ;
+        }
+
+        if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QVAULTLogInfo::insufficientFund;
+            return ;
+        }
+        if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QVAULT_PROPOSAL_FEE);
+        }
+        state.proposalCreateFund += QVAULT_PROPOSAL_FEE;
+
+        locals.newProposal.currentQuorumPercent = state.quorumPercent;
+        locals.newProposal.currentTotalVotingPower = state.totalVotingPower;
+        locals.newProposal.proposedEpoch = qpi.epoch();
+        locals.newProposal.numberOfYes = 0;
+        locals.newProposal.numberOfNo = 0;
+        locals.newProposal.proposer = qpi.invocator();
+        locals.newProposal.result = 0;
+        
+        locals.newProposal.restSaleAmount = input.amountOfQcap;
+        locals.newProposal.amountOfQcap = input.amountOfQcap;
+        locals.newProposal.pricePerOneQcap = input.priceOfOneQcap;
+
+        state.FundP.set(state.numberOfFundP++, locals.newProposal);
+        output.returnCode = QVAULTLogInfo::success;
+    }
+
+    struct submitMKTP_locals
+    {
+        MKTPInfo newProposal;
+        uint32 _t;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(submitMKTP)
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        {
+            if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
+            {
+                if (state.votingPower.get(locals._t).amount >= 10000 || qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, state.QVAULT_ISSUER, qpi.invocator(), qpi.invocator(), 0, 0) > 0)
+                {
+                    break;
+                }
+                else 
+                {
+                    output.returnCode = QVAULTLogInfo::notStaked;
+                    return ;
+                }
+            }
+        }
+
+        if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QVAULTLogInfo::insufficientFund;
+            return ;
+        }
+        if (qpi.transferShareOwnershipAndPossession(input.shareName, state.contractIssuer, qpi.invocator(), qpi.invocator(), input.amountOfShare, SELF) < 0)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QVAULTLogInfo::notTransferredShare;
+            return ;
+        }
+        if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QVAULT_PROPOSAL_FEE);
+        }
+        state.proposalCreateFund += QVAULT_PROPOSAL_FEE;
+
+        locals.newProposal.currentQuorumPercent = state.quorumPercent;
+        locals.newProposal.currentTotalVotingPower = state.totalVotingPower;
+        locals.newProposal.proposedEpoch = qpi.epoch();
+        locals.newProposal.numberOfYes = 0;
+        locals.newProposal.numberOfNo = 0;
+        locals.newProposal.proposer = qpi.invocator();
+        locals.newProposal.result = 0;
+        
+        locals.newProposal.shareIndex = input.indexOfShare;
+        locals.newProposal.amountOfShare = input.amountOfShare;
+        locals.newProposal.amountOfQubic = input.amountOfQubic;
+        locals.newProposal.amountOfQcap = input.amountOfQcap;
+        locals.newProposal.shareName = input.shareName;
+
+        state.MKTP.set(state.numberOfMKTP++, locals.newProposal);
+        output.returnCode = QVAULTLogInfo::success;
+    }
+
+    struct submitAlloP_locals
+    {
+        AlloPInfo newProposal;
+        uint32 _t;
+        uint32 curDate;
+        uint8 year;
+        uint8 month;
+        uint8 day;
+        uint8 hour;
+        uint8 minute;
+        uint8 second;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(submitAlloP)
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        {
+            if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
+            {
+                if (state.votingPower.get(locals._t).amount >= 10000 || qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, state.QVAULT_ISSUER, qpi.invocator(), qpi.invocator(), 0, 0) > 0)
+                {
+                    break;
+                }
+                else 
+                {
+                    output.returnCode = QVAULTLogInfo::notStaked;
+                    return ;
+                }
+            }
+        }
+
+        getCurrentDate(qpi, locals.curDate);
+        QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
+        if(locals.year < 29 && input.burn != 0)
+        {
+            output.returnCode = QVAULTLogInfo::notInTime;
+            return ;
+        }
+        if(locals.year >= 27 && input.team != 0)
+        {
+            output.returnCode = QVAULTLogInfo::notInTime;
+            return ;
+        }
+
+        if(input.burn + input.distribute + input.reinvested + input.team != 97)
+        {
+            output.returnCode = QVAULTLogInfo::notFair;
+            return ;
+        }
+
+        if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QVAULTLogInfo::insufficientFund;
+            return ;
+        }
+        if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QVAULT_PROPOSAL_FEE);
+        }
+        state.proposalCreateFund += QVAULT_PROPOSAL_FEE;
+
+        locals.newProposal.currentQuorumPercent = state.quorumPercent;
+        locals.newProposal.currentTotalVotingPower = state.totalVotingPower;
+        locals.newProposal.proposedEpoch = qpi.epoch();
+        locals.newProposal.numberOfYes = 0;
+        locals.newProposal.numberOfNo = 0;
+        locals.newProposal.proposer = qpi.invocator();
+        locals.newProposal.result = 0;
+        
+        locals.newProposal.burnQcap = input.burn;
+        locals.newProposal.distributed = input.distribute;
+        locals.newProposal.reinvested = input.reinvested;
+        locals.newProposal.team = input.team;
+
+        state.AlloP.set(state.numberOfAlloP++, locals.newProposal);
+        output.returnCode = QVAULTLogInfo::success;
+    }
+    
+    struct voteInProposal_locals
+    {
+        GPInfo updatedGProposal;
+        QCPInfo updatedQCProposal;
+        IPOPInfo updatedIPOProposal;
+        QEarnPInfo updatedQEarnProposal;
+        FundPInfo updatedFundProposal;
+        MKTPInfo updatedMKTProposal;
+        AlloPInfo updatedAlloProposal;
+        uint64 numberOfYes;
+        uint64 numberOfNo;
+        uint32 _t;
+        bit statusOfProposal;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(voteInProposal)
+    {
+        switch (input.proposalType)
+        {
+            case 1:
+                locals.updatedGProposal = state.GP.get(input.proposalId);
+                locals.statusOfProposal = state.GP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                break;
+            case 2:
+                locals.updatedQCProposal = state.QCP.get(input.proposalId);
+                locals.statusOfProposal = state.QCP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                break;
+            case 3:
+                locals.updatedIPOProposal = state.IPOP.get(input.proposalId);
+                locals.statusOfProposal = state.IPOP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                break;
+            case 4:
+                locals.updatedQEarnProposal = state.QEarnP.get(input.proposalId);
+                locals.statusOfProposal = state.QEarnP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                break;
+            case 5:
+                locals.updatedFundProposal = state.FundP.get(input.proposalId);
+                locals.statusOfProposal = state.FundP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                break;
+            case 6:
+                locals.updatedMKTProposal = state.MKTP.get(input.proposalId);
+                locals.statusOfProposal = state.MKTP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                break;
+            case 7:
+                locals.updatedAlloProposal = state.AlloP.get(input.proposalId);
+                locals.statusOfProposal = state.AlloP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                break;
+        }
+
+        if (locals.statusOfProposal == 0)
+        {
+            output.returnCode = QVAULTLogInfo::endedProposal;
+            return ;
+        }
+
+        if (locals.statusOfProposal == 1)
+        {
+            locals.numberOfYes = 0;
+            locals.numberOfNo = 0;
+            for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t)
+            {
+                if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
+                {
+                    if (input.yes == 1)
+                    {
+                        locals.numberOfYes = state.votingPower.get(locals._t).amount;
+                    }
+                    else 
+                    {
+                        locals.numberOfNo = state.votingPower.get(locals._t).amount;
+                    }
+                    switch (input.proposalType)
+                    {
+                        case 1:
+                            locals.updatedGProposal.numberOfYes += locals.numberOfYes;
+                            locals.updatedGProposal.numberOfNo += locals.numberOfNo;
+                            state.GP.set(input.proposalId, locals.updatedGProposal);
+                            break;
+                        case 2:
+                            locals.updatedQCProposal.numberOfYes += locals.numberOfYes;
+                            locals.updatedQCProposal.numberOfNo += locals.numberOfNo;
+                            state.QCP.set(input.proposalId, locals.updatedQCProposal);
+                            break;
+                        case 3:
+                            locals.updatedIPOProposal.totalWeight = locals.numberOfYes * input.priceOfIPO;
+                            locals.updatedIPOProposal.numberOfYes += locals.numberOfYes;
+                            locals.updatedIPOProposal.numberOfNo += locals.numberOfNo;
+                            state.IPOP.set(input.proposalId, locals.updatedIPOProposal);
+                            break;
+                        case 4:
+                            locals.updatedQEarnProposal.numberOfYes += locals.numberOfYes;
+                            locals.updatedQEarnProposal.numberOfNo += locals.numberOfNo;
+                            state.QEarnP.set(input.proposalId, locals.updatedQEarnProposal);
+                            break;
+                        case 5:
+                            locals.updatedFundProposal.numberOfYes += locals.numberOfYes;
+                            locals.updatedFundProposal.numberOfNo += locals.numberOfNo;
+                            state.FundP.set(input.proposalId, locals.updatedFundProposal);
+                            break;
+                        case 6:
+                            locals.updatedMKTProposal.numberOfYes += locals.numberOfYes;
+                            locals.updatedMKTProposal.numberOfNo += locals.numberOfNo;
+                            state.MKTP.set(input.proposalId, locals.updatedMKTProposal);
+                            break;
+                        case 7:
+                            locals.updatedAlloProposal.numberOfYes += locals.numberOfYes;
+                            locals.updatedAlloProposal.numberOfNo += locals.numberOfNo;
+                            state.AlloP.set(input.proposalId, locals.updatedAlloProposal);
+                            break;
+                    }
+                    output.returnCode = QVAULTLogInfo::success;
+                    return ;
+                }
+            }
+        }
+
+        output.returnCode = QVAULTLogInfo::noVotingPower;
+    }
+
+    struct buyQcap_locals
+    {
+        QX::TransferShareManagementRights_input transferShareManagementRights_input;
+		QX::TransferShareManagementRights_output transferShareManagementRights_output;
+        FundPInfo updatedFundProposal;
+        uint32 _t;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(buyQcap)
+    {
+        for (locals._t = state.numberOfFundP - 1; locals._t >= 0; locals._t--)
+        {
+            if(state.FundP.get(locals._t).result == 0 && state.FundP.get(locals._t).proposedEpoch + 1 < qpi.epoch() && state.FundP.get(locals._t).restSaleAmount > input.amount)
+            {
+                if(qpi.invocationReward() >= state.FundP.get(locals._t).pricePerOneQcap * input.amount)
+                {
+                    if(qpi.invocationReward() > state.FundP.get(locals._t).pricePerOneQcap * input.amount)
+                    {
+                        qpi.transfer(qpi.invocator(), qpi.invocationReward() - (state.FundP.get(locals._t).pricePerOneQcap * input.amount));
+                    }
+                    locals.transferShareManagementRights_input.asset.assetName = QVAULT_QCAP_ASSETNAME;
+                    locals.transferShareManagementRights_input.asset.issuer = state.QCAP_ISSUER;
+                    locals.transferShareManagementRights_input.newManagingContractIndex = SELF_INDEX;
+                    locals.transferShareManagementRights_input.numberOfShares = input.amount;
+
+                    INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
+
+                    qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, input.amount, qpi.invocator());
+
+                    state.qcapSoldAmount += input.amount;
+                    locals.updatedFundProposal.restSaleAmount -= input.amount;
+                    locals.updatedFundProposal = state.FundP.get(locals._t);
+                    state.FundP.set(locals._t, locals.updatedFundProposal);
+                    output.returnCode = QVAULTLogInfo::success;
+                    return ;
+                }
+            }
+        }
+
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+
+        output.returnCode = QVAULTLogInfo::failed;
+    }
+
+	PUBLIC_PROCEDURE(TransferShareManagementRights)
+    {
+		if (qpi.invocationReward() < state.transferRightsFee)
+		{
+			output.returnCode = QVAULTLogInfo::insufficientFund;
+			return ;
+		}
+
+		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		{
+			// not enough shares available
+			output.transferredNumberOfShares = 0;
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.returnCode = QVAULTLogInfo::insufficientShare;
+		}
+		else
+		{
+			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+				input.newManagingContractIndex, input.newManagingContractIndex, state.transferRightsFee) < 0)
+			{
+				// error
+				output.transferredNumberOfShares = 0;
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+
+				output.returnCode = QVAULTLogInfo::errorTransferAsset;
+			}
+			else
+			{
+				// success
+				output.transferredNumberOfShares = input.numberOfShares;
+				qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), state.transferRightsFee);
+				if (qpi.invocationReward() > state.transferRightsFee)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.transferRightsFee);
+				}
+
+				output.returnCode = QVAULTLogInfo::success;
+			}
+		}
+    }
+
+    struct submitMuslimShare_locals
+    {
+        muslimShareInfo newMuslim;
+    };
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(submitMuslimShare)
+    {
+        locals.newMuslim.address = qpi.invocator();
+        locals.newMuslim.contractId = input.contractId;
+        state.muslim.set(state.numberOfMuslim++, locals.newMuslim);
+    }
+
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getData, 1);
 
-        REGISTER_USER_PROCEDURE(submitAuthAddress, 1);
-        REGISTER_USER_PROCEDURE(changeAuthAddress, 2);
-        REGISTER_USER_PROCEDURE(submitDistributionPermille, 3);
-        REGISTER_USER_PROCEDURE(changeDistributionPermille, 4);
-        REGISTER_USER_PROCEDURE(submitReinvestingAddress, 5);
-        REGISTER_USER_PROCEDURE(changeReinvestingAddress, 6);
-        REGISTER_USER_PROCEDURE(submitAdminAddress, 7);
-        REGISTER_USER_PROCEDURE(changeAdminAddress, 8);
-        REGISTER_USER_PROCEDURE(submitBannedAddress, 9);
-        REGISTER_USER_PROCEDURE(saveBannedAddress, 10);
-        REGISTER_USER_PROCEDURE(submitUnbannedAddress, 11);
-        REGISTER_USER_PROCEDURE(unblockBannedAddress, 12);
+        REGISTER_USER_PROCEDURE(stake, 1);
+        REGISTER_USER_PROCEDURE(unStake, 2);
+        REGISTER_USER_PROCEDURE(submitGP, 3);
+        REGISTER_USER_PROCEDURE(submitQCP, 4);
+        REGISTER_USER_PROCEDURE(submitIPOP, 5);
+        REGISTER_USER_PROCEDURE(submitQEarnP, 6);
+        REGISTER_USER_PROCEDURE(submitFundP, 7);
+        REGISTER_USER_PROCEDURE(submitMKTP, 8);
+        REGISTER_USER_PROCEDURE(submitAlloP, 9);
+        REGISTER_USER_PROCEDURE(voteInProposal, 10);
+        REGISTER_USER_PROCEDURE(buyQcap, 11);
+        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 12);
+        REGISTER_USER_PROCEDURE(submitMuslimShare, 13);
 
-	}
+    }
 
 	INITIALIZE()
     {
-        state.QCAP_ISSUER = ID(_Q, _C, _A, _P, _W, _M, _Y, _R, _S, _H, _L, _B, _J, _H, _S, _T, _T, _Z, _Q, _V, _C, _I, _B, _A, _R, _V, _O, _A, _S, _K, _D, _E, _N, _A, _S, _A, _K, _N, _O, _B, _R, _G, _P, _F, _W, _W, _K, _R, _C, _U, _V, _U, _A, _X, _Y, _E);
-        state.authAddress1 = ID(_T, _K, _U, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
-		state.authAddress2 = ID(_F, _X, _J, _F, _B, _T, _J, _M, _Y, _F, _J, _H, _P, _B, _X, _C, _D, _Q, _T, _L, _Y, _U, _K, _G, _M, _H, _B, _B, _Z, _A, _A, _F, _T, _I, _C, _W, _U, _K, _R, _B, _M, _E, _K, _Y, _N, _U, _P, _M, _R, _M, _B, _D, _N, _D, _R, _G);
-        state.authAddress3 = ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D);
-        state.reinvestingAddress = ID(_R, _U, _U, _Y, _R, _V, _N, _K, _J, _X, _M, _L, _R, _B, _B, _I, _R, _I, _P, _D, _I, _B, _M, _H, _D, _H, _U, _A, _Z, _B, _Q, _K, _N, _B, _J, _T, _R, _D, _S, _P, _G, _C, _L, _Z, _C, _Q, _W, _A, _K, _C, _F, _Q, _J, _K, _K, _E);
-        state.adminAddress = ID(_H, _E, _C, _G, _U, _G, _H, _C, _J, _K, _Q, _O, _S, _D, _T, _M, _E, _H, _Q, _Y, _W, _D, _D, _T, _L, _F, _D, _A, _S, _Z, _K, _M, _G, _J, _L, _S, _R, _C, _S, _T, _H, _H, _A, _P, _P, _E, _D, _L, _G, _B, _L, _X, _J, _M, _N, _D);
+        state.QVAULT_ISSUER = ID(_A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A);
+        state.qcapSoldAmount = 1652235;
+        state.transferRightsFee = 1000000;
 
-        state.shareholderDividend = 30;
-        state.QCAPHolderPermille = 500;
-        state.reinvestingPermille = 450;
-        state.devPermille = 20;
-        state.burnPermille = 0;
+    }
 
-        /*
-            initial banned addresses
-        */
-        state.bannedAddress.set(0, ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D));
-        state.bannedAddress.set(1, ID(_E, _S, _C, _R, _O, _W, _B, _O, _T, _F, _T, _F, _I, _C, _I, _F, _P, _U, _X, _O, _J, _K, _G, _Q, _P, _Y, _X, _C, _A, _B, _L, _Z, _V, _M, _M, _U, _C, _M, _J, _F, _S, _G, _S, _A, _I, _A, _T, _Y, _I, _N, _V, _T, _Y, _G, _O, _A));
-        state.numberOfBannedAddress = 2;
+    struct BEGIN_EPOCH_locals
+    {
+        QEARN::lock_input lock_input;
+        QEARN::lock_output lock_output;
+        sint32 _t;
+    };
 
-	}
+    BEGIN_EPOCH_WITH_LOCALS()
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfQEarnP; locals._t++)
+        {
+            if (state.QEarnP.get(locals._t).result == 0 && state.QEarnP.get(locals._t).proposedEpoch + state.QEarnP.get(locals._t).numberOfEpoch + 1 >= qpi.epoch())
+            {
+                if(state.QEarnP.get(locals._t).proposedEpoch + 1 == qpi.epoch())
+                {
+                    continue;
+                }
+                INVOKE_OTHER_CONTRACT_PROCEDURE(QEARN, lock, locals.lock_input, locals.lock_output, state.QEarnP.get(locals._t).assignedFundPerEpoch);
+            }
+        }
+
+        for (locals._t = state.numberOfQCP - 1 ; locals._t >= 0; locals._t--)
+        {
+            if(state.QCP.get(locals._t).result == 0 && state.QCP.get(locals._t).proposedEpoch + 2 == qpi.epoch())
+            {
+                state.quorumPercent = state.QCP.get(locals._t).newQuorumPercent;
+            }
+            else 
+            {
+                break;
+            }
+        }
+
+        for (locals._t = state.numberOfAlloP - 1; locals._t >= 0; locals._t--)
+        {
+            if(state.AlloP.get(locals._t).result == 0 && state.AlloP.get(locals._t).proposedEpoch + 1 < qpi.epoch())
+            {
+                state.QCAPHolderPermille = state.AlloP.get(locals._t).distributed;
+                state.reinvestingPermille = state.AlloP.get(locals._t).reinvested;
+                state.qcapBurnPermille = state.AlloP.get(locals._t).burnQcap;
+                state.devPermille = state.AlloP.get(locals._t).team;
+                break;
+            }
+        }
+    }
 
     struct END_EPOCH_locals 
     {
+        QX::TransferShareManagementRights_input transferShareManagementRights_input;
+		QX::TransferShareManagementRights_output transferShareManagementRights_output;
+        GPInfo updatedGProposal;
+        QCPInfo updatedQCProposal;
+        IPOPInfo updatedIPOProposal;
+        QEarnPInfo updatedQEarnProposal;
+        FundPInfo updatedFundProposal;
+        MKTPInfo updatedMKTProposal;
+        AlloPInfo updatedAlloProposal;
         ::Entity entity;
         AssetPossessionIterator iter;
         Asset QCAPId;
-        uint64 revenue;
+        id possessorPubkey;
         uint64 paymentForShareholders;
         uint64 paymentForQCAPHolders;
         uint64 paymentForReinvest;
         uint64 paymentForDevelopment;
+        uint64 muslimRevenue;
         uint64 amountOfBurn;
         uint64 circulatedSupply;
-        uint32 _t;
-        id possessorPubkey;
+        uint64 requiredFund;
+        sint32 _t, _r;
+        uint32 curDate;
+        uint8 year;
+        uint8 month;
+        uint8 day;
+        uint8 hour;
+        uint8 minute;
+        uint8 second;
     };
 
     END_EPOCH_WITH_LOCALS()
     {
-        qpi.getEntity(SELF, locals.entity);
-        locals.revenue = locals.entity.incomingAmount - locals.entity.outgoingAmount;
+        locals.paymentForShareholders = div((state.totalRevenue + state.totalMuslimRevenue) * state.shareholderDividend, 1000ULL);
+        locals.paymentForQCAPHolders = div(state.totalRevenue * state.QCAPHolderPermille, 1000ULL);
+        locals.muslimRevenue = div(state.totalMuslimRevenue * state.QCAPHolderPermille, 1000ULL);
+        state.reinvestingFund += div((state.totalRevenue + state.totalMuslimRevenue) * state.reinvestingPermille, 1000ULL);
+        locals.amountOfBurn = div((state.totalRevenue + state.totalMuslimRevenue) * state.burnPermille, 1000ULL);
+        locals.paymentForDevelopment = state.totalRevenue + state.totalMuslimRevenue - locals.paymentForShareholders - locals.paymentForQCAPHolders - locals.paymentForReinvest - locals.amountOfBurn;
 
-        locals.paymentForShareholders = div(locals.revenue * state.shareholderDividend, 1000ULL);
-        locals.paymentForQCAPHolders = div(locals.revenue * state.QCAPHolderPermille, 1000ULL);
-        locals.paymentForReinvest = div(locals.revenue * state.reinvestingPermille, 1000ULL);
-        locals.amountOfBurn = div(locals.revenue * state.burnPermille, 1000ULL);
-        locals.paymentForDevelopment = locals.revenue - locals.paymentForShareholders - locals.paymentForQCAPHolders - locals.paymentForReinvest - locals.amountOfBurn;
-
-        if(locals.paymentForReinvest > QVAULT_MAX_REINVEST_AMOUNT)
-        {
-            locals.paymentForQCAPHolders += locals.paymentForReinvest - QVAULT_MAX_REINVEST_AMOUNT;
-            locals.paymentForReinvest = QVAULT_MAX_REINVEST_AMOUNT;
-        }
-
-        qpi.distributeDividends(div(locals.paymentForShareholders, 676ULL));
+        state.totalRevenue = 0;
+        qpi.distributeDividends(div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
+        state.proposalCreateFund = 0;
         qpi.transfer(state.adminAddress, locals.paymentForDevelopment);
-        qpi.transfer(state.reinvestingAddress, locals.paymentForReinvest);
         qpi.burn(locals.amountOfBurn);
 
         locals.circulatedSupply = QVAULT_QCAP_MAX_SUPPLY;
 
-        for(locals._t = 0 ; locals._t < state.numberOfBannedAddress; locals._t++)
+        for (locals._t = 0 ; locals._t < state.numberOfBannedAddress; locals._t++)
         {
             locals.circulatedSupply -= qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, state.bannedAddress.get(locals._t), state.bannedAddress.get(locals._t), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
         }
@@ -655,21 +1256,442 @@ protected:
         {
             locals.possessorPubkey = locals.iter.possessor();
 
-            for(locals._t = 0 ; locals._t < state.numberOfBannedAddress; locals._t++)
+            for (locals._t = 0 ; locals._t < state.numberOfBannedAddress; locals._t++)
             {
-                if(locals.possessorPubkey == state.bannedAddress.get(locals._t))
+                if (locals.possessorPubkey == state.bannedAddress.get(locals._t))
                 {
                     break;
                 }
             }
 
-            if(locals._t == state.numberOfBannedAddress)
+            if (locals._t == state.numberOfBannedAddress && locals.possessorPubkey != SELF)
             {
-                qpi.transfer(locals.possessorPubkey, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX));
+                qpi.transfer(locals.possessorPubkey, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * (qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX)));
+                for(locals._t = 0 ; locals._t < state.numberOfMuslim; locals._t++)
+                {
+                    if(state.muslim.get(locals._t).address == locals.possessorPubkey)
+                    {
+                        break;
+                    }
+                }
+                if(locals._t == state.numberOfMuslim)
+                {
+                    qpi.transfer(locals.possessorPubkey, div(locals.muslimRevenue, locals.circulatedSupply) * (qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX)));
+                }
             }
 
             locals.iter.next();
         }
 
+        for (locals._t = 0 ; locals._t < state.numberOfStaker; locals._t++)
+        {
+            qpi.transfer(state.staker.get(locals._t).stakerAddress, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * state.staker.get(locals._t).amount);
+            for(locals._r = 0 ; locals._r < state.numberOfMuslim; locals._r++)
+            {
+                if(state.muslim.get(locals._r).address == locals.possessorPubkey)
+                {
+                    break;
+                }
+            }
+            if(locals._r == state.numberOfMuslim)
+            {
+                qpi.transfer(state.staker.get(locals._t).stakerAddress, div(locals.muslimRevenue, locals.circulatedSupply) * (qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, state.staker.get(locals._t).stakerAddress, state.staker.get(locals._t).stakerAddress, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, state.staker.get(locals._t).stakerAddress, state.staker.get(locals._t).stakerAddress, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX)));
+            }
+        }
+
+        /*
+            General Proposal Result
+        */
+
+        for (locals._t = state.numberOfGP - 1; locals._t >= 0; locals._t--)
+        {
+            if (state.GP.get(locals._t).proposedEpoch == qpi.epoch())
+            {
+                locals.updatedGProposal = state.GP.get(locals._t);
+                if (state.GP.get(locals._t).numberOfYes + state.GP.get(locals._t).numberOfNo < div(state.GP.get(locals._t).currentQuorumPercent * state.GP.get(locals._t).currentTotalVotingPower, 100ULL))
+                {
+                    locals.updatedGProposal.result = 2;
+                }
+                else if (state.GP.get(locals._t).numberOfYes <= state.GP.get(locals._t).numberOfNo)
+                {
+                    locals.updatedGProposal.result = 1;
+                }
+                else 
+                {
+                    locals.updatedGProposal.result = 0;
+                }
+                state.GP.set(locals._t, locals.updatedGProposal);
+            }
+            else 
+            {
+                break;
+            }
+        }
+
+        /*
+            Quorum Proposal Result
+        */
+
+        for (locals._t = state.numberOfQCP - 1; locals._t >= 0; locals._t--)
+        {
+            if (state.QCP.get(locals._t).proposedEpoch == qpi.epoch())
+            {
+                locals.updatedQCProposal = state.QCP.get(locals._t);
+                if (state.QCP.get(locals._t).numberOfYes + state.QCP.get(locals._t).numberOfNo < div(state.QCP.get(locals._t).currentQuorumPercent * state.QCP.get(locals._t).currentTotalVotingPower, 100ULL))
+                {
+                    locals.updatedQCProposal.result = 2;
+                }
+                else if (state.QCP.get(locals._t).numberOfYes <= state.QCP.get(locals._t).numberOfNo)
+                {
+                    locals.updatedQCProposal.result = 1;
+                }   
+                else 
+                {
+                    locals.updatedQCProposal.result = 0;
+                }
+                state.QCP.set(locals._t, locals.updatedQCProposal);
+            }
+            else 
+            {
+                break;
+            }
+        }
+
+        /*
+            IPO Proposal Result
+        */
+
+        locals.requiredFund = 0;
+
+        for (locals._t = state.numberOfIPOP - 1; locals._t >= 0; locals._t--)
+        {
+            if (state.IPOP.get(locals._t).proposedEpoch == qpi.epoch())
+            {
+                locals.updatedIPOProposal = state.IPOP.get(locals._t);
+                if (state.IPOP.get(locals._t).numberOfYes + state.IPOP.get(locals._t).numberOfNo < div(state.IPOP.get(locals._t).currentQuorumPercent * state.IPOP.get(locals._t).currentTotalVotingPower, 100ULL))
+                {
+                    locals.updatedIPOProposal.result = 2;
+                }
+                else if (state.IPOP.get(locals._t).numberOfYes <= state.IPOP.get(locals._t).numberOfNo)
+                {
+                    locals.updatedIPOProposal.result = 1;
+                }
+                else 
+                {
+                    locals.updatedIPOProposal.result = 0;
+                    locals.updatedIPOProposal.assignedFund = div(locals.updatedIPOProposal.totalWeight, locals.updatedIPOProposal.numberOfYes);
+                }
+                state.IPOP.set(locals._t, locals.updatedIPOProposal);
+                locals.requiredFund += div(locals.updatedIPOProposal.totalWeight, locals.updatedIPOProposal.numberOfYes);
+            }
+            else 
+            {
+                break;
+            }
+        }
+
+        if (state.reinvestingFund < locals.requiredFund)
+        {
+            for (locals._t = state.numberOfIPOP - 1; locals._t >= 0; locals._t--)
+            {
+                if (state.IPOP.get(locals._t).proposedEpoch == qpi.epoch())
+                {
+                    locals.updatedIPOProposal = state.IPOP.get(locals._t);
+                    locals.updatedIPOProposal.assignedFund = div(div(div(locals.updatedIPOProposal.totalWeight, locals.updatedIPOProposal.numberOfYes) * 1000, locals.requiredFund) * state.reinvestingFund, 1000ULL);
+                    state.IPOP.set(locals._t, locals.updatedIPOProposal);
+                }
+                else 
+                {
+                    break;
+                }
+            }
+            state.reinvestingFund = 0;
+        }
+
+        else {
+            state.reinvestingFund -= locals.requiredFund;
+        }
+
+        for (locals._r = 675 ; locals._r >= 0; locals._r--)
+        {
+            if((676 - locals._r) * qpi.ipoBidPrice(locals.updatedIPOProposal.ipoContractIndex, locals._r) > locals.updatedIPOProposal.assignedFund)
+            {
+                qpi.bidInIPO(locals.updatedIPOProposal.ipoContractIndex, qpi.ipoBidPrice(locals.updatedIPOProposal.ipoContractIndex, locals._r + 1) + 1, 676 - locals._r - 1);
+            }
+        }
+
+        /*
+            QEarn Proposal Result  
+        */
+
+        locals.requiredFund = 0;
+
+        for (locals._t = state.numberOfQEarnP - 1; locals._t >= 0; locals._t--)
+        {
+            if (state.IPOP.get(locals._t).proposedEpoch == qpi.epoch())
+            {
+                locals.updatedQEarnProposal = state.QEarnP.get(locals._t);
+                if (state.QEarnP.get(locals._t).numberOfYes + state.QEarnP.get(locals._t).numberOfNo < div(state.QEarnP.get(locals._t).currentQuorumPercent * state.QEarnP.get(locals._t).currentTotalVotingPower, 100ULL))
+                {
+                    locals.updatedQEarnProposal.result = 2;
+                }
+                else if (state.QEarnP.get(locals._t).numberOfYes <= state.QEarnP.get(locals._t).numberOfNo)
+                {
+                    locals.updatedQEarnProposal.result = 1;
+                }
+                else 
+                {
+                    locals.updatedQEarnProposal.result = 0;
+                }
+                locals.requiredFund += locals.updatedQEarnProposal.amountOfInvestPerEpoch * locals.updatedQEarnProposal.numberOfEpoch;
+                state.QEarnP.set(locals._t, locals.updatedQEarnProposal);
+            }
+            else 
+            {
+                break;
+            }
+        }
+
+        if (state.reinvestingFund < locals.requiredFund)
+        {
+            for (locals._t = state.numberOfQEarnP - 1; locals._t >= 0; locals._t--)
+            {
+                if (state.QEarnP.get(locals._t).proposedEpoch == qpi.epoch())
+                {
+                    locals.updatedQEarnProposal = state.QEarnP.get(locals._t);
+                    locals.updatedQEarnProposal.assignedFundPerEpoch = div(div(div(locals.updatedQEarnProposal.numberOfEpoch * locals.updatedQEarnProposal.amountOfInvestPerEpoch * 1000, locals.requiredFund) * state.reinvestingFund, 1000ULL), locals.updatedQEarnProposal.numberOfEpoch * 1ULL);
+                    state.QEarnP.set(locals._t, locals.updatedQEarnProposal);
+                }
+                else 
+                {
+                    break;
+                }
+            }
+            state.reinvestingFund = 0;
+        }
+
+        else 
+        {
+            state.reinvestingFund -= locals.requiredFund;
+        }
+
+        /*
+            Fundrasing Proposal Result
+        */
+
+        for (locals._t = state.numberOfFundP - 1; locals._t >= 0; locals._t--)
+        {
+            if (state.FundP.get(locals._t).proposedEpoch == qpi.epoch())
+            {
+                locals.updatedFundProposal = state.FundP.get(locals._t);
+                if (state.FundP.get(locals._t).numberOfYes + state.FundP.get(locals._t).numberOfNo < div(state.FundP.get(locals._t).currentQuorumPercent * state.FundP.get(locals._t).currentTotalVotingPower, 100ULL))
+                {
+                    locals.updatedFundProposal.result = 2;
+                }
+                else if (state.FundP.get(locals._t).numberOfYes <= state.FundP.get(locals._t).numberOfNo)
+                {
+                    locals.updatedFundProposal.result = 1;
+                }
+                else 
+                {
+                    locals.updatedFundProposal.result = 0;
+
+                    getCurrentDate(qpi, locals.curDate);
+                    QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
+                    if (locals.year == 25 && state.qcapSoldAmount + locals.updatedFundProposal.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
+                    {
+                        locals.updatedFundProposal.result = 1;
+                    }
+                    else if (locals.year == 26 && state.qcapSoldAmount + locals.updatedFundProposal.amountOfQcap > QVAULT_2026MAX_QCAP_SALE_AMOUNT)
+                    {
+                        locals.updatedFundProposal.result = 1;
+                    }
+                    else if (locals.year == 27 && state.qcapSoldAmount + locals.updatedFundProposal.amountOfQcap > QVAULT_2027MAX_QCAP_SALE_AMOUNT)
+                    {
+                        locals.updatedFundProposal.result = 1;
+                    }
+                    else if (state.qcapSoldAmount + locals.updatedFundProposal.amountOfQcap > QVAULT_QCAP_MAX_SUPPLY)
+                    {
+                        locals.updatedFundProposal.result = 1;
+                    }
+                }
+                state.FundP.set(locals._t, locals.updatedFundProposal);
+            }
+            else 
+            {
+                break;
+            }
+        }
+
+        /*
+            Marketplace Proposal Result
+        */
+
+        for (locals._t = state.numberOfMKTP - 1; locals._t >= 0; locals._t--)
+        {
+            if (state.MKTP.get(locals._t).proposedEpoch == qpi.epoch())
+            {
+                locals.updatedMKTProposal = state.MKTP.get(locals._t);
+                if (state.MKTP.get(locals._t).numberOfYes + state.MKTP.get(locals._t).numberOfNo < div(state.MKTP.get(locals._t).currentQuorumPercent * state.MKTP.get(locals._t).currentTotalVotingPower, 100ULL))
+                {
+                    locals.updatedMKTProposal.result = 2;
+                    qpi.transferShareOwnershipAndPossession(locals.updatedMKTProposal.shareName, state.contractIssuer, SELF, SELF, locals.updatedMKTProposal.amountOfShare, locals.updatedMKTProposal.proposer);
+                }
+                else if (state.MKTP.get(locals._t).numberOfYes <= state.MKTP.get(locals._t).numberOfNo)
+                {
+                    locals.updatedMKTProposal.result = 1;
+                    qpi.transferShareOwnershipAndPossession(locals.updatedMKTProposal.shareName, state.contractIssuer, SELF, SELF, locals.updatedMKTProposal.amountOfShare, locals.updatedMKTProposal.proposer);
+                }
+                else 
+                {
+                    locals.updatedMKTProposal.result = 0;
+
+                    getCurrentDate(qpi, locals.curDate);
+                    QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
+                    if (locals.year == 25 && state.qcapSoldAmount + locals.updatedMKTProposal.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
+                    {
+                        locals.updatedMKTProposal.result = 1;
+                        qpi.transferShareOwnershipAndPossession(locals.updatedMKTProposal.shareName, state.contractIssuer, SELF, SELF, locals.updatedMKTProposal.amountOfShare, locals.updatedMKTProposal.proposer);
+                    }
+                    else if (locals.year == 26 && state.qcapSoldAmount + locals.updatedMKTProposal.amountOfQcap > QVAULT_2026MAX_QCAP_SALE_AMOUNT)
+                    {
+                        locals.updatedMKTProposal.result = 1;
+                        qpi.transferShareOwnershipAndPossession(locals.updatedMKTProposal.shareName, state.contractIssuer, SELF, SELF, locals.updatedMKTProposal.amountOfShare, locals.updatedMKTProposal.proposer);
+                    }
+                    else if (locals.year == 27 && state.qcapSoldAmount + locals.updatedMKTProposal.amountOfQcap > QVAULT_2027MAX_QCAP_SALE_AMOUNT)
+                    {
+                        locals.updatedMKTProposal.result = 1;
+                        qpi.transferShareOwnershipAndPossession(locals.updatedMKTProposal.shareName, state.contractIssuer, SELF, SELF, locals.updatedMKTProposal.amountOfShare, locals.updatedMKTProposal.proposer);
+                    }
+                    else if (state.qcapSoldAmount + locals.updatedMKTProposal.amountOfQcap > QVAULT_QCAP_MAX_SUPPLY)
+                    {
+                        locals.updatedMKTProposal.result = 1;
+                        qpi.transferShareOwnershipAndPossession(locals.updatedMKTProposal.shareName, state.contractIssuer, SELF, SELF, locals.updatedMKTProposal.amountOfShare, locals.updatedMKTProposal.proposer);
+                    }
+                    else 
+                    {
+                        state.qcapSoldAmount += locals.updatedMKTProposal.amountOfQcap;
+
+                        qpi.transfer(locals.updatedMKTProposal.proposer, locals.updatedMKTProposal.amountOfQubic);
+
+                        locals.transferShareManagementRights_input.asset.assetName = QVAULT_QCAP_ASSETNAME;
+                        locals.transferShareManagementRights_input.asset.issuer = state.QCAP_ISSUER;
+                        locals.transferShareManagementRights_input.newManagingContractIndex = SELF_INDEX;
+                        locals.transferShareManagementRights_input.numberOfShares = locals.updatedMKTProposal.amountOfQcap;
+
+                        INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.transferShareManagementRights_input, locals.transferShareManagementRights_output, 0);
+
+                        qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, locals.updatedMKTProposal.amountOfQcap, locals.updatedMKTProposal.proposer);
+                    }
+                }
+                state.MKTP.set(locals._t, locals.updatedMKTProposal);
+            }
+            else 
+            {
+                break;
+            }
+        }
+        
+
+        /*
+            Allocation Proposal Result
+        */
+
+        for (locals._t = state.numberOfAlloP - 1; locals._t >= 0; locals._t--)
+        {
+            if (state.AlloP.get(locals._t).proposedEpoch == qpi.epoch())
+            {
+                locals.updatedAlloProposal = state.AlloP.get(locals._t);
+                if (state.AlloP.get(locals._t).numberOfYes + state.AlloP.get(locals._t).numberOfNo < div(state.AlloP.get(locals._t).currentQuorumPercent * state.AlloP.get(locals._t).currentTotalVotingPower, 100ULL))
+                {
+                    locals.updatedAlloProposal.result = 2;
+                }
+                else if (state.AlloP.get(locals._t).numberOfYes <= state.AlloP.get(locals._t).numberOfNo)
+                {
+                    locals.updatedAlloProposal.result = 1;
+                }
+                else 
+                {
+                    locals.updatedAlloProposal.result = 0;
+                }
+                state.AlloP.set(locals._t, locals.updatedAlloProposal);
+            }
+            else 
+            {
+                break;
+            }
+        }
+
+        state.totalVotingPower = 0;
+        for (locals._t = 0 ; locals._t < state.numberOfStaker; locals._t++)
+        {
+            state.votingPower.set(locals._t, state.staker.get(locals._t));
+            state.totalVotingPower += state.staker.get(locals._t).amount;
+        }
+        state.numberOfVotingPower = state.numberOfStaker;
+
+    }
+
+    struct POST_INCOMING_TRANSFER_locals
+    {
+        AssetPossessionIterator iter;
+        Asset QCAPId;
+        id possessorPubkey;
+        uint64 circulatedSupply;
+        uint64 lockedFund;
+        sint32 _t;
+    };
+
+    POST_INCOMING_TRANSFER_WITH_LOCALS()
+    {
+        switch (input.type)
+        {
+            case TransferType::qpiTransfer:
+                if(input.sourceId == id(QEARN_CONTRACT_INDEX, 0, 0, 0))
+                {
+                    locals.lockedFund = 0;
+                    for (locals._t = state.numberOfQEarnP - 1; locals._t >= 0; locals._t--)
+                    {
+                        if(state.QEarnP.get(locals._t).result == 0 && state.QEarnP.get(locals._t).proposedEpoch + 54 == qpi.epoch())
+                        {
+                            locals.lockedFund += state.QEarnP.get(locals._t).assignedFundPerEpoch;
+                        }
+                    }
+                    state.reinvestingFund += locals.lockedFund;
+                    state.totalRevenue += input.amount - locals.lockedFund;
+                }
+                break;
+            case TransferType::ipoBidRefund:
+                state.reinvestingFund += input.amount;
+                break;
+            case TransferType::revenueDonation:
+                state.totalRevenue += input.amount;
+                break;
+            case TransferType::qpiDistributeDividends:
+                for (locals._t = 0; locals._t < state.numberOfMuslim; locals._t++)
+                {
+                    if (id(state.muslim.get(locals._t).contractId, 0, 0, 0) == input.sourceId)
+                    {
+                        state.totalMuslimRevenue += input.amount;
+                        break;
+                    }
+                }
+                if(locals._t == state.numberOfMuslim)
+                {
+                    state.totalRevenue += input.amount;
+                }
+                break;
+            case TransferType::standardTransaction:
+                state.totalRevenue += input.amount;                
+                break;
+            case TransferType::procedureTransaction:
+                state.totalRevenue += input.amount;                
+                break;
+        }
+    }
+
+    PRE_ACQUIRE_SHARES()
+    {
+		output.allowTransfer = true;
     }
 };
