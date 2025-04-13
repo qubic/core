@@ -210,6 +210,9 @@ static volatile char gCustomMiningSharesCountLock = 0;
 static char gIsInCustomMiningState = 0;
 static volatile char gIsInCustomMiningStateLock = 0;
 
+static bool gCustomMiningCountOverflow = false;
+static volatile char gCustomMiningShareCountOverFlowLock = 0;
+
 struct revenueScore
 {
     unsigned long long _oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
@@ -2780,6 +2783,7 @@ static void processTick(unsigned long long processorNumber)
         // In the begining of mining phase
         if (getTickInMiningPhaseCycle() == 0)
         {
+            bool customMiningCountOverflow = false;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
                 // Randomly schedule the tick to publish the tx
@@ -2787,6 +2791,14 @@ static void processTick(unsigned long long processorNumber)
 
                 // Update the custom mining share counter
                 ACQUIRE(gCustomMiningSharesCountLock);
+                for (int k = 0; k < NUMBER_OF_COMPUTORS; k++)
+                {
+                    if (gCustomMiningSharesCount[k] > CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL)
+                    {
+                        gCustomMiningSharesCount[k] = CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL;
+                        customMiningCountOverflow = true;
+                    }
+                }
                 gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
                 RELEASE(gCustomMiningSharesCountLock);
 
@@ -2805,6 +2817,10 @@ static void processTick(unsigned long long processorNumber)
                 enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
 
             }
+
+            ACQUIRE(gCustomMiningShareCountOverFlowLock);
+            gCustomMiningCountOverflow = customMiningCountOverflow;
+            RELEASE(gCustomMiningShareCountOverFlowLock);
 
             // reset the phase counter
             ACQUIRE(gCustomMiningSharesCountLock);
@@ -6364,6 +6380,17 @@ static void processKeyPresses()
 #endif
             appendNumber(message, QPI::div(K12MeasurementsSum, K12MeasurementsCount), TRUE);
             appendText(message, L" ticks.");
+
+            unsigned int customMiningShareCountOverFlowCount = 0;
+            ACQUIRE(gCustomMiningShareCountOverFlowLock);
+            customMiningShareCountOverFlowCount = gCustomMiningCountOverflow ? 1 : 0;
+            RELEASE(gCustomMiningShareCountOverFlowLock);
+
+            appendText(message, L" CustomMiningState: ");
+            appendText(message, L" OF(");
+            appendNumber(message, customMiningShareCountOverFlowCount, FALSE);
+            appendText(message, L").");
+
             logToConsole(message);
 
 #ifndef NDEBUG
