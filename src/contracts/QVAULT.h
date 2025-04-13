@@ -46,9 +46,32 @@ public:
 
     struct getData_output
     {
-        uint64 numberOfBannedAddress;
-        uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille;
-        id reinvestingAddress, adminAddress;
+        id adminAddress;
+        uint64 quorumPercent;
+        uint64 totalVotingPower;
+        uint64 proposalCreateFund;
+        uint64 reinvestingFund;
+        uint64 totalRevenue;
+        uint64 totalMuslimRevenue;
+        uint32 numberOfBannedAddress;
+        uint32 shareholderDividend;
+        uint32 QCAPHolderPermille;
+        uint32 reinvestingPermille;
+        uint32 devPermille;
+        uint32 burnPermille;
+        uint32 qcapBurnPermille;
+        uint32 numberOfStaker;
+        uint32 numberOfVotingPower;
+        uint32 qcapSoldAmount;
+        uint32 numberOfGP;
+        uint32 numberOfQCP;
+        uint32 numberOfIPOP;
+        uint32 numberOfQEarnP;
+        uint32 numberOfFundP;
+        uint32 numberOfMKTP;
+        uint32 numberOfAlloP;
+        uint32 transferRightsFee;
+        uint32 numberOfMuslim;
     };
 
     struct stake_input
@@ -354,13 +377,32 @@ protected:
 
     PUBLIC_FUNCTION(getData)
     {
-        output.reinvestingAddress = state.reinvestingAddress;
-        output.shareholderDividend = state.shareholderDividend;
-        output.devPermille = state.devPermille;
-        output.QCAPHolderPermille = state.QCAPHolderPermille;
-        output.reinvestingPermille = state.reinvestingPermille;
         output.adminAddress = state.adminAddress;
-        output.numberOfBannedAddress = state.numberOfBannedAddress;
+        output.quorumPercent = state.quorumPercent;
+        output.totalVotingPower = state.totalVotingPower;
+        output.proposalCreateFund = state.proposalCreateFund;
+        output.reinvestingFund = state.reinvestingFund;
+        output.totalRevenue = state.totalRevenue;
+        output.totalMuslimRevenue = state.totalMuslimRevenue;
+        output. numberOfBannedAddress = state.numberOfBannedAddress;
+        output. shareholderDividend = state.shareholderDividend;
+        output. QCAPHolderPermille = state.QCAPHolderPermille;
+        output. reinvestingPermille = state.reinvestingPermille;
+        output. devPermille = state.devPermille;
+        output. burnPermille = state.burnPermille;
+        output. qcapBurnPermille = state.qcapBurnPermille;
+        output. numberOfStaker = state.numberOfStaker;
+        output. numberOfVotingPower = state.numberOfVotingPower;
+        output. qcapSoldAmount = state.qcapSoldAmount;
+        output. numberOfGP = state.numberOfGP;
+        output. numberOfQCP = state.numberOfQCP;
+        output. numberOfIPOP = state.numberOfIPOP;
+        output. numberOfQEarnP = state.numberOfQEarnP;
+        output. numberOfFundP = state.numberOfFundP;
+        output. numberOfMKTP = state.numberOfMKTP;
+        output. numberOfAlloP = state.numberOfAlloP;
+        output. transferRightsFee = state.transferRightsFee;
+        output. numberOfMuslim = state.numberOfMuslim;
 
     }
 
@@ -370,7 +412,7 @@ protected:
         uint32 _t;
     };
 
-    PUBLIC_PROCEDURE(stake)
+    PUBLIC_PROCEDURE_WITH_LOCALS(stake)
     {
 
         if (input.amount > qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX))
@@ -1118,10 +1160,157 @@ protected:
         state.muslim.set(state.numberOfMuslim++, locals.newMuslim);
     }
 
+    struct getStakedAmountAndVotingPower_input
+    {
+        id address;
+    };
+
+    struct getStakedAmountAndVotingPower_output
+    {
+        uint64 stakedAmount;
+        uint64 votingPower;
+    };
+
+    struct getStakedAmountAndVotingPower_locals
+    {
+        uint32 _t;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getStakedAmountAndVotingPower)
+    {
+        for(locals._t = 0; locals._t < state.numberOfStaker; locals._t++)
+        {
+            if(state.staker.get(locals._t).stakerAddress == input.address)
+            {
+                output.stakedAmount = state.staker.get(locals._t).amount;
+                break;
+            }
+        }
+        for(locals._t = 0; locals._t < state.numberOfVotingPower; locals._t++)
+        {
+            if(state.votingPower.get(locals._t).stakerAddress == input.address)
+            {
+                output.votingPower = state.votingPower.get(locals._t).amount;
+                break;
+            }
+        }
+    }
+
+    struct getGP_input
+    {
+        uint32 proposalId;
+    };
+
+    struct getGP_output
+    {
+        GPInfo proposal;
+    };
+
+    PUBLIC_FUNCTION(getGP)
+    {
+        output.proposal = state.GP.get(input.proposalId);
+    }
+
+    struct getQCP_input
+    {
+        uint32 proposalId;
+    };
+
+    struct getQCP_output
+    {
+        QCPInfo proposal;
+    };
+
+    PUBLIC_FUNCTION(getQCP)
+    {
+        output.proposal = state.QCP.get(input.proposalId);
+    }
+
+    struct getIPOP_input
+    {
+        uint32 proposalId;
+    };
+
+    struct getIPOP_output
+    {
+        IPOPInfo proposal;
+    };
+
+    PUBLIC_FUNCTION(getIPOP)
+    {
+        output.proposal = state.IPOP.get(input.proposalId);
+    }
+
+    struct getQEarnP_input
+    {
+        uint32 proposalId;
+    };
+
+    struct getQEarnP_output
+    {
+        QEarnPInfo proposal;
+    };
+
+    PUBLIC_FUNCTION(getQEarnP)
+    {
+        output.proposal = state.QEarnP.get(input.proposalId);
+    }
+
+    struct getFundP_input
+    {
+        uint32 proposalId;
+    };
+
+    struct getFundP_output
+    {
+        FundPInfo proposal;
+    };
+
+    PUBLIC_FUNCTION(getFundP)
+    {
+        output.proposal = state.FundP.get(input.proposalId);
+    }
+
+    struct getMKTP_input
+    {
+        uint32 proposalId;
+    };
+
+    struct getMKTP_output
+    {
+        MKTPInfo proposal;
+    };
+
+    PUBLIC_FUNCTION(getMKTP)
+    {
+        output.proposal = state.MKTP.get(input.proposalId);
+    }
+
+    struct getAlloP_input
+    {
+        uint32 proposalId;
+    };
+
+    struct getAlloP_output
+    {
+        AlloPInfo proposal;
+    };
+
+    PUBLIC_FUNCTION(getAlloP)
+    {
+        output.proposal = state.AlloP.get(input.proposalId);
+    }
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getData, 1);
+        REGISTER_USER_FUNCTION(getStakedAmountAndVotingPower, 2);
+        REGISTER_USER_FUNCTION(getQCP, 3);
+        REGISTER_USER_FUNCTION(getIPOP, 4);
+        REGISTER_USER_FUNCTION(getQEarnP, 5);
+        REGISTER_USER_FUNCTION(getFundP, 6);
+        REGISTER_USER_FUNCTION(getMKTP, 7);
+        REGISTER_USER_FUNCTION(getAlloP, 8);
 
         REGISTER_USER_PROCEDURE(stake, 1);
         REGISTER_USER_PROCEDURE(unStake, 2);
