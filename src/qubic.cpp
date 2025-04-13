@@ -210,7 +210,7 @@ static volatile char gCustomMiningSharesCountLock = 0;
 static char gIsInCustomMiningState = 0;
 static volatile char gIsInCustomMiningStateLock = 0;
 
-static bool gCustomMiningCountOverflow = false;
+static unsigned gCustomMiningCountOverflow = 0;
 static volatile char gCustomMiningShareCountOverFlowLock = 0;
 
 struct revenueScore
@@ -2783,7 +2783,7 @@ static void processTick(unsigned long long processorNumber)
         // In the begining of mining phase
         if (getTickInMiningPhaseCycle() == 0)
         {
-            bool customMiningCountOverflow = false;
+            unsigned int customMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
                 // Randomly schedule the tick to publish the tx
@@ -2795,8 +2795,14 @@ static void processTick(unsigned long long processorNumber)
                 {
                     if (gCustomMiningSharesCount[k] > CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL)
                     {
+                        // Save the max of overflow case
+                        if (gCustomMiningSharesCount[k] > customMiningCountOverflow)
+                        {
+                            customMiningCountOverflow = gCustomMiningSharesCount[k];
+                        }
+
+                        // Threshold the value
                         gCustomMiningSharesCount[k] = CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL;
-                        customMiningCountOverflow = true;
                     }
                 }
                 gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
@@ -6383,7 +6389,7 @@ static void processKeyPresses()
 
             unsigned int customMiningShareCountOverFlowCount = 0;
             ACQUIRE(gCustomMiningShareCountOverFlowLock);
-            customMiningShareCountOverFlowCount = gCustomMiningCountOverflow ? 1 : 0;
+            customMiningShareCountOverFlowCount =gCustomMiningCountOverflow;
             RELEASE(gCustomMiningShareCountOverFlowLock);
 
             appendText(message, L" CustomMiningState: ");
