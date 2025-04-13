@@ -102,8 +102,9 @@ public:
     * @return return SendToManyV1 fee per invocation
     */
     PUBLIC_FUNCTION(GetSendToManyV1Fee)
+    {
         output.fee = STM1_INVOCATION_FEE;
-    _
+    }
 
     /**
     * Send qu from a single address to multiple addresses
@@ -112,6 +113,7 @@ public:
     * @return returnCode (0 means success)
     */
     PUBLIC_PROCEDURE(SendToManyV1)
+    {
         state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), STM1_TRIGGERED };
         LOG_INFO(state.logger);
         state.total = input.amt0 + input.amt1 + input.amt2 + input.amt3 + input.amt4 + input.amt5 + input.amt6 + input.amt7 + input.amt8 + input.amt9 + input.amt10 + input.amt11 + input.amt12 + input.amt13 + input.amt14 + input.amt15 + input.amt16 + input.amt17 + input.amt18 + input.amt19 + input.amt20 + input.amt21 + input.amt22 + input.amt23 + input.amt24 + STM1_INVOCATION_FEE;
@@ -293,7 +295,7 @@ public:
         LOG_INFO(state.logger);
         output.returnCode = STM1_SUCCESS;
         qpi.burn(STM1_INVOCATION_FEE);
-    _
+    }
 
     /**
     * Send n transfers of 1 qu each from a single address to a specified number of addresses.
@@ -303,6 +305,7 @@ public:
     * @return returnCode (0 means success)
     */
     PUBLIC_PROCEDURE_WITH_LOCALS(SendToManyBenchmark)
+    {
         state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), STM1_TRIGGERED };
         LOG_INFO(state.logger);
         output.total = 0;
@@ -365,7 +368,7 @@ public:
 
         state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, output.total, STM1_SUCCESS };
         LOG_INFO(state.logger);
-    _
+    }
 
     /**
     * Practicing burning qubic in the QChurch
@@ -373,6 +376,7 @@ public:
     * @return the amount of qubic has burned, < 0 if failed to burn
     */
     PUBLIC_PROCEDURE(BurnQubic)
+    {
         // lack of fund => return the coins
         if (input.amount < 0) // invalid input amount
         {
@@ -397,13 +401,14 @@ public:
         qpi.burn(input.amount);
         output.amount = input.amount;
         return;
-    _
+    }
 
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
         REGISTER_USER_PROCEDURE(SendToManyBenchmark, 3);
-    _
+    }
 };

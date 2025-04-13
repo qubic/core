@@ -240,7 +240,7 @@ protected:
 	};
 
 	PRIVATE_FUNCTION_WITH_LOCALS(_NumberOfReservedShares)
-
+	{
 		output.numberOfShares = 0;
 
 		locals._elementIndex = state._entityOrders.headIndex(qpi.invocator(), 0);
@@ -255,15 +255,15 @@ protected:
 
 			locals._elementIndex = state._entityOrders.nextElementIndex(locals._elementIndex);
 		}
-	_
+	}
 
 
 	PUBLIC_FUNCTION(Fees)
-
+	{
 		output.assetIssuanceFee = state._assetIssuanceFee;
 		output.transferFee = state._transferFee;
 		output.tradeFee = state._tradeFee;
-	_
+	}
 
 
 	struct AssetAskOrders_locals
@@ -275,7 +275,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(AssetAskOrders)
-
+	{
 		locals._issuerAndAssetName = input.issuer;
 		locals._issuerAndAssetName.u64._3 = input.assetName;
 
@@ -312,7 +312,7 @@ protected:
 				locals._elementIndex2++;
 			}
 		}
-	_
+	}
 
 
 	struct AssetBidOrders_locals
@@ -324,7 +324,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(AssetBidOrders)
-
+	{
 		locals._issuerAndAssetName = input.issuer;
 		locals._issuerAndAssetName.u64._3 = input.assetName;
 
@@ -367,7 +367,7 @@ protected:
 				locals._elementIndex2++;
 			}
 		}
-	_
+	}
 
 
 	struct EntityAskOrders_locals
@@ -378,7 +378,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(EntityAskOrders)
-
+	{
 		locals._elementIndex = state._entityOrders.headIndex(input.entity, 0);
 		locals._elementIndex2 = 0;
 		while (locals._elementIndex != NULL_INDEX
@@ -414,7 +414,7 @@ protected:
 				locals._elementIndex2++;
 			}
 		}
-	_
+	}
 
 	
 	struct EntityBidOrders_locals
@@ -425,7 +425,7 @@ protected:
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(EntityBidOrders)
-
+	{
 		locals._elementIndex = state._entityOrders.headIndex(input.entity);
 		locals._elementIndex2 = 0;
 		while (locals._elementIndex != NULL_INDEX
@@ -467,11 +467,11 @@ protected:
 				locals._elementIndex2++;
 			}
 		}
-	_
+	}
 
 
 	PUBLIC_PROCEDURE(IssueAsset)
-
+	{
 		if (qpi.invocationReward() < state._assetIssuanceFee)
 		{
 			if (qpi.invocationReward() > 0)
@@ -491,10 +491,10 @@ protected:
 
 			output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(TransferShareOwnershipAndPossession)
-
+	{
 		if (qpi.invocationReward() < state._transferFee)
 		{
 			if (qpi.invocationReward() > 0)
@@ -524,10 +524,10 @@ protected:
 				output.transferredNumberOfShares = qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newOwnerAndPossessor) < 0 ? 0 : input.numberOfShares;
 			}
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(AddToAskOrder)
-
+	{
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -690,10 +690,10 @@ protected:
 				}
 			}
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(AddToBidOrder)
-
+	{
 		if (input.price <= 0
 			|| input.numberOfShares <= 0
 			|| qpi.invocationReward() < input.price * input.numberOfShares)
@@ -860,10 +860,10 @@ protected:
 				}
 			}
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(RemoveFromAskOrder)
-
+	{
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -947,10 +947,10 @@ protected:
 				output.removedNumberOfShares = input.numberOfShares;
 			}
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(RemoveFromBidOrder)
-
+	{
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1036,10 +1036,10 @@ protected:
 				qpi.transfer(qpi.invocator(), input.price * input.numberOfShares);
 			}
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(TransferShareManagementRights)
-
+	{
 		// no fee
 		if (qpi.invocationReward() > 0)
 		{
@@ -1068,10 +1068,10 @@ protected:
 				output.transferredNumberOfShares = input.numberOfShares;
 			}
 		}
-	_
+	}
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
 		REGISTER_USER_FUNCTION(Fees, 1);
 		REGISTER_USER_FUNCTION(AssetAskOrders, 2);
 		REGISTER_USER_FUNCTION(AssetBidOrders, 3);
@@ -1088,9 +1088,10 @@ protected:
 		REGISTER_USER_PROCEDURE(RemoveFromBidOrder, 8);
 
 		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 9);
-	_
+	}
 
-	INITIALIZE
+	INITIALIZE()
+	{
 
 		// No need to initialize _earnedAmount and other variables with 0, whole contract state is zeroed before initialization is invoked
 
@@ -1102,9 +1103,10 @@ protected:
 		state._transferFee = 100;
 		state._tradeFee = 3000000; // 0.3%
 		*/
-	_
+	}
 
-	END_TICK
+	END_TICK()
+	{
 		if ((div((state._earnedAmount - state._distributedAmount), 676ULL) > 0) && (state._earnedAmount > state._distributedAmount))
 		{
 			if (qpi.distributeDividends(div((state._earnedAmount - state._distributedAmount), 676ULL)))
@@ -1112,26 +1114,30 @@ protected:
 				state._distributedAmount += div((state._earnedAmount - state._distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
 			}
 		}
-	_
+	}
 
-	PRE_RELEASE_SHARES
+	PRE_RELEASE_SHARES()
+	{
 		// system procedure called before releasing asset management rights
 		// when another contract wants to acquire asset management rights from QX
 		// -> always reject (default); rights can only be transferred upon user request via TransferShareManagementRights
-	_
+	}
 
-	POST_RELEASE_SHARES
-	_
+	POST_RELEASE_SHARES()
+	{
+	}
 
-	PRE_ACQUIRE_SHARES
+	PRE_ACQUIRE_SHARES()
+	{
 		// system procedure called before acquiring asset management rights
 		// when another contract wants to release asset management rights to QX
 		// -> always accept given the fee is paid
 		output.requestedFee = state._transferFee;
 		output.allowTransfer = true;
-	_
+	}
 
-	POST_ACQUIRE_SHARES
-	_
+	POST_ACQUIRE_SHARES()
+	{
+	}
 };
 

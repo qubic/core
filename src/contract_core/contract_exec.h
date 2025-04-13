@@ -341,11 +341,12 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProce
         __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);
     }
 
-    QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
-    newContext.init(procContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
-
+    // If transfer isn't possible, set invocation reward to 0
     if (transfer(QPI::id(procContractIndex, 0, 0, 0), invocationReward) < 0)
         invocationReward = 0;
+
+    QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
+    newContext.init(procContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
 
     return newContext;
 }

@@ -84,17 +84,20 @@ protected:
 	uint32 postAcquireShareCounter;
 
 	PUBLIC_PROCEDURE(IssueAsset)
+	{
 		output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
-	_
+	}
 
 	PUBLIC_PROCEDURE(TransferShareOwnershipAndPossession)
+	{
 		if (qpi.transferShareOwnershipAndPossession(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newOwnerAndPossessor) > 0)
 		{
 			output.transferredNumberOfShares = input.numberOfShares;
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(TransferShareManagementRights)
+	{
 		if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
 			input.newManagingContractIndex, input.newManagingContractIndex, qpi.invocationReward()) < 0)
 		{
@@ -106,24 +109,27 @@ protected:
 			// success
 			output.transferredNumberOfShares = input.numberOfShares;
 		}
-	_
+	}
 
 	PUBLIC_PROCEDURE(SetPreReleaseSharesOutput)
+	{
 		state.preReleaseSharesOutput = input;
-	_
+	}
 
 	PUBLIC_PROCEDURE(SetPreAcquireSharesOutput)
-        state.preAcquireSharesOutput = input;
-	_
+	{
+		state.preAcquireSharesOutput = input;
+	}
 
 	PUBLIC_PROCEDURE(AcquireShareManagementRights)
+	{
 		if (qpi.acquireShares(input.asset, input.ownerAndPossessor, input.ownerAndPossessor, input.numberOfShares,
 			input.oldManagingContractIndex, input.oldManagingContractIndex, qpi.invocationReward()) >= 0)
 		{
 			// success
 			output.transferredNumberOfShares = input.numberOfShares;
 		}
-    _
+    }
 
 	struct GetTestExampleAShareManagementRights_locals
 	{
@@ -132,14 +138,16 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(GetTestExampleAShareManagementRights)
+	{
 		locals.input.asset = input.asset;
 		locals.input.numberOfShares = input.numberOfShares;
 		locals.input.newManagingContractIndex = SELF_INDEX;
 		INVOKE_OTHER_CONTRACT_PROCEDURE(TESTEXA, TransferShareManagementRights, locals.input, locals.output, qpi.invocationReward());
 		output.transferredNumberOfShares = locals.output.transferredNumberOfShares;
-	_
+	}
 
-	PRE_RELEASE_SHARES
+	PRE_RELEASE_SHARES()
+	{
 		// check that qpi.acquireShares() leading to this callback is triggered by owner,
 		// otherwise allowing another contract to acquire management rights is risky
 		if (qpi.originator() == input.owner)
@@ -156,9 +164,10 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
-	_
+	}
 
-	POST_RELEASE_SHARES
+	POST_RELEASE_SHARES()
+	{
 		state.postReleaseSharesCounter++;
 		state.prevPostReleaseSharesInput = input;
 
@@ -170,9 +179,10 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
-	_
+	}
 
-	PRE_ACQUIRE_SHARES
+	PRE_ACQUIRE_SHARES()
+	{
 		output = state.preAcquireSharesOutput;
 		state.prevPreAcquireSharesInput = input;
 
@@ -184,9 +194,10 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
-	_
+	}
 
-	POST_ACQUIRE_SHARES
+	POST_ACQUIRE_SHARES()
+	{
 		state.postAcquireShareCounter++;
 		state.prevPostAcquireSharesInput = input;
 
@@ -198,7 +209,7 @@ protected:
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
-	_
+	}
 
 	//---------------------------------------------------------------
 	// CONTRACT INTERACTION / RESOLVING DEADLOCKS
@@ -208,6 +219,7 @@ public:
 	typedef TESTEXA::QueryQpiFunctions_output CallFunctionOfTestExampleA_output;
 
 	PUBLIC_FUNCTION(CallFunctionOfTestExampleA)
+	{
 #ifdef NO_UEFI
 		printf("Before wait/deadlock in contract %u function\n", CONTRACT_INDEX);
 #endif
@@ -215,7 +227,7 @@ public:
 #ifdef NO_UEFI
 		printf("After wait/deadlock in contract %u function\n", CONTRACT_INDEX);
 #endif
-	_
+	}
 
 	//---------------------------------------------------------------
 	// POST_INCOMING_TRANSFER CALLBACK
@@ -224,11 +236,11 @@ public:
 	struct IncomingTransferAmounts_output
 	{
 		sint64 standardTransactionAmount;
-		uint64 procedureTransactionAmount;
-		uint64 qpiTransferAmount;
-		uint64 qpiDistributeDividendsAmount;
-		uint64 revenueDonationAmount;
-		uint64 ipoBidRefundAmount;
+		sint64 procedureTransactionAmount;
+		sint64 qpiTransferAmount;
+		sint64 qpiDistributeDividendsAmount;
+		sint64 revenueDonationAmount;
+		sint64 ipoBidRefundAmount;
 	};
 
 	struct QpiTransfer_input
@@ -248,8 +260,9 @@ protected:
 	IncomingTransferAmounts_output incomingTransfers;
 
 	PUBLIC_FUNCTION(IncomingTransferAmounts)
+	{
 		output = state.incomingTransfers;
-	_
+	}
 
 	struct POST_INCOMING_TRANSFER_locals
 	{
@@ -257,7 +270,8 @@ protected:
 		Entity after;
 	};
 
-	POST_INCOMING_TRANSFER_WITH_LOCALS
+	POST_INCOMING_TRANSFER_WITH_LOCALS()
+	{
 		ASSERT(input.amount > 0);
 		switch (input.type)
 		{
@@ -286,15 +300,17 @@ protected:
 		// check that everything that transfers QUs is disabled
 		ASSERT(qpi.transfer(SELF, 1000) < 0);
 		ASSERT(!qpi.distributeDividends(10));
-	_
+	}
 
 	PUBLIC_PROCEDURE(QpiTransfer)
+	{
 		qpi.transfer(input.destinationPublicKey, input.amount);
-	_
+	}
 
 	PUBLIC_PROCEDURE(QpiDistributeDividends)
+	{
 		qpi.distributeDividends(input.amountPerShare);
-	_
+	}
 
 	//---------------------------------------------------------------
 	// IPO TEST
@@ -319,18 +335,21 @@ public:
 	typedef sint64 QpiBidInIpo_output;
 
 	PUBLIC_FUNCTION(GetIpoBid)
+	{
 		output.price = qpi.ipoBidPrice(input.ipoContractIndex, input.bidIndex);
 		output.publicKey = qpi.ipoBidId(input.ipoContractIndex, input.bidIndex);
-	_
+	}
 
 	PUBLIC_PROCEDURE(QpiBidInIpo)
+	{
 		output = qpi.bidInIPO(input.ipoContractIndex, input.pricePerShare, input.numberOfShares);
-	_
+	}
 
 	//---------------------------------------------------------------
 	// COMMON PARTS
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
 		REGISTER_USER_FUNCTION(CallFunctionOfTestExampleA, 1);
 
 		REGISTER_USER_FUNCTION(IncomingTransferAmounts, 20);
@@ -347,5 +366,5 @@ public:
 		REGISTER_USER_PROCEDURE(QpiTransfer, 20);
 		REGISTER_USER_PROCEDURE(QpiDistributeDividends, 21);
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
-	_
+	}
 };

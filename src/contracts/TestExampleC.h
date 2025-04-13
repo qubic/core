@@ -29,13 +29,14 @@ protected:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(GetTestExampleAShareManagementRights)
+	{
 		// This is for the ResolveDeadlockCallbackProcedureAndConcurrentFunction in test/contract_testex.cpp:
 		locals.input.asset = input.asset;
 		locals.input.numberOfShares = input.numberOfShares;
 		locals.input.newManagingContractIndex = SELF_INDEX;
 		INVOKE_OTHER_CONTRACT_PROCEDURE(TESTEXA, TransferShareManagementRights, locals.input, locals.output, qpi.invocationReward());
 		output.transferredNumberOfShares = locals.output.transferredNumberOfShares;
-	_
+	}
 
 	struct PRE_ACQUIRE_SHARES_locals
 	{
@@ -45,7 +46,8 @@ protected:
 		TESTEXB::SetPreAcquireSharesOutput_output textExBOutput;
 	};
 
-	PRE_ACQUIRE_SHARES_WITH_LOCALS
+	PRE_ACQUIRE_SHARES_WITH_LOCALS()
+	{
 		// This is for the ResolveDeadlockCallbackProcedureAndConcurrentFunction in test/contract_testex.cpp:
 		// 1. Check reuse of already owned write lock of TESTEXA and delay execution in order to make sure that the
 		//    concurrent contract function TESTEXB::CallTextExAFunc() is running or waiting for read lock of TEXTEXA.
@@ -63,7 +65,7 @@ protected:
 		// bug check regarding size of locals
 		ASSERT(!locals.textExBInput.allowTransfer);
 		ASSERT(!locals.textExBInput.requestedFee);
-	_
+	}
 
 	//---------------------------------------------------------------
 	// POST_INCOMING_TRANSFER CALLBACK
@@ -72,11 +74,11 @@ public:
 	struct IncomingTransferAmounts_output
 	{
 		sint64 standardTransactionAmount;
-		uint64 procedureTransactionAmount;
-		uint64 qpiTransferAmount;
-		uint64 qpiDistributeDividendsAmount;
-		uint64 revenueDonationAmount;
-		uint64 ipoBidRefundAmount;
+		sint64 procedureTransactionAmount;
+		sint64 qpiTransferAmount;
+		sint64 qpiDistributeDividendsAmount;
+		sint64 revenueDonationAmount;
+		sint64 ipoBidRefundAmount;
 	};
 
 	struct QpiTransfer_input
@@ -96,8 +98,9 @@ protected:
 	IncomingTransferAmounts_output incomingTransfers;
 
 	PUBLIC_FUNCTION(IncomingTransferAmounts)
+	{
 		output = state.incomingTransfers;
-	_
+	}
 
 	struct POST_INCOMING_TRANSFER_locals
 	{
@@ -107,7 +110,8 @@ protected:
 		TESTEXB::QpiTransfer_output output;
 	};
 
-	POST_INCOMING_TRANSFER_WITH_LOCALS
+	POST_INCOMING_TRANSFER_WITH_LOCALS()
+	{
 		ASSERT(input.amount > 0);
 		switch (input.type)
 		{
@@ -142,15 +146,17 @@ protected:
 		INVOKE_OTHER_CONTRACT_PROCEDURE(TESTEXB, QpiTransfer, locals.input, locals.output, 1000);
 		ASSERT(qpi.getEntity(SELF, locals.after));
 		ASSERT(locals.before.outgoingAmount == locals.after.outgoingAmount);
-	_
+	}
 
 	PUBLIC_PROCEDURE(QpiTransfer)
+	{
 		qpi.transfer(input.destinationPublicKey, input.amount);
-	_
+	}
 
 	PUBLIC_PROCEDURE(QpiDistributeDividends)
+	{
 		qpi.distributeDividends(input.amountPerShare);
-	_
+	}
 
 	//---------------------------------------------------------------
 	// IPO TEST
@@ -175,18 +181,21 @@ public:
 	typedef sint64 QpiBidInIpo_output;
 
 	PUBLIC_FUNCTION(GetIpoBid)
+	{
 		output.price = qpi.ipoBidPrice(input.ipoContractIndex, input.bidIndex);
 		output.publicKey = qpi.ipoBidId(input.ipoContractIndex, input.bidIndex);
-	_
+	}
 
 	PUBLIC_PROCEDURE(QpiBidInIpo)
+	{
 		output = qpi.bidInIPO(input.ipoContractIndex, input.pricePerShare, input.numberOfShares);
-	_
+	}
 
 	//---------------------------------------------------------------
 	// COMMON PARTS
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
 		REGISTER_USER_FUNCTION(IncomingTransferAmounts, 20);
 		REGISTER_USER_FUNCTION(GetIpoBid, 30);
 
@@ -194,5 +203,5 @@ public:
 		REGISTER_USER_PROCEDURE(QpiTransfer, 20);
 		REGISTER_USER_PROCEDURE(QpiDistributeDividends, 21);
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
-	_
+	}
 };
