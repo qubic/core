@@ -2345,7 +2345,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
-                case CustomMiningSolutionTransaction::transactionType():
+                case CustomMiningShareCounterReportTransation::transactionType():
                 {
                     int compIndex = computorIndex(transaction->sourcePublicKey);
                     if (compIndex >= 0
@@ -2835,7 +2835,7 @@ static void processTick(unsigned long long processorNumber)
                 payload.transaction.destinationPublicKey = m256i::zero();
                 payload.transaction.amount = 0;
                 payload.transaction.tick = system.tick + publishingTickOffset;
-                payload.transaction.inputType = CustomMiningSolutionTransaction::transactionType();
+                payload.transaction.inputType = CustomMiningShareCounterReportTransation::transactionType();
                 payload.transaction.inputSize = sizeof(payload.packedScore);
                 gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
 

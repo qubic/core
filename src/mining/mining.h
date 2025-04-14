@@ -26,7 +26,7 @@ struct MiningSolutionTransaction : public Transaction
 constexpr int CUSTOM_MINING_SHARE_COUNTER_INPUT_TYPE = 8;
 constexpr int TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET = 4;
 
-struct CustomMiningSolutionTransaction : public Transaction
+struct CustomMiningShareCounterReportTransation : public Transaction
 {
     static constexpr unsigned char transactionType()
     {
