@@ -2820,15 +2820,15 @@ static void processTick(unsigned long long processorNumber)
         // In the begining of mining phase. Calculate the transaction need to be broadcasted
         if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
         {
+            // Update the custom mining share counter
+            ACQUIRE(gCustomMiningSharesCountLock);
+            gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
+            RELEASE(gCustomMiningSharesCountLock);
+
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
                 // Randomly schedule the tick to publish the tx
                 unsigned int publishingTickOffset = TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET + random(NUMBER_OF_COMPUTORS / 2);
-
-                // Update the custom mining share counter
-                ACQUIRE(gCustomMiningSharesCountLock);
-                gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
-                RELEASE(gCustomMiningSharesCountLock);
 
                 auto& payload = customMiningSharePayload;
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
