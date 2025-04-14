@@ -115,3 +115,22 @@ struct ResponseLogStateDigest
         type = 59,
     };
 };
+
+// Request to subscribe a session to fetch logging events
+struct RequestLogSessionSubscribe
+{
+    unsigned long long passcode[4];
+
+    enum {
+        type = 60,
+    };
+};
+
+// Response the status of above request
+struct ResponseLogSessionSubscribe
+{
+    long long status;
+    enum {
+        type = 61,
+    };
+};

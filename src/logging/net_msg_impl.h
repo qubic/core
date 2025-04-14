@@ -3,7 +3,6 @@
 #include "logging/logging.h"
 #include "network_core/peers.h"
 
-
 // Request: ranges of log ID
 void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
@@ -22,7 +21,7 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
             unsigned long long toID = request->toID;
             long long startFrom = startIdBufferRange.startIndex;
             long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
-            constexpr long long maxPayloadSize = RequestResponseHeader::max_size - sizeof(sizeof(RequestResponseHeader));
+            constexpr long long maxPayloadSize = (RequestResponseHeader::max_size - sizeof(sizeof(RequestResponseHeader)));
             
             if (length > maxPayloadSize)
             {
@@ -172,7 +171,6 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
 #endif
     enqueueResponse(peer, 0, ResponsePruningLog::type, header->dejavu(), NULL);
 }
-
 
 void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* header)
 {

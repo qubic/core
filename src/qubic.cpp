@@ -1,5 +1,6 @@
 #define SINGLE_COMPILE_UNIT
-
+#define TESTNET 1
+#define IS_VM 1 // using virtualbox to emulate EFI
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -98,6 +99,7 @@ static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
 static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
+
 static volatile bool forceSwitchEpoch = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
@@ -5779,8 +5781,8 @@ static bool initialize()
     bs->SetMem((void*)dejavu0, 536870912, 0);
     bs->SetMem((void*)dejavu1, 536870912, 0);
 
-    if ((!allocPoolWithErrorLog(L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer, __LINE__)) ||
-        (!allocPoolWithErrorLog(L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer, __LINE__)))
+    if ((!allocPoolWithErrorLog(L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE + 64, (void**)&requestQueueBuffer, __LINE__)) ||
+        (!allocPoolWithErrorLog(L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE + 64, (void**)&responseQueueBuffer, __LINE__)))
     {
         return false;
     }
@@ -5798,7 +5800,8 @@ static bool initialize()
 
         if ((status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].connectAcceptToken.CompletionToken.Event))
             || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
-            || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
+            || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event))
+            )
         {
             logStatusToConsole(L"EFI_BOOT_SERVICES.CreateEvent() fails", status, __LINE__);
 
@@ -6021,6 +6024,7 @@ static void logInfo()
     appendText(message, L" -");
     appendNumber(message, numberOfTransmittedBytes - prevNumberOfTransmittedBytes, TRUE);
     appendText(message, L" ..."); appendNumber(message, numberOfWaitingBytes, TRUE);
+    appendText(message, L" ..."); appendNumber(message, numberOfQueuedTransmitBytes, TRUE);
     appendText(message, L").");
 #if USE_SCORE_CACHE
     appendText(message, L" Score cache: Hit ");
@@ -6561,6 +6565,7 @@ static void processKeyPresses()
             {
                 closePeer(&peers[i]);
             }
+            numberOfQueuedTransmitBytes = 0;
         }
         break;
 
@@ -6912,73 +6917,91 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         logStatusToConsole(L"EFI_MP_SERVICES_PROTOCOL.StartupThisAP() fails", status, __LINE__);
                     }
                 }*/
-                peerTcp4Protocol->Poll(peerTcp4Protocol);
 
-                for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+                int connectionIndex[NUMBER_OF_INCOMING_CONNECTIONS + NUMBER_OF_OUTGOING_CONNECTIONS];
                 {
-                    // handle new connections
-                    if (peerConnectionNewlyEstablished(i))
-                    {
-                        // new connection established:
-                        // prepare and send ExchangePublicPeers message
-                        ExchangePublicPeers* request = (ExchangePublicPeers*)&peers[i].dataToTransmit[sizeof(RequestResponseHeader)];
-                        bool noVerifiedPublicPeers = true;
-                        for (unsigned int k = 0; k < numberOfPublicPeers; k++)
-                        {
-                            if (publicPeers[k].isVerified)
-                            {
-                                noVerifiedPublicPeers = false;
+                    int n = NUMBER_OF_INCOMING_CONNECTIONS + NUMBER_OF_OUTGOING_CONNECTIONS;
+                    for (int i = 0; i < n; i++) connectionIndex[i] = i;
+                    // Iterate from the last element down to the second element
+                    for (int i = n - 1; i > 0; i--) {
+                        // Pick a random index from 0 to i (inclusive)
+                        int j = random(0xffffff) % (i + 1);
 
-                                break;
-                            }
-                        }
-                        for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS; j++)
+                        // Swap arr[i] with the element at random index j
+                        int tmp = connectionIndex[i];
+                        connectionIndex[i] = connectionIndex[j];
+                        connectionIndex[j] = tmp;
+                    }
+                }
+                peerTcp4Protocol->Poll(peerTcp4Protocol);
+                for (unsigned int j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; j++)
+                {
+                    unsigned int i = connectionIndex[j];
+                    // handle new connections
+                    if ((numberOfQueuedTransmitBytes < BANDWIDTH))
+                    {
+                        if (peerConnectionNewlyEstablished(i))
                         {
-                            if (noVerifiedPublicPeers)
+                            // new connection established:
+                            // prepare and send ExchangePublicPeers message
+                            ExchangePublicPeers* request = (ExchangePublicPeers*)&peers[i].dataToTransmit[sizeof(RequestResponseHeader)];
+                            bool noVerifiedPublicPeers = true;
+                            for (unsigned int k = 0; k < numberOfPublicPeers; k++)
                             {
-                                // no verified public peers -> send 0.0.0.0
-                                request->peers[j].u32 = 0;
-                            }
-                            else
-                            {
-                                // randomly select verified public peers
-                                const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isVerified)
+                                if (publicPeers[k].isVerified)
                                 {
-                                    request->peers[j] = publicPeers[publicPeerIndex].address;
+                                    noVerifiedPublicPeers = false;
+
+                                    break;
+                                }
+                            }
+                            for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS; j++)
+                            {
+                                if (noVerifiedPublicPeers)
+                                {
+                                    // no verified public peers -> send 0.0.0.0
+                                    request->peers[j].u32 = 0;
                                 }
                                 else
                                 {
-                                    j--;
+                                    // randomly select verified public peers
+                                    const unsigned int publicPeerIndex = random(numberOfPublicPeers);
+                                    if (publicPeers[publicPeerIndex].isVerified)
+                                    {
+                                        request->peers[j] = publicPeers[publicPeerIndex].address;
+                                    }
+                                    else
+                                    {
+                                        j--;
+                                    }
                                 }
                             }
-                        }
 
-                        RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
-                        requestHeader->setSize<sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers)>();
-                        requestHeader->randomizeDejavu();
-                        requestHeader->setType(ExchangePublicPeers::type);
-                        peers[i].dataToTransmitSize = requestHeader->size();
-                        _InterlockedIncrement64(&numberOfDisseminatedRequests);
-
-                        // send RequestComputors message at beginning of epoch
-                        if (!broadcastedComputors.computors.epoch
-                            || broadcastedComputors.computors.epoch != system.epoch)
-                        {
-                            requestedComputors.header.randomizeDejavu();
-                            bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
-                            peers[i].dataToTransmitSize += requestedComputors.header.size();
+                            RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
+                            requestHeader->setSize<sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers)>();
+                            requestHeader->randomizeDejavu();
+                            requestHeader->setType(ExchangePublicPeers::type);
+                            peers[i].dataToTransmitSize = requestHeader->size();
                             _InterlockedIncrement64(&numberOfDisseminatedRequests);
+
+                            // send RequestComputors message at beginning of epoch
+                            if (!broadcastedComputors.computors.epoch
+                                || broadcastedComputors.computors.epoch != system.epoch)
+                            {
+                                requestedComputors.header.randomizeDejavu();
+                                bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
+                                peers[i].dataToTransmitSize += requestedComputors.header.size();
+                                _InterlockedIncrement64(&numberOfDisseminatedRequests);
+                            }
                         }
                     }
-
+                    
                     // receive and transmit on active connections
                     peerReceiveAndTransmit(i, salt);
 
                     // reconnect if this peer slot has no active connection
                     peerReconnectIfInactive(i, PORT);
                 }
-
 #if !TICK_STORAGE_AUTOSAVE_MODE
                 // Only save system + score cache to file regularly here if on AUX and snapshot auto-save is disabled
                 if ((mainAuxStatus & 1) == 0
@@ -6999,6 +7022,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         closePeer(&peers[random(NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS)]);
                     }
+                    numberOfQueuedTransmitBytes = 0;
+                    logToConsole(L"Refreshed peers...");
                 }
 
                 if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000

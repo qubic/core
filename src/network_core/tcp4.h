@@ -147,6 +147,13 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
                                 appendText(message, L".");
                                 logToConsole(message);
                             }
+                            setText(message, L"Max packet size = ");
+                            appendNumber(message, modeData.MaxPacketSize, false);
+                            logToConsole(message);
+
+                            setText(message, L"Transmit timeout = ");
+                            appendNumber(message, modeData.ConfigData.TransmitTimeout, false);
+                            logToConsole(message);
                         }
 
                         return childHandle;

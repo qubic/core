@@ -7,7 +7,6 @@
 
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
 // random seed is now obtained from spectrumDigests
-#define TESTNET
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 2 // do not increase this, because there may be issues due to too fast ticking
 
