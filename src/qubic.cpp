@@ -2825,7 +2825,8 @@ static void processTick(unsigned long long processorNumber)
             }
 
             ACQUIRE(gCustomMiningShareCountOverFlowLock);
-            gCustomMiningCountOverflow = customMiningCountOverflow;
+            // Keep the max of overflow case
+            gCustomMiningCountOverflow = gCustomMiningCountOverflow > customMiningCountOverflow ? gCustomMiningCountOverflow : customMiningCountOverflow;
             RELEASE(gCustomMiningShareCountOverFlowLock);
 
             // reset the phase counter
@@ -2925,6 +2926,7 @@ static void beginEpoch()
 
     gCustomMiningSharesCounter.init();
     bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+    gCustomMiningCountOverflow = 0;
 
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
