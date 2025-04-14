@@ -6386,13 +6386,14 @@ static void processKeyPresses()
 #endif
             appendNumber(message, QPI::div(K12MeasurementsSum, K12MeasurementsCount), TRUE);
             appendText(message, L" ticks.");
+            logToConsole(message);
 
             unsigned int customMiningShareCountOverFlowCount = 0;
             ACQUIRE(gCustomMiningShareCountOverFlowLock);
             customMiningShareCountOverFlowCount =gCustomMiningCountOverflow;
             RELEASE(gCustomMiningShareCountOverFlowLock);
 
-            appendText(message, L" CustomMiningState: ");
+            setText(message, L" CustomMiningState: ");
             appendText(message, L" OF(");
             appendNumber(message, customMiningShareCountOverFlowCount, FALSE);
             appendText(message, L").");
