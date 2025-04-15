@@ -36,7 +36,10 @@ struct System
     } solutions[MAX_NUMBER_OF_SOLUTIONS];
 
     m256i futureComputors[NUMBER_OF_COMPUTORS];
+    m256i selfGeneratedComputors[NUMBER_OF_COMPUTORS];
+    bool useSelfGeneratedComputors;
+    bool ignoreSelfGeneratedComputorsNextStart;
 };
-static_assert(sizeof(System) == 20 + 8 + 8 + 8 + 4 + 96 * MAX_NUMBER_OF_SOLUTIONS + 32 * NUMBER_OF_COMPUTORS, "Unexpected size");
+static_assert(sizeof(System) == 20 + 8 + 8 + 8 + 4 + 96 * MAX_NUMBER_OF_SOLUTIONS + 32 * NUMBER_OF_COMPUTORS + 32 * NUMBER_OF_COMPUTORS + 2 + /*padding*/ 6, "Unexpected size");
 
 GLOBAL_VAR_DECL System system;
