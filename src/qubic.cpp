@@ -202,7 +202,7 @@ static unsigned long long K12MeasurementsSum = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 
-// Custom mining related variables and constants
+
 static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0 };
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
@@ -212,10 +212,8 @@ static volatile char gIsInCustomMiningStateLock = 0;
 
 struct revenueScore
 {
-    unsigned long long oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
-    unsigned long long customMiningSharesCount[NUMBER_OF_COMPUTORS]; // the shares count with custom mining
-    unsigned long long currentRev[NUMBER_OF_COMPUTORS]; // old revenue
-    unsigned long long customMiningRev[NUMBER_OF_COMPUTORS]; // reveneu with custom mining
+    unsigned long long _oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
+    unsigned long long _customMiningScore[NUMBER_OF_COMPUTORS]; // the new score with customming
 } gRevenueScoreWithCustomMining;
 
 
@@ -244,7 +242,6 @@ struct
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
     unsigned long long lastLogId;
-    unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
 static bool saveComputer(CHAR16* directory = NULL);
@@ -267,6 +264,12 @@ static struct
 	unsigned char signature[SIGNATURE_SIZE];
 } voteCounterPayload;
 
+static struct
+{
+    Transaction transaction;
+    unsigned char packedScore[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES];
+    unsigned char signature[SIGNATURE_SIZE];
+} customMiningSharePayload;
 
 static struct
 {
@@ -2799,26 +2802,24 @@ static void processTick(unsigned long long processorNumber)
     // Broadcast custom mining shares 
     if (mainAuxStatus & 1)
     {
-        // In the begining of mining phase. Calculate the transaction need to be broadcasted
+        // In the begining of mining phase
         if (getTickInMiningPhaseCycle() == 0)
         {
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
-                unsigned int schedule_tick = system.tick
-                    + TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET
-                    + random(NUMBER_OF_COMPUTORS - TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET);
+                // Randomly schedule the tick to publish the tx
+                unsigned int publishingTickOffset = TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET + random(NUMBER_OF_COMPUTORS / 2);
 
                 // Update the custom mining share counter
                 ACQUIRE(gCustomMiningSharesCountLock);
                 gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
                 RELEASE(gCustomMiningSharesCountLock);
 
-                // Save the transaction to be broadcasted
-                auto& payload = gCustomMiningBroadcastTxBuffer[i].payload;
+                auto& payload = customMiningSharePayload;
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
                 payload.transaction.destinationPublicKey = m256i::zero();
                 payload.transaction.amount = 0;
-                payload.transaction.tick = schedule_tick;
+                payload.transaction.tick = system.tick + publishingTickOffset;
                 payload.transaction.inputType = CustomMiningSolutionTransaction::transactionType();
                 payload.transaction.inputSize = sizeof(payload.packedScore);
                 gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
@@ -2826,29 +2827,14 @@ static void processTick(unsigned long long processorNumber)
                 unsigned char digest[32];
                 KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.packedScore), digest, sizeof(digest));
                 sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
-                
-                // Set the flag to false, indicating that the transaction is not broadcasted yet
-                gCustomMiningBroadcastTxBuffer[i].isBroadcasted = false;
+                enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
+
             }
 
             // reset the phase counter
             ACQUIRE(gCustomMiningSharesCountLock);
             bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
             RELEASE(gCustomMiningSharesCountLock);
-        }
-
-        // Run every tick for broadcasting custom mining txs
-        for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
-        {
-            if (!gCustomMiningBroadcastTxBuffer[i].isBroadcasted)
-            {
-                ASSERT(gCustomMiningBroadcastTxBuffer[i].payload.transaction.tick >= system.tick);
-                if (gCustomMiningBroadcastTxBuffer[i].payload.transaction.tick - system.tick == TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET)
-                {
-                    enqueueResponse(NULL, sizeof(gCustomMiningBroadcastTxBuffer[i].payload), BROADCAST_TRANSACTION, 0, &gCustomMiningBroadcastTxBuffer[i].payload);
-                    gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
-                }
-            }
         }
     }
 
@@ -3041,17 +3027,13 @@ static void endEpoch()
 
         // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution and old score
         {
-            bs->CopyMem(gRevenueScoreWithCustomMining.oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining.oldFinalScore));
+            bs->CopyMem(gRevenueScoreWithCustomMining._oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining._oldFinalScore));
             // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
-                gRevenueScoreWithCustomMining.customMiningSharesCount[i] = gCustomMiningSharesCounter.getSharesCount(i);
+                unsigned long long shareScore = gCustomMiningSharesCounter.getSharesCount(i);
+                gRevenueScoreWithCustomMining._customMiningScore[i] = shareScore;
             }
-            computeRevWithCustomMining(
-                gRevenueScoreWithCustomMining.oldFinalScore,
-                gRevenueScoreWithCustomMining.customMiningSharesCount,
-                gRevenueScoreWithCustomMining.currentRev,
-                gRevenueScoreWithCustomMining.customMiningRev);
         }
 
 
@@ -4067,7 +4049,6 @@ static bool saveAllNodeStates()
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;
     nodeStateBuffer.lastLogId = logger.logId;
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
-    gCustomMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.customMiningSharesCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
@@ -4206,7 +4187,6 @@ static bool loadAllNodeStates()
     logger.logId = nodeStateBuffer.lastLogId;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
-    gCustomMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.customMiningSharesCounterData);
 
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -5761,8 +5741,6 @@ static bool initialize()
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
-
-    initCustomMining();
     
     return true;
 }
