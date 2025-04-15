@@ -2577,6 +2577,8 @@ static void processTick(unsigned long long processorNumber)
 
                     unsigned int j = 0;
 
+                    ACQUIRE(computorPendingTransactionsLock);
+
                     // Get indices of pending computor transactions that are scheduled to be included in tickData
                     unsigned int numberOfEntityPendingTransactionIndices = 0;
                     for (unsigned int k = 0; k < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; k++)
@@ -2616,6 +2618,10 @@ static void processTick(unsigned long long processorNumber)
                         entityPendingTransactionIndices[index] = entityPendingTransactionIndices[--numberOfEntityPendingTransactionIndices];
                     }
 
+                    RELEASE(computorPendingTransactionsLock);
+
+                    ACQUIRE(entityPendingTransactionsLock);
+
                     // Get indices of pending non-computor transactions that are scheduled to be included in tickData
                     numberOfEntityPendingTransactionIndices = 0;
                     for (unsigned int k = 0; k < SPECTRUM_CAPACITY; k++)
@@ -2654,6 +2660,8 @@ static void processTick(unsigned long long processorNumber)
 
                         entityPendingTransactionIndices[index] = entityPendingTransactionIndices[--numberOfEntityPendingTransactionIndices];
                     }
+
+                    RELEASE(entityPendingTransactionsLock);
 
                     for (; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                     {
