@@ -2554,6 +2554,8 @@ static void processTick(unsigned long long processorNumber)
             {
                 if (mainAuxStatus & 1)
                 {
+                    // This is the tick leader in MAIN mode -> construct future tick data (selecting transactions to
+                    // include into tick)
                     broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type; // We XOR almost all packets with their type value to make sure an entity cannot be tricked into signing one thing while actually signing something else
                     broadcastedFutureTickData.tickData.epoch = system.epoch;
                     broadcastedFutureTickData.tickData.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
@@ -2575,17 +2577,24 @@ static void processTick(unsigned long long processorNumber)
 
                     unsigned int j = 0;
 
-                    unsigned int numberOfEntityPendingTransactionIndices;
-                    for (numberOfEntityPendingTransactionIndices = 0; numberOfEntityPendingTransactionIndices < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; numberOfEntityPendingTransactionIndices++)
+                    // Get indices of pending computor transactions that are supposed to by published now (decided by tick)
+                    unsigned int numberOfEntityPendingTransactionIndices = 0;
+                    for (unsigned int k = 0; k < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; k++)
                     {
-                        entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices] = numberOfEntityPendingTransactionIndices;
+                        const Transaction* tx = ((Transaction*)&computorPendingTransactions[k * MAX_TRANSACTION_SIZE]);
+                        if (tx->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        {
+                            entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices++] = k;
+                        }
                     }
+
+                    // Randomly select computor tx scheduled for the tick until tick is full or all pending tx are included
                     while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
                     {
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
 
                         const Transaction* pendingTransaction = ((Transaction*)&computorPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
-                        if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        ASSERT(pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
                         {
                             ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
@@ -2607,16 +2616,24 @@ static void processTick(unsigned long long processorNumber)
                         entityPendingTransactionIndices[index] = entityPendingTransactionIndices[--numberOfEntityPendingTransactionIndices];
                     }
 
-                    for (numberOfEntityPendingTransactionIndices = 0; numberOfEntityPendingTransactionIndices < SPECTRUM_CAPACITY; numberOfEntityPendingTransactionIndices++)
+                    // Get indices of pending non-computor transactions that are supposed to by published now (decided by tick)
+                    numberOfEntityPendingTransactionIndices = 0;
+                    for (unsigned int k = 0; k < SPECTRUM_CAPACITY; k++)
                     {
-                        entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices] = numberOfEntityPendingTransactionIndices;
+                        const Transaction* tx = ((Transaction*)&entityPendingTransactions[k * MAX_TRANSACTION_SIZE]);
+                        if (tx->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        {
+                            entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices++] = k;
+                        }
                     }
+
+                    // Randomly select non-computor tx scheduled for the tick until tick is full or all pending tx are included
                     while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
                     {
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
 
                         const Transaction* pendingTransaction = ((Transaction*)&entityPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
-                        if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        ASSERT(pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
                         {
                             ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
