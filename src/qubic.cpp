@@ -6180,7 +6180,7 @@ static void logHealthStatus()
     }
     if (!anyContractError)
     {
-        appendText(message, L"no errors");
+        appendText(message, L"all healthy");
     }
     logToConsole(message);
 
