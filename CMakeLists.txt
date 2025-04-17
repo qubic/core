@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(ENABLE_AVX512 "Enable AVX-512 instructions" ON)
 
 # Option to build tests
-option(BUILD_TESTS "Build the test suite" OFF)
+option(BUILD_TESTS "Build the test suite" ON)
 
 # Always include platform_common as it's needed for both application and tests
 add_subdirectory(lib/platform_common)
@@ -18,6 +18,7 @@ add_subdirectory(lib/platform_common)
 if(BUILD_TESTS)
     # For tests, include platform_os, src, and test
     message(STATUS "Building test configuration")
+    enable_testing()
     add_subdirectory(lib/platform_os)
     add_subdirectory(lib/platform_efi) # Currenlty still needed due to various imports
     add_subdirectory(src EXCLUDE_FROM_ALL)  # Build src but don't make it a default target

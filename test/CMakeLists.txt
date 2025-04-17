@@ -43,7 +43,6 @@ add_link_options(
   -fsanitize=alignment
 )
 
-enable_testing()
 
 get_filename_component(PROJECT_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
@@ -78,8 +77,10 @@ add_executable(
   # tx_status_request.cpp
   # vote_counter.cpp
 )
+
+
 target_link_libraries(
-  qubic_core_tests
+  qubic_core_tests PRIVATE
   GTest::gtest_main
   platform_common
   platform_os
