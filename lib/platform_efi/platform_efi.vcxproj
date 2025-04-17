@@ -26,6 +26,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="edk2_debug.c" />
+    <ClCompile Include="processor.cpp" />
     <ClCompile Include="sleep.cpp" />
     <ClCompile Include="uefi_globals.cpp" />
   </ItemGroup>

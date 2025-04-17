@@ -21,6 +21,7 @@
 
 
 #include <lib/platform_efi/uefi.h>
+#include <lib/platform_common/processor.h>
 #include "platform/time.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
@@ -161,7 +162,6 @@ XKCP::KangarooTwelve_Instance g_k12_instance;
 // rdtsc (timestamp) of ticks
 static unsigned long long tickTicks[11];
 
-static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
 
@@ -172,7 +172,6 @@ static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a l
 
 static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that will process solution
 static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS]; // flag array to indicate that whether a procId should help processing solutions or not
-static unsigned long long mainThreadProcessorID = -1;
 static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
@@ -1482,8 +1481,7 @@ static void requestProcessor(void* ProcedureArgument)
 {
     enableAVX();
 
-    unsigned long long processorNumber;
-    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    const unsigned long long processorNumber = getRunningProcessorID();
 
     Processor* processor = (Processor*)ProcedureArgument;
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
@@ -1734,8 +1732,7 @@ static void contractProcessor(void*)
 {
     enableAVX();
 
-    unsigned long long processorNumber;
-    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    const unsigned long long processorNumber = getRunningProcessorID();
 
     unsigned int executedContractIndex;
     switch (contractProcessorPhase)
@@ -4869,8 +4866,7 @@ static bool isTickTimeOut()
 static void tickProcessor(void*)
 {
     enableAVX();
-    unsigned long long processorNumber;
-    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    const unsigned long long processorNumber = getRunningProcessorID();
 
 #if !START_NETWORK_FROM_SCRATCH
     // only init first tick if it doesn't load all node states from file
