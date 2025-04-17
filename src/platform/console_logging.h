@@ -46,6 +46,24 @@ static void logToConsole(const CHAR16* message);
 
 #endif
 
+// Count characters before terminating NULL
+static unsigned int stringLength(const CHAR16* str)
+{
+    unsigned int l = 0;
+    while (str[l] != 0)
+        l++;
+    return l;
+}
+
+// Count characters before terminating NULL
+static unsigned int stringLength(const char* str)
+{
+    unsigned int l = 0;
+    while (str[l] != 0)
+        l++;
+    return l;
+}
+
 static void appendText(CHAR16* dst, const CHAR16* src)
 {
     unsigned short dstIndex = 0;
@@ -56,6 +74,61 @@ static void appendText(CHAR16* dst, const CHAR16* src)
     unsigned short srcIndex = 0;
     while ((dst[dstIndex++] = src[srcIndex++]) != 0)
     {
+    }
+}
+
+static void appendText(CHAR16* dst, const char* src)
+{
+    unsigned short dstIndex = 0;
+    while (dst[dstIndex] != 0)
+    {
+        dstIndex++;
+    }
+    unsigned short srcIndex = 0;
+    while ((dst[dstIndex++] = src[srcIndex++]) != 0)
+    {
+    }
+}
+
+static void appendTextShortenFront(CHAR16* dst, const char* src, unsigned short maxLengthOfSrc)
+{
+    unsigned int l = stringLength(src);
+    if (l <= maxLengthOfSrc)
+    {
+        appendText(dst, src);
+    }
+    else
+    {
+        // l > maxLengthOfSrc
+        appendText(dst, "...");
+        appendText(dst, src + (l - maxLengthOfSrc));
+    }
+}
+
+static void appendTextShortenBack(CHAR16* dst, const char* src, unsigned short maxLengthOfSrc)
+{
+    unsigned int l = stringLength(src);
+    if (l <= maxLengthOfSrc)
+    {
+        appendText(dst, src);
+    }
+    else
+    {
+        // l > maxLengthOfSrc
+        unsigned short dstIndex = 0;
+        while (dst[dstIndex] != 0)
+        {
+            dstIndex++;
+        }
+        unsigned short srcIndex = 0;
+        while (srcIndex < maxLengthOfSrc)
+        {
+            dst[dstIndex++] = src[srcIndex++];
+        }
+        dst[dstIndex++] = '.';
+        dst[dstIndex++] = '.';
+        dst[dstIndex++] = '.';
+        dst[dstIndex] = 0;
     }
 }
 
@@ -182,11 +255,3 @@ static void logStatusAndMemInfoToConsole(const CHAR16* newMessage, const EFI_STA
     logToConsole(::message);
 }
 #endif
-// Count characters before terminating NULL
-static unsigned int stringLength(const CHAR16* str)
-{
-    unsigned int l = 0;
-    while (str[l] != 0)
-        l++;
-    return l;
-}
