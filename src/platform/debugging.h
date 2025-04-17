@@ -54,7 +54,7 @@ static void printDebugMessages()
         }
     }
 #endif
-    ACQUIRE(debugLogLock);
+    ACQUIRE_WITHOUT_DEBUG_LOGGING(debugLogLock);
     for (int i = 0; i < debugMessageCount; i++)
     {
         // Make sure there is a newline at the end
@@ -104,7 +104,7 @@ static void printDebugMessages()
 // Add a message for logging from arbitrary thread
 static void addDebugMessage(const CHAR16* msg)
 {
-    ACQUIRE(debugLogLock);
+    ACQUIRE_WITHOUT_DEBUG_LOGGING(debugLogLock);
     if (debugMessageCount < 128)
     {
         setText(debugMessage[debugMessageCount], msg);
@@ -122,7 +122,7 @@ static void addDebugMessage(const CHAR16* msg)
 // Add a assert message for logging from arbitrary thread
 static void addDebugMessageAssert(const char* message, const char* file, const unsigned int lineNumber)
 {
-    ACQUIRE(debugLogLock);
+    ACQUIRE_WITHOUT_DEBUG_LOGGING(debugLogLock);
     if (debugMessageCount < 128)
     {
         setText(debugMessage[debugMessageCount], L"Assertion failed: ");

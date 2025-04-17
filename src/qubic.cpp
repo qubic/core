@@ -17,6 +17,7 @@
 
 #include "platform/m256.h"
 #include "platform/concurrency.h"
+#include "platform/concurrency_impl.h"
 // TODO: Use "long long" instead of "int" for DB indices
 
 
