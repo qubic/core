@@ -54,11 +54,27 @@ struct CustomMiningSolution
     m256i result;               // xmrig::JobResult.result, 32 bytes
 };
 
+
 #define CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES 848
 #define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
 static_assert((1 << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) >= NUMBER_OF_COMPUTORS, "Invalid number of bit per datum");
 static_assert(CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES * 8 >= NUMBER_OF_COMPUTORS * CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP, "Invalid data size");
 static char accumulatedSharedCountLock = 0;
+
+struct CustomMiningSharePayload
+{
+    Transaction transaction;
+    unsigned char packedScore[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES];
+    unsigned char signature[SIGNATURE_SIZE];
+};
+
+struct BroadcastCustomMiningTransaction
+{
+    CustomMiningSharePayload payload;
+    bool isBroadcasted;
+};
+
+BroadcastCustomMiningTransaction gCustomMiningBroadcastTxBuffer[NUMBER_OF_COMPUTORS];
 
 class CustomMiningSharesCounter
 {
@@ -169,3 +185,87 @@ public:
         copyMem(&_accumulatedSharesCount[0], src + sizeof(_shareCount), sizeof(_accumulatedSharesCount));
     }
 };
+
+void initCustomMining()
+{
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
+        gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
+    }
+}
+
+// Compute revenue of computors without donation
+void computeRev(
+    const unsigned long long* revenueScore,
+    unsigned long long* rev)
+{
+    // Sort revenue scores to get lowest score of quorum
+    unsigned long long sortedRevenueScore[QUORUM + 1];
+    bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    {
+        sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
+        unsigned int i = QUORUM;
+        while (i
+            && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
+        {
+            const unsigned long long tmp = sortedRevenueScore[i - 1];
+            sortedRevenueScore[i - 1] = sortedRevenueScore[i];
+            sortedRevenueScore[i--] = tmp;
+        }
+    }
+    if (!sortedRevenueScore[QUORUM - 1])
+    {
+        sortedRevenueScore[QUORUM - 1] = 1;
+    }
+
+    // Compute revenue of computors and arbitrator
+    long long arbitratorRevenue = ISSUANCE_RATE;
+    constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
+    constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
+    static_assert(MAX_NUMBER_OF_TICKS_PER_EPOCH <= 605020, "Redefine scalingFactor");
+    // maxRevenueScore for 605020 ticks = ((7099 * 605020) / 676) * 605020 * 675
+    constexpr unsigned scalingFactor = 208100; // >= (maxRevenueScore600kTicks / 0xFFFFFFFFFFFFFFFFULL) * issuancePerComputor =(approx)= 208078.5
+    for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    {
+        // Compute initial computor revenue, reducing arbitrator revenue
+        long long revenue;
+        if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
+            revenue = issuancePerComputor;
+        else
+        {
+            if (revenueScore[computorIndex] > scalingThreshold)
+            {
+                // scale down to prevent overflow, then scale back up after division
+                unsigned long long scaledRev = revenueScore[computorIndex] / scalingFactor;
+                revenue = ((issuancePerComputor * scaledRev) / sortedRevenueScore[QUORUM - 1]);
+                revenue *= scalingFactor;
+            }
+            else
+            {
+                revenue = ((issuancePerComputor * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
+            }
+        }
+        rev[computorIndex] = revenue;
+    }
+}
+
+static unsigned long long customMiningScoreBuffer[NUMBER_OF_COMPUTORS];
+void computeRevWithCustomMining(
+    const unsigned long long* oldScore,
+    const unsigned long long* customMiningSharesCount,
+    unsigned long long* oldRev,
+    unsigned long long* customMiningRev)
+{
+    // Old score
+    computeRev(oldScore, oldRev);
+
+    // Revenue of custom mining shares combination
+    // Formula: newScore =  vote_count * tx * customMiningShare = revenueOldScore * customMiningShare
+    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    {
+        customMiningScoreBuffer[computorIndex] = oldScore[computorIndex] * customMiningSharesCount[computorIndex];
+    }
+    computeRev(customMiningScoreBuffer, customMiningRev);
+}
