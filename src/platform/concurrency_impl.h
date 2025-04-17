@@ -12,7 +12,12 @@
 
 BusyWaitingTracker::BusyWaitingTracker(const char* expr, const char* file, unsigned int line)
 {
+#ifdef NO_UEFI
+    if (!frequency)
+        initTimeStampCounter();
+#else
     ASSERT(frequency != 0);
+#endif
     mStartTsc = __rdtsc();
     mNextReportTscDelta = frequency / 2; // first report after 0.5 seconds
     mExpr = expr;

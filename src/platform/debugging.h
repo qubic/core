@@ -13,6 +13,11 @@ static void addDebugMessage(const CHAR16* msg)
     wprintf(L"%ls\n", msg);
 }
 
+// In gtest context, this is noop
+static void printDebugMessages()
+{
+}
+
 #elif defined(NDEBUG)
 
 // static void addDebugMessage(const CHAR16* msg){} // empty impl
