@@ -5,8 +5,9 @@ project(qubic CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Allow the user to enable AVX-512
-option(ENABLE_AVX512 "Enable AVX-512 instructions" ON)
+# Include the centralized compiler detection module
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(CompilerDetection)
 
 # Option to build tests
 option(BUILD_TESTS "Build the test suite" ON)

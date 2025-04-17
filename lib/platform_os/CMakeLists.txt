@@ -9,12 +9,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Common compiler flags
-add_compile_options(
-    -Wall
-    -Wextra
-)
-
 # --- Include Directories (Common) ---
 # Get the project root directory by going up two levels from the current directory
 get_filename_component(PROJECT_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
@@ -34,6 +28,9 @@ set(SOURCES
 
 # Create static library
 add_library(platform_os STATIC ${SOURCES})
+
+# Apply OS-specific compiler flags from the centralized detection module
+apply_os_compiler_flags(platform_os)
 
 # Set library properties
 set_target_properties(platform_os PROPERTIES

@@ -9,20 +9,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Common compiler flags
-add_compile_options(
-    -ffreestanding
-    -mno-red-zone
-    -fshort-wchar
-    -fno-stack-protector
-    -fno-strict-aliasing
-    -fno-builtin
-    -fno-rtti
-    -fno-exceptions
-    -Wall
-    -Wextra
-)
-
 
 # --- Include Directories (Common) ---
 # Get the project root directory by going up two levels from the current directory
@@ -44,6 +30,9 @@ set(SOURCES
 
 # Create static library
 add_library(platform_efi STATIC ${SOURCES})
+
+# Apply EFI-specific compiler flags from the centralized detection module
+apply_efi_compiler_flags(platform_efi)
 
 # Set library properties
 set_target_properties(platform_efi PROPERTIES

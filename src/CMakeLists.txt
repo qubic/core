@@ -6,41 +6,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
-message(STATUS "Compiler ID: ${CMAKE_CXX_COMPILER_ID}")
-message(STATUS "Compiler Path: ${CMAKE_CXX_COMPILER}")
-
-
-# Allow the user to enable AVX-512
-option(ENABLE_AVX512 "Enable AVX-512 instructions" ON)
-
-if (ENABLE_AVX512)
-    add_compile_options(-mavx512f -mavx512cd -mavx512vl -mavx512bw -mavx512dq)
-else()
-    message(STATUS "AVX-512 is disabled. If you would like to activate make sure you set ENABLE_AVX512 to ON while running cmake.")
-endif()
-
-add_compile_options(-mavx -mavx2)
-
-add_compile_options(
-    -ffreestanding # No std
-    -mno-red-zone
-    -fshort-wchar # Use 16bit chars
-    # -Xclang -fno-wchar
-    -mrdrnd #random intrinsics
-    -target x86_64-unknown-windows
-    --sysroot="${CLANG_SYSROOT}"
-    -fno-stack-protector
-    -fno-strict-aliasing
-    -fno-builtin
-    -fno-rtti
-    -fno-exceptions
-    -Wall
-    -Wextra
-    -Werror
-    -Wno-unused-parameter
-)
-
-
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
@@ -48,6 +13,21 @@ add_executable(
   Qubic
   qubic.cpp
 )
+
+# Apply EFI-specific compiler flags from the centralized detection module
+apply_efi_compiler_flags(Qubic)
+
+# Add additional EFI-specific flags for the main application
+if(IS_CLANG)
+    # These flags are specific to the main application and not needed for libraries
+    target_compile_options(Qubic PRIVATE
+        -mrdrnd
+        -target x86_64-unknown-windows
+        $<$<BOOL:${CLANG_SYSROOT}>:--sysroot="${CLANG_SYSROOT}">
+        -Werror
+        -Wno-unused-parameter
+    )
+endif()
 
 # Link with platform libraries
 if(BUILD_TESTS)

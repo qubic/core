@@ -3,27 +3,15 @@ cmake_minimum_required(VERSION 3.15)
 # Project definition - Enable C always
 project(PlatformCommon LANGUAGES C)
 
-# --- Platform and Toolchain Detection ---
-set(IS_WINDOWS FALSE)
-set(IS_LINUX_CLANG FALSE)
-set(ASM_LANG "")
+# Use the centralized compiler detection
+# Note: IS_WINDOWS, IS_LINUX, IS_MSVC, IS_CLANG, IS_GCC, and ASM_LANG are already set
+# by the CompilerDetection.cmake module included from the root CMakeLists.txt
 
-if(MSVC)
-    # Windows with MSVC compiler
-    set(IS_WINDOWS TRUE)
-    enable_language(ASM_MASM)
-    set(ASM_LANG ASM_MASM)
-    message(STATUS "Configuring for Windows/MSVC (MASM)")
-elseif(CMAKE_SYSTEM_NAME MATCHES Linux AND (CMAKE_C_COMPILER_ID MATCHES Clang OR CMAKE_C_COMPILER_ID MATCHES GNU))
-    # Linux with Clang or GCC (will use NASM)
-    set(IS_LINUX_CLANG TRUE) # Keep variable name for consistency, works for GCC too
-    # NASM is not enabled via enable_language when using custom commands
-    set(ASM_LANG ASM_NASM) # Indicate NASM usage conceptually
-    message(STATUS "Configuring for Linux/${CMAKE_C_COMPILER_ID} (NASM via custom command)")
-    find_program(NASM_EXECUTABLE nasm REQUIRED) # Make sure NASM is found
+# For backward compatibility with existing code
+if(IS_LINUX AND (IS_CLANG OR IS_GCC))
+    set(IS_LINUX_CLANG TRUE)
 else()
-    message(WARNING "Platform/Compiler not automatically configured for assembly: ${CMAKE_SYSTEM_NAME}/${CMAKE_C_COMPILER_ID}")
-    # Add error or default behavior if needed
+    set(IS_LINUX_CLANG FALSE)
 endif()
 
 # --- Source File Definitions ---
@@ -103,48 +91,5 @@ target_include_directories(platform_common PUBLIC
 )
 
 # --- Common Preprocessor Definitions ---
-target_compile_definitions(platform_common PRIVATE
-    _LIB
-    "$<$<CONFIG:Release>:NDEBUG>"
-)
-
-# --- Platform-Specific Settings ---
-if(IS_WINDOWS)
-    # Windows/MSVC specific settings
-    target_compile_definitions(platform_common PRIVATE UNICODE _UNICODE)
-
-    target_compile_options(platform_common PRIVATE
-        # Common MSVC flags
-        /GS- /EHsc- /guard:cf- /fp:except- /GF /W3
-        # Debug MSVC flags
-        "$<$<CONFIG:Debug>:/RTC1>"
-        # Release MSVC flags
-        "$<$<CONFIG:Release>:/GL->" "$<$<CONFIG:Release>:/Gw>" "$<$<CONFIG:Release>:/Oi>"
-        "$<$<CONFIG:Release>:/Ob2>" "$<$<CONFIG:Release>:/O2>" "$<$<CONFIG:Release>:/Oy>"
-    )
-    # Apply MASM flags if needed to the platform_common_asm target
-    # target_compile_options(platform_common_asm PRIVATE ...)
-
-    set(CMAKE_STATIC_LIBRARY_FLAGS "${CMAKE_STATIC_LIBRARY_FLAGS} /IGNOREALLDEFAULTLIBS")
-
-elseif(IS_LINUX_CLANG)
-    # Linux/Clang specific settings for C files
-    target_compile_options(platform_common PRIVATE
-        -ffreestanding # No std
-        -mno-red-zone
-        -fshort-wchar # Use 16bit chars
-        -Wall                     # Warning Level (/W3)
-        -fno-stack-protector      # /GS-
-        -fno-exceptions           # /EHsc- (mainly C++)
-        # -fno-trapping-math      # /fp:except- (often default)
-        -ffunction-sections       # /Gw (usually used with -fdata-sections)
-        -fdata-sections
-        # Debug Clang flags (/Zi -> -g)
-        "$<$<CONFIG:Debug>:-g>"
-        # Release Clang flags
-        "$<$<CONFIG:Release>:-O2>"                   # /O2
-        "$<$<CONFIG:Release>:-fomit-frame-pointer>" # /Oy
-        "$<$<CONFIG:Release>:-fno-lto>"              # /GL- (disabled LTO)
-    )
-    # Note: No direct Clang equivalent needed for /IGNOREALLDEFAULTLIBS for static libs
-endif()
+# Apply common compiler flags from the centralized detection module
+apply_common_compiler_flags(platform_common)
