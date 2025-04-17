@@ -120,16 +120,16 @@ static void addDebugMessage(const CHAR16* msg)
 }
 
 // Add a assert message for logging from arbitrary thread
-static void addDebugMessageAssert(const CHAR16* message, const CHAR16* file, const unsigned int lineNumber)
+static void addDebugMessageAssert(const char* message, const char* file, const unsigned int lineNumber)
 {
     ACQUIRE(debugLogLock);
     if (debugMessageCount < 128)
     {
         setText(debugMessage[debugMessageCount], L"Assertion failed: ");
         appendText(debugMessage[debugMessageCount], message);
-        appendText(debugMessage[debugMessageCount], L" at line ");
+        appendText(debugMessage[debugMessageCount], " at line ");
         appendNumber(debugMessage[debugMessageCount], lineNumber, FALSE);
-        appendText(debugMessage[debugMessageCount], L" in ");
+        appendText(debugMessage[debugMessageCount], " in ");
         appendText(debugMessage[debugMessageCount], file);
         ++debugMessageCount;
     }
