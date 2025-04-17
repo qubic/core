@@ -60,6 +60,7 @@ elseif(IS_LINUX_CLANG AND ASM_LANG STREQUAL ASM_NASM)
         VERBATIM
     )
     add_library(LongJumpNasmObject OBJECT ${NASM_OBJ_LJ})
+    set_target_properties(LongJumpNasmObject PROPERTIES LINKER_LANGUAGE C)
     list(APPEND ASM_OBJECT_LIBS LongJumpNasmObject)
 
     # --- NASM File 2: SetJump ---
@@ -76,6 +77,7 @@ elseif(IS_LINUX_CLANG AND ASM_LANG STREQUAL ASM_NASM)
         VERBATIM
     )
     add_library(SetJumpNasmObject OBJECT ${NASM_OBJ_SJ})
+    set_target_properties(SetJumpNasmObject PROPERTIES LINKER_LANGUAGE C)
     list(APPEND ASM_OBJECT_LIBS SetJumpNasmObject)
 
 endif()
