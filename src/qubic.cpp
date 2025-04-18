@@ -2962,6 +2962,8 @@ static void resetCustomMining()
     gCustomMiningCountOverflow = 0;
     gSystemCustomMiningSolutionCount = 0;
     bs->SetMem(gSystemCustomMiningSolution, sizeof(gSystemCustomMiningSolution), 0);
+    gSystemCustomMiningDuplicatedSolutionCount = 0;
+    gSystemCustomMiningSolutionOFCount = 0;
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
