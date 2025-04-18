@@ -210,7 +210,7 @@ static volatile char gCustomMiningSharesCountLock = 0;
 static char gIsInCustomMiningState = 0;
 static volatile char gIsInCustomMiningStateLock = 0;
 
-static unsigned gCustomMiningCountOverflow = 0;
+static unsigned int gCustomMiningCountOverflow = 0;
 static volatile char gCustomMiningShareCountOverFlowLock = 0;
 
 struct revenueScore
