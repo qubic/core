@@ -548,17 +548,47 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 if (recordSolutions)
                                 {
                                     // Record the solution
+                                    bool isSolutionGood = false;
                                     const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
 
-                                    // Check the computor idx of this solution
-                                    unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
+                                    ACQUIRE(gSystemCustomMiningSolutionLock);
 
-                                    ACQUIRE(gCustomMiningSharesCountLock);
-                                    gCustomMiningSharesCount[computorID]++;
-                                    RELEASE(gCustomMiningSharesCountLock);
+                                    unsigned int k;
+                                    for (k = 0; k < gSystemCustomMiningSolutionCount; k++)
+                                    {
+                                        if (solution->nonce == gSystemCustomMiningSolution[k].nonce
+                                            //&& solution->padding == gSystemCustomMiningSolution[k].padding // Unused
+                                            && solution->taskIndex == gSystemCustomMiningSolution[k].taskIndex)
+                                        {
+                                            break;
+                                        }
+                                    }
+                                    // Non-duplicated nonce
+                                    if (k == gSystemCustomMiningSolutionCount)
+                                    {
+                                        if (gSystemCustomMiningSolutionCount < MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS)
+                                        {
+                                            isSolutionGood = true;
+                                            gSystemCustomMiningSolution[gSystemCustomMiningSolutionCount].taskIndex = solution->taskIndex;
+                                            gSystemCustomMiningSolution[gSystemCustomMiningSolutionCount].nonce = solution->nonce;
+                                            gSystemCustomMiningSolution[gSystemCustomMiningSolutionCount].padding = solution->padding;
+                                            gSystemCustomMiningSolutionCount++;
+                                        }
+                                    }
+
+                                    RELEASE(gSystemCustomMiningSolutionLock);
+
+                                    if (isSolutionGood)
+                                    {
+                                        // Check the computor idx of this solution
+                                        unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
+
+                                        ACQUIRE(gCustomMiningSharesCountLock);
+                                        gCustomMiningSharesCount[computorID]++;
+                                        RELEASE(gCustomMiningSharesCountLock);
+                                    }
                                 }
                             }
-
                             break;
                         }
                     }
@@ -1435,19 +1465,43 @@ static void checkAndSwitchMiningPhase()
     }
 }
 
+// Clean up before custom mining phase. Thread-safe function
+static void beginCustomMiningPhase()
+{
+    ACQUIRE(gSystemCustomMiningSolutionLock);
+    gSystemCustomMiningSolutionCount = 0;
+    bs->SetMem(gSystemCustomMiningSolution, sizeof(gSystemCustomMiningSolution), 0);
+    RELEASE(gSystemCustomMiningSolutionLock);
+}
+
 static void checkAndSwitchCustomMiningPhase()
 {
     const unsigned int r = getTickInMiningPhaseCycle();
-
-    ACQUIRE(gIsInCustomMiningStateLock);
+    bool isBeginOfCustomMiningPhase = false;
+    char isInCustomMiningPhase = 0;
+    
     if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
     {
-        gIsInCustomMiningState = 1;
+        isInCustomMiningPhase = 1;
+        if (r == INTERNAL_COMPUTATIONS_INTERVAL)
+        {
+            isBeginOfCustomMiningPhase = true;
+        }
     }
     else
     {
-        gIsInCustomMiningState = 0;
+        isInCustomMiningPhase = 0;
     }
+
+    // Variables need to be reset in the beginning of custom mining phase
+    if (isBeginOfCustomMiningPhase)
+    {
+        beginCustomMiningPhase();
+    }
+
+    // Turn on the custom mining state 
+    ACQUIRE(gIsInCustomMiningStateLock);
+    gIsInCustomMiningState = isInCustomMiningPhase;
     RELEASE(gIsInCustomMiningStateLock);
 }
 
@@ -2893,6 +2947,20 @@ static void processTick(unsigned long long processorNumber)
 
 #pragma optimize("", on)
 
+static void resetCustomMining()
+{
+    gCustomMiningSharesCounter.init();
+    bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+    gCustomMiningCountOverflow = 0;
+    gSystemCustomMiningSolutionCount = 0;
+    bs->SetMem(gSystemCustomMiningSolution, sizeof(gSystemCustomMiningSolution), 0);
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
+        gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
+    }
+}
+
 static void beginEpoch()
 {
     // This version doesn't support migration from contract IPO to contract operation!
@@ -2963,9 +3031,7 @@ static void beginEpoch()
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
-    gCustomMiningSharesCounter.init();
-    bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
-    gCustomMiningCountOverflow = 0;
+    resetCustomMining();
 
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
@@ -5779,7 +5845,7 @@ static bool initialize()
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
 
-    initCustomMining();
+    resetCustomMining();
     
     return true;
 }
