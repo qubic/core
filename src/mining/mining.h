@@ -57,9 +57,23 @@ struct CustomMiningSolution
 
 #define CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES 848
 #define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
+static constexpr int CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL = (1U << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) - 1;
+static constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL * NUMBER_OF_COMPUTORS);
+
 static_assert((1 << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) >= NUMBER_OF_COMPUTORS, "Invalid number of bit per datum");
 static_assert(CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES * 8 >= NUMBER_OF_COMPUTORS * CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP, "Invalid data size");
-static char accumulatedSharedCountLock = 0;
+volatile static char accumulatedSharedCountLock = 0;
+volatile static char gSystemCustomMiningSolutionLock = 0;
+struct
+{
+    unsigned long long taskIndex; // should match the index from task
+    unsigned int nonce;         // xmrig::JobResult.nonce
+    unsigned int padding;
+
+} gSystemCustomMiningSolution[MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS];
+unsigned long long gSystemCustomMiningSolutionCount = 0;
+unsigned long long gSystemCustomMiningDuplicatedSolutionCount = 0;
+unsigned long long gSystemCustomMiningSolutionOFCount = 0;
 
 struct CustomMiningSharePayload
 {
@@ -185,15 +199,6 @@ public:
         copyMem(&_accumulatedSharesCount[0], src + sizeof(_shareCount), sizeof(_accumulatedSharesCount));
     }
 };
-
-void initCustomMining()
-{
-    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
-    {
-        // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
-        gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
-    }
-}
 
 // Compute revenue of computors without donation
 void computeRev(
