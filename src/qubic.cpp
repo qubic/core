@@ -574,6 +574,14 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                             gSystemCustomMiningSolution[gSystemCustomMiningSolutionCount].padding = solution->padding;
                                             gSystemCustomMiningSolutionCount++;
                                         }
+                                        else
+                                        {
+                                            gSystemCustomMiningSolutionOFCount++;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        gSystemCustomMiningDuplicatedSolutionCount++;
                                     }
 
                                     RELEASE(gSystemCustomMiningSolutionLock);
@@ -6170,6 +6178,29 @@ static void logInfo()
     appendNumber(message, spectrumReorgTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms.");
     logToConsole(message);
+
+    // Log infomation about custom mining
+    setText(message, L"CustomMiningState:");
+
+    // System: solutions count at current phase | Total duplicated solutions | Total skipped solutions
+    appendText(message, L" System( ");
+    ACQUIRE(gSystemCustomMiningSolutionLock);
+    appendNumber(message, gSystemCustomMiningSolutionCount, false);
+    appendText(message, L" | ");
+    appendNumber(message, gSystemCustomMiningDuplicatedSolutionCount, false);
+    appendText(message, L" | ");
+    appendNumber(message, gSystemCustomMiningSolutionOFCount, false);
+    RELEASE(gSystemCustomMiningSolutionLock);
+    appendText(message, L").");
+
+    // SharesCount : Max count of overflow 
+    appendText(message, L" SharesCount (");
+    ACQUIRE(gCustomMiningShareCountOverFlowLock);
+    appendNumber(message, gCustomMiningCountOverflow, FALSE);
+    RELEASE(gCustomMiningShareCountOverFlowLock);
+    appendText(message, L").");
+    logToConsole(message);
+
 }
 
 static void logHealthStatus()
@@ -6501,18 +6532,6 @@ static void processKeyPresses()
 #endif
             appendNumber(message, QPI::div(K12MeasurementsSum, K12MeasurementsCount), TRUE);
             appendText(message, L" ticks.");
-            logToConsole(message);
-
-            unsigned int customMiningShareCountOverFlowCount = 0;
-            ACQUIRE(gCustomMiningShareCountOverFlowLock);
-            customMiningShareCountOverFlowCount =gCustomMiningCountOverflow;
-            RELEASE(gCustomMiningShareCountOverFlowLock);
-
-            setText(message, L" CustomMiningState: ");
-            appendText(message, L" OF(");
-            appendNumber(message, customMiningShareCountOverFlowCount, FALSE);
-            appendText(message, L").");
-
             logToConsole(message);
 
 #ifndef NDEBUG

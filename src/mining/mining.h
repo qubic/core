@@ -72,6 +72,8 @@ struct
 
 } gSystemCustomMiningSolution[MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS];
 unsigned long long gSystemCustomMiningSolutionCount = 0;
+unsigned long long gSystemCustomMiningDuplicatedSolutionCount = 0;
+unsigned long long gSystemCustomMiningSolutionOFCount = 0;
 
 struct CustomMiningSharePayload
 {
