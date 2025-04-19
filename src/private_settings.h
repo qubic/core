@@ -45,6 +45,7 @@ static unsigned long long logReaderPasscodes[4] = {
 // Mode for auto save ticks:
 // 0: disable
 // 1: save tick storage every TICK_STORAGE_AUTOSAVE_TICK_PERIOD ticks, only AUX mode
+// 2: save tick storage only when pressing the `F8` key or it is requeted remotely
 #define TICK_STORAGE_AUTOSAVE_MODE 0
 // NOTE: Strategy to pick TICK_STORAGE_AUTOSAVE_TICK_PERIOD:
 // Although the default value is 1000, there is a chance that your node can be misaligned at tick XXXX2000,XXXX3000,XXXX4000,... 
