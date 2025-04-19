@@ -6397,7 +6397,7 @@ static void processKeyPresses()
 
 #if TICK_STORAGE_AUTOSAVE_MODE
 #if TICK_STORAGE_AUTOSAVE_MODE == 2
-            setText(message, L"Auto-save disabled, use 's' key to trigger save");
+            setText(message, L"Auto-save disabled, use F8 key to trigger save");
 #else
             setText(message, L"Auto-save enabled in AUX mode: every ");
             appendNumber(message, TICK_STORAGE_AUTOSAVE_TICK_PERIOD, FALSE);
