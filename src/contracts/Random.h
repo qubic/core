@@ -24,17 +24,17 @@ private:
 	uint32 _bitFee; // Amount of qus
 
 	PUBLIC_PROCEDURE(RevealAndCommit)
-
+	{
 		qpi.transfer(qpi.invocator(), qpi.invocationReward());
-	_
+	}
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
 		REGISTER_USER_PROCEDURE(RevealAndCommit, 1);
-	_
+	}
 
-	INITIALIZE
-
+	INITIALIZE()
+	{
 		state._bitFee = 1000;
-	_
+	}
 };

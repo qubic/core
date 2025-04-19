@@ -50,6 +50,7 @@ private:
 	};
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(_SetRevenueDonationEntry)
+	{
 		// Try to find public key for updating entry
 		for (locals.idx = 0; locals.idx < state.revenueDonation.capacity(); ++locals.idx)
 		{
@@ -73,7 +74,7 @@ private:
 				return;
 			}
 		}
-	_
+	}
 
 public:
 	//----------------------------------------------------------------------------
@@ -88,6 +89,7 @@ public:
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetProposal)
+	{
 		// TODO: Fee? Burn fee?
 
 		// Check requirements for proposals in this contract
@@ -114,7 +116,7 @@ public:
 
 		// Try to set proposal (checks originators rights and general validity of input proposal)
 		output.okay = qpi(state.proposals).setProposal(qpi.originator(), input);
-	_
+	}
 
 
 	struct GetProposalIndices_input
@@ -129,6 +131,7 @@ public:
 	};
 
 	PUBLIC_FUNCTION(GetProposalIndices)
+	{
 		if (input.activeProposals)
 		{
 			// Return proposals that are open for voting in current epoch
@@ -155,7 +158,7 @@ public:
 					break;
 			}
 		}
-	_
+	}
 
 
 	struct GetProposal_input
@@ -171,18 +174,20 @@ public:
 	};
 
 	PUBLIC_FUNCTION(GetProposal)
+	{
 		output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex);
 		output.okay = qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
-	_
+	}
 
 
 	typedef ProposalSingleVoteDataV1 Vote_input;
 	typedef Success_output Vote_output;
 
 	PUBLIC_PROCEDURE(Vote)
+	{
 		// TODO: Fee? Burn fee?
 		output.okay = qpi(state.proposals).vote(qpi.originator(), input);
-	_
+	}
 
 
 	struct GetVote_input
@@ -197,11 +202,12 @@ public:
 	};
 
 	PUBLIC_FUNCTION(GetVote)
+	{
 		output.okay = qpi(state.proposals).getVote(
 			input.proposalIndex,
 			qpi(state.proposals).voterIndex(input.voter),
 			output.vote);
-	_
+	}
 
 
 	struct GetVotingResults_input
@@ -215,20 +221,23 @@ public:
 	};
 
 	PUBLIC_FUNCTION(GetVotingResults)
+	{
 		output.okay = qpi(state.proposals).getVotingSummary(
 			input.proposalIndex, output.results);
-	_
+	}
 
 
 	typedef NoData GetRevenueDonation_input;
 	typedef RevenueDonationT GetRevenueDonation_output;
 
 	PUBLIC_FUNCTION(GetRevenueDonation)
+	{
 		output = state.revenueDonation;
-	_
+	}
 
 
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
         REGISTER_USER_FUNCTION(GetProposalIndices, 1);
         REGISTER_USER_FUNCTION(GetProposal, 2);
         REGISTER_USER_FUNCTION(GetVote, 3);
@@ -237,7 +246,7 @@ public:
 
         REGISTER_USER_PROCEDURE(SetProposal, 1);
         REGISTER_USER_PROCEDURE(Vote, 2);
-    _
+    }
 
 		
 	struct BEGIN_EPOCH_locals
@@ -253,7 +262,8 @@ public:
 		Success_output success;
 	};
 
-	BEGIN_EPOCH_WITH_LOCALS
+	BEGIN_EPOCH_WITH_LOCALS()
+	{
 		// Analyze transfer proposal results
 
 		// Iterate all proposals that were open for voting in previous epoch ...
@@ -299,7 +309,7 @@ public:
 				}
 			}
 		}
-	_
+	}
 
 
 	struct INITIALIZE_locals
@@ -308,7 +318,8 @@ public:
 		Success_output success;
 	};
 
-	INITIALIZE_WITH_LOCALS
+	INITIALIZE_WITH_LOCALS()
+	{
 		// All works with zeroed state, but:
 		// In the construction epoch 123, directly add the 15% revenue donation to the Supply Watcher contract,
 		// which has been accepted by quorum with the old proposal system
@@ -316,5 +327,5 @@ public:
 		locals.revenueDonationEntry.millionthAmount = 150 * 1000;
 		locals.revenueDonationEntry.firstEpoch = 123;
 		CALL(_SetRevenueDonationEntry, locals.revenueDonationEntry, locals.success);
-	_
+	}
 };

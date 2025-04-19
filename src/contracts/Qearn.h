@@ -279,6 +279,7 @@ protected:
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getStateOfRound)
+    {
         if(input.epoch < QEARN_INITIAL_EPOCH) 
         {                                                            // non staking
             output.state = 2; 
@@ -297,10 +298,10 @@ protected:
         {
             output.state = 2;       // ended round
         }
-    _
+    }
 
     PUBLIC_FUNCTION(getLockInfoPerEpoch)
-
+    {
         output.bonusAmount = state._initialRoundInfo.get(input.Epoch)._epochBonusAmount;
         output.lockedAmount = state._initialRoundInfo.get(input.Epoch)._totalLockedAmount;
         output.currentBonusAmount = state._currentRoundInfo.get(input.Epoch)._epochBonusAmount;
@@ -313,7 +314,7 @@ protected:
         {
             output.yield = 0ULL;
         }
-    _
+    }
 
     struct getStatsPerEpoch_locals 
     {
@@ -322,7 +323,7 @@ protected:
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getStatsPerEpoch)
-
+    {
         output.earlyUnlockedAmount = state._initialRoundInfo.get(input.epoch)._totalLockedAmount - state._currentRoundInfo.get(input.epoch)._totalLockedAmount;
         output.earlyUnlockedPercent = div(output.earlyUnlockedAmount * 10000ULL, state._initialRoundInfo.get(input.epoch)._totalLockedAmount);
 
@@ -349,7 +350,7 @@ protected:
 
         output.averageAPY = div(output.averageAPY, locals.cnt * 1ULL);
         
-    _
+    }
 
     struct getBurnedAndBoostedStats_locals 
     {
@@ -357,7 +358,7 @@ protected:
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getBurnedAndBoostedStats)
-
+    {
         output.boostedAmount = 0;
         output.burnedAmount = 0;
         output.rewardedAmount = 0;
@@ -380,10 +381,10 @@ protected:
         output.averageBoostedPercent = div(output.averageBoostedPercent, qpi.epoch() - 138ULL);
         output.averageRewardedPercent = div(output.averageRewardedPercent, qpi.epoch() - 138ULL);
 
-    _
+    }
 
     PUBLIC_FUNCTION(getBurnedAndBoostedStatsPerEpoch)
-
+    {
         output.boostedAmount = state.statsInfo.get(input.epoch).boostedAmount;
         output.burnedAmount = state.statsInfo.get(input.epoch).burnedAmount;
         output.rewardedAmount = state.statsInfo.get(input.epoch).rewardedAmount;
@@ -392,7 +393,7 @@ protected:
         output.boostedPercent = div(state.statsInfo.get(input.epoch).boostedAmount * 10000000, state._initialRoundInfo.get(input.epoch)._epochBonusAmount);
         output.rewardedPercent = div(state.statsInfo.get(input.epoch).rewardedAmount * 10000000, state._initialRoundInfo.get(input.epoch)._epochBonusAmount);
     
-    _
+    }
 
     struct getUserLockedInfo_locals {
         uint32 _t;
@@ -401,7 +402,7 @@ protected:
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getUserLockedInfo)
-
+    {
         locals.startIndex = state._epochIndex.get(input.epoch).startIndex;
         locals.endIndex = state._epochIndex.get(input.epoch).endIndex;
         
@@ -413,7 +414,7 @@ protected:
                 return;
             }
         }
-    _
+    }
 
     struct getUserLockStatus_locals {
         uint64 bn;
@@ -424,7 +425,7 @@ protected:
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getUserLockStatus)
-
+    {
         output.status = 0ULL;
         locals.endIndex = state._epochIndex.get(qpi.epoch()).endIndex;
         
@@ -440,14 +441,14 @@ protected:
             }
         }
 
-    _
+    }
     
     struct getEndedStatus_locals {
         uint32 _t;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getEndedStatus)
-
+    {
         output.earlyRewardedAmount = 0;
         output.earlyUnlockedAmount = 0;
         output.fullyRewardedAmount = 0;
@@ -474,7 +475,7 @@ protected:
                 return ;
             }
         }
-    _
+    }
 
     struct lock_locals {
 
@@ -488,7 +489,7 @@ protected:
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(lock)
-    
+    {
         if (qpi.invocationReward() < QEARN_MINIMUM_LOCKING_AMOUNT || qpi.epoch() < QEARN_INITIAL_EPOCH)
         {
             output.returnCode = QEARN_INVALID_INPUT_AMOUNT;         // if the amount of locking is less than 10M, it should be failed to lock.
@@ -596,7 +597,7 @@ protected:
 
         locals.log = {QEARN_CONTRACT_INDEX, qpi.invocator(), SELF, qpi.invocationReward(), QearnSuccessLocking, 0};
         LOG_INFO(locals.log);
-    _
+    }
 
     struct unlock_locals {
 
@@ -624,7 +625,7 @@ protected:
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(unlock)
-
+    {
         if (input.lockedEpoch > QEARN_MAX_EPOCHS || input.lockedEpoch < QEARN_INITIAL_EPOCH)
         {
 
@@ -870,10 +871,10 @@ protected:
         }
 
         output.returnCode = QEARN_UNLOCK_SUCCESS; //  unlock is succeed
-    _
+    }
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-    
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
         REGISTER_USER_FUNCTION(getLockInfoPerEpoch, 1);
         REGISTER_USER_FUNCTION(getUserLockedInfo, 2);
         REGISTER_USER_FUNCTION(getStateOfRound, 3);
@@ -886,7 +887,7 @@ protected:
         REGISTER_USER_PROCEDURE(lock, 1);
 		REGISTER_USER_PROCEDURE(unlock, 2);
 
-	_
+	}
 
     struct BEGIN_EPOCH_locals
     {
@@ -903,8 +904,8 @@ protected:
         uint32 locked_epoch;
     };
 
-    BEGIN_EPOCH_WITH_LOCALS
-
+    BEGIN_EPOCH_WITH_LOCALS()
+    {
         qpi.getEntity(SELF, locals.entity);
         locals.current_balance = locals.entity.incomingAmount - locals.entity.outgoingAmount;
 
@@ -928,7 +929,7 @@ protected:
 
         state._initialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
         state._currentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
-	_
+	}
 
     struct END_EPOCH_locals 
     {
@@ -952,8 +953,8 @@ protected:
 
     };
 
-	END_EPOCH_WITH_LOCALS
-
+	END_EPOCH_WITH_LOCALS()
+    {
         state._earlyUnlockedCnt = 0;
         state._fullyUnlockedCnt = 0;
         locals.lockedEpoch = qpi.epoch() - 52;
@@ -1071,5 +1072,5 @@ protected:
         locals.tmpStats.burnedAmount = state.statsInfo.get(locals.lockedEpoch).burnedAmount + locals._burnAmount;
 
         state.statsInfo.set(locals.lockedEpoch, locals.tmpStats);
-	_
+	}
 };

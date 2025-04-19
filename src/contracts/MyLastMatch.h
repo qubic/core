@@ -6,6 +6,7 @@ struct MLM2
 
 struct MLM : public ContractBase
 {
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-	_
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
+	}
 };
