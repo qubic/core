@@ -3135,7 +3135,7 @@ static void endEpoch()
 #if PAUSE_BEFORE_CLEAR_MEMORY
     // re-open request processors for other services to query
     epochTransitionState = 0;
-    WAIT_WHILEepochTransitionWaitingRequestProcessors != 0);
+    WAIT_WHILE(epochTransitionWaitingRequestProcessors != 0);
 
     epochTransitionCleanMemoryFlag = 0;
     WAIT_WHILE(epochTransitionCleanMemoryFlag == 0); // wait until operator flip this flag to 1 to continue the beginEpoch procedures
