@@ -414,7 +414,7 @@ protected:
     struct stake_locals
     {
         stakingInfo user;
-        uint32 _t;
+        sint32 _t;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(stake)
@@ -428,7 +428,7 @@ protected:
 
         qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, qpi.invocator(), qpi.invocator(), input.amount, SELF);
 
-        for (locals._t = 0 ; locals._t < state.numberOfStaker; locals._t++)
+        for (locals._t = 0 ; locals._t < (sint64)state.numberOfStaker; locals._t++)
         {
             if (state.staker.get(locals._t).stakerAddress == qpi.invocator())
             {
@@ -455,12 +455,12 @@ protected:
     struct unStake_locals
     {
         stakingInfo user;
-        uint32 _t;
+        sint32 _t;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(unStake)
     {
-        for (locals._t = 0 ; locals._t < state.numberOfStaker; locals._t++)
+        for (locals._t = 0 ; locals._t < (sint64)state.numberOfStaker; locals._t++)
         {
             if (state.staker.get(locals._t).stakerAddress == qpi.invocator())
             {
@@ -498,12 +498,12 @@ protected:
     struct submitGP_locals
     {
         GPInfo newProposal;
-        uint32 _t;
+        sint32 _t;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(submitGP)
     {
-        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
         {
             if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
             {
@@ -553,12 +553,12 @@ protected:
     struct submitQCP_locals
     {
         QCPInfo newProposal;
-        uint32 _t;
+        sint32 _t;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(submitQCP)
     {
-        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
         {
             if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
             {
@@ -610,7 +610,7 @@ protected:
     struct submitIPOP_locals
     {
         IPOPInfo newProposal;
-        uint32 _t;
+        sint32 _t;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(submitIPOP)
@@ -622,7 +622,7 @@ protected:
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
         }
-        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
         {
             if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
             {
@@ -676,7 +676,7 @@ protected:
     struct submitQEarnP_locals
     {
         QEarnPInfo newProposal;
-        uint32 _t;
+        sint32 _t;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(submitQEarnP)
@@ -699,7 +699,7 @@ protected:
             }
             return ;
         }
-        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
         {
             if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
             {
@@ -753,7 +753,7 @@ protected:
     struct submitFundP_locals
     {
         FundPInfo newProposal;
-        uint32 _t;
+        sint32 _t;
         uint32 curDate;
         uint8 year;
         uint8 month;
@@ -765,7 +765,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(submitFundP)
     {
-        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
         {
             if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
             {
@@ -858,12 +858,12 @@ protected:
     struct submitMKTP_locals
     {
         MKTPInfo newProposal;
-        uint32 _t;
+        sint32 _t;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(submitMKTP)
     {
-        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
         {
             if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
             {
@@ -928,7 +928,7 @@ protected:
     struct submitAlloP_locals
     {
         AlloPInfo newProposal;
-        uint32 _t;
+        sint32 _t;
         uint32 curDate;
         uint8 year;
         uint8 month;
@@ -940,7 +940,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(submitAlloP)
     {
-        for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t++)
+        for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
         {
             if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
             {
@@ -1034,7 +1034,7 @@ protected:
         AlloPInfo updatedAlloProposal;
         uint64 numberOfYes;
         uint64 numberOfNo;
-        uint32 _t;
+        sint32 _t;
         bit statusOfProposal;
     };
 
@@ -1087,7 +1087,7 @@ protected:
         {
             locals.numberOfYes = 0;
             locals.numberOfNo = 0;
-            for (locals._t = 0 ; locals._t < state.numberOfVotingPower; locals._t)
+            for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t)
             {
                 if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
                 {
@@ -1152,7 +1152,7 @@ protected:
         QX::TransferShareManagementRights_input transferShareManagementRights_input;
 		QX::TransferShareManagementRights_output transferShareManagementRights_output;
         FundPInfo updatedFundProposal;
-        uint32 _t;
+        sint32 _t;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(buyQcap)
@@ -1177,8 +1177,8 @@ protected:
                     qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, input.amount, qpi.invocator());
 
                     state.qcapSoldAmount += input.amount;
-                    locals.updatedFundProposal.restSaleAmount -= input.amount;
                     locals.updatedFundProposal = state.FundP.get(locals._t);
+                    locals.updatedFundProposal.restSaleAmount -= input.amount;
                     state.FundP.set(locals._t, locals.updatedFundProposal);
                     output.returnCode = QVAULTLogInfo::QvaultSuccess;
                     return ;
@@ -1264,12 +1264,12 @@ protected:
 
     struct getStakedAmountAndVotingPower_locals
     {
-        uint32 _t;
+        sint32 _t;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getStakedAmountAndVotingPower)
     {
-        for(locals._t = 0; locals._t < state.numberOfStaker; locals._t++)
+        for(locals._t = 0; locals._t < (sint64)state.numberOfStaker; locals._t++)
         {
             if(state.staker.get(locals._t).stakerAddress == input.address)
             {
@@ -1277,7 +1277,7 @@ protected:
                 break;
             }
         }
-        for(locals._t = 0; locals._t < state.numberOfVotingPower; locals._t++)
+        for(locals._t = 0; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
         {
             if(state.votingPower.get(locals._t).stakerAddress == input.address)
             {
