@@ -276,7 +276,9 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueBufferHead];
         if (!responseHeader->checkAndSetSize(sizeof(RequestResponseHeader) + dataSize))
         {
+#ifndef NDEBUG
             addDebugMessage(L"Error: Message size exceeds maximum message size!");
+#endif
         }
         responseHeader->setType(type);
         responseHeader->setDejavu(dejavu);
