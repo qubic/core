@@ -551,40 +551,18 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     bool isSolutionGood = false;
                                     const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
 
-                                    ACQUIRE(gSystemCustomMiningSolutionLock);
+                                    CustomMiningSolutionCacheEntry cacheEntry;
+                                    cacheEntry.set(solution);
 
-                                    unsigned int k;
-                                    for (k = 0; k < gSystemCustomMiningSolutionCount; k++)
-                                    {
-                                        if (solution->nonce == gSystemCustomMiningSolution[k].nonce
-                                            //&& solution->padding == gSystemCustomMiningSolution[k].padding // Unused
-                                            && solution->taskIndex == gSystemCustomMiningSolution[k].taskIndex)
-                                        {
-                                            break;
-                                        }
-                                    }
-                                    // Non-duplicated nonce
-                                    if (k == gSystemCustomMiningSolutionCount)
-                                    {
-                                        if (gSystemCustomMiningSolutionCount < MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS)
-                                        {
-                                            isSolutionGood = true;
-                                            gSystemCustomMiningSolution[gSystemCustomMiningSolutionCount].taskIndex = solution->taskIndex;
-                                            gSystemCustomMiningSolution[gSystemCustomMiningSolutionCount].nonce = solution->nonce;
-                                            gSystemCustomMiningSolution[gSystemCustomMiningSolutionCount].padding = solution->padding;
-                                            gSystemCustomMiningSolutionCount++;
-                                        }
-                                        else
-                                        {
-                                            gSystemCustomMiningSolutionOFCount++;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        gSystemCustomMiningDuplicatedSolutionCount++;
-                                    }
+                                    unsigned int cacheIndex = 0;
+                                    int sts = gSystemCustomMiningSolution.tryFetching(cacheEntry, cacheIndex);
 
-                                    RELEASE(gSystemCustomMiningSolutionLock);
+                                    // Check for duplicated solution
+                                    if (sts == CUSTOM_MINING_CACHE_MISS)
+                                    {
+                                        gSystemCustomMiningSolution.addEntry(cacheEntry, cacheIndex);
+                                        isSolutionGood = true;
+                                    }
 
                                     if (isSolutionGood)
                                     {
@@ -595,6 +573,17 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         gCustomMiningSharesCount[computorID]++;
                                         RELEASE(gCustomMiningSharesCountLock);
                                     }
+
+                                    // Record stats
+                                    const unsigned int hitCount = gSystemCustomMiningSolution.hitCount(); 
+                                    const unsigned int missCount = gSystemCustomMiningSolution.missCount();
+                                    const unsigned int collision = gSystemCustomMiningSolution.collisionCount();
+
+                                    ACQUIRE(gSystemCustomMiningSolutionLock);
+                                    gSystemCustomMiningDuplicatedSolutionCount = hitCount;
+                                    gSystemCustomMiningSolutionCount = missCount;
+                                    gSystemCustomMiningSolutionOFCount = collision;
+                                    RELEASE(gSystemCustomMiningSolutionLock);
                                 }
                             }
                             break;
@@ -1478,7 +1467,7 @@ static void beginCustomMiningPhase()
 {
     ACQUIRE(gSystemCustomMiningSolutionLock);
     gSystemCustomMiningSolutionCount = 0;
-    bs->SetMem(gSystemCustomMiningSolution, sizeof(gSystemCustomMiningSolution), 0);
+    gSystemCustomMiningSolution.reset();
     RELEASE(gSystemCustomMiningSolutionLock);
 }
 
@@ -2961,9 +2950,9 @@ static void resetCustomMining()
     bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
     gCustomMiningCountOverflow = 0;
     gSystemCustomMiningSolutionCount = 0;
-    bs->SetMem(gSystemCustomMiningSolution, sizeof(gSystemCustomMiningSolution), 0);
     gSystemCustomMiningDuplicatedSolutionCount = 0;
     gSystemCustomMiningSolutionOFCount = 0;
+    gSystemCustomMiningSolution.reset();
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
@@ -5775,6 +5764,7 @@ static bool initialize()
         setNewMiningSeed();
     }    
     score->loadScoreCache(system.epoch);
+    loadCustomMiningCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
     if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
@@ -7019,6 +7009,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     saveSystem();
                     score->saveScoreCache(system.epoch);
+                    saveCustomMiningCache(system.epoch);
                 }
 #endif
 
@@ -7308,6 +7299,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             saveSystem();
             score->saveScoreCache(system.epoch);
+            saveCustomMiningCache(system.epoch);
 
             setText(message, L"Qubic ");
             appendQubicVersion(message);
