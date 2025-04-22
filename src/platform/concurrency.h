@@ -24,7 +24,7 @@ class BusyWaitingTracker
 public:
     BusyWaitingTracker(const char* expr, const char* file, unsigned int line);
     ~BusyWaitingTracker();
-    void wait();
+    void pause();
 };
 
 // Acquire lock, may block and may log if it is blocked for a long time
@@ -32,7 +32,7 @@ public:
     if (_InterlockedCompareExchange8(&lock, 1, 0)) { \
         BusyWaitingTracker bwt(#lock, __FILE__, __LINE__); \
         while (_InterlockedCompareExchange8(&lock, 1, 0)) \
-            bwt.wait(); \
+            bwt.pause(); \
     }
 
 #endif

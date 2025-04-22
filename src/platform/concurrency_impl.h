@@ -47,7 +47,7 @@ BusyWaitingTracker::~BusyWaitingTracker()
     }
 }
 
-void BusyWaitingTracker::wait()
+void BusyWaitingTracker::pause()
 {
     ASSERT(frequency != 0);
     const unsigned long long curTsc = __rdtsc();
