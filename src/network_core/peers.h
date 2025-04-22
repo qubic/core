@@ -276,12 +276,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueBufferHead];
         if (!responseHeader->checkAndSetSize(sizeof(RequestResponseHeader) + dataSize))
         {
-            setText(message, L"Error: Message size ");
-            appendNumber(message, sizeof(RequestResponseHeader) + dataSize, TRUE);
-            appendText(message, L" of message of type ");
-            appendNumber(message, type, FALSE);
-            appendText(message, L" exceeds maximum message size!");
-            logToConsole(message);
+            addDebugMessage(L"Error: Message size exceeds maximum message size!");
         }
         responseHeader->setType(type);
         responseHeader->setDejavu(dejavu);
@@ -407,6 +402,10 @@ static void penalizePublicPeerRejectedConnection(const IPv4Address& address)
 static void addPublicPeer(const IPv4Address& address)
 {
     if (isBogonAddress(address))
+    {
+        return;
+    }
+    if (address.u32 == 0) // not add zero address
     {
         return;
     }
@@ -759,41 +758,44 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
             peers[i].isIncommingConnection = FALSE;
 
-            unsigned int j;
-            for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
+            if (peers[i].address.u32 != 0)
             {
-                if (peers[j].tcp4Protocol && peers[j].address == peers[i].address)
+                unsigned int j;
+                for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
                 {
-                    break;
-                }
-            }
-            if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
-            {
-                if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
-                {
-                    peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                    peers[i].dataToTransmitSize = 0;
-                    peers[i].isReceiving = FALSE;
-                    peers[i].isTransmitting = FALSE;
-                    peers[i].exchangedPublicPeers = FALSE;
-                    peers[i].isClosing = FALSE;
-
-                    if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
+                    if (peers[j].tcp4Protocol && peers[j].address == peers[i].address)
                     {
-                        logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
+                        break;
+                    }
+                }
+                if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
+                {
+                    if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
+                    {
+                        peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
+                        peers[i].dataToTransmitSize = 0;
+                        peers[i].isReceiving = FALSE;
+                        peers[i].isTransmitting = FALSE;
+                        peers[i].exchangedPublicPeers = FALSE;
+                        peers[i].isClosing = FALSE;
 
-                        bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
-                        tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
-                        peers[i].tcp4Protocol = NULL;
+                        if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
+                        {
+                            logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
+
+                            bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
+                            tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
+                            peers[i].tcp4Protocol = NULL;
+                        }
+                        else
+                        {
+                            peers[i].isConnectingAccepting = TRUE;
+                        }
                     }
                     else
                     {
-                        peers[i].isConnectingAccepting = TRUE;
+                        peers[i].tcp4Protocol = NULL;
                     }
-                }
-                else
-                {
-                    peers[i].tcp4Protocol = NULL;
                 }
             }
         }
