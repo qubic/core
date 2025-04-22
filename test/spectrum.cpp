@@ -4,11 +4,11 @@
 
 #include "gtest/gtest.h"
 
-#include "logging_test.h"
-#include "spectrum/spectrum.h"
-
 #include <chrono>
 #include <random>
+
+#include "logging_test.h"
+#include "spectrum/spectrum.h"
 
 static bool transfer(const m256i& src, const m256i& dst, long long amount)
 {
