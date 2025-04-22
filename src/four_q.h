@@ -1776,6 +1776,9 @@ static void sign(const unsigned char* subseed, const unsigned char* publicKey, c
 
     KangarooTwelve((unsigned char*)subseed, 32, k, 64);
 
+    // NOTE: the nonce consists 2 parts: hash from subseed and message digest
+    // This nonce is supposed to be random to avoid key leakage.
+    // We need entropy from seed here because the message digest maybe the same (from different addresses) in some scenarios
     *((__m256i*)(temp + 32)) = *((__m256i*)(k + 32));
     *((__m256i*)(temp + 64)) = *((__m256i*)messageDigest);
 
