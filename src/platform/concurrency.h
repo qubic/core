@@ -43,6 +43,35 @@ public:
 // Release lock
 #define RELEASE(lock) lock = 0
 
+
+#ifdef NDEBUG
+
+// Begin waiting loop (with short expected waiting time). Outputs to debug.log if waiting long and NDEBUG isn't defined.
+#define BEGIN_WAIT_WHILE(condition) \
+    while (condition) {
+
+// End waiting loop, corresponding to BEGIN_WAIT_WHILE().
+#define END_WAIT_WHILE() _mm_pause(); }
+
+#else
+
+// Begin waiting loop (with short expected waiting time). Outputs to debug.log if waiting long and NDEBUG isn't defined.
+#define BEGIN_WAIT_WHILE(condition) \
+    if (condition) { \
+        BusyWaitingTracker bwt(#condition, __FILE__, __LINE__); \
+        while (condition) {
+
+// End waiting loop, corresponding to BEGIN_WAIT_WHILE().
+#define END_WAIT_WHILE() bwt.pause(); } }
+
+#endif
+
+
+// Waiting loop with short expected waiting time. Outputs to debug.log if waiting long and NDEBUG isn't defined.
+#define WAIT_WHILE(condition) \
+    BEGIN_WAIT_WHILE(condition) \
+    END_WAIT_WHILE()
+
 #define ATOMIC_STORE8(target, val) _InterlockedExchange8(&target, val)
 #define ATOMIC_INC64(target) _InterlockedIncrement64(&target)
 #define ATOMIC_AND64(target, val) _InterlockedAnd64(&target, val)

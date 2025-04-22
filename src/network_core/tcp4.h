@@ -74,11 +74,8 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
 
                 if (status == EFI_NO_MAPPING)
                 {
-                    while (!(status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, NULL, &modeData, NULL, NULL))
-                        && !modeData.IsConfigured)
-                    {
-                        _mm_pause();
-                    }
+                    WAIT_WHILE(!(status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, NULL, &modeData, NULL, NULL))
+                        && !modeData.IsConfigured);
                     if (!status)
                     {
                         if (status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
