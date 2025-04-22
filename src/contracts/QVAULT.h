@@ -32,6 +32,7 @@ enum QVAULTLogInfo {
     QvaultErrorTransferAsset = 12,
     QvaultInsufficientVotingPower = 13,
     QvaultInputError = 14,
+    QvaultOverflowProposal = 15
 };
 
 struct QVAULT2
@@ -1039,35 +1040,40 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(voteInProposal)
     {
+        if(input.proposalId > QVAULT_MAX_NUMBER_OF_PROPOSAL)
+        {
+            output.returnCode = QVAULTLogInfo::QvaultOverflowProposal;
+            return ;
+        }
         switch (input.proposalType)
         {
             case 1:
                 locals.updatedGProposal = state.GP.get(input.proposalId);
-                locals.statusOfProposal = state.GP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                locals.statusOfProposal = state.GP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
                 break;
             case 2:
                 locals.updatedQCProposal = state.QCP.get(input.proposalId);
-                locals.statusOfProposal = state.QCP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                locals.statusOfProposal = state.QCP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
                 break;
             case 3:
                 locals.updatedIPOProposal = state.IPOP.get(input.proposalId);
-                locals.statusOfProposal = state.IPOP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                locals.statusOfProposal = state.IPOP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
                 break;
             case 4:
                 locals.updatedQEarnProposal = state.QEarnP.get(input.proposalId);
-                locals.statusOfProposal = state.QEarnP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                locals.statusOfProposal = state.QEarnP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
                 break;
             case 5:
                 locals.updatedFundProposal = state.FundP.get(input.proposalId);
-                locals.statusOfProposal = state.FundP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                locals.statusOfProposal = state.FundP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
                 break;
             case 6:
                 locals.updatedMKTProposal = state.MKTP.get(input.proposalId);
-                locals.statusOfProposal = state.MKTP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                locals.statusOfProposal = state.MKTP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
                 break;
             case 7:
                 locals.updatedAlloProposal = state.AlloP.get(input.proposalId);
-                locals.statusOfProposal = state.AlloP.get(input.proposalId).proposedEpoch == 1 ? 1 : 0;
+                locals.statusOfProposal = state.AlloP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
                 break;
         }
 
