@@ -130,6 +130,8 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
     {
         ResponsePruningLog resp;
         bool isValidRange = mapLogIdToBufferIndex.isIndexValid(request->fromLogId) && mapLogIdToBufferIndex.isIndexValid(request->toLogId);
+        isValidRange &= (request->toLogId >= mapLogIdToBufferIndex.pageCap());
+        isValidRange &= (request->toLogId >= request->fromLogId + mapLogIdToBufferIndex.pageCap());
         if (!isValidRange)
         {
             resp.success = 4;
@@ -138,15 +140,15 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
         {
             auto pageCap = mapLogIdToBufferIndex.pageCap();
             // here we round up FROM but round down TO
-            unsigned long long fromPageId = (request->fromLogId + pageCap - 1) / pageCap;
-            unsigned long long toPageId = request->toLogId / pageCap;
-            unsigned long long fromLogId = fromPageId * pageCap;
-            unsigned long long toLogId = toPageId * pageCap;
+            long long fromPageId = (request->fromLogId + pageCap - 1) / pageCap;
+            long long toPageId = (request->toLogId - pageCap + 1) / pageCap;
+            long long fromLogId = fromPageId * pageCap;
+            long long toLogId = toPageId * pageCap + pageCap - 1;
 
             BlobInfo bis = mapLogIdToBufferIndex[fromLogId];
             BlobInfo bie = mapLogIdToBufferIndex[toLogId];
-            unsigned long long logBufferStart = bis.startIndex;
-            unsigned long long logBufferEnd = bie.startIndex + bie.length;
+            long long logBufferStart = bis.startIndex;
+            long long logBufferEnd = bie.startIndex + bie.length;
             resp.success = 0;
             bool res0 = mapLogIdToBufferIndex.pruneRange(fromLogId, toLogId);
             if (!res0)
@@ -154,20 +156,22 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
                 resp.success = 1;
             }
 
-            bool res1 = logBuffer.pruneRange(logBufferStart, logBufferEnd);
-            if (!res1)
+            if (logBufferEnd > logBufferStart)
             {
-                resp.success = (resp.success << 1) | 1;
+                bool res1 = logBuffer.pruneRange(logBufferStart, logBufferEnd);
+                if (!res1)
+                {
+                    resp.success = (resp.success << 1) | 1;
+                }
             }
         }
-        
+
         enqueueResponse(peer, sizeof(ResponsePruningLog), ResponsePruningLog::type, header->dejavu(), &resp);
         return;
     }
 #endif
     enqueueResponse(peer, 0, ResponsePruningLog::type, header->dejavu(), NULL);
 }
-
 
 void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* header)
 {
