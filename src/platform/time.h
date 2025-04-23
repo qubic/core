@@ -20,6 +20,7 @@ void updateTime();
 
 static void updateTime()
 {
+    assertMainThread();
     EFI_TIME newTime;
     if (!rs->GetTime(&newTime, NULL))
     {
@@ -53,17 +54,9 @@ inline long long ms(unsigned char year, unsigned char month, unsigned char day, 
 #ifndef NO_UEFI
 inline unsigned long long now_ms()
 {
-    EFI_TIME t;
-    if (!rs->GetTime(&t, NULL))
-    {
-        return ms(unsigned char(t.Year % 100), t.Month, t.Day, t.Hour, t.Minute, t.Second, t.Nanosecond / 1000000);
-    }
-    else
-    {
-        return 0;
-    }
+    // utcTime is updated on main thread - because only main thread can do it
+    return ms(unsigned char(utcTime.Year % 100), utcTime.Month, utcTime.Day, utcTime.Hour, utcTime.Minute, utcTime.Second, utcTime.Nanosecond / 1000000);
 }
 #else
-// Defined in test/stdlib_impl.cpp
 unsigned long long now_ms();
 #endif
