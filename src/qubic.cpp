@@ -551,39 +551,41 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     bool isSolutionGood = false;
                                     const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
 
-                                    CustomMiningSolutionCacheEntry cacheEntry;
-                                    cacheEntry.set(solution);
-
-                                    unsigned int cacheIndex = 0;
-                                    int sts = gSystemCustomMiningSolution.tryFetching(cacheEntry, cacheIndex);
-
-                                    // Check for duplicated solution
-                                    if (sts == CUSTOM_MINING_CACHE_MISS)
+                                    // Check the computor idx of this solution.
+                                    unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
+                                    if (computorID == i)
                                     {
-                                        gSystemCustomMiningSolution.addEntry(cacheEntry, cacheIndex);
-                                        isSolutionGood = true;
+                                        CustomMiningSolutionCacheEntry cacheEntry;
+                                        cacheEntry.set(solution);
+
+                                        unsigned int cacheIndex = 0;
+                                        int sts = gSystemCustomMiningSolution.tryFetching(cacheEntry, cacheIndex);
+
+                                        // Check for duplicated solution
+                                        if (sts == CUSTOM_MINING_CACHE_MISS)
+                                        {
+                                            gSystemCustomMiningSolution.addEntry(cacheEntry, cacheIndex);
+                                            isSolutionGood = true;
+                                        }
+
+                                        if (isSolutionGood)
+                                        {
+                                            ACQUIRE(gCustomMiningSharesCountLock);
+                                            gCustomMiningSharesCount[computorID]++;
+                                            RELEASE(gCustomMiningSharesCountLock);
+                                        }
+
+                                        // Record stats
+                                        const unsigned int hitCount = gSystemCustomMiningSolution.hitCount();
+                                        const unsigned int missCount = gSystemCustomMiningSolution.missCount();
+                                        const unsigned int collision = gSystemCustomMiningSolution.collisionCount();
+
+                                        ACQUIRE(gSystemCustomMiningSolutionLock);
+                                        gSystemCustomMiningDuplicatedSolutionCount = hitCount;
+                                        gSystemCustomMiningSolutionCount = missCount;
+                                        gSystemCustomMiningSolutionOFCount = collision;
+                                        RELEASE(gSystemCustomMiningSolutionLock);
                                     }
-
-                                    if (isSolutionGood)
-                                    {
-                                        // Check the computor idx of this solution
-                                        unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
-
-                                        ACQUIRE(gCustomMiningSharesCountLock);
-                                        gCustomMiningSharesCount[computorID]++;
-                                        RELEASE(gCustomMiningSharesCountLock);
-                                    }
-
-                                    // Record stats
-                                    const unsigned int hitCount = gSystemCustomMiningSolution.hitCount(); 
-                                    const unsigned int missCount = gSystemCustomMiningSolution.missCount();
-                                    const unsigned int collision = gSystemCustomMiningSolution.collisionCount();
-
-                                    ACQUIRE(gSystemCustomMiningSolutionLock);
-                                    gSystemCustomMiningDuplicatedSolutionCount = hitCount;
-                                    gSystemCustomMiningSolutionCount = missCount;
-                                    gSystemCustomMiningSolutionOFCount = collision;
-                                    RELEASE(gSystemCustomMiningSolutionLock);
                                 }
                             }
                             break;
