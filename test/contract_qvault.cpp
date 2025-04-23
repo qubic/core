@@ -108,8 +108,8 @@ public:
 
     void submitGP(const id& address)
     {
-        QVAULT::submitDistributionPermille_input input;
-        QVAULT::submitDistributionPermille_output output;
+        QVAULT::submitGP_input input;
+        QVAULT::submitGP_input output;
 
         invokeUserProcedure(QVAULT_CONTRACT_INDEX, 3, input, output, address, 0);
     }
@@ -142,7 +142,7 @@ public:
         input.amountPerEpoch = amountPerEpoch;
         input.numberOfEpoch = numberOfEpoch;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 6, input, output, authAddress, 10000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 6, input, output, address, 10000000);
     }
 
     void submitFundP(const id& address, uint64 amountOfQcap, uint64 priceOfOneQcap)
@@ -183,6 +183,14 @@ public:
         invokeUserProcedure(QVAULT_CONTRACT_INDEX, 9, input, output, address, 10000000);
     }
 
+    void submitMSP(const id& address)
+    {
+        QVAULT::submitMSP_input input;
+        QVAULT::submitMSP_input output;
+
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 10, input, output, address, 10000000);
+    }
+
     void voteInProposal(const id& address, uint64 priceOfIPO, uint32 proposalType, uint32 proposalId, bit yes)
     {
         QVAULT::voteInProposal_input input;
@@ -193,19 +201,18 @@ public:
         input.proposalId = proposalId;
         input.yes = yes;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 10, input, output, address, 10000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 11, input, output, address, 10000000);
     }
 
     void buyQcap(const id& address, uint32 amount, uint64 fund)
     {
         QVAULT::buyQcap_input input;
-        QVAULT::buyQcap_output output
+        QVAULT::buyQcap_output output;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 11, input, output, address, fund);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 12, input, output, address, fund);
     }
 
-    void buyQcap(const id& address, uint32 amount, uint64 fund)
-    void TransferShareManagementRights(Asset asset, sint64 numberOfShares, uint32 newManagingContractIndex)
+    void TransferShareManagementRights(const id& address, Asset asset, sint64 numberOfShares, uint32 newManagingContractIndex)
     {
         QVAULT::TransferShareManagementRights_input input;
         QVAULT::TransferShareManagementRights_output output;
@@ -215,17 +222,15 @@ public:
         input.numberOfShares = numberOfShares;
         input.newManagingContractIndex = newManagingContractIndex;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 12, input, output, address, 1000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 13, input, output, address, 1000000);
     }
 
-    void submitMuslimShare(const id& address, uint32 contractId)
+    void submitMuslimId(const id& address)
     {
-        QVAULT::submitMuslimShare_input input;
-        QVAULT::submitMuslimShare_output output;
+        QVAULT::submitMuslimId_input input;
+        QVAULT::submitMuslimId_output output;
 
-        input.contractId = contractId;
-
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 13, input, output, address, 1000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 13, input, output, address, 0);
     }
 
     sint64 issueAsset(const id& issuer, uint64 assetName, sint64 numberOfShares, uint64 unitOfMeasurement, sint8 numberOfDecimalPlaces)
