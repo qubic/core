@@ -6,36 +6,51 @@ struct CNAME2
 
 struct CNAME : public ContractBase
 {
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
-	_
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
+	}
 
-	INITIALIZE
-	_
+	INITIALIZE()
+	{
+	}
 
-	BEGIN_EPOCH
-	_
+	BEGIN_EPOCH()
+	{
+	}
 
-	END_EPOCH
-	_
+	END_EPOCH()
+	{
+	}
 
-	BEGIN_TICK
-	_
+	BEGIN_TICK()
+	{
+	}
 
-	END_TICK
-	_
+	END_TICK()
+	{
+	}
 
-	PRE_ACQUIRE_SHARES
-	_
+	PRE_ACQUIRE_SHARES()
+	{
+	}
 
-	POST_ACQUIRE_SHARES
-	_
+	POST_ACQUIRE_SHARES()
+	{
+	}
 
-	PRE_RELEASE_SHARES
-	_
+	PRE_RELEASE_SHARES()
+	{
+	}
 
-	POST_RELEASE_SHARES
-	_
+	POST_RELEASE_SHARES()
+	{
+	}
 
-	EXPAND
-	_
+	POST_INCOMING_TRANSFER()
+	{
+	}
+
+	EXPAND()
+	{
+	}
 };

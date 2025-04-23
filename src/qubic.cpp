@@ -55,6 +55,9 @@
 #include "contract_core/qpi_ticking_impl.h"
 #include "vote_counter.h"
 
+#include "contract_core/ipo.h"
+#include "contract_core/qpi_ipo_impl.h"
+
 #include "addons/tx_status_request.h"
 
 #include "files/files.h"
@@ -142,8 +145,9 @@ static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsign
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
-static const Transaction* contractProcessorTransaction = 0;
+static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
+static unsigned char contractProcessorPostIncomingTransferType = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
@@ -156,10 +160,6 @@ static m256i lastExpectedTickTransactionDigest;
 XKCP::KangarooTwelve_Instance g_k12_instance;
 // rdtsc (timestamp) of ticks
 static unsigned long long tickTicks[11];
-
-static m256i releasedPublicKeys[NUMBER_OF_COMPUTORS];
-static long long releasedAmounts[NUMBER_OF_COMPUTORS];
-static unsigned int numberOfReleasedEntities;
 
 static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
@@ -202,7 +202,7 @@ static unsigned long long K12MeasurementsSum = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 
-
+// Custom mining related variables and constants
 static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0 };
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
@@ -212,8 +212,10 @@ static volatile char gIsInCustomMiningStateLock = 0;
 
 struct revenueScore
 {
-    unsigned long long _oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
-    unsigned long long _customMiningScore[NUMBER_OF_COMPUTORS]; // the new score with customming
+    unsigned long long oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
+    unsigned long long customMiningSharesCount[NUMBER_OF_COMPUTORS]; // the shares count with custom mining
+    unsigned long long currentRev[NUMBER_OF_COMPUTORS]; // old revenue
+    unsigned long long customMiningRev[NUMBER_OF_COMPUTORS]; // reveneu with custom mining
 } gRevenueScoreWithCustomMining;
 
 
@@ -241,6 +243,7 @@ struct
     unsigned int resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
+    unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
 static bool saveComputer(CHAR16* directory = NULL);
@@ -263,12 +266,6 @@ static struct
 	unsigned char signature[SIGNATURE_SIZE];
 } voteCounterPayload;
 
-static struct
-{
-    Transaction transaction;
-    unsigned char packedScore[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES];
-    unsigned char signature[SIGNATURE_SIZE];
-} customMiningSharePayload;
 
 static struct
 {
@@ -1411,7 +1408,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             {
                 const auto* _request = header->getPayload<SpecialCommandSetConsoleLoggingModeRequestAndResponse>();
                 consoleLoggingLevel = _request->loggingMode;
-                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+                enqueueResponse(peer, sizeof(SpecialCommandSetConsoleLoggingModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
             }
@@ -1842,144 +1839,96 @@ static void contractProcessor(void*)
 
     // TODO: rename to invoke (with option to have amount)
     case USER_PROCEDURE_CALL:
+    case POST_INCOMING_TRANSFER:
     {
         const Transaction* transaction = contractProcessorTransaction;
         ASSERT(transaction && transaction->checkValidity());
 
+        ASSERT(transaction->destinationPublicKey.m256i_u64[0] < contractCount);
+        ASSERT(transaction->destinationPublicKey.m256i_u64[1] == 0);
+        ASSERT(transaction->destinationPublicKey.m256i_u64[2] == 0);
+        ASSERT(transaction->destinationPublicKey.m256i_u64[3] == 0);
+
         unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
         ASSERT(system.epoch >= contractDescriptions[contractIndex].constructionEpoch);
         ASSERT(system.epoch < contractDescriptions[contractIndex].destructionEpoch);
-        ASSERT(contractUserProcedures[contractIndex][transaction->inputType]);
 
-        QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
-        qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
+        if (transaction->amount > 0 && contractSystemProcedures[contractIndex][POST_INCOMING_TRANSFER])
+        {
+            // Run callback system procedure POST_INCOMING_TRANSFER
+            const unsigned char type = contractProcessorPostIncomingTransferType;
+            if (contractProcessorPhase == USER_PROCEDURE_CALL)
+            {
+                ASSERT(type == QPI::TransferType::procedureTransaction);
+            }
+            else
+            {
+                ASSERT(
+                    type == QPI::TransferType::standardTransaction
+                    || type == QPI::TransferType::revenueDonation
+                    || type == QPI::TransferType::ipoBidRefund
+                );
+            }
 
-        if (contractActionTracker.getOverallQuTransferBalance(transaction->sourcePublicKey) == 0)
-            contractProcessorTransactionMoneyflew = 0;
-        else
-            contractProcessorTransactionMoneyflew = 1;
+            QpiContextSystemProcedureCall qpiContext(contractIndex, POST_INCOMING_TRANSFER);
+            QPI::PostIncomingTransfer_input input{ transaction->sourcePublicKey, transaction->amount, type };
+            qpiContext.call(input);
+        }
+
+        if (contractProcessorPhase == USER_PROCEDURE_CALL)
+        {
+            // Run user procedure
+            ASSERT(contractUserProcedures[contractIndex][transaction->inputType]);
+
+            QpiContextUserProcedureCall qpiContext(contractIndex, transaction->sourcePublicKey, transaction->amount);
+            qpiContext.call(transaction->inputType, transaction->inputPtr(), transaction->inputSize);
+
+            if (contractActionTracker.getOverallQuTransferBalance(transaction->sourcePublicKey) == 0)
+                contractProcessorTransactionMoneyflew = 0;
+            else
+                contractProcessorTransactionMoneyflew = 1;
+        }
+
         contractProcessorTransaction = 0;
     }
     break;
     }
 }
 
-static bool bidInContractIPO(long long price, unsigned short quantity, const m256i& sourcePublicKey, const int spectrumIndex, const unsigned int contractIndex)
+// Notify dest of incoming transfer if dest is a contract.
+// CAUTION: Cannot be called from contract processor or main processor! If called from QPI functions, it will get stuck.
+static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& dest, long long amount, unsigned char type)
 {
-    ASSERT(spectrumIndex >= 0);
-    ASSERT(spectrumIndex == ::spectrumIndex(sourcePublicKey));
-    ASSERT(contractIndex < contractCount);
-    ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
+    // Only notify if amount > 0 and dest is contract
+    if (amount <= 0 || dest.u64._0 >= contractCount || dest.u64._1 || dest.u64._2 || dest.u64._3)
+        return;
 
-    bool bidRegistered = false;
+    // Also don't run contract processor if the callback isn't implemented in the dest contract
+    if (!contractSystemProcedures[dest.u64._0][POST_INCOMING_TRANSFER])
+        return;
 
-    if (price > 0 && price <= MAX_AMOUNT / NUMBER_OF_COMPUTORS
-        && quantity > 0 && quantity <= NUMBER_OF_COMPUTORS)
+    ASSERT(type == QPI::TransferType::revenueDonation || type == QPI::TransferType::ipoBidRefund);
+
+    // Caution: Transaction has no signature, because it is a pseudo-transaction just used to hand over information to
+    // the contract processor.
+    Transaction tx;
+    tx.sourcePublicKey = source;
+    tx.destinationPublicKey = dest;
+    tx.amount = amount;
+    tx.tick = system.tick;
+    tx.inputType = 0;
+    tx.inputSize = 0;
+
+    contractProcessorTransaction = &tx;
+    contractProcessorPostIncomingTransferType = type;
+    contractProcessorPhase = POST_INCOMING_TRANSFER;
+    contractProcessorState = 1;
+    while (contractProcessorState)
     {
-        const long long amount = price * quantity;
-        if (decreaseEnergy(spectrumIndex, amount))
-        {
-            const QuTransfer quTransfer = { sourcePublicKey, m256i::zero(), amount };
-            logger.logQuTransfer(quTransfer);
-
-            numberOfReleasedEntities = 0;
-            contractStateLock[contractIndex].acquireWrite();
-            IPO* ipo = (IPO*)contractStates[contractIndex];
-            for (unsigned int i = 0; i < quantity; i++)
-            {
-                if (price <= ipo->prices[NUMBER_OF_COMPUTORS - 1])
-                {
-                    unsigned int j;
-                    for (j = 0; j < numberOfReleasedEntities; j++)
-                    {
-                        if (sourcePublicKey == releasedPublicKeys[j])
-                        {
-                            break;
-                        }
-                    }
-                    if (j == numberOfReleasedEntities)
-                    {
-                        releasedPublicKeys[numberOfReleasedEntities] = sourcePublicKey;
-                        releasedAmounts[numberOfReleasedEntities++] = price;
-                    }
-                    else
-                    {
-                        releasedAmounts[j] += price;
-                    }
-                }
-                else
-                {
-                    unsigned int j;
-                    for (j = 0; j < numberOfReleasedEntities; j++)
-                    {
-                        if (ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] == releasedPublicKeys[j])
-                        {
-                            break;
-                        }
-                    }
-                    if (j == numberOfReleasedEntities)
-                    {
-                        releasedPublicKeys[numberOfReleasedEntities] = ipo->publicKeys[NUMBER_OF_COMPUTORS - 1];
-                        releasedAmounts[numberOfReleasedEntities++] = ipo->prices[NUMBER_OF_COMPUTORS - 1];
-                    }
-                    else
-                    {
-                        releasedAmounts[j] += ipo->prices[NUMBER_OF_COMPUTORS - 1];
-                    }
-
-                    ipo->publicKeys[NUMBER_OF_COMPUTORS - 1] = sourcePublicKey;
-                    ipo->prices[NUMBER_OF_COMPUTORS - 1] = price;
-                    j = NUMBER_OF_COMPUTORS - 1;
-                    while (j
-                        && ipo->prices[j - 1] < ipo->prices[j])
-                    {
-                        const m256i tmpPublicKey = ipo->publicKeys[j - 1];
-                        const long long tmpPrice = ipo->prices[j - 1];
-                        ipo->publicKeys[j - 1] = ipo->publicKeys[j];
-                        ipo->prices[j - 1] = ipo->prices[j];
-                        ipo->publicKeys[j] = tmpPublicKey;
-                        ipo->prices[j--] = tmpPrice;
-                    }
-
-                    contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
-                    bidRegistered = true;
-                }
-            }
-            contractStateLock[contractIndex].releaseWrite();
-
-            for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
-            {
-                increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
-                logger.logQuTransfer(quTransfer);
-            }
-        }
+        _mm_pause();
     }
-
-    return bidRegistered;
 }
 
-bool QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex, long long price, unsigned int quantity) const
-{
-    if (_currentContractIndex >= contractCount || IPOContractIndex >= contractCount || _currentContractIndex >= IPOContractIndex)
-    {
-        return false;
-    }
-
-    if (system.epoch >= contractDescriptions[IPOContractIndex].constructionEpoch)  // IPO is finished.
-    {
-        return false;
-    }
-
-    const int spectrumIndex = ::spectrumIndex(_currentContractId);
-
-    if (contractCallbacksRunning != NoContractCallback || spectrumIndex < 0)
-    {
-        return false;
-    }
-
-    return bidInContractIPO(price, quantity,_currentContractId, spectrumIndex, IPOContractIndex);
-}
 
 static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
 {
@@ -2012,7 +1961,10 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
     {
         // Run user procedure call of transaction in contract processor
         // and wait for completion
+        // With USER_PROCEDURE_CALL, contract processor also notifies the contract
+        // of the incoming transfer if the invocation reward = amount > 0.
         contractProcessorTransaction = transaction;
+        contractProcessorPostIncomingTransferType = QPI::TransferType::procedureTransaction;
         contractProcessorPhase = USER_PROCEDURE_CALL;
         contractProcessorState = 1;
         while (contractProcessorState)
@@ -2021,6 +1973,19 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
         }
 
         return contractProcessorTransactionMoneyflew;
+    }
+    else if (transaction->amount > 0)
+    {
+        // Transaction sending qu to contract without invoking registered user procedure:
+        // Run POST_INCOMING_TRANSFER notification in contract processor and wait for completion.
+        contractProcessorTransaction = transaction;
+        contractProcessorPostIncomingTransferType = QPI::TransferType::standardTransaction;
+        contractProcessorPhase = POST_INCOMING_TRANSFER;
+        contractProcessorState = 1;
+        while (contractProcessorState)
+        {
+            _mm_pause();
+        }
     }
 
     // if transaction tries to invoke non-registered procedure, transaction amount is not reimbursed
@@ -2287,6 +2252,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
             if (isZero(transaction->destinationPublicKey))
             {
+                // Destination is system
                 switch (transaction->inputType)
                 {
                 case VOTE_COUNTER_INPUT_TYPE:
@@ -2378,6 +2344,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
             }
             else
             {
+                // Destination is a contract or any other entity.
                 // Contracts are identified by their index stored in the first 64 bits of the id, all
                 // other bits are zeroed. However, the max number of contracts is limited to 2^32 - 1,
                 // only 32 bits are used for the contract index.
@@ -2613,6 +2580,8 @@ static void processTick(unsigned long long processorNumber)
             {
                 if (mainAuxStatus & 1)
                 {
+                    // This is the tick leader in MAIN mode -> construct future tick data (selecting transactions to
+                    // include into tick)
                     broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type; // We XOR almost all packets with their type value to make sure an entity cannot be tricked into signing one thing while actually signing something else
                     broadcastedFutureTickData.tickData.epoch = system.epoch;
                     broadcastedFutureTickData.tickData.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
@@ -2634,17 +2603,26 @@ static void processTick(unsigned long long processorNumber)
 
                     unsigned int j = 0;
 
-                    unsigned int numberOfEntityPendingTransactionIndices;
-                    for (numberOfEntityPendingTransactionIndices = 0; numberOfEntityPendingTransactionIndices < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; numberOfEntityPendingTransactionIndices++)
+                    ACQUIRE(computorPendingTransactionsLock);
+
+                    // Get indices of pending computor transactions that are scheduled to be included in tickData
+                    unsigned int numberOfEntityPendingTransactionIndices = 0;
+                    for (unsigned int k = 0; k < NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR; k++)
                     {
-                        entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices] = numberOfEntityPendingTransactionIndices;
+                        const Transaction* tx = ((Transaction*)&computorPendingTransactions[k * MAX_TRANSACTION_SIZE]);
+                        if (tx->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        {
+                            entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices++] = k;
+                        }
                     }
+
+                    // Randomly select computor tx scheduled for the tick until tick is full or all pending tx are included
                     while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
                     {
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
 
                         const Transaction* pendingTransaction = ((Transaction*)&computorPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
-                        if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        ASSERT(pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
                         {
                             ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
@@ -2666,16 +2644,28 @@ static void processTick(unsigned long long processorNumber)
                         entityPendingTransactionIndices[index] = entityPendingTransactionIndices[--numberOfEntityPendingTransactionIndices];
                     }
 
-                    for (numberOfEntityPendingTransactionIndices = 0; numberOfEntityPendingTransactionIndices < SPECTRUM_CAPACITY; numberOfEntityPendingTransactionIndices++)
+                    RELEASE(computorPendingTransactionsLock);
+
+                    ACQUIRE(entityPendingTransactionsLock);
+
+                    // Get indices of pending non-computor transactions that are scheduled to be included in tickData
+                    numberOfEntityPendingTransactionIndices = 0;
+                    for (unsigned int k = 0; k < SPECTRUM_CAPACITY; k++)
                     {
-                        entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices] = numberOfEntityPendingTransactionIndices;
+                        const Transaction* tx = ((Transaction*)&entityPendingTransactions[k * MAX_TRANSACTION_SIZE]);
+                        if (tx->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        {
+                            entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices++] = k;
+                        }
                     }
+
+                    // Randomly select non-computor tx scheduled for the tick until tick is full or all pending tx are included
                     while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
                     {
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
 
                         const Transaction* pendingTransaction = ((Transaction*)&entityPendingTransactions[entityPendingTransactionIndices[index] * MAX_TRANSACTION_SIZE]);
-                        if (pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        ASSERT(pendingTransaction->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
                         {
                             ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
@@ -2696,6 +2686,8 @@ static void processTick(unsigned long long processorNumber)
 
                         entityPendingTransactionIndices[index] = entityPendingTransactionIndices[--numberOfEntityPendingTransactionIndices];
                     }
+
+                    RELEASE(entityPendingTransactionsLock);
 
                     for (; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
                     {
@@ -2833,24 +2825,26 @@ static void processTick(unsigned long long processorNumber)
     // Broadcast custom mining shares 
     if (mainAuxStatus & 1)
     {
-        // In the begining of mining phase
+        // In the begining of mining phase. Calculate the transaction need to be broadcasted
         if (getTickInMiningPhaseCycle() == 0)
         {
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
-                // Randomly schedule the tick to publish the tx
-                unsigned int publishingTickOffset = TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET + random(NUMBER_OF_COMPUTORS / 2);
+                unsigned int schedule_tick = system.tick
+                    + TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET
+                    + random(NUMBER_OF_COMPUTORS - TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET);
 
                 // Update the custom mining share counter
                 ACQUIRE(gCustomMiningSharesCountLock);
                 gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
                 RELEASE(gCustomMiningSharesCountLock);
 
-                auto& payload = customMiningSharePayload;
+                // Save the transaction to be broadcasted
+                auto& payload = gCustomMiningBroadcastTxBuffer[i].payload;
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
                 payload.transaction.destinationPublicKey = m256i::zero();
                 payload.transaction.amount = 0;
-                payload.transaction.tick = system.tick + publishingTickOffset;
+                payload.transaction.tick = schedule_tick;
                 payload.transaction.inputType = CustomMiningSolutionTransaction::transactionType();
                 payload.transaction.inputSize = sizeof(payload.packedScore);
                 gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
@@ -2858,14 +2852,29 @@ static void processTick(unsigned long long processorNumber)
                 unsigned char digest[32];
                 KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.packedScore), digest, sizeof(digest));
                 sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
-                enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
-
+                
+                // Set the flag to false, indicating that the transaction is not broadcasted yet
+                gCustomMiningBroadcastTxBuffer[i].isBroadcasted = false;
             }
 
             // reset the phase counter
             ACQUIRE(gCustomMiningSharesCountLock);
             bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
             RELEASE(gCustomMiningSharesCountLock);
+        }
+
+        // Run every tick for broadcasting custom mining txs
+        for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+        {
+            if (!gCustomMiningBroadcastTxBuffer[i].isBroadcasted)
+            {
+                ASSERT(gCustomMiningBroadcastTxBuffer[i].payload.transaction.tick >= system.tick);
+                if (gCustomMiningBroadcastTxBuffer[i].payload.transaction.tick - system.tick == TICK_CUSTOM_MINING_SHARE_COUNTER_PUBLICATION_OFFSET)
+                {
+                    enqueueResponse(NULL, sizeof(gCustomMiningBroadcastTxBuffer[i].payload), BROADCAST_TRANSACTION, 0, &gCustomMiningBroadcastTxBuffer[i].payload);
+                    gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
+                }
+            }
         }
     }
 
@@ -2994,63 +3003,7 @@ static void endEpoch()
     etalonTick.prevTransactionBodyDigest = etalonTick.saltedTransactionBodyDigest;
 
     // Handle IPO
-    for (unsigned int contractIndex = 1; contractIndex < contractCount; contractIndex++)
-    {
-        if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
-        {
-            contractStateLock[contractIndex].acquireRead();
-            IPO* ipo = (IPO*)contractStates[contractIndex];
-            long long finalPrice = ipo->prices[NUMBER_OF_COMPUTORS - 1];
-            int issuanceIndex, ownershipIndex, possessionIndex;
-            if (finalPrice)
-            {
-                if (!issueAsset(m256i::zero(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex))
-                {
-                    finalPrice = 0;
-                }
-            }
-            numberOfReleasedEntities = 0;
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                if (ipo->prices[i] > finalPrice)
-                {
-                    unsigned int j;
-                    for (j = 0; j < numberOfReleasedEntities; j++)
-                    {
-                        if (ipo->publicKeys[i] == releasedPublicKeys[j])
-                        {
-                            break;
-                        }
-                    }
-                    if (j == numberOfReleasedEntities)
-                    {
-                        releasedPublicKeys[numberOfReleasedEntities] = ipo->publicKeys[i];
-                        releasedAmounts[numberOfReleasedEntities++] = ipo->prices[i] - finalPrice;
-                    }
-                    else
-                    {
-                        releasedAmounts[j] += (ipo->prices[i] - finalPrice);
-                    }
-                }
-                if (finalPrice)
-                {
-                    int destinationOwnershipIndex, destinationPossessionIndex;
-                    transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, ipo->publicKeys[i], 1, &destinationOwnershipIndex, &destinationPossessionIndex, true);
-                }
-            }
-            for (unsigned int i = 0; i < numberOfReleasedEntities; i++)
-            {
-                increaseEnergy(releasedPublicKeys[i], releasedAmounts[i]);
-                const QuTransfer quTransfer = { m256i::zero(), releasedPublicKeys[i], releasedAmounts[i] };
-                logger.logQuTransfer(quTransfer);
-            }
-            contractStateLock[contractIndex].releaseRead();
-
-            contractStateLock[0].acquireWrite();
-            contractFeeReserve(contractIndex) = finalPrice * NUMBER_OF_COMPUTORS;
-            contractStateLock[0].releaseWrite();
-        }
-    }
+    finishIPOs();
 
     system.initialMillisecond = etalonTick.millisecond;
     system.initialSecond = etalonTick.second;
@@ -3110,13 +3063,17 @@ static void endEpoch()
 
         // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution and old score
         {
-            bs->CopyMem(gRevenueScoreWithCustomMining._oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining._oldFinalScore));
+            bs->CopyMem(gRevenueScoreWithCustomMining.oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining.oldFinalScore));
             // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
-                unsigned long long shareScore = gCustomMiningSharesCounter.getSharesCount(i);
-                gRevenueScoreWithCustomMining._customMiningScore[i] = shareScore;
+                gRevenueScoreWithCustomMining.customMiningSharesCount[i] = gCustomMiningSharesCounter.getSharesCount(i);
             }
+            computeRevWithCustomMining(
+                gRevenueScoreWithCustomMining.oldFinalScore,
+                gRevenueScoreWithCustomMining.customMiningSharesCount,
+                gRevenueScoreWithCustomMining.currentRev,
+                gRevenueScoreWithCustomMining.customMiningRev);
         }
 
 
@@ -3194,6 +3151,10 @@ static void endEpoch()
                     increaseEnergy(rdEntry.destinationPublicKey, donation);
                     const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
                     logger.logQuTransfer(quTransfer);
+                    if (revenue)
+                    {
+                        notifyContractOfIncomingTransfer(m256i::zero(), rdEntry.destinationPublicKey, donation, QPI::TransferType::revenueDonation);
+                    }
                 }
             }
 
@@ -3208,7 +3169,7 @@ static void endEpoch()
         emissionDist = nullptr; qpiContext.freeBuffer(); // Free buffer holding revenue donation table, because we don't need it anymore
 
         // Generate arbitrator revenue
-        increaseEnergy((unsigned char*)&arbitratorPublicKey, arbitratorRevenue);
+        increaseEnergy(arbitratorPublicKey, arbitratorRevenue);
         const QuTransfer quTransfer = { m256i::zero(), arbitratorPublicKey, arbitratorRevenue };
         logger.logQuTransfer(quTransfer);
     }
@@ -4127,6 +4088,7 @@ static bool saveAllNodeStates()
     nodeStateBuffer.numberOfMiners = numberOfMiners;
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;    
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
+    gCustomMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.customMiningSharesCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
@@ -4266,6 +4228,7 @@ static bool loadAllNodeStates()
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
+    gCustomMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.customMiningSharesCounterData);
 
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -5819,6 +5782,8 @@ static bool initialize()
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
+
+    initCustomMining();
     
     return true;
 }
@@ -6258,7 +6223,7 @@ static void logHealthStatus()
     }
     if (!anyContractError)
     {
-        appendText(message, L"no errors");
+        appendText(message, L"all healthy");
     }
     logToConsole(message);
 

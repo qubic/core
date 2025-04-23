@@ -57,7 +57,7 @@ public:
 	typedef Success_output SetProposal_output;
 
 	PUBLIC_PROCEDURE(SetProposal)
-
+	{
 		if (qpi.invocationReward() < state.setProposalFee)
 		{
 			// Invocation reward not sufficient, undo payment and cancel
@@ -91,7 +91,7 @@ public:
 
 		// Try to set proposal (checks originators rights and general validity of input proposal)
 		output.okay = qpi(state.proposals).setProposal(qpi.originator(), input);
-	_
+	}
 
 
 	struct GetProposalIndices_input
@@ -106,6 +106,7 @@ public:
 	};
 
 	PUBLIC_FUNCTION(GetProposalIndices)
+	{
 		if (input.activeProposals)
 		{
 			// Return proposals that are open for voting in current epoch
@@ -132,7 +133,7 @@ public:
 					break;
 			}
 		}
-	_
+	}
 
 
 	struct GetProposal_input
@@ -148,15 +149,17 @@ public:
 	};
 
 	PUBLIC_FUNCTION(GetProposal)
+	{
 		output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex);
 		output.okay = qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
-	_
+	}
 
 
 	typedef ProposalSingleVoteDataV1 Vote_input;
 	typedef Success_output Vote_output;
 
 	PUBLIC_PROCEDURE(Vote)
+	{
 		// For voting, there is no fee
 		if (qpi.invocationReward() > 0)
 		{
@@ -166,7 +169,7 @@ public:
 		
 		// Try to vote (checks right to vote and match with proposal)
 		output.okay = qpi(state.proposals).vote(qpi.originator(), input);
-	_
+	}
 
 
 	struct GetVote_input
@@ -181,11 +184,12 @@ public:
 	};
 
 	PUBLIC_FUNCTION(GetVote)
+	{
 		output.okay = qpi(state.proposals).getVote(
 			input.proposalIndex,
 			qpi(state.proposals).voterIndex(input.voter),
 			output.vote);
-	_
+	}
 
 
 	struct GetVotingResults_input
@@ -199,17 +203,19 @@ public:
 	};
 
 	PUBLIC_FUNCTION(GetVotingResults)
+	{
 		output.okay = qpi(state.proposals).getVotingSummary(
 			input.proposalIndex, output.results);
-	_
+	}
 
 
 	typedef NoData GetLatestTransfers_input;
 	typedef LatestTransfersT GetLatestTransfers_output;
 
 	PUBLIC_FUNCTION(GetLatestTransfers)
+	{
 		output = state.latestTransfers;
-	_
+	}
 
 
 	typedef NoData GetProposalFee_input;
@@ -219,11 +225,13 @@ public:
 	};
 
 	PUBLIC_FUNCTION(GetProposalFee)
+	{
 		output.proposalFee = state.setProposalFee;
-	_
+	}
 
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
 		REGISTER_USER_FUNCTION(GetProposalIndices, 1);
 		REGISTER_USER_FUNCTION(GetProposal, 2);
 		REGISTER_USER_FUNCTION(GetVote, 3);
@@ -233,12 +241,13 @@ public:
 
 		REGISTER_USER_PROCEDURE(SetProposal, 1);
 		REGISTER_USER_PROCEDURE(Vote, 2);
-	_
+	}
 
 
-	INITIALIZE
+	INITIALIZE()
+	{
 		state.setProposalFee = 1000000;
-	_
+	}
 
 
 	struct END_EPOCH_locals
@@ -249,7 +258,8 @@ public:
 		LatestTransfersEntry transfer;
 	};
 
-	END_EPOCH_WITH_LOCALS
+	END_EPOCH_WITH_LOCALS()
+	{
 		// Analyze transfer proposal results
 
 		// Iterate all proposals that were open for voting in this epoch ...
@@ -290,6 +300,6 @@ public:
 				}
 			}
 		}
-	_
+	}
 
 };
