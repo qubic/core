@@ -497,7 +497,7 @@ protected:
                     output.returnCode = QVAULT_SUCCESS;
                     if (locals.user.amount == 0)
                     {
-                        for (locals._t += 1; locals._t < state.numberOfStaker; locals._t++)
+                        for (locals._t += 1; locals._t < (sint32)state.numberOfStaker; locals._t++)
                         {
                             if (locals._t == QVAULT_QCAP_MAX_SUPPLY)
                             {
@@ -2048,7 +2048,7 @@ protected:
                 state.reinvestingFund += input.amount;
                 break;
             case TransferType::qpiDistributeDividends:
-                for (locals._t = 0; locals._t < state.numberOfMuslimShare; locals._t++)
+                for (locals._t = 0; locals._t < (sint32)state.numberOfMuslimShare; locals._t++)
                 {
                     if (id(state.muslimShares.get(locals._t) , 0, 0, 0) == input.sourceId)
                     {
