@@ -3,6 +3,8 @@
 
 unsigned long long mainThreadProcessorID = -1;
 
+EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol = nullptr;
+
 
 // Return processor number of processor running this function
 unsigned long long getRunningProcessorID()

@@ -8,4 +8,4 @@ extern EFI_RUNTIME_SERVICES* rs;
 extern EFI_BOOT_SERVICES* bs;
 
 // TODO: later hide this in processor.cpp
-static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
+extern EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
