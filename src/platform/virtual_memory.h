@@ -34,13 +34,13 @@ class VirtualMemory
 {
     const unsigned long long pageSize = sizeof(T) * pageCapacity;
 private:
-	// on RAM
-	T* currentPage = NULL; // current page is cache[0]
+    // on RAM
+    T* currentPage = NULL; // current page is cache[0]
     T* cache[numCachePage + 1];
     CHAR16* pageDir = NULL;
 
-    unsigned long long cachePageId[numCachePage+1];
-    unsigned long long lastAccessedTimestamp[numCachePage+1]; // in millisecond
+    unsigned long long cachePageId[numCachePage + 1];
+    unsigned long long lastAccessedTimestamp[numCachePage + 1]; // in millisecond
     unsigned long long currentId; // total items in this array, aka: latest item index + 1
     unsigned long long currentPageId; // current page index that's written on
 
@@ -70,7 +70,7 @@ private:
 #else
         auto sz = asyncSave(pageName, pageSize, (unsigned char*)currentPage, pageDir, true);
 #endif
-        
+
 #if !defined(NDEBUG)
         if (sz != pageSize)
         {
@@ -101,7 +101,7 @@ private:
         for (int i = 1; i <= numCachePage; i++)
         {
             if (lastAccessedTimestamp[i] == 0)
-            {                
+            {
                 return i;
             }
             if ((lastAccessedTimestamp[i] < lastAccessedTimestamp[min_index]) || (lastAccessedTimestamp[i] == lastAccessedTimestamp[min_index] && cachePageId[i] < cachePageId[min_index]))
@@ -165,6 +165,7 @@ private:
     int loadPageToCache(unsigned long long pageId)
     {
         int cache_page_id = findCachePage(pageId);
+
         if (cache_page_id != -1)
         {
             return cache_page_id;
@@ -200,7 +201,7 @@ private:
             CHAR16 debugMsg[128];
             unsigned long long tmp = prefixName;
             debugMsg[0] = L'[';
-            copyMem(debugMsg+1, &tmp, 8);
+            copyMem(debugMsg + 1, &tmp, 8);
             debugMsg[5] = L']';
             debugMsg[6] = L' ';
             debugMsg[7] = 0;
@@ -230,15 +231,9 @@ private:
         }
     }
 
-public:
-    VirtualMemory()
-    {
-
-    }
-
     void reset()
     {
-        setMem(currentPage, pageSize * (numCachePage+1), 0);
+        setMem(currentPage, pageSize * (numCachePage + 1), 0);
         setMem(cachePageId, sizeof(cachePageId), 0xff);
         setMem(lastAccessedTimestamp, sizeof(lastAccessedTimestamp), 0);
         cachePageId[0] = 0;
@@ -247,11 +242,18 @@ public:
         memLock = 0;
     }
 
+public:
+    VirtualMemory()
+    {
+        memLock = 0;
+    }
+
     bool init()
     {
+        ACQUIRE(memLock);
         if (currentPage == NULL)
         {
-            if (!allocPoolWithErrorLog(L"VirtualMemory.Page", pageSize * (numCachePage+1), (void**)&currentPage, __LINE__))
+            if (!allocPoolWithErrorLog(L"VirtualMemory.Page", pageSize * (numCachePage + 1), (void**)&currentPage, __LINE__))
             {
                 return false;
             }
@@ -276,7 +278,7 @@ public:
                 tmp = pageDirectory;
                 copyMem(pageDir + 4, &tmp, 8);
                 appendText(pageDir, L".");
-            }   
+            }
         }
 
         if (pageDir != NULL)
@@ -296,8 +298,9 @@ public:
 #endif
             }
         }
-        
+
         reset();
+        RELEASE(memLock);
         return true;
     }
     void deinit()
@@ -485,6 +488,34 @@ public:
         return result;
     }
 
+    // return array[index]
+    // if index is not in current page it will try to find it in cache
+    // if index is not in cache it will load the page to most outdated cache
+    void getOne(unsigned long long index, T* result)
+    {
+        ACQUIRE(memLock);
+        if (index >= currentId) // out of bound
+        {
+            setMem(result, sizeof(T), 0);
+            RELEASE(memLock);
+            return;
+        }
+        unsigned long long requested_page_id = index / pageCapacity;
+        int cache_page_idx = loadPageToCache(requested_page_id);
+        if (cache_page_idx == -1)
+        {
+#if !defined(NDEBUG)
+            addDebugMessage(L"Invalid cache page index, return zeroes array");
+#endif
+            setMem(result, sizeof(T), 0);
+            RELEASE(memLock);
+            return;
+        }
+        copyMem(result, &(cache[cache_page_idx][index % pageCapacity]), sizeof(T));
+        RELEASE(memLock);
+        return;
+    }
+
     T operator[](unsigned long long index)
     {
         return get(index);
@@ -520,7 +551,7 @@ public:
         CHAR16 pageName[64];
         generatePageName(pageName, pageId);
         ACQUIRE(memLock);
-        bool success = (asyncRemoveFile(pageDir, pageName)) == 0;
+        bool success = (asyncRemoveFile(pageName, pageDir)) == 0;
         RELEASE(memLock);
         return success;
     }
@@ -528,12 +559,16 @@ public:
     // delete pages data on disk given (fromId, toId)
     // Since we store the whole page on disk, pageId will be rounded up for fromId and rounded down for toId
     // fromPageId = (fromId + pageCapacity - 1) // pageCapacity
-    // toPageId = (toId + 1) // pageCapacity
+    // toPageId = (toId   - pageCapacity + 1) // pageCapacity
     // eg: pageCapacity is 50'000. To delete the second page, call prune(50000, 99999)
-    bool pruneRange(unsigned long long fromId, unsigned long long toId)
+    bool pruneRange(long long fromId, long long toId)
     {
-        unsigned long long fromPageId = (fromId + pageCapacity - 1) / pageCapacity;
-        unsigned long long toPageId = toId / pageCapacity;
+        long long fromPageId = (fromId + pageCapacity - 1) / pageCapacity;
+        long long toPageId = (toId - pageCapacity + 1) / pageCapacity;
+        if (fromPageId < 0 || toPageId < 0)
+        {
+            return false;
+        }
         if (fromPageId > toPageId)
         {
             return false;
@@ -547,7 +582,7 @@ public:
             return false;
         }
         bool success = true;
-        for (unsigned long long i = fromPageId; i <= toPageId; i++)
+        for (long long i = fromPageId; i <= toPageId; i++)
         {
             bool ret = prune(i);
             success &= ret;
@@ -620,7 +655,7 @@ public:
 
         cachePageId[0] = currentPageId;
         lastAccessedTimestamp[0] = now_ms();
-        RELEASE(memLock);        
+        RELEASE(memLock);
         return ret;
     }
 };
