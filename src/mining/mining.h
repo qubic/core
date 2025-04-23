@@ -449,12 +449,19 @@ public:
         _isHashed = false;
     }
 
-    void set(const CustomMiningSolution* CustomMiningSolution)
+    void set(const CustomMiningSolution* pCustomMiningSolution)
     {
         reset();
-        _taskIndex = CustomMiningSolution->taskIndex;
-        _nonce = CustomMiningSolution->nonce;
-        _padding = CustomMiningSolution->padding;
+        _taskIndex = pCustomMiningSolution->taskIndex;
+        _nonce = pCustomMiningSolution->nonce;
+        _padding = pCustomMiningSolution->padding;
+    }
+
+    void get(CustomMiningSolution& rCustomMiningSolution)
+    {
+        rCustomMiningSolution.nonce = _nonce;
+        rCustomMiningSolution.taskIndex = _taskIndex;
+        rCustomMiningSolution.padding = _padding;
     }
 
     bool isEmpty() const
@@ -469,21 +476,19 @@ public:
     {
         if (!_isHashed)
         {
-            unsigned char buffer[sizeof(_taskIndex) + sizeof(_nonce)];
-            copyMem(&buffer, &_taskIndex, sizeof(_taskIndex));
-            copyMem(&buffer + sizeof(_taskIndex), &_nonce, sizeof(_nonce));
-
-            KangarooTwelve(buffer, sizeof(_taskIndex) + sizeof(_nonce), &_digest, sizeof(_digest));
+            copyMem(_buffer, &_taskIndex, sizeof(_taskIndex));
+            copyMem(_buffer + sizeof(_taskIndex), &_nonce, sizeof(_nonce));
+            KangarooTwelve(_buffer, sizeof(_taskIndex) + sizeof(_nonce), &_digest, sizeof(_digest));
             _isHashed = true;
         }
-
         return _digest;
     }
-
+private:
     unsigned long long _taskIndex;
     unsigned int _nonce;
     unsigned int _padding; // currently unused
     unsigned long long _digest;
+    unsigned char _buffer[sizeof(_taskIndex) + sizeof(_nonce)];
     bool _isHashed;
 };
 

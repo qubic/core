@@ -6175,18 +6175,18 @@ static void logInfo()
     setText(message, L"CustomMiningState:");
 
     // System: solutions count at current phase | Total duplicated solutions | Total skipped solutions
-    appendText(message, L" System( ");
+    appendText(message, L" SystemSols( Phase = ");
     ACQUIRE(gSystemCustomMiningSolutionLock);
     appendNumber(message, gSystemCustomMiningSolutionCount, false);
-    appendText(message, L" | ");
+    appendText(message, L" | Dup: ");
     appendNumber(message, gSystemCustomMiningDuplicatedSolutionCount, false);
-    appendText(message, L" | ");
+    appendText(message, L" | OF: ");
     appendNumber(message, gSystemCustomMiningSolutionOFCount, false);
     RELEASE(gSystemCustomMiningSolutionLock);
     appendText(message, L").");
 
     // SharesCount : Max count of overflow 
-    appendText(message, L" SharesCount (");
+    appendText(message, L" SharesCountOF (");
     ACQUIRE(gCustomMiningShareCountOverFlowLock);
     appendNumber(message, gCustomMiningCountOverflow, FALSE);
     RELEASE(gCustomMiningShareCountOverFlowLock);
