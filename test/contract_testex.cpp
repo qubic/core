@@ -1291,3 +1291,38 @@ TEST(ContractTestEx, CallbackPostIncomingTransfer)
     EXPECT_EQ(itaB5.revenueDonationAmount, itaB1.revenueDonationAmount);
     EXPECT_EQ(itaC5.revenueDonationAmount, itaC1.revenueDonationAmount);
 }
+
+TEST(ContractTestEx, BurnAssets)
+{
+    ContractTestCallbackPostIncomingTransfer test;
+
+    increaseEnergy(USER1, 1234567890123llu);
+    increaseEnergy(TESTEXB_CONTRACT_ID, 19283764);
+
+    {
+        // issue contract shares
+        Asset asset{ NULL_ID, assetNameFromString("TESTEXB") };
+        std::vector<std::pair<m256i, unsigned int>> sharesTestExB{ {USER1, 356}, {TESTEXC_CONTRACT_ID, 200}, {TESTEXB_CONTRACT_ID, 100}, {TESTEXA_CONTRACT_ID, 20} };
+        issueContractShares(TESTEXB_CONTRACT_INDEX, sharesTestExB);
+        EXPECT_EQ(356, numberOfShares(asset, { USER1, QX_CONTRACT_INDEX }, { USER1, QX_CONTRACT_INDEX }));
+
+        // burning contract shares is supposed to fail
+        EXPECT_EQ(test.transferShareOwnershipAndPossessionQx(asset, USER1, NULL_ID, 100), 0);
+        EXPECT_EQ(356, numberOfShares(asset, { USER1, QX_CONTRACT_INDEX }, { USER1, QX_CONTRACT_INDEX }));
+    }
+
+    {
+        // issue non-contract asset shares
+        Asset asset{ USER1, assetNameFromString("BLOB") };
+        EXPECT_EQ(test.issueAssetQx(asset, 1000000, 0, 0), 1000000);
+        EXPECT_EQ(1000000, numberOfShares(asset));
+        EXPECT_EQ(1000000, numberOfShares(asset, { USER1, QX_CONTRACT_INDEX }));
+        EXPECT_EQ(1000000, numberOfShares(asset, { USER1, QX_CONTRACT_INDEX }, { USER1, QX_CONTRACT_INDEX }));
+
+        // burn non-contract shares
+        EXPECT_EQ(test.transferShareOwnershipAndPossessionQx(asset, USER1, NULL_ID, 100), 100);
+        EXPECT_EQ(1000000 - 100, numberOfShares(asset));
+        EXPECT_EQ(1000000 - 100, numberOfShares(asset, { USER1, QX_CONTRACT_INDEX }));
+        EXPECT_EQ(1000000 - 100, numberOfShares(asset, { USER1, QX_CONTRACT_INDEX }, { USER1, QX_CONTRACT_INDEX }));
+    }
+}
