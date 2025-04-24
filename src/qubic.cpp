@@ -5723,12 +5723,10 @@ static bool initialize()
     {
         peers[i].receiveData.FragmentCount = 1;
         peers[i].transmitData.FragmentCount = 1;
-        // [dkat]: here is a hacky way to avoid network corruption on some hardware
-        // by allocating the buffer bigger than needed: `BUFFER_SIZE * 2` instead of `BUFFER_SIZE`
-        // we have not found out the root cause, but it's likely the uefi system use more buffer than what we tell them to use
-        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE * 2, &peers[i].receiveBuffer, __LINE__))  ||
-            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE * 2, &peers[i].transmitData.FragmentTable[0].FragmentBuffer, __LINE__)) ||
-            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE * 2, (void**)&peers[i].dataToTransmit, __LINE__)))
+
+        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE, &peers[i].receiveBuffer, __LINE__))  ||
+            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer, __LINE__)) ||
+            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE, (void**)&peers[i].dataToTransmit, __LINE__)))
         {
             return false;
         }
@@ -6935,6 +6933,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         closePeer(&peers[random(NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS)]);
                     }
+                    logToConsole(L"Refreshed peers...");
                 }
 
                 if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000
