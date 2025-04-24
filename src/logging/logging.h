@@ -467,8 +467,7 @@ public:
             }
             if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH && tick <= lastUpdatedTick)
             {
-                unsigned long long sz = mapTxToLogId.getMany(output, tickOffset, 1); // bypass MSVC compiler (auto optimize to memcpy and memset)
-                ASSERT(sz != 0);
+                mapTxToLogId.getOne(tickOffset, output);
             }
             return;
         }
