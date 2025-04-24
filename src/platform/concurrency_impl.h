@@ -7,6 +7,7 @@
 #include "concurrency.h"
 #include "time_stamp_counter.h"
 #include "debugging.h"
+#include "system.h"
 
 #ifndef NDEBUG
 
@@ -33,14 +34,16 @@ BusyWaitingTracker::~BusyWaitingTracker()
     {
         CHAR16 msgBuffer[300];
         const unsigned long long curTsc = __rdtsc();
-        setText(msgBuffer, L"Waiting for ");
+        setText(msgBuffer, L"Finished waiting for ");
         appendTextShortenBack(msgBuffer, mExpr, 50);
-        appendText(msgBuffer, " in total for ");
+        appendText(msgBuffer, " for ");
         appendNumber(msgBuffer, (curTsc - mStartTsc) * 1000 / frequency, false);
         appendText(msgBuffer, " milliseconds in ");
         appendTextShortenFront(msgBuffer, mFile, 50);
         appendText(msgBuffer, " line ");
         appendNumber(msgBuffer, mLine, false);
+        appendText(msgBuffer, ", tick ");
+        appendNumber(msgBuffer, system.tick, false);
         addDebugMessage(msgBuffer);
         if (isMainProcessor())
             printDebugMessages();
