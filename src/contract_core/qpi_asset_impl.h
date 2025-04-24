@@ -490,51 +490,33 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
     {
         ACQUIRE(universeLock);
 
-        for (int issuanceIndex = 0; issuanceIndex < ASSETS_CAPACITY; issuanceIndex++)
+        Asset asset(id::zero(), *((unsigned long long*)contractDescriptions[_currentContractIndex].assetName));
+        AssetPossessionIterator iter(asset);
+        long long totalShareCounter = 0;
+
+        while (!iter.reachedEnd())
         {
-            if (((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == *((unsigned long long*)contractDescriptions[_currentContractIndex].assetName)
-                && assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
-                && isZero(assets[issuanceIndex].varStruct.issuance.publicKey))
-            {
-                // TODO: use list to iterate through owners
-                long long shareholderCounter = 0;
-                for (int ownershipIndex = 0; shareholderCounter < NUMBER_OF_COMPUTORS && ownershipIndex < ASSETS_CAPACITY; ownershipIndex++)
-                {
-                    if (assets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
-                        && assets[ownershipIndex].varStruct.ownership.type == OWNERSHIP)
-                    {
-                        long long possessorCounter = 0;
+            ASSERT(iter.possessionIndex() < ASSETS_CAPACITY);
 
-                        // TODO: use list to iterate through possessors
-                        for (int possessionIndex = 0; possessorCounter < assets[ownershipIndex].varStruct.ownership.numberOfShares && possessionIndex < ASSETS_CAPACITY; possessionIndex++)
-                        {
-                            if (assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
-                                && assets[possessionIndex].varStruct.possession.type == POSSESSION)
-                            {
-                                const auto& possession = assets[possessionIndex].varStruct.possession;
-                                const long long dividend = amountPerShare * possession.numberOfShares;
+            const auto& possession = assets[iter.possessionIndex()].varStruct.possession;
+            const long long dividend = amountPerShare * possession.numberOfShares;
 
-                                possessorCounter += possession.numberOfShares;
+            increaseEnergy(possession.publicKey, dividend);
 
-                                increaseEnergy(possession.publicKey, dividend);
+            if (!contractActionTracker.addQuTransfer(_currentContractId, possession.publicKey, dividend))
+                __qpiAbort(ContractErrorTooManyActions);
 
-                                if (!contractActionTracker.addQuTransfer(_currentContractId, possession.publicKey, dividend))
-                                    __qpiAbort(ContractErrorTooManyActions);
+            __qpiNotifyPostIncomingTransfer(_currentContractId, possession.publicKey, dividend, TransferType::qpiDistributeDividends);
 
-                                __qpiNotifyPostIncomingTransfer(_currentContractId, possession.publicKey, dividend, TransferType::qpiDistributeDividends);
+            const QuTransfer quTransfer = { _currentContractId, possession.publicKey, dividend };
+            logger.logQuTransfer(quTransfer);
 
-                                const QuTransfer quTransfer = { _currentContractId, possession.publicKey, dividend };
-                                logger.logQuTransfer(quTransfer);
-                            }
-                        }
+            totalShareCounter += possession.numberOfShares;
 
-                        shareholderCounter += possessorCounter;
-                    }
-                }
-
-                break;
-            }
+            iter.next();
         }
+
+        ASSERT(totalShareCounter == NUMBER_OF_COMPUTORS || totalShareCounter == 0);
 
         RELEASE(universeLock);
     }
