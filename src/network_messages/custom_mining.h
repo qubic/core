@@ -37,7 +37,6 @@ struct RequestedCustomMiningInvalidateSolution
         type = 57,
     };
     unsigned long long taskIndex;
-    unsigned long long solutionId; // id of invalid solution
     unsigned int nonce; // nonce of invalid solution
     unsigned int padding;
 };

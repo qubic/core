@@ -58,7 +58,8 @@ struct CustomMiningSolution
 #define CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES 848
 #define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
 static constexpr int CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL = (1U << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) - 1;
-static constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL * NUMBER_OF_COMPUTORS);
+
+static constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (1ULL << 24);
 
 static_assert((1 << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) >= NUMBER_OF_COMPUTORS, "Invalid number of bit per datum");
 static_assert(CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES * 8 >= NUMBER_OF_COMPUTORS * CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP, "Invalid data size");
@@ -303,6 +304,15 @@ public:
         return rData.getHashIndex() % capacity();
     }
 
+    /// Get entry from cache
+    void getEntry(T& rData, unsigned int cacheIndex)
+    {
+        cacheIndex %= capacity();
+        ACQUIRE(lock);
+        rData = cache[cacheIndex];
+        RELEASE(lock);
+    }
+
     // Try to fetch data from cacheIndex, also checking a few following entries in case of collisions (may update cacheIndex),
     // increments counter of hits, misses, or collisions
     int tryFetching(T& rData, unsigned int& cacheIndex)
@@ -438,6 +448,10 @@ private:
     unsigned int hits = 0;
     unsigned int misses = 0;
     unsigned int collisions = 0;
+
+    // statistics of verification and invalid count
+    unsigned int verification = 0;
+    unsigned int invalid = 0;
 };
 
 class CustomMiningSolutionCacheEntry
@@ -445,51 +459,95 @@ class CustomMiningSolutionCacheEntry
 public:
     void reset()
     {
-        _taskIndex = 0;
+        _solution.taskIndex = 0;
         _isHashed = false;
+        _isVerification = false;
+        _isValid = true;
     }
 
     void set(const CustomMiningSolution* pCustomMiningSolution)
     {
         reset();
-        _taskIndex = pCustomMiningSolution->taskIndex;
-        _nonce = pCustomMiningSolution->nonce;
-        _padding = pCustomMiningSolution->padding;
+        _solution = *pCustomMiningSolution;
+    }
+
+    void set(const unsigned long long taskIndex, unsigned int nonce, unsigned int padding)
+    {
+        reset();
+        _solution.taskIndex = taskIndex;
+        _solution.nonce = nonce;
+        _solution.padding = padding;
     }
 
     void get(CustomMiningSolution& rCustomMiningSolution)
     {
-        rCustomMiningSolution.nonce = _nonce;
-        rCustomMiningSolution.taskIndex = _taskIndex;
-        rCustomMiningSolution.padding = _padding;
+        rCustomMiningSolution = _solution;
     }
 
     bool isEmpty() const
     {
-        return (_taskIndex == 0);
+        return (_solution.taskIndex == 0);
     }
     bool isMatched(const CustomMiningSolutionCacheEntry& rOther) const
     {
-        return (_taskIndex == rOther._taskIndex) && (_nonce == rOther._nonce);
+        return (_solution.taskIndex == rOther.getTaskIndex()) && (_solution.nonce == rOther.getNonce());
     }
     unsigned long long getHashIndex()
     {
+        // TODO: reserve each computor ID a limited slot.
+        // This will avoid them spawning invalid solutions without verification
         if (!_isHashed)
         {
-            copyMem(_buffer, &_taskIndex, sizeof(_taskIndex));
-            copyMem(_buffer + sizeof(_taskIndex), &_nonce, sizeof(_nonce));
-            KangarooTwelve(_buffer, sizeof(_taskIndex) + sizeof(_nonce), &_digest, sizeof(_digest));
+            copyMem(_buffer, &_solution.taskIndex, sizeof(_solution.taskIndex));
+            copyMem(_buffer + sizeof(_solution.taskIndex), &_solution.nonce, sizeof(_solution.nonce));
+            KangarooTwelve(_buffer, sizeof(_solution.taskIndex) + sizeof(_solution.nonce), &_digest, sizeof(_digest));
             _isHashed = true;
         }
         return _digest;
     }
+
+    unsigned long long getTaskIndex() const
+    {
+        return _solution.taskIndex;
+    }
+
+    unsigned long long getNonce() const
+    {
+        return _solution.nonce;
+    }
+
+    bool isValid()
+    {
+        return _isValid;
+    }
+
+    bool isVerified()
+    {
+        return _isVerification;
+    }
+
+    void setValid(bool val)
+    {
+        _isValid = val;
+    }
+
+    void setVerified(bool val)
+    {
+        _isVerification = true;
+    }
+
+    void setEmpty()
+    {
+        _solution.taskIndex = 0;
+    }
+
 private:
-    unsigned long long _taskIndex;
-    unsigned int _nonce;
-    unsigned int _padding; // currently unused
+    CustomMiningSolution _solution;
     unsigned long long _digest;
-    unsigned char _buffer[sizeof(_taskIndex) + sizeof(_nonce)];
+    unsigned char _buffer[sizeof(_solution.taskIndex) + sizeof(_solution.nonce)];
     bool _isHashed;
+    bool _isVerification;
+    bool _isValid;
 };
 
 CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolution;
@@ -846,6 +904,13 @@ private:
     unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
 };
 
+struct CustomMiningSolutionStorageEntry
+{
+    unsigned long long taskIndex;
+    unsigned long long nonce;
+    unsigned long long cacheEntryIndex;
+};
+
 class CustomMiningStorage
 {
 public:
@@ -853,13 +918,27 @@ public:
     {
         _taskStorage.init();
         _solutionStorage.init();
+
+        // Buffer allocation for each processors. It is limited to 10MB each
+        for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+        {
+            allocPoolWithErrorLog(L"CustomMiningStorageProcBuffer", CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE, (void**)&_dataBuffer[i], __LINE__);
+        }
     }
     void deinit()
     {
         _taskStorage.deinit();
         _solutionStorage.deinit();
+        for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+        {
+            freePool(_dataBuffer[i]);
+        }
     }
 
     CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0> _taskStorage;
-    CustomMiningSortedStorage<CustomMiningSolution, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE> _solutionStorage;
+    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE> _solutionStorage;
+
+    // Buffer can accessed from multiple threads
+    unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
+
 };
