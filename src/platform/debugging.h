@@ -37,6 +37,23 @@ static void printDebugMessages()
 {
     if (!debugMessageCount)
         return;
+    ACQUIRE_WITHOUT_DEBUG_LOGGING(debugLogLock);
+
+    // Write to console first
+    for (int i = 0; i < debugMessageCount; i++)
+    {
+        // Make sure there is a newline at the end
+        unsigned int strLen = stringLength(debugMessage[i]);
+        if (debugMessage[i][strLen - 1] != L'\n')
+        {
+            appendText(debugMessage[i], L"\r\n");
+            strLen += 2;
+        }
+
+        // Write to console
+        outputStringToConsole(debugMessage[i]);
+    }
+
 #if WRITE_DEBUG_MESSAGES_TO_FILE
     // Open debug log file and seek to the end of file for appending
     EFI_STATUS status;
@@ -55,28 +72,17 @@ static void printDebugMessages()
         if (status = root->SetPosition(file, 0xFFFFFFFFFFFFFFFF))
         {
             logStatusToConsole(L"EFI_FILE_PROTOCOL.SetPosition() fails", status, __LINE__);
+            file->Close(file);
             file = nullptr;
         }
     }
-#endif
-    ACQUIRE_WITHOUT_DEBUG_LOGGING(debugLogLock);
-    for (int i = 0; i < debugMessageCount; i++)
+
+    if (file)
     {
-        // Make sure there is a newline at the end
-        unsigned int strLen = stringLength(debugMessage[i]);
-        if (debugMessage[i][strLen-1] != L'\n')
-        {
-            appendText(debugMessage[i], L"\r\n");
-            strLen += 2;
-        }
-
-        // Write to console
-        outputStringToConsole(debugMessage[i]);
-
-#if WRITE_DEBUG_MESSAGES_TO_FILE
         // Write to log file
-        if (file)
+        for (int i = 0; i < debugMessageCount; i++)
         {
+            unsigned int strLen = stringLength(debugMessage[i]);
             char* buffer = (char*)debugMessage[i];
             unsigned long long totalSize = strLen * sizeof(CHAR16);
             unsigned long long writtenSize = 0;
@@ -96,14 +102,13 @@ static void printDebugMessages()
                 writtenSize += size;
             }
         }
-#endif
+
+        file->Close(file);
     }
+#endif
+
     debugMessageCount = 0;
     RELEASE(debugLogLock);
-#if WRITE_DEBUG_MESSAGES_TO_FILE
-    if (file)
-        file->Close(file);
-#endif
 }
 
 // Add a message for logging from arbitrary thread
