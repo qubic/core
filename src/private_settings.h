@@ -24,20 +24,29 @@ static const unsigned char whiteListPeers[][4] = {
 };
 */
 
-#define LOG_QU_TRANSFERS 0 // "0" disables logging, "1" enables it
-#define LOG_BURNINGS 0
-#define LOG_DUST_BURNINGS 0
-#define LOG_SPECTRUM_STATS 0
-#define LOG_ASSET_ISSUANCES 0
-#define LOG_ASSET_OWNERSHIP_CHANGES 0
-#define LOG_ASSET_POSSESSION_CHANGES 0
-#define LOG_ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGES 0
-#define LOG_ASSET_POSSESSION_MANAGING_CONTRACT_CHANGES 0
+#define ENABLE_STANDARD_LOGGING 0 // logging universe + spectrum
+#define ENABLE_SMART_CONTRACT_LOGGING 0// logging smart contract
+
+#if ENABLE_STANDARD_LOGGING
+#define LOG_UNIVERSE 1 // all universe activities/events (incl: issue, ownership/possession changes)
+#define LOG_SPECTRUM 1 // all spectrum activities/events (incl: transfers, burn, dust cleaning)
+#else
+#define LOG_UNIVERSE 0
+#define LOG_SPECTRUM 0
+#endif
+#if ENABLE_SMART_CONTRACT_LOGGING
+#define LOG_CONTRACT_ERROR_MESSAGES 1
+#define LOG_CONTRACT_WARNING_MESSAGES 1
+#define LOG_CONTRACT_INFO_MESSAGES 1
+#define LOG_CONTRACT_DEBUG_MESSAGES 1
+#define LOG_CUSTOM_MESSAGES 1
+#else
 #define LOG_CONTRACT_ERROR_MESSAGES 0
 #define LOG_CONTRACT_WARNING_MESSAGES 0
 #define LOG_CONTRACT_INFO_MESSAGES 0
 #define LOG_CONTRACT_DEBUG_MESSAGES 0
 #define LOG_CUSTOM_MESSAGES 0
+#endif
 static unsigned long long logReaderPasscodes[4] = {
     0, 0, 0, 0 // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN RANDOM NUMBERS IN [0..18446744073709551615] RANGE IF LOGGING IS ENABLED
 };
@@ -45,7 +54,8 @@ static unsigned long long logReaderPasscodes[4] = {
 // Mode for auto save ticks:
 // 0: disable
 // 1: save tick storage every TICK_STORAGE_AUTOSAVE_TICK_PERIOD ticks, only AUX mode
-#define TICK_STORAGE_AUTOSAVE_MODE 0
+// 2: save tick storage only when pressing the `F8` key or it is requested remotely
+#define TICK_STORAGE_AUTOSAVE_MODE 0 
 // NOTE: Strategy to pick TICK_STORAGE_AUTOSAVE_TICK_PERIOD:
 // Although the default value is 1000, there is a chance that your node can be misaligned at tick XXXX2000,XXXX3000,XXXX4000,... 
 // Perform state persisting when your node is misaligned will also make your node misaligned after resuming.

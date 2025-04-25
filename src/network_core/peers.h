@@ -123,6 +123,7 @@ static bool isWhiteListPeer(unsigned char address[4])
 
 static void closePeer(Peer* peer)
 {
+    assertMainThread();
     if (((unsigned long long)peer->tcp4Protocol) > 1)
     {
         if (!peer->isClosing)
@@ -180,7 +181,7 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
                 appendText(debugMessage, L" | requestResponseHeader->size(): ");
                 appendNumber(debugMessage, requestResponseHeader->size(), true);
                 addDebugMessage(debugMessage);
-            }            
+            }
 #endif
             closePeer(peer);
         }
@@ -276,12 +277,9 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueBufferHead];
         if (!responseHeader->checkAndSetSize(sizeof(RequestResponseHeader) + dataSize))
         {
-            setText(message, L"Error: Message size ");
-            appendNumber(message, sizeof(RequestResponseHeader) + dataSize, TRUE);
-            appendText(message, L" of message of type ");
-            appendNumber(message, type, FALSE);
-            appendText(message, L" exceeds maximum message size!");
-            logToConsole(message);
+#ifndef NDEBUG
+            addDebugMessage(L"Error: Message size exceeds maximum message size!");
+#endif
         }
         responseHeader->setType(type);
         responseHeader->setDejavu(dejavu);
@@ -406,7 +404,11 @@ static void penalizePublicPeerRejectedConnection(const IPv4Address& address)
 
 static void addPublicPeer(const IPv4Address& address)
 {
-    if (isBogonAddress(address))
+    if (isBogonAddress(address)) // not add bogon ip
+    {
+        return;
+    }
+    if (address.u32 == 0) // not add zero address
     {
         return;
     }
@@ -495,7 +497,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                         if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS)
                         {
                             EFI_TCP4_CONFIG_DATA tcp4ConfigData;
-                            if (peers[i].tcp4Protocol 
+                            if (peers[i].tcp4Protocol
                                 && !peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, NULL, &tcp4ConfigData, NULL, NULL, NULL))
                             {
                                 if (!isWhiteListPeer(tcp4ConfigData.AccessPoint.RemoteAddress.Addr))
@@ -538,17 +540,11 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
     return false;
 }
 
-static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
+// This function process all data that arrive in FragmentBuffer.
+// based on RequestResponseHeader to determine whether the received packet is completed or not
+// if it receives a completed packet, it will copy the packet to requestQueueElements to process later in requestProcessors
+static void processReceivedData(unsigned int i, unsigned int salt)
 {
-    EFI_STATUS status;
-
-    // poll to receive incoming data and transmit outgoing segments
-    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-    {
-        peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
-    }
-
-    // process received data
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         if (peers[i].receiveToken.CompletionToken.Status != -1)
@@ -657,6 +653,12 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             }
         }
     }
+}
+
+// Signaling the system to receive data from this connection
+static void receiveData(unsigned int i, unsigned int salt)
+{
+    EFI_STATUS status;
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         if (!peers[i].isReceiving && peers[i].isConnectedAccepted && !peers[i].isClosing)
@@ -664,7 +666,9 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             // check that receive buffer has enough space (less than BUFFER_SIZE is used)
             if ((((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer)) < BUFFER_SIZE)
             {
-                peers[i].receiveData.DataLength = peers[i].receiveData.FragmentTable[0].FragmentLength = BUFFER_SIZE - (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
+                unsigned int receiveSize = BUFFER_SIZE - (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
+                peers[i].receiveData.DataLength = receiveSize;
+                peers[i].receiveData.FragmentTable[0].FragmentLength = receiveSize;
                 if (peers[i].receiveData.DataLength)
                 {
                     EFI_TCP4_CONNECTION_STATE state;
@@ -695,7 +699,11 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             }
         }
     }
+}
 
+// Checking the status last queued data for transmitting
+static void processTransmittedData(unsigned int i, unsigned int salt)
+{
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         // check if transmission is completed
@@ -723,24 +731,54 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             }
         }
     }
+}
+
+// Enqueue data for transmitting
+static void transmitData(unsigned int i, unsigned int salt)
+{
+    EFI_STATUS status;
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         if (peers[i].dataToTransmitSize && !peers[i].isTransmitting && peers[i].isConnectedAccepted && !peers[i].isClosing)
         {
-            // initiate transmission
-            bs->CopyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
-            peers[i].dataToTransmitSize = 0;
-            if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
+            EFI_TCP4_CONNECTION_STATE state;
+            if ((status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL))
+                || state == Tcp4StateClosed)
             {
-                logStatusToConsole(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
-
                 closePeer(&peers[i]);
             }
             else
             {
-                peers[i].isTransmitting = TRUE;
+                // initiate transmission
+                bs->CopyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
+                peers[i].dataToTransmitSize = 0;
+                if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
+                {
+                    logStatusToConsole(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
+
+                    closePeer(&peers[i]);
+                }
+                else
+                {
+                    peers[i].isTransmitting = TRUE;
+                }
             }
         }
+
+    }
+}
+
+static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
+{
+
+    // poll to receive incoming data and transmit outgoing segments
+    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
+    {
+        peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
+        processReceivedData(i, salt);
+        receiveData(i, salt);
+        processTransmittedData(i, salt);
+        transmitData(i, salt);
     }
 }
 
@@ -759,41 +797,44 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
             peers[i].isIncommingConnection = FALSE;
 
-            unsigned int j;
-            for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
+            if (peers[i].address.u32 != 0)
             {
-                if (peers[j].tcp4Protocol && peers[j].address == peers[i].address)
+                unsigned int j;
+                for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
                 {
-                    break;
-                }
-            }
-            if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
-            {
-                if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
-                {
-                    peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                    peers[i].dataToTransmitSize = 0;
-                    peers[i].isReceiving = FALSE;
-                    peers[i].isTransmitting = FALSE;
-                    peers[i].exchangedPublicPeers = FALSE;
-                    peers[i].isClosing = FALSE;
-
-                    if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
+                    if (peers[j].tcp4Protocol && peers[j].address == peers[i].address)
                     {
-                        logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
+                        break;
+                    }
+                }
+                if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
+                {
+                    if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
+                    {
+                        peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
+                        peers[i].dataToTransmitSize = 0;
+                        peers[i].isReceiving = FALSE;
+                        peers[i].isTransmitting = FALSE;
+                        peers[i].exchangedPublicPeers = FALSE;
+                        peers[i].isClosing = FALSE;
 
-                        bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
-                        tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
-                        peers[i].tcp4Protocol = NULL;
+                        if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
+                        {
+                            logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
+
+                            bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
+                            tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
+                            peers[i].tcp4Protocol = NULL;
+                        }
+                        else
+                        {
+                            peers[i].isConnectingAccepting = TRUE;
+                        }
                     }
                     else
                     {
-                        peers[i].isConnectingAccepting = TRUE;
+                        peers[i].tcp4Protocol = NULL;
                     }
-                }
-                else
-                {
-                    peers[i].tcp4Protocol = NULL;
                 }
             }
         }
@@ -814,17 +855,13 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 if (status = peerTcp4Protocol->Accept(peerTcp4Protocol, &peers[i].connectAcceptToken))
                 {
                     logStatusToConsole(L"EFI_TCP4_PROTOCOL.Accept() fails", status, __LINE__);
-                    // NOTE: although these debug log tries to know what's going on here
-                    // but it changes the memory order somehow, and this error wasn't triggered again.
-                    // In short, we have some sort of overflow here when nodes suffer from heavy spamming
-                    // But these debug logging mitigates it
                     if (peerTcp4Protocol == NULL)
                     {
                         logToConsole(L"[CRITICAL-Report to dev] peerTcp4Protocol is NULL. Please report!");
                     }
                     else
                     {
-                        logStatusToConsole(L"[CRITICAL-Report to dev] peers[i].connectAcceptToken.CompletionToken.Status", peers[i].connectAcceptToken.CompletionToken.Status, __LINE__);                        
+                        logStatusToConsole(L"[CRITICAL-Report to dev] peers[i].connectAcceptToken.CompletionToken.Status", peers[i].connectAcceptToken.CompletionToken.Status, __LINE__);
                     }
                     unsigned long long ptr = (unsigned long long)(&peers[i].connectAcceptToken);
                     setText(message, L"[CRITICAL-Report to dev] &peers[i].connectAcceptToken: ");

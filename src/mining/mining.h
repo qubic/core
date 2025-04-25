@@ -57,9 +57,17 @@ struct CustomMiningSolution
 
 #define CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES 848
 #define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
+static constexpr int CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL = (1U << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) - 1;
+static constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL * NUMBER_OF_COMPUTORS);
+
 static_assert((1 << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) >= NUMBER_OF_COMPUTORS, "Invalid number of bit per datum");
 static_assert(CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES * 8 >= NUMBER_OF_COMPUTORS * CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP, "Invalid data size");
-static char accumulatedSharedCountLock = 0;
+volatile static char accumulatedSharedCountLock = 0;
+volatile static char gSystemCustomMiningSolutionLock = 0;
+volatile static char gCustomMiningCacheLock = 0;
+unsigned long long gSystemCustomMiningSolutionCount = 0;
+unsigned long long gSystemCustomMiningDuplicatedSolutionCount = 0;
+unsigned long long gSystemCustomMiningSolutionOFCount = 0;
 
 struct CustomMiningSharePayload
 {
@@ -186,15 +194,6 @@ public:
     }
 };
 
-void initCustomMining()
-{
-    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
-    {
-        // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
-        gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
-    }
-}
-
 // Compute revenue of computors without donation
 void computeRev(
     const unsigned long long* revenueScore,
@@ -269,3 +268,253 @@ void computeRevWithCustomMining(
     }
     computeRev(customMiningScoreBuffer, customMiningRev);
 }
+
+/// Cache storing scores for custom mining data (hash map)
+static constexpr int CUSTOM_MINING_CACHE_MISS = -1;
+static constexpr int CUSTOM_MINING_CACHE_COLLISION = -2;
+static constexpr int CUSTOM_MINING_CACHE_HIT = -3;
+
+template <typename T, unsigned int size, unsigned int collisionRetries = 20>
+class CustomMininingCache
+{
+    static_assert(collisionRetries < size, "Number of fetch retries in case of collision is too big!");
+public:
+
+    /// Reset all cache entries
+    void reset()
+    {
+        ACQUIRE(lock);
+        setMem((unsigned char*)cache, sizeof(cache), 0);
+        hits = 0;
+        misses = 0;
+        collisions = 0;
+        RELEASE(lock);
+    }
+
+    /// Return maximum number of entries that can be stored in cache
+    constexpr unsigned int capacity() const
+    {
+        return size;
+    }
+
+    /// Get cache index based on hash function
+    unsigned int getCacheIndex(const T& rData)
+    {
+        return rData.getHashIndex() % capacity();
+    }
+
+    // Try to fetch data from cacheIndex, also checking a few following entries in case of collisions (may update cacheIndex),
+    // increments counter of hits, misses, or collisions
+    int tryFetching(T& rData, unsigned int& cacheIndex)
+    {
+        int retVal;
+        unsigned int tryFetchIdx = rData.getHashIndex() % capacity();
+        ACQUIRE(lock);
+        for (unsigned int i = 0; i < collisionRetries; ++i)
+        {
+            const T& cacheData = cache[tryFetchIdx];
+            if (cacheData.isEmpty())
+            {
+                // miss: data not available in cache yet (entry is empty)
+                misses++;
+                retVal = CUSTOM_MINING_CACHE_MISS;
+                break;
+            }
+
+            if (cacheData.isMatched(rData))
+            {
+                // hit: data available in cache -> return score
+                hits++;
+                retVal = CUSTOM_MINING_CACHE_HIT;
+                break;
+            }
+
+            // collision: other data is mapped to same index -> retry at following index
+            retVal = CUSTOM_MINING_CACHE_COLLISION;
+            tryFetchIdx = (tryFetchIdx + 1) % capacity();
+        }
+        RELEASE(lock);
+
+        if (retVal ==  CUSTOM_MINING_CACHE_COLLISION)
+        {
+            ACQUIRE(lock);
+            collisions++;
+            RELEASE(lock);
+        }
+        else
+        {
+            cacheIndex = tryFetchIdx;
+        }
+        return retVal;
+    }
+
+    /// Add entry to cache (may overwrite existing entry)
+    void addEntry(const T& rData, unsigned int cacheIndex)
+    {
+        cacheIndex %= capacity();
+        ACQUIRE(lock);
+        cache[cacheIndex] = rData;
+        RELEASE(lock);
+    }
+
+    /// Save custom mining share cache to file
+    void save(CHAR16* filename, CHAR16* directory = NULL)
+    {
+        logToConsole(L"Saving custom mining cache file...");
+
+        const unsigned long long beginningTick = __rdtsc();
+        ACQUIRE(lock);
+        long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)&cache, directory);
+        RELEASE(lock);
+        if (savedSize == sizeof(cache))
+        {
+            setNumber(message, savedSize, TRUE);
+            appendText(message, L" bytes of the custom mining cache data are saved (");
+            appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+            appendText(message, L" microseconds).");
+            logToConsole(message);
+        }
+    }
+
+    /// Try to load custom mining share cache file
+    bool load(CHAR16* filename, CHAR16* directory = NULL)
+    {
+        bool success = true;
+        logToConsole(L"Loading custom mining cache...");
+        reset();
+        ACQUIRE(lock);
+        long long loadedSize = ::load(filename, sizeof(cache), (unsigned char*)cache, directory);
+        RELEASE(lock);
+        if (loadedSize != sizeof(cache))
+        {
+            if (loadedSize == -1)
+            {
+                logToConsole(L"Error while loading custom mining cache: File does not exists (ignore this error if this is the epoch start)");
+            }
+            else if (loadedSize < sizeof(cache))
+            {
+                logToConsole(L"Error while loading custom mining cache: Custom mining cache file is smaller than defined. System may not work properly");
+            }
+            else
+            {
+                logToConsole(L"Error while loading custom mining cache: Custom mining cache file is larger than defined. System may not work properly");
+            }
+            success = false;
+        }
+        else
+        {
+            logToConsole(L"Loaded score cache data!");
+        }
+        return success;
+    }
+
+    // Return number of hits (data available in cache when fetched)
+    unsigned int hitCount() const
+    {
+        return hits;
+    }
+
+    // Return number of misses (data not in cache yet)
+    unsigned int missCount() const
+    {
+        return misses;
+    }
+
+    // Return number of collisions (other data is mapped to same index)
+    unsigned int collisionCount() const
+    {
+        return collisions;
+    }
+
+private:
+
+    // cache entries (set zero or load from a file on init)
+    T cache[size];
+
+    // lock to prevent race conditions on parallel access
+    volatile char lock = 0;
+
+    // statistics of hits, misses, and collisions
+    unsigned int hits = 0;
+    unsigned int misses = 0;
+    unsigned int collisions = 0;
+};
+
+class CustomMiningSolutionCacheEntry
+{
+public:
+    void reset()
+    {
+        _taskIndex = 0;
+        _isHashed = false;
+    }
+
+    void set(const CustomMiningSolution* pCustomMiningSolution)
+    {
+        reset();
+        _taskIndex = pCustomMiningSolution->taskIndex;
+        _nonce = pCustomMiningSolution->nonce;
+        _padding = pCustomMiningSolution->padding;
+    }
+
+    void get(CustomMiningSolution& rCustomMiningSolution)
+    {
+        rCustomMiningSolution.nonce = _nonce;
+        rCustomMiningSolution.taskIndex = _taskIndex;
+        rCustomMiningSolution.padding = _padding;
+    }
+
+    bool isEmpty() const
+    {
+        return (_taskIndex == 0);
+    }
+    bool isMatched(const CustomMiningSolutionCacheEntry& rOther) const
+    {
+        return (_taskIndex == rOther._taskIndex) && (_nonce == rOther._nonce);
+    }
+    unsigned long long getHashIndex()
+    {
+        if (!_isHashed)
+        {
+            copyMem(_buffer, &_taskIndex, sizeof(_taskIndex));
+            copyMem(_buffer + sizeof(_taskIndex), &_nonce, sizeof(_nonce));
+            KangarooTwelve(_buffer, sizeof(_taskIndex) + sizeof(_nonce), &_digest, sizeof(_digest));
+            _isHashed = true;
+        }
+        return _digest;
+    }
+private:
+    unsigned long long _taskIndex;
+    unsigned int _nonce;
+    unsigned int _padding; // currently unused
+    unsigned long long _digest;
+    unsigned char _buffer[sizeof(_taskIndex) + sizeof(_nonce)];
+    bool _isHashed;
+};
+
+CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolution;
+
+// Save score cache to SCORE_CACHE_FILE_NAME
+void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
+{
+    ACQUIRE(gCustomMiningCacheLock);
+    CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
+    CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
+    CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
+    gSystemCustomMiningSolution.save(CUSTOM_MINING_CACHE_FILE_NAME, directory);
+    RELEASE(gCustomMiningCacheLock);
+}
+
+// Update score cache filename with epoch and try to load file
+bool loadCustomMiningCache(int epoch)
+{
+    bool success = true;
+    ACQUIRE(gCustomMiningCacheLock);
+    CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
+    CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
+    CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
+    success = gSystemCustomMiningSolution.load(CUSTOM_MINING_CACHE_FILE_NAME);
+    RELEASE(gCustomMiningCacheLock);
+    return success;
+}
+

@@ -210,6 +210,9 @@ static volatile char gCustomMiningSharesCountLock = 0;
 static char gIsInCustomMiningState = 0;
 static volatile char gIsInCustomMiningStateLock = 0;
 
+static unsigned int gCustomMiningCountOverflow = 0;
+static volatile char gCustomMiningShareCountOverFlowLock = 0;
+
 struct revenueScore
 {
     unsigned long long oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
@@ -243,7 +246,6 @@ struct
     unsigned int resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
-    unsigned long long lastLogId;
     unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
@@ -361,6 +363,21 @@ static void logToConsole(const CHAR16* message)
         outputStringToConsole(timestampedMessage);
 #endif
 }
+
+#if defined(NDEBUG)
+#else
+// debug util to make sure current thread is the main thread
+// network and device IO can only be used by main thread
+static void assertMainThread()
+{
+    if (mpServicesProtocol) // if mpServicesProtocol isn't created, we can be sure that this is still main thread
+    {
+        unsigned long long processorNumber;
+        mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+        ASSERT(processorNumber == mainThreadProcessorID);
+    }
+}
+#endif
 
 
 static unsigned int getTickInMiningPhaseCycle()
@@ -545,17 +562,47 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 if (recordSolutions)
                                 {
                                     // Record the solution
+                                    bool isSolutionGood = false;
                                     const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
 
-                                    // Check the computor idx of this solution
+                                    // Check the computor idx of this solution.
                                     unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
+                                    // TODO: taskIndex can use for detect for-sure stale shares
+                                    if (computorID == i && solution->taskIndex > 0)
+                                    {
+                                        CustomMiningSolutionCacheEntry cacheEntry;
+                                        cacheEntry.set(solution);
 
-                                    ACQUIRE(gCustomMiningSharesCountLock);
-                                    gCustomMiningSharesCount[computorID]++;
-                                    RELEASE(gCustomMiningSharesCountLock);
+                                        unsigned int cacheIndex = 0;
+                                        int sts = gSystemCustomMiningSolution.tryFetching(cacheEntry, cacheIndex);
+
+                                        // Check for duplicated solution
+                                        if (sts == CUSTOM_MINING_CACHE_MISS)
+                                        {
+                                            gSystemCustomMiningSolution.addEntry(cacheEntry, cacheIndex);
+                                            isSolutionGood = true;
+                                        }
+
+                                        if (isSolutionGood)
+                                        {
+                                            ACQUIRE(gCustomMiningSharesCountLock);
+                                            gCustomMiningSharesCount[computorID]++;
+                                            RELEASE(gCustomMiningSharesCountLock);
+                                        }
+
+                                        // Record stats
+                                        const unsigned int hitCount = gSystemCustomMiningSolution.hitCount();
+                                        const unsigned int missCount = gSystemCustomMiningSolution.missCount();
+                                        const unsigned int collision = gSystemCustomMiningSolution.collisionCount();
+
+                                        ACQUIRE(gSystemCustomMiningSolutionLock);
+                                        gSystemCustomMiningDuplicatedSolutionCount = hitCount;
+                                        gSystemCustomMiningSolutionCount = missCount;
+                                        gSystemCustomMiningSolutionOFCount = collision;
+                                        RELEASE(gSystemCustomMiningSolutionLock);
+                                    }
                                 }
                             }
-
                             break;
                         }
                     }
@@ -1432,19 +1479,43 @@ static void checkAndSwitchMiningPhase()
     }
 }
 
+// Clean up before custom mining phase. Thread-safe function
+static void beginCustomMiningPhase()
+{
+    ACQUIRE(gSystemCustomMiningSolutionLock);
+    gSystemCustomMiningSolutionCount = 0;
+    gSystemCustomMiningSolution.reset();
+    RELEASE(gSystemCustomMiningSolutionLock);
+}
+
 static void checkAndSwitchCustomMiningPhase()
 {
     const unsigned int r = getTickInMiningPhaseCycle();
-
-    ACQUIRE(gIsInCustomMiningStateLock);
+    bool isBeginOfCustomMiningPhase = false;
+    char isInCustomMiningPhase = 0;
+    
     if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
     {
-        gIsInCustomMiningState = 1;
+        isInCustomMiningPhase = 1;
+        if (r == INTERNAL_COMPUTATIONS_INTERVAL)
+        {
+            isBeginOfCustomMiningPhase = true;
+        }
     }
     else
     {
-        gIsInCustomMiningState = 0;
+        isInCustomMiningPhase = 0;
     }
+
+    // Variables need to be reset in the beginning of custom mining phase
+    if (isBeginOfCustomMiningPhase)
+    {
+        beginCustomMiningPhase();
+    }
+
+    // Turn on the custom mining state 
+    ACQUIRE(gIsInCustomMiningStateLock);
+    gIsInCustomMiningState = isInCustomMiningPhase;
     RELEASE(gIsInCustomMiningStateLock);
 }
 
@@ -1674,19 +1745,31 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case RequestLog::type:
                 {
-                    logger.processRequestLog(peer, header);
+                    logger.processRequestLog(processorNumber, peer, header);
                 }
                 break;
 
                 case RequestLogIdRangeFromTx::type:
                 {
-                    logger.processRequestTxLogInfo(peer, header);
+                    logger.processRequestTxLogInfo(processorNumber, peer, header);
                 }
                 break;
 
                 case RequestAllLogIdRangesFromTick::type:
                 {
-                    logger.processRequestTickTxLogInfo(peer, header);
+                    logger.processRequestTickTxLogInfo(processorNumber, peer, header);
+                }
+                break;
+
+                case RequestPruningLog::type:
+                {
+                    logger.processRequestPrunePageFile(peer, header);
+                }
+                break;
+
+                case RequestLogStateDigest::type:
+                {
+                    logger.processRequestGetLogDigest(peer, header);
                 }
                 break;
 
@@ -2204,12 +2287,13 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
         if (decreaseEnergy(spectrumIndex, transaction->amount))
         {
             increaseEnergy(transaction->destinationPublicKey, transaction->amount);
-
+            {
+                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
+                logger.logQuTransfer(quTransfer);
+            }
             if (transaction->amount)
             {
                 moneyFlew = true;
-                const QuTransfer quTransfer = { transaction->sourcePublicKey , transaction->destinationPublicKey , transaction->amount };
-                logger.logQuTransfer(quTransfer);
             }
 
             if (isZero(transaction->destinationPublicKey))
@@ -2380,7 +2464,6 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
-        logger.reset(system.initialTick, system.initialTick); // clear logs here to give more time for querying and persisting the data when we do seamless transition
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
@@ -2779,6 +2862,7 @@ static void processTick(unsigned long long processorNumber)
         // In the begining of mining phase. Calculate the transaction need to be broadcasted
         if (getTickInMiningPhaseCycle() == 0)
         {
+            unsigned int customMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
                 unsigned int schedule_tick = system.tick
@@ -2787,6 +2871,20 @@ static void processTick(unsigned long long processorNumber)
 
                 // Update the custom mining share counter
                 ACQUIRE(gCustomMiningSharesCountLock);
+                for (int k = 0; k < NUMBER_OF_COMPUTORS; k++)
+                {
+                    if (gCustomMiningSharesCount[k] > CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL)
+                    {
+                        // Save the max of overflow case
+                        if (gCustomMiningSharesCount[k] > customMiningCountOverflow)
+                        {
+                            customMiningCountOverflow = gCustomMiningSharesCount[k];
+                        }
+
+                        // Threshold the value
+                        gCustomMiningSharesCount[k] = CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL;
+                    }
+                }
                 gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
                 RELEASE(gCustomMiningSharesCountLock);
 
@@ -2807,6 +2905,11 @@ static void processTick(unsigned long long processorNumber)
                 // Set the flag to false, indicating that the transaction is not broadcasted yet
                 gCustomMiningBroadcastTxBuffer[i].isBroadcasted = false;
             }
+
+            ACQUIRE(gCustomMiningShareCountOverFlowLock);
+            // Keep the max of overflow case
+            gCustomMiningCountOverflow = gCustomMiningCountOverflow > customMiningCountOverflow ? gCustomMiningCountOverflow : customMiningCountOverflow;
+            RELEASE(gCustomMiningShareCountOverFlowLock);
 
             // reset the phase counter
             ACQUIRE(gCustomMiningSharesCountLock);
@@ -2846,6 +2949,22 @@ static void processTick(unsigned long long processorNumber)
 }
 
 #pragma optimize("", on)
+
+static void resetCustomMining()
+{
+    gCustomMiningSharesCounter.init();
+    bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+    gCustomMiningCountOverflow = 0;
+    gSystemCustomMiningSolutionCount = 0;
+    gSystemCustomMiningDuplicatedSolutionCount = 0;
+    gSystemCustomMiningSolutionOFCount = 0;
+    gSystemCustomMiningSolution.reset();
+    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    {
+        // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
+        gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
+    }
+}
 
 static void beginEpoch()
 {
@@ -2917,8 +3036,7 @@ static void beginEpoch()
     bs->SetMem(system.solutions, sizeof(system.solutions), 0);
     bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
-    gCustomMiningSharesCounter.init();
-    bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+    resetCustomMining();
 
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
@@ -2928,6 +3046,8 @@ static void beginEpoch()
 #if TICK_STORAGE_AUTOSAVE_MODE
     ts.initMetaData(system.epoch); // for save/load state
 #endif
+
+    logger.reset(system.initialTick);
 }
 
 
@@ -3095,11 +3215,11 @@ static void endEpoch()
 
                     // Generate revenue donation
                     increaseEnergy(rdEntry.destinationPublicKey, donation);
+                    const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
+                    logger.logQuTransfer(quTransfer);
                     if (revenue)
                     {
                         notifyContractOfIncomingTransfer(m256i::zero(), rdEntry.destinationPublicKey, donation, QPI::TransferType::revenueDonation);
-                        const QuTransfer quTransfer = { m256i::zero(), rdEntry.destinationPublicKey, donation };
-                        logger.logQuTransfer(quTransfer);
                     }
                 }
             }
@@ -4023,8 +4143,7 @@ static bool saveAllNodeStates()
     copyMem(&nodeStateBuffer.resourceTestingDigest, &resourceTestingDigest, sizeof(resourceTestingDigest));
     nodeStateBuffer.currentRandomSeed = score->currentRandomSeed;
     nodeStateBuffer.numberOfMiners = numberOfMiners;
-    nodeStateBuffer.numberOfTransactions = numberOfTransactions;
-    nodeStateBuffer.lastLogId = logger.logId;
+    nodeStateBuffer.numberOfTransactions = numberOfTransactions;    
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
     gCustomMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.customMiningSharesCounterData);
 
@@ -4088,7 +4207,9 @@ static bool saveAllNodeStates()
         return false;
     }
 #endif
-
+#if ENABLED_LOGGING
+    logger.saveCurrentLoggingStates(directory);
+#endif
     return true;
 }
 
@@ -4162,7 +4283,6 @@ static bool loadAllNodeStates()
     numberOfMiners = nodeStateBuffer.numberOfMiners;
     initialRandomSeedFromPersistingState = nodeStateBuffer.currentRandomSeed;
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
-    logger.logId = nodeStateBuffer.lastLogId;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
     gCustomMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.customMiningSharesCounterData);
@@ -4238,8 +4358,8 @@ static bool loadAllNodeStates()
 #endif
 
 #if ENABLED_LOGGING
-    logToConsole(L"Initializing logger");
-    logger.reset(system.initialTick, system.tick); // initialize the logger
+    logToConsole(L"Loading old logger...");
+    logger.loadLastLoggingStates(directory);
 #endif
     return true;
 }
@@ -5630,6 +5750,7 @@ static bool initialize()
         setNewMiningSeed();
     }    
     score->loadScoreCache(system.epoch);
+    loadCustomMiningCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
     if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
@@ -5650,12 +5771,10 @@ static bool initialize()
     {
         peers[i].receiveData.FragmentCount = 1;
         peers[i].transmitData.FragmentCount = 1;
-        // [dkat]: here is a hacky way to avoid network corruption on some hardware
-        // by allocating the buffer bigger than needed: `BUFFER_SIZE * 2` instead of `BUFFER_SIZE`
-        // we have not found out the root cause, but it's likely the uefi system use more buffer than what we tell them to use
-        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE * 2, &peers[i].receiveBuffer, __LINE__))  ||
-            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE * 2, &peers[i].transmitData.FragmentTable[0].FragmentBuffer, __LINE__)) ||
-            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE * 2, (void**)&peers[i].dataToTransmit, __LINE__)))
+
+        if ((!allocPoolWithErrorLog(L"receiveBuffer", BUFFER_SIZE, &peers[i].receiveBuffer, __LINE__))  ||
+            (!allocPoolWithErrorLog(L"FragmentBuffer", BUFFER_SIZE, &peers[i].transmitData.FragmentTable[0].FragmentBuffer, __LINE__)) ||
+            (!allocPoolWithErrorLog(L"dataToTransmit", BUFFER_SIZE, (void**)&peers[i].dataToTransmit, __LINE__)))
         {
             return false;
         }
@@ -5710,7 +5829,7 @@ static bool initialize()
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
 
-    initCustomMining();
+    resetCustomMining();
     
     return true;
 }
@@ -6035,6 +6154,29 @@ static void logInfo()
     appendNumber(message, spectrumReorgTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms.");
     logToConsole(message);
+
+    // Log infomation about custom mining
+    setText(message, L"CustomMiningState:");
+
+    // System: solutions count at current phase | Total duplicated solutions | Total skipped solutions
+    appendText(message, L" SystemSols( Phase = ");
+    ACQUIRE(gSystemCustomMiningSolutionLock);
+    appendNumber(message, gSystemCustomMiningSolutionCount, false);
+    appendText(message, L" | Dup: ");
+    appendNumber(message, gSystemCustomMiningDuplicatedSolutionCount, false);
+    appendText(message, L" | OF: ");
+    appendNumber(message, gSystemCustomMiningSolutionOFCount, false);
+    RELEASE(gSystemCustomMiningSolutionLock);
+    appendText(message, L").");
+
+    // SharesCount : Max count of overflow 
+    appendText(message, L" SharesCountOF (");
+    ACQUIRE(gCustomMiningShareCountOverFlowLock);
+    appendNumber(message, gCustomMiningCountOverflow, FALSE);
+    RELEASE(gCustomMiningShareCountOverFlowLock);
+    appendText(message, L").");
+    logToConsole(message);
+
 }
 
 static void logHealthStatus()
@@ -6351,10 +6493,14 @@ static void processKeyPresses()
             logToConsole(message);
 
 #if TICK_STORAGE_AUTOSAVE_MODE
+#if TICK_STORAGE_AUTOSAVE_MODE == 2
+            setText(message, L"Auto-save disabled, use F8 key to trigger save");
+#else
             setText(message, L"Auto-save enabled in AUX mode: every ");
             appendNumber(message, TICK_STORAGE_AUTOSAVE_TICK_PERIOD, FALSE);
             appendText(message, L" ticks, next at tick ");
             appendNumber(message, nextPersistingNodeStateTick, FALSE);
+#endif
             logToConsole(message);
 #endif
 
@@ -6730,11 +6876,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             unsigned int salt;
             _rdrand32_step(&salt);
 
-#if TICK_STORAGE_AUTOSAVE_MODE
+#if TICK_STORAGE_AUTOSAVE_MODE == 1
             // Use random tick offset to reduce risk of several nodes doing auto-save in parallel (which can lead to bad topology and misalignment)
             nextPersistingNodeStateTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
 #endif
-
+            
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
             logToConsole(L"Init complete! Entering main loop ...");
@@ -6851,6 +6997,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     saveSystem();
                     score->saveScoreCache(system.epoch);
+                    saveCustomMiningCache(system.epoch);
                 }
 #endif
 
@@ -6862,6 +7009,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         closePeer(&peers[random(NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS)]);
                     }
+                    logToConsole(L"Refreshed peers...");
                 }
 
                 if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000
@@ -7001,6 +7149,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 processKeyPresses();
 
 #if TICK_STORAGE_AUTOSAVE_MODE
+#if TICK_STORAGE_AUTOSAVE_MODE == 1
                 bool nextAutoSaveTickUpdated = false;
                 if (mainAuxStatus & 1)
                 {
@@ -7028,6 +7177,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                     }
                 }
+#endif
                 if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 1)
                 {
                     // Saving node state takes a lot of time -> Close peer connections before to signal that
@@ -7042,12 +7192,14 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     requestPersistingNodeState = 0;
                     logToConsole(L"Complete saving all node states");
                 }
+#if TICK_STORAGE_AUTOSAVE_MODE == 1
                 if (nextAutoSaveTickUpdated)
                 {
                     setText(message, L"Auto-save in AUX mode scheduled for tick ");
                     appendNumber(message, nextPersistingNodeStateTick, FALSE);
                     logToConsole(message);
                 }
+#endif
 #endif
 
                 if (curTimeTick - loggingTick >= frequency)
@@ -7140,6 +7292,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             saveSystem();
             score->saveScoreCache(system.epoch);
+            saveCustomMiningCache(system.epoch);
 
             setText(message, L"Qubic ");
             appendQubicVersion(message);
