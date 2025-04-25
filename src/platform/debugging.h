@@ -60,18 +60,23 @@ static void printDebugMessages()
     EFI_FILE_PROTOCOL* file = nullptr;
     if (!root)
     {
-        logToConsole(L"printDebugMessages() called before filesystem init");
     }
     else if (status = root->Open(root, (void**)&file, (CHAR16*)L"debug.log", EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0))
     {
-        logStatusToConsole(L"EFI_FILE_PROTOCOL.Open() fails", status, __LINE__);
+        setText(::message, L"EFI_FILE_PROTOCOL.Open() failed in printDebugMessages() with status ");
+        appendErrorStatus(::message, status);
+        appendText(::message, L"\r\n");
+        outputStringToConsole(::message);
         file = nullptr;
     }
     else
     {
         if (status = root->SetPosition(file, 0xFFFFFFFFFFFFFFFF))
         {
-            logStatusToConsole(L"EFI_FILE_PROTOCOL.SetPosition() fails", status, __LINE__);
+            setText(::message, L"EFI_FILE_PROTOCOL.SetPosition() failed in printDebugMessages() with status ");
+            appendErrorStatus(::message, status);
+            appendText(::message, L"\r\n");
+            outputStringToConsole(::message);
             file->Close(file);
             file = nullptr;
         }
@@ -93,16 +98,18 @@ static void printDebugMessages()
                 if (status
                     || size != (WRITING_CHUNK_SIZE <= (totalSize - writtenSize) ? WRITING_CHUNK_SIZE : (totalSize - writtenSize)))
                 {
-                    logStatusToConsole(L"EFI_FILE_PROTOCOL.Write() fails", status, __LINE__);
+                    setText(::message, L"EFI_FILE_PROTOCOL.Write() failed in printDebugMessages() with status ");
+                    appendErrorStatus(::message, status);
+                    appendText(::message, L"\r\n");
+                    outputStringToConsole(::message);
 
-                    file->Close(file);
-                    file = 0;
-                    break;
+                    goto closeFile;
                 }
                 writtenSize += size;
             }
         }
 
+    closeFile:
         file->Close(file);
     }
 #endif
