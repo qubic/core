@@ -24,7 +24,7 @@ static const unsigned char whiteListPeers[][4] = {
 };
 */
 
-#define ENABLE_STANDARD_LOGGING 1 // logging universe + spectrum
+#define ENABLE_STANDARD_LOGGING 0 // logging universe + spectrum
 #define ENABLE_SMART_CONTRACT_LOGGING 0// logging smart contract
 
 #if ENABLE_STANDARD_LOGGING
