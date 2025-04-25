@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -93,6 +93,7 @@
     <ClInclude Include="platform\stack_size_tracker.h" />
     <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="platform\global_var.h" />
+    <ClInclude Include="platform\virtual_memory.h" />
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />

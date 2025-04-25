@@ -123,6 +123,7 @@ static bool isWhiteListPeer(unsigned char address[4])
 
 static void closePeer(Peer* peer)
 {
+    assertMainThread();
     if (((unsigned long long)peer->tcp4Protocol) > 1)
     {
         if (!peer->isClosing)

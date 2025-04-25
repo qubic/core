@@ -20,6 +20,7 @@ void updateTime();
 
 static void updateTime()
 {
+    assertMainThread();
     EFI_TIME newTime;
     if (!rs->GetTime(&newTime, NULL))
     {
@@ -49,3 +50,13 @@ inline long long ms(unsigned char year, unsigned char month, unsigned char day, 
 {
     return (((((long long)dayIndex(year, month, day)) * 24 + hour) * 60 + minute) * 60 + second) * 1000 + millisecond;
 }
+
+#ifndef NO_UEFI
+inline unsigned long long now_ms()
+{
+    // utcTime is updated on main thread - because only main thread can do it
+    return ms(unsigned char(utcTime.Year % 100), utcTime.Month, utcTime.Day, utcTime.Hour, utcTime.Minute, utcTime.Second, utcTime.Nanosecond / 1000000);
+}
+#else
+unsigned long long now_ms();
+#endif
