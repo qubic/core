@@ -5,6 +5,7 @@
 #ifdef NO_UEFI
 #include <cstdio>
 #endif
+#include <lib/platform_common/processor.h>
 #include <lib/platform_efi/uefi.h>
 #include "console_logging.h"
 #include "concurrency.h"
@@ -87,7 +88,7 @@ static bool checkDir(const CHAR16* dirName)
     logToConsole(L"NO_UEFI implementation of checkDir() is missing! No directory checked!");
     return false;
 #else
-    assertMainThread();
+    ASSERT(isMainProcessor());
     EFI_FILE_PROTOCOL* file;
 
     // Check if the directory exist or not
@@ -107,7 +108,7 @@ static bool createDir(const CHAR16* dirName)
     logToConsole(L"NO_UEFI implementation of createDir() is missing! No directory created!");
     return false;
 #else
-    assertMainThread();
+    ASSERT(isMainProcessor());
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
 
@@ -139,7 +140,7 @@ static bool removeFile(CHAR16* directory, CHAR16* fileName)
     logToConsole(L"NO_UEFI implementation of removeFile() is missing! No directory checked!");
     return false;
 #else
-    assertMainThread();
+    ASSERT(isMainProcessor());
     long long fileSz = getFileSize(fileName, directory);
     if (fileSz == -1) // file doesn't exist
     {
@@ -591,7 +592,7 @@ protected:
     // Real write happen here. This function expected call in main thread only. Need to flush all data in queue
     int flushIO(bool isSave, int numberOfProcessedItems = 0)
     {
-        assertMainThread();
+        ASSERT(isMainProcessor());
         if (numberOfProcessedItems == 1)
         {
             return flushIOMaxPriorityItem(isSave);
@@ -705,7 +706,7 @@ public:
     // Real read happen here. This function expected call in main thread only
     int flushRead(int numberOfProcessedItems = 0)
     {
-        assertMainThread();
+        ASSERT(isMainProcessor());
         return this->flushIO(false, numberOfProcessedItems);
     }
 };
@@ -717,7 +718,7 @@ public:
     // Real write happen here. This function expected call in main thread only. Need to flush all data in queue
     int flushWrite(int numberOfProcessedItems = 0)
     {
-        assertMainThread();
+        ASSERT(isMainProcessor());
         return this->flushIO(true, numberOfProcessedItems);
     }
 };

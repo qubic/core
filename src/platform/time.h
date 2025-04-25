@@ -17,10 +17,11 @@ void updateTime();
 #else
 
 #include <lib/platform_efi/uefi_globals.h>
+#include <lib/platform_common/processor.h>
 
 static void updateTime()
 {
-    assertMainThread();
+    ASSERT(isMainProcessor());
     EFI_TIME newTime;
     if (!rs->GetTime(&newTime, NULL))
     {

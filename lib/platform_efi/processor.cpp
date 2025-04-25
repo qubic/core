@@ -9,8 +9,11 @@ EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol = nullptr;
 // Return processor number of processor running this function
 unsigned long long getRunningProcessorID()
 {
-    unsigned long long processorNumber;
-    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    // if mpServicesProtocol isn't set, we can be sure that this is still the main processor thread, because
+    // mpServicesProtocol is needed to startup other processors
+    unsigned long long processorNumber = mainThreadProcessorID;
+    if (mpServicesProtocol)
+        mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
     return processorNumber;
 }
 

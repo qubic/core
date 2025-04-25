@@ -20,11 +20,3 @@
 static void addDebugMessageAssert(const char* message, const char* file, const unsigned int lineNumber);
 
 #endif
-#if defined(EXPECT_TRUE) || defined(NDEBUG)
-static void assertMainThread()
-{
-    return;
-}
-#else
-static void assertMainThread();
-#endif
