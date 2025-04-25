@@ -6538,10 +6538,14 @@ static void processKeyPresses()
             logToConsole(message);
 
 #if TICK_STORAGE_AUTOSAVE_MODE
+#if TICK_STORAGE_AUTOSAVE_MODE == 2
+            setText(message, L"Auto-save disabled, use F8 key to trigger save");
+#else
             setText(message, L"Auto-save enabled in AUX mode: every ");
             appendNumber(message, TICK_STORAGE_AUTOSAVE_TICK_PERIOD, FALSE);
             appendText(message, L" ticks, next at tick ");
             appendNumber(message, nextPersistingNodeStateTick, FALSE);
+#endif
             logToConsole(message);
 #endif
 
@@ -6917,7 +6921,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             unsigned int salt;
             _rdrand32_step(&salt);
 
-#if TICK_STORAGE_AUTOSAVE_MODE
+#if TICK_STORAGE_AUTOSAVE_MODE == 1
             // Use random tick offset to reduce risk of several nodes doing auto-save in parallel (which can lead to bad topology and misalignment)
             nextPersistingNodeStateTick = system.tick + random(TICK_STORAGE_AUTOSAVE_TICK_PERIOD) + TICK_STORAGE_AUTOSAVE_TICK_PERIOD / 10;
 #endif
@@ -7190,6 +7194,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 processKeyPresses();
 
 #if TICK_STORAGE_AUTOSAVE_MODE
+#if TICK_STORAGE_AUTOSAVE_MODE == 1
                 bool nextAutoSaveTickUpdated = false;
                 if (mainAuxStatus & 1)
                 {
@@ -7217,6 +7222,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                     }
                 }
+#endif
                 if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 1)
                 {
                     // Saving node state takes a lot of time -> Close peer connections before to signal that
@@ -7231,12 +7237,14 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     requestPersistingNodeState = 0;
                     logToConsole(L"Complete saving all node states");
                 }
+#if TICK_STORAGE_AUTOSAVE_MODE == 1
                 if (nextAutoSaveTickUpdated)
                 {
                     setText(message, L"Auto-save in AUX mode scheduled for tick ");
                     appendNumber(message, nextPersistingNodeStateTick, FALSE);
                     logToConsole(message);
                 }
+#endif
 #endif
 
                 if (curTimeTick - loggingTick >= frequency)
