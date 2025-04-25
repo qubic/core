@@ -8,7 +8,7 @@ unsigned long long mainProcessorID = -1;
 unsigned long long getRunningProcessorID()
 {
     // TODO: implement this
-    return 0;
+    return mainProcessorID;
 }
 
 // Check if running processor is main processor (bootstrap processor in EFI)
