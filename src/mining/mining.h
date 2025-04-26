@@ -592,7 +592,7 @@ struct CustomMiningRespondDataHeader
     unsigned long long respondType;   // message type
 };
 
-template <typename DataType, unsigned long long maxItems, unsigned long long resetPeriod>
+template <typename DataType, unsigned long long maxItems, unsigned long long resetPeriod, bool allowDuplcated = false>
 class CustomMiningSortedStorage
 {
 public:
@@ -676,7 +676,8 @@ public:
             if (midTaskIndex == taskIndex)
             {
                 exactMatch = true;
-                return mid;
+                result = mid;
+                break;
             }
             else if (midTaskIndex < taskIndex)
             {
@@ -690,6 +691,22 @@ public:
                     break; // prevent underflow
                 }
                 right = mid - 1;
+            }
+        }
+
+        // In case of extract match. Make sure get the most left data
+        if (exactMatch)
+        {
+            while (result > 0)
+            {
+                if (taskIndex == _data[_indices[result - 1]].taskIndex)
+                {
+                    result--;
+                }
+                else
+                {
+                    break;
+                }
             }
         }
 
@@ -754,7 +771,7 @@ public:
     int addData(const DataType* pData)
     {
         // Don't added if the task already existed
-        if (dataExisted(pData))
+        if (!allowDuplcated && dataExisted(pData))
         {
             return DATA_EXISTED;
         }
@@ -935,8 +952,8 @@ public:
         }
     }
 
-    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0> _taskStorage;
-    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE> _solutionStorage;
+    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, false> _taskStorage;
+    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE, true> _solutionStorage;
 
     // Buffer can accessed from multiple threads
     unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
