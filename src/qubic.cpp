@@ -17,10 +17,12 @@
 
 #include "platform/m256.h"
 #include "platform/concurrency.h"
+#include "platform/concurrency_impl.h"
 // TODO: Use "long long" instead of "int" for DB indices
 
 
 #include <lib/platform_efi/uefi.h>
+#include <lib/platform_common/processor.h>
 #include "platform/time.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
@@ -161,7 +163,6 @@ XKCP::KangarooTwelve_Instance g_k12_instance;
 // rdtsc (timestamp) of ticks
 static unsigned long long tickTicks[11];
 
-static EFI_MP_SERVICES_PROTOCOL* mpServicesProtocol;
 static unsigned int numberOfProcessors = 0;
 static Processor processors[MAX_NUMBER_OF_PROCESSORS];
 
@@ -172,7 +173,6 @@ static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a l
 
 static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that will process solution
 static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS]; // flag array to indicate that whether a procId should help processing solutions or not
-static unsigned long long mainThreadProcessorID = -1;
 static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
@@ -363,21 +363,6 @@ static void logToConsole(const CHAR16* message)
         outputStringToConsole(timestampedMessage);
 #endif
 }
-
-#if defined(NDEBUG)
-#else
-// debug util to make sure current thread is the main thread
-// network and device IO can only be used by main thread
-static void assertMainThread()
-{
-    if (mpServicesProtocol) // if mpServicesProtocol isn't created, we can be sure that this is still main thread
-    {
-        unsigned long long processorNumber;
-        mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
-        ASSERT(processorNumber == mainThreadProcessorID);
-    }
-}
-#endif
 
 
 static unsigned int getTickInMiningPhaseCycle()
@@ -1553,8 +1538,7 @@ static void requestProcessor(void* ProcedureArgument)
 {
     enableAVX();
 
-    unsigned long long processorNumber;
-    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    const unsigned long long processorNumber = getRunningProcessorID();
 
     Processor* processor = (Processor*)ProcedureArgument;
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
@@ -1565,7 +1549,7 @@ static void requestProcessor(void* ProcedureArgument)
         if (epochTransitionState)
         {
             _InterlockedIncrement(&epochTransitionWaitingRequestProcessors);
-            while (epochTransitionState)
+            BEGIN_WAIT_WHILE(epochTransitionState)
             {
                 {
                     // to avoid potential overflow: consume the queue without processing requests
@@ -1592,8 +1576,8 @@ static void requestProcessor(void* ProcedureArgument)
                         RELEASE(requestQueueTailLock);
                     }
                 }
-                _mm_pause();
             }
+            END_WAIT_WHILE();
             _InterlockedDecrement(&epochTransitionWaitingRequestProcessors);
         }
 
@@ -1817,8 +1801,7 @@ static void contractProcessor(void*)
 {
     enableAVX();
 
-    unsigned long long processorNumber;
-    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    const unsigned long long processorNumber = getRunningProcessorID();
 
     unsigned int executedContractIndex;
     switch (contractProcessorPhase)
@@ -1980,10 +1963,7 @@ static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& d
     contractProcessorPostIncomingTransferType = type;
     contractProcessorPhase = POST_INCOMING_TRANSFER;
     contractProcessorState = 1;
-    while (contractProcessorState)
-    {
-        _mm_pause();
-    }
+    WAIT_WHILE(contractProcessorState);
 }
 
 
@@ -2024,10 +2004,7 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
         contractProcessorPostIncomingTransferType = QPI::TransferType::procedureTransaction;
         contractProcessorPhase = USER_PROCEDURE_CALL;
         contractProcessorState = 1;
-        while (contractProcessorState)
-        {
-            _mm_pause();
-        }
+        WAIT_WHILE(contractProcessorState);
 
         return contractProcessorTransactionMoneyflew;
     }
@@ -2039,10 +2016,7 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
         contractProcessorPostIncomingTransferType = QPI::TransferType::standardTransaction;
         contractProcessorPhase = POST_INCOMING_TRANSFER;
         contractProcessorState = 1;
-        while (contractProcessorState)
-        {
-            _mm_pause();
-        }
+        WAIT_WHILE(contractProcessorState);
     }
 
     // if transaction tries to invoke non-registered procedure, transaction amount is not reimbursed
@@ -2478,27 +2452,18 @@ static void processTick(unsigned long long processorNumber)
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
-        while (contractProcessorState)
-        {
-            _mm_pause();
-        }
+        WAIT_WHILE(contractProcessorState);
 
         logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
         contractProcessorPhase = BEGIN_EPOCH;
         contractProcessorState = 1;
-        while (contractProcessorState)
-        {
-            _mm_pause();
-        }
+        WAIT_WHILE(contractProcessorState);
     }
 
     logger.registerNewTx(system.tick, logger.SC_BEGIN_TICK_TX);
     contractProcessorPhase = BEGIN_TICK;
     contractProcessorState = 1;
-    while (contractProcessorState)
-    {
-        _mm_pause();
-    }
+    WAIT_WHILE(contractProcessorState);
 
     unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     ts.tickData.acquireLock();
@@ -2587,10 +2552,7 @@ static void processTick(unsigned long long processorNumber)
     logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
     contractProcessorState = 1;
-    while (contractProcessorState)
-    {
-        _mm_pause();
-    }
+    WAIT_WHILE(contractProcessorState);
 
     unsigned int digestIndex;
     ACQUIRE(spectrumLock);
@@ -3080,10 +3042,7 @@ static void endEpoch()
     logger.registerNewTx(system.tick, logger.SC_END_EPOCH_TX);
     contractProcessorPhase = END_EPOCH;
     contractProcessorState = 1;
-    while (contractProcessorState)
-    {
-        _mm_pause();
-    }
+    WAIT_WHILE(contractProcessorState);
 
     // treating endEpoch as a tick, start updating etalonTick:
     // this is the last tick of an epoch, should we set prevResourceTestingDigest to zero? nodes that start from scratch (for the new epoch)
@@ -3281,23 +3240,14 @@ static void endEpoch()
 #if PAUSE_BEFORE_CLEAR_MEMORY
     // re-open request processors for other services to query
     epochTransitionState = 0;
-    while (epochTransitionWaitingRequestProcessors != 0)
-    {
-        _mm_pause();
-    }
+    WAIT_WHILE(epochTransitionWaitingRequestProcessors != 0);
 
     epochTransitionCleanMemoryFlag = 0;
-    while (epochTransitionCleanMemoryFlag == 0) // wait until operator flip this flag to 1 to continue the beginEpoch procedures
-    {
-        _mm_pause();
-    }
+    WAIT_WHILE(epochTransitionCleanMemoryFlag == 0); // wait until operator flip this flag to 1 to continue the beginEpoch procedures
 
     // close all request processors
     epochTransitionState = 1;
-    while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
-    {
-        _mm_pause();
-    }
+    WAIT_WHILE(epochTransitionWaitingRequestProcessors < nRequestProcessorIDs);
 #endif
 
     system.epoch++;
@@ -4989,8 +4939,7 @@ static bool isTickTimeOut()
 static void tickProcessor(void*)
 {
     enableAVX();
-    unsigned long long processorNumber;
-    mpServicesProtocol->WhoAmI(mpServicesProtocol, &processorNumber);
+    const unsigned long long processorNumber = getRunningProcessorID();
 
 #if !START_NETWORK_FROM_SCRATCH
     // only init first tick if it doesn't load all node states from file
@@ -5024,7 +4973,7 @@ static void tickProcessor(void*)
                 if (requestPersistingNodeState)
                 {
                     persistingNodeStateTickProcWaiting = 1;
-                    while (requestPersistingNodeState) _mm_pause();
+                    WAIT_WHILE(requestPersistingNodeState);
                     persistingNodeStateTickProcWaiting = 0;
                 }
                 processTick(processorNumber);
@@ -5357,10 +5306,7 @@ static void tickProcessor(void*)
                                 {
 
                                     // wait until all request processors are in waiting state
-                                    while (epochTransitionWaitingRequestProcessors < nRequestProcessorIDs)
-                                    {
-                                        _mm_pause();
-                                    }
+                                    WAIT_WHILE(epochTransitionWaitingRequestProcessors < nRequestProcessorIDs);
 
                                     // end current epoch
                                     endEpoch();
@@ -5370,10 +5316,7 @@ static void tickProcessor(void*)
 
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;
-                                    while (systemMustBeSaved)
-                                    {
-                                        _mm_pause();
-                                    }
+                                    WAIT_WHILE(systemMustBeSaved);
                                     epochTransitionState = 2;
 
                                     beginEpoch();
@@ -5396,10 +5339,7 @@ static void tickProcessor(void*)
                                     spectrumMustBeSaved = true;
                                     universeMustBeSaved = true;
                                     computerMustBeSaved = true;
-                                    while (computerMustBeSaved || universeMustBeSaved || spectrumMustBeSaved)
-                                    {
-                                        _mm_pause();
-                                    }
+                                    WAIT_WHILE(computerMustBeSaved || universeMustBeSaved || spectrumMustBeSaved);
 
                                     // update etalon tick
                                     etalonTick.epoch++;

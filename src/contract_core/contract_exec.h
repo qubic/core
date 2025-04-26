@@ -206,13 +206,13 @@ static void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnor
         contractLocalsStackLockWaitingCountMax = waitingCount;
 
     int i = stacksToIgnore;
-    while (TRY_ACQUIRE(contractLocalsStackLock[i]) == false)
+    BEGIN_WAIT_WHILE(TRY_ACQUIRE(contractLocalsStackLock[i]) == false)
     {
-        _mm_pause();
         ++i;
         if (i == NUMBER_OF_CONTRACT_EXECUTION_BUFFERS)
             i = stacksToIgnore;
     }
+    END_WAIT_WHILE();
 
     _InterlockedDecrement(&contractLocalsStackLockWaitingCount);
 
@@ -411,7 +411,7 @@ void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int cont
     {
         // Entry point is user function (running in request processor)
         // -> Default case: either get lock immediately or retry as long as no callback is running
-        while (!contractStateLock[contractIndex].tryAcquireRead())
+        BEGIN_WAIT_WHILE(!contractStateLock[contractIndex].tryAcquireRead())
         {
             if (contractCallbacksRunning != NoContractCallback)
             {
@@ -421,8 +421,8 @@ void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int cont
                 contractLocalsStack[_stackIndex].free();
                 __qpiAbort(ContractErrorStoppedToResolveDeadlock);
             }
-            _mm_pause();
         }
+        END_WAIT_WHILE();
         rollbackInfo->type = ContractRollbackInfo::ContractStateReadLock;
     }
     else

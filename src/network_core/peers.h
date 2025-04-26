@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <lib/platform_common/processor.h>
 #include <lib/platform_efi/uefi.h>
 #include "platform/random.h"
 #include "platform/concurrency.h"
@@ -123,7 +124,7 @@ static bool isWhiteListPeer(unsigned char address[4])
 
 static void closePeer(Peer* peer)
 {
-    assertMainThread();
+    ASSERT(isMainProcessor());
     if (((unsigned long long)peer->tcp4Protocol) > 1)
     {
         if (!peer->isClosing)

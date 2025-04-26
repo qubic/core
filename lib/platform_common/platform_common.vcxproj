@@ -17,6 +17,7 @@
     <ClInclude Include="edk2_mdepkg\Include\X64\ProcessorBind.h" />
     <ClInclude Include="edk2_mdepkg\Library\BaseLib\BaseLibInternals.h" />
     <ClInclude Include="long_jump.h" />
+    <ClInclude Include="processor.h" />
     <ClInclude Include="sleep.h" />
   </ItemGroup>
   <ItemGroup>
