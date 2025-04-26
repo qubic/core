@@ -54,6 +54,28 @@ struct Peer
     BOOLEAN isClosing;
     // Indicate the peer is incomming connection type
     BOOLEAN isIncommingConnection;
+
+    // Extra data to determine if this peer is a fullnode
+    unsigned int latestTick;
+    bool isFullNode() const
+    {
+        return (latestTick >= system.tick - 100);
+    }
+
+    // set handler to null and all params to false/zeroes
+    void reset()
+    {
+        tcp4Protocol = NULL;
+        isConnectingAccepting = FALSE;
+        isConnectedAccepted = FALSE;
+        isReceiving = FALSE;
+        isTransmitting = FALSE;
+        exchangedPublicPeers = FALSE;
+        isClosing = FALSE;
+        isIncommingConnection = FALSE;
+        dataToTransmitSize = 0;
+        latestTick = 0;
+    }
 };
 
 typedef struct
@@ -153,12 +175,7 @@ static void closePeer(Peer* peer)
                 numberOfAcceptedIncommingConnection--;
                 ASSERT(numberOfAcceptedIncommingConnection >= 0);
             }
-
-            peer->isConnectedAccepted = FALSE;
-            peer->exchangedPublicPeers = FALSE;
-            peer->isClosing = FALSE;
-            peer->tcp4Protocol = NULL;
-
+            peer->reset();
         }
     }
 }
@@ -812,12 +829,8 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 {
                     if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
                     {
+                        peers[i].reset();
                         peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                        peers[i].dataToTransmitSize = 0;
-                        peers[i].isReceiving = FALSE;
-                        peers[i].isTransmitting = FALSE;
-                        peers[i].exchangedPublicPeers = FALSE;
-                        peers[i].isClosing = FALSE;
 
                         if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
                         {
@@ -845,13 +858,9 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             // accept connections if peer list is not static
             if (!listOfPeersIsStatic)
             {
+                peers[i].reset();
                 peers[i].isIncommingConnection = TRUE;
                 peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                peers[i].dataToTransmitSize = 0;
-                peers[i].isReceiving = FALSE;
-                peers[i].isTransmitting = FALSE;
-                peers[i].exchangedPublicPeers = FALSE;
-                peers[i].isClosing = FALSE;
 
                 if (status = peerTcp4Protocol->Accept(peerTcp4Protocol, &peers[i].connectAcceptToken))
                 {
