@@ -469,7 +469,7 @@ static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header
             {
                 if (peer->address == publicPeers[j].address)
                 {
-                    publicPeers[j].isVerified = true;
+                    publicPeers[j].isHandshaked = true;
 
                     break;
                 }
@@ -6080,7 +6080,7 @@ static bool initialize()
         const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(knownPublicPeers[i]);
         addPublicPeer(peer_ip);
         if (numberOfPublicPeers > 0)
-            publicPeers[numberOfPublicPeers - 1].isVerified = true;
+            publicPeers[numberOfPublicPeers - 1].isHandshaked = true;
     }
     if (numberOfPublicPeers < 4)
     {
@@ -6233,7 +6233,7 @@ static void logInfo()
 
     for (unsigned int i = 0; i < numberOfPublicPeers; i++)
     {
-        if (publicPeers[i].isVerified)
+        if (publicPeers[i].isHandshaked)
         {
             numberOfVerifiedPublicPeers++;
         }
@@ -7235,7 +7235,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         bool noVerifiedPublicPeers = true;
                         for (unsigned int k = 0; k < numberOfPublicPeers; k++)
                         {
-                            if (publicPeers[k].isVerified)
+                            if (publicPeers[k].isHandshaked)
                             {
                                 noVerifiedPublicPeers = false;
 
@@ -7253,7 +7253,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             {
                                 // randomly select verified public peers
                                 const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isVerified)
+                                if (publicPeers[publicPeerIndex].isHandshaked)
                                 {
                                     request->peers[j] = publicPeers[publicPeerIndex].address;
                                 }
