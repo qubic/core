@@ -1342,7 +1342,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
 }
 
-static void processCustomMiningVerificationRequest(Peer* peer, RequestResponseHeader* header)
+static void processRequestedCustomMiningInvalidateSolutionRequest(Peer* peer, RequestResponseHeader* header)
 {
     RequestedCustomMiningInvalidateSolution* request = header->getPayload<RequestedCustomMiningInvalidateSolution>();
     if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningInvalidateSolution) + SIGNATURE_SIZE
@@ -1966,11 +1966,11 @@ static void requestProcessor(void* ProcedureArgument)
                     processRequestAssets(peer, header);
                 }
                 break;
-                //case RequestedCustomMiningVerification::type:
-                //{
-                //    processCustomMiningVerificationRequest(peer, header);
-                //}
-                //break;
+                case RequestedCustomMiningInvalidateSolution::type:
+                {
+                    processRequestedCustomMiningInvalidateSolutionRequest(peer, header);
+                }
+                break;
                 case RequestedCustomMiningData::type:
                 {
                     processCustomMiningDataRequest(peer, processorNumber, header);

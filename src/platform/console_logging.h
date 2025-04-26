@@ -2,7 +2,7 @@
 
 #include <lib/platform_efi/uefi.h>
 
-static unsigned char consoleLoggingLevel = 2;
+static unsigned char consoleLoggingLevel = 1;
 
 // message buffers:
 // - message is for public use
