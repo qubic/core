@@ -292,6 +292,11 @@ static struct
     RequestedTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
 
+static struct
+{
+    RequestResponseHeader header;
+} requestedCurrentTick;
+
 static struct {
     unsigned char day;
     unsigned char hour;
@@ -1221,6 +1226,23 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
     enqueueResponse(peer, sizeof(currentTickInfo), RESPOND_CURRENT_TICK_INFO, header->dejavu(), &currentTickInfo);
 }
 
+static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
+{
+    if (header->size() == sizeof(RequestResponseHeader) + sizeof(CurrentTickInfo))
+    {
+        CurrentTickInfo currentTickInfo = *(header->getPayload< CurrentTickInfo>());
+        // avoid malformed data
+        if (currentTickInfo.initialTick == system.initialTick
+            && currentTickInfo.epoch == system.epoch 
+            && currentTickInfo.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
+            && currentTickInfo.tick >= system.initialTick)
+        {
+            // May have data race here, but it's acceptable
+            peer->latestTick = currentTickInfo.tick;
+        }
+    }
+}
+
 static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
 {
     RespondedEntity respondedEntity;
@@ -1930,6 +1952,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case REQUEST_CURRENT_TICK_INFO:
                 {
                     processRequestCurrentTickInfo(peer, header);
+                }
+                break;
+
+                case RESPOND_CURRENT_TICK_INFO:
+                {
+                    processResponseCurrentTickInfo(peer, header);
                 }
                 break;
 
@@ -7171,6 +7199,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 logToConsole(L"WARNING: NUMBER_OF_SOLUTION_PROCESSORS should not be greater than half of the total processor number!");
             }
 
+            requestedCurrentTick.header.checkAndSetSize(sizeof(RequestResponseHeader));
+            requestedCurrentTick.header.randomizeDejavu();
+            requestedCurrentTick.header.setType(REQUEST_CURRENT_TICK_INFO);
 
             // -----------------------------------------------------
             // Main loop
@@ -7388,6 +7419,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAny(&requestedTickTransactions.header);
 
                         requestedTickTransactions.requestedTickTransactions.tick = 0;
+                    }
+
+                    {
+                        // asking current tick around
+                        requestedCurrentTick.header.randomizeDejavu();
+                        pushToSeveral(&requestedCurrentTick.header);
                     }
                 }
 

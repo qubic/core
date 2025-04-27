@@ -214,8 +214,8 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
     }
 }
 
-// Add message to sending buffer of random peer, can only called from main thread (not thread-safe).
-static void pushToAny(RequestResponseHeader* requestResponseHeader)
+// Add message to sending buffer of custom filtered (and random) peer, can only called from main thread (not thread-safe).
+static void pushCustom(RequestResponseHeader* requestResponseHeader, int numberOfReceivers, bool filterFullNode)
 {
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
     unsigned short numberOfSuitablePeers = 0;
@@ -223,34 +223,47 @@ static void pushToAny(RequestResponseHeader* requestResponseHeader)
     {
         if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
         {
-            suitablePeerIndices[numberOfSuitablePeers++] = i;
+            if ((filterFullNode && peers[i].isFullNode()) || (!filterFullNode))
+            {
+                suitablePeerIndices[numberOfSuitablePeers++] = i;
+            }
         }
     }
-    if (numberOfSuitablePeers)
-    {
-        push(&peers[suitablePeerIndices[random(numberOfSuitablePeers)]], requestResponseHeader);
-    }
-}
-
-// Add message to sending buffer of some random peers, can only called from main thread (not thread-safe).
-static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
-{
-    unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
-    unsigned short numberOfSuitablePeers = 0;
-    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
-    {
-        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
-        {
-            suitablePeerIndices[numberOfSuitablePeers++] = i;
-        }
-    }
-    unsigned short numberOfRemainingSuitablePeers = DISSEMINATION_MULTIPLIER;
+    unsigned short numberOfRemainingSuitablePeers = numberOfReceivers;
     while (numberOfRemainingSuitablePeers-- && numberOfSuitablePeers)
     {
         const unsigned short index = random(numberOfSuitablePeers);
         push(&peers[suitablePeerIndices[index]], requestResponseHeader);
         suitablePeerIndices[index] = suitablePeerIndices[--numberOfSuitablePeers];
     }
+}
+
+// Add message to sending buffer of random peer, can only called from main thread (not thread-safe).
+static void pushToAny(RequestResponseHeader* requestResponseHeader)
+{
+    const bool filterFullNode = false;
+    pushCustom(requestResponseHeader, 1, filterFullNode);
+}
+
+// Add message to sending buffer of some(DISSEMINATION_MULTIPLIER) random peers, can only called from main thread (not thread-safe).
+static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
+{
+    const bool filterFullNode = false;
+    pushCustom(requestResponseHeader, DISSEMINATION_MULTIPLIER, filterFullNode);
+}
+
+// Add message to sending buffer of any full node peer, can only called from main thread (not thread-safe).
+static void pushToAnyFullNode(RequestResponseHeader* requestResponseHeader)
+{
+    const bool filterFullNode = true;
+    pushCustom(requestResponseHeader, 1, filterFullNode);
+}
+
+// Add message to sending buffer of some full node peers, can only called from main thread (not thread-safe).
+static void pushToSeveralFullNode(RequestResponseHeader* requestResponseHeader)
+{
+    const bool filterFullNode = true;
+    pushCustom(requestResponseHeader, DISSEMINATION_MULTIPLIER, filterFullNode);
 }
 
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
