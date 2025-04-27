@@ -69,6 +69,21 @@ volatile static char gCustomMiningCacheLock = 0;
 unsigned long long gSystemCustomMiningSolutionCount = 0;
 unsigned long long gSystemCustomMiningDuplicatedSolutionCount = 0;
 unsigned long long gSystemCustomMiningSolutionOFCount = 0;
+static volatile char gCustomMiningSharesCountLock = 0;
+static char gIsInCustomMiningState = 0;
+static volatile char gIsInCustomMiningStateLock = 0;
+static volatile char gCustomMiningInvalidSharesCountLock = 0;
+static unsigned long long gCustomMiningValidSharesCount = 0;
+static unsigned long long gCustomMiningInvalidSharesCount = 0;
+static volatile char gCustomMiningTaskStorageLock = 0;
+static volatile char gCustomMiningSolutionStorageLock = 0;
+static unsigned long long gTotalCustomMiningTaskMessages = 0;
+static unsigned long long gTotalCustomMiningSolutions = 0;
+static volatile char gTotalCustomMiningTaskMessagesLock = 0;
+static volatile char gTotalCustomMiningSolutionsLock = 0;
+static unsigned int gCustomMiningCountOverflow = 0;
+static volatile char gCustomMiningShareCountOverFlowLock = 0;
+
 
 struct CustomMiningSharePayload
 {
@@ -357,6 +372,52 @@ public:
         }
         return retVal;
     }
+
+    // Try to fetch data from cacheIndex, also checking a few following entries in case of collisions (may update cacheIndex),
+    // increments counter of hits, misses, or collisions
+    int tryFetchingAndUpdate(T& rData, int updateCondition)
+    {
+        int retVal;
+        unsigned int tryFetchIdx = rData.getHashIndex() % capacity();
+        ACQUIRE(lock);
+        for (unsigned int i = 0; i < collisionRetries; ++i)
+        {
+            const T& cacheData = cache[tryFetchIdx];
+            if (cacheData.isEmpty())
+            {
+                // miss: data not available in cache yet (entry is empty)
+                misses++;
+                retVal = CUSTOM_MINING_CACHE_MISS;
+                break;
+            }
+
+            if (cacheData.isMatched(rData))
+            {
+                // hit: data available in cache -> return score
+                hits++;
+                retVal = CUSTOM_MINING_CACHE_HIT;
+                break;
+            }
+
+            // collision: other data is mapped to same index -> retry at following index
+            retVal = CUSTOM_MINING_CACHE_COLLISION;
+            tryFetchIdx = (tryFetchIdx + 1) % capacity();
+        }
+        if (retVal == updateCondition)
+        {
+            cache[tryFetchIdx] = rData;
+        }
+        RELEASE(lock);
+
+        if (retVal == CUSTOM_MINING_CACHE_COLLISION)
+        {
+            ACQUIRE(lock);
+            collisions++;
+            RELEASE(lock);
+        }
+        return retVal;
+    }
+
 
     /// Add entry to cache (may overwrite existing entry)
     void addEntry(const T& rData, unsigned int cacheIndex)
@@ -722,32 +783,6 @@ public:
         return idx;
     }
 
-    // Return the task whose task index in range [lowerBound, upperBound]
-    unsigned long long lookForTaskInRange(
-        unsigned long long lowerBound,
-        unsigned long long upperBound,
-        unsigned long long& rLowerIndex,
-        unsigned long long& rUpperIndex)
-    {
-        // TODO: implement this
-        bool exactMatch = false;
-        //rLowerIndex = searchTaskIndex(taskIndex, exactMatch);
-
-        return _invalidIndex;
-    }
-
-    // Packed array of data to a serialized data
-    unsigned long long lookForTaskInRange(
-        unsigned long long& rLowerIndex,
-        unsigned long long& upperBound,
-        char* pSerializedData)
-    {
-        // TODO: implement this
-        //return _invalidIndex;
-
-        return 0;
-    }
-
     // Return the task whose task index == taskIndex
     unsigned long long lookForTask(unsigned long long taskIndex)
     {
@@ -777,10 +812,6 @@ public:
         }
 
         // Reset the storage if the number of tasks exceeds the limit
-        //if (_storageIndex >= maxItems)
-        //{
-        //    reset();
-        //}
         if (_storageIndex >= maxItems)
         {
             return BUFFER_FULL;
@@ -910,6 +941,75 @@ public:
         // Return the pointer to the data
         return _dataBuffer[processorNumber];
     }
+
+    // Packed array of data to a serialized data
+    unsigned char* getSerializedData(
+        unsigned long long timeStamp,
+        unsigned long long processorNumber)
+    {
+        unsigned char* pData = _dataBuffer[processorNumber];
+
+        // 8 bytes for the item size
+        CustomMiningRespondDataHeader* pHeader = (CustomMiningRespondDataHeader*)pData;
+
+        // Init the header as an empty data
+        pHeader->itemCount = 0;
+        pHeader->itemSize = 0;
+        pHeader->fromTimeStamp = _invalidIndex;
+        pHeader->toTimeStamp = _invalidIndex;
+
+        // Remainder of the data
+        pData += sizeof(CustomMiningRespondDataHeader);
+
+        // Fill the header/
+        constexpr long long remainedSize = CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE - sizeof(CustomMiningRespondDataHeader);
+        constexpr long long maxReturnItems = remainedSize / sizeof(DataType);
+
+        // Look for the first task index
+        unsigned long long startIndex = 0;
+        if (timeStamp > 0)
+        {
+            startIndex = lookForTaskGE(timeStamp);
+        }
+
+        if (startIndex == _invalidIndex)
+        {
+            return NULL;
+        }
+
+        // Check for the range of task
+        unsigned long long respondTaskCount = 0;
+        for (unsigned long long i = startIndex; i < _storageIndex; i++)
+        {
+            DataType* pItemData = getDataByIndex(i);
+            if (pItemData->taskIndex == timeStamp)
+            {
+                copyMem(pData, pItemData, sizeof(DataType));
+                pData += sizeof(DataType);
+                respondTaskCount++;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (respondTaskCount == 0)
+        {
+            return NULL;
+        }
+
+        // Pack data into respond
+        pHeader->itemCount = respondTaskCount;
+        pHeader->itemSize = sizeof(DataType);
+
+        pHeader->fromTimeStamp = timeStamp;
+        pHeader->toTimeStamp = timeStamp;
+
+        // Return the pointer to the data
+        return _dataBuffer[processorNumber];
+    }
+
 
 private:
     DataType* _data;

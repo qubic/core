@@ -30,13 +30,14 @@ struct RespondCustomMiningData
     };
 };
 
-struct RequestedCustomMiningInvalidateSolution
+struct RequestedCustomMiningSolutionVerification
 {
     enum
     {
         type = 61,
     };
     unsigned long long taskIndex;
-    unsigned int nonce; // nonce of invalid solution
+    unsigned int nonce;
     unsigned int padding;
+    unsigned char isValid; // validity of the solution. 0: invalid, >0: valid
 };

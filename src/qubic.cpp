@@ -206,23 +206,11 @@ static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningSc
 static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0 };
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
-static volatile char gCustomMiningSharesCountLock = 0;
-static char gIsInCustomMiningState = 0;
-static volatile char gIsInCustomMiningStateLock = 0;
-static unsigned long long gCustomMinninglatestOperatorNonce = 0;
 
-
+static CHAR16 gCustomMiningDebugMessage[256];
+static volatile char gIsInCustomMiningMessageLock = 0;
 static CustomMiningStorage gCustomMiningStorage;
-static volatile char gCustomMiningTaskStorageLock = 0;
-static volatile char gCustomMiningSolutionStorageLock = 0;
-static unsigned long long gTotalCustomMiningTaskMessages = 0;
-static unsigned long long gTotalCustomMiningSolutionMessages = 0;
-static unsigned long long gTotalCustomMiningTasksInStorage = 0;
-static volatile char gTotalCustomMiningTaskMessagesLock = 0;
-static volatile char gTotalCustomMiningSolutionMessagesLock = 0;
 
-static unsigned int gCustomMiningCountOverflow = 0;
-static volatile char gCustomMiningShareCountOverFlowLock = 0;
 
 struct revenueScore
 {
@@ -529,23 +517,17 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
             if (isZero(request->destinationPublicKey))
             {
-                unsigned char sharedKeyAndGammingNonce[64];
-                bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
-                bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
-                unsigned char gammingKey[32];
-                KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
-
                 // Only record task and solution message in idle phase
                 char recordCustomMining = 0;
                 ACQUIRE(gIsInCustomMiningStateLock);
                 recordCustomMining = gIsInCustomMiningState;
                 RELEASE(gIsInCustomMiningStateLock);
 
-                if ((request->sourcePublicKey == dispatcherPublicKey) && (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_TASK))
+                if (request->sourcePublicKey == dispatcherPublicKey)
                 {
                     // See CustomMiningTaskMessage structure
                     // MESSAGE_TYPE_CUSTOM_MINING_TASK
-
+                    
                     // Record the task emitted by dispatcher
                     if (recordCustomMining)
                     {
@@ -560,73 +542,82 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                         ACQUIRE(gTotalCustomMiningTaskMessagesLock);
                         gTotalCustomMiningTaskMessages = taskMessageStorageCount;
                         RELEASE(gTotalCustomMiningTaskMessagesLock);
+
                     }
                 }
-                else if (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
+                else
                 {
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
                         if (request->sourcePublicKey == broadcastedComputors.computors.publicKeys[i])
                         {
-                            customMiningMessageCounters[i]++;
-
-                            if (recordCustomMining)
+                            unsigned char sharedKeyAndGammingNonce[64];
+                            bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                            bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                            unsigned char gammingKey[32];
+                            KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
+                            if (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
                             {
-                                // Record the solution
-                                bool isSolutionGood = false;
-                                const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
-                                // Check the computor idx of this solution.
-                                unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
-                                // TODO: taskIndex can use for detect for-sure stale shares
-                                if (computorID == i && solution->taskIndex > 0)
+                                customMiningMessageCounters[i]++;
+                                if (recordCustomMining)
                                 {
-                                    CustomMiningSolutionCacheEntry cacheEntry;
-                                    cacheEntry.set(solution);
+                                    // Record the solution
+                                    bool isSolutionGood = false;
+                                    const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
 
-                                    unsigned int cacheIndex = 0;
-                                    int sts = gSystemCustomMiningSolution.tryFetching(cacheEntry, cacheIndex);
-
-                                    // Check for duplicated solution
-                                    if (sts == CUSTOM_MINING_CACHE_MISS)
+                                    // Check the computor idx of this solution.
+                                    unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
+                                    // TODO: taskIndex can use for detect for-sure stale shares
+                                    if (computorID == i && solution->taskIndex > 0)
                                     {
-                                        gSystemCustomMiningSolution.addEntry(cacheEntry, cacheIndex);
-                                        isSolutionGood = true;
+                                        CustomMiningSolutionCacheEntry cacheEntry;
+                                        cacheEntry.set(solution);
+
+                                        unsigned int cacheIndex = 0;
+                                        int sts = gSystemCustomMiningSolution.tryFetching(cacheEntry, cacheIndex);
+
+                                        // Check for duplicated solution
+                                        if (sts == CUSTOM_MINING_CACHE_MISS)
+                                        {
+                                            gSystemCustomMiningSolution.addEntry(cacheEntry, cacheIndex);
+                                            isSolutionGood = true;
+                                        }
+
+                                        if (isSolutionGood)
+                                        {
+                                            ACQUIRE(gCustomMiningSharesCountLock);
+                                            gCustomMiningSharesCount[computorID]++;
+                                            RELEASE(gCustomMiningSharesCountLock);
+
+                                            CustomMiningSolutionStorageEntry solutionStorageEntry;
+                                            solutionStorageEntry.taskIndex = solution->taskIndex;
+                                            solutionStorageEntry.nonce = solution->nonce;
+                                            solutionStorageEntry.cacheEntryIndex = cacheIndex;
+
+                                            ACQUIRE(gCustomMiningSolutionStorageLock);
+                                            gCustomMiningStorage._solutionStorage.addData(&solutionStorageEntry);
+                                            RELEASE(gCustomMiningSolutionStorageLock);
+
+                                            ACQUIRE(gTotalCustomMiningSolutionsLock);
+                                            gTotalCustomMiningSolutions++;
+                                            RELEASE(gTotalCustomMiningSolutionsLock);
+                                        }
+
+                                        // Record stats
+                                        const unsigned int hitCount = gSystemCustomMiningSolution.hitCount();
+                                        const unsigned int missCount = gSystemCustomMiningSolution.missCount();
+                                        const unsigned int collision = gSystemCustomMiningSolution.collisionCount();
+
+                                        ACQUIRE(gSystemCustomMiningSolutionLock);
+                                        gSystemCustomMiningDuplicatedSolutionCount = hitCount;
+                                        gSystemCustomMiningSolutionCount = missCount;
+                                        gSystemCustomMiningSolutionOFCount = collision;
+                                        RELEASE(gSystemCustomMiningSolutionLock);
+
                                     }
-
-                                    unsigned long long solutionMessageStorageCount = 0;
-                                    if (isSolutionGood)
-                                    {
-                                        ACQUIRE(gCustomMiningSharesCountLock);
-                                        gCustomMiningSharesCount[computorID]++;
-                                        RELEASE(gCustomMiningSharesCountLock);
-
-                                        CustomMiningSolutionStorageEntry solutionStorageEntry;
-                                        solutionStorageEntry.taskIndex = solution->taskIndex;
-                                        solutionStorageEntry.nonce = solution->nonce;
-                                        solutionStorageEntry.cacheEntryIndex = cacheIndex;
-
-                                        ACQUIRE(gCustomMiningSolutionStorageLock);
-                                        gCustomMiningStorage._solutionStorage.addData(&solutionStorageEntry);
-                                        solutionMessageStorageCount = gCustomMiningStorage._solutionStorage.getCount();
-                                        RELEASE(gCustomMiningSolutionStorageLock);
-                                    }
-
-                                    // Record stats
-                                    const unsigned int hitCount = gSystemCustomMiningSolution.hitCount();
-                                    const unsigned int missCount = gSystemCustomMiningSolution.missCount();
-                                    const unsigned int collision = gSystemCustomMiningSolution.collisionCount();
-
-                                    ACQUIRE(gSystemCustomMiningSolutionLock);
-                                    gSystemCustomMiningDuplicatedSolutionCount = hitCount;
-                                    gSystemCustomMiningSolutionCount = missCount;
-                                    gSystemCustomMiningSolutionOFCount = collision;
-                                    RELEASE(gSystemCustomMiningSolutionLock);
-
-                                    ACQUIRE(gTotalCustomMiningSolutionMessagesLock);
-                                    gTotalCustomMiningSolutionMessages = solutionMessageStorageCount;
-                                    RELEASE(gTotalCustomMiningSolutionMessagesLock);
                                 }
                             }
+                            break;
                         }
                     }
                 }
@@ -1331,19 +1322,16 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
 }
 
-static void processRequestedCustomMiningInvalidateSolutionRequest(Peer* peer, RequestResponseHeader* header)
+static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, RequestResponseHeader* header)
 {
-    RequestedCustomMiningInvalidateSolution* request = header->getPayload<RequestedCustomMiningInvalidateSolution>();
-    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningInvalidateSolution) + SIGNATURE_SIZE
-        //&& (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) > gCustomMinninglatestOperatorNonce
+    RequestedCustomMiningSolutionVerification* request = header->getPayload<RequestedCustomMiningSolutionVerification>();
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningSolutionVerification) + SIGNATURE_SIZE
         )
     {
         unsigned char digest[32];
         KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
         {
-            //gCustomMinninglatestOperatorNonce = request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF;
-
             // Update the share counting
             // Only record shares in idle phase
             char recordSolutions = 0;
@@ -1353,25 +1341,36 @@ static void processRequestedCustomMiningInvalidateSolutionRequest(Peer* peer, Re
 
             if (recordSolutions)
             {
-                unsigned int cachedEntry;
                 CustomMiningSolutionCacheEntry fullEntry;
                 fullEntry.set(request->taskIndex, request->nonce, request->padding);
                 fullEntry.setVerified(true);
-                fullEntry.setValid(false);
+                fullEntry.setValid(request->isValid > 0);
 
                 // Make sure the solution still existed
-                if (CUSTOM_MINING_CACHE_HIT == gSystemCustomMiningSolution.tryFetching(fullEntry, cachedEntry))
+                if (CUSTOM_MINING_CACHE_HIT == gSystemCustomMiningSolution.tryFetchingAndUpdate(fullEntry, CUSTOM_MINING_CACHE_HIT))
                 {
-                    // Set this entry is verified and in valid
-                    gSystemCustomMiningSolution.addEntry(fullEntry, cachedEntry);
-
                     // Check the computor idx of this solution
                     const unsigned short computorID = request->nonce % NUMBER_OF_COMPUTORS;
 
-                    // Reduce the share of this 
-                    ACQUIRE(gCustomMiningSharesCountLock);
-                    gCustomMiningSharesCount[computorID] = gCustomMiningSharesCount[computorID] > 0 ? gCustomMiningSharesCount[computorID] - 1 : 0;
-                    RELEASE(gCustomMiningSharesCountLock);
+                    // Reduce the share of this nonce if it is invalid
+                    if (0 == request->isValid)
+                    {
+                        ACQUIRE(gCustomMiningSharesCountLock);
+                        gCustomMiningSharesCount[computorID] = gCustomMiningSharesCount[computorID] > 0 ? gCustomMiningSharesCount[computorID] - 1 : 0;
+                        RELEASE(gCustomMiningSharesCountLock);
+
+                        // Save the number of invalid share count
+                        ACQUIRE(gCustomMiningInvalidSharesCountLock);
+                        gCustomMiningInvalidSharesCount++;
+                        RELEASE(gCustomMiningInvalidSharesCountLock);
+
+                    }
+                    else
+                    {
+                        ACQUIRE(gCustomMiningInvalidSharesCountLock);
+                        gCustomMiningValidSharesCount++;
+                        RELEASE(gCustomMiningInvalidSharesCountLock);
+                    }
                 }
             }
         }
@@ -1405,6 +1404,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                         peer,
                         sizeof(CustomMiningRespondDataHeader) + customMiningInternalHeader->itemCount * customMiningInternalHeader->itemSize,
                         RespondCustomMiningData::type, header->dejavu(), respond);
+
                 }
                 else
                 {
@@ -1419,7 +1419,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
 
                 ACQUIRE(gCustomMiningSolutionStorageLock);
                 // Pack all the task data
-                respond = gCustomMiningStorage._solutionStorage.getSerializedData(request->fromTaskIndex, request->toTaskIndex, processorNumber);
+                respond = gCustomMiningStorage._solutionStorage.getSerializedData(request->fromTaskIndex, processorNumber);
                 RELEASE(gCustomMiningSolutionStorageLock);
 
                 // Has the solutions
@@ -1441,7 +1441,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
 
                         gSystemCustomMiningSolution.getEntry(fullEntry, entry.cacheEntryIndex);
 
-                        // Check data is matched
+                        // Check data is matched and not verifed yet
                         if (!fullEntry.isEmpty() 
                             && !fullEntry.isVerified() 
                             && fullEntry.getTaskIndex() == entry.taskIndex
@@ -1955,9 +1955,9 @@ static void requestProcessor(void* ProcedureArgument)
                     processRequestAssets(peer, header);
                 }
                 break;
-                case RequestedCustomMiningInvalidateSolution::type:
+                case RequestedCustomMiningSolutionVerification::type:
                 {
-                    processRequestedCustomMiningInvalidateSolutionRequest(peer, header);
+                    processRequestedCustomMiningSolutionVerificationRequest(peer, header);
                 }
                 break;
                 case RequestedCustomMiningData::type:
@@ -3041,14 +3041,14 @@ static void processTick(unsigned long long processorNumber)
     // Also skip the begining of the epoch, because the no thing to do
     if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
     {
-        //// Reset the custom mining task storage
-        //ACQUIRE(gCustomMiningTaskStorageLock);
-        //gCustomMiningStorage._taskStorage.checkAndReset();
-        //RELEASE(gCustomMiningTaskStorageLock);
+        // Reset the custom mining task storage
+        ACQUIRE(gCustomMiningTaskStorageLock);
+        gCustomMiningStorage._taskStorage.checkAndReset();
+        RELEASE(gCustomMiningTaskStorageLock);
 
-        //ACQUIRE(gCustomMiningSolutionStorageLock);
-        //gCustomMiningStorage._solutionStorage.checkAndReset();
-        //RELEASE(gCustomMiningSolutionStorageLock);
+        ACQUIRE(gCustomMiningSolutionStorageLock);
+        gCustomMiningStorage._solutionStorage.checkAndReset();
+        RELEASE(gCustomMiningSolutionStorageLock);
 
         // Broadcast custom mining shares 
         if (mainAuxStatus & 1)
@@ -6161,11 +6161,6 @@ static void logInfo()
         }
     }
 
-    unsigned long long totalMiningSolutionMessage = 0;
-    ACQUIRE(gTotalCustomMiningSolutionMessagesLock);
-    totalMiningSolutionMessage = gTotalCustomMiningSolutionMessages;
-    RELEASE(gTotalCustomMiningSolutionMessagesLock);
-
     setText(message, L"[+");
     appendNumber(message, numberOfProcessedRequests - prevNumberOfProcessedRequests, TRUE);
     appendText(message, L" -");
@@ -6375,13 +6370,25 @@ static void logInfo()
     RELEASE(gCustomMiningShareCountOverFlowLock);
     appendText(message, L").");
 
-    // Task count : Total task in storage | Total solution in storage
-    appendText(message, L" Storage (Task = ");
+    // Task count : Total task in storage | Total solution in storage | Invalid Solutions
+    appendText(message, L" Epoch (Task = ");
     ACQUIRE(gTotalCustomMiningTaskMessagesLock);
     appendNumber(message, gTotalCustomMiningTaskMessages, FALSE);
     appendText(message, L" | Sols = ");
-    appendNumber(message, gTotalCustomMiningSolutionMessages, FALSE);
-    RELEASE(gTotalCustomMiningTaskMessagesLock);
+
+    ACQUIRE(gTotalCustomMiningSolutionsLock);
+    appendNumber(message, gTotalCustomMiningSolutions, FALSE);
+    RELEASE(gTotalCustomMiningSolutionsLock);
+
+    appendText(message, L" | Valid = ");
+    ACQUIRE(gCustomMiningInvalidSharesCountLock);
+    appendNumber(message, gCustomMiningValidSharesCount, FALSE);
+    RELEASE(gCustomMiningInvalidSharesCountLock);
+
+    appendText(message, L" | Invalid = ");
+    ACQUIRE(gCustomMiningInvalidSharesCountLock);
+    appendNumber(message, gCustomMiningInvalidSharesCount, FALSE);
+    RELEASE(gCustomMiningInvalidSharesCountLock);
 
     appendText(message, L") ");
 
