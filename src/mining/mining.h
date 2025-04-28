@@ -656,6 +656,7 @@ constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = 60 * 60 * 24 * 8
 constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_SIZE = CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask); // ~16.6MB
 constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_COUNT = CUSTOM_MINING_SOLUTION_STORAGE_SIZE / sizeof(CustomMiningSolution);
 constexpr unsigned long long CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE = 10 * 1024 * 1024; // 10MB
+constexpr unsigned long long CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE = 1 * 1024 * 1024; // 1MB
 
 struct CustomMiningRespondDataHeader
 {
@@ -666,7 +667,7 @@ struct CustomMiningRespondDataHeader
     unsigned long long respondType;   // message type
 };
 
-template <typename DataType, unsigned long long maxItems, unsigned long long resetPeriod, bool allowDuplcated = false>
+template <typename DataType, unsigned long long maxItems, unsigned long long resetPeriod, bool allowDuplicated = false>
 class CustomMiningSortedStorage
 {
 public:
@@ -767,7 +768,7 @@ public:
             }
         }
 
-        // In case of extract match. Make sure get the most left data
+        // In case of exact match. Make sure get the most left data
         if (exactMatch)
         {
             while (result > 0)
@@ -818,7 +819,7 @@ public:
     int addData(const DataType* pData)
     {
         // Don't added if the task already existed
-        if (!allowDuplcated && dataExisted(pData))
+        if (!allowDuplicated && dataExisted(pData))
         {
             return DATA_EXISTED;
         }

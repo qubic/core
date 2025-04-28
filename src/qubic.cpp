@@ -1324,6 +1324,11 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
 }
 
+
+// Process the request for custom mining solution verification.
+// The request contains a single solution along with its validity status.
+// Once the validity is determined, the solution is marked as verified in storage
+// to prevent it from being re-sent for verification.
 static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, RequestResponseHeader* header)
 {
     RequestedCustomMiningSolutionVerification* request = header->getPayload<RequestedCustomMiningSolutionVerification>();
@@ -1379,6 +1384,12 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
     }
 }
 
+// Process custom mining data requests.
+// Currently supports:
+// - Requesting a range of tasks (using Unix timestamps as unique indexes; each task has only one unique index).
+// - Requesting all solutions corresponding to a specific task index. 
+//   The total size of the response will not exceed CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE.
+// For the solution respond, only respond solution that has not been verified yet
 static void processCustomMiningDataRequest(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
 {
     RequestedCustomMiningData* request = header->getPayload<RequestedCustomMiningData>();
@@ -1403,7 +1414,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                     CustomMiningRespondDataHeader* customMiningInternalHeader = (CustomMiningRespondDataHeader*)respond;
                     customMiningInternalHeader->respondType = RespondCustomMiningData::taskType;
                     const unsigned long long respondDataSize = sizeof(CustomMiningRespondDataHeader) + customMiningInternalHeader->itemCount * customMiningInternalHeader->itemSize;
-                    ASSERT(respondDataSize < (1ULL << 32 - 1));
+                    ASSERT(respondDataSize < ((1ULL << 32) - 1));
                     enqueueResponse(
                         peer,
                         (unsigned int)respondDataSize,
@@ -1422,7 +1433,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                 // For solution type, return all solution from the current phase
 
                 ACQUIRE(gCustomMiningSolutionStorageLock);
-                // Pack all the task data
+                // Look for all solution data
                 respond = gCustomMiningStorage._solutionStorage.getSerializedData(request->fromTaskIndex, processorNumber);
                 RELEASE(gCustomMiningSolutionStorageLock);
 
@@ -1436,7 +1447,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
 
                     // Extract the solutions and respond
                     unsigned char* respondSolutionPayload = respondSolution + sizeof(CustomMiningRespondDataHeader);
-                    long long remainedDataToSend = CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE / 10;
+                    long long remainedDataToSend = CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE;
                     int sendItem = 0;
                     for (int k = 0; k < customMiningInternalHeader->itemCount && remainedDataToSend > sizeof(CustomMiningSolution); k++)
                     {
@@ -1465,7 +1476,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                     customMiningInternalHeader->itemCount = sendItem;
                     customMiningInternalHeader->respondType = RespondCustomMiningData::solutionType;
                     const unsigned long long respondDataSize = sizeof(CustomMiningRespondDataHeader) + customMiningInternalHeader->itemCount * customMiningInternalHeader->itemSize;
-                    ASSERT(respondDataSize < (1ULL << 32 - 1));
+                    ASSERT(respondDataSize < ((1ULL << 32) - 1));
                     enqueueResponse(
                         peer,
                         (unsigned int)respondDataSize,
@@ -7220,7 +7231,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     saveSystem();
                     score->saveScoreCache(system.epoch);
-                    //saveCustomMiningCache(system.epoch);
+                    saveCustomMiningCache(system.epoch);
                 }
 #endif
 
@@ -7515,7 +7526,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             saveSystem();
             score->saveScoreCache(system.epoch);
-            //saveCustomMiningCache(system.epoch);
+            saveCustomMiningCache(system.epoch);
 
             setText(message, L"Qubic ");
             appendQubicVersion(message);
