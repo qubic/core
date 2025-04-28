@@ -5,7 +5,7 @@ struct RequestedCustomMiningData
 {
     enum
     {
-        type = 55,
+        type = 60,
     };
     enum
     {
@@ -27,7 +27,7 @@ struct RespondCustomMiningData
 {
     enum
     {
-        type = 60,
+        type = 61,
     };
     enum
     {
@@ -42,10 +42,29 @@ struct RequestedCustomMiningSolutionVerification
 {
     enum
     {
-        type = 61,
+        type = 62,
     };
     unsigned long long taskIndex;
     unsigned int nonce;
     unsigned int padding;   // XMR padding data
     unsigned char isValid;  // validity of the solution. 0: invalid, >0: valid
 };
+struct RespondCustomMiningSolutionVerification
+{
+    enum
+    {
+        type = 63,
+    };
+    enum
+    {
+        notExisted = 0,             // solution not existed in cache
+        valid = 1,                  // solution are set as valid
+        invalid = 2,                // solution are set as invalid
+        customMiningStateEnded = 3, // not in custom mining state
+    };
+    unsigned long long taskIndex;
+    unsigned int nonce;
+    unsigned int padding;    // XMR padding data
+    unsigned char status;   // Flag indicate the status of solution
+};
+

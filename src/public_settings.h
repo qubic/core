@@ -85,7 +85,6 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining.???";
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
-
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 

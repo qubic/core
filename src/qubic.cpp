@@ -523,17 +523,17 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                 recordCustomMining = gIsInCustomMiningState;
                 RELEASE(gIsInCustomMiningStateLock);
 
-                // Compute the gamming key to get the sub-type of message
-                unsigned char sharedKeyAndGammingNonce[64];
-                bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
-                bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
-                unsigned char gammingKey[32];
-                KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
-
                 if (request->sourcePublicKey == dispatcherPublicKey)
                 {
                     // See CustomMiningTaskMessage structure
                     // MESSAGE_TYPE_CUSTOM_MINING_TASK
+
+                     // Compute the gamming key to get the sub-type of message
+                    unsigned char sharedKeyAndGammingNonce[64];
+                    bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                    bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                    unsigned char gammingKey[32];
+                    KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
                     
                     // Record the task emitted by dispatcher
                     if (recordCustomMining && gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_TASK)
@@ -554,75 +554,80 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                 }
                 else
                 {
-                    if (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
+                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
-                        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                        if (request->sourcePublicKey == broadcastedComputors.computors.publicKeys[i])
                         {
-                            if (request->sourcePublicKey == broadcastedComputors.computors.publicKeys[i])
+                            customMiningMessageCounters[i]++;
+                            // Compute the gamming key to get the sub-type of message
+                            unsigned char sharedKeyAndGammingNonce[64];
+                            bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                            bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                            unsigned char gammingKey[32];
+                            KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
+
+                            if (recordCustomMining && gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
                             {
-                                customMiningMessageCounters[i]++;
-                                if (recordCustomMining)
+                                // Record the solution
+                                bool isSolutionGood = false;
+                                const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
+
+                                // Check the computor idx of this solution.
+                                unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
+                                // TODO: taskIndex can use for detect for-sure stale shares
+                                if (computorID == i && solution->taskIndex > 0)
                                 {
-                                    // Record the solution
-                                    bool isSolutionGood = false;
-                                    const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
+                                    CustomMiningSolutionCacheEntry cacheEntry;
+                                    cacheEntry.set(solution);
 
-                                    // Check the computor idx of this solution.
-                                    unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
-                                    // TODO: taskIndex can use for detect for-sure stale shares
-                                    if (computorID == i && solution->taskIndex > 0)
+                                    unsigned int cacheIndex = 0;
+                                    int sts = gSystemCustomMiningSolution.tryFetching(cacheEntry, cacheIndex);
+
+                                    // Check for duplicated solution
+                                    if (sts == CUSTOM_MINING_CACHE_MISS)
                                     {
-                                        CustomMiningSolutionCacheEntry cacheEntry;
-                                        cacheEntry.set(solution);
-
-                                        unsigned int cacheIndex = 0;
-                                        int sts = gSystemCustomMiningSolution.tryFetching(cacheEntry, cacheIndex);
-
-                                        // Check for duplicated solution
-                                        if (sts == CUSTOM_MINING_CACHE_MISS)
-                                        {
-                                            gSystemCustomMiningSolution.addEntry(cacheEntry, cacheIndex);
-                                            isSolutionGood = true;
-                                        }
-
-                                        if (isSolutionGood)
-                                        {
-                                            ACQUIRE(gCustomMiningSharesCountLock);
-                                            gCustomMiningSharesCount[computorID]++;
-                                            RELEASE(gCustomMiningSharesCountLock);
-
-                                            CustomMiningSolutionStorageEntry solutionStorageEntry;
-                                            solutionStorageEntry.taskIndex = solution->taskIndex;
-                                            solutionStorageEntry.nonce = solution->nonce;
-                                            solutionStorageEntry.cacheEntryIndex = cacheIndex;
-
-                                            ACQUIRE(gCustomMiningSolutionStorageLock);
-                                            gCustomMiningStorage._solutionStorage.addData(&solutionStorageEntry);
-                                            RELEASE(gCustomMiningSolutionStorageLock);
-
-                                            ACQUIRE(gTotalCustomMiningSolutionsLock);
-                                            gTotalCustomMiningSolutions++;
-                                            RELEASE(gTotalCustomMiningSolutionsLock);
-                                        }
-
-                                        // Record stats
-                                        const unsigned int hitCount = gSystemCustomMiningSolution.hitCount();
-                                        const unsigned int missCount = gSystemCustomMiningSolution.missCount();
-                                        const unsigned int collision = gSystemCustomMiningSolution.collisionCount();
-
-                                        ACQUIRE(gSystemCustomMiningSolutionLock);
-                                        gSystemCustomMiningDuplicatedSolutionCount = hitCount;
-                                        gSystemCustomMiningSolutionCount = missCount;
-                                        gSystemCustomMiningSolutionOFCount = collision;
-                                        RELEASE(gSystemCustomMiningSolutionLock);
-
+                                        gSystemCustomMiningSolution.addEntry(cacheEntry, cacheIndex);
+                                        isSolutionGood = true;
                                     }
+
+                                    if (isSolutionGood)
+                                    {
+                                        ACQUIRE(gCustomMiningSharesCountLock);
+                                        gCustomMiningSharesCount[computorID]++;
+                                        RELEASE(gCustomMiningSharesCountLock);
+
+                                        CustomMiningSolutionStorageEntry solutionStorageEntry;
+                                        solutionStorageEntry.taskIndex = solution->taskIndex;
+                                        solutionStorageEntry.nonce = solution->nonce;
+                                        solutionStorageEntry.cacheEntryIndex = cacheIndex;
+
+                                        ACQUIRE(gCustomMiningSolutionStorageLock);
+                                        gCustomMiningStorage._solutionStorage.addData(&solutionStorageEntry);
+                                        RELEASE(gCustomMiningSolutionStorageLock);
+
+                                        ACQUIRE(gTotalCustomMiningSolutionsLock);
+                                        gTotalCustomMiningSolutions++;
+                                        RELEASE(gTotalCustomMiningSolutionsLock);
+                                    }
+
+                                    // Record stats
+                                    const unsigned int hitCount = gSystemCustomMiningSolution.hitCount();
+                                    const unsigned int missCount = gSystemCustomMiningSolution.missCount();
+                                    const unsigned int collision = gSystemCustomMiningSolution.collisionCount();
+
+                                    ACQUIRE(gSystemCustomMiningSolutionLock);
+                                    gSystemCustomMiningDuplicatedSolutionCount = hitCount;
+                                    gSystemCustomMiningSolutionCount = missCount;
+                                    gSystemCustomMiningSolutionOFCount = collision;
+                                    RELEASE(gSystemCustomMiningSolutionLock);
+
                                 }
                             }
-                            break;
                         }
+                        break;
                     }
                 }
+                
             }
             else
             {
@@ -1332,13 +1337,14 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
 static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, RequestResponseHeader* header)
 {
     RequestedCustomMiningSolutionVerification* request = header->getPayload<RequestedCustomMiningSolutionVerification>();
-    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningSolutionVerification) + SIGNATURE_SIZE
-        )
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningSolutionVerification) + SIGNATURE_SIZE)
     {
         unsigned char digest[32];
         KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
         {
+            RespondCustomMiningSolutionVerification respond;
+
             // Update the share counting
             // Only record shares in idle phase
             char recordSolutions = 0;
@@ -1371,15 +1377,31 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
                         gCustomMiningInvalidSharesCount++;
                         RELEASE(gCustomMiningInvalidSharesCountLock);
 
+                        respond.status = RespondCustomMiningSolutionVerification::invalid;
                     }
                     else
                     {
                         ACQUIRE(gCustomMiningInvalidSharesCountLock);
                         gCustomMiningValidSharesCount++;
                         RELEASE(gCustomMiningInvalidSharesCountLock);
+
+                        respond.status = RespondCustomMiningSolutionVerification::valid;
                     }
                 }
+                else
+                {
+                    respond.status = RespondCustomMiningSolutionVerification::notExisted;
+                }
             }
+            else
+            {
+                respond.status = RespondCustomMiningSolutionVerification::customMiningStateEnded;
+            }
+
+            respond.taskIndex = request->taskIndex;
+            respond.padding = request->padding;
+            respond.nonce = request->nonce;
+            enqueueResponse(peer, sizeof(respond), RespondCustomMiningSolutionVerification::type, header->dejavu(), &respond);
         }
     }
 }
@@ -6369,8 +6391,13 @@ static void logInfo()
     // Log infomation about custom mining
     setText(message, L"CustomMiningState:");
 
-    // System: solutions count at current phase | Total duplicated solutions | Total skipped solutions
-    appendText(message, L" SystemSols (Phase = ");
+    // System: Active | solutions count at current phase | Total duplicated solutions | Total skipped solutions
+    appendText(message, L" A = ");
+    ACQUIRE(gIsInCustomMiningStateLock);
+    appendNumber(message, gIsInCustomMiningState, false);
+    RELEASE(gIsInCustomMiningStateLock);
+
+    appendText(message, L" (Phase = ");
     ACQUIRE(gSystemCustomMiningSolutionLock);
     appendNumber(message, gSystemCustomMiningSolutionCount, false);
     appendText(message, L" | Dup = ");
@@ -6391,6 +6418,7 @@ static void logInfo()
     appendText(message, L" Epoch (Task = ");
     ACQUIRE(gTotalCustomMiningTaskMessagesLock);
     appendNumber(message, gTotalCustomMiningTaskMessages, FALSE);
+    RELEASE(gTotalCustomMiningTaskMessagesLock);
     appendText(message, L" | Sols = ");
 
     ACQUIRE(gTotalCustomMiningSolutionsLock);
