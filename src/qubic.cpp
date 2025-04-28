@@ -1378,9 +1378,12 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             case SPECIAL_COMMAND_QUERY_TIME:
             {
                 // send back current time
+                // We don't call updateTime() here, because:
+                // - calling it on non-main processor can cause unexpected behavior (very rare but observed)
+                // - frequency of calling updateTime() in main processor is high compared to the granularity of utcTime
+                //   (1 second, because nanoseconds are not provided on the platforms tested so far)
                 SpecialCommandSendTime response;
                 response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SEND_TIME << 56);
-                updateTime();
                 copyMem(&response.utcTime, &utcTime, sizeof(response.utcTime)); // caution: response.utcTime is subset of global utcTime (smaller size)
                 enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type, header->dejavu(), &response);
             }
