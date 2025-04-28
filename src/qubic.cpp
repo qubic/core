@@ -5958,7 +5958,7 @@ static bool initialize()
         setNewMiningSeed();
     }    
     score->loadScoreCache(system.epoch);
-    //loadCustomMiningCache(system.epoch);
+    loadCustomMiningCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
     if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
