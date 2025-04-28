@@ -1,5 +1,10 @@
+#include "platform/concurrency.h"
 #include "platform/memory.h"
+#include "platform/memory_util.h"
 #include "network_messages/transactions.h"
+#include "kangaroo_twelve.h"
+
+#include <lib/platform_efi/uefi.h>
 
 struct MiningSolutionTransaction : public Transaction
 {
@@ -217,7 +222,7 @@ void computeRev(
 {
     // Sort revenue scores to get lowest score of quorum
     unsigned long long sortedRevenueScore[QUORUM + 1];
-    bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+    setMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
     for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
         sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
@@ -428,6 +433,8 @@ public:
         RELEASE(lock);
     }
 
+#ifdef NO_UEFI
+#else
     /// Save custom mining share cache to file
     void save(CHAR16* filename, CHAR16* directory = NULL)
     {
@@ -478,6 +485,7 @@ public:
         }
         return success;
     }
+#endif
 
     // Return number of hits (data available in cache when fetched)
     unsigned int hitCount() const
@@ -613,6 +621,8 @@ private:
 
 CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolution;
 
+#ifdef NO_UEFI
+#else
 // Save score cache to SCORE_CACHE_FILE_NAME
 void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
 {
@@ -636,12 +646,15 @@ bool loadCustomMiningCache(int epoch)
     RELEASE(gCustomMiningCacheLock);
     return success;
 }
+#endif
 
 // In charge of storing custom mining tasks
+constexpr unsigned long long CUSTOM_MINING_INVALID_INDEX = 0xFFFFFFFFFFFFFFFFULL;
+constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_SIZE = 200ULL << 20; // 200MB for custom mining solution storage.
+constexpr unsigned int CUSTOM_MINING_TASK_STORAGE_RESET_PHASE = 2; // the number of custom mining phase that the solution storage will be reset
 constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = 60 * 60 * 24 * 8 / 2 / 10; // All epoch tasks in 7 (+1) days, 10s per task, idle phases only
 constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_SIZE = CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask); // ~16.6MB
 constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_COUNT = CUSTOM_MINING_SOLUTION_STORAGE_SIZE / sizeof(CustomMiningSolution);
-
 constexpr unsigned long long CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE = 10 * 1024 * 1024; // 10MB
 
 struct CustomMiningRespondDataHeader
@@ -664,7 +677,6 @@ public:
         BUFFER_FULL = 1,
         UNKNOWN_ERROR = 2,
     };
-    static constexpr unsigned long long _invalidIndex = 0xFFFFFFFFFFFFFFFFULL;
     void init()
     {
         allocPoolWithErrorLog(L"CustomMiningSortedStorageData", maxItems * sizeof(DataType), (void**)&_data, __LINE__);
@@ -726,7 +738,7 @@ public:
     unsigned long long searchTaskIndex(unsigned long long taskIndex, bool& exactMatch) const
     {
         unsigned long long left = 0, right = (_storageIndex > 0) ? _storageIndex - 1 : 0;
-        unsigned long long result = _invalidIndex;
+        unsigned long long result = CUSTOM_MINING_INVALID_INDEX;
         exactMatch = false;
 
         while (left <= right && left < _storageIndex)
@@ -792,7 +804,7 @@ public:
         {
             return idx;
         }
-        return _invalidIndex;
+        return CUSTOM_MINING_INVALID_INDEX;
     }
 
     bool dataExisted(const DataType* pData)
@@ -880,8 +892,8 @@ public:
         // Init the header as an empty data
         pHeader->itemCount = 0;
         pHeader->itemSize = 0;
-        pHeader->fromTimeStamp = _invalidIndex;
-        pHeader->toTimeStamp = _invalidIndex;
+        pHeader->fromTimeStamp = CUSTOM_MINING_INVALID_INDEX;
+        pHeader->toTimeStamp = CUSTOM_MINING_INVALID_INDEX;
 
         // Remainder of the data
         pData += sizeof(CustomMiningRespondDataHeader);
@@ -897,7 +909,7 @@ public:
             startIndex = lookForTaskGE(fromTimeStamp);
         }
 
-        if (startIndex == _invalidIndex)
+        if (startIndex == CUSTOM_MINING_INVALID_INDEX)
         {
             return NULL;
         }
@@ -911,7 +923,7 @@ public:
         else
         {
            endIndex = lookForTaskGE(toTimeStamp);
-            if (endIndex == _invalidIndex)
+            if (endIndex == CUSTOM_MINING_INVALID_INDEX)
             {
                 endIndex = _storageIndex;
             }
@@ -955,8 +967,8 @@ public:
         // Init the header as an empty data
         pHeader->itemCount = 0;
         pHeader->itemSize = 0;
-        pHeader->fromTimeStamp = _invalidIndex;
-        pHeader->toTimeStamp = _invalidIndex;
+        pHeader->fromTimeStamp = CUSTOM_MINING_INVALID_INDEX;
+        pHeader->toTimeStamp = CUSTOM_MINING_INVALID_INDEX;
 
         // Remainder of the data
         pData += sizeof(CustomMiningRespondDataHeader);
@@ -972,7 +984,7 @@ public:
             startIndex = lookForTaskGE(timeStamp);
         }
 
-        if (startIndex == _invalidIndex)
+        if (startIndex == CUSTOM_MINING_INVALID_INDEX)
         {
             return NULL;
         }
