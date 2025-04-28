@@ -267,6 +267,20 @@ static void pushToSeveralFullNode(RequestResponseHeader* requestResponseHeader)
     pushCustom(requestResponseHeader, DISSEMINATION_MULTIPLIER, filterFullNode);
 }
 
+// Add message to sending buffer of some (limit by DISSEMINATION_MULTIPLIER) full node peer, can only called from main thread (not thread-safe).
+static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int numberOfReceivers)
+{
+    if (numberOfReceivers > DISSEMINATION_MULTIPLIER)
+    {
+        pushToSeveralFullNode(requestResponseHeader);
+    }
+    else
+    {
+        const bool filterFullNode = true;
+        pushCustom(requestResponseHeader, numberOfReceivers, filterFullNode);
+    }
+}
+
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
 {

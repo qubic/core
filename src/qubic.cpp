@@ -7398,6 +7398,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             }
                         }
                         pushToAny(&requestedQuorumTick.header);
+                        pushToAnyFullNode(&requestedQuorumTick.header);
                     }
                     tickRequestingIndicator = gTickTotalNumberOfComputors;
                     if (futureTickRequestingIndicator == gFutureTickTotalNumberOfComputors
@@ -7415,6 +7416,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             }
                         }
                         pushToAny(&requestedQuorumTick.header);
+                        pushToAnyFullNode(&requestedQuorumTick.header);
                     }
                     futureTickRequestingIndicator = gFutureTickTotalNumberOfComputors;
 
@@ -7429,18 +7431,21 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
                         pushToAny(&requestedTickData.header);
+                        pushToAnyFullNode(&requestedTickData.header);
                     }
                     if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch && isNewTickPlus2)
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 2;
                         pushToAny(&requestedTickData.header);
+                        pushToAnyFullNode(&requestedTickData.header);
                     }
 
                     if (requestedTickTransactions.requestedTickTransactions.tick)
                     {
                         requestedTickTransactions.header.randomizeDejavu();
                         pushToAny(&requestedTickTransactions.header);
+                        pushToAnyFullNode(&requestedTickData.header);
 
                         requestedTickTransactions.requestedTickTransactions.tick = 0;
                     }
