@@ -758,6 +758,17 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
     }
 }
 
+static bool verifyTickVoteSignature(const unsigned char* publicKey, const unsigned char* messageDigest, const unsigned char* signature, const bool curveVerify = true)
+{
+    unsigned int score = _byteswap_ulong(((unsigned int*)signature)[0]);
+    if (score > TARGET_TICK_VOTE_SIGNATURE) return false;
+    if (curveVerify)
+    {
+        if (!verify(publicKey, messageDigest, signature)) return false;
+    }
+    return true;
+}
+
 static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
 {
     BroadcastTick* request = header->getPayload<BroadcastTick>();
@@ -776,7 +787,8 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
         request->tick.computorIndex ^= BroadcastTick::type;
         KangarooTwelve(&request->tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
         request->tick.computorIndex ^= BroadcastTick::type;
-        if (verify(broadcastedComputors.computors.publicKeys[request->tick.computorIndex].m256i_u8, digest, request->tick.signature))
+        const bool verifyFourQCurve = true;
+        if (verifyTickVoteSignature(broadcastedComputors.computors.publicKeys[request->tick.computorIndex].m256i_u8, digest, request->tick.signature, verifyFourQCurve))
         {
             if (header->isDejavuZero())
             {
@@ -1290,6 +1302,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.totalSpectrumAmount = spectrumInfo.totalAmount;
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
 
+    respondedSystemInfo.targetTickVoteSignature = TARGET_TICK_VOTE_SIGNATURE;
     enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
 }
 
@@ -4760,7 +4773,17 @@ static void computeTxBodyDigestBase(const int tick)
     }
 }
 
-
+// special procedure to sign the tick vote
+static void signTickVote(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* signature)
+{
+    signWithRandomK(subseed, publicKey, messageDigest, signature);
+    bool isOk = verifyTickVoteSignature(publicKey, messageDigest, signature, false);
+    while (!isOk)
+    {
+        signWithRandomK(subseed, publicKey, messageDigest, signature);
+        isOk = verifyTickVoteSignature(publicKey, messageDigest, signature, false);
+    }
+}
 
 // broadcast all tickVotes from all IDs in this node
 static void broadcastTickVotes()
@@ -4792,7 +4815,7 @@ static void broadcastTickVotes()
         unsigned char digest[32];
         KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
         broadcastTick.tick.computorIndex ^= BroadcastTick::type;
-        sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
+        signTickVote(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
 
 
         enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);

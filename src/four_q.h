@@ -1804,6 +1804,47 @@ static void sign(const unsigned char* subseed, const unsigned char* publicKey, c
     }
 }
 
+// same as sign() but here k is completely random instead of deriving from subseed
+static void signWithRandomK(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* signature)
+{ // SchnorrQ signature generation
+  // It produces the signature signature of a message messageDigest of size 32 in bytes
+  // Inputs: 32-byte subseed, 32-byte publicKey, and messageDigest of size 32 in bytes
+  // Output: 64-byte signature 
+    point_t R;
+    unsigned char k[64], h[64], temp[32 + 64];
+    unsigned long long r[8];
+    KangarooTwelve((unsigned char*)subseed, 32, k, 32);
+    for (int i = 32; i < 64; i += 8)
+    {
+        _rdrand64_step((unsigned long long*)(k + i));
+    }
+    // NOTE: the nonce consists 2 parts: random K and message digest
+    // This nonce is supposed to be random to avoid key leakage.
+    *((__m256i*)(temp + 32)) = *((__m256i*)(k + 32));
+    *((__m256i*)(temp + 64)) = *((__m256i*)messageDigest);
+
+    KangarooTwelve(temp + 32, 32 + 32, (unsigned char*)r, 64);
+
+    ecc_mul_fixed(r, R);
+    encode(R, signature); // Encode lowest 32 bytes of signature
+    *((__m256i*)temp) = *((__m256i*)signature);
+    *((__m256i*)(temp + 32)) = *((__m256i*)publicKey);
+
+    KangarooTwelve(temp, 32 + 64, h, 64);
+    Montgomery_multiply_mod_order(r, Montgomery_Rprime, r);
+    Montgomery_multiply_mod_order(r, ONE, r);
+    Montgomery_multiply_mod_order((unsigned long long*)h, Montgomery_Rprime, (unsigned long long*)h);
+    Montgomery_multiply_mod_order((unsigned long long*)h, ONE, (unsigned long long*)h);
+    Montgomery_multiply_mod_order((unsigned long long*)k, Montgomery_Rprime, (unsigned long long*)(signature + 32));
+    Montgomery_multiply_mod_order((unsigned long long*)h, Montgomery_Rprime, (unsigned long long*)h);
+    Montgomery_multiply_mod_order((unsigned long long*)(signature + 32), (unsigned long long*)h, (unsigned long long*)(signature + 32));
+    Montgomery_multiply_mod_order((unsigned long long*)(signature + 32), ONE, (unsigned long long*)(signature + 32));
+    if (_subborrow_u64(_subborrow_u64(_subborrow_u64(_subborrow_u64(0, r[0], ((unsigned long long*)signature)[4], &((unsigned long long*)signature)[4]), r[1], ((unsigned long long*)signature)[5], &((unsigned long long*)signature)[5]), r[2], ((unsigned long long*)signature)[6], &((unsigned long long*)signature)[6]), r[3], ((unsigned long long*)signature)[7], &((unsigned long long*)signature)[7]))
+    {
+        _addcarry_u64(_addcarry_u64(_addcarry_u64(_addcarry_u64(0, ((unsigned long long*)signature)[4], CURVE_ORDER_0, &((unsigned long long*)signature)[4]), ((unsigned long long*)signature)[5], CURVE_ORDER_1, &((unsigned long long*)signature)[5]), ((unsigned long long*)signature)[6], CURVE_ORDER_2, &((unsigned long long*)signature)[6]), ((unsigned long long*)signature)[7], CURVE_ORDER_3, &((unsigned long long*)signature)[7]);
+    }
+}
+
 static bool verify(const unsigned char* publicKey, const unsigned char* messageDigest, const unsigned char* signature)
 { // SchnorrQ signature verification
   // It verifies the signature Signature of a message MessageDigest of size 32 in bytes
@@ -1834,6 +1875,5 @@ static bool verify(const unsigned char* publicKey, const unsigned char* messageD
     }
 
     encode(A, (unsigned char*)A);
-
     return *((__m256i*)A) == *((__m256i*)signature);
 }
