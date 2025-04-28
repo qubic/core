@@ -523,13 +523,20 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                 recordCustomMining = gIsInCustomMiningState;
                 RELEASE(gIsInCustomMiningStateLock);
 
+                // Compute the gamming key to get the sub-type of message
+                unsigned char sharedKeyAndGammingNonce[64];
+                bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                unsigned char gammingKey[32];
+                KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
+
                 if (request->sourcePublicKey == dispatcherPublicKey)
                 {
                     // See CustomMiningTaskMessage structure
                     // MESSAGE_TYPE_CUSTOM_MINING_TASK
                     
                     // Record the task emitted by dispatcher
-                    if (recordCustomMining)
+                    if (recordCustomMining && gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_TASK)
                     {
                         // Record the task message
                         unsigned long long taskMessageStorageCount = 0;
@@ -547,16 +554,11 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                 }
                 else
                 {
-                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                    if (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
                     {
-                        if (request->sourcePublicKey == broadcastedComputors.computors.publicKeys[i])
+                        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
-                            unsigned char sharedKeyAndGammingNonce[64];
-                            bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
-                            bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
-                            unsigned char gammingKey[32];
-                            KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
-                            if (gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
+                            if (request->sourcePublicKey == broadcastedComputors.computors.publicKeys[i])
                             {
                                 customMiningMessageCounters[i]++;
                                 if (recordCustomMining)
@@ -1400,9 +1402,11 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                 {
                     CustomMiningRespondDataHeader* customMiningInternalHeader = (CustomMiningRespondDataHeader*)respond;
                     customMiningInternalHeader->respondType = RespondCustomMiningData::taskType;
+                    const unsigned long long respondDataSize = sizeof(CustomMiningRespondDataHeader) + customMiningInternalHeader->itemCount * customMiningInternalHeader->itemSize;
+                    ASSERT(respondDataSize < (1ULL << 32 - 1));
                     enqueueResponse(
                         peer,
-                        sizeof(CustomMiningRespondDataHeader) + customMiningInternalHeader->itemCount * customMiningInternalHeader->itemSize,
+                        (unsigned int)respondDataSize,
                         RespondCustomMiningData::type, header->dejavu(), respond);
 
                 }
@@ -1439,7 +1443,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                         CustomMiningSolutionStorageEntry entry = solutionEntries[k];
                         CustomMiningSolutionCacheEntry fullEntry;
 
-                        gSystemCustomMiningSolution.getEntry(fullEntry, entry.cacheEntryIndex);
+                        gSystemCustomMiningSolution.getEntry(fullEntry, (unsigned int)entry.cacheEntryIndex);
 
                         // Check data is matched and not verifed yet
                         if (!fullEntry.isEmpty() 
@@ -1460,9 +1464,11 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                     customMiningInternalHeader->itemSize = sizeof(CustomMiningSolution);
                     customMiningInternalHeader->itemCount = sendItem;
                     customMiningInternalHeader->respondType = RespondCustomMiningData::solutionType;
+                    const unsigned long long respondDataSize = sizeof(CustomMiningRespondDataHeader) + customMiningInternalHeader->itemCount * customMiningInternalHeader->itemSize;
+                    ASSERT(respondDataSize < (1ULL << 32 - 1));
                     enqueueResponse(
                         peer,
-                        sizeof(CustomMiningRespondDataHeader) + customMiningInternalHeader->itemCount * customMiningInternalHeader->itemSize,
+                        (unsigned int)respondDataSize,
                         RespondCustomMiningData::type, header->dejavu(), respondSolution);
                 }
                 else
