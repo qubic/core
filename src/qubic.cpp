@@ -259,6 +259,7 @@ static bool saveCustomMiningRevenue(CHAR16* directory = NULL);
 #define PAUSE_BEFORE_CLEAR_MEMORY 0
 #endif
 
+unsigned int networkTick = 0;
 BroadcastFutureTickData broadcastedFutureTickData;
 
 static struct
@@ -861,6 +862,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             {
                 // Copy the sent tick to the tick storage
                 bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
+                peer->receivedTickData = request->tick.tick;
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -926,6 +928,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                             if (digest == targetNextTickDataDigest)
                             {
                                 bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                                peer->receivedTickData = request->tickData.tick;
                             }
                         }
                     }
@@ -954,6 +957,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                         else
                         {
                             bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                            peer->receivedTickData = request->tickData.tick;
                         }
                     }
                 }
@@ -6271,6 +6275,10 @@ static void logInfo()
         {
             numberOfWaitingBytes += peers[i].dataToTransmitSize;
         }
+        if (peers[i].latestTick > networkTick)
+        {
+            networkTick = peers[i].latestTick;
+        }
     }
 
     unsigned int numberOfHandshakedPublicPeers = 0;
@@ -6354,7 +6362,9 @@ static void logInfo()
     appendNumber(message, tickDuration / frequency, FALSE);
     appendText(message, L".");
     appendNumber(message, (tickDuration % frequency) * 10 / frequency, FALSE);
-    appendText(message, L" s");
+    appendText(message, L" s | Network Tick = ");
+    appendNumber(message, networkTick, FALSE);
+    
 
     if (consoleLoggingLevel < 2)
     {
@@ -7445,7 +7455,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         requestedTickTransactions.header.randomizeDejavu();
                         pushToAny(&requestedTickTransactions.header);
-                        pushToAnyFullNode(&requestedTickData.header);
+                        pushToAnyFullNode(&requestedTickTransactions.header);
 
                         requestedTickTransactions.requestedTickTransactions.tick = 0;
                     }
