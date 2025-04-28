@@ -81,6 +81,7 @@ struct Peer
 typedef struct
 {
     bool isHandshaked;
+    bool isFullnode;
     IPv4Address address;
 } PublicPeer;
 
@@ -412,9 +413,10 @@ static void penalizePublicPeerRejectedConnection(const IPv4Address& address)
     {
         if (publicPeers[i].address == address)
         {
-            if (publicPeers[i].isHandshaked)
+            if (publicPeers[i].isHandshaked || publicPeers[i].isFullnode)
             {
                 publicPeers[i].isHandshaked = false;
+                publicPeers[i].isFullnode = false;
             }
             else
             {
@@ -456,6 +458,7 @@ static void addPublicPeer(const IPv4Address& address)
     if (numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS)
     {
         publicPeers[numberOfPublicPeers].isHandshaked = false;
+        publicPeers[numberOfPublicPeers].isFullnode = false;
         publicPeers[numberOfPublicPeers++].address = address;
     }
 

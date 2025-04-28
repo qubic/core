@@ -467,7 +467,7 @@ static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header
     {
         peer->exchangedPublicPeers = TRUE; // A race condition is possible
 
-        // Set isVerified if sExchangePublicPeers was received on outgoing connection
+        // Set isHandshaked if sExchangePublicPeers was received on outgoing connection
         if (peer->address.u32)
         {
             for (unsigned int j = 0; j < numberOfPublicPeers; j++)
@@ -1239,6 +1239,19 @@ static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* he
         {
             // May have data race here, but it's acceptable
             peer->latestTick = currentTickInfo.tick;
+            // Set isFullNode if ResponseCurrentTickInfo was received on outgoing connection
+            if (peer->address.u32)
+            {
+                for (unsigned int j = 0; j < numberOfPublicPeers; j++)
+                {
+                    if (peer->address == publicPeers[j].address)
+                    {
+                        publicPeers[j].isFullnode = true;
+
+                        break;
+                    }
+                }
+            }
         }
     }
 }
@@ -6108,7 +6121,10 @@ static bool initialize()
         const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(knownPublicPeers[i]);
         addPublicPeer(peer_ip);
         if (numberOfPublicPeers > 0)
+        {
             publicPeers[numberOfPublicPeers - 1].isHandshaked = true;
+            publicPeers[numberOfPublicPeers - 1].isFullnode = true;
+        }
     }
     if (numberOfPublicPeers < 4)
     {
@@ -6257,13 +6273,19 @@ static void logInfo()
         }
     }
 
-    unsigned int numberOfVerifiedPublicPeers = 0;
+    unsigned int numberOfHandshakedPublicPeers = 0;
+    unsigned int numberOfFullnodePublicPeers = 0;
 
     for (unsigned int i = 0; i < numberOfPublicPeers; i++)
     {
         if (publicPeers[i].isHandshaked)
         {
-            numberOfVerifiedPublicPeers++;
+            numberOfHandshakedPublicPeers++;
+        }
+
+        if (publicPeers[i].isFullnode)
+        {
+            numberOfFullnodePublicPeers++;
         }
     }
 
@@ -6297,8 +6319,10 @@ static void logInfo()
     appendNumber(message, numberOfConnectedSlots, FALSE);
 
     appendText(message, L" ");
-    appendNumber(message, numberOfVerifiedPublicPeers, TRUE);
+    appendNumber(message, numberOfHandshakedPublicPeers, TRUE);
     appendText(message, L"/");
+    appendNumber(message, numberOfFullnodePublicPeers, TRUE);
+    appendText(message, L"/");    
     appendNumber(message, numberOfPublicPeers, TRUE);
     appendText(message, listOfPeersIsStatic ? L" Static" : L" Dynamic");
     appendText(message, L" (+");
@@ -7266,7 +7290,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         bool noVerifiedPublicPeers = true;
                         for (unsigned int k = 0; k < numberOfPublicPeers; k++)
                         {
-                            if (publicPeers[k].isHandshaked)
+                            if (publicPeers[k].isHandshaked && publicPeers[k].isFullnode)
                             {
                                 noVerifiedPublicPeers = false;
 
@@ -7284,7 +7308,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             {
                                 // randomly select verified public peers
                                 const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isHandshaked)
+                                if (publicPeers[publicPeerIndex].isHandshaked && publicPeers[publicPeerIndex].isFullnode)
                                 {
                                     request->peers[j] = publicPeers[publicPeerIndex].address;
                                 }
