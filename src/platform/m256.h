@@ -1,6 +1,10 @@
 #pragma once
 
+#if defined(_MSC_VER)
 #include <intrin.h>
+#else
+#include <immintrin.h>
+#endif
 
 // Used for all kinds of IDs, including in QPI and contracts.
 // Existing interface and behavior should never be changed! (However, it may be extended.)

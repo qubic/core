@@ -1,6 +1,10 @@
 #pragma once
 
+#if defined(_MSC_VER)
 #include <intrin.h>
+#else
+#include <immintrin.h>
+#endif
 
 // Acquire lock, may block
 #define ACQUIRE_WITHOUT_DEBUG_LOGGING(lock) while (_InterlockedCompareExchange8(&lock, 1, 0)) _mm_pause()

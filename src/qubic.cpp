@@ -4,7 +4,12 @@
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
 
+
+#if defined(_MSC_VER)
 #include <intrin.h>
+#else
+#include <immintrin.h>
+#endif
 
 #include "network_messages/all.h"
 
