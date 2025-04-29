@@ -19,7 +19,7 @@ struct RequestedCustomMiningData
     unsigned long long toTaskIndex;
 
     // Type of the request: either task (taskType) or solution (solutionType).
-    unsigned int dataType;
+    long long dataType;
 };
 
 // Message struture for respond custom mining data
@@ -46,8 +46,8 @@ struct RequestedCustomMiningSolutionVerification
     };
     unsigned long long taskIndex;
     unsigned int nonce;
-    unsigned int padding;   // XMR padding data
-    unsigned char isValid;  // validity of the solution. 0: invalid, >0: valid
+    unsigned int padding;         // XMR padding data
+    unsigned long long isValid;  // validity of the solution. 0: invalid, >0: valid
 };
 struct RespondCustomMiningSolutionVerification
 {
@@ -64,7 +64,7 @@ struct RespondCustomMiningSolutionVerification
     };
     unsigned long long taskIndex;
     unsigned int nonce;
-    unsigned int padding;    // XMR padding data
-    unsigned char status;   // Flag indicate the status of solution
+    unsigned int padding;   // XMR padding data
+    long long status;       // Flag indicate the status of solution
 };
 

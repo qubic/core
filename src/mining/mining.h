@@ -611,7 +611,7 @@ struct CustomMiningRespondDataHeader
     unsigned long long itemSize;        // size of the data
     unsigned long long fromTimeStamp;   // start of the ts
     unsigned long long toTimeStamp;     // end of the ts
-    unsigned long long respondType;   // message type
+    unsigned long long respondType;     // message type
 };
 
 template <typename DataType, unsigned long long maxItems, unsigned long long resetPeriod, bool allowDuplicated = false>
