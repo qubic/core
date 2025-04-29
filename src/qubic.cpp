@@ -3210,7 +3210,14 @@ static void resetCustomMining()
         // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
         gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
     }
-    gSystemCustomMiningSolution.reset();
+    ACQUIRE(gCustomMiningSolutionStorageLock);
+    gCustomMiningStorage._solutionStorage.reset();
+    RELEASE(gCustomMiningSolutionStorageLock);
+
+    ACQUIRE(gCustomMiningTaskStorageLock);
+    gCustomMiningStorage._taskStorage.reset();
+    RELEASE(gCustomMiningTaskStorageLock);
+
     gSystemCustomMiningDuplicatedSolutionCount = 0;
     gSystemCustomMiningSolutionCount = 0;
     gSystemCustomMiningSolutionOFCount = 0;
