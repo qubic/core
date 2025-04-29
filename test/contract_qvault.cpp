@@ -15,13 +15,7 @@ static constexpr uint64 QVAULT_MAX_REVENUE = 1000000000000ull;
 static constexpr uint64 QVAULT_MIN_REVENUE = 100000000000ull;
 static const id QVAULT_CONTRACT_ID(QVAULT_CONTRACT_INDEX, 0, 0, 0);
 const id QVAULT_QCAP_ISSUER = ID(_Q, _C, _A, _P, _W, _M, _Y, _R, _S, _H, _L, _B, _J, _H, _S, _T, _T, _Z, _Q, _V, _C, _I, _B, _A, _R, _V, _O, _A, _S, _K, _D, _E, _N, _A, _S, _A, _K, _N, _O, _B, _R, _G, _P, _F, _W, _W, _K, _R, _C, _U, _V, _U, _A, _X, _Y, _E);
-const id QVAULT_authAddress1 = ID(_T, _K, _U, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
-const id QVAULT_authAddress2 = ID(_F, _X, _J, _F, _B, _T, _J, _M, _Y, _F, _J, _H, _P, _B, _X, _C, _D, _Q, _T, _L, _Y, _U, _K, _G, _M, _H, _B, _B, _Z, _A, _A, _F, _T, _I, _C, _W, _U, _K, _R, _B, _M, _E, _K, _Y, _N, _U, _P, _M, _R, _M, _B, _D, _N, _D, _R, _G);
-const id QVAULT_authAddress3 = ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D);
-const id QVAULT_reinvestingAddress = ID(_R, _U, _U, _Y, _R, _V, _N, _K, _J, _X, _M, _L, _R, _B, _B, _I, _R, _I, _P, _D, _I, _B, _M, _H, _D, _H, _U, _A, _Z, _B, _Q, _K, _N, _B, _J, _T, _R, _D, _S, _P, _G, _C, _L, _Z, _C, _Q, _W, _A, _K, _C, _F, _Q, _J, _K, _K, _E);
 const id QVAULT_adminAddress = ID(_H, _E, _C, _G, _U, _G, _H, _C, _J, _K, _Q, _O, _S, _D, _T, _M, _E, _H, _Q, _Y, _W, _D, _D, _T, _L, _F, _D, _A, _S, _Z, _K, _M, _G, _J, _L, _S, _R, _C, _S, _T, _H, _H, _A, _P, _P, _E, _D, _L, _G, _B, _L, _X, _J, _M, _N, _D);
-const id QVAULT_initialBannedAddress1 = ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D);
-const id QVAULT_initialBannedAddress2 = ID(_E, _S, _C, _R, _O, _W, _B, _O, _T, _F, _T, _F, _I, _C, _I, _F, _P, _U, _X, _O, _J, _K, _G, _Q, _P, _Y, _X, _C, _A, _B, _L, _Z, _V, _M, _M, _U, _C, _M, _J, _F, _S, _G, _S, _A, _I, _A, _T, _Y, _I, _N, _V, _T, _Y, _G, _O, _A);
 
 static unsigned long long random(unsigned long long minValue, unsigned long long maxValue)
 {
@@ -85,6 +79,212 @@ public:
         QVAULT::getData_output output;
 
         callFunction(QVAULT_CONTRACT_INDEX, 1, input, output);
+        return output;
+    }
+
+    QVAULT::getStakedAmountAndVotingPower_output getStakedAmountAndVotingPower(id address) const
+    {
+        QVAULT::getStakedAmountAndVotingPower_input input;
+        QVAULT::getStakedAmountAndVotingPower_output output;
+
+        input.address = address;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 2, input, output);
+        return output;
+    }
+
+    QVAULT::getGP_output getGP(uint32 proposalId) const
+    {
+        QVAULT::getGP_input input;
+        QVAULT::getGP_output output;
+
+        input.proposalId = proposalId;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 3, input, output);
+        return output;
+    }
+
+    QVAULT::getQCP_output getQCP(uint32 proposalId) const
+    {
+        QVAULT::getQCP_input input;
+        QVAULT::getQCP_output output;
+
+        input.proposalId = proposalId;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 4, input, output);
+        return output;
+    }
+
+    QVAULT::getIPOP_output getIPOP(uint32 proposalId) const
+    {
+        QVAULT::getIPOP_input input;
+        QVAULT::getIPOP_output output;
+
+        input.proposalId = proposalId;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 5, input, output);
+        return output;
+    }
+
+    QVAULT::getQEarnP_output getQEarnP(uint32 proposalId) const
+    {
+        QVAULT::getQEarnP_input input;
+        QVAULT::getQEarnP_output output;
+
+        input.proposalId = proposalId;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 6, input, output);
+        return output;
+    }
+
+    QVAULT::getFundP_output getFundP(uint32 proposalId) const
+    {
+        QVAULT::getFundP_input input;
+        QVAULT::getFundP_output output;
+
+        input.proposalId = proposalId;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 7, input, output);
+        return output;
+    }
+
+    QVAULT::getMKTP_output getMKTP(uint32 proposalId) const
+    {
+        QVAULT::getMKTP_input input;
+        QVAULT::getMKTP_output output;
+
+        input.proposalId = proposalId;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 8, input, output);
+        return output;
+    }
+
+    QVAULT::getAlloP_output getAlloP(uint32 proposalId) const
+    {
+        QVAULT::getAlloP_input input;
+        QVAULT::getAlloP_output output;
+
+        input.proposalId = proposalId;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 9, input, output);
+        return output;
+    }
+
+    QVAULT::getMSP_output getMSP(uint32 proposalId) const
+    {
+        QVAULT::getMSP_input input;
+        QVAULT::getMSP_output output;
+
+        input.proposalId = proposalId;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 10, input, output);
+        return output;
+    }
+
+    QVAULT::getIdentitiesHvVtPw_output getIdentitiesHvVtPw(uint32 offset, uint32 count) const
+    {
+        QVAULT::getIdentitiesHvVtPw_input input;
+        QVAULT::getIdentitiesHvVtPw_output output;
+
+        input.count = count;
+        input.offset = offset;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 11, input, output);
+        return output;
+    }
+
+    QVAULT::ppCreationPower_output ppCreationPower(id address) const
+    {
+        QVAULT::ppCreationPower_input input;
+        QVAULT::ppCreationPower_output output;
+
+        input.address = address;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 12, input, output);
+        return output;
+    }
+
+    QVAULT::getQcapBurntAmountInLastEpoches_output getQcapBurntAmountInLastEpoches(uint32 numberOfLastEpoches) const
+    {
+        QVAULT::getQcapBurntAmountInLastEpoches_input input;
+        QVAULT::getQcapBurntAmountInLastEpoches_output output;
+
+        input.numberOfLastEpoches = numberOfLastEpoches;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 13, input, output);
+        return output;
+    }
+
+    QVAULT::getAmountToBeSoldPerYear_output getAmountToBeSoldPerYear(uint32 year) const
+    {
+        QVAULT::getAmountToBeSoldPerYear_input input;
+        QVAULT::getAmountToBeSoldPerYear_output output;
+
+        input.year = year;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 14, input, output);
+        return output;
+    }
+
+    QVAULT::getTotalRevenueInQcap_output getTotalRevenueInQcap() const
+    {
+        QVAULT::getTotalRevenueInQcap_input input;
+        QVAULT::getTotalRevenueInQcap_output output;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 15, input, output);
+        return output;
+    }
+
+    QVAULT::getRevenueInQcapPerEpoch_output getRevenueInQcapPerEpoch(uint32 epoch) const
+    {
+        QVAULT::getRevenueInQcapPerEpoch_input input;
+        QVAULT::getRevenueInQcapPerEpoch_output output;
+
+        input.epoch = epoch;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 16, input, output);
+        return output;
+    }
+
+    QVAULT::getRevenuePerShare_output getRevenuePerShare(uint32 contractIndex) const
+    {
+        QVAULT::getRevenuePerShare_input input;
+        QVAULT::getRevenuePerShare_output output;
+
+        input.contractIndex = contractIndex;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 17, input, output);
+        return output;
+    }
+
+    QVAULT::getAmountOfShareQvaultHold_output getAmountOfShareQvaultHold(Asset assetInfo) const
+    {
+        QVAULT::getAmountOfShareQvaultHold_input input;
+        QVAULT::getAmountOfShareQvaultHold_output output;
+
+        input.assetInfo = assetInfo;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 18, input, output);
+        return output;
+    }
+
+    QVAULT::getNumberOfHolderAndAvgAm_output getNumberOfHolderAndAvgAm() const
+    {
+        QVAULT::getNumberOfHolderAndAvgAm_input input;
+        QVAULT::getNumberOfHolderAndAvgAm_output output;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 19, input, output);
+        return output;
+    }
+
+    QVAULT::getAmountForQearnInUpcomingEpoch_output getAmountForQearnInUpcomingEpoch(uint32 epoch) const
+    {
+        QVAULT::getAmountForQearnInUpcomingEpoch_input input;
+        QVAULT::getAmountForQearnInUpcomingEpoch_output output;
+
+        input.epoch = epoch;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 20, input, output);
         return output;
     }
 
