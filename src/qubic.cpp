@@ -575,7 +575,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 // Check the computor idx of this solution.
                                 unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
                                 // TODO: taskIndex can use for detect for-sure stale shares
-                                if (computorID == i && solution->taskIndex > 0)
+                                if (solution->taskIndex > 0)
                                 {
                                     CustomMiningSolutionCacheEntry cacheEntry;
                                     cacheEntry.set(solution);
