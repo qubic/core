@@ -12,6 +12,10 @@ include(CompilerDetection)
 # Option to build tests
 option(BUILD_TESTS "Build the test suite" ON)
 
+if(IS_WINDOWS)
+    message(WARNING "Building on Windows using Visual Studio and CMake has undergone limited testing and is not officially supported at this time.")
+endif()
+
 # Always include platform_common as it's needed for both application and tests
 add_subdirectory(lib/platform_common)
 
