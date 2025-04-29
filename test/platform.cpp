@@ -4,6 +4,7 @@
 #include "../src/platform/read_write_lock.h"
 #include "../src/platform/stack_size_tracker.h"
 #include "../src/platform/custom_stack.h"
+#include "../src/platform/profiling.h"
 
 TEST(TestCoreReadWriteLock, SimpleSingleThread)
 {
@@ -166,4 +167,79 @@ TEST(TestCoreCustomStack, SimpleTest)
     EXPECT_GT(size4, size3);
 }
 
-// Add test of SetJump/LongJump
+void recursiveProfilingTest(int depth)
+{
+    ProfilingScope profScope(__FUNCTION__, __LINE__);
+    if (depth > 0)
+    {
+        recursiveProfilingTest(depth - 1);
+        recursiveProfilingTest(depth - 2);
+    }
+    else
+    {
+        sleepMicroseconds(10);
+    }
+}
+
+void iterativeProfilingTest(int n)
+{
+    ProfilingScope profScope(__FUNCTION__, __LINE__);
+    for (int i = 0; i < n; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        for (int j = 0; j < n; ++j)
+        {
+            ProfilingScope profScope(__FUNCTION__, __LINE__);
+            for (int k = 0; k < n; ++k)
+            {
+                ProfilingScope profScope(__FUNCTION__, __LINE__);
+                sleepMicroseconds(10);
+            }
+        }
+    }
+}
+
+TEST(TestCoreProfiling, SimpleTest)
+{
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        testStackSizeTrackerKeepSize();
+    }
+
+    for (int i = 0; i < 1000; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        testStackSizeTrackerKeepSize();
+    }
+
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        recursiveProfilingTest(9);
+    }
+
+    for (int i = 0; i < 10; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        recursiveProfilingTest(4);
+    }
+
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        iterativeProfilingTest(5);
+    }
+
+    for (int i = 0; i < 5; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        iterativeProfilingTest(3);
+    }
+
+    gProfilingDataCollector.writeToFile();
+
+    EXPECT_FALSE(gProfilingDataCollector.init(2));
+    gProfilingDataCollector.clear();
+    gProfilingDataCollector.deinit();
+    gProfilingDataCollector.clear();
+
+    //gProfilingDataCollector.writeToFile();
+}
