@@ -88,7 +88,7 @@ public:
         return output;
     }
 
-    void stake(const id& address, uint64 amount)
+    void stake(const id& address, uint32 amount)
     {
         QVAULT::stake_input input;
         QVAULT::stake_output output;
@@ -98,7 +98,7 @@ public:
         invokeUserProcedure(QVAULT_CONTRACT_INDEX, 1, input, output, address, 0);
     }
 
-    void unStake(const id& address, uint64 amount)
+    void unStake(const id& address, uint32 amount)
     {
         QVAULT::unStake_input input{amount};
         QVAULT::unStake_output output;
@@ -145,7 +145,7 @@ public:
         invokeUserProcedure(QVAULT_CONTRACT_INDEX, 6, input, output, address, 10000000);
     }
 
-    void submitFundP(const id& address, uint64 amountOfQcap, uint64 priceOfOneQcap)
+    void submitFundP(const id& address, uint32 amountOfQcap, uint64 priceOfOneQcap)
     {
         QVAULT::submitFundP_input input;
         QVAULT::submitFundP_output output;
