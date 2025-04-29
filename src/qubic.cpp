@@ -623,8 +623,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
                                 }
                             }
+                            break;
                         }
-                        break;
                     }
                 }
                 
