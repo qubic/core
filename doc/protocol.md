@@ -50,6 +50,10 @@ The type number is the identifier used in `RequestResponseHeader` (defined in `h
 - `RequestAssets`, type 52, defined in `assets.h`.
 - `RespondAssets` and `RespondAssetsWithSiblings`, type 53, defined in `assets.h`.
 - `TryAgain`, type 54, defined in `common_response.h`.
+- `RequestPruningLog`, type 56, defined in `logging.h`.
+- `ResponsePruningLog`, type 57, defined in `logging.h`.
+- `RequestLogStateDigest`, type 58, defined in `logging.h`.
+- `ResponseLogStateDigest`, type 59, defined in `logging.h`.
 - `SpecialCommand`, type 255, defined in `special_command.h`.
 
 Addon messages (supported if addon is enabled):
