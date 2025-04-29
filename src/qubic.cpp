@@ -3222,6 +3222,7 @@ static void resetCustomMining()
     gSystemCustomMiningSolutionCount = 0;
     gSystemCustomMiningSolutionOFCount = 0;
     gTotalCustomMiningSolutions = 0;
+    gTotalCustomMiningTaskMessages = 0;
 }
 
 static void beginEpoch()
