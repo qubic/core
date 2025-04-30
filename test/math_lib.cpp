@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include <cmath>
 #include "../src/contracts/math_lib.h"
 
 TEST(TestCoreMathLib, Max) {
