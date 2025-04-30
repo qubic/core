@@ -30,7 +30,7 @@
 
 # Solution Verification
 
-- A **verifier** requests data from the node using `RequestedCustomMiningData`, authenticated with the **OPERATOR's seed** (`core/src/network_message/custommining.h`).
+- A **verifier** requests data from the node using `RequestedCustomMiningData`, authenticated with the **OPERATOR's seed** (`core/src/network_message/custom_mining.h`).
 - First, it requests a **range of tasks** using their `taskIndex`.
 - Then, using these indices, it requests **associated solutions**.
 - The node responds with all **unverified solutions** related to those tasks (max 1MB) using `RespondCustomMiningData`.
