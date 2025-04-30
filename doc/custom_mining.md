@@ -2,7 +2,7 @@
 
 - A solution's nonce must satisfy `nonce % NUMBER_OF_COMPUTORS == computorID` to be considered valid for a specific computor.
 - Custom mining only occurs during the **idle phase** (solution submission, verification, etc.).
-- **Accepted Solutions** = Total Received Solutions – Invalid Solutions (non-verified + invalid).
+- **Accepted Solutions** = Total Received Solutions - Invalid Solutions ( or **Accepted Solutions** = non-verified Solutions + Valid Solutions).
 
 ## During the Idle State (Custom Mining Active)
 - The node receives broadcast messages and propagates them across the network.
