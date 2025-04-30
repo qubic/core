@@ -27,6 +27,7 @@
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
 #include "platform/memory_util.h"
+#include "platform/profiling.h"
 
 #include "platform/custom_stack.h"
 
@@ -396,6 +397,8 @@ static void enableAVX()
 // Should only be called from tick processor to avoid concurrent state changes, which can cause race conditions as detailed in FIXME below.
 static void getComputerDigest(m256i& digest)
 {
+    PROFILE_SCOPE();
+
     unsigned int digestIndex;
     for (digestIndex = 0; digestIndex < MAX_NUMBER_OF_CONTRACTS; digestIndex++)
     {
@@ -1785,6 +1788,8 @@ static void requestProcessor(void* ProcedureArgument)
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
     {
+        PROFILE_SCOPE();
+
         checkinTime(processorNumber);
         // in epoch transition, wait here
         if (epochTransitionState)
@@ -2051,6 +2056,8 @@ static void requestProcessor(void* ProcedureArgument)
 static void contractProcessor(void*)
 {
     enableAVX();
+
+    PROFILE_SCOPE();
 
     const unsigned long long processorNumber = getRunningProcessorID();
 
@@ -2502,6 +2509,8 @@ static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTrans
 
 static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, unsigned long long processorNumber)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2664,6 +2673,8 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 #pragma optimize("", off)
 static void processTick(unsigned long long processorNumber)
 {
+    PROFILE_SCOPE();
+
     if (system.tick > system.initialTick)
     {
         etalonTick.prevResourceTestingDigest = resourceTestingDigest;
@@ -2850,6 +2861,8 @@ static void processTick(unsigned long long processorNumber)
             {
                 if (mainAuxStatus & 1)
                 {
+                    PROFILE_NAMED_SCOPE("processTick(): tick leader tick data construction");
+
                     // This is the tick leader in MAIN mode -> construct future tick data (selecting transactions to
                     // include into tick)
                     broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type; // We XOR almost all packets with their type value to make sure an entity cannot be tricked into signing one thing while actually signing something else
@@ -5034,6 +5047,8 @@ static void computeTxBodyDigestBase(const int tick)
 // special procedure to sign the tick vote
 static void signTickVote(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* signature)
 {
+    PROFILE_SCOPE();
+
     signWithRandomK(subseed, publicKey, messageDigest, signature);
     bool isOk = verifyTickVoteSignature(publicKey, messageDigest, signature, false);
     while (!isOk)
@@ -5237,6 +5252,8 @@ static void tickProcessor(void*)
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
+        PROFILE_SCOPE();
+
         checkinTime(processorNumber);
 
         const unsigned long long curTimeTick = __rdtsc();
@@ -5803,6 +5820,10 @@ static bool initialize()
         return false;
 
     initTimeStampCounter();
+
+#ifdef ENABLE_PROFILING
+    gProfilingDataCollector.init(1024);
+#endif
 
     bs->SetMem(&tickTicks, sizeof(tickTicks), 0);
 
@@ -6908,6 +6929,10 @@ static void processKeyPresses()
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
             saveComputer();
+
+#ifdef ENABLE_PROFILING
+            gProfilingDataCollector.writeToFile();
+#endif
         }
         break;
 
@@ -7490,6 +7515,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     logToConsole(L"Saving node state...");
                     saveAllNodeStates();
+#ifdef ENABLE_PROFILING
+                    gProfilingDataCollector.writeToFile();
+#endif
                     requestPersistingNodeState = 0;
                     logToConsole(L"Complete saving all node states");
                 }
@@ -7594,6 +7622,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             saveSystem();
             score->saveScoreCache(system.epoch);
             saveCustomMiningCache(system.epoch);
+#ifdef ENABLE_PROFILING
+            gProfilingDataCollector.writeToFile();
+#endif
 
             setText(message, L"Qubic ");
             appendQubicVersion(message);

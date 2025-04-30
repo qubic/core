@@ -7,6 +7,7 @@
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
 #include "platform/memory_util.h"
+#include "platform/profiling.h"
 
 #include "network_messages/assets.h"
 
@@ -637,6 +638,8 @@ iteration:
 // Should only be called from tick processor to avoid concurrent asset state changes, which may cause race conditions
 static void getUniverseDigest(m256i& digest)
 {
+    PROFILE_SCOPE();
+
     unsigned int digestIndex;
     for (digestIndex = 0; digestIndex < ASSETS_CAPACITY; digestIndex++)
     {
