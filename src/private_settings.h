@@ -27,6 +27,10 @@ static const unsigned char whiteListPeers[][4] = {
 #define ENABLE_STANDARD_LOGGING 0 // logging universe + spectrum
 #define ENABLE_SMART_CONTRACT_LOGGING 0// logging smart contract
 
+#if !ENABLE_STANDARD_LOGGING && ENABLE_SMART_CONTRACT_LOGGING
+#error ENABLE_SMART_CONTRACT_LOGGING 1 also requires ENABLE_STANDARD_LOGGING 1
+#endif
+
 #if ENABLE_STANDARD_LOGGING
 #define LOG_UNIVERSE 1 // all universe activities/events (incl: issue, ownership/possession changes)
 #define LOG_SPECTRUM 1 // all spectrum activities/events (incl: transfers, burn, dust cleaning)
