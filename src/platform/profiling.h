@@ -300,3 +300,11 @@ protected:
     unsigned long long mScopeLine;
     unsigned long long mStartTsc;
 };
+
+#ifdef ENABLE_PROFILING
+#define PROFILE_SCOPE() ProfilingScope(__FUNCTION__, __LINE__)
+#define PROFILE_NAMED_SCOPE(name) ProfilingScope(name, __LINE__)
+#else
+#define PROFILE_SCOPE()
+#define PROFILE_NAMED_SCOPE(name)
+#endif
