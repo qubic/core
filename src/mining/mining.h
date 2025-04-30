@@ -1,5 +1,10 @@
+#include "platform/concurrency.h"
 #include "platform/memory.h"
+#include "platform/memory_util.h"
 #include "network_messages/transactions.h"
+#include "kangaroo_twelve.h"
+
+#include <lib/platform_efi/uefi.h>
 
 struct MiningSolutionTransaction : public Transaction
 {
@@ -58,16 +63,8 @@ struct CustomMiningSolution
 #define CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES 848
 #define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
 static constexpr int CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL = (1U << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) - 1;
-static constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL * NUMBER_OF_COMPUTORS);
-
 static_assert((1 << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) >= NUMBER_OF_COMPUTORS, "Invalid number of bit per datum");
 static_assert(CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES * 8 >= NUMBER_OF_COMPUTORS * CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP, "Invalid data size");
-volatile static char accumulatedSharedCountLock = 0;
-volatile static char gSystemCustomMiningSolutionLock = 0;
-volatile static char gCustomMiningCacheLock = 0;
-unsigned long long gSystemCustomMiningSolutionCount = 0;
-unsigned long long gSystemCustomMiningDuplicatedSolutionCount = 0;
-unsigned long long gSystemCustomMiningSolutionOFCount = 0;
 
 struct CustomMiningSharePayload
 {
@@ -201,7 +198,7 @@ void computeRev(
 {
     // Sort revenue scores to get lowest score of quorum
     unsigned long long sortedRevenueScore[QUORUM + 1];
-    bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+    setMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
     for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
         sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
@@ -303,6 +300,15 @@ public:
         return rData.getHashIndex() % capacity();
     }
 
+    /// Get entry from cache
+    void getEntry(T& rData, unsigned int cacheIndex)
+    {
+        cacheIndex %= capacity();
+        ACQUIRE(lock);
+        rData = cache[cacheIndex];
+        RELEASE(lock);
+    }
+
     // Try to fetch data from cacheIndex, also checking a few following entries in case of collisions (may update cacheIndex),
     // increments counter of hits, misses, or collisions
     int tryFetching(T& rData, unsigned int& cacheIndex)
@@ -348,6 +354,52 @@ public:
         return retVal;
     }
 
+    // Try to fetch data from cacheIndex, also checking a few following entries in case of collisions (may update cacheIndex),
+    // increments counter of hits, misses, or collisions
+    int tryFetchingAndUpdate(T& rData, int updateCondition)
+    {
+        int retVal;
+        unsigned int tryFetchIdx = rData.getHashIndex() % capacity();
+        ACQUIRE(lock);
+        for (unsigned int i = 0; i < collisionRetries; ++i)
+        {
+            const T& cacheData = cache[tryFetchIdx];
+            if (cacheData.isEmpty())
+            {
+                // miss: data not available in cache yet (entry is empty)
+                misses++;
+                retVal = CUSTOM_MINING_CACHE_MISS;
+                break;
+            }
+
+            if (cacheData.isMatched(rData))
+            {
+                // hit: data available in cache -> return score
+                hits++;
+                retVal = CUSTOM_MINING_CACHE_HIT;
+                break;
+            }
+
+            // collision: other data is mapped to same index -> retry at following index
+            retVal = CUSTOM_MINING_CACHE_COLLISION;
+            tryFetchIdx = (tryFetchIdx + 1) % capacity();
+        }
+        if (retVal == updateCondition)
+        {
+            cache[tryFetchIdx] = rData;
+        }
+        RELEASE(lock);
+
+        if (retVal == CUSTOM_MINING_CACHE_COLLISION)
+        {
+            ACQUIRE(lock);
+            collisions++;
+            RELEASE(lock);
+        }
+        return retVal;
+    }
+
+
     /// Add entry to cache (may overwrite existing entry)
     void addEntry(const T& rData, unsigned int cacheIndex)
     {
@@ -357,6 +409,8 @@ public:
         RELEASE(lock);
     }
 
+#ifdef NO_UEFI
+#else
     /// Save custom mining share cache to file
     void save(CHAR16* filename, CHAR16* directory = NULL)
     {
@@ -407,6 +461,7 @@ public:
         }
         return success;
     }
+#endif
 
     // Return number of hits (data available in cache when fetched)
     unsigned int hitCount() const
@@ -438,6 +493,10 @@ private:
     unsigned int hits = 0;
     unsigned int misses = 0;
     unsigned int collisions = 0;
+
+    // statistics of verification and invalid count
+    unsigned int verification = 0;
+    unsigned int invalid = 0;
 };
 
 class CustomMiningSolutionCacheEntry
@@ -445,55 +504,547 @@ class CustomMiningSolutionCacheEntry
 public:
     void reset()
     {
-        _taskIndex = 0;
+        _solution.taskIndex = 0;
         _isHashed = false;
+        _isVerification = false;
+        _isValid = true;
     }
 
     void set(const CustomMiningSolution* pCustomMiningSolution)
     {
         reset();
-        _taskIndex = pCustomMiningSolution->taskIndex;
-        _nonce = pCustomMiningSolution->nonce;
-        _padding = pCustomMiningSolution->padding;
+        _solution = *pCustomMiningSolution;
+    }
+
+    void set(const unsigned long long taskIndex, unsigned int nonce, unsigned int padding)
+    {
+        reset();
+        _solution.taskIndex = taskIndex;
+        _solution.nonce = nonce;
+        _solution.padding = padding;
     }
 
     void get(CustomMiningSolution& rCustomMiningSolution)
     {
-        rCustomMiningSolution.nonce = _nonce;
-        rCustomMiningSolution.taskIndex = _taskIndex;
-        rCustomMiningSolution.padding = _padding;
+        rCustomMiningSolution = _solution;
     }
 
     bool isEmpty() const
     {
-        return (_taskIndex == 0);
+        return (_solution.taskIndex == 0);
     }
     bool isMatched(const CustomMiningSolutionCacheEntry& rOther) const
     {
-        return (_taskIndex == rOther._taskIndex) && (_nonce == rOther._nonce);
+        return (_solution.taskIndex == rOther.getTaskIndex()) && (_solution.nonce == rOther.getNonce());
     }
     unsigned long long getHashIndex()
     {
+        // TODO: reserve each computor ID a limited slot.
+        // This will avoid them spawning invalid solutions without verification
         if (!_isHashed)
         {
-            copyMem(_buffer, &_taskIndex, sizeof(_taskIndex));
-            copyMem(_buffer + sizeof(_taskIndex), &_nonce, sizeof(_nonce));
-            KangarooTwelve(_buffer, sizeof(_taskIndex) + sizeof(_nonce), &_digest, sizeof(_digest));
+            copyMem(_buffer, &_solution.taskIndex, sizeof(_solution.taskIndex));
+            copyMem(_buffer + sizeof(_solution.taskIndex), &_solution.nonce, sizeof(_solution.nonce));
+            KangarooTwelve(_buffer, sizeof(_solution.taskIndex) + sizeof(_solution.nonce), &_digest, sizeof(_digest));
             _isHashed = true;
         }
         return _digest;
     }
+
+    unsigned long long getTaskIndex() const
+    {
+        return _solution.taskIndex;
+    }
+
+    unsigned long long getNonce() const
+    {
+        return _solution.nonce;
+    }
+
+    bool isValid()
+    {
+        return _isValid;
+    }
+
+    bool isVerified()
+    {
+        return _isVerification;
+    }
+
+    void setValid(bool val)
+    {
+        _isValid = val;
+    }
+
+    void setVerified(bool val)
+    {
+        _isVerification = true;
+    }
+
+    void setEmpty()
+    {
+        _solution.taskIndex = 0;
+    }
+
 private:
-    unsigned long long _taskIndex;
-    unsigned int _nonce;
-    unsigned int _padding; // currently unused
+    CustomMiningSolution _solution;
     unsigned long long _digest;
-    unsigned char _buffer[sizeof(_taskIndex) + sizeof(_nonce)];
+    unsigned char _buffer[sizeof(_solution.taskIndex) + sizeof(_solution.nonce)];
     bool _isHashed;
+    bool _isVerification;
+    bool _isValid;
 };
+
+// In charge of storing custom mining
+constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (200ULL << 20) / sizeof(CustomMiningSolutionCacheEntry);
+constexpr unsigned long long CUSTOM_MINING_INVALID_INDEX = 0xFFFFFFFFFFFFFFFFULL;
+constexpr unsigned int CUSTOM_MINING_TASK_STORAGE_RESET_PHASE = 2; // the number of custom mining phase that the solution storage will be reset
+constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = 60 * 60 * 24 * 8 / 2 / 10; // All epoch tasks in 7 (+1) days, 10s per task, idle phases only
+constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_SIZE = CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask); // ~16.6MB
+constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_COUNT = MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS;
+constexpr unsigned long long CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE = 10 * 1024 * 1024; // 10MB
+constexpr unsigned long long CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE = 1 * 1024 * 1024; // 1MB
+
+struct CustomMiningRespondDataHeader
+{
+    unsigned long long itemCount;       // size of the data
+    unsigned long long itemSize;        // size of the data
+    unsigned long long fromTimeStamp;   // start of the ts
+    unsigned long long toTimeStamp;     // end of the ts
+    unsigned long long respondType;     // message type
+};
+
+template <typename DataType, unsigned long long maxItems, unsigned long long resetPeriod, bool allowDuplicated = false>
+class CustomMiningSortedStorage
+{
+public:
+    enum Status
+    {
+        OK = 0,
+        DATA_EXISTED = 1,
+        BUFFER_FULL = 1,
+        UNKNOWN_ERROR = 2,
+    };
+    void init()
+    {
+        allocPoolWithErrorLog(L"CustomMiningSortedStorageData", maxItems * sizeof(DataType), (void**)&_data, __LINE__);
+        allocPoolWithErrorLog(L"CustomMiningSortedStorageIndices", maxItems * sizeof(unsigned long long), (void**)&_indices, __LINE__);
+        _storageIndex = 0;
+        _phaseCount = 0;
+        _phaseIndex = 0;
+
+        // Buffer allocation for each processors. It is limited to 10MB each
+        for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+        {
+            allocPoolWithErrorLog(L"CustomMiningSortedStorageProcBuffer", CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE, (void**)&_dataBuffer[i], __LINE__);
+        }
+    }
+
+    void deinit()
+    {
+        if (NULL != _data)
+        {
+            freePool(_data);
+            _data = NULL;
+        }
+        if (NULL != _indices)
+        {
+            freePool(_indices);
+            _indices = NULL;
+        }
+
+        for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+        {
+            if (NULL != _dataBuffer[i])
+            {
+                freePool(_dataBuffer[i]);
+            }
+        }
+    }
+
+    void reset()
+    {
+        _storageIndex = 0;
+        _phaseCount = 0;
+    }
+
+    void checkAndReset()
+    {
+        _phaseCount++;
+        if (resetPeriod > 0 && _phaseCount % resetPeriod == 0)
+        {
+            reset();
+        }
+    }
+
+    void updateStartPhaseIndex()
+    {
+        _phaseIndex = _storageIndex;
+    }
+
+    // Binary search for taskIndex or closest greater-than task index
+    unsigned long long searchTaskIndex(unsigned long long taskIndex, bool& exactMatch) const
+    {
+        unsigned long long left = 0, right = (_storageIndex > 0) ? _storageIndex - 1 : 0;
+        unsigned long long result = CUSTOM_MINING_INVALID_INDEX;
+        exactMatch = false;
+
+        while (left <= right && left < _storageIndex)
+        {
+            unsigned long long mid = (left + right) / 2;
+            unsigned long long midTaskIndex = _data[_indices[mid]].taskIndex;
+
+            if (midTaskIndex == taskIndex)
+            {
+                exactMatch = true;
+                result = mid;
+                break;
+            }
+            else if (midTaskIndex < taskIndex)
+            {
+                left = mid + 1;
+            }
+            else
+            {
+                result = mid;
+                if (mid == 0)
+                {
+                    break; // prevent underflow
+                }
+                right = mid - 1;
+            }
+        }
+
+        // In case of exact match. Make sure get the most left data
+        if (exactMatch)
+        {
+            while (result > 0)
+            {
+                if (taskIndex == _data[_indices[result - 1]].taskIndex)
+                {
+                    result--;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        return result;
+    }
+
+
+    // Return the task whose task index >= taskIndex
+    unsigned long long lookForTaskGE(unsigned long long taskIndex)
+    {
+        bool exactMatch = false;
+        unsigned long long idx = searchTaskIndex(taskIndex, exactMatch);
+        return idx;
+    }
+
+    // Return the task whose task index == taskIndex
+    unsigned long long lookForTask(unsigned long long taskIndex)
+    {
+        bool exactMatch = false;
+        unsigned long long idx = searchTaskIndex(taskIndex, exactMatch);
+        if (exactMatch)
+        {
+            return idx;
+        }
+        return CUSTOM_MINING_INVALID_INDEX;
+    }
+
+    bool dataExisted(const DataType* pData)
+    {
+        bool exactMatch = false;
+        searchTaskIndex(pData->taskIndex, exactMatch);
+        return exactMatch;
+    }
+
+    // Add the task to the storage
+    int addData(const DataType* pData)
+    {
+        // Don't added if the task already existed
+        if (!allowDuplicated && dataExisted(pData))
+        {
+            return DATA_EXISTED;
+        }
+
+        // Reset the storage if the number of tasks exceeds the limit
+        if (_storageIndex >= maxItems)
+        {
+            return BUFFER_FULL;
+        }
+
+        unsigned long long newIndex = _storageIndex;
+        _data[newIndex] = *pData;
+
+        unsigned long long insertPos = 0;
+        unsigned long long left = 0, right = (_storageIndex > 0) ? _storageIndex - 1 : 0;
+
+        while (left <= right && left < _storageIndex)
+        {
+            unsigned long long mid = (left + right) / 2;
+            if (_data[_indices[mid]].taskIndex < pData->taskIndex)
+            {
+                left = mid + 1;
+            }
+            else
+            {
+                if (mid == 0) break;
+                right = mid - 1;
+            }
+        }
+        insertPos = left;
+
+        // Shift indices right
+        for (unsigned long long i = _storageIndex; i > insertPos; --i)
+        {
+            _indices[i] = _indices[i - 1];
+        }
+
+        _indices[insertPos] = newIndex;
+        _storageIndex++;
+
+        return OK;
+    }
+
+    // Get the data from index
+    DataType* getDataByIndex(unsigned long long index)
+    {
+        if (index >= _storageIndex)
+        {
+            return NULL;
+        }
+        return &_data[_indices[index]];
+    }
+
+    // Get the total number of tasks
+    unsigned long long getCount() const
+    {
+        return _storageIndex;
+    }
+
+    // Packed array of data to a serialized data
+    unsigned char* getSerializedData(
+        unsigned long long fromTimeStamp, 
+        unsigned long long toTimeStamp,
+        unsigned long long processorNumber)
+    {
+        unsigned char* pData = _dataBuffer[processorNumber];
+
+        // 8 bytes for the item size
+        CustomMiningRespondDataHeader* pHeader = (CustomMiningRespondDataHeader*)pData;
+
+        // Init the header as an empty data
+        pHeader->itemCount = 0;
+        pHeader->itemSize = 0;
+        pHeader->fromTimeStamp = CUSTOM_MINING_INVALID_INDEX;
+        pHeader->toTimeStamp = CUSTOM_MINING_INVALID_INDEX;
+
+        // Remainder of the data
+        pData += sizeof(CustomMiningRespondDataHeader);
+
+        // Fill the header/
+        constexpr long long remainedSize = CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE - sizeof(CustomMiningRespondDataHeader);
+        constexpr long long maxReturnItems = remainedSize / sizeof(DataType);
+
+        // Look for the first task index
+        unsigned long long startIndex = 0;
+        if (fromTimeStamp > 0)
+        {
+            startIndex = lookForTaskGE(fromTimeStamp);
+        }
+
+        if (startIndex == CUSTOM_MINING_INVALID_INDEX)
+        {
+            return NULL;
+        }
+
+        // Check for the range of task
+        unsigned long long endIndex = 0;
+        if (toTimeStamp < fromTimeStamp || toTimeStamp == 0) // Return all tasks
+        {
+            endIndex = _storageIndex;
+        }
+        else
+        {
+           endIndex = lookForTaskGE(toTimeStamp);
+            if (endIndex == CUSTOM_MINING_INVALID_INDEX)
+            {
+                endIndex = _storageIndex;
+            }
+        }
+
+        unsigned long long respondTaskCount = endIndex - startIndex;
+        if (respondTaskCount == 0)
+        {
+            return NULL;
+        }
+
+        // Pack data into respond
+        respondTaskCount = (maxReturnItems < respondTaskCount) ? maxReturnItems : respondTaskCount;
+        for (unsigned long long i = 0; i < respondTaskCount; i++, pData += sizeof(DataType))
+        {
+            unsigned long long index = startIndex + i;
+            DataType* pItemData = getDataByIndex(index);
+            copyMem(pData, pItemData, sizeof(DataType));
+        }
+
+        pHeader->itemCount = respondTaskCount;
+        pHeader->itemSize = sizeof(DataType);
+
+        pHeader->fromTimeStamp = fromTimeStamp;
+        pHeader->toTimeStamp = getDataByIndex(startIndex + respondTaskCount - 1)->taskIndex;
+
+        // Return the pointer to the data
+        return _dataBuffer[processorNumber];
+    }
+
+    // Packed array of data to a serialized data
+    unsigned char* getSerializedData(
+        unsigned long long timeStamp,
+        unsigned long long processorNumber)
+    {
+        unsigned char* pData = _dataBuffer[processorNumber];
+
+        // 8 bytes for the item size
+        CustomMiningRespondDataHeader* pHeader = (CustomMiningRespondDataHeader*)pData;
+
+        // Init the header as an empty data
+        pHeader->itemCount = 0;
+        pHeader->itemSize = 0;
+        pHeader->fromTimeStamp = CUSTOM_MINING_INVALID_INDEX;
+        pHeader->toTimeStamp = CUSTOM_MINING_INVALID_INDEX;
+
+        // Remainder of the data
+        pData += sizeof(CustomMiningRespondDataHeader);
+
+        // Fill the header/
+        constexpr long long remainedSize = CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE - sizeof(CustomMiningRespondDataHeader);
+        constexpr long long maxReturnItems = remainedSize / sizeof(DataType);
+
+        // Look for the first task index
+        unsigned long long startIndex = 0;
+        if (timeStamp > 0)
+        {
+            startIndex = lookForTaskGE(timeStamp);
+        }
+
+        if (startIndex == CUSTOM_MINING_INVALID_INDEX)
+        {
+            return NULL;
+        }
+
+        // Check for the range of task
+        unsigned long long respondTaskCount = 0;
+        for (unsigned long long i = startIndex; i < _storageIndex; i++)
+        {
+            DataType* pItemData = getDataByIndex(i);
+            if (pItemData->taskIndex == timeStamp)
+            {
+                copyMem(pData, pItemData, sizeof(DataType));
+                pData += sizeof(DataType);
+                respondTaskCount++;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (respondTaskCount == 0)
+        {
+            return NULL;
+        }
+
+        // Pack data into respond
+        pHeader->itemCount = respondTaskCount;
+        pHeader->itemSize = sizeof(DataType);
+
+        pHeader->fromTimeStamp = timeStamp;
+        pHeader->toTimeStamp = timeStamp;
+
+        // Return the pointer to the data
+        return _dataBuffer[processorNumber];
+    }
+
+
+private:
+    DataType* _data;
+    unsigned long long* _indices;
+    unsigned long long _storageIndex;
+    unsigned long long _phaseCount;
+    unsigned long long _phaseIndex;
+
+    unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
+};
+
+struct CustomMiningSolutionStorageEntry
+{
+    unsigned long long taskIndex;
+    unsigned long long nonce;
+    unsigned long long cacheEntryIndex;
+};
+
+class CustomMiningStorage
+{
+public:
+    void init()
+    {
+        _taskStorage.init();
+        _solutionStorage.init();
+
+        // Buffer allocation for each processors. It is limited to 10MB each
+        for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+        {
+            allocPoolWithErrorLog(L"CustomMiningStorageProcBuffer", CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE, (void**)&_dataBuffer[i], __LINE__);
+        }
+    }
+    void deinit()
+    {
+        _taskStorage.deinit();
+        _solutionStorage.deinit();
+        for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+        {
+            freePool(_dataBuffer[i]);
+        }
+    }
+
+    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, false> _taskStorage;
+    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE, true> _solutionStorage;
+
+    // Buffer can accessed from multiple threads
+    unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
+
+};
+
+volatile static char accumulatedSharedCountLock = 0;
+volatile static char gSystemCustomMiningSolutionLock = 0;
+volatile static char gCustomMiningCacheLock = 0;
+unsigned long long gSystemCustomMiningSolutionCount = 0;
+unsigned long long gSystemCustomMiningDuplicatedSolutionCount = 0;
+unsigned long long gSystemCustomMiningSolutionOFCount = 0;
+static volatile char gCustomMiningSharesCountLock = 0;
+static char gIsInCustomMiningState = 0;
+static volatile char gIsInCustomMiningStateLock = 0;
+static volatile char gCustomMiningInvalidSharesCountLock = 0;
+static unsigned long long gCustomMiningValidSharesCount = 0;
+static unsigned long long gCustomMiningInvalidSharesCount = 0;
+static volatile char gCustomMiningTaskStorageLock = 0;
+static volatile char gCustomMiningSolutionStorageLock = 0;
+static unsigned long long gTotalCustomMiningTaskMessages = 0;
+static unsigned long long gTotalCustomMiningSolutions = 0;
+static volatile char gTotalCustomMiningTaskMessagesLock = 0;
+static volatile char gTotalCustomMiningSolutionsLock = 0;
+static unsigned int gCustomMiningCountOverflow = 0;
+static volatile char gCustomMiningShareCountOverFlowLock = 0;
 
 CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolution;
 
+#ifdef NO_UEFI
+#else
 // Save score cache to SCORE_CACHE_FILE_NAME
 void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
 {
@@ -517,4 +1068,4 @@ bool loadCustomMiningCache(int epoch)
     RELEASE(gCustomMiningCacheLock);
     return success;
 }
-
+#endif

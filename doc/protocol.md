@@ -54,6 +54,10 @@ The type number is the identifier used in `RequestResponseHeader` (defined in `h
 - `ResponsePruningLog`, type 57, defined in `logging.h`.
 - `RequestLogStateDigest`, type 58, defined in `logging.h`.
 - `ResponseLogStateDigest`, type 59, defined in `logging.h`.
+- `RequestedCustomMiningData`, type 60, defined in `custom_mining.h`.
+- `RespondCustomMiningData`, type 61, defined in `custom_mining.h`.
+- `RequestedCustomMiningSolutionVerification`, type 62, defined in `custom_mining.h`.
+- `RespondCustomMiningSolutionVerification`, type 63, defined in `custom_mining.h`.
 - `SpecialCommand`, type 255, defined in `special_command.h`.
 
 Addon messages (supported if addon is enabled):
