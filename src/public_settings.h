@@ -26,9 +26,6 @@
 #define TARGET_TICK_DURATION 1500
 #define TRANSACTION_SPARSENESS 1
 
-// Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x0019FFFFU // around 2500 signing operations per ID
-
 // Below are 2 variables that are used for auto-F5 feature:
 #define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
                                             // to prevent bad actor causing misalignment.
@@ -87,6 +84,9 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining.???";
 #define SOLUTION_THRESHOLD_DEFAULT 137
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
+
+// Signing difficulty
+#define TARGET_TICK_VOTE_SIGNATURE 0x0019FFFFU // around 2500 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
