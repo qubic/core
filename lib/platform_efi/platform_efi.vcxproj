@@ -26,6 +26,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="edk2_debug.c" />
+    <ClCompile Include="processor.cpp" />
     <ClCompile Include="sleep.cpp" />
     <ClCompile Include="uefi_globals.cpp" />
   </ItemGroup>
@@ -77,7 +78,7 @@
       </PrecompiledHeaderFile>
       <ExceptionHandling>false</ExceptionHandling>
       <BufferSecurityCheck>false</BufferSecurityCheck>
-      <AdditionalIncludeDirectories>$(MSBuildStartupDirectory);$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ControlFlowGuard>false</ControlFlowGuard>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <CreateHotpatchableImage>false</CreateHotpatchableImage>
@@ -107,7 +108,7 @@
       </PrecompiledHeaderFile>
       <ExceptionHandling>false</ExceptionHandling>
       <BufferSecurityCheck>false</BufferSecurityCheck>
-      <AdditionalIncludeDirectories>$(MSBuildStartupDirectory);$(MSBuildProjectDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ControlFlowGuard>false</ControlFlowGuard>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <CreateHotpatchableImage>false</CreateHotpatchableImage>

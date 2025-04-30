@@ -5,7 +5,7 @@
 
 
 // Request: ranges of log ID
-void qLogger::processRequestLog(Peer* peer, RequestResponseHeader* header)
+void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
     RequestLog* request = header->getPayload<RequestLog>();
@@ -20,40 +20,29 @@ void qLogger::processRequestLog(Peer* peer, RequestResponseHeader* header)
             && endIdBufferRange.startIndex != -1 && endIdBufferRange.length != -1)
         {
             unsigned long long toID = request->toID;
-            if (endIdBufferRange.startIndex < startIdBufferRange.startIndex)
-            {
-                // round buffer case, only response first packet - let the client figure out and request the rest
-                for (unsigned long long i = request->fromID + 1; i <= request->toID; i++)
-                {
-                    BlobInfo iBufferRange = logBuf.getBlobInfo(i);
-                    ASSERT(iBufferRange.startIndex >= 0);
-                    ASSERT(iBufferRange.length >= 0);
-                    if (iBufferRange.startIndex < startIdBufferRange.startIndex)
-                    {
-                        toID = i - 1;
-                        endIdBufferRange = logBuf.getBlobInfo(toID);
-                        break;
-                    }
-                }
-                // first packet: from startID to end of buffer IS SENT BELOW
-                // second packet: from start buffer to endID IS NOT SENT FROM HERE, but requested by client later
-            }
-
             long long startFrom = startIdBufferRange.startIndex;
             long long length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
             constexpr long long maxPayloadSize = RequestResponseHeader::max_size - sizeof(sizeof(RequestResponseHeader));
+
             if (length > maxPayloadSize)
             {
-                length -= endIdBufferRange.length;
-                while (length > maxPayloadSize)
+                while (length > maxPayloadSize && toID > request->fromID)
                 {
-                    ASSERT(toID > request->fromID);
-                    --toID;
+                    toID = request->fromID + (toID - request->fromID) / 2;
                     endIdBufferRange = logBuf.getBlobInfo(toID);
-                    length -= endIdBufferRange.length;
+                    length = endIdBufferRange.length + endIdBufferRange.startIndex - startFrom;
                 }
             }
-            enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), logBuffer + startFrom);
+            if (length < maxPayloadSize)
+            {
+                char* rBuffer = responseBuffers[processorNumber];
+                logBuffer.getMany(rBuffer, startFrom, length);
+                enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), rBuffer);
+            }
+            else
+            {
+                enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
+            }
         }
         else
         {
@@ -65,7 +54,7 @@ void qLogger::processRequestLog(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
 }
 
-void qLogger::processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
+void qLogger::processRequestTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
     RequestLogIdRangeFromTx* request = header->getPayload<RequestLogIdRangeFromTx>();
@@ -79,18 +68,9 @@ void qLogger::processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
         ResponseLogIdRangeFromTx resp;
         if (request->tick <= lastUpdatedTick)
         {
-            if (request->tick < tickLoadedFrom)
-            {
-                // unknown logging because the whole node memory is loaded from files
-                resp.fromLogId = -2;
-                resp.length = -2;
-            }
-            else
-            {
-                BlobInfo info = tx.getLogIdInfo(request->tick, request->txId);
-                resp.fromLogId = info.startIndex;
-                resp.length = info.length;
-            }
+            BlobInfo info = tx.getLogIdInfo(processorNumber, request->tick, request->txId);
+            resp.fromLogId = info.startIndex;
+            resp.length = info.length;
         }
         else
         {
@@ -106,7 +86,7 @@ void qLogger::processRequestTxLogInfo(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, 0, ResponseLogIdRangeFromTx::type, header->dejavu(), NULL);
 }
 
-void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* header)
+void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
     RequestAllLogIdRangesFromTick* request = header->getPayload<RequestAllLogIdRangesFromTick>();
@@ -117,41 +97,98 @@ void qLogger::processRequestTickTxLogInfo(Peer* peer, RequestResponseHeader* hea
         && request->tick >= tickBegin
         )
     {
-        ResponseAllLogIdRangesFromTick resp;
+        ResponseAllLogIdRangesFromTick* resp = (ResponseAllLogIdRangesFromTick * )responseBuffers[processorNumber];
         int txId = 0;
         if (request->tick <= lastUpdatedTick)
         {
-            if (request->tick < tickLoadedFrom)
-            {
-                // unknown logging because the whole node memory is loaded from files
-                for (txId = 0; txId < LOG_TX_PER_TICK; txId++)
-                {
-                    resp.fromLogId[txId] = -2;
-                    resp.length[txId] = -2;
-                }
-            }
-            else
-            {
-                for (txId = 0; txId < LOG_TX_PER_TICK; txId++)
-                {
-                    BlobInfo info = tx.getLogIdInfo(request->tick, txId);
-                    resp.fromLogId[txId] = info.startIndex;
-                    resp.length[txId] = info.length;
-                }
-            }
+            tx.getTickLogIdInfo((TickBlobInfo*)resp, request->tick);
         }
         else
         {
             // logging of this tick hasn't generated
             for (txId = 0; txId < LOG_TX_PER_TICK; txId++)
             {
-                resp.fromLogId[txId] = -3;
-                resp.length[txId] = -3;
+                resp->fromLogId[txId] = -3;
+                resp->length[txId] = -3;
             }
-        }    
-        enqueueResponse(peer, sizeof(ResponseAllLogIdRangesFromTick), ResponseAllLogIdRangesFromTick::type, header->dejavu(), &resp);
+        }
+        enqueueResponse(peer, sizeof(ResponseAllLogIdRangesFromTick), ResponseAllLogIdRangesFromTick::type, header->dejavu(), resp);
         return;
     }
 #endif
     enqueueResponse(peer, 0, ResponseAllLogIdRangesFromTick::type, header->dejavu(), NULL);
+}
+
+void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* header)
+{
+#if ENABLED_LOGGING
+    RequestPruningLog* request = header->getPayload<RequestPruningLog>();
+    if (request->passcode[0] == logReaderPasscodes[0]
+        && request->passcode[1] == logReaderPasscodes[1]
+        && request->passcode[2] == logReaderPasscodes[2]
+        && request->passcode[3] == logReaderPasscodes[3])
+    {
+        ResponsePruningLog resp;
+        bool isValidRange = mapLogIdToBufferIndex.isIndexValid(request->fromLogId) && mapLogIdToBufferIndex.isIndexValid(request->toLogId);
+        isValidRange &= (request->toLogId >= mapLogIdToBufferIndex.pageCap());
+        isValidRange &= (request->toLogId >= request->fromLogId + mapLogIdToBufferIndex.pageCap());
+        if (!isValidRange)
+        {
+            resp.success = 4;
+        }
+        else
+        {
+            auto pageCap = mapLogIdToBufferIndex.pageCap();
+            // here we round up FROM but round down TO
+            long long fromPageId = (request->fromLogId + pageCap - 1) / pageCap;
+            long long toPageId = (request->toLogId - pageCap + 1) / pageCap;
+            long long fromLogId = fromPageId * pageCap;
+            long long toLogId = toPageId * pageCap + pageCap - 1;
+
+            BlobInfo bis = mapLogIdToBufferIndex[fromLogId];
+            BlobInfo bie = mapLogIdToBufferIndex[toLogId];
+            long long logBufferStart = bis.startIndex;
+            long long logBufferEnd = bie.startIndex + bie.length;
+            resp.success = 0;
+            bool res0 = mapLogIdToBufferIndex.pruneRange(fromLogId, toLogId);
+            if (!res0)
+            {
+                resp.success = 1;
+            }
+
+            if (logBufferEnd > logBufferStart)
+            {
+                bool res1 = logBuffer.pruneRange(logBufferStart, logBufferEnd);
+                if (!res1)
+                {
+                    resp.success = (resp.success << 1) | 1;
+                }
+            }
+        }
+
+        enqueueResponse(peer, sizeof(ResponsePruningLog), ResponsePruningLog::type, header->dejavu(), &resp);
+        return;
+    }
+#endif
+    enqueueResponse(peer, 0, ResponsePruningLog::type, header->dejavu(), NULL);
+}
+
+void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* header)
+{
+#if LOG_STATE_DIGEST
+    RequestLogStateDigest* request = header->getPayload<RequestLogStateDigest>();
+    if (request->passcode[0] == logReaderPasscodes[0]
+        && request->passcode[1] == logReaderPasscodes[1]
+        && request->passcode[2] == logReaderPasscodes[2]
+        && request->passcode[3] == logReaderPasscodes[3]
+        && request->requestedTick >= tickBegin
+        && request->requestedTick <= lastUpdatedTick)
+    {
+        ResponseLogStateDigest resp;
+        resp.digest = digests[request->requestedTick - tickBegin];
+        enqueueResponse(peer, sizeof(ResponseLogStateDigest), ResponseLogStateDigest::type, header->dejavu(), &resp);
+        return;
+    }
+#endif
+    enqueueResponse(peer, 0, ResponseLogStateDigest::type, header->dejavu(), NULL);
 }

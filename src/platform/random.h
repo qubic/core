@@ -9,3 +9,15 @@ inline static unsigned int random(const unsigned int range)
 
     return value % range;
 }
+
+inline static void random64(unsigned long long* dst)
+{
+    ASSERT(dst != NULL);
+    _rdrand64_step(dst);
+}
+
+inline static void random256(m256i* dst)
+{
+    ASSERT(dst != NULL);
+    dst->setRandomValue();
+}

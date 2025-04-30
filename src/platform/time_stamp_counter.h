@@ -7,12 +7,13 @@
 
 #include <intrin.h>
 
+#include "global_var.h"
 #include "console_logging.h"
 
 #include <lib/platform_common/sleep.h>
 
 // frequency of CPU clock
-static unsigned long long frequency;
+GLOBAL_VAR_DECL unsigned long long frequency;
 
 
 static void initTimeStampCounter()

@@ -8,6 +8,7 @@
 #include "common_response.h"
 #include "computors.h"
 #include "contract.h"
+#include "custom_mining.h"
 #include "entity.h"
 #include "logging.h"
 #include "public_peers.h"

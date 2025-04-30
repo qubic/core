@@ -17,6 +17,7 @@
     <ClInclude Include="edk2_mdepkg\Include\X64\ProcessorBind.h" />
     <ClInclude Include="edk2_mdepkg\Library\BaseLib\BaseLibInternals.h" />
     <ClInclude Include="long_jump.h" />
+    <ClInclude Include="processor.h" />
     <ClInclude Include="sleep.h" />
   </ItemGroup>
   <ItemGroup>
@@ -79,7 +80,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>
       </PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(ProjectDir)edk2_mdepkg\Include;$(MSBuildStartupDirectory);$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\..\</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)edk2_mdepkg\Include;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\..\</AdditionalIncludeDirectories>
       <ExceptionHandling>false</ExceptionHandling>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -109,7 +110,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>
       </PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(ProjectDir)edk2_mdepkg\Include;$(MSBuildStartupDirectory);$(MSBuildProjectDirectory)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)edk2_mdepkg\Include;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\..\</AdditionalIncludeDirectories>
       <ExceptionHandling>false</ExceptionHandling>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
