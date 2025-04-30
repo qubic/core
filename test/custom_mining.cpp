@@ -130,12 +130,10 @@ TEST(CustomMining, TaskStorageOverflow)
         storage.addData(&task);
     }
 
-    // Overflow. Add one more and it is reset
+    // Overflow. Add one more and get error status
     CustomMiningTask task;
     task.taskIndex = NUMBER_OF_TASKS + 1;
-    storage.addData(&task);
-
-    EXPECT_EQ(storage.getCount(), 1);
+    EXPECT_NE(storage.addData(&task), 0);
 
     storage.deinit();
 }
