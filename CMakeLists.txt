@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Include the centralized compiler detection module
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-include(CompilerDetection)
+include(CompilerSetup)
 
 # Option to build tests
 option(BUILD_TESTS "Build the test suite" ON)

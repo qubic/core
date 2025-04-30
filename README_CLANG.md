@@ -1,5 +1,5 @@
 # qubic clang port
-The Qubic Core is currently portet to be compiled with clang. As this requires a lot of changes the port is develop along the main development work and continously integrated. However this also implies that the compilation of the core code with clang is not resulting in a working node at the moment. Hence it shall now be used in production!
+The Qubic Core is currently ported to be compiled with clang. As this requires a lot of changes the port is develop along the main development work and continuously integrated. However this also implies that the compilation of the core code with clang is not resulting in a working node at the moment. Hence it shall now be used in production!
 
 
 ## Prerequisites
@@ -12,7 +12,7 @@ To be able to compile the core code with clang the following prerequisites have 
 Potentially it also works with lower versions but isn't tested yet.
 
 ## Compilation
-Currenlty compilation with cmake and clang is only supported on Linux systems. Window and OSX might work but is not properly tested.
+Currently compilation with cmake and clang is only supported on Linux systems. Window and OSX might work but is not properly tested.
 For a example compilation execute the following commands:
 
 1.  **Navigate to the Project Root:**
