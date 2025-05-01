@@ -6655,6 +6655,29 @@ static void processKeyPresses()
     EFI_INPUT_KEY key;
     if (!st->ConIn->ReadKeyStroke(st->ConIn, &key))
     {
+
+        
+        // map normal key strokes or execute actions
+        switch (key.UnicodeChar) {
+            /*
+            * maps the key.ScanCode to the pause key
+            * on some mainboards the PAUSE key does real pause and on Apple is no PAUSE key
+            */
+        case L'p':
+            key.ScanCode = 0x48; // map to pause key; action defined below
+            break;
+            /*
+            * Just prints QUBIC QUBIC QUBIC QUBIC QUBIC to the screen
+            * An example how to use other keys and directly return to not continue with the ScanCode
+            * Uncomment it for testing
+            */
+            // case L'q':
+            // setText(message, L"QUBIC QUBIC QUBIC QUBIC QUBIC");
+            // logToConsole(message);
+            // return;
+        }
+
+
         switch (key.ScanCode)
         {
         /*
