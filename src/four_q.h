@@ -1,6 +1,6 @@
 #pragma once
 
-#include <intrin.h>
+#include <lib/platform_common/qintrin.h>
 
 #include "platform/common_types.h"
 #include "platform/memory.h"

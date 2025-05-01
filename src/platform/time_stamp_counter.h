@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <intrin.h>
+#include <lib/platform_common/qintrin.h>
 
 #include "global_var.h"
 #include "console_logging.h"
