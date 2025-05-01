@@ -43,6 +43,9 @@ struct CustomMiningTask
 {
     unsigned long long taskIndex; // ever increasing number (unix timestamp in ms)
 
+    unsigned short firstComputorIndex, lastComputorIndex;
+    unsigned int padding;
+
     unsigned char blob[408]; // Job data from pool
     unsigned long long size;  // length of the blob
     unsigned long long target; // Pool difficulty
@@ -1013,7 +1016,7 @@ public:
     }
 
     CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, false> _taskStorage;
-    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE, true> _solutionStorage;
+    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, 1, true> _solutionStorage;
 
     // Buffer can accessed from multiple threads
     unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
