@@ -1,7 +1,6 @@
 #pragma once
 
 #include <lib/platform_common/qintrin.h>
-
 #include "platform/assert.h"
 #ifdef NO_UEFI
 #include <cstdio>
