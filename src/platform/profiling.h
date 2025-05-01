@@ -302,8 +302,8 @@ protected:
 };
 
 #ifdef ENABLE_PROFILING
-#define PROFILE_SCOPE() ProfilingScope(__FUNCTION__, __LINE__)
-#define PROFILE_NAMED_SCOPE(name) ProfilingScope(name, __LINE__)
+#define PROFILE_SCOPE() ProfilingScope __profilingScopeObject(__FUNCTION__, __LINE__)
+#define PROFILE_NAMED_SCOPE(name) ProfilingScope __profilingScopeObject(name, __LINE__)
 #else
 #define PROFILE_SCOPE()
 #define PROFILE_NAMED_SCOPE(name)
