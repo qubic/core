@@ -1,11 +1,7 @@
 #pragma once
 
 
-#if defined(_MSC_VER)
-#include <intrin.h>
-#else
-#include <immintrin.h>
-#endif
+#include <lib/platform_common/qintrin.h>
 
 #include "platform/memory.h"
 
