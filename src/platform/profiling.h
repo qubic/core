@@ -59,12 +59,6 @@ public:
         if (endTsc < startTsc)
             return;
 
-#ifdef NO_UEFI
-        // Init time stamp counter frequency if needed
-        if (!frequency)
-            initTimeStampCounter();
-#endif
-
         ACQUIRE_WITHOUT_DEBUG_LOGGING(mLock);
 
         // Make sure hash map is initialized
@@ -74,14 +68,14 @@ public:
             if (mDataUsedEntryCount * 2 <= mDataSize || doInit(mDataUsedEntryCount * 2))
             {
                 // Fill entry
-                unsigned long long dtMicroseconds = (endTsc - startTsc) * 1000000 / frequency;
+                const unsigned long long dt = endTsc - startTsc;
                 ProfilingData& newEntry = getEntry(scopeName, scopeLine);
                 newEntry.numOfExec += 1;
-                newEntry.runtimeSum += dtMicroseconds;
-                if (newEntry.runtimeMin > dtMicroseconds)
-                    newEntry.runtimeMin = dtMicroseconds;
-                if (newEntry.runtimeMax < dtMicroseconds)
-                    newEntry.runtimeMax = dtMicroseconds;
+                newEntry.runtimeSum += dt;
+                if (newEntry.runtimeMin > dt)
+                    newEntry.runtimeMin = dt;
+                if (newEntry.runtimeMax < dt)
+                    newEntry.runtimeMax = dt;
             }
         }
 
@@ -92,6 +86,11 @@ public:
     bool writeToFile()
     {
         ASSERT(isMainProcessor());
+
+        // Init time stamp counter frequency if needed
+        if (!frequency)
+            initTimeStampCounter();
+        ASSERT(frequency);
 
         // TODO: define file object in platform lib, including writeStringToFile()
 #ifdef NO_UEFI
@@ -117,6 +116,7 @@ public:
         {
             if (mDataPtr[i].scopeName)
             {
+                unsigned long long runtimeSumMicroseconds = mDataPtr[i].runtimeSum * 1000000 / frequency;
                 setNumber(message, i, false);
                 appendText(message, ",");
                 appendText(message, mDataPtr[i].scopeName);
@@ -125,13 +125,13 @@ public:
                 appendText(message, ",");
                 appendNumber(message, mDataPtr[i].numOfExec, false);
                 appendText(message, ",");
-                appendNumber(message, mDataPtr[i].runtimeSum, false);
+                appendNumber(message, runtimeSumMicroseconds, false);
                 appendText(message, ",");
-                appendNumber(message, (mDataPtr[i].numOfExec > 0) ? mDataPtr[i].runtimeSum / mDataPtr[i].numOfExec : 0, false);
+                appendNumber(message, (mDataPtr[i].numOfExec > 0) ? runtimeSumMicroseconds / mDataPtr[i].numOfExec : 0, false);
                 appendText(message, ",");
-                appendNumber(message, mDataPtr[i].runtimeMin, false);
+                appendNumber(message, mDataPtr[i].runtimeMin * 1000000 / frequency, false);
                 appendText(message, ",");
-                appendNumber(message, mDataPtr[i].runtimeMax, false);
+                appendNumber(message, mDataPtr[i].runtimeMax * 1000000 / frequency, false);
                 appendText(message, "\r\n");
                 okay &= writeStringToFile(file, message);
             }
