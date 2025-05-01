@@ -5,11 +5,7 @@
 #include "contract_core/contract_exec.h"
 
 
-#if defined(_MSC_VER)
-#include <intrin.h>
-#else
-#include <immintrin.h>
-#endif
+#include <lib/platform_common/qintrin.h>
 
 #include "network_messages/all.h"
 

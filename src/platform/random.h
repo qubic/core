@@ -1,10 +1,6 @@
 #pragma once
 
-#if defined(_MSC_VER)
-#include <intrin.h>
-#else
-#include <immintrin.h>
-#endif
+#include <lib/platform_common/qintrin.h>
 
 inline static unsigned int random(const unsigned int range)
 {
