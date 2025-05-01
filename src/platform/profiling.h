@@ -340,7 +340,13 @@ protected:
 #ifdef ENABLE_PROFILING
 #define PROFILE_SCOPE() ProfilingScope __profilingScopeObject(__FUNCTION__, __LINE__)
 #define PROFILE_NAMED_SCOPE(name) ProfilingScope __profilingScopeObject(name, __LINE__)
+#define PROFILE_SCOPE_BEGIN() { PROFILE_SCOPE()
+#define PROFILE_NAMED_SCOPE_BEGIN(name) { PROFILE_NAMED_SCOPE(name)
+#define PROFILE_SCOPE_END() }
 #else
 #define PROFILE_SCOPE()
 #define PROFILE_NAMED_SCOPE(name)
+#define PROFILE_SCOPE_BEGIN() {
+#define PROFILE_NAMED_SCOPE_BEGIN(name) {
+#define PROFILE_SCOPE_END() }
 #endif

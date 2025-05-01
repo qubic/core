@@ -1788,8 +1788,6 @@ static void requestProcessor(void* ProcedureArgument)
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
     while (!shutDownNode)
     {
-        PROFILE_SCOPE();
-
         checkinTime(processorNumber);
         // in epoch transition, wait here
         if (epochTransitionState)
@@ -1830,6 +1828,7 @@ static void requestProcessor(void* ProcedureArgument)
         // try to compute a solution if any is queued and this thread is assigned to compute solution
         if (solutionProcessorFlags[processorNumber])
         {
+            PROFILE_NAMED_SCOPE("requestProcessor(): solution processing");
             score->tryProcessSolution(processorNumber);
         }
         
@@ -1847,6 +1846,7 @@ static void requestProcessor(void* ProcedureArgument)
             }
             else
             {
+                PROFILE_NAMED_SCOPE("requestProcessor(): request processing");
                 const unsigned long long beginningTick = __rdtsc();
 
                 {
@@ -2711,21 +2711,27 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
         WAIT_WHILE(contractProcessorState);
+        PROFILE_SCOPE_END();
 
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): BEGIN_EPOCH");
         logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
         contractProcessorPhase = BEGIN_EPOCH;
         contractProcessorState = 1;
         WAIT_WHILE(contractProcessorState);
+        PROFILE_SCOPE_END();
     }
 
+    PROFILE_NAMED_SCOPE_BEGIN("processTick(): BEGIN_TICK");
     logger.registerNewTx(system.tick, logger.SC_BEGIN_TICK_TX);
     contractProcessorPhase = BEGIN_TICK;
     contractProcessorState = 1;
     WAIT_WHILE(contractProcessorState);
+    PROFILE_SCOPE_END();
 
     unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     ts.tickData.acquireLock();
@@ -2738,6 +2744,7 @@ static void processTick(unsigned long long processorNumber)
 #if ADDON_TX_STATUS_REQUEST
         txStatusData.tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): pre-scan solutions");
         // reset solution task queue
         score->resetTaskQueue();
         // pre-scan any solution tx and add them to solution task queue
@@ -2776,10 +2783,12 @@ static void processTick(unsigned long long processorNumber)
                 }
             }
         }
+        PROFILE_SCOPE_END();
 
         {
             // Process solutions in this tick and store in cache. In parallel, score->tryProcessSolution() is called by
             // request processors to speed up solution processing.
+            PROFILE_NAMED_SCOPE("processTick(): process solutions");
             score->startProcessTaskQueue();
             while (!score->isTaskQueueProcessed())
             {
@@ -2790,6 +2799,7 @@ static void processTick(unsigned long long processorNumber)
         solutionTotalExecutionTicks = __rdtsc() - solutionProcessStartTick; // for tracking the time processing solutions
 
         // Process all transaction of the tick
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): process transactions");
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
             if (!isZero(nextTickData.transactionDigests[transactionIndex]))
@@ -2809,13 +2819,17 @@ static void processTick(unsigned long long processorNumber)
                 }
             }
         }
+        PROFILE_SCOPE_END();
     }
 
+    PROFILE_NAMED_SCOPE_BEGIN("processTick(): END_TICK");
     logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
     contractProcessorState = 1;
     WAIT_WHILE(contractProcessorState);
+    PROFILE_SCOPE_END();
 
+    PROFILE_NAMED_SCOPE_BEGIN("processTick(): get spectrum digest");
     unsigned int digestIndex;
     ACQUIRE(spectrumLock);
     for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
@@ -2847,6 +2861,7 @@ static void processTick(unsigned long long processorNumber)
 
     etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
     RELEASE(spectrumLock);
+    PROFILE_SCOPE_END();
 
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
@@ -3000,6 +3015,7 @@ static void processTick(unsigned long long processorNumber)
         {
             if (mainAuxStatus & 1)
             {
+                PROFILE_NAMED_SCOPE("processTick(): broadcast vote counter tx");
                 auto& payload = voteCounterPayload; // note: not thread-safe
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
                 payload.transaction.destinationPublicKey = m256i::zero();
@@ -3019,6 +3035,7 @@ static void processTick(unsigned long long processorNumber)
     if (mainAuxStatus & 1)
     {
         // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
+        PROFILE_NAMED_SCOPE("processTick(): broadcast solutions as tx (from BroadcastMessage)");
         for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
         {
             int solutionIndexToPublish = -1;
@@ -3121,6 +3138,7 @@ static void processTick(unsigned long long processorNumber)
         // Broadcast custom mining shares 
         if (mainAuxStatus & 1)
         {
+            PROFILE_NAMED_SCOPE("processTick(): broadcast custom mining shares tx");
             unsigned int customMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
@@ -4339,6 +4357,8 @@ static bool invalidateNodeStates(CHAR16* directory)
 // can only called from main thread
 static bool saveAllNodeStates()
 {
+    PROFILE_SCOPE();
+
     CHAR16 directory[16];
     setText(directory, L"ep");
     appendNumber(directory, system.epoch, false);
@@ -7234,6 +7254,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     clockTick = curTimeTick;
 
+                    PROFILE_NAMED_SCOPE("main loop: updateTime()");
                     updateTime();
                 }
 

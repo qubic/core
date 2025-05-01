@@ -109,6 +109,8 @@ public: // TODO: make protected
         // Rebuild lists from assets array (includes reset)
         void rebuild()
         {
+            PROFILE_SCOPE();
+
             reset();
             for (int index = 0; index < ASSETS_CAPACITY; index++)
             {
@@ -137,6 +139,8 @@ GLOBAL_VAR_DECL AssetStorage as;
 // Return index of issuance in assets array / universe or NO_ASSET_INDEX is not found.
 static unsigned int issuanceIndex(const m256i& issuer, unsigned long long assetName)
 {
+    PROFILE_SCOPE();
+
     unsigned int idx = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
     while (assets[idx].varStruct.issuance.type != EMPTY)
     {
@@ -193,6 +197,8 @@ static void deinitAssets()
 static long long issueAsset(const m256i& issuerPublicKey, const char name[7], char numberOfDecimalPlaces, const char unitOfMeasurement[7], long long numberOfShares, unsigned short managingContractIndex,
     int* issuanceIndex, int* ownershipIndex, int* possessionIndex)
 {
+    PROFILE_SCOPE();
+
     *issuanceIndex = issuerPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
 
     ACQUIRE(universeLock);
@@ -281,6 +287,8 @@ static sint64 numberOfShares(
     const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
     const AssetPossessionSelect& possession = AssetPossessionSelect::any())
 {
+    PROFILE_SCOPE();
+
     ACQUIRE(universeLock);
 
     sint64 numOfShares = 0;
@@ -314,6 +322,8 @@ static bool transferShareManagementRights(int sourceOwnershipIndex, int sourcePo
     int* destinationOwnershipIndexPtr, int* destinationPossessionIndexPtr,
     bool lock)
 {
+    PROFILE_SCOPE();
+
     if (numberOfShares <= 0)
     {
         return false;
@@ -445,6 +455,8 @@ static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int so
     int* destinationOwnershipIndex, int* destinationPossessionIndex,
     bool lock)
 {
+    PROFILE_SCOPE();
+
     if (numberOfShares <= 0 || isZero(destinationPublicKey))
     {
         return false;
@@ -558,6 +570,8 @@ iteration:
 
 static long long numberOfPossessedShares(unsigned long long assetName, const m256i& issuer, const m256i& owner, const m256i& possessor, unsigned short ownershipManagingContractIndex, unsigned short possessionManagingContractIndex)
 {
+    PROFILE_SCOPE();
+
     ACQUIRE(universeLock);
 
     int issuanceIndex = issuer.m256i_u32[0] & (ASSETS_CAPACITY - 1);
@@ -673,6 +687,8 @@ static void getUniverseDigest(m256i& digest)
 
 static bool saveUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, const CHAR16* directory = NULL)
 {
+    PROFILE_SCOPE();
+
     logToConsole(L"Saving universe file...");
 
     const unsigned long long beginningTick = __rdtsc();
@@ -695,6 +711,8 @@ static bool saveUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, const CHAR
 
 static bool loadUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, CHAR16* directory = NULL)
 {
+    PROFILE_SCOPE();
+
     long long loadedSize = load(fileName, ASSETS_CAPACITY * sizeof(AssetRecord), (unsigned char*)assets, directory);
     if (loadedSize != ASSETS_CAPACITY * sizeof(AssetRecord))
     {
@@ -708,6 +726,8 @@ static bool loadUniverse(const CHAR16* fileName = UNIVERSE_FILE_NAME, CHAR16* di
 
 static void assetsEndEpoch()
 {
+    PROFILE_SCOPE();
+
     ACQUIRE(universeLock);
 
     // rebuild asset hash map, getting rid of all elements with zero shares
