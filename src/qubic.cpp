@@ -4,7 +4,6 @@
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
 
-
 #include <lib/platform_common/qintrin.h>
 
 #include "network_messages/all.h"
