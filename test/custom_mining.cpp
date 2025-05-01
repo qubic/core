@@ -138,4 +138,142 @@ TEST(CustomMining, TaskStorageOverflow)
     storage.deinit();
 }
 
+TEST(CustomMining, SolutionStorageGeneral)
+{
+    constexpr unsigned long long NUMBER_OF_TASKS = 100;
+    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, true> storage;
 
+    storage.init();
+
+    for (unsigned long long i = 0; i < NUMBER_OF_TASKS; i++)
+    {
+        CustomMiningSolutionStorageEntry entry;
+        entry.taskIndex = NUMBER_OF_TASKS - i;
+
+        storage.addData(&entry);
+    }
+
+    // Expect the task are sorted in ascending order
+    for (unsigned long long i = 0; i < NUMBER_OF_TASKS - 1; i++)
+    {
+        CustomMiningSolutionStorageEntry* entry0 = storage.getDataByIndex(i);
+        CustomMiningSolutionStorageEntry* entry1 = storage.getDataByIndex(i + 1);
+        EXPECT_LT(entry0->taskIndex, entry1->taskIndex);
+    }
+    EXPECT_EQ(storage.getCount(), NUMBER_OF_TASKS);
+
+    storage.deinit();
+}
+
+TEST(CustomMining, SolutionStorageDuplicatedItems)
+{
+    constexpr unsigned long long NUMBER_OF_SOLS = 100;
+    constexpr unsigned long long DUPLICATED_SOLS = 10;
+    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, true> storage;
+
+    storage.init();
+
+    // For DUPCATED_TASKS will only recorded many
+    for (unsigned long long i = 0; i < DUPLICATED_SOLS; i++)
+    {
+        CustomMiningSolutionStorageEntry entry;
+        entry.taskIndex = 1;
+        entry.nonce = i;
+
+        storage.addData(&entry);
+    }
+
+    for (unsigned long long i = DUPLICATED_SOLS; i < NUMBER_OF_SOLS; i++)
+    {
+        CustomMiningSolutionStorageEntry entry;
+        entry.taskIndex = i;
+        entry.nonce = i;
+
+        storage.addData(&entry);
+    }
+
+    // Expect all elements are added
+    EXPECT_EQ(storage.getCount(), NUMBER_OF_SOLS);
+
+    // Data is still in ascending order
+    int duplicatedDataCount = 0;
+    for (unsigned long long i = 0; i < NUMBER_OF_SOLS - 1; i++)
+    {
+        CustomMiningSolutionStorageEntry* entry0 = storage.getDataByIndex(i);
+        CustomMiningSolutionStorageEntry* entry1 = storage.getDataByIndex(i + 1);
+        EXPECT_LE(entry0->taskIndex, entry1->taskIndex);
+        if (entry0->taskIndex == entry1->taskIndex)
+        {
+            duplicatedDataCount++;
+        }
+    }
+
+    storage.deinit();
+}
+
+TEST(CustomMining, SolutionStorageExistedItem)
+{
+    constexpr unsigned long long NUMBER_OF_SOLS = 100;
+    constexpr unsigned long long DUPCATED_SOLS = 10;
+    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, true> storage;
+
+    storage.init();
+
+    for (unsigned long long i = 1; i < NUMBER_OF_SOLS + 1; i++)
+    {
+        CustomMiningSolutionStorageEntry entry;
+        entry.taskIndex = i;
+        entry.nonce = i;
+
+        storage.addData(&entry);
+    }
+
+    // Test an existed task
+    CustomMiningSolutionStorageEntry entry;
+    entry.taskIndex = NUMBER_OF_SOLS - 10;
+    storage.addData(&entry);
+
+    EXPECT_EQ(storage.dataExisted(&entry), true);
+    unsigned long long idx = storage.lookForTaskGE(entry.taskIndex);
+    EXPECT_EQ(storage.getDataByIndex(idx) != NULL, true);
+    EXPECT_EQ(storage.getDataByIndex(idx)->taskIndex, entry.taskIndex);
+    EXPECT_NE(idx, CUSTOM_MINING_INVALID_INDEX);
+
+    // Test a non-existed task whose the taskIndex is greater than the last task
+    entry.taskIndex = NUMBER_OF_SOLS + 10;
+    EXPECT_EQ(storage.dataExisted(&entry), false);
+    idx = storage.lookForTaskGE(entry.taskIndex);
+    EXPECT_EQ(idx, CUSTOM_MINING_INVALID_INDEX);
+
+    // Test a non-existed task whose the taskIndex is lower than the last task
+    entry.taskIndex = 0;
+    EXPECT_EQ(storage.dataExisted(&entry), false);
+    idx = storage.lookForTaskGE(entry.taskIndex);
+    EXPECT_NE(idx, CUSTOM_MINING_INVALID_INDEX);
+
+
+    storage.deinit();
+}
+
+TEST(CustomMining, SolutionsStorageOverflow)
+{
+    constexpr unsigned long long NUMBER_OF_SOLS = CUSTOM_MINING_TASK_STORAGE_COUNT;
+    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, true> storage;
+
+    storage.init();
+
+    for (unsigned long long i = 0; i < NUMBER_OF_SOLS; i++)
+    {
+        CustomMiningSolutionStorageEntry entry;
+        entry.taskIndex = i;
+        entry.nonce = i;
+        storage.addData(&entry);
+    }
+
+    // Overflow. Add one more and get error status
+    CustomMiningSolutionStorageEntry entry;
+    entry.taskIndex = NUMBER_OF_SOLS + 1;
+    EXPECT_NE(storage.addData(&entry), 0);
+
+    storage.deinit();
+}
