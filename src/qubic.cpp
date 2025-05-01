@@ -5235,6 +5235,12 @@ static bool isTickTimeOut()
     return (__rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * NEXT_TICK_TIMEOUT_THRESHOLD * frequency / 1000);
 }
 
+// Disabling the optimizer for tickProcessor() is a workaround introduced to solve an issue
+// that has been observed in testnets/2025-04-30-profiling.
+// In this test, the processor calling tickProcessor() was stuck before entering the function.
+// Probably, this was caused by a bug in the optimizer, because disabling the optimizer solved the
+// problem.
+#pragma optimize("", off)
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -5674,6 +5680,7 @@ static void tickProcessor(void*)
         tickerLoopDenominator++;
     }
 }
+#pragma optimize("", on)
 
 static void emptyCallback(EFI_EVENT Event, void* Context)
 {
