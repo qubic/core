@@ -64,19 +64,15 @@ public:
         // Make sure hash map is initialized
         if (mDataPtr || doInit())
         {
-            // Make sure hash map has enough free space
-            if (mDataUsedEntryCount * 2 <= mDataSize || doInit(mDataUsedEntryCount * 2))
-            {
-                // Fill entry
-                const unsigned long long dt = endTsc - startTsc;
-                ProfilingData& newEntry = getEntry(scopeName, scopeLine);
-                newEntry.numOfExec += 1;
-                newEntry.runtimeSum += dt;
-                if (newEntry.runtimeMin > dt)
-                    newEntry.runtimeMin = dt;
-                if (newEntry.runtimeMax < dt)
-                    newEntry.runtimeMax = dt;
-            }
+            // Fill entry
+            const unsigned long long dt = endTsc - startTsc;
+            ProfilingData& newEntry = getEntry(scopeName, scopeLine);
+            newEntry.numOfExec += 1;
+            newEntry.runtimeSum += dt;
+            if (newEntry.runtimeMin > dt)
+                newEntry.runtimeMin = dt;
+            if (newEntry.runtimeMax < dt)
+                newEntry.runtimeMax = dt;
         }
 
         RELEASE(mLock);
@@ -208,7 +204,6 @@ protected:
     ProfilingData& getEntry(const char* scopeName, unsigned long long scopeLine)
     {
         ASSERT(mDataPtr && mDataSize > 0);          // requires data to be initialized
-        ASSERT(mDataSize > mDataUsedEntryCount);    // requires at least one free slot
         ASSERT((mDataSize & (mDataSize - 1)) == 0); // mDataSize must be 2^N
 
         const unsigned long long mask = (mDataSize - 1);
@@ -232,7 +227,18 @@ protected:
             }
             else
             {
-                // hash collision -> check next entry in hash map
+                // hash collision
+                // -> check if hash map has enough free space
+                if (mDataUsedEntryCount * 2 > mDataSize)
+                {
+                    if (doInit(mDataUsedEntryCount * 2))
+                    {
+                        // hash map has been extended -> restart getting entry
+                        return getEntry(scopeName, scopeLine);
+                    }
+                }
+
+                // -> check next entry in hash map
                 i = (i + 1) & mask;
                 goto iteration;
             }
