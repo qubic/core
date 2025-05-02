@@ -84,7 +84,10 @@ TEST(TestCore256BitClass, ConstructAssignCompare) {
     EXPECT_FALSE(v2 != v5);
     EXPECT_FALSE(isZero(v2));
 
-    v5.m256i_i64[0] = v5.m256i_i64[1] = v5.m256i_i64[2] = v5.m256i_i64[3] = 0;
+    v5.m256i_i64[0] = 0;
+    v5.m256i_i64[1] = 0;
+    v5.m256i_i64[2] = 0;
+    v5.m256i_i64[3] = 0;
     EXPECT_TRUE(isZero(v5));
     EXPECT_TRUE(v2 != v5);
     EXPECT_FALSE(v2 == v5);
