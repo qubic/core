@@ -151,10 +151,10 @@ union m256i
 
     void setRandomValue()
     {
-        _rdrand64_step(&m256i_u64[0]);
-        _rdrand64_step(&m256i_u64[1]);
-        _rdrand64_step(&m256i_u64[2]);
-        _rdrand64_step(&m256i_u64[3]);
+        _rdrand64_step(reinterpret_cast<unsigned long long*>(&m256i_u64[0]));
+        _rdrand64_step(reinterpret_cast<unsigned long long*>(&m256i_u64[1]));
+        _rdrand64_step(reinterpret_cast<unsigned long long*>(&m256i_u64[2]));
+        _rdrand64_step(reinterpret_cast<unsigned long long*>(&m256i_u64[3]));
     }
 
     static m256i randomValue()
