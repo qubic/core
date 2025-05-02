@@ -205,55 +205,55 @@ static inline bool EQUAL(const __m256i& a, const __m256i& b)
 template <typename TA, typename TB>
 static inline bool operator==(const TA& a, const TB& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
+    return static_cast<uint64_t>_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
 }
 
 template <typename TA, typename TB>
 static inline bool operator!=(const TA& a, const TB& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
+    return static_cast<uint64_t>_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
 }
 
 #else
 
 static inline bool operator==(const m256i& a, const m256i& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
+    return static_cast<uint64_t>(_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b)))) == 0xFFFFFFFF;
 }
 
 static inline bool operator!=(const m256i& a, const m256i& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
+    return static_cast<uint64_t>(_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b)))) != 0xFFFFFFFF;
 }
 
 static inline bool operator==(const m256i& a, volatile const m256i& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
+    return static_cast<uint64_t>(_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b)))) == 0xFFFFFFFF;
 }
 
 static inline bool operator!=(const m256i& a, volatile const m256i& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
+    return static_cast<uint64_t>(_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b)))) != 0xFFFFFFFF;
 }
 
 static inline bool operator==(volatile const m256i& a, const m256i& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
+    return static_cast<uint64_t>(_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b)))) == 0xFFFFFFFF;
 }
 
 static inline bool operator!=(volatile const m256i& a, const m256i& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
+    return static_cast<uint64_t>(_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b)))) != 0xFFFFFFFF;
 }
 
 static inline bool operator==(volatile const m256i& a, volatile const m256i& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) == 0xFFFFFFFF;
+    return static_cast<uint64_t>(_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b)))) == 0xFFFFFFFF;
 }
 
 static inline bool operator!=(volatile const m256i& a, volatile const m256i& b)
 {
-    return _mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b))) != 0xFFFFFFFF;
+    return static_cast<uint64_t>(_mm256_movemask_epi8(_mm256_cmpeq_epi64(__m256i_convert(a), __m256i_convert(b)))) != 0xFFFFFFFF;
 }
 #endif
 
