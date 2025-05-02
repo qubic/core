@@ -7371,11 +7371,26 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     peerRefreshingTick = curTimeTick;
 
-                    for (unsigned int i = 0; i < (NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS) / 4; i++)
+                    unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
+                    setMem(suitablePeerIndices, sizeof(suitablePeerIndices), 0);
+                    unsigned short numberOfSuitablePeers = 0;
+                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                     {
-                        closePeer(&peers[random(NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS)]);
+                        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
+                        {
+                            if (!peers[i].isFullNode())
+                            {
+                                suitablePeerIndices[numberOfSuitablePeers++] = i;
+                            }
+                        }
                     }
-                    logToConsole(L"Refreshed peers...");
+
+                    // disconnect 25% of current connections that are not **active fullnode**
+                    for (unsigned int i = 0; i < numberOfSuitablePeers / 4; i++)
+                    {
+                        closePeer(&peers[suitablePeerIndices[random(numberOfSuitablePeers)]]);
+                    }
+                    logToConsole(L"Refreshed connection...");
                 }
 
                 if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000
