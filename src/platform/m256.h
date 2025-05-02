@@ -121,7 +121,7 @@ union m256i
         _mm256_storeu_si256((__m256i*)this, _mm256_lddqu_si256((const __m256i*) & value));
     }
 
-    volatile void assign(const m256i& value) volatile noexcept
+    void assign(const m256i& value) volatile noexcept
     {
         // supports self-assignment
         _mm256_storeu_si256((__m256i*)this, _mm256_lddqu_si256((const __m256i*) & value));
@@ -133,7 +133,7 @@ union m256i
         _mm256_storeu_si256((__m256i*)this, _mm256_lddqu_si256((const __m256i*) & value));
     }
 
-    volatile void assign(volatile const m256i& value) volatile noexcept
+    void assign(volatile const m256i& value) volatile noexcept
     {
         // supports self-assignment
         _mm256_storeu_si256((__m256i*)this, _mm256_lddqu_si256((const __m256i*) & value));
