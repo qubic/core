@@ -9,8 +9,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerSetup)
 
-# Option to build tests
+# Build options
 option(BUILD_TESTS "Build the test suite" ON)
+option(BUILD_EFI "Build the EFI application" ON)
 
 if(IS_WINDOWS)
     message(WARNING "Building on Windows using Visual Studio and CMake has undergone limited testing and is not officially supported at this time.")
@@ -19,18 +20,27 @@ endif()
 # Always include platform_common as it's needed for both application and tests
 add_subdirectory(lib/platform_common)
 
-# Conditionally include other components based on whether we're building tests or the application
+if(BUILD_EFI OR BUILD_TESTS)
+    add_subdirectory(lib/platform_efi)
+endif()
+
+# Build the tests first. On fail, the build will fail completely
 if(BUILD_TESTS)
-    # For tests, include platform_os, src, and test
-    message(STATUS "Building test configuration")
+    message(STATUS "Building test suite")
     enable_testing()
     add_subdirectory(lib/platform_os)
-    add_subdirectory(lib/platform_efi) # Currenlty still needed due to various imports
-    add_subdirectory(src EXCLUDE_FROM_ALL)  # Build src but don't make it a default target
+    
+    # If we're not building the application, we still need src for tests
+    # but don't make it a default target
+    if(NOT BUILD_EFI)
+        add_subdirectory(src EXCLUDE_FROM_ALL)
+    endif()
+    
     add_subdirectory(test)
-else()
-    # For application, include platform_efi and src
-    message(STATUS "Building application configuration")
-    add_subdirectory(lib/platform_efi)
+endif()
+
+# Build the application if requested
+if(BUILD_EFI)
+    message(STATUS "Building EFI application")
     add_subdirectory(src)
 endif()
