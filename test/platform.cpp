@@ -199,7 +199,7 @@ void iterativeProfilingTest(int n)
     }
 }
 
-TEST(TestCoreProfiling, SimpleTest)
+TEST(TestCoreProfiling, SleepTest)
 {
     {
         ProfilingScope profScope(__FUNCTION__, __LINE__);
@@ -242,4 +242,19 @@ TEST(TestCoreProfiling, SimpleTest)
     gProfilingDataCollector.clear();
 
     //gProfilingDataCollector.writeToFile();
+}
+
+TEST(TestCoreProfiling, AddMeasurementSpeedTest)
+{
+    for (unsigned long long i = 0; i < 10000; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        for (unsigned long long j = 0; j < 10000; ++j)
+        {
+            ProfilingScope profScope(__FUNCTION__, __LINE__);
+            testStackSizeTrackerKeepSize();
+        }
+    }
+
+    gProfilingDataCollector.writeToFile();
 }
