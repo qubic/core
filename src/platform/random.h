@@ -1,6 +1,6 @@
 #pragma once
 
-#include <intrin.h>
+#include <lib/platform_common/qintrin.h>
 
 inline static unsigned int random(const unsigned int range)
 {

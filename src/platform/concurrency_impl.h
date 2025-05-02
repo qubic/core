@@ -42,6 +42,8 @@ BusyWaitingTracker::~BusyWaitingTracker()
         appendTextShortenFront(msgBuffer, mFile, 50);
         appendText(msgBuffer, " line ");
         appendNumber(msgBuffer, mLine, false);
+        appendText(msgBuffer, ", processor #");
+        appendNumber(msgBuffer, getRunningProcessorID(), false);
         appendText(msgBuffer, ", tick ");
         appendNumber(msgBuffer, system.tick, false);
         addDebugMessage(msgBuffer);
@@ -65,6 +67,8 @@ void BusyWaitingTracker::pause()
         appendTextShortenFront(msgBuffer, mFile, 50);
         appendText(msgBuffer, " line ");
         appendNumber(msgBuffer, mLine, false);
+        appendText(msgBuffer, ", processor #");
+        appendNumber(msgBuffer, getRunningProcessorID(), false);
         addDebugMessage(msgBuffer);
         if (isMainProcessor())
             printDebugMessages();

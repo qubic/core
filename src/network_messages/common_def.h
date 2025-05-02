@@ -25,7 +25,7 @@
 // following line to "#if 1".
 #if defined(NETWORK_MESSAGES_WITHOUT_CORE_DEPENDENCIES)
 
-#include <intrin.h>
+#include <lib/platform_common/qintrin.h>
 
 typedef union m256i
 {
