@@ -85,7 +85,13 @@ public:
 
         // Init time stamp counter frequency if needed
         if (!frequency)
+        {
             initTimeStampCounter();
+#ifdef NO_UEFI
+            const unsigned long long secondsOverflow = 0xffffffffffffffffllu / frequency;
+            std::cout << "runtimeSum overflow after " << secondsOverflow << " sconds = " << secondsOverflow / 3600 << " hours" << std::endl;
+#endif
+        }
         ASSERT(frequency);
 
         // TODO: define file object in platform lib, including writeStringToFile()
@@ -112,7 +118,7 @@ public:
         {
             if (mDataPtr[i].scopeName)
             {
-                unsigned long long runtimeSumMicroseconds = mDataPtr[i].runtimeSum * 1000000 / frequency;
+                unsigned long long runtimeSumMicroseconds = ticksToMicroseconds(mDataPtr[i].runtimeSum);
                 setNumber(message, i, false);
                 appendText(message, ",");
                 appendText(message, mDataPtr[i].scopeName);
@@ -125,9 +131,9 @@ public:
                 appendText(message, ",");
                 appendNumber(message, (mDataPtr[i].numOfExec > 0) ? runtimeSumMicroseconds / mDataPtr[i].numOfExec : 0, false);
                 appendText(message, ",");
-                appendNumber(message, mDataPtr[i].runtimeMin * 1000000 / frequency, false);
+                appendNumber(message, ticksToMicroseconds(mDataPtr[i].runtimeMin), false);
                 appendText(message, ",");
-                appendNumber(message, mDataPtr[i].runtimeMax * 1000000 / frequency, false);
+                appendNumber(message, ticksToMicroseconds(mDataPtr[i].runtimeMax), false);
                 appendText(message, "\r\n");
                 okay &= writeStringToFile(file, message);
             }
@@ -142,6 +148,30 @@ public:
 #endif
 
         return okay;
+    }
+
+    static unsigned long long ticksToMicroseconds(unsigned long long ticks)
+    {
+        ASSERT(frequency);
+        if (ticks <= (0xffffffffffffffffllu / 1000000llu))
+        {
+            return (ticks * 1000000llu) / frequency;
+        }
+        else
+        {
+            // prevent overflow of ticks * 1000000llu
+            unsigned long long seconds = ticks / frequency;
+            if (seconds <= (0xffffffffffffffffllu / 1000000llu))
+            {
+                // tolerate inaccuracy
+                return seconds * 1000000llu;
+            }
+            else
+            {
+                // number of microseconds does not fit in type -> max value
+                return 0xffffffffffffffffllu;
+            }
+        }
     }
 
 protected:

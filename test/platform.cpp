@@ -252,9 +252,62 @@ TEST(TestCoreProfiling, AddMeasurementSpeedTest)
         for (unsigned long long j = 0; j < 10000; ++j)
         {
             ProfilingScope profScope(__FUNCTION__, __LINE__);
-            testStackSizeTrackerKeepSize();
+            for (volatile unsigned long long k = 0; k < 10; ++k)
+            {
+            }
         }
     }
 
     gProfilingDataCollector.writeToFile();
+}
+
+void checkTicksToMicroseconds(int type, unsigned long long ticks, unsigned long long frequency)
+{
+    ::frequency = frequency;
+    unsigned long long microsecondsInt = ProfilingDataCollector::ticksToMicroseconds(ticks);
+    long double microsecondsFloat = long double(ticks) * long double(1000000) / long double(frequency);
+    long double diff = std::abs(microsecondsFloat - microsecondsInt);
+    if (type == 0)
+    {
+        // no overflow
+        EXPECT_LT(diff, 1.0);
+    }
+    else if (type == 1)
+    {
+        // overflow in calculation -> tolerate inaccuracy
+        EXPECT_LT(diff, 1000000.0);
+    }
+    else
+    {
+        // overflow in result -> expect max value
+        EXPECT_EQ(microsecondsInt, 0xffffffffffffffffllu);
+    }
+    ::frequency = 0;
+}
+
+TEST(TestCoreProfiling, CheckTicksToMicroseconds)
+{
+    // non-overflow cases
+    checkTicksToMicroseconds(0, 10000, 100000000);
+    checkTicksToMicroseconds(0, 100000000, 10000);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu, 1000000llu);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu, 1000000llu + 1);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu, 1000000llu - 1);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu - 1, 1000000llu);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu - 1, 1000000llu + 1);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu - 1, 1000000llu - 1);
+
+    // overflow in calculation
+    checkTicksToMicroseconds(1, 0xffffffffffffffffllu / 1000000llu + 1, 1000000llu);
+    checkTicksToMicroseconds(1, 0xffffffffffffffffllu / 1000000llu + 1, 1000000llu + 1);
+    checkTicksToMicroseconds(1, 0xffffffffffffffffllu, 1000000000llu);
+    checkTicksToMicroseconds(1, 0xffffffffffffffllu, 1000000000llu);
+    checkTicksToMicroseconds(1, 0xffffffffffffffffllu, 1234567890llu);
+    checkTicksToMicroseconds(1, 0xffffffffffffffllu, 1234567890llu);
+
+    // overflow in result (low frequency)
+    checkTicksToMicroseconds(2, 0xffffffffffffffffllu, 1000);
+    checkTicksToMicroseconds(2, 0xffffffffffffffllu, 1000);
+    checkTicksToMicroseconds(2, 0xffffffffffffffffllu, 12345);
+    checkTicksToMicroseconds(2, 0xffffffffffffffffllu, 123456);
 }
