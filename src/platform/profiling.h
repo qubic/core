@@ -120,9 +120,9 @@ public:
             {
                 unsigned long long runtimeSumMicroseconds = ticksToMicroseconds(mDataPtr[i].runtimeSum);
                 setNumber(message, i, false);
-                appendText(message, ",");
+                appendText(message, ",\"");
                 appendText(message, mDataPtr[i].scopeName);
-                appendText(message, ",");
+                appendText(message, "\",");
                 appendNumber(message, mDataPtr[i].scopeLine, false);
                 appendText(message, ",");
                 appendNumber(message, mDataPtr[i].numOfExec, false);
