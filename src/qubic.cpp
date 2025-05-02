@@ -305,6 +305,12 @@ static struct {
     unsigned long long lastTryClock; // last time it rolling the dice
 } emptyTickResolver;
 
+static struct {
+    static constexpr unsigned long long MAX_WAITING_TIME = 60000; // time to trigger resending tick votes
+    unsigned int lastTick;
+    unsigned long long lastCheck;
+} autoResendTickVotes;
+
 static void logToConsole(const CHAR16* message)
 {
     if (consoleLoggingLevel == 0)
@@ -5157,6 +5163,25 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
     }
 }
 
+// try to resend tick votes if local system.tick gets stuck for too long
+static void tryResendTickVotes()
+{
+    if (autoResendTickVotes.lastTick != system.tick)
+    {
+        autoResendTickVotes.lastTick = system.tick;
+        autoResendTickVotes.lastCheck = __rdtsc();
+    }
+    else
+    {
+        unsigned long long elapsed = (__rdtsc() - autoResendTickVotes.lastCheck) * 1000 / frequency; //millisec
+        if (elapsed >= autoResendTickVotes.MAX_WAITING_TIME)
+        {
+            if (system.latestCreatedTick > 0) system.latestCreatedTick--;
+            autoResendTickVotes.lastCheck = __rdtsc();
+        }
+    }
+}
+
 // try forcing next tick to be empty after certain amount of time
 static void tryForceEmptyNextTick()
 {
@@ -7184,6 +7209,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
+            autoResendTickVotes.lastTick = system.initialTick;
+            autoResendTickVotes.lastCheck = __rdtsc();
             logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
@@ -7301,6 +7328,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     saveCustomMiningCache(system.epoch);
                 }
 #endif
+
+                tryResendTickVotes();
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
                 {
