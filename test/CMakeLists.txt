@@ -34,7 +34,7 @@ add_executable(
   # contract_qvault.cpp
   # contract_qx.cpp
   # kangaroo_twelve.cpp
-  # m256.cpp
+  m256.cpp
   math_lib.cpp
   # network_messages.cpp
   # platform.cpp
