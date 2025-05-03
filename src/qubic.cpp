@@ -548,7 +548,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             RELEASE(gCustomMiningTaskStorageLock);
 
                             ACQUIRE(gTotalCustomMiningTaskMessagesLock);
-                            gTotalCustomMiningTaskMessages = taskMessageStorageCount;
+                            gTotalCustomMiningTaskMessages[partId] = taskMessageStorageCount;
                             RELEASE(gTotalCustomMiningTaskMessagesLock);
                         }
                     }
@@ -3227,7 +3227,7 @@ static void resetCustomMining()
         gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
     }
     gTotalCustomMiningSolutions = 0;
-    gTotalCustomMiningTaskMessages = 0;
+    setMem(gTotalCustomMiningTaskMessages, sizeof(gTotalCustomMiningTaskMessages), 0);
 
     gCustomMiningStorage.reset();
 }
@@ -6474,9 +6474,14 @@ static void logInfo()
 
     // Task count : Total task in storage | Total solution in storage | Invalid Solutions
     appendText(message, L" Epoch (Task = ");
+    unsigned long long totalCustomMiningTasks = 0;
     ACQUIRE(gTotalCustomMiningTaskMessagesLock);
-    appendNumber(message, gTotalCustomMiningTaskMessages, FALSE);
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        totalCustomMiningTasks += gTotalCustomMiningTaskMessages[i];
+    }
     RELEASE(gTotalCustomMiningTaskMessagesLock);
+    appendNumber(message, totalCustomMiningTasks, FALSE);
     appendText(message, L" | Sols = ");
 
     ACQUIRE(gTotalCustomMiningSolutionsLock);
