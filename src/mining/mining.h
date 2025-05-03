@@ -1,6 +1,10 @@
+#pragma once
+
+#include "platform/assert.h"
 #include "platform/concurrency.h"
 #include "platform/memory.h"
 #include "platform/memory_util.h"
+#include "network_messages/custom_mining.h"
 #include "network_messages/transactions.h"
 #include "kangaroo_twelve.h"
 
