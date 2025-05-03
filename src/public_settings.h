@@ -73,7 +73,7 @@ static unsigned short UNIVERSE_FILE_NAME[] = L"universe.???";
 static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";
 static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_revenue.eoe";
-static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining???.???";
+static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache???.???";
 
 #define DATA_LENGTH 256
 #define NUMBER_OF_HIDDEN_NEURONS 3000

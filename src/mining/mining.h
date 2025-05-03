@@ -421,8 +421,6 @@ public:
     /// Save custom mining share cache to file
     void save(CHAR16* filename, CHAR16* directory = NULL)
     {
-        logToConsole(L"Saving custom mining cache file...");
-
         const unsigned long long beginningTick = __rdtsc();
         ACQUIRE(lock);
         long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)&cache, directory);
@@ -441,7 +439,6 @@ public:
     bool load(CHAR16* filename, CHAR16* directory = NULL)
     {
         bool success = true;
-        logToConsole(L"Loading custom mining cache...");
         reset();
         ACQUIRE(lock);
         long long loadedSize = ::load(filename, sizeof(cache), (unsigned char*)cache, directory);
@@ -605,7 +602,7 @@ private:
 
 // In charge of storing custom mining
 constexpr unsigned int NUMBER_OF_TASK_PARTITIONS = 4;
-constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (200ULL << 20) / sizeof(CustomMiningSolutionCacheEntry);
+constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (200ULL << 20) / NUMBER_OF_TASK_PARTITIONS / sizeof(CustomMiningSolutionCacheEntry);
 constexpr unsigned long long CUSTOM_MINING_INVALID_INDEX = 0xFFFFFFFFFFFFFFFFULL;
 constexpr unsigned int CUSTOM_MINING_TASK_STORAGE_RESET_PHASE = 2; // the number of custom mining phase that the solution storage will be reset
 constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = 60 * 60 * 24 * 8 / 2 / 10; // All epoch tasks in 7 (+1) days, 10s per task, idle phases only
@@ -1124,8 +1121,8 @@ struct CustomMiningTaskPartition
     unsigned int domainSize;
 };
 
-CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
-CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolution[NUMBER_OF_TASK_PARTITIONS];
+static CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
+static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolution = NULL;
 static CustomMiningStorage gCustomMiningStorage;
 
 // Get the part ID
@@ -1165,12 +1162,35 @@ int customMiningGetComputorID(unsigned int nonce, int partId)
     return nonce / gTaskPartition[partId].domainSize + gTaskPartition[partId].firstComputorIdx;
 }
 
+int customMiningInitialize()
+{
+    gCustomMiningStorage.init();
+    allocPoolWithErrorLog(L"gSystemCustomMiningSolution", 
+        NUMBER_OF_TASK_PARTITIONS *  sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
+        (void**) & gSystemCustomMiningSolution,
+        __LINE__);
+    customMiningInitTaskPartitions();
+
+    return 0;
+}
+
+int customMiningDeinitialize()
+{
+    if (gSystemCustomMiningSolution)
+    {
+        freePool(gSystemCustomMiningSolution);
+        gSystemCustomMiningSolution = NULL;
+    }
+    gCustomMiningStorage.deinit();
+    return 0;
+}
+
 #ifdef NO_UEFI
 #else
 // Save score cache to SCORE_CACHE_FILE_NAME
 void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
 {
-    ACQUIRE(gCustomMiningCacheLock);
+    logToConsole(L"Saving custom mining cache file...");
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
@@ -1181,14 +1201,13 @@ void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 6] = i % 10 + L'0';
         gSystemCustomMiningSolution[i].save(CUSTOM_MINING_CACHE_FILE_NAME, directory);
     }
-    RELEASE(gCustomMiningCacheLock);
 }
 
 // Update score cache filename with epoch and try to load file
 bool loadCustomMiningCache(int epoch)
 {
+    logToConsole(L"Loading custom mining cache...");
     bool success = true;
-    ACQUIRE(gCustomMiningCacheLock);
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
@@ -1200,7 +1219,6 @@ bool loadCustomMiningCache(int epoch)
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 6] = i % 10 + L'0';
         success &= gSystemCustomMiningSolution[i].load(CUSTOM_MINING_CACHE_FILE_NAME);
     }
-    RELEASE(gCustomMiningCacheLock);
     return success;
 }
 #endif

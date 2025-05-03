@@ -6026,6 +6026,10 @@ static bool initialize()
         setNewMiningSeed();
     }    
     score->loadScoreCache(system.epoch);
+
+    customMiningInitialize();
+    resetCustomMining();
+
     loadCustomMiningCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
@@ -6105,10 +6109,6 @@ static bool initialize()
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
 
-    customMiningInitTaskPartitions();
-    resetCustomMining();
-    gCustomMiningStorage.init();
-    
     return true;
 }
 
@@ -6217,7 +6217,7 @@ static void deinitialize()
         }
     }
 
-    gCustomMiningStorage.deinit();
+    customMiningDeinitialize();
 }
 
 static void logInfo()
