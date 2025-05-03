@@ -308,6 +308,7 @@ static struct {
 static struct {
     static constexpr unsigned long long MAX_WAITING_TIME = 60000; // time to trigger resending tick votes
     unsigned int lastTick;
+    unsigned int lastTickMode; // 0 AUX - 1 MAIN
     unsigned long long lastCheck;
 } autoResendTickVotes;
 
@@ -5174,12 +5175,16 @@ static void tryResendTickVotes()
     if (autoResendTickVotes.lastTick != system.tick)
     {
         autoResendTickVotes.lastTick = system.tick;
+        autoResendTickVotes.lastTickMode = isMainMode() ? 1 : 0;
         autoResendTickVotes.lastCheck = __rdtsc();
     }
     else
     {
         unsigned long long elapsed = (__rdtsc() - autoResendTickVotes.lastCheck) * 1000 / frequency; //millisec
-        if (elapsed >= autoResendTickVotes.MAX_WAITING_TIME)
+        // Resend vote from this node when:
+        // - timeout
+        // - on the last tick, this node was in MAIN mode
+        if (elapsed >= autoResendTickVotes.MAX_WAITING_TIME && (autoResendTickVotes.lastTickMode == 1))
         {
             if (system.latestCreatedTick > 0) system.latestCreatedTick--;
             autoResendTickVotes.lastCheck = __rdtsc();
@@ -7333,7 +7338,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     saveCustomMiningCache(system.epoch);
                 }
 #endif
-
                 tryResendTickVotes();
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
