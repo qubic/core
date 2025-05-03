@@ -388,6 +388,11 @@ static int computorIndex(m256i computor)
     return -1;
 }
 
+static inline bool isMainMode()
+{
+    return (mainAuxStatus & 1) == 1;
+}
+
 // NOTE: this function doesn't work well on a few CPUs, some bits will be flipped after calling this. It's probably microcode bug.
 static void enableAVX()
 {
@@ -2854,7 +2859,7 @@ static void processTick(unsigned long long processorNumber)
         {
             if (system.tick > system.latestLedTick)
             {
-                if (mainAuxStatus & 1)
+                if (isMainMode())
                 {
                     // This is the tick leader in MAIN mode -> construct future tick data (selecting transactions to
                     // include into tick)
@@ -2991,7 +2996,7 @@ static void processTick(unsigned long long processorNumber)
     {
         if ((system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
         {
-            if (mainAuxStatus & 1)
+            if (isMainMode())
             {
                 auto& payload = voteCounterPayload; // note: not thread-safe
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
@@ -3009,7 +3014,7 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
-    if (mainAuxStatus & 1)
+    if (isMainMode())
     {
         // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
         for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
@@ -3112,7 +3117,7 @@ static void processTick(unsigned long long processorNumber)
         RELEASE(gCustomMiningSolutionStorageLock);
 
         // Broadcast custom mining shares 
-        if (mainAuxStatus & 1)
+        if (isMainMode())
         {
             unsigned int customMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
@@ -5198,7 +5203,7 @@ static void tryForceEmptyNextTick()
         // This will force the node to set: 
         // (1) currentTick.expectedNextTickTransactionDigest  = 0
         // (2) nextTick.transactionDigest = 0 - it invalidates ts.tickData, no way to recover
-        if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
+        if ((isMainMode()) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
         {
             if (emptyTickResolver.tick != system.tick)
             {
@@ -5488,7 +5493,7 @@ static void tickProcessor(void*)
 
                     if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
                     {
-                        if (mainAuxStatus & 1)
+                        if (isMainMode())
                         {
                             broadcastTickVotes();
                         }
@@ -6507,7 +6512,7 @@ static void logInfo()
 
 static void logHealthStatus()
 {
-    setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+    setText(message, (isMainMode()) ? L"MAIN" : L"aux");
     appendText(message, L"&");
     appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
     logToConsole(message);
@@ -7013,7 +7018,7 @@ static void processKeyPresses()
             else
             {
                 mainAuxStatus = (mainAuxStatus + 1) & 3;
-                setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+                setText(message, (isMainMode()) ? L"MAIN" : L"aux");
                 appendText(message, L"&");
                 appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
                 logToConsole(message);
@@ -7318,7 +7323,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
 #if !TICK_STORAGE_AUTOSAVE_MODE
                 // Only save system + score cache to file regularly here if on AUX and snapshot auto-save is disabled
-                if ((mainAuxStatus & 1) == 0
+                if ((!isMainMode())
                     && curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
                 {
                     systemDataSavingTick = curTimeTick;
@@ -7481,7 +7486,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #if TICK_STORAGE_AUTOSAVE_MODE
 #if TICK_STORAGE_AUTOSAVE_MODE == 1
                 bool nextAutoSaveTickUpdated = false;
-                if (mainAuxStatus & 1)
+                if (isMainMode())
                 {
                     // MAIN mode: update auto-save schedule (only run save when switched to AUX mode)
                     while (system.tick >= nextPersistingNodeStateTick)
