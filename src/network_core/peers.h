@@ -837,13 +837,13 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
     EFI_STATUS status;
     if (!peers[i].tcp4Protocol)
     {
+        peers[i].reset();
         // peer slot without active connection
         if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
         {
             // outgoing connection:
             // randomly select public peer and try to connect if we do not
             // yet have an outgoing connection to it
-
             peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
             peers[i].isIncommingConnection = FALSE;
 
@@ -861,7 +861,6 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 {
                     if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
                     {
-                        peers[i].reset();
                         peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
 
                         if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
@@ -890,7 +889,6 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             // accept connections if peer list is not static
             if (!listOfPeersIsStatic)
             {
-                peers[i].reset();
                 peers[i].isIncommingConnection = TRUE;
                 peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
 
