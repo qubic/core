@@ -18,6 +18,7 @@
       <Filter>edk2_mdepkg</Filter>
     </ClInclude>
     <ClInclude Include="sleep.h" />
+    <ClInclude Include="processor.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="edk2_mdepkg\Library\BaseLib\LongJump.c">

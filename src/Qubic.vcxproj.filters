@@ -250,6 +250,12 @@
     <ClInclude Include="contracts\TestExampleD.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="platform\concurrency_impl.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\custom_mining.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

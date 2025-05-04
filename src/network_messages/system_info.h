@@ -35,7 +35,14 @@ struct RespondSystemInfo
     // Entity balances less or euqal this value will be burned if number of entites rises to 75% of spectrum capacity.
     // Starts to be meaningful if >50% of spectrum is filled but may still change after that.
     unsigned long long currentEntityBalanceDustThreshold;
+
+    unsigned int targetTickVoteSignature;
+    unsigned long long _reserve0;
+    unsigned long long _reserve1;
+    unsigned long long _reserve2;
+    unsigned long long _reserve3;
+    unsigned long long _reserve4;
 };
 #pragma pack(pop)
 
-static_assert(sizeof(RespondSystemInfo) == (2 + 2 + 4 + 4 + 4) + (2 + 1 + 1 + 1 + 1 + 1 + 1) + (4 + 4) + (32 + 4) + 16, "Something is wrong with the struct size of RespondSystemInfo.");
+static_assert(sizeof(RespondSystemInfo) == 128, "Something is wrong with the struct size of RespondSystemInfo.");

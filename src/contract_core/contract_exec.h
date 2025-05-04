@@ -206,13 +206,13 @@ static void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnor
         contractLocalsStackLockWaitingCountMax = waitingCount;
 
     int i = stacksToIgnore;
-    while (TRY_ACQUIRE(contractLocalsStackLock[i]) == false)
+    BEGIN_WAIT_WHILE(TRY_ACQUIRE(contractLocalsStackLock[i]) == false)
     {
-        _mm_pause();
         ++i;
         if (i == NUMBER_OF_CONTRACT_EXECUTION_BUFFERS)
             i = stacksToIgnore;
     }
+    END_WAIT_WHILE();
 
     _InterlockedDecrement(&contractLocalsStackLockWaitingCount);
 
@@ -411,7 +411,7 @@ void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int cont
     {
         // Entry point is user function (running in request processor)
         // -> Default case: either get lock immediately or retry as long as no callback is running
-        while (!contractStateLock[contractIndex].tryAcquireRead())
+        BEGIN_WAIT_WHILE(!contractStateLock[contractIndex].tryAcquireRead())
         {
             if (contractCallbacksRunning != NoContractCallback)
             {
@@ -421,8 +421,8 @@ void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int cont
                 contractLocalsStack[_stackIndex].free();
                 __qpiAbort(ContractErrorStoppedToResolveDeadlock);
             }
-            _mm_pause();
         }
+        END_WAIT_WHILE();
         rollbackInfo->type = ContractRollbackInfo::ContractStateReadLock;
     }
     else
@@ -826,7 +826,11 @@ private:
         if (!contractSystemProcedures[_currentContractIndex][systemProcId])
             return;
 
-        // reserve resources for this processor (may block)
+        // reserve stack for this processor (may block), needed even if there are no locals, because procedure may call
+        // functions / procedures / notifications that create locals etc.
+        acquireContractLocalsStack(_stackIndex);
+
+        // acquire state for writing (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
         const unsigned long long startTick = __rdtsc();
@@ -839,8 +843,7 @@ private:
         }
         else
         {
-            // locals required: reserve stack and use stack (should not block because stack 0 is reserved for procedures)
-            acquireContractLocalsStack(_stackIndex);
+            // locals required: use stack (should not block because stack 0 is reserved for procedures)
             char* localsBuffer = contractLocalsStack[_stackIndex].allocate(localsSize);
             if (!localsBuffer)
                 __qpiAbort(ContractErrorAllocLocalsFailed);
@@ -849,16 +852,18 @@ private:
             // call system proc
             contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], input, output, localsBuffer);
 
-            // free data on stack and release stack
+            // free data on stack
             contractLocalsStack[_stackIndex].free();
             ASSERT(contractLocalsStack[_stackIndex].size() == 0);
-            releaseContractLocalsStack(_stackIndex);
         }
         _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
         contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
+
+        // release stack
+        releaseContractLocalsStack(_stackIndex);
     }
 };
 

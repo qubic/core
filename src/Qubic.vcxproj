@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -68,6 +68,7 @@
     <ClInclude Include="network_messages\common_response.h" />
     <ClInclude Include="network_messages\computors.h" />
     <ClInclude Include="network_messages\contract.h" />
+    <ClInclude Include="network_messages\custom_mining.h" />
     <ClInclude Include="network_messages\entity.h" />
     <ClInclude Include="network_messages\header.h" />
     <ClInclude Include="network_messages\logging.h" />
@@ -83,6 +84,7 @@
     <ClInclude Include="four_q.h" />
     <ClInclude Include="kangaroo_twelve.h" />
     <ClInclude Include="K12/kangaroo_twelve_xkcp.h" />
+    <ClInclude Include="platform\concurrency_impl.h" />
     <ClInclude Include="platform\custom_stack.h" />
     <ClInclude Include="platform\debugging.h" />
     <ClInclude Include="platform\file_io.h" />
@@ -93,6 +95,7 @@
     <ClInclude Include="platform\stack_size_tracker.h" />
     <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="platform\global_var.h" />
+    <ClInclude Include="platform\virtual_memory.h" />
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />
