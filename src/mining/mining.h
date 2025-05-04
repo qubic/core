@@ -55,7 +55,6 @@ struct CustomMiningTask
     unsigned long long target; // Pool difficulty
     unsigned long long height; // Block height
     unsigned char seed[32]; // Seed hash for XMR
-    unsigned int extraNonce;
 };
 
 struct CustomMiningSolution
