@@ -256,19 +256,66 @@ void computeRev(
 
 static unsigned long long customMiningScoreBuffer[NUMBER_OF_COMPUTORS];
 void computeRevWithCustomMining(
-    const unsigned long long* oldScore,
+    const unsigned long long* txScore,
+    const unsigned long long* voteCount,
     const unsigned long long* customMiningSharesCount,
     unsigned long long* oldRev,
     unsigned long long* customMiningRev)
 {
-    // Old score
-    computeRev(oldScore, oldRev);
+    // Revenue of custom mining shares combination
+    // Formula: oldScore =  vote_count * tx
+    for (unsigned short i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        unsigned long long vote_count = voteCount[i];
+        if (vote_count != 0)
+        {
+            unsigned long long final_score = vote_count * txScore[i];
+            if ((final_score / vote_count) != txScore[i]) // detect overflow
+            {
+                customMiningScoreBuffer[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+            }
+            else
+            {
+                customMiningScoreBuffer[i] = final_score;
+            }
+        }
+        else
+        {
+            customMiningScoreBuffer[i] = 0;
+        }
+    }
+    computeRev(customMiningScoreBuffer, customMiningRev);
 
     // Revenue of custom mining shares combination
-    // Formula: newScore =  vote_count * tx * customMiningShare = revenueOldScore * customMiningShare
-    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    // Formula: newScore =  vote_count * tx * customMiningShare
+    for (unsigned short i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        customMiningScoreBuffer[computorIndex] = oldScore[computorIndex] * customMiningSharesCount[computorIndex];
+        unsigned long long vote_count = voteCount[i];
+        unsigned long long custom_mining_share_count = customMiningSharesCount[i];
+        if (vote_count != 0 && custom_mining_share_count != 0)
+        {
+            unsigned long long final_score0 = vote_count * txScore[i];
+            if ((final_score0 / vote_count) != txScore[i]) // detect overflow
+            {
+                customMiningScoreBuffer[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+            }
+            else
+            {
+                unsigned long long final_score1 = final_score0 * custom_mining_share_count;
+                if ((final_score1 / custom_mining_share_count) != final_score0) // detect overflow
+                {
+                    customMiningScoreBuffer[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+                }
+                else
+                {
+                    customMiningScoreBuffer[i] = final_score1;
+                }
+            }
+        }
+        else
+        {
+            customMiningScoreBuffer[i] = 0;
+        }
     }
     computeRev(customMiningScoreBuffer, customMiningRev);
 }

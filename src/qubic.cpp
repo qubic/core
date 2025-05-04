@@ -210,7 +210,8 @@ static CustomMiningSharesCounter gCustomMiningSharesCounter;
 
 struct revenueScore
 {
-    unsigned long long oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
+    unsigned long long txScore[NUMBER_OF_COMPUTORS];    // revenue score with txs
+    unsigned long long voteCount[NUMBER_OF_COMPUTORS];  // vote count
     unsigned long long customMiningSharesCount[NUMBER_OF_COMPUTORS]; // the shares count with custom mining
     unsigned long long currentRev[NUMBER_OF_COMPUTORS]; // old revenue
     unsigned long long customMiningRev[NUMBER_OF_COMPUTORS]; // reveneu with custom mining
@@ -3371,41 +3372,52 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
+        // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution and old score
+        {
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                gRevenueScoreWithCustomMining.voteCount[i] = voteCounter.getVoteCount(i);
+                gRevenueScoreWithCustomMining.txScore[i] = revenueScore[i];
+                gRevenueScoreWithCustomMining.customMiningSharesCount[i] = gCustomMiningSharesCounter.getSharesCount(i);
+            }
+            computeRevWithCustomMining(
+                gRevenueScoreWithCustomMining.txScore,
+                gRevenueScoreWithCustomMining.voteCount,
+                gRevenueScoreWithCustomMining.customMiningSharesCount,
+                gRevenueScoreWithCustomMining.currentRev,
+                gRevenueScoreWithCustomMining.customMiningRev);
+        }
+
+
         // Merge votecount to final rev score
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
             unsigned long long vote_count = voteCounter.getVoteCount(i);
-            if (vote_count != 0)
+            unsigned long long custom_mining_share_count = gCustomMiningSharesCounter.getSharesCount(i);
+            if (vote_count != 0 && custom_mining_share_count != 0)
             {
-                unsigned long long final_score = vote_count * revenueScore[i];
-                if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+                unsigned long long final_score0 = vote_count * revenueScore[i];
+                if ((final_score0 / vote_count) != revenueScore[i]) // detect overflow
                 {
                     revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
                 }
                 else
                 {
-                    revenueScore[i] = final_score;
+                    unsigned long long final_score1 = custom_mining_share_count * final_score0;
+                    if ((final_score1 / custom_mining_share_count) != final_score0) // detect overflow
+                    {
+                        revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+                    }
+                    else
+                    {
+                        revenueScore[i] = final_score1;
+                    }
                 }
             }
             else
             {
                 revenueScore[i] = 0;
             }
-        }
-
-        // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution and old score
-        {
-            bs->CopyMem(gRevenueScoreWithCustomMining.oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining.oldFinalScore));
-            // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                gRevenueScoreWithCustomMining.customMiningSharesCount[i] = gCustomMiningSharesCounter.getSharesCount(i);
-            }
-            computeRevWithCustomMining(
-                gRevenueScoreWithCustomMining.oldFinalScore,
-                gRevenueScoreWithCustomMining.customMiningSharesCount,
-                gRevenueScoreWithCustomMining.currentRev,
-                gRevenueScoreWithCustomMining.customMiningRev);
         }
 
 
