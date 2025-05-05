@@ -2232,6 +2232,10 @@ static void contractProcessor(void*)
     }
     break;
     }
+
+    // Set state to inactive, signaling end of contractProcessor() execution before contractProcessorShutdownCallback()
+    // for reducing waiting time in tick processor.
+    contractProcessorState = 0;
 }
 
 // Notify dest of incoming transfer if dest is a contract.
@@ -5102,11 +5106,22 @@ static void shutdownCallback(EFI_EVENT Event, void* Context)
     closeEvent(Event);
 }
 
+// Required on timeout of callback processor
 static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 {
     closeEvent(Event);
 
-    contractProcessorState = 0;
+    // Timeout is disabled so far, because timeout recovery is not implemented yet.
+    // So `contractProcessorState = 0` has been moved to the end of contractProcessor() to prevent unnecessary delay
+    // in the tick processor, waiting for contract processor to finish.
+    //contractProcessorState = 0;
+
+    // TODO: If timeout is enabled, a solution is needed that properly handles both cases, regular end and timeout of
+    // contractProcessor(). It also must prevent race conditions between different contract processor runs, because
+    // the time between leaving contractProcessor() and entering contractProcessorShutdownCallback() is very high.
+    // So the shutdown callback may be executed during the following contract processor run.
+    // The reason of the delay probably is that the event callback execution is triggered by a timer. Test results
+    // suggest that the timer interval is 0.1 second.
 }
 
 // directory: source directory to load the file. Default: NULL - load from root dir /
