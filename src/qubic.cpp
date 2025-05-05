@@ -3210,11 +3210,13 @@ static void resetCustomMining()
     gCustomMiningSharesCounter.init();
     bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
     gCustomMiningCountOverflow = 0;
+    gCustomMiningValidSharesCount = 0;
+    gCustomMiningInvalidSharesCount = 0;
 
     ACQUIRE(gSystemCustomMiningSolutionLock);
-    setMem(gSystemCustomMiningSolutionCount, 0, sizeof(gSystemCustomMiningSolutionCount));
-    setMem(gSystemCustomMiningDuplicatedSolutionCount, 0, sizeof(gSystemCustomMiningSolutionCount));
-    setMem(gSystemCustomMiningSolutionOFCount, 0, sizeof(gSystemCustomMiningSolutionOFCount));
+    setMem(gSystemCustomMiningSolutionCount, sizeof(gSystemCustomMiningSolutionCount), 0);
+    setMem(gSystemCustomMiningDuplicatedSolutionCount, sizeof(gSystemCustomMiningSolutionCount), 0);
+    setMem(gSystemCustomMiningSolutionOFCount, sizeof(gSystemCustomMiningSolutionOFCount), 0);
     for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
     {
         gSystemCustomMiningSolution[i].reset();
