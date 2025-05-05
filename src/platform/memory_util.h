@@ -18,6 +18,10 @@ static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long 
         printf("Memory allocation failed for %ls on line %u\n", name, LINE);
         return false;
     }
+
+    // Zero out allocated memory
+    setMem(*buffer, size, 0);
+
     return true;
 }
 

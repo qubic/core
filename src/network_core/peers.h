@@ -7,6 +7,7 @@
 #include <lib/platform_efi/uefi.h>
 #include "platform/random.h"
 #include "platform/concurrency.h"
+#include "platform/profiling.h"
 
 #include "network_messages/common_def.h"
 #include "network_messages/header.h"
@@ -124,6 +125,7 @@ static bool isWhiteListPeer(unsigned char address[4])
 
 static void closePeer(Peer* peer)
 {
+    PROFILE_SCOPE();
     ASSERT(isMainProcessor());
     if (((unsigned long long)peer->tcp4Protocol) > 1)
     {
@@ -166,6 +168,8 @@ static void closePeer(Peer* peer)
 // Add message to sending buffer of specific peer, can only called from main thread (not thread-safe).
 static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 {
+    PROFILE_SCOPE();
+
     // The sending buffer may queue multiple messages, each of which may need to transmitted in many small packets.
     if (peer->tcp4Protocol && peer->isConnectedAccepted && !peer->isClosing)
     {
@@ -200,6 +204,7 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 // Add message to sending buffer of random peer, can only called from main thread (not thread-safe).
 static void pushToAny(RequestResponseHeader* requestResponseHeader)
 {
+    PROFILE_SCOPE();
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
     unsigned short numberOfSuitablePeers = 0;
     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
@@ -218,6 +223,7 @@ static void pushToAny(RequestResponseHeader* requestResponseHeader)
 // Add message to sending buffer of some random peers, can only called from main thread (not thread-safe).
 static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
 {
+    PROFILE_SCOPE();
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
     unsigned short numberOfSuitablePeers = 0;
     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
@@ -239,6 +245,8 @@ static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
 {
+    PROFILE_SCOPE();
+
     ACQUIRE(responseQueueHeadLock);
 
     if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + responseHeader->size() < responseQueueBufferTail)
@@ -265,6 +273,8 @@ static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
 {
+    PROFILE_SCOPE();
+
     ACQUIRE(responseQueueHeadLock);
 
     if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + sizeof(RequestResponseHeader) + dataSize < responseQueueBufferTail)
@@ -434,6 +444,8 @@ static void addPublicPeer(const IPv4Address& address)
 
 static bool peerConnectionNewlyEstablished(unsigned int i)
 {
+    PROFILE_SCOPE();
+
     // handle new connections (called in main loop)
     if (((unsigned long long)peers[i].tcp4Protocol)
         && peers[i].connectAcceptToken.CompletionToken.Status != -1)
@@ -546,6 +558,8 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
 // if it receives a completed packet, it will copy the packet to requestQueueElements to process later in requestProcessors
 static void processReceivedData(unsigned int i, unsigned int salt)
 {
+    PROFILE_SCOPE();
+
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         if (peers[i].receiveToken.CompletionToken.Status != -1)
@@ -659,6 +673,8 @@ static void processReceivedData(unsigned int i, unsigned int salt)
 // Signaling the system to receive data from this connection
 static void receiveData(unsigned int i, unsigned int salt)
 {
+    PROFILE_SCOPE();
+
     EFI_STATUS status;
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
@@ -705,6 +721,8 @@ static void receiveData(unsigned int i, unsigned int salt)
 // Checking the status last queued data for transmitting
 static void processTransmittedData(unsigned int i, unsigned int salt)
 {
+    PROFILE_SCOPE();
+
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         // check if transmission is completed
@@ -737,6 +755,8 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
 // Enqueue data for transmitting
 static void transmitData(unsigned int i, unsigned int salt)
 {
+    PROFILE_SCOPE();
+
     EFI_STATUS status;
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
@@ -771,6 +791,7 @@ static void transmitData(unsigned int i, unsigned int salt)
 
 static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
 {
+    PROFILE_SCOPE();
 
     // poll to receive incoming data and transmit outgoing segments
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
@@ -785,6 +806,8 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
 
 static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 {
+    PROFILE_SCOPE();
+
     EFI_STATUS status;
     if (!peers[i].tcp4Protocol)
     {
