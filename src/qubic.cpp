@@ -213,8 +213,11 @@ struct revenueScore
     unsigned long long txScore[NUMBER_OF_COMPUTORS];    // revenue score with txs
     unsigned long long voteCount[NUMBER_OF_COMPUTORS];  // vote count
     unsigned long long customMiningSharesCount[NUMBER_OF_COMPUTORS]; // the shares count with custom mining
+    unsigned long long currentIntermediateScore[NUMBER_OF_COMPUTORS];
     unsigned long long currentRev[NUMBER_OF_COMPUTORS]; // old revenue
+    unsigned long long customMiningIntermediateScore[NUMBER_OF_COMPUTORS];
     unsigned long long customMiningRev[NUMBER_OF_COMPUTORS]; // reveneu with custom mining
+    unsigned long long customMiningRevScale[NUMBER_OF_COMPUTORS];
 } gRevenueScoreWithCustomMining;
 
 
@@ -3386,8 +3389,11 @@ static void endEpoch()
                 gRevenueScoreWithCustomMining.txScore,
                 gRevenueScoreWithCustomMining.voteCount,
                 gRevenueScoreWithCustomMining.customMiningSharesCount,
+                gRevenueScoreWithCustomMining.currentIntermediateScore,
                 gRevenueScoreWithCustomMining.currentRev,
-                gRevenueScoreWithCustomMining.customMiningRev);
+                gRevenueScoreWithCustomMining.customMiningIntermediateScore,
+                gRevenueScoreWithCustomMining.customMiningRev,
+                gRevenueScoreWithCustomMining.customMiningRevScale);
         }
 
 
