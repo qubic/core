@@ -1721,7 +1721,7 @@ static void checkAndSwitchMiningPhase()
 static void beginCustomMiningPhase()
 {
     ACQUIRE(gSystemCustomMiningSolutionLock);
-    setMem(gSystemCustomMiningSolutionCount, 0, sizeof(gSystemCustomMiningSolutionCount));
+    setMem(gSystemCustomMiningSolutionCount, sizeof(gSystemCustomMiningSolutionCount), 0);
     for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
     {
         gSystemCustomMiningSolution[i].reset();
