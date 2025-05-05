@@ -379,7 +379,6 @@ protected:
     id QCAP_ISSUER;
     id reinvestingAddress;
     id adminAddress;
-    Array<id, QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES> bannedAddress;
     Array<id, 1048576> muslim;
     uint64 proposalCreateFund, reinvestingFund, totalNotMSRevenue, totalMuslimRevenue, fundForBurn, totalHistoryRevenue, rasiedFundByQcap, lastRoundPriceOfQcap, revenueByQearn;
     Array<uint64, 65536> revenueInQcapPerEpoch;
