@@ -1196,8 +1196,8 @@ int customMiningInitTaskPartitions()
         // Currently the task is partitioned evenly
         gTaskPartition[i].firstComputorIdx = i * NUMBER_OF_COMPUTORS / NUMBER_OF_TASK_PARTITIONS;
         gTaskPartition[i].lastComputorIdx = gTaskPartition[i].firstComputorIdx + NUMBER_OF_COMPUTORS / NUMBER_OF_TASK_PARTITIONS - 1;
-
-        gTaskPartition[i].domainSize = 0xFFFFFFFFU / (gTaskPartition[i].lastComputorIdx - gTaskPartition[i].firstComputorIdx + 1);
+        ASSERT(gTaskPartition[i].lastComputorIdx > gTaskPartition[i].firstComputorIdx + 1);
+        gTaskPartition[i].domainSize = (unsigned int)((1ULL << 32) / ((unsigned long long)gTaskPartition[i].lastComputorIdx - gTaskPartition[i].firstComputorIdx + 1));
     }
     return 0;
 }
