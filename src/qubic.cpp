@@ -542,7 +542,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
                      // Compute the gamming key to get the sub-type of message
                     unsigned char sharedKeyAndGammingNonce[64];
-                    bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                    setMem(sharedKeyAndGammingNonce, 32, 0);
                     copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                     unsigned char gammingKey[32];
                     KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
@@ -573,7 +573,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             customMiningMessageCounters[i]++;
                             // Compute the gamming key to get the sub-type of message
                             unsigned char sharedKeyAndGammingNonce[64];
-                            bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                            setMem(sharedKeyAndGammingNonce, 32, 0);
                             copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                             unsigned char gammingKey[32];
                             KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
@@ -662,7 +662,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 else
                                 {
                                     // it is an un-encrypted message, all zeros for first 32 bytes sharedKey
-                                    bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                                    setMem(sharedKeyAndGammingNonce, 32, 0);
                                 }
                             }
                             else
@@ -679,7 +679,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                                 unsigned char gammingKey[32];
                                 KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
-                                bs->SetMem(sharedKeyAndGammingNonce, 32, 0); // Zero the shared key in case stack content could be leaked later
+                                setMem(sharedKeyAndGammingNonce, 32, 0); // Zero the shared key in case stack content could be leaked later
                                 unsigned char gamma[MAX_MESSAGE_PAYLOAD_SIZE];
                                 KangarooTwelve(gammingKey, sizeof(gammingKey), gamma, messagePayloadSize);
                                 for (unsigned int j = 0; j < messagePayloadSize; j++)
@@ -1227,7 +1227,7 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
     }
     else
     {
-        bs->SetMem(&currentTickInfo, sizeof(CurrentTickInfo), 0);
+        setMem(&currentTickInfo, sizeof(CurrentTickInfo), 0);
     }
 
     enqueueResponse(peer, sizeof(currentTickInfo), RESPOND_CURRENT_TICK_INFO, header->dejavu(), &currentTickInfo);
@@ -1251,7 +1251,7 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
         respondedEntity.entity.latestIncomingTransferTick = 0;
         respondedEntity.entity.latestOutgoingTransferTick = 0;
 
-        bs->SetMem(respondedEntity.siblings, sizeof(respondedEntity.siblings), 0);
+        setMem(respondedEntity.siblings, sizeof(respondedEntity.siblings), 0);
     }
     else
     {
@@ -1275,8 +1275,8 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
     if (request->contractIndex >= contractCount
         || system.epoch >= contractDescriptions[request->contractIndex].constructionEpoch)
     {
-        bs->SetMem(respondContractIPO.publicKeys, sizeof(respondContractIPO.publicKeys), 0);
-        bs->SetMem(respondContractIPO.prices, sizeof(respondContractIPO.prices), 0);
+        setMem(respondContractIPO.publicKeys, sizeof(respondContractIPO.publicKeys), 0);
+        setMem(respondContractIPO.prices, sizeof(respondContractIPO.prices), 0);
     }
     else
     {
@@ -2976,7 +2976,7 @@ static void processTick(unsigned long long processorNumber)
                         broadcastedFutureTickData.tickData.transactionDigests[j] = m256i::zero();
                     }
 
-                    bs->SetMem(broadcastedFutureTickData.tickData.contractFees, sizeof(broadcastedFutureTickData.tickData.contractFees), 0);
+                    setMem(broadcastedFutureTickData.tickData.contractFees, sizeof(broadcastedFutureTickData.tickData.contractFees), 0);
 
                     unsigned char digest[32];
                     KangarooTwelve(&broadcastedFutureTickData.tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
@@ -3171,7 +3171,7 @@ static void processTick(unsigned long long processorNumber)
 
             // reset the phase counter
             ACQUIRE(gCustomMiningSharesCountLock);
-            bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+            setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
             RELEASE(gCustomMiningSharesCountLock);
         }
 
@@ -3211,7 +3211,7 @@ static void processTick(unsigned long long processorNumber)
 static void resetCustomMining()
 {
     gCustomMiningSharesCounter.init();
-    bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+    setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
     gCustomMiningCountOverflow = 0;
     gSystemCustomMiningSolutionCount = 0;
     gSystemCustomMiningDuplicatedSolutionCount = 0;
@@ -3248,7 +3248,7 @@ static void beginEpoch()
     {
         broadcastedComputors.computors.publicKeys[i].setRandomValue();
     }
-    bs->SetMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
+    setMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
 
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
@@ -3271,8 +3271,8 @@ static void beginEpoch()
         ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
     }
 
-    bs->SetMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
-    bs->SetMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
+    setMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
+    setMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
 
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
@@ -3288,13 +3288,13 @@ static void beginEpoch()
 
     score->initMemory();
     score->resetTaskQueue();
-    bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
-    bs->SetMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
-    bs->SetMem((void*)minerScores, sizeof(minerScores), 0);
+    setMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
+    setMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
+    setMem((void*)minerScores, sizeof(minerScores), 0);
     numberOfMiners = NUMBER_OF_COMPUTORS;
-    bs->SetMem(competitorPublicKeys, sizeof(competitorPublicKeys), 0);
-    bs->SetMem(competitorScores, sizeof(competitorScores), 0);
-    bs->SetMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
+    setMem(competitorPublicKeys, sizeof(competitorPublicKeys), 0);
+    setMem(competitorScores, sizeof(competitorScores), 0);
+    setMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
 
@@ -3304,8 +3304,8 @@ static void beginEpoch()
 
     system.latestOperatorNonce = 0;
     system.numberOfSolutions = 0;
-    bs->SetMem(system.solutions, sizeof(system.solutions), 0);
-    bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
+    setMem(system.solutions, sizeof(system.solutions), 0);
+    setMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
     resetCustomMining();
 
@@ -3356,7 +3356,7 @@ static void endEpoch()
     {
         // Compute revenue scores of computors
         unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
-        bs->SetMem(revenueScore, sizeof(revenueScore), 0);
+        setMem(revenueScore, sizeof(revenueScore), 0);
         for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
         {
             ts.tickData.acquireLock();
@@ -3416,7 +3416,7 @@ static void endEpoch()
 
         // Sort revenue scores to get lowest score of quorum
         unsigned long long sortedRevenueScore[QUORUM + 1];
-        bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+        setMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
         for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
@@ -4821,7 +4821,7 @@ static void prepareNextTickTransactions()
 
     // unknownTransactions is set to 1 if a transaction is missing in the local storage
     unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
-    bs->SetMem(unknownTransactions, sizeof(unknownTransactions), 0);
+    setMem(unknownTransactions, sizeof(unknownTransactions), 0);
     const auto* tsNextTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(nextTickIndex);
     
     // This function maybe called multiple times per tick due to lack of data (txs or votes)
@@ -4954,7 +4954,7 @@ static void prepareNextTickTransactions()
         // We check if the last tickTransactionRequest it already sent
         if(requestedTickTransactions.requestedTickTransactions.tick == 0){
             // Initialize transactionFlags to one so that by default we do not request any transaction
-            bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0xff);
+            setMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0xff);
             for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
             {
                 if (unknownTransactions[i >> 6] & (1ULL << (i & 63)))
@@ -5719,7 +5719,7 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
     {
         if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
         {
-            bs->SetMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+            setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
         }
         else
         {
@@ -5839,11 +5839,11 @@ static bool initialize()
 
     initTimeStampCounter();
 
-    bs->SetMem(&tickTicks, sizeof(tickTicks), 0);
+    setMem(&tickTicks, sizeof(tickTicks), 0);
 
-    bs->SetMem(processors, sizeof(processors), 0);
-    bs->SetMem(peers, sizeof(peers), 0);
-    bs->SetMem(publicPeers, sizeof(publicPeers), 0);
+    setMem(processors, sizeof(processors), 0);
+    setMem(peers, sizeof(peers), 0);
+    setMem(publicPeers, sizeof(publicPeers), 0);
 
     requestedComputors.header.setSize<sizeof(requestedComputors)>();
     requestedComputors.header.setType(RequestComputors::type);
@@ -5875,7 +5875,7 @@ static bool initialize()
         }
         
 
-        bs->SetMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
+        setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
 
 
         if (!initSpectrum())
@@ -5903,7 +5903,7 @@ static bool initialize()
         }
         setMem(score, sizeof(*score), 0);
 
-        bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
+        setMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
         if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags, __LINE__))
         {
             return false;
@@ -5924,7 +5924,7 @@ static bool initialize()
 #endif
 
         logToConsole(L"Loading system file ...");
-        bs->SetMem(&system, sizeof(system), 0);
+        setMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
         system.version = VERSION_B;
         system.epoch = EPOCH;
@@ -6062,8 +6062,8 @@ static bool initialize()
     {
         return false;
     }
-    bs->SetMem((void*)dejavu0, 536870912, 0);
-    bs->SetMem((void*)dejavu1, 536870912, 0);
+    setMem((void*)dejavu0, 536870912, 0);
+    setMem((void*)dejavu1, 536870912, 0);
 
     if ((!allocPoolWithErrorLog(L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer, __LINE__)) ||
         (!allocPoolWithErrorLog(L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer, __LINE__)))
@@ -7394,7 +7394,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
-                        bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
+                        setMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
                         const Tick* tsCompTicks = ts.ticks.getByTickInCurrentEpoch(system.tick);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
@@ -7411,7 +7411,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
-                        bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
+                        setMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
                         const Tick* tsCompTicks = ts.ticks.getByTickInCurrentEpoch(system.tick + 1);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {

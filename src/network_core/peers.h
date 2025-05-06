@@ -627,7 +627,7 @@ static void processReceivedData(unsigned int i, unsigned int salt)
                                         {
                                             unsigned long long* tmp = dejavu1;
                                             dejavu1 = dejavu0;
-                                            bs->SetMem(dejavu0 = tmp, 536870912, 0);
+                                            setMem(dejavu0 = tmp, 536870912, 0);
                                             dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
                                         }
                                     }
