@@ -3511,11 +3511,8 @@ static void endEpoch()
 
             // Generate computor revenue
             increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
-            if (revenue)
-            {
-                const QuTransfer quTransfer = { m256i::zero(), broadcastedComputors.computors.publicKeys[computorIndex], revenue };
-                logger.logQuTransfer(quTransfer);
-            }
+            const QuTransfer quTransfer = { m256i::zero(), broadcastedComputors.computors.publicKeys[computorIndex], revenue };
+            logger.logQuTransfer(quTransfer);
         }
         emissionDist = nullptr; qpiContext.freeBuffer(); // Free buffer holding revenue donation table, because we don't need it anymore
 
