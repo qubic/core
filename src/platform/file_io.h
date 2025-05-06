@@ -1164,7 +1164,7 @@ static bool initFilesystem()
             {
                 logStatusToConsole(L"EFI_BOOT_SERVICES.OpenProtocol() fails", status, __LINE__);
 
-                bs->FreePool(handles);
+                freePool(handles);
 
                 return false;
             }
@@ -1175,7 +1175,7 @@ static bool initFilesystem()
                     logStatusToConsole(L"EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.OpenVolume() fails", status, __LINE__);
 
                     bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
-                    bs->FreePool(handles);
+                    freePool(handles);
 
                     return false;
                 }
@@ -1189,7 +1189,7 @@ static bool initFilesystem()
                         logStatusToConsole(L"EFI_FILE_PROTOCOL.GetInfo() fails", status, __LINE__);
 
                         bs->CloseProtocol(handles[i], &simpleFileSystemProtocolGuid, ih, NULL);
-                        bs->FreePool(handles);
+                        freePool(handles);
 
                         return false;
                     }
@@ -1235,7 +1235,7 @@ static bool initFilesystem()
             }
         }
 
-        bs->FreePool(handles);
+        freePool(handles);
     }
 
     if (!simpleFileSystemProtocol)

@@ -210,7 +210,7 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
         else
         {
             // Add message to buffer
-            bs->CopyMem(&peer->dataToTransmit[peer->dataToTransmitSize], requestResponseHeader, requestResponseHeader->size());
+            copyMem(&peer->dataToTransmit[peer->dataToTransmitSize], requestResponseHeader, requestResponseHeader->size());
             peer->dataToTransmitSize += requestResponseHeader->size();
 
             _InterlockedIncrement64(&numberOfDisseminatedRequests);
@@ -297,7 +297,7 @@ static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
         ASSERT(responseQueueBufferHead + responseHeader->size() < RESPONSE_QUEUE_BUFFER_SIZE);
 
         responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
-        bs->CopyMem(&responseQueueBuffer[responseQueueBufferHead], responseHeader, responseHeader->size());
+        copyMem(&responseQueueBuffer[responseQueueBufferHead], responseHeader, responseHeader->size());
         responseQueueBufferHead += responseHeader->size();
         responseQueueElements[responseQueueElementHead].peer = peer;
         if (responseQueueBufferHead > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
@@ -409,7 +409,7 @@ static void forgetPublicPeer(const IPv4Address& address)
         {
             if (i != --numberOfPublicPeers)
             {
-                bs->CopyMem(&publicPeers[i], &publicPeers[numberOfPublicPeers], sizeof(PublicPeer));
+                copyMem(&publicPeers[i], &publicPeers[numberOfPublicPeers], sizeof(PublicPeer));
             }
 
             break;
@@ -663,7 +663,7 @@ static void processReceivedData(unsigned int i, unsigned int salt)
                                         ASSERT(requestQueueBufferHead + requestResponseHeader->size() < REQUEST_QUEUE_BUFFER_SIZE);
 
                                         requestQueueElements[requestQueueElementHead].offset = requestQueueBufferHead;
-                                        bs->CopyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
+                                        copyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
                                         requestQueueBufferHead += requestResponseHeader->size();
                                         requestQueueElements[requestQueueElementHead].peer = &peers[i];
                                         if (requestQueueBufferHead > REQUEST_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
@@ -677,7 +677,7 @@ static void processReceivedData(unsigned int i, unsigned int salt)
                                         {
                                             unsigned long long* tmp = dejavu1;
                                             dejavu1 = dejavu0;
-                                            bs->SetMem(dejavu0 = tmp, 536870912, 0);
+                                            setMem(dejavu0 = tmp, 536870912, 0);
                                             dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
                                         }
                                     }
@@ -693,7 +693,7 @@ static void processReceivedData(unsigned int i, unsigned int salt)
                                     _InterlockedIncrement64(&numberOfDuplicateRequests);
                                 }
 
-                                bs->CopyMem(peers[i].receiveBuffer, ((char*)peers[i].receiveBuffer) + requestResponseHeader->size(), receivedDataSize -= requestResponseHeader->size());
+                                copyMem(peers[i].receiveBuffer, ((char*)peers[i].receiveBuffer) + requestResponseHeader->size(), receivedDataSize -= requestResponseHeader->size());
                                 peers[i].receiveData.FragmentTable[0].FragmentBuffer = ((char*)peers[i].receiveBuffer) + receivedDataSize;
 
                                 goto iteration;
@@ -801,7 +801,7 @@ static void transmitData(unsigned int i, unsigned int salt)
             else
             {
                 // initiate transmission
-                bs->CopyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
+                copyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
                 peers[i].dataToTransmitSize = 0;
                 if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
                 {
