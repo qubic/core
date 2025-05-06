@@ -861,7 +861,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             {
                 // Copy the sent tick to the tick storage
                 bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
-                peer->receivedTickData = request->tick.tick;
+                peer->lastActiveTick = request->tick.tick;
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -927,7 +927,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                             if (digest == targetNextTickDataDigest)
                             {
                                 bs->CopyMem(&td, &request->tickData, sizeof(TickData));
-                                peer->receivedTickData = request->tickData.tick;
+                                peer->lastActiveTick = request->tickData.tick;
                             }
                         }
                     }
@@ -956,7 +956,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                         else
                         {
                             bs->CopyMem(&td, &request->tickData, sizeof(TickData));
-                            peer->receivedTickData = request->tickData.tick;
+                            peer->lastActiveTick = request->tickData.tick;
                         }
                     }
                 }
