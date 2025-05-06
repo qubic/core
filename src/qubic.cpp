@@ -259,7 +259,6 @@ static bool saveCustomMiningRevenue(CHAR16* directory = NULL);
 #define PAUSE_BEFORE_CLEAR_MEMORY 0
 #endif
 
-unsigned int networkTick = 0;
 BroadcastFutureTickData broadcastedFutureTickData;
 
 static struct
@@ -1241,21 +1240,7 @@ static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* he
             && currentTickInfo.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
             && currentTickInfo.tick >= system.initialTick)
         {
-            // May have data race here, but it's acceptable
-            peer->latestTick = currentTickInfo.tick;
-            // Set isFullNode if ResponseCurrentTickInfo was received on outgoing connection
-            if (peer->address.u32)
-            {
-                for (unsigned int j = 0; j < numberOfPublicPeers; j++)
-                {
-                    if (peer->address == publicPeers[j].address)
-                    {
-                        publicPeers[j].isFullnode = true;
-
-                        break;
-                    }
-                }
-            }
+            // TODO: reserved handler for future use when we are able to verify CurrentTickInfo
         }
     }
 }
@@ -6275,10 +6260,6 @@ static void logInfo()
         {
             numberOfWaitingBytes += peers[i].dataToTransmitSize;
         }
-        if (peers[i].latestTick > networkTick)
-        {
-            networkTick = peers[i].latestTick;
-        }
     }
 
     unsigned int numberOfHandshakedPublicPeers = 0;
@@ -6362,8 +6343,7 @@ static void logInfo()
     appendNumber(message, tickDuration / frequency, FALSE);
     appendText(message, L".");
     appendNumber(message, (tickDuration % frequency) * 10 / frequency, FALSE);
-    appendText(message, L" s | Network Tick = ");
-    appendNumber(message, networkTick, FALSE);
+    appendText(message, L" s");
     
 
     if (consoleLoggingLevel < 2)
@@ -7386,7 +7366,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
 
                     // disconnect 25% of current connections that are not **active fullnode**
-                    for (unsigned int i = 0; i < numberOfSuitablePeers / 4; i++)
+                    for (unsigned short i = 0; i < numberOfSuitablePeers / 4; i++)
                     {
                         closePeer(&peers[suitablePeerIndices[random(numberOfSuitablePeers)]]);
                     }

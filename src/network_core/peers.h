@@ -56,11 +56,10 @@ struct Peer
     BOOLEAN isIncommingConnection;
 
     // Extra data to determine if this peer is a fullnode
-    unsigned int latestTick;
     unsigned int receivedTickData; // indicate the tick number that this peer transfer valid tick/vote data
     bool isFullNode() const
     {
-        return (latestTick >= system.tick - 100) && (receivedTickData >= system.tick - 100);
+        return (receivedTickData >= system.tick - 100);
     }
 
     // set handler to null and all params to false/zeroes
@@ -75,7 +74,6 @@ struct Peer
         isClosing = FALSE;
         isIncommingConnection = FALSE;
         dataToTransmitSize = 0;
-        latestTick = 0;
         receivedTickData = 0;
     }
 };
