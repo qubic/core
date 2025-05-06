@@ -543,7 +543,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                      // Compute the gamming key to get the sub-type of message
                     unsigned char sharedKeyAndGammingNonce[64];
                     bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
-                    bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                    copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                     unsigned char gammingKey[32];
                     KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
                     
@@ -574,7 +574,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                             // Compute the gamming key to get the sub-type of message
                             unsigned char sharedKeyAndGammingNonce[64];
                             bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
-                            bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                            copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                             unsigned char gammingKey[32];
                             KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
 
@@ -676,7 +676,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
                             if (ok)
                             {
-                                bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                                copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                                 unsigned char gammingKey[32];
                                 KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
                                 bs->SetMem(sharedKeyAndGammingNonce, 32, 0); // Zero the shared key in case stack content could be leaked later
@@ -778,7 +778,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
             }
 
             // Copy computor list
-            bs->CopyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+            copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
 
             // Update ownComputorIndices and minerPublicKeys
             if (request->computors.epoch == system.epoch)
@@ -867,7 +867,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             else
             {
                 // Copy the sent tick to the tick storage
-                bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
+                copyMem(tsTick, &request->tick, sizeof(Tick));
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -932,7 +932,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                             KangarooTwelve(&request->tickData, sizeof(TickData), digest, 32);
                             if (digest == targetNextTickDataDigest)
                             {
-                                bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                                copyMem(&td, &request->tickData, sizeof(TickData));
                             }
                         }
                     }
@@ -960,7 +960,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                         }
                         else
                         {
-                            bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                            copyMem(&td, &request->tickData, sizeof(TickData));
                         }
                     }
                 }
@@ -994,7 +994,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 if (((Transaction*)&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE])->tick < request->tick
                     && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                 {
-                    bs->CopyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
+                    copyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
                     KangarooTwelve(request, transactionSize, &computorPendingTransactionDigests[computorIndex * offset * 32ULL], 32);
                 }
 
@@ -1014,7 +1014,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                     if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
                         && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                     {
-                        bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
+                        copyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
                         KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
                     }
 
@@ -1039,7 +1039,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                             if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                             {
                                 tsReqTickTransactionOffsets[i] = ts.nextTickTransactionOffset;
-                                bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
+                                copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
                                 ts.nextTickTransactionOffset += transactionSize;
                             }
                         }
@@ -1255,7 +1255,7 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
     }
     else
     {
-        bs->CopyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
+        copyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
         ACQUIRE(spectrumLock);
         getSiblings<SPECTRUM_DEPTH>(respondedEntity.spectrumIndex, spectrumDigests, respondedEntity.siblings);
         RELEASE(spectrumLock);
@@ -1282,8 +1282,8 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
     {
         contractStateLock[request->contractIndex].acquireRead();
         IPO* ipo = (IPO*)contractStates[request->contractIndex];
-        bs->CopyMem(respondContractIPO.publicKeys, ipo->publicKeys, sizeof(respondContractIPO.publicKeys));
-        bs->CopyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
+        copyMem(respondContractIPO.publicKeys, ipo->publicKeys, sizeof(respondContractIPO.publicKeys));
+        copyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
         contractStateLock[request->contractIndex].releaseRead();
     }
 
@@ -1815,7 +1815,7 @@ static void requestProcessor(void* ProcedureArgument)
                     {
                         {
                             RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
-                            bs->CopyMem(header, requestHeader, requestHeader->size());
+                            copyMem(header, requestHeader, requestHeader->size());
                             requestQueueBufferTail += requestHeader->size();
                         }
 
@@ -1858,7 +1858,7 @@ static void requestProcessor(void* ProcedureArgument)
 
                 {
                     RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
-                    bs->CopyMem(header, requestHeader, requestHeader->size());
+                    copyMem(header, requestHeader, requestHeader->size());
                     requestQueueBufferTail += requestHeader->size();
                 }
 
@@ -2730,7 +2730,7 @@ static void processTick(unsigned long long processorNumber)
 
     unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     ts.tickData.acquireLock();
-    bs->CopyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
+    copyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
     ts.tickData.releaseLock();
     unsigned long long solutionProcessStartTick = __rdtsc(); // for tracking the time processing solutions
     if (nextTickData.epoch == system.epoch)
@@ -2914,7 +2914,7 @@ static void processTick(unsigned long long processorNumber)
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
                                     broadcastedFutureTickData.tickData.transactionDigests[j] = &computorPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
                                     j++;
                                     ts.nextTickTransactionOffset += transactionSize;
@@ -2957,7 +2957,7 @@ static void processTick(unsigned long long processorNumber)
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
                                     broadcastedFutureTickData.tickData.transactionDigests[j] = &entityPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
                                     j++;
                                     ts.nextTickTransactionOffset += transactionSize;
@@ -3400,7 +3400,7 @@ static void endEpoch()
 
         // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution and old score
         {
-            bs->CopyMem(gRevenueScoreWithCustomMining.oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining.oldFinalScore));
+            copyMem(gRevenueScoreWithCustomMining.oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining.oldFinalScore));
             // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
@@ -4885,7 +4885,7 @@ static void prepareNextTickTransactions()
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
 
                                     numberOfKnownNextTickTransactions++;
@@ -4927,7 +4927,7 @@ static void prepareNextTickTransactions()
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
 
                                     numberOfKnownNextTickTransactions++;
@@ -5059,7 +5059,7 @@ static void signTickVote(const unsigned char* subseed, const unsigned char* publ
 static void broadcastTickVotes()
 {
     BroadcastTick broadcastTick;
-    bs->CopyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
+    copyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
     for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
     {
         broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
@@ -5310,7 +5310,7 @@ static void tickProcessor(void*)
             }
 
             ts.tickData.acquireLock();
-            bs->CopyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
+            copyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
             ts.tickData.releaseLock();
 
             // This time lock ensures tickData is crafted 2 ticks "ago"
@@ -7336,7 +7336,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             || broadcastedComputors.computors.epoch != system.epoch)
                         {
                             requestedComputors.header.randomizeDejavu();
-                            bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
+                            copyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
                             peers[i].dataToTransmitSize += requestedComputors.header.size();
                             _InterlockedIncrement64(&numberOfDisseminatedRequests);
                         }
