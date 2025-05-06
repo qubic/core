@@ -56,6 +56,9 @@ struct Peer
     BOOLEAN isIncommingConnection;
 
     // Extra data to determine if this peer is a fullnode
+    // Note: an **active fullnode** is a peer that is able to transmit valid tick data, tick vote to this node recently
+    // If a peer is an active fullnode, it will receive more requests from this node than others, as well as longer alive connection time.
+    // Here we also consider relayer as a fullnode (as long as it transmits new&valid tick data)
     unsigned int lastActiveTick; // indicate the tick number that this peer transfer valid tick/vote data
     bool isFullNode() const
     {
