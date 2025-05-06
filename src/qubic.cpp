@@ -3398,25 +3398,16 @@ static void endEpoch()
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
             unsigned long long vote_count = voteCounter.getVoteCount(i);
-            unsigned long long custom_mining_share_count = gCustomMiningSharesCounter.getSharesCount(i);
-            if (vote_count != 0 && custom_mining_share_count != 0)
+            if (vote_count != 0)
             {
-                unsigned long long final_score0 = vote_count * revenueScore[i];
-                if ((final_score0 / vote_count) != revenueScore[i]) // detect overflow
+                unsigned long long final_score = vote_count * revenueScore[i];
+                if ((final_score / vote_count) != revenueScore[i]) // detect overflow
                 {
                     revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
                 }
                 else
                 {
-                    unsigned long long final_score1 = custom_mining_share_count * final_score0;
-                    if ((final_score1 / custom_mining_share_count) != final_score0) // detect overflow
-                    {
-                        revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
-                    }
-                    else
-                    {
-                        revenueScore[i] = final_score1;
-                    }
+                    revenueScore[i] = final_score;
                 }
             }
             else
