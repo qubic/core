@@ -25,7 +25,7 @@ static void updateTime()
     EFI_TIME newTime;
     if (!rs->GetTime(&newTime, NULL))
     {
-        bs->CopyMem(&utcTime, &newTime, sizeof(utcTime));
+        copyMem(&utcTime, &newTime, sizeof(utcTime));
     }
 }
 

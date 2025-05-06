@@ -304,6 +304,13 @@ static struct {
     unsigned long long lastTryClock; // last time it rolling the dice
 } emptyTickResolver;
 
+static struct {
+    static constexpr unsigned long long MAX_WAITING_TIME = 60000; // time to trigger resending tick votes
+    unsigned int lastTick;
+    unsigned int lastTickMode; // 0 AUX - 1 MAIN
+    unsigned long long lastCheck;
+} autoResendTickVotes;
+
 static void logToConsole(const CHAR16* message)
 {
     if (consoleLoggingLevel == 0)
@@ -379,6 +386,11 @@ static int computorIndex(m256i computor)
     }
 
     return -1;
+}
+
+static inline bool isMainMode()
+{
+    return (mainAuxStatus & 1) == 1;
 }
 
 // NOTE: this function doesn't work well on a few CPUs, some bits will be flipped after calling this. It's probably microcode bug.
@@ -529,8 +541,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
                      // Compute the gamming key to get the sub-type of message
                     unsigned char sharedKeyAndGammingNonce[64];
-                    bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
-                    bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                    setMem(sharedKeyAndGammingNonce, 32, 0);
+                    copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                     unsigned char gammingKey[32];
                     KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
                     
@@ -564,8 +576,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                         {
                             // Compute the gamming key to get the sub-type of message
                             unsigned char sharedKeyAndGammingNonce[64];
-                            bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
-                            bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                            setMem(sharedKeyAndGammingNonce, 32, 0);
+                            copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                             unsigned char gammingKey[32];
                             KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
 
@@ -659,7 +671,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 else
                                 {
                                     // it is an un-encrypted message, all zeros for first 32 bytes sharedKey
-                                    bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                                    setMem(sharedKeyAndGammingNonce, 32, 0);
                                 }
                             }
                             else
@@ -673,10 +685,10 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
                             if (ok)
                             {
-                                bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                                copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                                 unsigned char gammingKey[32];
                                 KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
-                                bs->SetMem(sharedKeyAndGammingNonce, 32, 0); // Zero the shared key in case stack content could be leaked later
+                                setMem(sharedKeyAndGammingNonce, 32, 0); // Zero the shared key in case stack content could be leaked later
                                 unsigned char gamma[MAX_MESSAGE_PAYLOAD_SIZE];
                                 KangarooTwelve(gammingKey, sizeof(gammingKey), gamma, messagePayloadSize);
                                 for (unsigned int j = 0; j < messagePayloadSize; j++)
@@ -775,7 +787,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
             }
 
             // Copy computor list
-            bs->CopyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+            copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
 
             // Update ownComputorIndices and minerPublicKeys
             if (request->computors.epoch == system.epoch)
@@ -864,7 +876,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             else
             {
                 // Copy the sent tick to the tick storage
-                bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
+                copyMem(tsTick, &request->tick, sizeof(Tick));
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -929,7 +941,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                             KangarooTwelve(&request->tickData, sizeof(TickData), digest, 32);
                             if (digest == targetNextTickDataDigest)
                             {
-                                bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                                copyMem(&td, &request->tickData, sizeof(TickData));
                             }
                         }
                     }
@@ -957,7 +969,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                         }
                         else
                         {
-                            bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                            copyMem(&td, &request->tickData, sizeof(TickData));
                         }
                     }
                 }
@@ -991,7 +1003,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 if (((Transaction*)&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE])->tick < request->tick
                     && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                 {
-                    bs->CopyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
+                    copyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
                     KangarooTwelve(request, transactionSize, &computorPendingTransactionDigests[computorIndex * offset * 32ULL], 32);
                 }
 
@@ -1011,7 +1023,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                     if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
                         && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                     {
-                        bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
+                        copyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
                         KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
                     }
 
@@ -1036,7 +1048,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                             if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                             {
                                 tsReqTickTransactionOffsets[i] = ts.nextTickTransactionOffset;
-                                bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
+                                copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
                                 ts.nextTickTransactionOffset += transactionSize;
                             }
                         }
@@ -1224,7 +1236,7 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
     }
     else
     {
-        bs->SetMem(&currentTickInfo, sizeof(CurrentTickInfo), 0);
+        setMem(&currentTickInfo, sizeof(CurrentTickInfo), 0);
     }
 
     enqueueResponse(peer, sizeof(currentTickInfo), RESPOND_CURRENT_TICK_INFO, header->dejavu(), &currentTickInfo);
@@ -1248,11 +1260,11 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
         respondedEntity.entity.latestIncomingTransferTick = 0;
         respondedEntity.entity.latestOutgoingTransferTick = 0;
 
-        bs->SetMem(respondedEntity.siblings, sizeof(respondedEntity.siblings), 0);
+        setMem(respondedEntity.siblings, sizeof(respondedEntity.siblings), 0);
     }
     else
     {
-        bs->CopyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
+        copyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
         ACQUIRE(spectrumLock);
         getSiblings<SPECTRUM_DEPTH>(respondedEntity.spectrumIndex, spectrumDigests, respondedEntity.siblings);
         RELEASE(spectrumLock);
@@ -1272,15 +1284,15 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
     if (request->contractIndex >= contractCount
         || system.epoch >= contractDescriptions[request->contractIndex].constructionEpoch)
     {
-        bs->SetMem(respondContractIPO.publicKeys, sizeof(respondContractIPO.publicKeys), 0);
-        bs->SetMem(respondContractIPO.prices, sizeof(respondContractIPO.prices), 0);
+        setMem(respondContractIPO.publicKeys, sizeof(respondContractIPO.publicKeys), 0);
+        setMem(respondContractIPO.prices, sizeof(respondContractIPO.prices), 0);
     }
     else
     {
         contractStateLock[request->contractIndex].acquireRead();
         IPO* ipo = (IPO*)contractStates[request->contractIndex];
-        bs->CopyMem(respondContractIPO.publicKeys, ipo->publicKeys, sizeof(respondContractIPO.publicKeys));
-        bs->CopyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
+        copyMem(respondContractIPO.publicKeys, ipo->publicKeys, sizeof(respondContractIPO.publicKeys));
+        copyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
         contractStateLock[request->contractIndex].releaseRead();
     }
 
@@ -1822,7 +1834,7 @@ static void requestProcessor(void* ProcedureArgument)
                     {
                         {
                             RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
-                            bs->CopyMem(header, requestHeader, requestHeader->size());
+                            copyMem(header, requestHeader, requestHeader->size());
                             requestQueueBufferTail += requestHeader->size();
                         }
 
@@ -1865,7 +1877,7 @@ static void requestProcessor(void* ProcedureArgument)
 
                 {
                     RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
-                    bs->CopyMem(header, requestHeader, requestHeader->size());
+                    copyMem(header, requestHeader, requestHeader->size());
                     requestQueueBufferTail += requestHeader->size();
                 }
 
@@ -2737,7 +2749,7 @@ static void processTick(unsigned long long processorNumber)
 
     unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     ts.tickData.acquireLock();
-    bs->CopyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
+    copyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
     ts.tickData.releaseLock();
     unsigned long long solutionProcessStartTick = __rdtsc(); // for tracking the time processing solutions
     if (nextTickData.epoch == system.epoch)
@@ -2867,7 +2879,7 @@ static void processTick(unsigned long long processorNumber)
         {
             if (system.tick > system.latestLedTick)
             {
-                if (mainAuxStatus & 1)
+                if (isMainMode())
                 {
                     // This is the tick leader in MAIN mode -> construct future tick data (selecting transactions to
                     // include into tick)
@@ -2921,7 +2933,7 @@ static void processTick(unsigned long long processorNumber)
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
                                     broadcastedFutureTickData.tickData.transactionDigests[j] = &computorPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
                                     j++;
                                     ts.nextTickTransactionOffset += transactionSize;
@@ -2964,7 +2976,7 @@ static void processTick(unsigned long long processorNumber)
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
                                     broadcastedFutureTickData.tickData.transactionDigests[j] = &entityPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
                                     j++;
                                     ts.nextTickTransactionOffset += transactionSize;
@@ -2983,7 +2995,7 @@ static void processTick(unsigned long long processorNumber)
                         broadcastedFutureTickData.tickData.transactionDigests[j] = m256i::zero();
                     }
 
-                    bs->SetMem(broadcastedFutureTickData.tickData.contractFees, sizeof(broadcastedFutureTickData.tickData.contractFees), 0);
+                    setMem(broadcastedFutureTickData.tickData.contractFees, sizeof(broadcastedFutureTickData.tickData.contractFees), 0);
 
                     unsigned char digest[32];
                     KangarooTwelve(&broadcastedFutureTickData.tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
@@ -3004,7 +3016,7 @@ static void processTick(unsigned long long processorNumber)
     {
         if ((system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
         {
-            if (mainAuxStatus & 1)
+            if (isMainMode())
             {
                 auto& payload = voteCounterPayload; // note: not thread-safe
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
@@ -3022,7 +3034,7 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
-    if (mainAuxStatus & 1)
+    if (isMainMode())
     {
         // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
         for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
@@ -3116,7 +3128,7 @@ static void processTick(unsigned long long processorNumber)
     if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
     {
         // Broadcast custom mining shares 
-        if (mainAuxStatus & 1)
+        if (isMainMode())
         {
             unsigned int customMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
@@ -3169,7 +3181,7 @@ static void processTick(unsigned long long processorNumber)
 
             // reset the phase counter
             ACQUIRE(gCustomMiningSharesCountLock);
-            bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+            setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
             RELEASE(gCustomMiningSharesCountLock);
         }
 
@@ -3209,7 +3221,7 @@ static void processTick(unsigned long long processorNumber)
 static void resetCustomMining()
 {
     gCustomMiningSharesCounter.init();
-    bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+    setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
     gCustomMiningCountOverflow = 0;
     gCustomMiningValidSharesCount = 0;
     gCustomMiningInvalidSharesCount = 0;
@@ -3247,7 +3259,7 @@ static void beginEpoch()
     {
         broadcastedComputors.computors.publicKeys[i].setRandomValue();
     }
-    bs->SetMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
+    setMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
 
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
@@ -3270,8 +3282,8 @@ static void beginEpoch()
         ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
     }
 
-    bs->SetMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
-    bs->SetMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
+    setMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
+    setMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
 
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
@@ -3287,13 +3299,13 @@ static void beginEpoch()
 
     score->initMemory();
     score->resetTaskQueue();
-    bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
-    bs->SetMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
-    bs->SetMem((void*)minerScores, sizeof(minerScores), 0);
+    setMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
+    setMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
+    setMem((void*)minerScores, sizeof(minerScores), 0);
     numberOfMiners = NUMBER_OF_COMPUTORS;
-    bs->SetMem(competitorPublicKeys, sizeof(competitorPublicKeys), 0);
-    bs->SetMem(competitorScores, sizeof(competitorScores), 0);
-    bs->SetMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
+    setMem(competitorPublicKeys, sizeof(competitorPublicKeys), 0);
+    setMem(competitorScores, sizeof(competitorScores), 0);
+    setMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
 
@@ -3303,8 +3315,8 @@ static void beginEpoch()
 
     system.latestOperatorNonce = 0;
     system.numberOfSolutions = 0;
-    bs->SetMem(system.solutions, sizeof(system.solutions), 0);
-    bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
+    setMem(system.solutions, sizeof(system.solutions), 0);
+    setMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
     resetCustomMining();
 
@@ -3355,7 +3367,7 @@ static void endEpoch()
     {
         // Compute revenue scores of computors
         unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
-        bs->SetMem(revenueScore, sizeof(revenueScore), 0);
+        setMem(revenueScore, sizeof(revenueScore), 0);
         for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
         {
             ts.tickData.acquireLock();
@@ -3416,10 +3428,9 @@ static void endEpoch()
             }
         }
 
-
         // Sort revenue scores to get lowest score of quorum
         unsigned long long sortedRevenueScore[QUORUM + 1];
-        bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+        setMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
         for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
@@ -4146,7 +4157,7 @@ static void prepareNextTickTransactions()
 
     // unknownTransactions is set to 1 if a transaction is missing in the local storage
     unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
-    bs->SetMem(unknownTransactions, sizeof(unknownTransactions), 0);
+    setMem(unknownTransactions, sizeof(unknownTransactions), 0);
     const auto* tsNextTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(nextTickIndex);
     
     // This function maybe called multiple times per tick due to lack of data (txs or votes)
@@ -4210,7 +4221,7 @@ static void prepareNextTickTransactions()
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
 
                                     numberOfKnownNextTickTransactions++;
@@ -4252,7 +4263,7 @@ static void prepareNextTickTransactions()
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
 
                                     numberOfKnownNextTickTransactions++;
@@ -4279,7 +4290,7 @@ static void prepareNextTickTransactions()
         // We check if the last tickTransactionRequest it already sent
         if(requestedTickTransactions.requestedTickTransactions.tick == 0){
             // Initialize transactionFlags to one so that by default we do not request any transaction
-            bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0xff);
+            setMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0xff);
             for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
             {
                 if (unknownTransactions[i >> 6] & (1ULL << (i & 63)))
@@ -4384,7 +4395,7 @@ static void signTickVote(const unsigned char* subseed, const unsigned char* publ
 static void broadcastTickVotes()
 {
     BroadcastTick broadcastTick;
-    bs->CopyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
+    copyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
     for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
     {
         broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
@@ -4494,6 +4505,29 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
     }
 }
 
+// try to resend tick votes if local system.tick gets stuck for too long
+static void tryResendTickVotes()
+{
+    if (autoResendTickVotes.lastTick != system.tick)
+    {
+        autoResendTickVotes.lastTick = system.tick;
+        autoResendTickVotes.lastTickMode = isMainMode() ? 1 : 0;
+        autoResendTickVotes.lastCheck = __rdtsc();
+    }
+    else
+    {
+        unsigned long long elapsed = (__rdtsc() - autoResendTickVotes.lastCheck) * 1000 / frequency; //millisec
+        // Resend vote from this node when:
+        // - timeout
+        // - on the last tick, this node was in MAIN mode
+        if (elapsed >= autoResendTickVotes.MAX_WAITING_TIME && (autoResendTickVotes.lastTickMode == 1))
+        {
+            if (system.latestCreatedTick > 0) system.latestCreatedTick--;
+            autoResendTickVotes.lastCheck = __rdtsc();
+        }
+    }
+}
+
 // try forcing next tick to be empty after certain amount of time
 static void tryForceEmptyNextTick()
 {
@@ -4510,7 +4544,7 @@ static void tryForceEmptyNextTick()
         // This will force the node to set: 
         // (1) currentTick.expectedNextTickTransactionDigest  = 0
         // (2) nextTick.transactionDigest = 0 - it invalidates ts.tickData, no way to recover
-        if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
+        if ((isMainMode()) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
         {
             if (emptyTickResolver.tick != system.tick)
             {
@@ -4612,7 +4646,7 @@ static void tickProcessor(void*)
             }
 
             ts.tickData.acquireLock();
-            bs->CopyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
+            copyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
             ts.tickData.releaseLock();
 
             // This time lock ensures tickData is crafted 2 ticks "ago"
@@ -4800,7 +4834,7 @@ static void tickProcessor(void*)
 
                     if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
                     {
-                        if (mainAuxStatus & 1)
+                        if (isMainMode())
                         {
                             broadcastTickVotes();
                         }
@@ -5001,12 +5035,12 @@ static void emptyCallback(EFI_EVENT Event, void* Context)
 
 static void shutdownCallback(EFI_EVENT Event, void* Context)
 {
-    bs->CloseEvent(Event);
+    closeEvent(Event);
 }
 
 static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 {
-    bs->CloseEvent(Event);
+    closeEvent(Event);
 
     contractProcessorState = 0;
 }
@@ -5021,7 +5055,7 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
     {
         if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
         {
-            bs->SetMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+            setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
         }
         else
         {
@@ -5141,11 +5175,11 @@ static bool initialize()
 
     initTimeStampCounter();
 
-    bs->SetMem(&tickTicks, sizeof(tickTicks), 0);
+    setMem(&tickTicks, sizeof(tickTicks), 0);
 
-    bs->SetMem(processors, sizeof(processors), 0);
-    bs->SetMem(peers, sizeof(peers), 0);
-    bs->SetMem(publicPeers, sizeof(publicPeers), 0);
+    setMem(processors, sizeof(processors), 0);
+    setMem(peers, sizeof(peers), 0);
+    setMem(publicPeers, sizeof(publicPeers), 0);
 
     requestedComputors.header.setSize<sizeof(requestedComputors)>();
     requestedComputors.header.setType(RequestComputors::type);
@@ -5177,7 +5211,7 @@ static bool initialize()
         }
         
 
-        bs->SetMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
+        setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
 
 
         if (!initSpectrum())
@@ -5205,7 +5239,7 @@ static bool initialize()
         }
         setMem(score, sizeof(*score), 0);
 
-        bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
+        setMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
         if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags, __LINE__))
         {
             return false;
@@ -5226,7 +5260,7 @@ static bool initialize()
 #endif
 
         logToConsole(L"Loading system file ...");
-        bs->SetMem(&system, sizeof(system), 0);
+        setMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
         system.version = VERSION_B;
         system.epoch = EPOCH;
@@ -5368,8 +5402,8 @@ static bool initialize()
     {
         return false;
     }
-    bs->SetMem((void*)dejavu0, 536870912, 0);
-    bs->SetMem((void*)dejavu1, 536870912, 0);
+    setMem((void*)dejavu0, 536870912, 0);
+    setMem((void*)dejavu1, 536870912, 0);
 
     if ((!allocPoolWithErrorLog(L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer, __LINE__)) ||
         (!allocPoolWithErrorLog(L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer, __LINE__)))
@@ -5389,9 +5423,9 @@ static bool initialize()
             return false;
         }
 
-        if ((status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].connectAcceptToken.CompletionToken.Event))
-            || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
-            || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
+        if ((status = createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].connectAcceptToken.CompletionToken.Event))
+            || (status = createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
+            || (status = createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
         {
             logStatusToConsole(L"EFI_BOOT_SERVICES.CreateEvent() fails", status, __LINE__);
 
@@ -5470,60 +5504,60 @@ static void deinitialize()
     {
         if (contractStates[contractIndex])
         {
-            bs->FreePool(contractStates[contractIndex]);
+            freePool(contractStates[contractIndex]);
         }
     }
 
     if (computorPendingTransactionDigests)
     {
-        bs->FreePool(computorPendingTransactionDigests);
+        freePool(computorPendingTransactionDigests);
     }
     if (computorPendingTransactions)
     {
-        bs->FreePool(computorPendingTransactions);
+        freePool(computorPendingTransactions);
     }
     if (entityPendingTransactionDigests)
     {
-        bs->FreePool(entityPendingTransactionDigests);
+        freePool(entityPendingTransactionDigests);
     }
     if (entityPendingTransactions)
     {
-        bs->FreePool(entityPendingTransactions);
+        freePool(entityPendingTransactions);
     }
     ts.deinit();
 
     if (score)
     {
-        bs->FreePool(score);
+        freePool(score);
     }
     if (minerSolutionFlags)
     {
-        bs->FreePool(minerSolutionFlags);
+        freePool(minerSolutionFlags);
     }
 
     if (dejavu0)
     {
-        bs->FreePool((void*)dejavu0);
+        freePool((void*)dejavu0);
     }
     if (dejavu1)
     {
-        bs->FreePool((void*)dejavu1);
+        freePool((void*)dejavu1);
     }
 
     if (requestQueueBuffer)
     {
-        bs->FreePool(requestQueueBuffer);
+        freePool(requestQueueBuffer);
     }
     if (responseQueueBuffer)
     {
-        bs->FreePool(responseQueueBuffer);
+        freePool(responseQueueBuffer);
     }
 
     for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
     {
         if (processors[processorIndex].buffer)
         {
-            bs->FreePool(processors[processorIndex].buffer);
+            freePool(processors[processorIndex].buffer);
         }
     }
 
@@ -5531,19 +5565,19 @@ static void deinitialize()
     {
         if (peers[i].receiveBuffer)
         {
-            bs->FreePool(peers[i].receiveBuffer);
+            freePool(peers[i].receiveBuffer);
         }
         if (peers[i].transmitData.FragmentTable[0].FragmentBuffer)
         {
-            bs->FreePool(peers[i].transmitData.FragmentTable[0].FragmentBuffer);
+            freePool(peers[i].transmitData.FragmentTable[0].FragmentBuffer);
         }
         if (peers[i].dataToTransmit)
         {
-            bs->FreePool(peers[i].dataToTransmit);
+            freePool(peers[i].dataToTransmit);
 
-            bs->CloseEvent(peers[i].connectAcceptToken.CompletionToken.Event);
-            bs->CloseEvent(peers[i].receiveToken.CompletionToken.Event);
-            bs->CloseEvent(peers[i].transmitToken.CompletionToken.Event);
+            closeEvent(peers[i].connectAcceptToken.CompletionToken.Event);
+            closeEvent(peers[i].receiveToken.CompletionToken.Event);
+            closeEvent(peers[i].transmitToken.CompletionToken.Event);
         }
     }
 
@@ -5837,7 +5871,7 @@ static void logInfo()
 
 static void logHealthStatus()
 {
-    setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+    setText(message, (isMainMode()) ? L"MAIN" : L"aux");
     appendText(message, L"&");
     appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
     logToConsole(message);
@@ -6353,7 +6387,7 @@ static void processKeyPresses()
             else
             {
                 mainAuxStatus = (mainAuxStatus + 1) & 3;
-                setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+                setText(message, (isMainMode()) ? L"MAIN" : L"aux");
                 appendText(message, L"&");
                 appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
                 logToConsole(message);
@@ -6470,7 +6504,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestProcessorIDs[nRequestProcessorIDs++] = i;
                     }
 
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
+                    createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
 
                     #if !defined(NDEBUG)
@@ -6549,6 +6583,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
+            autoResendTickVotes.lastTick = system.initialTick;
+            autoResendTickVotes.lastCheck = __rdtsc();
             logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
@@ -6573,14 +6609,14 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (contractProcessorState == 1)
                 {
                     contractProcessorState = 2;
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
+                    createEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, contractProcessorIDs[0], contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, &processors[computingProcessorNumber], NULL);
                 }
                 /*if (!computationProcessorState && (computation || __computation))
                 {
                     numberOfAllSCs++;
                     computationProcessorState = 1;
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &computationProcessorEvent);
+                    createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &computationProcessorEvent);
                     if (status = mpServicesProtocol->StartupThisAP(mpServicesProtocol, computationProcessor, computingProcessorNumber, computationProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL))
                     {
                         numberOfNonLaunchedSCs++;
@@ -6641,7 +6677,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             || broadcastedComputors.computors.epoch != system.epoch)
                         {
                             requestedComputors.header.randomizeDejavu();
-                            bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
+                            copyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
                             peers[i].dataToTransmitSize += requestedComputors.header.size();
                             _InterlockedIncrement64(&numberOfDisseminatedRequests);
                         }
@@ -6656,7 +6692,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
 #if !TICK_STORAGE_AUTOSAVE_MODE
                 // Only save system + score cache to file regularly here if on AUX and snapshot auto-save is disabled
-                if ((mainAuxStatus & 1) == 0
+                if ((!isMainMode())
                     && curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
                 {
                     systemDataSavingTick = curTimeTick;
@@ -6666,6 +6702,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     saveCustomMiningCache(system.epoch);
                 }
 #endif
+                tryResendTickVotes();
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
                 {
@@ -6698,7 +6735,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
-                        bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
+                        setMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
                         const Tick* tsCompTicks = ts.ticks.getByTickInCurrentEpoch(system.tick);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
@@ -6715,7 +6752,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
-                        bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
+                        setMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
                         const Tick* tsCompTicks = ts.ticks.getByTickInCurrentEpoch(system.tick + 1);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
@@ -6817,7 +6854,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #if TICK_STORAGE_AUTOSAVE_MODE
 #if TICK_STORAGE_AUTOSAVE_MODE == 1
                 bool nextAutoSaveTickUpdated = false;
-                if (mainAuxStatus & 1)
+                if (isMainMode())
                 {
                     // MAIN mode: update auto-save schedule (only run save when switched to AUX mode)
                     while (system.tick >= nextPersistingNodeStateTick)
