@@ -292,11 +292,6 @@ static struct
     RequestedTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
 
-static struct
-{
-    RequestResponseHeader header;
-} requestedCurrentTick;
-
 static struct {
     unsigned char day;
     unsigned char hour;
@@ -7213,10 +7208,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 logToConsole(L"WARNING: NUMBER_OF_SOLUTION_PROCESSORS should not be greater than half of the total processor number!");
             }
 
-            requestedCurrentTick.header.checkAndSetSize(sizeof(RequestResponseHeader));
-            requestedCurrentTick.header.randomizeDejavu();
-            requestedCurrentTick.header.setType(REQUEST_CURRENT_TICK_INFO);
-
             // -----------------------------------------------------
             // Main loop
             unsigned int salt;
@@ -7453,12 +7444,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAnyFullNode(&requestedTickTransactions.header);
 
                         requestedTickTransactions.requestedTickTransactions.tick = 0;
-                    }
-
-                    {
-                        // asking current tick around
-                        requestedCurrentTick.header.randomizeDejavu();
-                        pushToSeveral(&requestedCurrentTick.header);
                     }
                 }
 
