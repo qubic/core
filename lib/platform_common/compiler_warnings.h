@@ -21,6 +21,7 @@
     #define WARNING_POP PRAGMA(clang diagnostic pop)
     #define WARNING_IGNORE_CAST_ALIGN PRAGMA(clang diagnostic ignored "-Wcast-align")
     #define WARNING_IGNORE_UNUSED PRAGMA(clang diagnostic ignored "-Wunused-parameter")
+    #define WARNING_IGNORE_SELFASSIGNMENT PRAGMA(clang diagnostic ignored "-Wself-assign-overloaded")
 
 #else
     #define WARNING_PUSH
@@ -32,5 +33,7 @@
 // Shortcuts
 #define SUPPRESS_WARNINGS_BEGIN WARNING_PUSH
 #define SUPPRESS_WARNINGS_END WARNING_POP
-#define IGNORE_CAST_ALIGN_WARNING WARNING_IGNORE_CAST_ALIGN
+#define IGNORE_CAST_ALIGN_WARNING WARNING_IGNORE_CAST_ALIGN 
+#define IGNORE_UNUSED_WARNING WARNING_IGNORE_UNUSED
+#define IGNORE_SELFASSIGNMENT_WARNING WARNING_IGNORE_SELFASSIGNMENT
 
