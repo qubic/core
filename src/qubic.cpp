@@ -5699,12 +5699,12 @@ static void emptyCallback(EFI_EVENT Event, void* Context)
 
 static void shutdownCallback(EFI_EVENT Event, void* Context)
 {
-    bs->CloseEvent(Event);
+    closeEvent(Event);
 }
 
 static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 {
-    bs->CloseEvent(Event);
+    closeEvent(Event);
 
     contractProcessorState = 0;
 }
@@ -6083,9 +6083,9 @@ static bool initialize()
             return false;
         }
 
-        if ((status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].connectAcceptToken.CompletionToken.Event))
-            || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
-            || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
+        if ((status = createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].connectAcceptToken.CompletionToken.Event))
+            || (status = createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
+            || (status = createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
         {
             logStatusToConsole(L"EFI_BOOT_SERVICES.CreateEvent() fails", status, __LINE__);
 
@@ -6238,9 +6238,9 @@ static void deinitialize()
         {
             freePool(peers[i].dataToTransmit);
 
-            bs->CloseEvent(peers[i].connectAcceptToken.CompletionToken.Event);
-            bs->CloseEvent(peers[i].receiveToken.CompletionToken.Event);
-            bs->CloseEvent(peers[i].transmitToken.CompletionToken.Event);
+            closeEvent(peers[i].connectAcceptToken.CompletionToken.Event);
+            closeEvent(peers[i].receiveToken.CompletionToken.Event);
+            closeEvent(peers[i].transmitToken.CompletionToken.Event);
         }
     }
 
@@ -7163,7 +7163,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestProcessorIDs[nRequestProcessorIDs++] = i;
                     }
 
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
+                    createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
 
                     #if !defined(NDEBUG)
@@ -7268,14 +7268,14 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (contractProcessorState == 1)
                 {
                     contractProcessorState = 2;
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
+                    createEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, contractProcessorIDs[0], contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, &processors[computingProcessorNumber], NULL);
                 }
                 /*if (!computationProcessorState && (computation || __computation))
                 {
                     numberOfAllSCs++;
                     computationProcessorState = 1;
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &computationProcessorEvent);
+                    createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &computationProcessorEvent);
                     if (status = mpServicesProtocol->StartupThisAP(mpServicesProtocol, computationProcessor, computingProcessorNumber, computationProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL))
                     {
                         numberOfNonLaunchedSCs++;
