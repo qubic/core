@@ -28,6 +28,7 @@
     #define WARNING_POP
     #define WARNING_IGNORE_CAST_ALIGN
     #define WARNING_IGNORE_UNUSED
+    #define WARNING_IGNORE_SELFASSIGNMENT
 #endif
 
 // Shortcuts
