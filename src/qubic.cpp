@@ -6167,60 +6167,60 @@ static void deinitialize()
     {
         if (contractStates[contractIndex])
         {
-            bs->FreePool(contractStates[contractIndex]);
+            freePool(contractStates[contractIndex]);
         }
     }
 
     if (computorPendingTransactionDigests)
     {
-        bs->FreePool(computorPendingTransactionDigests);
+        freePool(computorPendingTransactionDigests);
     }
     if (computorPendingTransactions)
     {
-        bs->FreePool(computorPendingTransactions);
+        freePool(computorPendingTransactions);
     }
     if (entityPendingTransactionDigests)
     {
-        bs->FreePool(entityPendingTransactionDigests);
+        freePool(entityPendingTransactionDigests);
     }
     if (entityPendingTransactions)
     {
-        bs->FreePool(entityPendingTransactions);
+        freePool(entityPendingTransactions);
     }
     ts.deinit();
 
     if (score)
     {
-        bs->FreePool(score);
+        freePool(score);
     }
     if (minerSolutionFlags)
     {
-        bs->FreePool(minerSolutionFlags);
+        freePool(minerSolutionFlags);
     }
 
     if (dejavu0)
     {
-        bs->FreePool((void*)dejavu0);
+        freePool((void*)dejavu0);
     }
     if (dejavu1)
     {
-        bs->FreePool((void*)dejavu1);
+        freePool((void*)dejavu1);
     }
 
     if (requestQueueBuffer)
     {
-        bs->FreePool(requestQueueBuffer);
+        freePool(requestQueueBuffer);
     }
     if (responseQueueBuffer)
     {
-        bs->FreePool(responseQueueBuffer);
+        freePool(responseQueueBuffer);
     }
 
     for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
     {
         if (processors[processorIndex].buffer)
         {
-            bs->FreePool(processors[processorIndex].buffer);
+            freePool(processors[processorIndex].buffer);
         }
     }
 
@@ -6228,15 +6228,15 @@ static void deinitialize()
     {
         if (peers[i].receiveBuffer)
         {
-            bs->FreePool(peers[i].receiveBuffer);
+            freePool(peers[i].receiveBuffer);
         }
         if (peers[i].transmitData.FragmentTable[0].FragmentBuffer)
         {
-            bs->FreePool(peers[i].transmitData.FragmentTable[0].FragmentBuffer);
+            freePool(peers[i].transmitData.FragmentTable[0].FragmentBuffer);
         }
         if (peers[i].dataToTransmit)
         {
-            bs->FreePool(peers[i].dataToTransmit);
+            freePool(peers[i].dataToTransmit);
 
             bs->CloseEvent(peers[i].connectAcceptToken.CompletionToken.Event);
             bs->CloseEvent(peers[i].receiveToken.CompletionToken.Event);
