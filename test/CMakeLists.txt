@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.15)
 project(qubic_core_tests CXX C)
 
 # GoogleTest requires at least C++20
