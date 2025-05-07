@@ -36,7 +36,7 @@ add_executable(
   # kangaroo_twelve.cpp
   m256.cpp
   math_lib.cpp
-  # network_messages.cpp
+  network_messages.cpp
   # platform.cpp
   # qpi_collection.cpp
   # qpi.cpp
