@@ -8,8 +8,8 @@
 
 struct ProfilingData
 {
-    const char* scopeName;
-    unsigned long long scopeLine;
+    const char* name;
+    unsigned long long line;
     unsigned long long numOfExec;
     unsigned long long runtimeSum;
     unsigned long long runtimeMax;
@@ -52,8 +52,10 @@ public:
         RELEASE(mLock);
     }
 
-    // Add run-time measurement to profiling entry of given key (= scopeName + scopeLine)
-    void addMeasurement(const char* scopeName, unsigned long long scopeLine, unsigned long long startTsc, unsigned long long endTsc)
+    // Add run-time measurement to profiling entry of given key (= name + line).
+    // For fast access, the address of the name is used to identify the measurement. Using string literals here is recommended.
+    // Using a pointer to a dynamic buffer probably cuases problems.
+    void addMeasurement(const char* name, unsigned long long line, unsigned long long startTsc, unsigned long long endTsc)
     {
         // Discard measurement on overflow of time stamp counter register
         if (endTsc < startTsc)
@@ -66,7 +68,7 @@ public:
         {
             // Fill entry
             const unsigned long long dt = endTsc - startTsc;
-            ProfilingData& newEntry = getEntry(scopeName, scopeLine);
+            ProfilingData& newEntry = getEntry(name, line);
             newEntry.numOfExec += 1;
             newEntry.runtimeSum += dt;
             if (newEntry.runtimeMin > dt)
@@ -113,17 +115,17 @@ public:
         ACQUIRE_WITHOUT_DEBUG_LOGGING(mLock);
 
         // output hash for each entry?
-        bool okay = writeStringToFile(file, L"idx,scopeName,scopeLine,count,sum_microseconds,avg_microseconds,min_microseconds,max_microseconds\r\n");
+        bool okay = writeStringToFile(file, L"idx,name,line,count,sum_microseconds,avg_microseconds,min_microseconds,max_microseconds\r\n");
         for (unsigned int i = 0; i < mDataSize; ++i)
         {
-            if (mDataPtr[i].scopeName)
+            if (mDataPtr[i].name)
             {
                 unsigned long long runtimeSumMicroseconds = ticksToMicroseconds(mDataPtr[i].runtimeSum);
                 setNumber(message, i, false);
                 appendText(message, ",\"");
-                appendText(message, mDataPtr[i].scopeName);
+                appendText(message, mDataPtr[i].name);
                 appendText(message, "\",");
-                appendNumber(message, mDataPtr[i].scopeLine, false);
+                appendNumber(message, mDataPtr[i].line, false);
                 appendText(message, ",");
                 appendNumber(message, mDataPtr[i].numOfExec, false);
                 appendText(message, ",");
@@ -212,10 +214,10 @@ protected:
         {
             for (unsigned int i = 0; i < oldDataSize; ++i)
             {
-                if (oldDataPtr[i].scopeName)
+                if (oldDataPtr[i].name)
                 {
                     const ProfilingData& oldEntry = oldDataPtr[i];
-                    ProfilingData& newEntry = getEntry(oldEntry.scopeName, oldEntry.scopeLine);
+                    ProfilingData& newEntry = getEntry(oldEntry.name, oldEntry.line);
                     newEntry.numOfExec = oldEntry.numOfExec;
                     newEntry.runtimeSum = oldEntry.runtimeSum;
                     newEntry.runtimeMin = oldEntry.runtimeMin;
@@ -231,27 +233,27 @@ protected:
     }
 
     // Return entry of given key (pair of name and line), create entry if not found. Assumes caller has acquired mLock.
-    ProfilingData& getEntry(const char* scopeName, unsigned long long scopeLine)
+    ProfilingData& getEntry(const char* name, unsigned long long line)
     {
         ASSERT(mDataPtr && mDataSize > 0);          // requires data to be initialized
         ASSERT((mDataSize & (mDataSize - 1)) == 0); // mDataSize must be 2^N
 
         const unsigned long long mask = (mDataSize - 1);
-        unsigned long long i = hashFunction(scopeName, scopeLine) & mask;
+        unsigned long long i = hashFunction(name, line) & mask;
     iteration:
-        if (mDataPtr[i].scopeName == scopeName && mDataPtr[i].scopeLine == scopeLine)
+        if (mDataPtr[i].name == name && mDataPtr[i].line == line)
         {
             // found entry in hash map
             return mDataPtr[i];
         }
         else
         {
-            if (!mDataPtr[i].scopeName)
+            if (!mDataPtr[i].name)
             {
                 // free slot -> entry not available yet -> add new entry
                 ++mDataUsedEntryCount;
-                mDataPtr[i].scopeName = scopeName;
-                mDataPtr[i].scopeLine = scopeLine;
+                mDataPtr[i].name = name;
+                mDataPtr[i].line = line;
                 mDataPtr[i].runtimeMin = (unsigned long long)-1;
                 return mDataPtr[i];
             }
@@ -264,7 +266,7 @@ protected:
                     if (doInit(mDataUsedEntryCount * 2))
                     {
                         // hash map has been extended -> restart getting entry
-                        return getEntry(scopeName, scopeLine);
+                        return getEntry(name, line);
                     }
                 }
 
@@ -276,9 +278,9 @@ protected:
     }
 
     // Compute hash sum for given key
-    static unsigned long long hashFunction(const char* scopeName, unsigned long long scopeLine)
+    static unsigned long long hashFunction(const char* name, unsigned long long line)
     {
-        return (((unsigned long long)scopeName) ^ scopeLine);
+        return (((unsigned long long)name) ^ line);
     }
 
 #ifdef NO_UEFI
@@ -337,16 +339,52 @@ protected:
     unsigned long long mStartTsc;
 };
 
+// Measure profiling statistics with pairs of start/stop calls
+class ProfilingStopwatch
+{
+public:
+    ProfilingStopwatch(const char* stopwatchName, unsigned long long stopwatchLine) : mStopwatchName(stopwatchName), mStopwatchLine(stopwatchLine), mStartTsc(0)
+    {
+    }
+
+    void start()
+    {
+        mStartTsc = __rdtsc();
+    }
+
+    void stop()
+    {
+        // Start should be called before stop
+        ASSERT(mStartTsc != 0);
+
+        gProfilingDataCollector.addMeasurement(mStopwatchName, mStopwatchLine, mStartTsc, __rdtsc());
+        mStartTsc = 0;
+    }
+
+protected:
+    const char* mStopwatchName;
+    unsigned long long mStopwatchLine;
+    unsigned long long mStartTsc;
+};
+
+
+
 #ifdef ENABLE_PROFILING
 #define PROFILE_SCOPE() ProfilingScope __profilingScopeObject(__FUNCTION__, __LINE__)
 #define PROFILE_NAMED_SCOPE(name) ProfilingScope __profilingScopeObject(name, __LINE__)
 #define PROFILE_SCOPE_BEGIN() { PROFILE_SCOPE()
 #define PROFILE_NAMED_SCOPE_BEGIN(name) { PROFILE_NAMED_SCOPE(name)
 #define PROFILE_SCOPE_END() }
+#define PROFILE_STOPWATCH_DEF(objectName, descriptiveNameString) ProfilingStopwatch objectName(descriptiveNameString, __LINE__)
+#define PROFILE_STOPWATCH_START(objectName) objectName.start();
+#define PROFILE_STOPWATCH_STOP(objectName) objectName.stop();
 #else
 #define PROFILE_SCOPE()
 #define PROFILE_NAMED_SCOPE(name)
 #define PROFILE_SCOPE_BEGIN() {
 #define PROFILE_NAMED_SCOPE_BEGIN(name) {
 #define PROFILE_SCOPE_END() }
+#define PROFILE_STOPWATCH_DEF(objectName, descriptiveNameString)
+#define PROFILE_STOPWATCH_START(objectName)
+#define PROFILE_STOPWATCH_STOP(objectName)
 #endif
