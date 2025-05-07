@@ -2268,6 +2268,8 @@ static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& d
 
 static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2284,6 +2286,8 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
 // Return if money flew
 static bool processTickTransactionContractProcedure(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2324,6 +2328,8 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
 
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2528,6 +2534,8 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
 static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2539,6 +2547,8 @@ static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTrans
 
 static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTransactionPrefix* transaction)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -4659,7 +4669,7 @@ static void tickProcessor(void*)
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
-        PROFILE_SCOPE();
+        PROFILE_NAMED_SCOPE("tickProcessor(): loop iteration");
 
         checkinTime(processorNumber);
 
