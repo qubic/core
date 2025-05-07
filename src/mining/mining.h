@@ -518,21 +518,33 @@ public:
 #endif
 
     // Return number of hits (data available in cache when fetched)
-    unsigned int hitCount() const
+    unsigned int hitCount()
     {
-        return hits;
+        unsigned int result = 0;
+        ACQUIRE(lock);
+        result = hits;
+        RELEASE(lock);
+        return result;
     }
 
     // Return number of misses (data not in cache yet)
-    unsigned int missCount() const
+    unsigned int missCount()
     {
-        return misses;
+        unsigned int result = 0;
+        ACQUIRE(lock);
+        result = misses;
+        RELEASE(lock);
+        return result;
     }
 
     // Return number of collisions (other data is mapped to same index)
-    unsigned int collisionCount() const
+    unsigned int collisionCount()
     {
-        return collisions;
+        unsigned int result = 0;
+        ACQUIRE(lock);
+        result = collisions;
+        RELEASE(lock);
+        return result;
     }
 
 private:
@@ -650,41 +662,127 @@ private:
     bool _isValid;
 };
 
+// Stats of custom mining.
+// Reset after epoch change.
+// Some variable is reset after end of each custom mining phase.
+struct CustomMiningStats
+{
+    struct Counter
+    {
+        long long tasks;        // Task that replaced by node
+
+        // Shares related
+        long long shares;       // Total shares/solutions = unverifed/no-task + valid + invalid
+        long long valid;        // Solutions are marked as valid by verififer
+        long long inValid;      // Solutions are marked as invalid by verififer
+        long long duplicated;   // Duplicated solutions, ussually causes by solution message broadcasted or
+
+        void reset()
+        {
+            ATOMIC_STORE64(tasks, 0);
+
+            ATOMIC_STORE64(shares, 0);
+            ATOMIC_STORE64(valid, 0);
+            ATOMIC_STORE64(inValid, 0);
+            ATOMIC_STORE64(duplicated, 0);
+        }
+    };
+
+    // Stats of current epoch until last custom mining phase end
+    Counter lastPhases;              // Stats of all last/previous phases
+    long long maxOverflowShareCount; // Max number of shares that exceed the data packed in transaction
+    long long maxCollisionShareCount; // Max number of shares that are not save in cached because of collision
+
+    // Stats of current custom mining phase
+    Counter phase;
+
+    // Asume at begining of epoch.
+    void epochReset()
+    {
+        lastPhases.reset();
+        phase.reset();
+
+        ATOMIC_STORE64(maxOverflowShareCount, 0);
+        ATOMIC_STORE64(maxCollisionShareCount, 0);
+    }
+
+    // At the end of phase. Ussually the task/sols message still arrive
+    void phaseResetAndEpochAccumulate()
+    {
+        // Load the phase stats
+        const long long tasks = ATOMIC_LOAD64(phase.tasks);
+        const long long shares = ATOMIC_LOAD64(phase.shares);
+        const long long valid = ATOMIC_LOAD64(phase.valid);
+        const long long inValid = ATOMIC_LOAD64(phase.inValid);
+        const long long duplicated = ATOMIC_LOAD64(phase.duplicated);
+
+        // Accumulate the phase into last phases
+        ATOMIC_ADD64(lastPhases.tasks, tasks);
+        ATOMIC_ADD64(lastPhases.shares, shares);
+        ATOMIC_ADD64(lastPhases.valid, valid);
+        ATOMIC_ADD64(lastPhases.inValid, inValid);
+        ATOMIC_ADD64(lastPhases.duplicated, duplicated);
+
+        // Reset phase number
+        phase.reset();
+    }
+
+    void appendLog(CHAR16* message)
+    {
+        long long customMiningTasks = ATOMIC_LOAD64(phase.tasks);
+        long long customMiningShares = ATOMIC_LOAD64(phase.shares);
+        long long customMiningInvalidShares = ATOMIC_LOAD64(phase.inValid);
+        long long customMiningValidShares = ATOMIC_LOAD64(phase.valid);
+        long long customMiningDuplicated = ATOMIC_LOAD64(phase.duplicated);
+
+        appendText(message, L"Phase:");
+        appendText(message, L" Tasks: ");
+        appendNumber(message, customMiningTasks, true);
+        appendText(message, L" | Shares: ");
+        appendNumber(message, customMiningShares, true);
+        appendText(message, L" | Valid: ");
+        appendNumber(message, customMiningValidShares, true);
+        appendText(message, L" | InValid: ");
+        appendNumber(message, customMiningInvalidShares, true);
+        appendText(message, L" | Duplicated: ");
+        appendNumber(message, customMiningDuplicated, true);
+
+        long long customMiningEpochTasks = customMiningTasks + ATOMIC_LOAD64(lastPhases.tasks);
+        long long customMiningEpochShares = customMiningShares + ATOMIC_LOAD64(lastPhases.shares);
+        long long customMiningEpochInvalidShares = customMiningInvalidShares + ATOMIC_LOAD64(lastPhases.inValid);
+        long long customMiningEpochValidShares = customMiningValidShares + ATOMIC_LOAD64(lastPhases.valid);
+        long long customMiningEpochDuplicated = customMiningDuplicated + ATOMIC_LOAD64(lastPhases.duplicated);
+
+        appendText(message, L". Epoch:");
+        appendText(message, L" Tasks: ");
+        appendNumber(message, customMiningTasks, false);
+        appendText(message, L" | Shares: ");
+        appendNumber(message, customMiningShares, false);
+        appendText(message, L" | Valid: ");
+        appendNumber(message, customMiningValidShares, false);
+        appendText(message, L" | Invalid: ");
+        appendNumber(message, customMiningInvalidShares, false);
+        appendText(message, L" | Duplicated: ");
+        appendNumber(message, customMiningDuplicated, false);
+    }
+};
+
+
 // In charge of storing custom mining
 constexpr unsigned int NUMBER_OF_TASK_PARTITIONS = 4;
 constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (200ULL << 20) / NUMBER_OF_TASK_PARTITIONS / sizeof(CustomMiningSolutionCacheEntry);
 constexpr unsigned long long CUSTOM_MINING_INVALID_INDEX = 0xFFFFFFFFFFFFFFFFULL;
-constexpr unsigned int CUSTOM_MINING_TASK_STORAGE_RESET_PHASE = 2; // the number of custom mining phase that the solution storage will be reset
 constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = 60 * 60 * 24 * 8 / 2 / 10; // All epoch tasks in 7 (+1) days, 10s per task, idle phases only
 constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_SIZE = CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask); // ~16.6MB
 constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_COUNT = MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS;
 constexpr unsigned long long CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE = 10 * 1024 * 1024; // 10MB
 constexpr unsigned long long CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE = 1 * 1024 * 1024; // 1MB
 
-volatile static char accumulatedSharedCountLock = 0;
-volatile static char gSystemCustomMiningSolutionLock = 0;
-volatile static char gCustomMiningCacheLock = 0;
-unsigned long long gSystemCustomMiningSolutionCount[NUMBER_OF_TASK_PARTITIONS] = { 0 };
-unsigned long long gSystemCustomMiningDuplicatedSolutionCount[NUMBER_OF_TASK_PARTITIONS] = { 0 };
-unsigned long long gSystemCustomMiningSolutionOFCount[NUMBER_OF_TASK_PARTITIONS] = { 0 };
 static volatile char gCustomMiningSharesCountLock = 0;
 static char gIsInCustomMiningState = 0;
 static volatile char gIsInCustomMiningStateLock = 0;
-static volatile char gCustomMiningInvalidSharesCountLock = 0;
-static unsigned long long gCustomMiningValidSharesCount = 0;
-static unsigned long long gCustomMiningInvalidSharesCount = 0;
 static volatile char gCustomMiningTaskStorageLock = 0;
 static volatile char gCustomMiningSolutionStorageLock = 0;
-static unsigned long long gTotalCustomMiningTaskMessages[NUMBER_OF_TASK_PARTITIONS] = { 0 };
-static unsigned long long gTotalCustomMiningSolutions = 0;
-static volatile char gTotalCustomMiningTaskMessagesLock = 0;
-static volatile char gTotalCustomMiningSolutionsLock = 0;
-static unsigned int gCustomMiningCountOverflow = 0;
-static volatile char gCustomMiningShareCountOverFlowLock = 0;
-
-//static CHAR16 gCustomMiningDbgMessage[256];
-//static volatile char gCustomMiningDbgLock = 0;
-
 
 struct CustomMiningRespondDataHeader
 {
@@ -695,7 +793,7 @@ struct CustomMiningRespondDataHeader
     unsigned long long respondType;     // message type
 };
 
-template <typename DataType, unsigned long long maxItems, unsigned long long resetPeriod, bool allowDuplicated = false>
+template <typename DataType, unsigned long long maxItems, bool allowDuplicated = false>
 class CustomMiningSortedStorage
 {
 public:
@@ -703,16 +801,14 @@ public:
     {
         OK = 0,
         DATA_EXISTED = 1,
-        BUFFER_FULL = 1,
-        UNKNOWN_ERROR = 2,
+        BUFFER_FULL = 2,
+        UNKNOWN_ERROR = 3,
     };
     void init()
     {
         allocPoolWithErrorLog(L"CustomMiningSortedStorageData", maxItems * sizeof(DataType), (void**)&_data, __LINE__);
         allocPoolWithErrorLog(L"CustomMiningSortedStorageIndices", maxItems * sizeof(unsigned long long), (void**)&_indices, __LINE__);
         _storageIndex = 0;
-        _phaseCount = 0;
-        _phaseIndex = 0;
 
         // Buffer allocation for each processors. It is limited to 10MB each
         for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
@@ -746,21 +842,6 @@ public:
     void reset()
     {
         _storageIndex = 0;
-        _phaseCount = 0;
-    }
-
-    void checkAndReset()
-    {
-        _phaseCount++;
-        if (resetPeriod > 0 && _phaseCount % resetPeriod == 0)
-        {
-            reset();
-        }
-    }
-
-    void updateStartPhaseIndex()
-    {
-        _phaseIndex = _storageIndex;
     }
 
     // Binary search for taskIndex or closest greater-than task index
@@ -1069,6 +1150,9 @@ struct CustomMiningSolutionStorageEntry
     unsigned long long cacheEntryIndex;
 };
 
+typedef CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, false> CustomMiningTaskStorage;
+typedef CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, true> CustomMiningSolutionStorage;
+
 class CustomMiningStorage
 {
 public:
@@ -1156,14 +1240,23 @@ public:
         return packedData;
     }
 
-    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, false> _taskStorage[NUMBER_OF_TASK_PARTITIONS];
-    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE, true> _solutionStorage[NUMBER_OF_TASK_PARTITIONS];
+    CustomMiningTaskStorage _taskStorage[NUMBER_OF_TASK_PARTITIONS];
+    CustomMiningSolutionStorage _solutionStorage[NUMBER_OF_TASK_PARTITIONS];
 
     // Buffer can accessed from multiple threads
     unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
 
 };
 
+// Describe how a task is divided into groups 
+// The task is for computorID in range [firstComputorIdx, lastComputorIdx]
+// domainSize determine the range of nonce that computor should work on
+// Currenly, it is designed as
+//  domainSize = (2 ^ 32)/ (lastComputorIndex - firstComputorIndex + 1);
+//  myNonceOffset = (myComputorIndex - firstComputorIndex) * domainSize;
+//  myNonce = myNonceOffset + x; x = [0, domainSize - 1]
+// For computorID calculation,
+// computorID = myNonce / domainSize + firstComputorIndex
 struct CustomMiningTaskPartition
 {
     unsigned short firstComputorIdx;
@@ -1172,8 +1265,9 @@ struct CustomMiningTaskPartition
 };
 
 static CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
-static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolution = NULL;
+static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolutionCache = NULL;
 static CustomMiningStorage gCustomMiningStorage;
+static CustomMiningStats gCustomMiningStats;
 
 // Get the part ID
 int customMiningGetPartitionID(unsigned short firstComputorIndex, unsigned short lastComputorIndex)
@@ -1215,9 +1309,9 @@ int customMiningGetComputorID(unsigned int nonce, int partId)
 int customMiningInitialize()
 {
     gCustomMiningStorage.init();
-    allocPoolWithErrorLog(L"gSystemCustomMiningSolution", 
+    allocPoolWithErrorLog(L"gSystemCustomMiningSolutionCache", 
         NUMBER_OF_TASK_PARTITIONS *  sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
-        (void**) & gSystemCustomMiningSolution,
+        (void**) & gSystemCustomMiningSolutionCache,
         __LINE__);
     customMiningInitTaskPartitions();
 
@@ -1226,10 +1320,10 @@ int customMiningInitialize()
 
 int customMiningDeinitialize()
 {
-    if (gSystemCustomMiningSolution)
+    if (gSystemCustomMiningSolutionCache)
     {
-        freePool(gSystemCustomMiningSolution);
-        gSystemCustomMiningSolution = NULL;
+        freePool(gSystemCustomMiningSolutionCache);
+        gSystemCustomMiningSolutionCache = NULL;
     }
     gCustomMiningStorage.deinit();
     return 0;
@@ -1249,7 +1343,7 @@ void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 8] = i / 100 + L'0';
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 7] = (i % 100) / 10 + L'0';
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 6] = i % 10 + L'0';
-        gSystemCustomMiningSolution[i].save(CUSTOM_MINING_CACHE_FILE_NAME, directory);
+        gSystemCustomMiningSolutionCache[i].save(CUSTOM_MINING_CACHE_FILE_NAME, directory);
     }
 }
 
@@ -1267,7 +1361,7 @@ bool loadCustomMiningCache(int epoch)
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 8] = i / 100 + L'0';
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 7] = (i % 100) / 10 + L'0';
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 6] = i % 10 + L'0';
-        success &= gSystemCustomMiningSolution[i].load(CUSTOM_MINING_CACHE_FILE_NAME);
+        success &= gSystemCustomMiningSolutionCache[i].load(CUSTOM_MINING_CACHE_FILE_NAME);
     }
     return success;
 }
