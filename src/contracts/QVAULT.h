@@ -1507,8 +1507,8 @@ protected:
 
     struct getStakedAmountAndVotingPower_output
     {
-        uint64 stakedAmount;
-        uint64 votingPower;
+        uint32 stakedAmount;
+        uint32 votingPower;
     };
 
     struct getStakedAmountAndVotingPower_locals
@@ -1665,7 +1665,7 @@ protected:
     struct HvVtPwListInfo
     {
         id address;
-        uint64 power;
+        uint32 power;
     };
 
     struct getIdentitiesHvVtPw_output
@@ -1856,12 +1856,12 @@ protected:
 
     struct getAmountOfShareQvaultHold_output
     {
-        uint64 amount;
+        uint32 amount;
     };
 
     PUBLIC_FUNCTION(getAmountOfShareQvaultHold)
     {
-        output.amount = qpi.numberOfPossessedShares(input.assetInfo.assetName, input.assetInfo.issuer, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+        output.amount = (uint32)qpi.numberOfPossessedShares(input.assetInfo.assetName, input.assetInfo.issuer, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
     }
 
     struct getNumberOfHolderAndAvgAm_input
