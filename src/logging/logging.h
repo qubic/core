@@ -578,6 +578,7 @@ public:
 
     static void updateTick(unsigned int _tick)
     {
+#if ENABLED_LOGGING
         ASSERT((_tick == lastUpdatedTick + 1) || (_tick == tickBegin));
 #if LOG_STATE_DIGEST
         unsigned long long index = lastUpdatedTick - tickBegin;
@@ -585,11 +586,10 @@ public:
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
 #endif
-#if ENABLED_LOGGING
         tx.commitAndCleanCurrentTxToLogId();
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
-#endif  
         lastUpdatedTick = _tick;
+#endif
     }
     
 #ifdef NO_UEFI

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <intrin.h>
+#include <lib/platform_common/qintrin.h>
 
 // Used for all kinds of IDs, including in QPI and contracts.
 // Existing interface and behavior should never be changed! (However, it may be extended.)

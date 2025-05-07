@@ -1,6 +1,6 @@
 #pragma once
 
-#include <intrin.h>
+#include <lib/platform_common/qintrin.h>
 
 // Acquire lock, may block
 #define ACQUIRE_WITHOUT_DEBUG_LOGGING(lock) while (_InterlockedCompareExchange8(&lock, 1, 0)) _mm_pause()
