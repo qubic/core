@@ -1183,7 +1183,8 @@ struct CustomMiningTaskPartition
 };
 
 static CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
-static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolution = NULL;
+// This declaration will emit a warning about initialization. But it can be skipped because we call init function in customMiningInitialize().
+static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolution[NUMBER_OF_TASK_PARTITIONS];
 static CustomMiningStorage gCustomMiningStorage;
 
 // Get the part ID
@@ -1226,10 +1227,6 @@ int customMiningGetComputorID(unsigned int nonce, int partId)
 int customMiningInitialize()
 {
     gCustomMiningStorage.init();
-    allocPoolWithErrorLog(L"gSystemCustomMiningSolution", 
-        NUMBER_OF_TASK_PARTITIONS *  sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
-        (void**) & gSystemCustomMiningSolution,
-        __LINE__);
     for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
     {
         gSystemCustomMiningSolution[i].init();
@@ -1242,11 +1239,6 @@ int customMiningInitialize()
 
 int customMiningDeinitialize()
 {
-    if (gSystemCustomMiningSolution)
-    {
-        freePool(gSystemCustomMiningSolution);
-        gSystemCustomMiningSolution = NULL;
-    }
     gCustomMiningStorage.deinit();
     return 0;
 }
