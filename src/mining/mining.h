@@ -334,6 +334,17 @@ class CustomMininingCache
     static_assert(collisionRetries < size, "Number of fetch retries in case of collision is too big!");
 public:
 
+    void init()
+    {
+        setMem((unsigned char*)cache, sizeof(cache), 0);
+        lock = 0;
+        hits = 0;
+        misses = 0;
+        collisions = 0;
+        verification = 0;
+        invalid = 0;
+    }
+
     /// Reset all cache entries
     void reset()
     {
@@ -1172,7 +1183,8 @@ struct CustomMiningTaskPartition
 };
 
 static CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
-static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolution = NULL;
+// This declaration will emit a warning about initialization. But it can be skipped because we call init function in customMiningInitialize().
+static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolution[NUMBER_OF_TASK_PARTITIONS];
 static CustomMiningStorage gCustomMiningStorage;
 
 // Get the part ID
@@ -1215,10 +1227,10 @@ int customMiningGetComputorID(unsigned int nonce, int partId)
 int customMiningInitialize()
 {
     gCustomMiningStorage.init();
-    allocPoolWithErrorLog(L"gSystemCustomMiningSolution", 
-        NUMBER_OF_TASK_PARTITIONS *  sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
-        (void**) & gSystemCustomMiningSolution,
-        __LINE__);
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        gSystemCustomMiningSolution[i].init();
+    }
     customMiningInitTaskPartitions();
 
     return 0;
@@ -1226,11 +1238,6 @@ int customMiningInitialize()
 
 int customMiningDeinitialize()
 {
-    if (gSystemCustomMiningSolution)
-    {
-        freePool(gSystemCustomMiningSolution);
-        gSystemCustomMiningSolution = NULL;
-    }
     gCustomMiningStorage.deinit();
     return 0;
 }
