@@ -334,6 +334,17 @@ class CustomMininingCache
     static_assert(collisionRetries < size, "Number of fetch retries in case of collision is too big!");
 public:
 
+    void init()
+    {
+        setMem((unsigned char*)cache, sizeof(cache), 0);
+        lock = 0;
+        hits = 0;
+        misses = 0;
+        collisions = 0;
+        verification = 0;
+        invalid = 0;
+    }
+
     /// Reset all cache entries
     void reset()
     {
@@ -1219,6 +1230,11 @@ int customMiningInitialize()
         NUMBER_OF_TASK_PARTITIONS *  sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
         (void**) & gSystemCustomMiningSolution,
         __LINE__);
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        gSystemCustomMiningSolution[i].init();
+    }
+
     customMiningInitTaskPartitions();
 
     return 0;
