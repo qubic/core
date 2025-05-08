@@ -1230,7 +1230,7 @@ struct CustomMiningTaskPartition
 };
 
 static CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
-static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolution = NULL;
+static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolution[NUMBER_OF_TASK_PARTITIONS];
 static CustomMiningStorage gCustomMiningStorage;
 
 // Get the part ID
@@ -1273,10 +1273,10 @@ int customMiningGetComputorID(unsigned int nonce, int partId)
 int customMiningInitialize()
 {
     gCustomMiningStorage.init();
-    allocPoolWithErrorLog(L"gSystemCustomMiningSolution", 
-        NUMBER_OF_TASK_PARTITIONS *  sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
-        (void**) & gSystemCustomMiningSolution,
-        __LINE__);
+    //allocPoolWithErrorLog(L"gSystemCustomMiningSolution", 
+    //    NUMBER_OF_TASK_PARTITIONS *  sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
+    //    (void**) & gSystemCustomMiningSolution,
+    //    __LINE__);
     customMiningInitTaskPartitions();
 
     return 0;
@@ -1284,11 +1284,11 @@ int customMiningInitialize()
 
 int customMiningDeinitialize()
 {
-    if (gSystemCustomMiningSolution)
-    {
-        freePool(gSystemCustomMiningSolution);
-        gSystemCustomMiningSolution = NULL;
-    }
+    //if (gSystemCustomMiningSolution)
+    //{
+    //    freePool(gSystemCustomMiningSolution);
+    //    gSystemCustomMiningSolution = NULL;
+    //}
     gCustomMiningStorage.deinit();
     return 0;
 }
