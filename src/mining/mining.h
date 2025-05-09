@@ -662,6 +662,23 @@ private:
     bool _isValid;
 };
 
+
+// In charge of storing custom mining
+constexpr unsigned int NUMBER_OF_TASK_PARTITIONS = 4;
+constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (200ULL << 20) / NUMBER_OF_TASK_PARTITIONS / sizeof(CustomMiningSolutionCacheEntry);
+constexpr unsigned long long CUSTOM_MINING_INVALID_INDEX = 0xFFFFFFFFFFFFFFFFULL;
+constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = 60 * 60 * 24 * 8 / 2 / 10; // All epoch tasks in 7 (+1) days, 10s per task, idle phases only
+constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_SIZE = CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask); // ~16.6MB
+constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_COUNT = MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS;
+constexpr unsigned long long CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE = 10 * 1024 * 1024; // 10MB
+constexpr unsigned long long CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE = 1 * 1024 * 1024; // 1MB
+
+static volatile char gCustomMiningSharesCountLock = 0;
+static char gIsInCustomMiningState = 0;
+static volatile char gIsInCustomMiningStateLock = 0;
+static volatile char gCustomMiningTaskStorageLock = 0;
+static volatile char gCustomMiningSolutionStorageLock = 0;
+
 // Stats of custom mining.
 // Reset after epoch change.
 // Some variable is reset after end of each custom mining phase.
@@ -694,13 +711,16 @@ struct CustomMiningStats
     long long maxCollisionShareCount; // Max number of shares that are not save in cached because of collision
 
     // Stats of current custom mining phase
-    Counter phase;
+    Counter phase[NUMBER_OF_TASK_PARTITIONS];
 
     // Asume at begining of epoch.
     void epochReset()
     {
         lastPhases.reset();
-        phase.reset();
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+        {
+            phase[i].reset();
+        }
 
         ATOMIC_STORE64(maxOverflowShareCount, 0);
         ATOMIC_STORE64(maxCollisionShareCount, 0);
@@ -710,11 +730,19 @@ struct CustomMiningStats
     void phaseResetAndEpochAccumulate()
     {
         // Load the phase stats
-        const long long tasks = ATOMIC_LOAD64(phase.tasks);
-        const long long shares = ATOMIC_LOAD64(phase.shares);
-        const long long valid = ATOMIC_LOAD64(phase.valid);
-        const long long inValid = ATOMIC_LOAD64(phase.inValid);
-        const long long duplicated = ATOMIC_LOAD64(phase.duplicated);
+        long long tasks = 0;
+        long long shares = 0;
+        long long valid = 0;
+        long long inValid = 0;
+        long long duplicated = 0;
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+        {
+            tasks += ATOMIC_LOAD64(phase[i].tasks);
+            shares += ATOMIC_LOAD64(phase[i].shares);
+            valid += ATOMIC_LOAD64(phase[i].valid);
+            inValid += ATOMIC_LOAD64(phase[i].inValid);
+            duplicated += ATOMIC_LOAD64(phase[i].duplicated);
+        }
 
         // Accumulate the phase into last phases
         ATOMIC_ADD64(lastPhases.tasks, tasks);
@@ -724,16 +752,27 @@ struct CustomMiningStats
         ATOMIC_ADD64(lastPhases.duplicated, duplicated);
 
         // Reset phase number
-        phase.reset();
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+        {
+            phase[i].reset();
+        }
     }
 
     void appendLog(CHAR16* message)
     {
-        long long customMiningTasks = ATOMIC_LOAD64(phase.tasks);
-        long long customMiningShares = ATOMIC_LOAD64(phase.shares);
-        long long customMiningInvalidShares = ATOMIC_LOAD64(phase.inValid);
-        long long customMiningValidShares = ATOMIC_LOAD64(phase.valid);
-        long long customMiningDuplicated = ATOMIC_LOAD64(phase.duplicated);
+        long long customMiningTasks = 0;
+        long long customMiningShares = 0;
+        long long customMiningValidShares = 0;
+        long long customMiningInvalidShares = 0;
+        long long customMiningDuplicated = 0;
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+        {
+            customMiningTasks += ATOMIC_LOAD64(phase[i].tasks);
+            customMiningShares += ATOMIC_LOAD64(phase[i].shares);
+            customMiningValidShares += ATOMIC_LOAD64(phase[i].valid);
+            customMiningInvalidShares += ATOMIC_LOAD64(phase[i].inValid);
+            customMiningDuplicated += ATOMIC_LOAD64(phase[i].duplicated);
+        }
 
         appendText(message, L"Phase:");
         appendText(message, L" Tasks: ");
@@ -755,34 +794,18 @@ struct CustomMiningStats
 
         appendText(message, L". Epoch:");
         appendText(message, L" Tasks: ");
-        appendNumber(message, customMiningTasks, false);
+        appendNumber(message, customMiningEpochTasks, false);
         appendText(message, L" | Shares: ");
-        appendNumber(message, customMiningShares, false);
+        appendNumber(message, customMiningEpochShares, false);
         appendText(message, L" | Valid: ");
-        appendNumber(message, customMiningValidShares, false);
+        appendNumber(message, customMiningEpochInvalidShares, false);
         appendText(message, L" | Invalid: ");
-        appendNumber(message, customMiningInvalidShares, false);
+        appendNumber(message, customMiningEpochValidShares, false);
         appendText(message, L" | Duplicated: ");
-        appendNumber(message, customMiningDuplicated, false);
+        appendNumber(message, customMiningEpochDuplicated, false);
     }
 };
 
-
-// In charge of storing custom mining
-constexpr unsigned int NUMBER_OF_TASK_PARTITIONS = 4;
-constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (200ULL << 20) / NUMBER_OF_TASK_PARTITIONS / sizeof(CustomMiningSolutionCacheEntry);
-constexpr unsigned long long CUSTOM_MINING_INVALID_INDEX = 0xFFFFFFFFFFFFFFFFULL;
-constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = 60 * 60 * 24 * 8 / 2 / 10; // All epoch tasks in 7 (+1) days, 10s per task, idle phases only
-constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_SIZE = CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask); // ~16.6MB
-constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_COUNT = MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS;
-constexpr unsigned long long CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE = 10 * 1024 * 1024; // 10MB
-constexpr unsigned long long CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE = 1 * 1024 * 1024; // 1MB
-
-static volatile char gCustomMiningSharesCountLock = 0;
-static char gIsInCustomMiningState = 0;
-static volatile char gIsInCustomMiningStateLock = 0;
-static volatile char gCustomMiningTaskStorageLock = 0;
-static volatile char gCustomMiningSolutionStorageLock = 0;
 
 struct CustomMiningRespondDataHeader
 {

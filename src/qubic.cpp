@@ -564,7 +564,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
                             if (CustomMiningTaskStorage::OK == taskAddSts)
                             {
-                                ATOMIC_INC64(gCustomMiningStats.phase.tasks);
+                                ATOMIC_INC64(gCustomMiningStats.phase[partId].tasks);
                             }
                         }
                     }
@@ -634,8 +634,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                     const unsigned int missCount = gSystemCustomMiningSolutionCache[partId].missCount();
                                     const unsigned int collision = gSystemCustomMiningSolutionCache[partId].collisionCount();
 
-                                    ATOMIC_STORE64(gCustomMiningStats.phase.shares, missCount);
-                                    ATOMIC_STORE64(gCustomMiningStats.phase.duplicated, hitCount);
+                                    ATOMIC_STORE64(gCustomMiningStats.phase[partId].shares, missCount);
+                                    ATOMIC_STORE64(gCustomMiningStats.phase[partId].duplicated, hitCount);
                                     ATOMIC_MAX64(gCustomMiningStats.maxCollisionShareCount, collision);
 
                                 }
@@ -1410,13 +1410,13 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
                         RELEASE(gCustomMiningSharesCountLock);
 
                         // Save the number of invalid share count
-                        ATOMIC_INC64(gCustomMiningStats.phase.inValid);
+                        ATOMIC_INC64(gCustomMiningStats.phase[partId].inValid);
 
                         respond.status = RespondCustomMiningSolutionVerification::invalid;
                     }
                     else
                     {
-                        ATOMIC_INC64(gCustomMiningStats.phase.valid);
+                        ATOMIC_INC64(gCustomMiningStats.phase[partId].valid);
                         respond.status = RespondCustomMiningSolutionVerification::valid;
                     }
                 }
