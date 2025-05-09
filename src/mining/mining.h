@@ -702,7 +702,7 @@ struct CustomMiningStats
         // Shares related
         long long shares;       // Total shares/solutions = unverifed/no-task + valid + invalid
         long long valid;        // Solutions are marked as valid by verififer
-        long long inValid;      // Solutions are marked as invalid by verififer
+        long long invalid;      // Solutions are marked as invalid by verififer
         long long duplicated;   // Duplicated solutions, ussually causes by solution message broadcasted or
 
         void reset()
@@ -711,7 +711,7 @@ struct CustomMiningStats
 
             ATOMIC_STORE64(shares, 0);
             ATOMIC_STORE64(valid, 0);
-            ATOMIC_STORE64(inValid, 0);
+            ATOMIC_STORE64(invalid, 0);
             ATOMIC_STORE64(duplicated, 0);
         }
     };
@@ -744,14 +744,14 @@ struct CustomMiningStats
         long long tasks = 0;
         long long shares = 0;
         long long valid = 0;
-        long long inValid = 0;
+        long long invalid = 0;
         long long duplicated = 0;
         for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
         {
             tasks += ATOMIC_LOAD64(phase[i].tasks);
             shares += ATOMIC_LOAD64(phase[i].shares);
             valid += ATOMIC_LOAD64(phase[i].valid);
-            inValid += ATOMIC_LOAD64(phase[i].inValid);
+            invalid += ATOMIC_LOAD64(phase[i].invalid);
             duplicated += ATOMIC_LOAD64(phase[i].duplicated);
         }
 
@@ -759,7 +759,7 @@ struct CustomMiningStats
         ATOMIC_ADD64(lastPhases.tasks, tasks);
         ATOMIC_ADD64(lastPhases.shares, shares);
         ATOMIC_ADD64(lastPhases.valid, valid);
-        ATOMIC_ADD64(lastPhases.inValid, inValid);
+        ATOMIC_ADD64(lastPhases.invalid, invalid);
         ATOMIC_ADD64(lastPhases.duplicated, duplicated);
 
         // Reset phase number
@@ -781,7 +781,7 @@ struct CustomMiningStats
             customMiningTasks += ATOMIC_LOAD64(phase[i].tasks);
             customMiningShares += ATOMIC_LOAD64(phase[i].shares);
             customMiningValidShares += ATOMIC_LOAD64(phase[i].valid);
-            customMiningInvalidShares += ATOMIC_LOAD64(phase[i].inValid);
+            customMiningInvalidShares += ATOMIC_LOAD64(phase[i].invalid);
             customMiningDuplicated += ATOMIC_LOAD64(phase[i].duplicated);
         }
 
@@ -799,7 +799,7 @@ struct CustomMiningStats
 
         long long customMiningEpochTasks = customMiningTasks + ATOMIC_LOAD64(lastPhases.tasks);
         long long customMiningEpochShares = customMiningShares + ATOMIC_LOAD64(lastPhases.shares);
-        long long customMiningEpochInvalidShares = customMiningInvalidShares + ATOMIC_LOAD64(lastPhases.inValid);
+        long long customMiningEpochInvalidShares = customMiningInvalidShares + ATOMIC_LOAD64(lastPhases.invalid);
         long long customMiningEpochValidShares = customMiningValidShares + ATOMIC_LOAD64(lastPhases.valid);
         long long customMiningEpochDuplicated = customMiningDuplicated + ATOMIC_LOAD64(lastPhases.duplicated);
 
@@ -809,9 +809,9 @@ struct CustomMiningStats
         appendText(message, L" | Shares: ");
         appendNumber(message, customMiningEpochShares, false);
         appendText(message, L" | Valid: ");
-        appendNumber(message, customMiningEpochInvalidShares, false);
-        appendText(message, L" | Invalid: ");
         appendNumber(message, customMiningEpochValidShares, false);
+        appendText(message, L" | Invalid: ");
+        appendNumber(message, customMiningEpochInvalidShares, false);
         appendText(message, L" | Duplicated: ");
         appendNumber(message, customMiningEpochDuplicated, false);
     }
@@ -1171,8 +1171,6 @@ private:
     DataType* _data;
     unsigned long long* _indices;
     unsigned long long _storageIndex;
-    unsigned long long _phaseCount;
-    unsigned long long _phaseIndex;
 
     unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
 };

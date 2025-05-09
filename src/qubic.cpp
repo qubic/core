@@ -1410,7 +1410,7 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
                         RELEASE(gCustomMiningSharesCountLock);
 
                         // Save the number of invalid share count
-                        ATOMIC_INC64(gCustomMiningStats.phase[partId].inValid);
+                        ATOMIC_INC64(gCustomMiningStats.phase[partId].invalid);
 
                         respond.status = RespondCustomMiningSolutionVerification::invalid;
                     }
@@ -5797,10 +5797,9 @@ static void logInfo()
     logToConsole(message);
 
     // Log infomation about custom mining
-    // TODO: move those stats into F3 pressed key and using atomic operations.
     setText(message, L"CustomMining: ");
 
-    // System: Active | solutions count at current phase | Total duplicated solutions | Total skipped solutions
+    // System: Active status | Overflow | Collision
     char isCustomMiningStateActive = 0;
     ACQUIRE(gIsInCustomMiningStateLock);
     isCustomMiningStateActive = gIsInCustomMiningState;
