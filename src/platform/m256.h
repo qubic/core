@@ -58,28 +58,19 @@ union m256i
 
     m256i(unsigned long long ull0, unsigned long long ull1, unsigned long long ull2, unsigned long long ull3)
     {
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(this),
                              _mm256_set_epi64x(ull3, ull2, ull1, ull0));
-        SUPPRESS_WARNINGS_END
     }
 
     m256i(const unsigned char value[32])
     {
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(this),
                               _mm256_loadu_si256(reinterpret_cast<const __m256i*>(value)));
-        SUPPRESS_WARNINGS_END
     }
 
     m256i(const __m256i& value)
     {
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(this), value);
-        SUPPRESS_WARNINGS_END
     }
 
     m256i(const m256i& value)
@@ -130,78 +121,56 @@ union m256i
     void assign(const m256i& value) noexcept
     {
         // supports self-assignment
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(this),
                         _mm256_lddqu_si256(reinterpret_cast<const __m256i*>(&value)));
-        SUPPRESS_WARNINGS_END
     }
 
     void assign(const m256i& value) volatile noexcept
     {
-        // supports self-assignment
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         _mm256_storeu_si256(
             reinterpret_cast<__m256i*>(const_cast<m256i*>(this)), // Cast away volatile from 'this'
             _mm256_lddqu_si256(reinterpret_cast<const __m256i*>(&value))
         );
-        SUPPRESS_WARNINGS_END
     }
 
     void assign(const volatile m256i& value) noexcept
     {
         // supports self-assignment
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         _mm256_storeu_si256(
             reinterpret_cast<__m256i*>(this),
             _mm256_lddqu_si256(reinterpret_cast<const __m256i*>(const_cast<const m256i*>(&value))) // Cast away volatile from 'value'
         );
-        SUPPRESS_WARNINGS_END
     }
 
     void assign(volatile const m256i& value) volatile noexcept
     {
         // supports self-assignment
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         _mm256_storeu_si256(
             reinterpret_cast<__m256i*>(const_cast<m256i*>(this)), // Cast away volatile from 'this'
             _mm256_lddqu_si256(reinterpret_cast<const __m256i*>(const_cast<const m256i*>(&value))) // Cast away volatile from 'value'
         );
-        SUPPRESS_WARNINGS_END
     }
 
     // Safely retrieves the content of the m256i union as an __m256i value.
     // TODO: Maybe rename to get_intrinsic_value().
     __m256i m256i_intr() const noexcept
     {
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(this));
-        SUPPRESS_WARNINGS_END
     }
 
     __m256i m256i_intr() const volatile noexcept 
     {
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         return _mm256_loadu_si256(
             reinterpret_cast<const __m256i*>( // Step 2: Reinterpret type
                 const_cast<const m256i*>(this)   // Step 1: Cast away volatile
             )
         );
-        SUPPRESS_WARNINGS_END
     }
 
     // Safely sets the content of the m256i union from an __m256i value.
     void set_intrinsic_value(const __m256i& newValue) noexcept
     {
-        SUPPRESS_WARNINGS_BEGIN
-        IGNORE_CAST_ALIGN_WARNING
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(this), newValue);
-        SUPPRESS_WARNINGS_END
     }
 
     void setRandomValue()
@@ -246,10 +215,7 @@ static inline __m256i __m256i_convert(volatile const m256i& a)
 
 static inline __m256i __m256i_convert(const unsigned char a[32])
 {
-    SUPPRESS_WARNINGS_BEGIN
-    IGNORE_CAST_ALIGN_WARNING
     return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(a));
-    SUPPRESS_WARNINGS_END
 }
 
 /*
