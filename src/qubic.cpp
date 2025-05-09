@@ -1494,6 +1494,10 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                     respond = gCustomMiningStorage._solutionStorage[partId].getSerializedData(request->fromTaskIndex, processorNumber);
                     RELEASE(gCustomMiningSolutionStorageLock);
                 }
+                else
+                {
+                    respond = NULL;
+                }
 
                 // Has the solutions
                 if (NULL != respond)
