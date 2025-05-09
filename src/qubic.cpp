@@ -1398,7 +1398,11 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
                 // Make sure the solution still existed
                 int partId = customMiningGetPartitionID(request->firstComputorIdx, request->lastComputorIdx);
                 // Check the computor idx of this solution
-                const int computorID = customMiningGetComputorID(request->nonce, partId);
+                int computorID = NUMBER_OF_COMPUTORS;
+                if (partId >= 0)
+                {
+                    computorID = customMiningGetComputorID(request->nonce, partId);
+                }
 
                 if (partId >=0 
                     && computorID <= gTaskPartition[partId].lastComputorIdx
@@ -1495,10 +1499,18 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                 // For solution type, return all solution from the current phase
                 int partId = customMiningGetPartitionID(request->firstComputorIdx, request->lastComputorIdx);
 
-                ACQUIRE(gCustomMiningSolutionStorageLock);
-                // Look for all solution data
-                respond = gCustomMiningStorage._solutionStorage[partId].getSerializedData(request->fromTaskIndex, processorNumber);
-                RELEASE(gCustomMiningSolutionStorageLock);
+                // Make sure the range of computor is correct
+                if (partId >= 0)
+                {
+                    ACQUIRE(gCustomMiningSolutionStorageLock);
+                    // Look for all solution data
+                    respond = gCustomMiningStorage._solutionStorage[partId].getSerializedData(request->fromTaskIndex, processorNumber);
+                    RELEASE(gCustomMiningSolutionStorageLock);
+                }
+                else
+                {
+                    respond = NULL;
+                }
 
                 // Has the solutions
                 if (NULL != respond)
