@@ -3116,12 +3116,12 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
-    // In the begining of mining phase.
-    // Also skip the begining of the epoch, because the no thing to do
-    if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
+    // Broadcast custom mining shares 
+    if (isMainMode())
     {
-        // Broadcast custom mining shares 
-        if (isMainMode())
+        // In the begining of mining phase.
+        // Also skip the begining of the epoch, because the no thing to do
+        if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
         {
             long long customMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
