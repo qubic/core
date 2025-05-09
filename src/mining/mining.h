@@ -484,7 +484,7 @@ public:
     {
         const unsigned long long beginningTick = __rdtsc();
         ACQUIRE(lock);
-        long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)&cache, directory);
+        long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)cache, directory);
         RELEASE(lock);
         if (savedSize == sizeof(cache))
         {
@@ -1298,7 +1298,7 @@ struct CustomMiningTaskPartition
 
 static CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
 // This declaration will emit a warning about initialization. But it can be skipped because we call init function in customMiningInitialize().
-static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolutionCache[NUMBER_OF_TASK_PARTITIONS];
+static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolutionCache = NULL;
 static CustomMiningStorage gCustomMiningStorage;
 static CustomMiningStats gCustomMiningStats;
 
@@ -1342,6 +1342,11 @@ int customMiningGetComputorID(unsigned int nonce, int partId)
 int customMiningInitialize()
 {
     gCustomMiningStorage.init();
+    allocPoolWithErrorLog(L"gSystemCustomMiningSolutionCache",
+        NUMBER_OF_TASK_PARTITIONS * sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
+        (void**)&gSystemCustomMiningSolutionCache,
+        __LINE__);
+    setMem((unsigned char*)gSystemCustomMiningSolutionCache, NUMBER_OF_TASK_PARTITIONS * sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>), 0);
     for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
     {
         gSystemCustomMiningSolutionCache[i].init();
@@ -1354,6 +1359,11 @@ int customMiningInitialize()
 
 int customMiningDeinitialize()
 {
+    if (gSystemCustomMiningSolutionCache)
+    {
+        freePool(gSystemCustomMiningSolutionCache);
+        gSystemCustomMiningSolutionCache = NULL;
+    }
     gCustomMiningStorage.deinit();
     return 0;
 }

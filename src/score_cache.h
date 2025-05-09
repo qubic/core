@@ -118,7 +118,7 @@ public:
 
         const unsigned long long beginningTick = __rdtsc();
         ACQUIRE(lock);
-        long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)&cache, directory);
+        long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)cache, directory);
         RELEASE(lock);
         if (savedSize == sizeof(cache))
         {
