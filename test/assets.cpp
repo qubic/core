@@ -607,6 +607,50 @@ TEST(TestCoreAssets, AssetIterators)
     // check consistency after rebuild/cleanup of hash map
     assetsEndEpoch();
     test.checkAssetsConsistency();
+
+    {
+        // Test burning of shares
+        for (int i = 0; i < issuancesCount; ++i)
+        {
+            for (int j = 3; j >= 1; j--)
+            {
+                // iterate all possession records and burn 1/j part of the shares
+                long long expectedTotalShares = 0;
+                for (AssetPossessionIterator iter(issuances[i].id); !iter.reachedEnd(); iter.next())
+                {
+                    const long long numOfSharesPossessedInitially = iter.numberOfPossessedShares();
+                    const long long numOfSharesOwnedInitially = iter.numberOfOwnedShares();
+                    const long long numOfSharesToBurn = numOfSharesPossessedInitially / j;
+                    const long long numOfSharesPossessedAfterwards = numOfSharesPossessedInitially - numOfSharesToBurn;
+                    const long long numOfSharesOwnedAfterwards = numOfSharesOwnedInitially - numOfSharesToBurn;
+
+                    const bool success = transferShareOwnershipAndPossession(iter.ownershipIndex(), iter.possessionIndex(), NULL_ID, numOfSharesToBurn, nullptr, nullptr, false);
+
+                    if (isZero(issuances[i].id.issuer))
+                    {
+                        // burning fails for contract shares
+                        EXPECT_FALSE(success);
+                        EXPECT_EQ(numOfSharesPossessedInitially, iter.numberOfPossessedShares());
+                        EXPECT_EQ(numOfSharesOwnedInitially, iter.numberOfOwnedShares());
+                        expectedTotalShares += numOfSharesPossessedInitially;
+                    }
+                    else
+                    {
+                        // burning succeeds for non-contract asset shares
+                        EXPECT_TRUE(success);
+                        EXPECT_EQ(numOfSharesPossessedAfterwards, iter.numberOfPossessedShares());
+                        EXPECT_EQ(numOfSharesOwnedAfterwards, iter.numberOfOwnedShares());
+                        expectedTotalShares += numOfSharesPossessedAfterwards;
+                    }
+                }
+                EXPECT_EQ(expectedTotalShares, numberOfShares(issuances[i].id));
+            }
+        }
+    }
+
+    // check consistency after rebuild/cleanup of hash map
+    assetsEndEpoch();
+    test.checkAssetsConsistency();
 }
 
 TEST(TestCoreAssets, AssetTransferShareManagementRights)
