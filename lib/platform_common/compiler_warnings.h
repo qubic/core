@@ -1,6 +1,6 @@
 #pragma once
 
-// Class to suppress specific compiler warnings for specific sections of code.
+// Macros to suppress specific compiler warnings for specific sections of code.
 // Useful to hide warnings about unknown pragmas while using other compilers.
 
 // Example usage:
