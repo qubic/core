@@ -473,14 +473,14 @@ static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header
     {
         peer->exchangedPublicPeers = TRUE; // A race condition is possible
 
-        // Set isVerified if sExchangePublicPeers was received on outgoing connection
+        // Set isHandshaked if sExchangePublicPeers was received on outgoing connection
         if (peer->address.u32)
         {
             for (unsigned int j = 0; j < numberOfPublicPeers; j++)
             {
                 if (peer->address == publicPeers[j].address)
                 {
-                    publicPeers[j].isVerified = true;
+                    publicPeers[j].isHandshaked = true;
 
                     break;
                 }
@@ -877,6 +877,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             {
                 // Copy the sent tick to the tick storage
                 copyMem(tsTick, &request->tick, sizeof(Tick));
+                peer->lastActiveTick = request->tick.tick;
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -942,6 +943,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                             if (digest == targetNextTickDataDigest)
                             {
                                 copyMem(&td, &request->tickData, sizeof(TickData));
+                                peer->lastActiveTick = request->tickData.tick;
                             }
                         }
                     }
@@ -970,6 +972,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                         else
                         {
                             copyMem(&td, &request->tickData, sizeof(TickData));
+                            peer->lastActiveTick = request->tickData.tick;
                         }
                     }
                 }
@@ -1240,6 +1243,22 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
     }
 
     enqueueResponse(peer, sizeof(currentTickInfo), RESPOND_CURRENT_TICK_INFO, header->dejavu(), &currentTickInfo);
+}
+
+static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
+{
+    if (header->size() == sizeof(RequestResponseHeader) + sizeof(CurrentTickInfo))
+    {
+        CurrentTickInfo currentTickInfo = *(header->getPayload< CurrentTickInfo>());
+        // avoid malformed data
+        if (currentTickInfo.initialTick == system.initialTick
+            && currentTickInfo.epoch == system.epoch 
+            && currentTickInfo.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
+            && currentTickInfo.tick >= system.initialTick)
+        {
+            // TODO: reserved handler for future use when we are able to verify CurrentTickInfo
+        }
+    }
 }
 
 static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
@@ -1961,6 +1980,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case REQUEST_CURRENT_TICK_INFO:
                 {
                     processRequestCurrentTickInfo(peer, header);
+                }
+                break;
+
+                case RESPOND_CURRENT_TICK_INFO:
+                {
+                    processResponseCurrentTickInfo(peer, header);
                 }
                 break;
 
@@ -5452,7 +5477,10 @@ static bool initialize()
         const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(knownPublicPeers[i]);
         addPublicPeer(peer_ip);
         if (numberOfPublicPeers > 0)
-            publicPeers[numberOfPublicPeers - 1].isVerified = true;
+        {
+            publicPeers[numberOfPublicPeers - 1].isHandshaked = true;
+            publicPeers[numberOfPublicPeers - 1].isFullnode = true;
+        }
     }
     if (numberOfPublicPeers < 4)
     {
@@ -5598,13 +5626,19 @@ static void logInfo()
         }
     }
 
-    unsigned int numberOfVerifiedPublicPeers = 0;
+    unsigned int numberOfHandshakedPublicPeers = 0;
+    unsigned int numberOfFullnodePublicPeers = 0;
 
     for (unsigned int i = 0; i < numberOfPublicPeers; i++)
     {
-        if (publicPeers[i].isVerified)
+        if (publicPeers[i].isHandshaked)
         {
-            numberOfVerifiedPublicPeers++;
+            numberOfHandshakedPublicPeers++;
+        }
+
+        if (publicPeers[i].isFullnode)
+        {
+            numberOfFullnodePublicPeers++;
         }
     }
 
@@ -5638,8 +5672,10 @@ static void logInfo()
     appendNumber(message, numberOfConnectedSlots, FALSE);
 
     appendText(message, L" ");
-    appendNumber(message, numberOfVerifiedPublicPeers, TRUE);
+    appendNumber(message, numberOfHandshakedPublicPeers, TRUE);
     appendText(message, L"/");
+    appendNumber(message, numberOfFullnodePublicPeers, TRUE);
+    appendText(message, L"/");    
     appendNumber(message, numberOfPublicPeers, TRUE);
     appendText(message, listOfPeersIsStatic ? L" Static" : L" Dynamic");
     appendText(message, L" (+");
@@ -5672,6 +5708,7 @@ static void logInfo()
     appendText(message, L".");
     appendNumber(message, (tickDuration % frequency) * 10 / frequency, FALSE);
     appendText(message, L" s");
+    
 
     if (consoleLoggingLevel < 2)
     {
@@ -6567,7 +6604,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 logToConsole(L"WARNING: NUMBER_OF_SOLUTION_PROCESSORS should not be greater than half of the total processor number!");
             }
 
-
             // -----------------------------------------------------
             // Main loop
             unsigned int salt;
@@ -6633,7 +6669,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         bool noVerifiedPublicPeers = true;
                         for (unsigned int k = 0; k < numberOfPublicPeers; k++)
                         {
-                            if (publicPeers[k].isVerified)
+                            if (publicPeers[k].isHandshaked && publicPeers[k].isFullnode)
                             {
                                 noVerifiedPublicPeers = false;
 
@@ -6651,7 +6687,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             {
                                 // randomly select verified public peers
                                 const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isVerified)
+                                if (publicPeers[publicPeerIndex].isHandshaked && publicPeers[publicPeerIndex].isFullnode)
                                 {
                                     request->peers[j] = publicPeers[publicPeerIndex].address;
                                 }
@@ -6705,11 +6741,26 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     peerRefreshingTick = curTimeTick;
 
-                    for (unsigned int i = 0; i < (NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS) / 4; i++)
+                    unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
+                    setMem(suitablePeerIndices, sizeof(suitablePeerIndices), 0);
+                    unsigned short numberOfSuitablePeers = 0;
+                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                     {
-                        closePeer(&peers[random(NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS)]);
+                        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
+                        {
+                            if (!peers[i].isFullNode())
+                            {
+                                suitablePeerIndices[numberOfSuitablePeers++] = i;
+                            }
+                        }
                     }
-                    logToConsole(L"Refreshed peers...");
+
+                    // disconnect 25% of current connections that are not **active fullnode**
+                    for (unsigned short i = 0; i < numberOfSuitablePeers / 4; i++)
+                    {
+                        closePeer(&peers[suitablePeerIndices[random(numberOfSuitablePeers)]]);
+                    }
+                    logToConsole(L"Refreshed connection...");
                 }
 
                 if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000
@@ -6742,6 +6793,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             }
                         }
                         pushToAny(&requestedQuorumTick.header);
+                        pushToAnyFullNode(&requestedQuorumTick.header);
                     }
                     tickRequestingIndicator = gTickTotalNumberOfComputors;
                     if (futureTickRequestingIndicator == gFutureTickTotalNumberOfComputors
@@ -6759,6 +6811,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             }
                         }
                         pushToAny(&requestedQuorumTick.header);
+                        pushToAnyFullNode(&requestedQuorumTick.header);
                     }
                     futureTickRequestingIndicator = gFutureTickTotalNumberOfComputors;
 
@@ -6773,18 +6826,21 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
                         pushToAny(&requestedTickData.header);
+                        pushToAnyFullNode(&requestedTickData.header);
                     }
                     if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch && isNewTickPlus2)
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 2;
                         pushToAny(&requestedTickData.header);
+                        pushToAnyFullNode(&requestedTickData.header);
                     }
 
                     if (requestedTickTransactions.requestedTickTransactions.tick)
                     {
                         requestedTickTransactions.header.randomizeDejavu();
                         pushToAny(&requestedTickTransactions.header);
+                        pushToAnyFullNode(&requestedTickTransactions.header);
 
                         requestedTickTransactions.requestedTickTransactions.tick = 0;
                     }
