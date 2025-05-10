@@ -32,7 +32,10 @@ enum QVAULTLogInfo {
     QvaultErrorTransferAsset = 12,
     QvaultInsufficientVotingPower = 13,
     QvaultInputError = 14,
-    QvaultOverflowProposal = 15
+    QvaultOverflowProposal = 15,
+    QvaultMaxMuslimId = 16,
+    QvaultDuplicatedMuslimId = 17,
+    QvaultNotMuslimId = 18
 };
 
 struct QVAULT2
@@ -237,6 +240,16 @@ public:
     };
 
     struct submitMuslimId_output
+    {
+        uint32 returnCode;
+    };
+
+    struct cancelMuslimId_input
+    {
+
+    };
+
+    struct cancelMuslimId_output
     {
         uint32 returnCode;
     };
@@ -535,7 +548,7 @@ protected:
                     if (locals.user.amount == 0)
                     {
                         state.numberOfStaker--;
-                        for (locals._t += 1; locals._t < (sint32)state.numberOfStaker; locals._t++)
+                        for (; locals._t < (sint32)state.numberOfStaker; locals._t++)
                         {
                             if (locals._t == QVAULT_QCAP_MAX_SUPPLY)
                             {
@@ -1495,9 +1508,51 @@ protected:
 		}
     }
 
-	PUBLIC_PROCEDURE(submitMuslimId)
+    struct submitMuslimId_locals
     {
+        sint32 _t;
+    };
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(submitMuslimId)
+    {
+        if (state.numberOfMuslim == 1048576)
+        {
+            output.returnCode = QVAULTLogInfo::QvaultMaxMuslimId;
+            return ;
+        }
+        for (locals._t = 0 ; locals._t < state.numberOfMuslim; locals._t++)
+        {
+            if (state.muslim.get(locals._t) == qpi.invocator())
+            {
+                output.returnCode = QVAULTLogInfo::QvaultDuplicatedMuslimId;
+                return ;
+            }
+        }
         state.muslim.set(state.numberOfMuslim++, qpi.invocator());
+    }
+
+    struct cancelMuslimId_locals
+    {
+        sint32 _t;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(cancelMuslimId)
+    {
+        for (locals._t = 0 ; locals._t < state.numberOfMuslim; locals._t++)
+        {
+            if (state.muslim.get(locals._t) == qpi.invocator())
+            {
+                state.numberOfMuslim--;
+                for (; locals._t < state.numberOfMuslim; locals._t++)
+                {
+                    state.muslim.set(locals._t, state.muslim.get(locals._t + 1));
+                }
+                output.returnCode = QVAULTLogInfo::QvaultSuccess;
+                return ;
+            }
+        }
+
+        output.returnCode = QVAULTLogInfo::QvaultNotMuslimId;
     }
 
     struct getStakedAmountAndVotingPower_input
@@ -1966,6 +2021,7 @@ protected:
         REGISTER_USER_PROCEDURE(buyQcap, 12);
         REGISTER_USER_PROCEDURE(TransferShareManagementRights, 13);
         REGISTER_USER_PROCEDURE(submitMuslimId, 14);
+        REGISTER_USER_PROCEDURE(cancelMuslimId, 15);
 
     }
 
@@ -2104,7 +2160,7 @@ protected:
         MKTPInfo updatedMKTProposal;
         AlloPInfo updatedAlloProposal;
         MSPInfo updatedMSProposal;
-        ::Entity entity;
+        QPI::Entity entity;
         AssetPossessionIterator iter;
         Asset QCAPId;
         id possessorPubkey;
