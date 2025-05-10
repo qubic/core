@@ -528,13 +528,15 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
             if (isZero(request->destinationPublicKey))
             {
+                const unsigned int messagePayloadSize = messageSize - sizeof(BroadcastMessage) - SIGNATURE_SIZE;
+
                 // Only record task and solution message in idle phase
                 char recordCustomMining = 0;
                 ACQUIRE(gIsInCustomMiningStateLock);
                 recordCustomMining = gIsInCustomMiningState;
                 RELEASE(gIsInCustomMiningStateLock);
 
-                if (request->sourcePublicKey == dispatcherPublicKey)
+                if (messagePayloadSize == sizeof(CustomMiningTask) && request->sourcePublicKey == dispatcherPublicKey)
                 {
                     // See CustomMiningTaskMessage structure
                     // MESSAGE_TYPE_CUSTOM_MINING_TASK
@@ -568,7 +570,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                         }
                     }
                 }
-                else
+                else if (messagePayloadSize == sizeof(CustomMiningSolution))
                 {
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
@@ -1415,7 +1417,11 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
                 // Make sure the solution still existed
                 int partId = customMiningGetPartitionID(request->firstComputorIdx, request->lastComputorIdx);
                 // Check the computor idx of this solution
-                const int computorID = customMiningGetComputorID(request->nonce, partId);
+                int computorID = NUMBER_OF_COMPUTORS;
+                if (partId >= 0)
+                {
+                    computorID = customMiningGetComputorID(request->nonce, partId);
+                }
 
                 if (partId >=0 
                     && computorID <= gTaskPartition[partId].lastComputorIdx
@@ -1512,10 +1518,18 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                 // For solution type, return all solution from the current phase
                 int partId = customMiningGetPartitionID(request->firstComputorIdx, request->lastComputorIdx);
 
-                ACQUIRE(gCustomMiningSolutionStorageLock);
-                // Look for all solution data
-                respond = gCustomMiningStorage._solutionStorage[partId].getSerializedData(request->fromTaskIndex, processorNumber);
-                RELEASE(gCustomMiningSolutionStorageLock);
+                // Make sure the range of computor is correct
+                if (partId >= 0)
+                {
+                    ACQUIRE(gCustomMiningSolutionStorageLock);
+                    // Look for all solution data
+                    respond = gCustomMiningStorage._solutionStorage[partId].getSerializedData(request->fromTaskIndex, processorNumber);
+                    RELEASE(gCustomMiningSolutionStorageLock);
+                }
+                else
+                {
+                    respond = NULL;
+                }
 
                 // Has the solutions
                 if (NULL != respond)
@@ -3148,12 +3162,12 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
-    // In the begining of mining phase.
-    // Also skip the begining of the epoch, because the no thing to do
-    if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
+    // Broadcast custom mining shares 
+    if (isMainMode())
     {
-        // Broadcast custom mining shares 
-        if (isMainMode())
+        // In the begining of mining phase.
+        // Also skip the begining of the epoch, because the no thing to do
+        if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
         {
             unsigned int customMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
