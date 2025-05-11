@@ -19,7 +19,7 @@
 TEST(CustomMining, TaskStorageGeneral)
 {
     constexpr unsigned long long NUMBER_OF_TASKS = 100;
-    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, false> storage;
+    CustomMiningTaskStorage storage;
 
     storage.init();
 
@@ -47,7 +47,7 @@ TEST(CustomMining, TaskStorageDuplicatedItems)
 {
     constexpr unsigned long long NUMBER_OF_TASKS = 100;
     constexpr unsigned long long DUPCATED_TASKS = 10;
-    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, false> storage;
+    CustomMiningTaskStorage storage;
 
     storage.init();
 
@@ -78,7 +78,7 @@ TEST(CustomMining, TaskStorageExistedItem)
 {
     constexpr unsigned long long NUMBER_OF_TASKS = 100;
     constexpr unsigned long long DUPCATED_TASKS = 10;
-    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, false> storage;
+    CustomMiningTaskStorage storage;
 
     storage.init();
 
@@ -119,7 +119,7 @@ TEST(CustomMining, TaskStorageExistedItem)
 TEST(CustomMining, TaskStorageOverflow)
 {
     constexpr unsigned long long NUMBER_OF_TASKS = CUSTOM_MINING_TASK_STORAGE_COUNT;
-    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, false> storage;
+    CustomMiningTaskStorage storage;
 
     storage.init();
 
@@ -141,7 +141,7 @@ TEST(CustomMining, TaskStorageOverflow)
 TEST(CustomMining, SolutionStorageGeneral)
 {
     constexpr unsigned long long NUMBER_OF_TASKS = 100;
-    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, true> storage;
+    CustomMiningSolutionStorage storage;
 
     storage.init();
 
@@ -169,7 +169,7 @@ TEST(CustomMining, SolutionStorageDuplicatedItems)
 {
     constexpr unsigned long long NUMBER_OF_SOLS = 100;
     constexpr unsigned long long DUPLICATED_SOLS = 10;
-    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, true> storage;
+    CustomMiningSolutionStorage storage;
 
     storage.init();
 
@@ -215,7 +215,7 @@ TEST(CustomMining, SolutionStorageExistedItem)
 {
     constexpr unsigned long long NUMBER_OF_SOLS = 100;
     constexpr unsigned long long DUPCATED_SOLS = 10;
-    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, true> storage;
+    CustomMiningSolutionStorage storage;
 
     storage.init();
 
@@ -257,8 +257,8 @@ TEST(CustomMining, SolutionStorageExistedItem)
 
 TEST(CustomMining, SolutionsStorageOverflow)
 {
-    constexpr unsigned long long NUMBER_OF_SOLS = CUSTOM_MINING_TASK_STORAGE_COUNT;
-    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, true> storage;
+    constexpr unsigned long long NUMBER_OF_SOLS = CUSTOM_MINING_SOLUTION_STORAGE_COUNT;
+    CustomMiningSolutionStorage storage;
 
     storage.init();
 
@@ -273,7 +273,7 @@ TEST(CustomMining, SolutionsStorageOverflow)
     // Overflow. Add one more and get error status
     CustomMiningSolutionStorageEntry entry;
     entry.taskIndex = NUMBER_OF_SOLS + 1;
-    EXPECT_NE(storage.addData(&entry), 0);
+    EXPECT_NE(storage.addData(&entry), CustomMiningSolutionStorage::OK);
 
     storage.deinit();
 }
