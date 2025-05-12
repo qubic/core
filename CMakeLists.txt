@@ -12,9 +12,13 @@ include(CompilerSetup)
 # Build options
 option(BUILD_TESTS "Build the test suite" ON)
 option(BUILD_EFI "Build the EFI application" ON)
+option(USE_SANITIZER "Build test with sanitizer support (clang only)" ON)
 
 if(IS_WINDOWS)
     message(WARNING "Building on Windows using Visual Studio and CMake has undergone limited testing and is not officially supported at this time.")
+    if(USE_SANITIZER)
+        message(WARNING "Building tests with sanitizer support is not supported on Windows.")
+    endif()
 endif()
 
 # Always include platform_common as it's needed for both application and tests

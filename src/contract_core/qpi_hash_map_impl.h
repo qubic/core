@@ -21,7 +21,7 @@ namespace QPI
 
 	// For performance reasons, we use the first 8 bytes as hash for m256i/id types.
 	template <>
-	uint64 HashFunction<m256i>::hash(const m256i& key) 
+	inline uint64 HashFunction<m256i>::hash(const m256i& key)
 	{
 		return key.u64._0;
 	}

@@ -1,6 +1,10 @@
+#pragma once
+
+#include "platform/assert.h"
 #include "platform/concurrency.h"
 #include "platform/memory.h"
 #include "platform/memory_util.h"
+#include "network_messages/custom_mining.h"
 #include "network_messages/transactions.h"
 #include "kangaroo_twelve.h"
 
@@ -41,24 +45,26 @@ struct CustomMiningSolutionTransaction : public Transaction
 
 struct CustomMiningTask
 {
-    unsigned long long taskIndex; // ever increasing number (unix timestamp in ms)
+    unsigned long long taskIndex;       // ever increasing number (unix timestamp in ms)
+    unsigned short firstComputorIndex;  // the first computor index assigned by this task
+    unsigned short lastComputorIndex;   // the last computor index assigned by this task
+    unsigned int padding;
 
     unsigned char blob[408]; // Job data from pool
     unsigned long long size;  // length of the blob
     unsigned long long target; // Pool difficulty
     unsigned long long height; // Block height
     unsigned char seed[32]; // Seed hash for XMR
-    unsigned int extraNonce;
 };
 
 struct CustomMiningSolution
 {
-    unsigned long long taskIndex; // should match the index from task
-    unsigned int nonce;         // xmrig::JobResult.nonce
-    unsigned int padding;
-    m256i result;               // xmrig::JobResult.result, 32 bytes
+    unsigned long long taskIndex;       // should match the index from task
+    unsigned short firstComputorIndex;  // should match the index from task
+    unsigned short lastComputorIndex;   // should match the index from task
+    unsigned int nonce;                 // xmrig::JobResult.nonce
+    m256i result;                       // xmrig::JobResult.result, 32 bytes
 };
-
 
 #define CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES 848
 #define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
@@ -249,20 +255,71 @@ void computeRev(
 
 static unsigned long long customMiningScoreBuffer[NUMBER_OF_COMPUTORS];
 void computeRevWithCustomMining(
-    const unsigned long long* oldScore,
+    const unsigned long long* txScore,
+    const unsigned long long* voteCount,
     const unsigned long long* customMiningSharesCount,
+    unsigned long long* oldIntermediateScore,
     unsigned long long* oldRev,
+    unsigned long long* customMiningIntermediateScore,
     unsigned long long* customMiningRev)
 {
-    // Old score
-    computeRev(oldScore, oldRev);
+    // Revenue of custom mining shares combination
+    // Formula: oldScore =  vote_count * tx
+    for (unsigned short i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        unsigned long long vote_count = voteCount[i];
+        if (vote_count != 0)
+        {
+            unsigned long long final_score = vote_count * txScore[i];
+            if ((final_score / vote_count) != txScore[i]) // detect overflow
+            {
+                customMiningScoreBuffer[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+            }
+            else
+            {
+                customMiningScoreBuffer[i] = final_score;
+            }
+        }
+        else
+        {
+            customMiningScoreBuffer[i] = 0;
+        }
+    }
+    copyMem(oldIntermediateScore, customMiningScoreBuffer, NUMBER_OF_COMPUTORS * sizeof(unsigned long long));
+    computeRev(customMiningScoreBuffer, oldRev);
 
     // Revenue of custom mining shares combination
-    // Formula: newScore =  vote_count * tx * customMiningShare = revenueOldScore * customMiningShare
-    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    // Formula: newScore =  vote_count * tx * customMiningShare
+    for (unsigned short i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        customMiningScoreBuffer[computorIndex] = oldScore[computorIndex] * customMiningSharesCount[computorIndex];
+        unsigned long long vote_count = voteCount[i];
+        unsigned long long custom_mining_share_count = customMiningSharesCount[i];
+        if (vote_count != 0 && custom_mining_share_count != 0)
+        {
+            unsigned long long final_score0 = vote_count * txScore[i];
+            if ((final_score0 / vote_count) != txScore[i]) // detect overflow
+            {
+                customMiningScoreBuffer[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+            }
+            else
+            {
+                unsigned long long final_score1 = final_score0 * custom_mining_share_count;
+                if ((final_score1 / custom_mining_share_count) != final_score0) // detect overflow
+                {
+                    customMiningScoreBuffer[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+                }
+                else
+                {
+                    customMiningScoreBuffer[i] = final_score1;
+                }
+            }
+        }
+        else
+        {
+            customMiningScoreBuffer[i] = 0;
+        }
     }
+    copyMem(customMiningIntermediateScore, customMiningScoreBuffer, NUMBER_OF_COMPUTORS * sizeof(unsigned long long));
     computeRev(customMiningScoreBuffer, customMiningRev);
 }
 
@@ -276,6 +333,17 @@ class CustomMininingCache
 {
     static_assert(collisionRetries < size, "Number of fetch retries in case of collision is too big!");
 public:
+
+    void init()
+    {
+        setMem((unsigned char*)cache, sizeof(cache), 0);
+        lock = 0;
+        hits = 0;
+        misses = 0;
+        collisions = 0;
+        verification = 0;
+        invalid = 0;
+    }
 
     /// Reset all cache entries
     void reset()
@@ -414,11 +482,9 @@ public:
     /// Save custom mining share cache to file
     void save(CHAR16* filename, CHAR16* directory = NULL)
     {
-        logToConsole(L"Saving custom mining cache file...");
-
         const unsigned long long beginningTick = __rdtsc();
         ACQUIRE(lock);
-        long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)&cache, directory);
+        long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)cache, directory);
         RELEASE(lock);
         if (savedSize == sizeof(cache))
         {
@@ -434,7 +500,6 @@ public:
     bool load(CHAR16* filename, CHAR16* directory = NULL)
     {
         bool success = true;
-        logToConsole(L"Loading custom mining cache...");
         reset();
         ACQUIRE(lock);
         long long loadedSize = ::load(filename, sizeof(cache), (unsigned char*)cache, directory);
@@ -464,21 +529,33 @@ public:
 #endif
 
     // Return number of hits (data available in cache when fetched)
-    unsigned int hitCount() const
+    unsigned int hitCount()
     {
-        return hits;
+        unsigned int result = 0;
+        ACQUIRE(lock);
+        result = hits;
+        RELEASE(lock);
+        return result;
     }
 
     // Return number of misses (data not in cache yet)
-    unsigned int missCount() const
+    unsigned int missCount()
     {
-        return misses;
+        unsigned int result = 0;
+        ACQUIRE(lock);
+        result = misses;
+        RELEASE(lock);
+        return result;
     }
 
     // Return number of collisions (other data is mapped to same index)
-    unsigned int collisionCount() const
+    unsigned int collisionCount()
     {
-        return collisions;
+        unsigned int result = 0;
+        ACQUIRE(lock);
+        result = collisions;
+        RELEASE(lock);
+        return result;
     }
 
 private:
@@ -487,16 +564,16 @@ private:
     T cache[size];
 
     // lock to prevent race conditions on parallel access
-    volatile char lock = 0;
+    volatile char lock;
 
     // statistics of hits, misses, and collisions
-    unsigned int hits = 0;
-    unsigned int misses = 0;
-    unsigned int collisions = 0;
+    unsigned int hits;
+    unsigned int misses;
+    unsigned int collisions;
 
     // statistics of verification and invalid count
-    unsigned int verification = 0;
-    unsigned int invalid = 0;
+    unsigned int verification;
+    unsigned int invalid;
 };
 
 class CustomMiningSolutionCacheEntry
@@ -516,12 +593,13 @@ public:
         _solution = *pCustomMiningSolution;
     }
 
-    void set(const unsigned long long taskIndex, unsigned int nonce, unsigned int padding)
+    void set(const unsigned long long taskIndex, unsigned int nonce, unsigned short firstComputorIndex, unsigned short lastComputorIndex)
     {
         reset();
         _solution.taskIndex = taskIndex;
         _solution.nonce = nonce;
-        _solution.padding = padding;
+        _solution.firstComputorIndex = firstComputorIndex;
+        _solution.lastComputorIndex = lastComputorIndex;
     }
 
     void get(CustomMiningSolution& rCustomMiningSolution)
@@ -595,15 +673,150 @@ private:
     bool _isValid;
 };
 
+
 // In charge of storing custom mining
-constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (200ULL << 20) / sizeof(CustomMiningSolutionCacheEntry);
+constexpr unsigned int NUMBER_OF_TASK_PARTITIONS = 4;
+constexpr unsigned long long MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS = (200ULL << 20) / NUMBER_OF_TASK_PARTITIONS / sizeof(CustomMiningSolutionCacheEntry);
 constexpr unsigned long long CUSTOM_MINING_INVALID_INDEX = 0xFFFFFFFFFFFFFFFFULL;
-constexpr unsigned int CUSTOM_MINING_TASK_STORAGE_RESET_PHASE = 2; // the number of custom mining phase that the solution storage will be reset
 constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_COUNT = 60 * 60 * 24 * 8 / 2 / 10; // All epoch tasks in 7 (+1) days, 10s per task, idle phases only
 constexpr unsigned long long CUSTOM_MINING_TASK_STORAGE_SIZE = CUSTOM_MINING_TASK_STORAGE_COUNT * sizeof(CustomMiningTask); // ~16.6MB
 constexpr unsigned long long CUSTOM_MINING_SOLUTION_STORAGE_COUNT = MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS;
 constexpr unsigned long long CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE = 10 * 1024 * 1024; // 10MB
 constexpr unsigned long long CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE = 1 * 1024 * 1024; // 1MB
+
+static volatile char gCustomMiningSharesCountLock = 0;
+static char gIsInCustomMiningState = 0;
+static volatile char gIsInCustomMiningStateLock = 0;
+static volatile char gCustomMiningTaskStorageLock = 0;
+static volatile char gCustomMiningSolutionStorageLock = 0;
+
+// Stats of custom mining.
+// Reset after epoch change.
+// Some variable is reset after end of each custom mining phase.
+struct CustomMiningStats
+{
+    struct Counter
+    {
+        long long tasks;        // Task that replaced by node
+
+        // Shares related
+        long long shares;       // Total shares/solutions = unverifed/no-task + valid + invalid
+        long long valid;        // Solutions are marked as valid by verififer
+        long long invalid;      // Solutions are marked as invalid by verififer
+        long long duplicated;   // Duplicated solutions, ussually causes by solution message broadcasted or
+
+        void reset()
+        {
+            ATOMIC_STORE64(tasks, 0);
+
+            ATOMIC_STORE64(shares, 0);
+            ATOMIC_STORE64(valid, 0);
+            ATOMIC_STORE64(invalid, 0);
+            ATOMIC_STORE64(duplicated, 0);
+        }
+    };
+
+    // Stats of current epoch until last custom mining phase end
+    Counter lastPhases;              // Stats of all last/previous phases
+    long long maxOverflowShareCount; // Max number of shares that exceed the data packed in transaction
+    long long maxCollisionShareCount; // Max number of shares that are not save in cached because of collision
+
+    // Stats of current custom mining phase
+    Counter phase[NUMBER_OF_TASK_PARTITIONS];
+
+    // Asume at begining of epoch.
+    void epochReset()
+    {
+        lastPhases.reset();
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+        {
+            phase[i].reset();
+        }
+
+        ATOMIC_STORE64(maxOverflowShareCount, 0);
+        ATOMIC_STORE64(maxCollisionShareCount, 0);
+    }
+
+    // At the end of phase. Ussually the task/sols message still arrive
+    void phaseResetAndEpochAccumulate()
+    {
+        // Load the phase stats
+        long long tasks = 0;
+        long long shares = 0;
+        long long valid = 0;
+        long long invalid = 0;
+        long long duplicated = 0;
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+        {
+            tasks += ATOMIC_LOAD64(phase[i].tasks);
+            shares += ATOMIC_LOAD64(phase[i].shares);
+            valid += ATOMIC_LOAD64(phase[i].valid);
+            invalid += ATOMIC_LOAD64(phase[i].invalid);
+            duplicated += ATOMIC_LOAD64(phase[i].duplicated);
+        }
+
+        // Accumulate the phase into last phases
+        ATOMIC_ADD64(lastPhases.tasks, tasks);
+        ATOMIC_ADD64(lastPhases.shares, shares);
+        ATOMIC_ADD64(lastPhases.valid, valid);
+        ATOMIC_ADD64(lastPhases.invalid, invalid);
+        ATOMIC_ADD64(lastPhases.duplicated, duplicated);
+
+        // Reset phase number
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+        {
+            phase[i].reset();
+        }
+    }
+
+    void appendLog(CHAR16* message)
+    {
+        long long customMiningTasks = 0;
+        long long customMiningShares = 0;
+        long long customMiningValidShares = 0;
+        long long customMiningInvalidShares = 0;
+        long long customMiningDuplicated = 0;
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+        {
+            customMiningTasks += ATOMIC_LOAD64(phase[i].tasks);
+            customMiningShares += ATOMIC_LOAD64(phase[i].shares);
+            customMiningValidShares += ATOMIC_LOAD64(phase[i].valid);
+            customMiningInvalidShares += ATOMIC_LOAD64(phase[i].invalid);
+            customMiningDuplicated += ATOMIC_LOAD64(phase[i].duplicated);
+        }
+
+        appendText(message, L"Phase:");
+        appendText(message, L" Tasks: ");
+        appendNumber(message, customMiningTasks, true);
+        appendText(message, L" | Shares: ");
+        appendNumber(message, customMiningShares, true);
+        appendText(message, L" | Valid: ");
+        appendNumber(message, customMiningValidShares, true);
+        appendText(message, L" | InValid: ");
+        appendNumber(message, customMiningInvalidShares, true);
+        appendText(message, L" | Duplicated: ");
+        appendNumber(message, customMiningDuplicated, true);
+
+        long long customMiningEpochTasks = customMiningTasks + ATOMIC_LOAD64(lastPhases.tasks);
+        long long customMiningEpochShares = customMiningShares + ATOMIC_LOAD64(lastPhases.shares);
+        long long customMiningEpochInvalidShares = customMiningInvalidShares + ATOMIC_LOAD64(lastPhases.invalid);
+        long long customMiningEpochValidShares = customMiningValidShares + ATOMIC_LOAD64(lastPhases.valid);
+        long long customMiningEpochDuplicated = customMiningDuplicated + ATOMIC_LOAD64(lastPhases.duplicated);
+
+        appendText(message, L". Epoch:");
+        appendText(message, L" Tasks: ");
+        appendNumber(message, customMiningEpochTasks, false);
+        appendText(message, L" | Shares: ");
+        appendNumber(message, customMiningEpochShares, false);
+        appendText(message, L" | Valid: ");
+        appendNumber(message, customMiningEpochValidShares, false);
+        appendText(message, L" | Invalid: ");
+        appendNumber(message, customMiningEpochInvalidShares, false);
+        appendText(message, L" | Duplicated: ");
+        appendNumber(message, customMiningEpochDuplicated, false);
+    }
+};
+
 
 struct CustomMiningRespondDataHeader
 {
@@ -614,7 +827,7 @@ struct CustomMiningRespondDataHeader
     unsigned long long respondType;     // message type
 };
 
-template <typename DataType, unsigned long long maxItems, unsigned long long resetPeriod, bool allowDuplicated = false>
+template <typename DataType, unsigned long long maxItems, bool allowDuplicated = false>
 class CustomMiningSortedStorage
 {
 public:
@@ -622,16 +835,14 @@ public:
     {
         OK = 0,
         DATA_EXISTED = 1,
-        BUFFER_FULL = 1,
-        UNKNOWN_ERROR = 2,
+        BUFFER_FULL = 2,
+        UNKNOWN_ERROR = 3,
     };
     void init()
     {
         allocPoolWithErrorLog(L"CustomMiningSortedStorageData", maxItems * sizeof(DataType), (void**)&_data, __LINE__);
         allocPoolWithErrorLog(L"CustomMiningSortedStorageIndices", maxItems * sizeof(unsigned long long), (void**)&_indices, __LINE__);
         _storageIndex = 0;
-        _phaseCount = 0;
-        _phaseIndex = 0;
 
         // Buffer allocation for each processors. It is limited to 10MB each
         for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
@@ -665,21 +876,6 @@ public:
     void reset()
     {
         _storageIndex = 0;
-        _phaseCount = 0;
-    }
-
-    void checkAndReset()
-    {
-        _phaseCount++;
-        if (resetPeriod > 0 && _phaseCount % resetPeriod == 0)
-        {
-            reset();
-        }
-    }
-
-    void updateStartPhaseIndex()
-    {
-        _phaseIndex = _storageIndex;
     }
 
     // Binary search for taskIndex or closest greater-than task index
@@ -975,8 +1171,6 @@ private:
     DataType* _data;
     unsigned long long* _indices;
     unsigned long long _storageIndex;
-    unsigned long long _phaseCount;
-    unsigned long long _phaseIndex;
 
     unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
 };
@@ -988,13 +1182,19 @@ struct CustomMiningSolutionStorageEntry
     unsigned long long cacheEntryIndex;
 };
 
+typedef CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, false> CustomMiningTaskStorage;
+typedef CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, true> CustomMiningSolutionStorage;
+
 class CustomMiningStorage
 {
 public:
     void init()
     {
-        _taskStorage.init();
-        _solutionStorage.init();
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; ++i)
+        {
+            _taskStorage[i].init();
+            _solutionStorage[i].init();
+        }
 
         // Buffer allocation for each processors. It is limited to 10MB each
         for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
@@ -1004,68 +1204,215 @@ public:
     }
     void deinit()
     {
-        _taskStorage.deinit();
-        _solutionStorage.deinit();
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; ++i)
+        {
+            _taskStorage[i].deinit();
+            _solutionStorage[i].deinit();
+        }
         for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
         {
             freePool(_dataBuffer[i]);
         }
     }
 
-    CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, 0, false> _taskStorage;
-    CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, CUSTOM_MINING_TASK_STORAGE_RESET_PHASE, true> _solutionStorage;
+    void reset()
+    {
+        ACQUIRE(gCustomMiningTaskStorageLock);
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; ++i)
+        {
+            _taskStorage[i].reset();
+        }
+        RELEASE(gCustomMiningTaskStorageLock);
+
+        ACQUIRE(gCustomMiningSolutionStorageLock);
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; ++i)
+        {
+            _solutionStorage[i].reset();
+        }
+        RELEASE(gCustomMiningSolutionStorageLock);
+
+    }
+
+    unsigned char* getSerializedTaskData(
+        unsigned long long fromTimeStamp,
+        unsigned long long toTimeStamp,
+        unsigned long long processorNumber)
+    {
+        unsigned long long remainedSize = CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE;
+        unsigned char* packedData = _dataBuffer[processorNumber];
+        CustomMiningRespondDataHeader* packedHeader = (CustomMiningRespondDataHeader*)packedData;
+        packedHeader->respondType = RespondCustomMiningData::taskType;
+        packedHeader->itemSize = sizeof(CustomMiningTask);
+        packedHeader->fromTimeStamp = fromTimeStamp;
+        packedHeader->toTimeStamp = toTimeStamp;
+        packedHeader->itemCount = 0;
+
+        unsigned char* traverseData = packedData + sizeof(CustomMiningRespondDataHeader);
+        for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+        {
+            unsigned char* data = _taskStorage[i].getSerializedData(fromTimeStamp, toTimeStamp, processorNumber);
+            if (data != NULL)
+            {
+                CustomMiningRespondDataHeader* customMiningInternalHeader = (CustomMiningRespondDataHeader*)data;
+                ASSERT(packedHeader->itemSize == customMiningInternalHeader->itemSize);
+                unsigned long long dataSize = customMiningInternalHeader->itemCount * sizeof(CustomMiningTask);
+                if (customMiningInternalHeader->itemCount > 0 && remainedSize >= dataSize)
+                {
+                    packedHeader->itemCount += customMiningInternalHeader->itemCount;
+                    // Copy data
+                    copyMem(traverseData, data + sizeof(CustomMiningRespondDataHeader), dataSize);
+
+                    // Update pointer and size
+                    traverseData += dataSize;
+                    remainedSize -= dataSize;
+                }
+            }
+        }
+
+        return packedData;
+    }
+
+    CustomMiningTaskStorage _taskStorage[NUMBER_OF_TASK_PARTITIONS];
+    CustomMiningSolutionStorage _solutionStorage[NUMBER_OF_TASK_PARTITIONS];
 
     // Buffer can accessed from multiple threads
     unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
 
 };
 
-volatile static char accumulatedSharedCountLock = 0;
-volatile static char gSystemCustomMiningSolutionLock = 0;
-volatile static char gCustomMiningCacheLock = 0;
-unsigned long long gSystemCustomMiningSolutionCount = 0;
-unsigned long long gSystemCustomMiningDuplicatedSolutionCount = 0;
-unsigned long long gSystemCustomMiningSolutionOFCount = 0;
-static volatile char gCustomMiningSharesCountLock = 0;
-static char gIsInCustomMiningState = 0;
-static volatile char gIsInCustomMiningStateLock = 0;
-static volatile char gCustomMiningInvalidSharesCountLock = 0;
-static unsigned long long gCustomMiningValidSharesCount = 0;
-static unsigned long long gCustomMiningInvalidSharesCount = 0;
-static volatile char gCustomMiningTaskStorageLock = 0;
-static volatile char gCustomMiningSolutionStorageLock = 0;
-static unsigned long long gTotalCustomMiningTaskMessages = 0;
-static unsigned long long gTotalCustomMiningSolutions = 0;
-static volatile char gTotalCustomMiningTaskMessagesLock = 0;
-static volatile char gTotalCustomMiningSolutionsLock = 0;
-static unsigned int gCustomMiningCountOverflow = 0;
-static volatile char gCustomMiningShareCountOverFlowLock = 0;
+// Describe how a task is divided into groups 
+// The task is for computorID in range [firstComputorIdx, lastComputorIdx]
+// domainSize determine the range of nonce that computor should work on
+// Currenly, it is designed as
+//  domainSize = (2 ^ 32)/ (lastComputorIndex - firstComputorIndex + 1);
+//  myNonceOffset = (myComputorIndex - firstComputorIndex) * domainSize;
+//  myNonce = myNonceOffset + x; x = [0, domainSize - 1]
+// For computorID calculation,
+// computorID = myNonce / domainSize + firstComputorIndex
+struct CustomMiningTaskPartition
+{
+    unsigned short firstComputorIdx;
+    unsigned short lastComputorIdx;
+    unsigned int domainSize;
+};
 
-CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolution;
+#define SOLUTION_CACHE_DYNAMIC_MEM 0
+
+static CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
+
+#if SOLUTION_CACHE_DYNAMIC_MEM 
+static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolutionCache = NULL;
+#else
+static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolutionCache[NUMBER_OF_TASK_PARTITIONS];
+#endif
+
+static CustomMiningStorage gCustomMiningStorage;
+static CustomMiningStats gCustomMiningStats;
+
+// Get the part ID
+int customMiningGetPartitionID(unsigned short firstComputorIndex, unsigned short lastComputorIndex)
+{
+    int partitionID = -1;
+    for (int k = 0; k < NUMBER_OF_TASK_PARTITIONS; k++)
+    {
+        if (firstComputorIndex == gTaskPartition[k].firstComputorIdx
+            && lastComputorIndex == gTaskPartition[k].lastComputorIdx)
+        {
+            partitionID = k;
+            break;
+        }
+    }
+    return partitionID;
+}
+
+
+// Generate computor task partition
+int customMiningInitTaskPartitions()
+{
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        // Currently the task is partitioned evenly
+        gTaskPartition[i].firstComputorIdx = i * NUMBER_OF_COMPUTORS / NUMBER_OF_TASK_PARTITIONS;
+        gTaskPartition[i].lastComputorIdx = gTaskPartition[i].firstComputorIdx + NUMBER_OF_COMPUTORS / NUMBER_OF_TASK_PARTITIONS - 1;
+        ASSERT(gTaskPartition[i].lastComputorIdx > gTaskPartition[i].firstComputorIdx + 1);
+        gTaskPartition[i].domainSize = (unsigned int)((1ULL << 32) / ((unsigned long long)gTaskPartition[i].lastComputorIdx - gTaskPartition[i].firstComputorIdx + 1));
+    }
+    return 0;
+}
+
+// Get computor ids
+int customMiningGetComputorID(unsigned int nonce, int partId)
+{
+    return nonce / gTaskPartition[partId].domainSize + gTaskPartition[partId].firstComputorIdx;
+}
+
+int customMiningInitialize()
+{
+    gCustomMiningStorage.init();
+#if SOLUTION_CACHE_DYNAMIC_MEM 
+    allocPoolWithErrorLog(L"gSystemCustomMiningSolutionCache",
+        NUMBER_OF_TASK_PARTITIONS * sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
+        (void**)&gSystemCustomMiningSolutionCache,
+        __LINE__);
+#endif
+    setMem((unsigned char*)gSystemCustomMiningSolutionCache, NUMBER_OF_TASK_PARTITIONS * sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>), 0);
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        gSystemCustomMiningSolutionCache[i].init();
+    }
+
+    customMiningInitTaskPartitions();
+
+    return 0;
+}
+
+int customMiningDeinitialize()
+{
+#if SOLUTION_CACHE_DYNAMIC_MEM 
+    if (gSystemCustomMiningSolutionCache)
+    {
+        freePool(gSystemCustomMiningSolutionCache);
+        gSystemCustomMiningSolutionCache = NULL;
+    }
+#endif
+    gCustomMiningStorage.deinit();
+    return 0;
+}
 
 #ifdef NO_UEFI
 #else
 // Save score cache to SCORE_CACHE_FILE_NAME
 void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
 {
-    ACQUIRE(gCustomMiningCacheLock);
+    logToConsole(L"Saving custom mining cache file...");
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
-    gSystemCustomMiningSolution.save(CUSTOM_MINING_CACHE_FILE_NAME, directory);
-    RELEASE(gCustomMiningCacheLock);
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 8] = i / 100 + L'0';
+        CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 7] = (i % 100) / 10 + L'0';
+        CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 6] = i % 10 + L'0';
+        gSystemCustomMiningSolutionCache[i].save(CUSTOM_MINING_CACHE_FILE_NAME, directory);
+    }
 }
 
 // Update score cache filename with epoch and try to load file
 bool loadCustomMiningCache(int epoch)
 {
+    logToConsole(L"Loading custom mining cache...");
     bool success = true;
-    ACQUIRE(gCustomMiningCacheLock);
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
-    success = gSystemCustomMiningSolution.load(CUSTOM_MINING_CACHE_FILE_NAME);
-    RELEASE(gCustomMiningCacheLock);
+    // TODO: Support later
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 8] = i / 100 + L'0';
+        CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 7] = (i % 100) / 10 + L'0';
+        CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 6] = i % 10 + L'0';
+        success &= gSystemCustomMiningSolutionCache[i].load(CUSTOM_MINING_CACHE_FILE_NAME);
+    }
     return success;
 }
 #endif

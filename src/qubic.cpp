@@ -203,21 +203,20 @@ static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 
 // Custom mining related variables and constants
-static unsigned long long customMiningMessageCounters[NUMBER_OF_COMPUTORS] = { 0 };
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
-
-static CHAR16 gCustomMiningDebugMessage[256];
-static volatile char gIsInCustomMiningMessageLock = 0;
-static CustomMiningStorage gCustomMiningStorage;
 
 
 struct revenueScore
 {
-    unsigned long long oldFinalScore[NUMBER_OF_COMPUTORS]; // old final score
+    unsigned long long txScore[NUMBER_OF_COMPUTORS];    // revenue score with txs
+    unsigned long long voteCount[NUMBER_OF_COMPUTORS];  // vote count
     unsigned long long customMiningSharesCount[NUMBER_OF_COMPUTORS]; // the shares count with custom mining
+    unsigned long long currentIntermediateScore[NUMBER_OF_COMPUTORS];
     unsigned long long currentRev[NUMBER_OF_COMPUTORS]; // old revenue
+    unsigned long long customMiningIntermediateScore[NUMBER_OF_COMPUTORS];
     unsigned long long customMiningRev[NUMBER_OF_COMPUTORS]; // reveneu with custom mining
+    unsigned long long customMiningRevScale[NUMBER_OF_COMPUTORS];
 } gRevenueScoreWithCustomMining;
 
 
@@ -305,6 +304,13 @@ static struct {
     unsigned long long lastTryClock; // last time it rolling the dice
 } emptyTickResolver;
 
+static struct {
+    static constexpr unsigned long long MAX_WAITING_TIME = 60000; // time to trigger resending tick votes
+    unsigned int lastTick;
+    unsigned int lastTickMode; // 0 AUX - 1 MAIN
+    unsigned long long lastCheck;
+} autoResendTickVotes;
+
 static void logToConsole(const CHAR16* message)
 {
     if (consoleLoggingLevel == 0)
@@ -380,6 +386,11 @@ static int computorIndex(m256i computor)
     }
 
     return -1;
+}
+
+static inline bool isMainMode()
+{
+    return (mainAuxStatus & 1) == 1;
 }
 
 // NOTE: this function doesn't work well on a few CPUs, some bits will be flipped after calling this. It's probably microcode bug.
@@ -462,14 +473,14 @@ static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header
     {
         peer->exchangedPublicPeers = TRUE; // A race condition is possible
 
-        // Set isVerified if sExchangePublicPeers was received on outgoing connection
+        // Set isHandshaked if sExchangePublicPeers was received on outgoing connection
         if (peer->address.u32)
         {
             for (unsigned int j = 0; j < numberOfPublicPeers; j++)
             {
                 if (peer->address == publicPeers[j].address)
                 {
-                    publicPeers[j].isVerified = true;
+                    publicPeers[j].isHandshaked = true;
 
                     break;
                 }
@@ -517,52 +528,57 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
             if (isZero(request->destinationPublicKey))
             {
+                const unsigned int messagePayloadSize = messageSize - sizeof(BroadcastMessage) - SIGNATURE_SIZE;
+
                 // Only record task and solution message in idle phase
                 char recordCustomMining = 0;
                 ACQUIRE(gIsInCustomMiningStateLock);
                 recordCustomMining = gIsInCustomMiningState;
                 RELEASE(gIsInCustomMiningStateLock);
 
-                if (request->sourcePublicKey == dispatcherPublicKey)
+                if (messagePayloadSize == sizeof(CustomMiningTask) && request->sourcePublicKey == dispatcherPublicKey)
                 {
                     // See CustomMiningTaskMessage structure
                     // MESSAGE_TYPE_CUSTOM_MINING_TASK
 
                      // Compute the gamming key to get the sub-type of message
                     unsigned char sharedKeyAndGammingNonce[64];
-                    bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
-                    bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                    setMem(sharedKeyAndGammingNonce, 32, 0);
+                    copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                     unsigned char gammingKey[32];
                     KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
                     
                     // Record the task emitted by dispatcher
                     if (recordCustomMining && gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_TASK)
                     {
-                        // Record the task message
-                        unsigned long long taskMessageStorageCount = 0;
                         const CustomMiningTask* task = ((CustomMiningTask*)((unsigned char*)request + sizeof(BroadcastMessage)));
-                        ACQUIRE(gCustomMiningTaskStorageLock);
-                        gCustomMiningStorage._taskStorage.addData(task);
-                        taskMessageStorageCount = gCustomMiningStorage._taskStorage.getCount();
-                        RELEASE(gCustomMiningTaskStorageLock);
 
-                        ACQUIRE(gTotalCustomMiningTaskMessagesLock);
-                        gTotalCustomMiningTaskMessages = taskMessageStorageCount;
-                        RELEASE(gTotalCustomMiningTaskMessagesLock);
+                        // Determine the task part id
+                        int partId = customMiningGetPartitionID(task->firstComputorIndex, task->lastComputorIndex);
+                        if (partId >= 0)
+                        {
+                            // Record the task message
+                            ACQUIRE(gCustomMiningTaskStorageLock);
+                            int taskAddSts = gCustomMiningStorage._taskStorage[partId].addData(task);
+                            RELEASE(gCustomMiningTaskStorageLock);
 
+                            if (CustomMiningTaskStorage::OK == taskAddSts)
+                            {
+                                ATOMIC_INC64(gCustomMiningStats.phase[partId].tasks);
+                            }
+                        }
                     }
                 }
-                else
+                else if (messagePayloadSize == sizeof(CustomMiningSolution))
                 {
                     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                     {
                         if (request->sourcePublicKey == broadcastedComputors.computors.publicKeys[i])
                         {
-                            customMiningMessageCounters[i]++;
                             // Compute the gamming key to get the sub-type of message
                             unsigned char sharedKeyAndGammingNonce[64];
-                            bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
-                            bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                            setMem(sharedKeyAndGammingNonce, 32, 0);
+                            copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                             unsigned char gammingKey[32];
                             KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
 
@@ -572,54 +588,55 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 bool isSolutionGood = false;
                                 const CustomMiningSolution* solution = ((CustomMiningSolution*)((unsigned char*)request + sizeof(BroadcastMessage)));
 
-                                // Check the computor idx of this solution.
-                                unsigned short computorID = solution->nonce % NUMBER_OF_COMPUTORS;
+                                int partId = customMiningGetPartitionID(solution->firstComputorIndex, solution->lastComputorIndex);
+
                                 // TODO: taskIndex can use for detect for-sure stale shares
-                                if (solution->taskIndex > 0)
+                                if (partId >= 0 && solution->taskIndex > 0)
                                 {
                                     CustomMiningSolutionCacheEntry cacheEntry;
                                     cacheEntry.set(solution);
 
                                     unsigned int cacheIndex = 0;
-                                    int sts = gSystemCustomMiningSolution.tryFetching(cacheEntry, cacheIndex);
+                                    int sts = gSystemCustomMiningSolutionCache[partId].tryFetching(cacheEntry, cacheIndex);
 
                                     // Check for duplicated solution
                                     if (sts == CUSTOM_MINING_CACHE_MISS)
                                     {
-                                        gSystemCustomMiningSolution.addEntry(cacheEntry, cacheIndex);
+                                        gSystemCustomMiningSolutionCache[partId].addEntry(cacheEntry, cacheIndex);
                                         isSolutionGood = true;
                                     }
 
                                     if (isSolutionGood)
                                     {
-                                        ACQUIRE(gCustomMiningSharesCountLock);
-                                        gCustomMiningSharesCount[computorID]++;
-                                        RELEASE(gCustomMiningSharesCountLock);
+                                        // Check the computor idx of this solution.
+                                        unsigned short computorID = customMiningGetComputorID(solution->nonce, partId);
+                                        if (computorID <= gTaskPartition[partId].lastComputorIdx)
+                                        {
 
-                                        CustomMiningSolutionStorageEntry solutionStorageEntry;
-                                        solutionStorageEntry.taskIndex = solution->taskIndex;
-                                        solutionStorageEntry.nonce = solution->nonce;
-                                        solutionStorageEntry.cacheEntryIndex = cacheIndex;
+                                            ACQUIRE(gCustomMiningSharesCountLock);
+                                            gCustomMiningSharesCount[computorID]++;
+                                            RELEASE(gCustomMiningSharesCountLock);
 
-                                        ACQUIRE(gCustomMiningSolutionStorageLock);
-                                        gCustomMiningStorage._solutionStorage.addData(&solutionStorageEntry);
-                                        RELEASE(gCustomMiningSolutionStorageLock);
+                                            CustomMiningSolutionStorageEntry solutionStorageEntry;
+                                            solutionStorageEntry.taskIndex = solution->taskIndex;
+                                            solutionStorageEntry.nonce = solution->nonce;
+                                            solutionStorageEntry.cacheEntryIndex = cacheIndex;
 
-                                        ACQUIRE(gTotalCustomMiningSolutionsLock);
-                                        gTotalCustomMiningSolutions++;
-                                        RELEASE(gTotalCustomMiningSolutionsLock);
+                                            ACQUIRE(gCustomMiningSolutionStorageLock);
+                                            gCustomMiningStorage._solutionStorage[partId].addData(&solutionStorageEntry);
+                                            RELEASE(gCustomMiningSolutionStorageLock);
+
+                                        }
                                     }
 
                                     // Record stats
-                                    const unsigned int hitCount = gSystemCustomMiningSolution.hitCount();
-                                    const unsigned int missCount = gSystemCustomMiningSolution.missCount();
-                                    const unsigned int collision = gSystemCustomMiningSolution.collisionCount();
+                                    const unsigned int hitCount = gSystemCustomMiningSolutionCache[partId].hitCount();
+                                    const unsigned int missCount = gSystemCustomMiningSolutionCache[partId].missCount();
+                                    const unsigned int collision = gSystemCustomMiningSolutionCache[partId].collisionCount();
 
-                                    ACQUIRE(gSystemCustomMiningSolutionLock);
-                                    gSystemCustomMiningDuplicatedSolutionCount = hitCount;
-                                    gSystemCustomMiningSolutionCount = missCount;
-                                    gSystemCustomMiningSolutionOFCount = collision;
-                                    RELEASE(gSystemCustomMiningSolutionLock);
+                                    ATOMIC_STORE64(gCustomMiningStats.phase[partId].shares, missCount);
+                                    ATOMIC_STORE64(gCustomMiningStats.phase[partId].duplicated, hitCount);
+                                    ATOMIC_MAX64(gCustomMiningStats.maxCollisionShareCount, collision);
 
                                 }
                             }
@@ -650,7 +667,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 else
                                 {
                                     // it is an un-encrypted message, all zeros for first 32 bytes sharedKey
-                                    bs->SetMem(sharedKeyAndGammingNonce, 32, 0);
+                                    setMem(sharedKeyAndGammingNonce, 32, 0);
                                 }
                             }
                             else
@@ -664,10 +681,10 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
                             if (ok)
                             {
-                                bs->CopyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                                copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
                                 unsigned char gammingKey[32];
                                 KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
-                                bs->SetMem(sharedKeyAndGammingNonce, 32, 0); // Zero the shared key in case stack content could be leaked later
+                                setMem(sharedKeyAndGammingNonce, 32, 0); // Zero the shared key in case stack content could be leaked later
                                 unsigned char gamma[MAX_MESSAGE_PAYLOAD_SIZE];
                                 KangarooTwelve(gammingKey, sizeof(gammingKey), gamma, messagePayloadSize);
                                 for (unsigned int j = 0; j < messagePayloadSize; j++)
@@ -766,7 +783,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
             }
 
             // Copy computor list
-            bs->CopyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+            copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
 
             // Update ownComputorIndices and minerPublicKeys
             if (request->computors.epoch == system.epoch)
@@ -855,7 +872,8 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             else
             {
                 // Copy the sent tick to the tick storage
-                bs->CopyMem(tsTick, &request->tick, sizeof(Tick));
+                copyMem(tsTick, &request->tick, sizeof(Tick));
+                peer->lastActiveTick = request->tick.tick;
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -920,7 +938,8 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                             KangarooTwelve(&request->tickData, sizeof(TickData), digest, 32);
                             if (digest == targetNextTickDataDigest)
                             {
-                                bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                                copyMem(&td, &request->tickData, sizeof(TickData));
+                                peer->lastActiveTick = request->tickData.tick;
                             }
                         }
                     }
@@ -948,7 +967,8 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                         }
                         else
                         {
-                            bs->CopyMem(&td, &request->tickData, sizeof(TickData));
+                            copyMem(&td, &request->tickData, sizeof(TickData));
+                            peer->lastActiveTick = request->tickData.tick;
                         }
                     }
                 }
@@ -982,7 +1002,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 if (((Transaction*)&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE])->tick < request->tick
                     && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                 {
-                    bs->CopyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
+                    copyMem(&computorPendingTransactions[computorIndex * offset * MAX_TRANSACTION_SIZE], request, transactionSize);
                     KangarooTwelve(request, transactionSize, &computorPendingTransactionDigests[computorIndex * offset * 32ULL], 32);
                 }
 
@@ -1002,7 +1022,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                     if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
                         && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                     {
-                        bs->CopyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
+                        copyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
                         KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
                     }
 
@@ -1027,7 +1047,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                             if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                             {
                                 tsReqTickTransactionOffsets[i] = ts.nextTickTransactionOffset;
-                                bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
+                                copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), request, transactionSize);
                                 ts.nextTickTransactionOffset += transactionSize;
                             }
                         }
@@ -1215,10 +1235,26 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
     }
     else
     {
-        bs->SetMem(&currentTickInfo, sizeof(CurrentTickInfo), 0);
+        setMem(&currentTickInfo, sizeof(CurrentTickInfo), 0);
     }
 
     enqueueResponse(peer, sizeof(currentTickInfo), RESPOND_CURRENT_TICK_INFO, header->dejavu(), &currentTickInfo);
+}
+
+static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
+{
+    if (header->size() == sizeof(RequestResponseHeader) + sizeof(CurrentTickInfo))
+    {
+        CurrentTickInfo currentTickInfo = *(header->getPayload< CurrentTickInfo>());
+        // avoid malformed data
+        if (currentTickInfo.initialTick == system.initialTick
+            && currentTickInfo.epoch == system.epoch 
+            && currentTickInfo.tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH
+            && currentTickInfo.tick >= system.initialTick)
+        {
+            // TODO: reserved handler for future use when we are able to verify CurrentTickInfo
+        }
+    }
 }
 
 static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
@@ -1239,11 +1275,11 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
         respondedEntity.entity.latestIncomingTransferTick = 0;
         respondedEntity.entity.latestOutgoingTransferTick = 0;
 
-        bs->SetMem(respondedEntity.siblings, sizeof(respondedEntity.siblings), 0);
+        setMem(respondedEntity.siblings, sizeof(respondedEntity.siblings), 0);
     }
     else
     {
-        bs->CopyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
+        copyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
         ACQUIRE(spectrumLock);
         getSiblings<SPECTRUM_DEPTH>(respondedEntity.spectrumIndex, spectrumDigests, respondedEntity.siblings);
         RELEASE(spectrumLock);
@@ -1263,15 +1299,15 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
     if (request->contractIndex >= contractCount
         || system.epoch >= contractDescriptions[request->contractIndex].constructionEpoch)
     {
-        bs->SetMem(respondContractIPO.publicKeys, sizeof(respondContractIPO.publicKeys), 0);
-        bs->SetMem(respondContractIPO.prices, sizeof(respondContractIPO.prices), 0);
+        setMem(respondContractIPO.publicKeys, sizeof(respondContractIPO.publicKeys), 0);
+        setMem(respondContractIPO.prices, sizeof(respondContractIPO.prices), 0);
     }
     else
     {
         contractStateLock[request->contractIndex].acquireRead();
         IPO* ipo = (IPO*)contractStates[request->contractIndex];
-        bs->CopyMem(respondContractIPO.publicKeys, ipo->publicKeys, sizeof(respondContractIPO.publicKeys));
-        bs->CopyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
+        copyMem(respondContractIPO.publicKeys, ipo->publicKeys, sizeof(respondContractIPO.publicKeys));
+        copyMem(respondContractIPO.prices, ipo->prices, sizeof(respondContractIPO.prices));
         contractStateLock[request->contractIndex].releaseRead();
     }
 
@@ -1368,16 +1404,23 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
             if (recordSolutions)
             {
                 CustomMiningSolutionCacheEntry fullEntry;
-                fullEntry.set(request->taskIndex, request->nonce, request->padding);
+                fullEntry.set(request->taskIndex, request->nonce, request->firstComputorIdx, request->lastComputorIdx);
                 fullEntry.setVerified(true);
                 fullEntry.setValid(request->isValid > 0);
 
                 // Make sure the solution still existed
-                if (CUSTOM_MINING_CACHE_HIT == gSystemCustomMiningSolution.tryFetchingAndUpdate(fullEntry, CUSTOM_MINING_CACHE_HIT))
+                int partId = customMiningGetPartitionID(request->firstComputorIdx, request->lastComputorIdx);
+                // Check the computor idx of this solution
+                int computorID = NUMBER_OF_COMPUTORS;
+                if (partId >= 0)
                 {
-                    // Check the computor idx of this solution
-                    const unsigned short computorID = request->nonce % NUMBER_OF_COMPUTORS;
+                    computorID = customMiningGetComputorID(request->nonce, partId);
+                }
 
+                if (partId >=0 
+                    && computorID <= gTaskPartition[partId].lastComputorIdx
+                    && CUSTOM_MINING_CACHE_HIT == gSystemCustomMiningSolutionCache[partId].tryFetchingAndUpdate(fullEntry, CUSTOM_MINING_CACHE_HIT))
+                {
                     // Reduce the share of this nonce if it is invalid
                     if (0 == request->isValid)
                     {
@@ -1386,18 +1429,13 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
                         RELEASE(gCustomMiningSharesCountLock);
 
                         // Save the number of invalid share count
-                        ACQUIRE(gCustomMiningInvalidSharesCountLock);
-                        gCustomMiningInvalidSharesCount++;
-                        RELEASE(gCustomMiningInvalidSharesCountLock);
+                        ATOMIC_INC64(gCustomMiningStats.phase[partId].invalid);
 
                         respond.status = RespondCustomMiningSolutionVerification::invalid;
                     }
                     else
                     {
-                        ACQUIRE(gCustomMiningInvalidSharesCountLock);
-                        gCustomMiningValidSharesCount++;
-                        RELEASE(gCustomMiningInvalidSharesCountLock);
-
+                        ATOMIC_INC64(gCustomMiningStats.phase[partId].valid);
                         respond.status = RespondCustomMiningSolutionVerification::valid;
                     }
                 }
@@ -1412,7 +1450,8 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
             }
 
             respond.taskIndex = request->taskIndex;
-            respond.padding = request->padding;
+            respond.firstComputorIdx = request->firstComputorIdx;
+            respond.lastComputorIdx = request->lastComputorIdx;
             respond.nonce = request->nonce;
             enqueueResponse(peer, sizeof(respond), RespondCustomMiningSolutionVerification::type, header->dejavu(), &respond);
         }
@@ -1430,6 +1469,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
     RequestedCustomMiningData* request = header->getPayload<RequestedCustomMiningData>();
     if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningData) + SIGNATURE_SIZE)
     {
+
         unsigned char digest[32];
         KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
@@ -1441,7 +1481,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                 // For task type, return all data from the current phase
                 ACQUIRE(gCustomMiningTaskStorageLock);
                 // Pack all the task data
-                respond = gCustomMiningStorage._taskStorage.getSerializedData(request->fromTaskIndex, request->toTaskIndex, processorNumber);
+                respond = gCustomMiningStorage.getSerializedTaskData(request->fromTaskIndex, request->toTaskIndex, processorNumber);
                 RELEASE(gCustomMiningTaskStorageLock);
 
                 if (NULL != respond)
@@ -1454,7 +1494,6 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                         peer,
                         (unsigned int)respondDataSize,
                         RespondCustomMiningData::type, header->dejavu(), respond);
-
                 }
                 else
                 {
@@ -1466,11 +1505,18 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
             else if (request->dataType == RequestedCustomMiningData::solutionType)
             {
                 // For solution type, return all solution from the current phase
-
-                ACQUIRE(gCustomMiningSolutionStorageLock);
-                // Look for all solution data
-                respond = gCustomMiningStorage._solutionStorage.getSerializedData(request->fromTaskIndex, processorNumber);
-                RELEASE(gCustomMiningSolutionStorageLock);
+                int partId = customMiningGetPartitionID(request->firstComputorIdx, request->lastComputorIdx);
+                if (partId >= 0)
+                {
+                    ACQUIRE(gCustomMiningSolutionStorageLock);
+                    // Look for all solution data
+                    respond = gCustomMiningStorage._solutionStorage[partId].getSerializedData(request->fromTaskIndex, processorNumber);
+                    RELEASE(gCustomMiningSolutionStorageLock);
+                }
+                else
+                {
+                    respond = NULL;
+                }
 
                 // Has the solutions
                 if (NULL != respond)
@@ -1489,7 +1535,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                         CustomMiningSolutionStorageEntry entry = solutionEntries[k];
                         CustomMiningSolutionCacheEntry fullEntry;
 
-                        gSystemCustomMiningSolution.getEntry(fullEntry, (unsigned int)entry.cacheEntryIndex);
+                        gSystemCustomMiningSolutionCache[partId].getEntry(fullEntry, (unsigned int)entry.cacheEntryIndex);
 
                         // Check data is matched and not verifed yet
                         if (!fullEntry.isEmpty() 
@@ -1707,10 +1753,13 @@ static void checkAndSwitchMiningPhase()
 // Clean up before custom mining phase. Thread-safe function
 static void beginCustomMiningPhase()
 {
-    ACQUIRE(gSystemCustomMiningSolutionLock);
-    gSystemCustomMiningSolutionCount = 0;
-    gSystemCustomMiningSolution.reset();
-    RELEASE(gSystemCustomMiningSolutionLock);
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        gSystemCustomMiningSolutionCache[i].reset();
+    }
+
+    gCustomMiningStorage.reset();
+    gCustomMiningStats.phaseResetAndEpochAccumulate();
 }
 
 static void checkAndSwitchCustomMiningPhase()
@@ -1803,7 +1852,7 @@ static void requestProcessor(void* ProcedureArgument)
                     {
                         {
                             RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
-                            bs->CopyMem(header, requestHeader, requestHeader->size());
+                            copyMem(header, requestHeader, requestHeader->size());
                             requestQueueBufferTail += requestHeader->size();
                         }
 
@@ -1846,7 +1895,7 @@ static void requestProcessor(void* ProcedureArgument)
 
                 {
                     RequestResponseHeader* requestHeader = (RequestResponseHeader*)&requestQueueBuffer[requestQueueElements[requestQueueElementTail].offset];
-                    bs->CopyMem(header, requestHeader, requestHeader->size());
+                    copyMem(header, requestHeader, requestHeader->size());
                     requestQueueBufferTail += requestHeader->size();
                 }
 
@@ -1930,6 +1979,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case REQUEST_CURRENT_TICK_INFO:
                 {
                     processRequestCurrentTickInfo(peer, header);
+                }
+                break;
+
+                case RESPOND_CURRENT_TICK_INFO:
+                {
+                    processResponseCurrentTickInfo(peer, header);
                 }
                 break;
 
@@ -2718,7 +2773,7 @@ static void processTick(unsigned long long processorNumber)
 
     unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     ts.tickData.acquireLock();
-    bs->CopyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
+    copyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
     ts.tickData.releaseLock();
     unsigned long long solutionProcessStartTick = __rdtsc(); // for tracking the time processing solutions
     if (nextTickData.epoch == system.epoch)
@@ -2848,7 +2903,7 @@ static void processTick(unsigned long long processorNumber)
         {
             if (system.tick > system.latestLedTick)
             {
-                if (mainAuxStatus & 1)
+                if (isMainMode())
                 {
                     // This is the tick leader in MAIN mode -> construct future tick data (selecting transactions to
                     // include into tick)
@@ -2902,7 +2957,7 @@ static void processTick(unsigned long long processorNumber)
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
                                     broadcastedFutureTickData.tickData.transactionDigests[j] = &computorPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
                                     j++;
                                     ts.nextTickTransactionOffset += transactionSize;
@@ -2945,7 +3000,7 @@ static void processTick(unsigned long long processorNumber)
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     ts.tickTransactionOffsets(pendingTransaction->tick, j) = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
                                     broadcastedFutureTickData.tickData.transactionDigests[j] = &entityPendingTransactionDigests[entityPendingTransactionIndices[index] * 32ULL];
                                     j++;
                                     ts.nextTickTransactionOffset += transactionSize;
@@ -2964,7 +3019,7 @@ static void processTick(unsigned long long processorNumber)
                         broadcastedFutureTickData.tickData.transactionDigests[j] = m256i::zero();
                     }
 
-                    bs->SetMem(broadcastedFutureTickData.tickData.contractFees, sizeof(broadcastedFutureTickData.tickData.contractFees), 0);
+                    setMem(broadcastedFutureTickData.tickData.contractFees, sizeof(broadcastedFutureTickData.tickData.contractFees), 0);
 
                     unsigned char digest[32];
                     KangarooTwelve(&broadcastedFutureTickData.tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
@@ -2985,7 +3040,7 @@ static void processTick(unsigned long long processorNumber)
     {
         if ((system.tick + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
         {
-            if (mainAuxStatus & 1)
+            if (isMainMode())
             {
                 auto& payload = voteCounterPayload; // note: not thread-safe
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
@@ -3003,7 +3058,7 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
-    if (mainAuxStatus & 1)
+    if (isMainMode())
     {
         // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
         for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
@@ -3092,23 +3147,14 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
-    // In the begining of mining phase.
-    // Also skip the begining of the epoch, because the no thing to do
-    if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
+    // Broadcast custom mining shares 
+    if (isMainMode())
     {
-        // Reset the custom mining task storage
-        ACQUIRE(gCustomMiningTaskStorageLock);
-        gCustomMiningStorage._taskStorage.checkAndReset();
-        RELEASE(gCustomMiningTaskStorageLock);
-
-        ACQUIRE(gCustomMiningSolutionStorageLock);
-        gCustomMiningStorage._solutionStorage.checkAndReset();
-        RELEASE(gCustomMiningSolutionStorageLock);
-
-        // Broadcast custom mining shares 
-        if (mainAuxStatus & 1)
+        // In the begining of mining phase.
+        // Also skip the begining of the epoch, because the no thing to do
+        if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
         {
-            unsigned int customMiningCountOverflow = 0;
+            long long customMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
                 unsigned int schedule_tick = system.tick
@@ -3152,14 +3198,12 @@ static void processTick(unsigned long long processorNumber)
                 gCustomMiningBroadcastTxBuffer[i].isBroadcasted = false;
             }
 
-            ACQUIRE(gCustomMiningShareCountOverFlowLock);
             // Keep the max of overflow case
-            gCustomMiningCountOverflow = gCustomMiningCountOverflow > customMiningCountOverflow ? gCustomMiningCountOverflow : customMiningCountOverflow;
-            RELEASE(gCustomMiningShareCountOverFlowLock);
+            ATOMIC_MAX64(gCustomMiningStats.maxOverflowShareCount, customMiningCountOverflow);
 
             // reset the phase counter
             ACQUIRE(gCustomMiningSharesCountLock);
-            bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+            setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
             RELEASE(gCustomMiningSharesCountLock);
         }
 
@@ -3199,30 +3243,22 @@ static void processTick(unsigned long long processorNumber)
 static void resetCustomMining()
 {
     gCustomMiningSharesCounter.init();
-    bs->SetMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
-    gCustomMiningCountOverflow = 0;
-    gSystemCustomMiningSolutionCount = 0;
-    gSystemCustomMiningDuplicatedSolutionCount = 0;
-    gSystemCustomMiningSolutionOFCount = 0;
-    gSystemCustomMiningSolution.reset();
+    setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
+
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        gSystemCustomMiningSolutionCache[i].reset();
+    }
+
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
         gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
     }
-    ACQUIRE(gCustomMiningSolutionStorageLock);
-    gCustomMiningStorage._solutionStorage.reset();
-    RELEASE(gCustomMiningSolutionStorageLock);
+    gCustomMiningStorage.reset();
 
-    ACQUIRE(gCustomMiningTaskStorageLock);
-    gCustomMiningStorage._taskStorage.reset();
-    RELEASE(gCustomMiningTaskStorageLock);
-
-    gSystemCustomMiningDuplicatedSolutionCount = 0;
-    gSystemCustomMiningSolutionCount = 0;
-    gSystemCustomMiningSolutionOFCount = 0;
-    gTotalCustomMiningSolutions = 0;
-    gTotalCustomMiningTaskMessages = 0;
+    // Clear all data of epoch
+    gCustomMiningStats.epochReset();
 }
 
 static void beginEpoch()
@@ -3236,7 +3272,7 @@ static void beginEpoch()
     {
         broadcastedComputors.computors.publicKeys[i].setRandomValue();
     }
-    bs->SetMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
+    setMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
 
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
@@ -3259,8 +3295,8 @@ static void beginEpoch()
         ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
     }
 
-    bs->SetMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
-    bs->SetMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
+    setMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
+    setMem(faultyComputorFlags, sizeof(faultyComputorFlags), 0);
 
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
@@ -3276,13 +3312,13 @@ static void beginEpoch()
 
     score->initMemory();
     score->resetTaskQueue();
-    bs->SetMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
-    bs->SetMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
-    bs->SetMem((void*)minerScores, sizeof(minerScores), 0);
+    setMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
+    setMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
+    setMem((void*)minerScores, sizeof(minerScores), 0);
     numberOfMiners = NUMBER_OF_COMPUTORS;
-    bs->SetMem(competitorPublicKeys, sizeof(competitorPublicKeys), 0);
-    bs->SetMem(competitorScores, sizeof(competitorScores), 0);
-    bs->SetMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
+    setMem(competitorPublicKeys, sizeof(competitorPublicKeys), 0);
+    setMem(competitorScores, sizeof(competitorScores), 0);
+    setMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
 
@@ -3292,8 +3328,8 @@ static void beginEpoch()
 
     system.latestOperatorNonce = 0;
     system.numberOfSolutions = 0;
-    bs->SetMem(system.solutions, sizeof(system.solutions), 0);
-    bs->SetMem(system.futureComputors, sizeof(system.futureComputors), 0);
+    setMem(system.solutions, sizeof(system.solutions), 0);
+    setMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
     resetCustomMining();
 
@@ -3344,7 +3380,7 @@ static void endEpoch()
     {
         // Compute revenue scores of computors
         unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
-        bs->SetMem(revenueScore, sizeof(revenueScore), 0);
+        setMem(revenueScore, sizeof(revenueScore), 0);
         for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
         {
             ts.tickData.acquireLock();
@@ -3364,20 +3400,48 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
+        // Save data of custom mining.
+        {
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                gRevenueScoreWithCustomMining.voteCount[i] = voteCounter.getVoteCount(i);
+                gRevenueScoreWithCustomMining.txScore[i] = revenueScore[i];
+                gRevenueScoreWithCustomMining.customMiningSharesCount[i] = gCustomMiningSharesCounter.getSharesCount(i);
+            }
+            computeRevWithCustomMining(
+                gRevenueScoreWithCustomMining.txScore,
+                gRevenueScoreWithCustomMining.voteCount,
+                gRevenueScoreWithCustomMining.customMiningSharesCount,
+                gRevenueScoreWithCustomMining.currentIntermediateScore,
+                gRevenueScoreWithCustomMining.currentRev,
+                gRevenueScoreWithCustomMining.customMiningIntermediateScore,
+                gRevenueScoreWithCustomMining.customMiningRev);
+        }
+
+
         // Merge votecount to final rev score
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
             unsigned long long vote_count = voteCounter.getVoteCount(i);
-            if (vote_count != 0)
+            unsigned long long custom_mining_share_count = gCustomMiningSharesCounter.getSharesCount(i);
+            if (vote_count != 0 && custom_mining_share_count != 0)
             {
-                unsigned long long final_score = vote_count * revenueScore[i];
-                if ((final_score / vote_count) != revenueScore[i]) // detect overflow
+                unsigned long long score_with_vote = vote_count * revenueScore[i];
+                if ((score_with_vote / vote_count) != revenueScore[i]) // detect overflow
                 {
                     revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
                 }
                 else
                 {
-                    revenueScore[i] = final_score;
+                    unsigned long long final_score = score_with_vote * custom_mining_share_count;
+                    if ((final_score / custom_mining_share_count) != score_with_vote) // detect overflow
+                    {
+                        revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
+                    }
+                    else
+                    {
+                        revenueScore[i] = final_score;
+                    }
                 }
             }
             else
@@ -3386,25 +3450,9 @@ static void endEpoch()
             }
         }
 
-        // Experiment code. Expect it has not impact any reveneue yet, only record the revenue with custom solution and old score
-        {
-            bs->CopyMem(gRevenueScoreWithCustomMining.oldFinalScore, revenueScore, sizeof(gRevenueScoreWithCustomMining.oldFinalScore));
-            // This function doesn't impact reveneue yet. Just counting the submitted solution for adjusting the fomula later
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                gRevenueScoreWithCustomMining.customMiningSharesCount[i] = gCustomMiningSharesCounter.getSharesCount(i);
-            }
-            computeRevWithCustomMining(
-                gRevenueScoreWithCustomMining.oldFinalScore,
-                gRevenueScoreWithCustomMining.customMiningSharesCount,
-                gRevenueScoreWithCustomMining.currentRev,
-                gRevenueScoreWithCustomMining.customMiningRev);
-        }
-
-
         // Sort revenue scores to get lowest score of quorum
         unsigned long long sortedRevenueScore[QUORUM + 1];
-        bs->SetMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+        setMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
         for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
@@ -3485,11 +3533,8 @@ static void endEpoch()
 
             // Generate computor revenue
             increaseEnergy(broadcastedComputors.computors.publicKeys[computorIndex], revenue);
-            if (revenue)
-            {
-                const QuTransfer quTransfer = { m256i::zero(), broadcastedComputors.computors.publicKeys[computorIndex], revenue };
-                logger.logQuTransfer(quTransfer);
-            }
+            const QuTransfer quTransfer = { m256i::zero(), broadcastedComputors.computors.publicKeys[computorIndex], revenue };
+            logger.logQuTransfer(quTransfer);
         }
         emissionDist = nullptr; qpiContext.freeBuffer(); // Free buffer holding revenue donation table, because we don't need it anymore
 
@@ -3528,684 +3573,6 @@ static void endEpoch()
     system.initialTick = system.tick;
 
     mainAuxStatus = ((mainAuxStatus & 1) << 1) | ((mainAuxStatus & 2) >> 1);
-
-    // TODO: Remove after 451+ computors signal they know how to issue custom mining messages
-    customMiningMessageCounters[0] = 0;
-    customMiningMessageCounters[1] = 0;
-    customMiningMessageCounters[2] = 0;
-    customMiningMessageCounters[3] = 0;
-    customMiningMessageCounters[4] = 0;
-    customMiningMessageCounters[5] = 0;
-    customMiningMessageCounters[6] = 0;
-    customMiningMessageCounters[7] = 0;
-    customMiningMessageCounters[8] = 0;
-    customMiningMessageCounters[9] = 0;
-    customMiningMessageCounters[10] = 0;
-    customMiningMessageCounters[11] = 0;
-    customMiningMessageCounters[12] = 0;
-    customMiningMessageCounters[13] = 0;
-    customMiningMessageCounters[14] = 0;
-    customMiningMessageCounters[15] = 0;
-    customMiningMessageCounters[16] = 0;
-    customMiningMessageCounters[17] = 0;
-    customMiningMessageCounters[18] = 0;
-    customMiningMessageCounters[19] = 0;
-    customMiningMessageCounters[20] = 0;
-    customMiningMessageCounters[21] = 0;
-    customMiningMessageCounters[22] = 0;
-    customMiningMessageCounters[23] = 0;
-    customMiningMessageCounters[24] = 0;
-    customMiningMessageCounters[25] = 0;
-    customMiningMessageCounters[26] = 0;
-    customMiningMessageCounters[27] = 0;
-    customMiningMessageCounters[28] = 0;
-    customMiningMessageCounters[29] = 0;
-    customMiningMessageCounters[30] = 0;
-    customMiningMessageCounters[31] = 0;
-    customMiningMessageCounters[32] = 0;
-    customMiningMessageCounters[33] = 0;
-    customMiningMessageCounters[34] = 0;
-    customMiningMessageCounters[35] = 0;
-    customMiningMessageCounters[36] = 0;
-    customMiningMessageCounters[37] = 0;
-    customMiningMessageCounters[38] = 0;
-    customMiningMessageCounters[39] = 0;
-    customMiningMessageCounters[40] = 0;
-    customMiningMessageCounters[41] = 0;
-    customMiningMessageCounters[42] = 0;
-    customMiningMessageCounters[43] = 0;
-    customMiningMessageCounters[44] = 0;
-    customMiningMessageCounters[45] = 0;
-    customMiningMessageCounters[46] = 0;
-    customMiningMessageCounters[47] = 0;
-    customMiningMessageCounters[48] = 0;
-    customMiningMessageCounters[49] = 0;
-    customMiningMessageCounters[50] = 0;
-    customMiningMessageCounters[51] = 0;
-    customMiningMessageCounters[52] = 0;
-    customMiningMessageCounters[53] = 0;
-    customMiningMessageCounters[54] = 0;
-    customMiningMessageCounters[55] = 0;
-    customMiningMessageCounters[56] = 0;
-    customMiningMessageCounters[57] = 0;
-    customMiningMessageCounters[58] = 0;
-    customMiningMessageCounters[59] = 0;
-    customMiningMessageCounters[60] = 0;
-    customMiningMessageCounters[61] = 0;
-    customMiningMessageCounters[62] = 0;
-    customMiningMessageCounters[63] = 0;
-    customMiningMessageCounters[64] = 0;
-    customMiningMessageCounters[65] = 0;
-    customMiningMessageCounters[66] = 0;
-    customMiningMessageCounters[67] = 0;
-    customMiningMessageCounters[68] = 0;
-    customMiningMessageCounters[69] = 0;
-    customMiningMessageCounters[70] = 0;
-    customMiningMessageCounters[71] = 0;
-    customMiningMessageCounters[72] = 0;
-    customMiningMessageCounters[73] = 0;
-    customMiningMessageCounters[74] = 0;
-    customMiningMessageCounters[75] = 0;
-    customMiningMessageCounters[76] = 0;
-    customMiningMessageCounters[77] = 0;
-    customMiningMessageCounters[78] = 0;
-    customMiningMessageCounters[79] = 0;
-    customMiningMessageCounters[80] = 0;
-    customMiningMessageCounters[81] = 0;
-    customMiningMessageCounters[82] = 0;
-    customMiningMessageCounters[83] = 0;
-    customMiningMessageCounters[84] = 0;
-    customMiningMessageCounters[85] = 0;
-    customMiningMessageCounters[86] = 0;
-    customMiningMessageCounters[87] = 0;
-    customMiningMessageCounters[88] = 0;
-    customMiningMessageCounters[89] = 0;
-    customMiningMessageCounters[90] = 0;
-    customMiningMessageCounters[91] = 0;
-    customMiningMessageCounters[92] = 0;
-    customMiningMessageCounters[93] = 0;
-    customMiningMessageCounters[94] = 0;
-    customMiningMessageCounters[95] = 0;
-    customMiningMessageCounters[96] = 0;
-    customMiningMessageCounters[97] = 0;
-    customMiningMessageCounters[98] = 0;
-    customMiningMessageCounters[99] = 0;
-    customMiningMessageCounters[100] = 0;
-    customMiningMessageCounters[101] = 0;
-    customMiningMessageCounters[102] = 0;
-    customMiningMessageCounters[103] = 0;
-    customMiningMessageCounters[104] = 0;
-    customMiningMessageCounters[105] = 0;
-    customMiningMessageCounters[106] = 0;
-    customMiningMessageCounters[107] = 0;
-    customMiningMessageCounters[108] = 0;
-    customMiningMessageCounters[109] = 0;
-    customMiningMessageCounters[110] = 0;
-    customMiningMessageCounters[111] = 0;
-    customMiningMessageCounters[112] = 0;
-    customMiningMessageCounters[113] = 0;
-    customMiningMessageCounters[114] = 0;
-    customMiningMessageCounters[115] = 0;
-    customMiningMessageCounters[116] = 0;
-    customMiningMessageCounters[117] = 0;
-    customMiningMessageCounters[118] = 0;
-    customMiningMessageCounters[119] = 0;
-    customMiningMessageCounters[120] = 0;
-    customMiningMessageCounters[121] = 0;
-    customMiningMessageCounters[122] = 0;
-    customMiningMessageCounters[123] = 0;
-    customMiningMessageCounters[124] = 0;
-    customMiningMessageCounters[125] = 0;
-    customMiningMessageCounters[126] = 0;
-    customMiningMessageCounters[127] = 0;
-    customMiningMessageCounters[128] = 0;
-    customMiningMessageCounters[129] = 0;
-    customMiningMessageCounters[130] = 0;
-    customMiningMessageCounters[131] = 0;
-    customMiningMessageCounters[132] = 0;
-    customMiningMessageCounters[133] = 0;
-    customMiningMessageCounters[134] = 0;
-    customMiningMessageCounters[135] = 0;
-    customMiningMessageCounters[136] = 0;
-    customMiningMessageCounters[137] = 0;
-    customMiningMessageCounters[138] = 0;
-    customMiningMessageCounters[139] = 0;
-    customMiningMessageCounters[140] = 0;
-    customMiningMessageCounters[141] = 0;
-    customMiningMessageCounters[142] = 0;
-    customMiningMessageCounters[143] = 0;
-    customMiningMessageCounters[144] = 0;
-    customMiningMessageCounters[145] = 0;
-    customMiningMessageCounters[146] = 0;
-    customMiningMessageCounters[147] = 0;
-    customMiningMessageCounters[148] = 0;
-    customMiningMessageCounters[149] = 0;
-    customMiningMessageCounters[150] = 0;
-    customMiningMessageCounters[151] = 0;
-    customMiningMessageCounters[152] = 0;
-    customMiningMessageCounters[153] = 0;
-    customMiningMessageCounters[154] = 0;
-    customMiningMessageCounters[155] = 0;
-    customMiningMessageCounters[156] = 0;
-    customMiningMessageCounters[157] = 0;
-    customMiningMessageCounters[158] = 0;
-    customMiningMessageCounters[159] = 0;
-    customMiningMessageCounters[160] = 0;
-    customMiningMessageCounters[161] = 0;
-    customMiningMessageCounters[162] = 0;
-    customMiningMessageCounters[163] = 0;
-    customMiningMessageCounters[164] = 0;
-    customMiningMessageCounters[165] = 0;
-    customMiningMessageCounters[166] = 0;
-    customMiningMessageCounters[167] = 0;
-    customMiningMessageCounters[168] = 0;
-    customMiningMessageCounters[169] = 0;
-    customMiningMessageCounters[170] = 0;
-    customMiningMessageCounters[171] = 0;
-    customMiningMessageCounters[172] = 0;
-    customMiningMessageCounters[173] = 0;
-    customMiningMessageCounters[174] = 0;
-    customMiningMessageCounters[175] = 0;
-    customMiningMessageCounters[176] = 0;
-    customMiningMessageCounters[177] = 0;
-    customMiningMessageCounters[178] = 0;
-    customMiningMessageCounters[179] = 0;
-    customMiningMessageCounters[180] = 0;
-    customMiningMessageCounters[181] = 0;
-    customMiningMessageCounters[182] = 0;
-    customMiningMessageCounters[183] = 0;
-    customMiningMessageCounters[184] = 0;
-    customMiningMessageCounters[185] = 0;
-    customMiningMessageCounters[186] = 0;
-    customMiningMessageCounters[187] = 0;
-    customMiningMessageCounters[188] = 0;
-    customMiningMessageCounters[189] = 0;
-    customMiningMessageCounters[190] = 0;
-    customMiningMessageCounters[191] = 0;
-    customMiningMessageCounters[192] = 0;
-    customMiningMessageCounters[193] = 0;
-    customMiningMessageCounters[194] = 0;
-    customMiningMessageCounters[195] = 0;
-    customMiningMessageCounters[196] = 0;
-    customMiningMessageCounters[197] = 0;
-    customMiningMessageCounters[198] = 0;
-    customMiningMessageCounters[199] = 0;
-    customMiningMessageCounters[200] = 0;
-    customMiningMessageCounters[201] = 0;
-    customMiningMessageCounters[202] = 0;
-    customMiningMessageCounters[203] = 0;
-    customMiningMessageCounters[204] = 0;
-    customMiningMessageCounters[205] = 0;
-    customMiningMessageCounters[206] = 0;
-    customMiningMessageCounters[207] = 0;
-    customMiningMessageCounters[208] = 0;
-    customMiningMessageCounters[209] = 0;
-    customMiningMessageCounters[210] = 0;
-    customMiningMessageCounters[211] = 0;
-    customMiningMessageCounters[212] = 0;
-    customMiningMessageCounters[213] = 0;
-    customMiningMessageCounters[214] = 0;
-    customMiningMessageCounters[215] = 0;
-    customMiningMessageCounters[216] = 0;
-    customMiningMessageCounters[217] = 0;
-    customMiningMessageCounters[218] = 0;
-    customMiningMessageCounters[219] = 0;
-    customMiningMessageCounters[220] = 0;
-    customMiningMessageCounters[221] = 0;
-    customMiningMessageCounters[222] = 0;
-    customMiningMessageCounters[223] = 0;
-    customMiningMessageCounters[224] = 0;
-    customMiningMessageCounters[225] = 0;
-    customMiningMessageCounters[226] = 0;
-    customMiningMessageCounters[227] = 0;
-    customMiningMessageCounters[228] = 0;
-    customMiningMessageCounters[229] = 0;
-    customMiningMessageCounters[230] = 0;
-    customMiningMessageCounters[231] = 0;
-    customMiningMessageCounters[232] = 0;
-    customMiningMessageCounters[233] = 0;
-    customMiningMessageCounters[234] = 0;
-    customMiningMessageCounters[235] = 0;
-    customMiningMessageCounters[236] = 0;
-    customMiningMessageCounters[237] = 0;
-    customMiningMessageCounters[238] = 0;
-    customMiningMessageCounters[239] = 0;
-    customMiningMessageCounters[240] = 0;
-    customMiningMessageCounters[241] = 0;
-    customMiningMessageCounters[242] = 0;
-    customMiningMessageCounters[243] = 0;
-    customMiningMessageCounters[244] = 0;
-    customMiningMessageCounters[245] = 0;
-    customMiningMessageCounters[246] = 0;
-    customMiningMessageCounters[247] = 0;
-    customMiningMessageCounters[248] = 0;
-    customMiningMessageCounters[249] = 0;
-    customMiningMessageCounters[250] = 0;
-    customMiningMessageCounters[251] = 0;
-    customMiningMessageCounters[252] = 0;
-    customMiningMessageCounters[253] = 0;
-    customMiningMessageCounters[254] = 0;
-    customMiningMessageCounters[255] = 0;
-    customMiningMessageCounters[256] = 0;
-    customMiningMessageCounters[257] = 0;
-    customMiningMessageCounters[258] = 0;
-    customMiningMessageCounters[259] = 0;
-    customMiningMessageCounters[260] = 0;
-    customMiningMessageCounters[261] = 0;
-    customMiningMessageCounters[262] = 0;
-    customMiningMessageCounters[263] = 0;
-    customMiningMessageCounters[264] = 0;
-    customMiningMessageCounters[265] = 0;
-    customMiningMessageCounters[266] = 0;
-    customMiningMessageCounters[267] = 0;
-    customMiningMessageCounters[268] = 0;
-    customMiningMessageCounters[269] = 0;
-    customMiningMessageCounters[270] = 0;
-    customMiningMessageCounters[271] = 0;
-    customMiningMessageCounters[272] = 0;
-    customMiningMessageCounters[273] = 0;
-    customMiningMessageCounters[274] = 0;
-    customMiningMessageCounters[275] = 0;
-    customMiningMessageCounters[276] = 0;
-    customMiningMessageCounters[277] = 0;
-    customMiningMessageCounters[278] = 0;
-    customMiningMessageCounters[279] = 0;
-    customMiningMessageCounters[280] = 0;
-    customMiningMessageCounters[281] = 0;
-    customMiningMessageCounters[282] = 0;
-    customMiningMessageCounters[283] = 0;
-    customMiningMessageCounters[284] = 0;
-    customMiningMessageCounters[285] = 0;
-    customMiningMessageCounters[286] = 0;
-    customMiningMessageCounters[287] = 0;
-    customMiningMessageCounters[288] = 0;
-    customMiningMessageCounters[289] = 0;
-    customMiningMessageCounters[290] = 0;
-    customMiningMessageCounters[291] = 0;
-    customMiningMessageCounters[292] = 0;
-    customMiningMessageCounters[293] = 0;
-    customMiningMessageCounters[294] = 0;
-    customMiningMessageCounters[295] = 0;
-    customMiningMessageCounters[296] = 0;
-    customMiningMessageCounters[297] = 0;
-    customMiningMessageCounters[298] = 0;
-    customMiningMessageCounters[299] = 0;
-    customMiningMessageCounters[300] = 0;
-    customMiningMessageCounters[301] = 0;
-    customMiningMessageCounters[302] = 0;
-    customMiningMessageCounters[303] = 0;
-    customMiningMessageCounters[304] = 0;
-    customMiningMessageCounters[305] = 0;
-    customMiningMessageCounters[306] = 0;
-    customMiningMessageCounters[307] = 0;
-    customMiningMessageCounters[308] = 0;
-    customMiningMessageCounters[309] = 0;
-    customMiningMessageCounters[310] = 0;
-    customMiningMessageCounters[311] = 0;
-    customMiningMessageCounters[312] = 0;
-    customMiningMessageCounters[313] = 0;
-    customMiningMessageCounters[314] = 0;
-    customMiningMessageCounters[315] = 0;
-    customMiningMessageCounters[316] = 0;
-    customMiningMessageCounters[317] = 0;
-    customMiningMessageCounters[318] = 0;
-    customMiningMessageCounters[319] = 0;
-    customMiningMessageCounters[320] = 0;
-    customMiningMessageCounters[321] = 0;
-    customMiningMessageCounters[322] = 0;
-    customMiningMessageCounters[323] = 0;
-    customMiningMessageCounters[324] = 0;
-    customMiningMessageCounters[325] = 0;
-    customMiningMessageCounters[326] = 0;
-    customMiningMessageCounters[327] = 0;
-    customMiningMessageCounters[328] = 0;
-    customMiningMessageCounters[329] = 0;
-    customMiningMessageCounters[330] = 0;
-    customMiningMessageCounters[331] = 0;
-    customMiningMessageCounters[332] = 0;
-    customMiningMessageCounters[333] = 0;
-    customMiningMessageCounters[334] = 0;
-    customMiningMessageCounters[335] = 0;
-    customMiningMessageCounters[336] = 0;
-    customMiningMessageCounters[337] = 0;
-    customMiningMessageCounters[338] = 0;
-    customMiningMessageCounters[339] = 0;
-    customMiningMessageCounters[340] = 0;
-    customMiningMessageCounters[341] = 0;
-    customMiningMessageCounters[342] = 0;
-    customMiningMessageCounters[343] = 0;
-    customMiningMessageCounters[344] = 0;
-    customMiningMessageCounters[345] = 0;
-    customMiningMessageCounters[346] = 0;
-    customMiningMessageCounters[347] = 0;
-    customMiningMessageCounters[348] = 0;
-    customMiningMessageCounters[349] = 0;
-    customMiningMessageCounters[350] = 0;
-    customMiningMessageCounters[351] = 0;
-    customMiningMessageCounters[352] = 0;
-    customMiningMessageCounters[353] = 0;
-    customMiningMessageCounters[354] = 0;
-    customMiningMessageCounters[355] = 0;
-    customMiningMessageCounters[356] = 0;
-    customMiningMessageCounters[357] = 0;
-    customMiningMessageCounters[358] = 0;
-    customMiningMessageCounters[359] = 0;
-    customMiningMessageCounters[360] = 0;
-    customMiningMessageCounters[361] = 0;
-    customMiningMessageCounters[362] = 0;
-    customMiningMessageCounters[363] = 0;
-    customMiningMessageCounters[364] = 0;
-    customMiningMessageCounters[365] = 0;
-    customMiningMessageCounters[366] = 0;
-    customMiningMessageCounters[367] = 0;
-    customMiningMessageCounters[368] = 0;
-    customMiningMessageCounters[369] = 0;
-    customMiningMessageCounters[370] = 0;
-    customMiningMessageCounters[371] = 0;
-    customMiningMessageCounters[372] = 0;
-    customMiningMessageCounters[373] = 0;
-    customMiningMessageCounters[374] = 0;
-    customMiningMessageCounters[375] = 0;
-    customMiningMessageCounters[376] = 0;
-    customMiningMessageCounters[377] = 0;
-    customMiningMessageCounters[378] = 0;
-    customMiningMessageCounters[379] = 0;
-    customMiningMessageCounters[380] = 0;
-    customMiningMessageCounters[381] = 0;
-    customMiningMessageCounters[382] = 0;
-    customMiningMessageCounters[383] = 0;
-    customMiningMessageCounters[384] = 0;
-    customMiningMessageCounters[385] = 0;
-    customMiningMessageCounters[386] = 0;
-    customMiningMessageCounters[387] = 0;
-    customMiningMessageCounters[388] = 0;
-    customMiningMessageCounters[389] = 0;
-    customMiningMessageCounters[390] = 0;
-    customMiningMessageCounters[391] = 0;
-    customMiningMessageCounters[392] = 0;
-    customMiningMessageCounters[393] = 0;
-    customMiningMessageCounters[394] = 0;
-    customMiningMessageCounters[395] = 0;
-    customMiningMessageCounters[396] = 0;
-    customMiningMessageCounters[397] = 0;
-    customMiningMessageCounters[398] = 0;
-    customMiningMessageCounters[399] = 0;
-    customMiningMessageCounters[400] = 0;
-    customMiningMessageCounters[401] = 0;
-    customMiningMessageCounters[402] = 0;
-    customMiningMessageCounters[403] = 0;
-    customMiningMessageCounters[404] = 0;
-    customMiningMessageCounters[405] = 0;
-    customMiningMessageCounters[406] = 0;
-    customMiningMessageCounters[407] = 0;
-    customMiningMessageCounters[408] = 0;
-    customMiningMessageCounters[409] = 0;
-    customMiningMessageCounters[410] = 0;
-    customMiningMessageCounters[411] = 0;
-    customMiningMessageCounters[412] = 0;
-    customMiningMessageCounters[413] = 0;
-    customMiningMessageCounters[414] = 0;
-    customMiningMessageCounters[415] = 0;
-    customMiningMessageCounters[416] = 0;
-    customMiningMessageCounters[417] = 0;
-    customMiningMessageCounters[418] = 0;
-    customMiningMessageCounters[419] = 0;
-    customMiningMessageCounters[420] = 0;
-    customMiningMessageCounters[421] = 0;
-    customMiningMessageCounters[422] = 0;
-    customMiningMessageCounters[423] = 0;
-    customMiningMessageCounters[424] = 0;
-    customMiningMessageCounters[425] = 0;
-    customMiningMessageCounters[426] = 0;
-    customMiningMessageCounters[427] = 0;
-    customMiningMessageCounters[428] = 0;
-    customMiningMessageCounters[429] = 0;
-    customMiningMessageCounters[430] = 0;
-    customMiningMessageCounters[431] = 0;
-    customMiningMessageCounters[432] = 0;
-    customMiningMessageCounters[433] = 0;
-    customMiningMessageCounters[434] = 0;
-    customMiningMessageCounters[435] = 0;
-    customMiningMessageCounters[436] = 0;
-    customMiningMessageCounters[437] = 0;
-    customMiningMessageCounters[438] = 0;
-    customMiningMessageCounters[439] = 0;
-    customMiningMessageCounters[440] = 0;
-    customMiningMessageCounters[441] = 0;
-    customMiningMessageCounters[442] = 0;
-    customMiningMessageCounters[443] = 0;
-    customMiningMessageCounters[444] = 0;
-    customMiningMessageCounters[445] = 0;
-    customMiningMessageCounters[446] = 0;
-    customMiningMessageCounters[447] = 0;
-    customMiningMessageCounters[448] = 0;
-    customMiningMessageCounters[449] = 0;
-    customMiningMessageCounters[450] = 0;
-    customMiningMessageCounters[451] = 0;
-    customMiningMessageCounters[452] = 0;
-    customMiningMessageCounters[453] = 0;
-    customMiningMessageCounters[454] = 0;
-    customMiningMessageCounters[455] = 0;
-    customMiningMessageCounters[456] = 0;
-    customMiningMessageCounters[457] = 0;
-    customMiningMessageCounters[458] = 0;
-    customMiningMessageCounters[459] = 0;
-    customMiningMessageCounters[460] = 0;
-    customMiningMessageCounters[461] = 0;
-    customMiningMessageCounters[462] = 0;
-    customMiningMessageCounters[463] = 0;
-    customMiningMessageCounters[464] = 0;
-    customMiningMessageCounters[465] = 0;
-    customMiningMessageCounters[466] = 0;
-    customMiningMessageCounters[467] = 0;
-    customMiningMessageCounters[468] = 0;
-    customMiningMessageCounters[469] = 0;
-    customMiningMessageCounters[470] = 0;
-    customMiningMessageCounters[471] = 0;
-    customMiningMessageCounters[472] = 0;
-    customMiningMessageCounters[473] = 0;
-    customMiningMessageCounters[474] = 0;
-    customMiningMessageCounters[475] = 0;
-    customMiningMessageCounters[476] = 0;
-    customMiningMessageCounters[477] = 0;
-    customMiningMessageCounters[478] = 0;
-    customMiningMessageCounters[479] = 0;
-    customMiningMessageCounters[480] = 0;
-    customMiningMessageCounters[481] = 0;
-    customMiningMessageCounters[482] = 0;
-    customMiningMessageCounters[483] = 0;
-    customMiningMessageCounters[484] = 0;
-    customMiningMessageCounters[485] = 0;
-    customMiningMessageCounters[486] = 0;
-    customMiningMessageCounters[487] = 0;
-    customMiningMessageCounters[488] = 0;
-    customMiningMessageCounters[489] = 0;
-    customMiningMessageCounters[490] = 0;
-    customMiningMessageCounters[491] = 0;
-    customMiningMessageCounters[492] = 0;
-    customMiningMessageCounters[493] = 0;
-    customMiningMessageCounters[494] = 0;
-    customMiningMessageCounters[495] = 0;
-    customMiningMessageCounters[496] = 0;
-    customMiningMessageCounters[497] = 0;
-    customMiningMessageCounters[498] = 0;
-    customMiningMessageCounters[499] = 0;
-    customMiningMessageCounters[500] = 0;
-    customMiningMessageCounters[501] = 0;
-    customMiningMessageCounters[502] = 0;
-    customMiningMessageCounters[503] = 0;
-    customMiningMessageCounters[504] = 0;
-    customMiningMessageCounters[505] = 0;
-    customMiningMessageCounters[506] = 0;
-    customMiningMessageCounters[507] = 0;
-    customMiningMessageCounters[508] = 0;
-    customMiningMessageCounters[509] = 0;
-    customMiningMessageCounters[510] = 0;
-    customMiningMessageCounters[511] = 0;
-    customMiningMessageCounters[512] = 0;
-    customMiningMessageCounters[513] = 0;
-    customMiningMessageCounters[514] = 0;
-    customMiningMessageCounters[515] = 0;
-    customMiningMessageCounters[516] = 0;
-    customMiningMessageCounters[517] = 0;
-    customMiningMessageCounters[518] = 0;
-    customMiningMessageCounters[519] = 0;
-    customMiningMessageCounters[520] = 0;
-    customMiningMessageCounters[521] = 0;
-    customMiningMessageCounters[522] = 0;
-    customMiningMessageCounters[523] = 0;
-    customMiningMessageCounters[524] = 0;
-    customMiningMessageCounters[525] = 0;
-    customMiningMessageCounters[526] = 0;
-    customMiningMessageCounters[527] = 0;
-    customMiningMessageCounters[528] = 0;
-    customMiningMessageCounters[529] = 0;
-    customMiningMessageCounters[530] = 0;
-    customMiningMessageCounters[531] = 0;
-    customMiningMessageCounters[532] = 0;
-    customMiningMessageCounters[533] = 0;
-    customMiningMessageCounters[534] = 0;
-    customMiningMessageCounters[535] = 0;
-    customMiningMessageCounters[536] = 0;
-    customMiningMessageCounters[537] = 0;
-    customMiningMessageCounters[538] = 0;
-    customMiningMessageCounters[539] = 0;
-    customMiningMessageCounters[540] = 0;
-    customMiningMessageCounters[541] = 0;
-    customMiningMessageCounters[542] = 0;
-    customMiningMessageCounters[543] = 0;
-    customMiningMessageCounters[544] = 0;
-    customMiningMessageCounters[545] = 0;
-    customMiningMessageCounters[546] = 0;
-    customMiningMessageCounters[547] = 0;
-    customMiningMessageCounters[548] = 0;
-    customMiningMessageCounters[549] = 0;
-    customMiningMessageCounters[550] = 0;
-    customMiningMessageCounters[551] = 0;
-    customMiningMessageCounters[552] = 0;
-    customMiningMessageCounters[553] = 0;
-    customMiningMessageCounters[554] = 0;
-    customMiningMessageCounters[555] = 0;
-    customMiningMessageCounters[556] = 0;
-    customMiningMessageCounters[557] = 0;
-    customMiningMessageCounters[558] = 0;
-    customMiningMessageCounters[559] = 0;
-    customMiningMessageCounters[560] = 0;
-    customMiningMessageCounters[561] = 0;
-    customMiningMessageCounters[562] = 0;
-    customMiningMessageCounters[563] = 0;
-    customMiningMessageCounters[564] = 0;
-    customMiningMessageCounters[565] = 0;
-    customMiningMessageCounters[566] = 0;
-    customMiningMessageCounters[567] = 0;
-    customMiningMessageCounters[568] = 0;
-    customMiningMessageCounters[569] = 0;
-    customMiningMessageCounters[570] = 0;
-    customMiningMessageCounters[571] = 0;
-    customMiningMessageCounters[572] = 0;
-    customMiningMessageCounters[573] = 0;
-    customMiningMessageCounters[574] = 0;
-    customMiningMessageCounters[575] = 0;
-    customMiningMessageCounters[576] = 0;
-    customMiningMessageCounters[577] = 0;
-    customMiningMessageCounters[578] = 0;
-    customMiningMessageCounters[579] = 0;
-    customMiningMessageCounters[580] = 0;
-    customMiningMessageCounters[581] = 0;
-    customMiningMessageCounters[582] = 0;
-    customMiningMessageCounters[583] = 0;
-    customMiningMessageCounters[584] = 0;
-    customMiningMessageCounters[585] = 0;
-    customMiningMessageCounters[586] = 0;
-    customMiningMessageCounters[587] = 0;
-    customMiningMessageCounters[588] = 0;
-    customMiningMessageCounters[589] = 0;
-    customMiningMessageCounters[590] = 0;
-    customMiningMessageCounters[591] = 0;
-    customMiningMessageCounters[592] = 0;
-    customMiningMessageCounters[593] = 0;
-    customMiningMessageCounters[594] = 0;
-    customMiningMessageCounters[595] = 0;
-    customMiningMessageCounters[596] = 0;
-    customMiningMessageCounters[597] = 0;
-    customMiningMessageCounters[598] = 0;
-    customMiningMessageCounters[599] = 0;
-    customMiningMessageCounters[600] = 0;
-    customMiningMessageCounters[601] = 0;
-    customMiningMessageCounters[602] = 0;
-    customMiningMessageCounters[603] = 0;
-    customMiningMessageCounters[604] = 0;
-    customMiningMessageCounters[605] = 0;
-    customMiningMessageCounters[606] = 0;
-    customMiningMessageCounters[607] = 0;
-    customMiningMessageCounters[608] = 0;
-    customMiningMessageCounters[609] = 0;
-    customMiningMessageCounters[610] = 0;
-    customMiningMessageCounters[611] = 0;
-    customMiningMessageCounters[612] = 0;
-    customMiningMessageCounters[613] = 0;
-    customMiningMessageCounters[614] = 0;
-    customMiningMessageCounters[615] = 0;
-    customMiningMessageCounters[616] = 0;
-    customMiningMessageCounters[617] = 0;
-    customMiningMessageCounters[618] = 0;
-    customMiningMessageCounters[619] = 0;
-    customMiningMessageCounters[620] = 0;
-    customMiningMessageCounters[621] = 0;
-    customMiningMessageCounters[622] = 0;
-    customMiningMessageCounters[623] = 0;
-    customMiningMessageCounters[624] = 0;
-    customMiningMessageCounters[625] = 0;
-    customMiningMessageCounters[626] = 0;
-    customMiningMessageCounters[627] = 0;
-    customMiningMessageCounters[628] = 0;
-    customMiningMessageCounters[629] = 0;
-    customMiningMessageCounters[630] = 0;
-    customMiningMessageCounters[631] = 0;
-    customMiningMessageCounters[632] = 0;
-    customMiningMessageCounters[633] = 0;
-    customMiningMessageCounters[634] = 0;
-    customMiningMessageCounters[635] = 0;
-    customMiningMessageCounters[636] = 0;
-    customMiningMessageCounters[637] = 0;
-    customMiningMessageCounters[638] = 0;
-    customMiningMessageCounters[639] = 0;
-    customMiningMessageCounters[640] = 0;
-    customMiningMessageCounters[641] = 0;
-    customMiningMessageCounters[642] = 0;
-    customMiningMessageCounters[643] = 0;
-    customMiningMessageCounters[644] = 0;
-    customMiningMessageCounters[645] = 0;
-    customMiningMessageCounters[646] = 0;
-    customMiningMessageCounters[647] = 0;
-    customMiningMessageCounters[648] = 0;
-    customMiningMessageCounters[649] = 0;
-    customMiningMessageCounters[650] = 0;
-    customMiningMessageCounters[651] = 0;
-    customMiningMessageCounters[652] = 0;
-    customMiningMessageCounters[653] = 0;
-    customMiningMessageCounters[654] = 0;
-    customMiningMessageCounters[655] = 0;
-    customMiningMessageCounters[656] = 0;
-    customMiningMessageCounters[657] = 0;
-    customMiningMessageCounters[658] = 0;
-    customMiningMessageCounters[659] = 0;
-    customMiningMessageCounters[660] = 0;
-    customMiningMessageCounters[661] = 0;
-    customMiningMessageCounters[662] = 0;
-    customMiningMessageCounters[663] = 0;
-    customMiningMessageCounters[664] = 0;
-    customMiningMessageCounters[665] = 0;
-    customMiningMessageCounters[666] = 0;
-    customMiningMessageCounters[667] = 0;
-    customMiningMessageCounters[668] = 0;
-    customMiningMessageCounters[669] = 0;
-    customMiningMessageCounters[670] = 0;
-    customMiningMessageCounters[671] = 0;
-    customMiningMessageCounters[672] = 0;
-    customMiningMessageCounters[673] = 0;
-    customMiningMessageCounters[674] = 0;
-    customMiningMessageCounters[675] = 0;
 }
 
 
@@ -4809,7 +4176,7 @@ static void prepareNextTickTransactions()
 
     // unknownTransactions is set to 1 if a transaction is missing in the local storage
     unsigned long long unknownTransactions[NUMBER_OF_TRANSACTIONS_PER_TICK / 64];
-    bs->SetMem(unknownTransactions, sizeof(unknownTransactions), 0);
+    setMem(unknownTransactions, sizeof(unknownTransactions), 0);
     const auto* tsNextTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(nextTickIndex);
     
     // This function maybe called multiple times per tick due to lack of data (txs or votes)
@@ -4873,7 +4240,7 @@ static void prepareNextTickTransactions()
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
 
                                     numberOfKnownNextTickTransactions++;
@@ -4915,7 +4282,7 @@ static void prepareNextTickTransactions()
                                 if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                                 {
                                     tsPendingTransactionOffsets[j] = ts.nextTickTransactionOffset;
-                                    bs->CopyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
+                                    copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), pendingTransaction, transactionSize);
                                     ts.nextTickTransactionOffset += transactionSize;
 
                                     numberOfKnownNextTickTransactions++;
@@ -4942,7 +4309,7 @@ static void prepareNextTickTransactions()
         // We check if the last tickTransactionRequest it already sent
         if(requestedTickTransactions.requestedTickTransactions.tick == 0){
             // Initialize transactionFlags to one so that by default we do not request any transaction
-            bs->SetMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0xff);
+            setMem(requestedTickTransactions.requestedTickTransactions.transactionFlags, sizeof(requestedTickTransactions.requestedTickTransactions.transactionFlags), 0xff);
             for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
             {
                 if (unknownTransactions[i >> 6] & (1ULL << (i & 63)))
@@ -5047,7 +4414,7 @@ static void signTickVote(const unsigned char* subseed, const unsigned char* publ
 static void broadcastTickVotes()
 {
     BroadcastTick broadcastTick;
-    bs->CopyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
+    copyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
     for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
     {
         broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
@@ -5157,6 +4524,29 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
     }
 }
 
+// try to resend tick votes if local system.tick gets stuck for too long
+static void tryResendTickVotes()
+{
+    if (autoResendTickVotes.lastTick != system.tick)
+    {
+        autoResendTickVotes.lastTick = system.tick;
+        autoResendTickVotes.lastTickMode = isMainMode() ? 1 : 0;
+        autoResendTickVotes.lastCheck = __rdtsc();
+    }
+    else
+    {
+        unsigned long long elapsed = (__rdtsc() - autoResendTickVotes.lastCheck) * 1000 / frequency; //millisec
+        // Resend vote from this node when:
+        // - timeout
+        // - on the last tick, this node was in MAIN mode
+        if (elapsed >= autoResendTickVotes.MAX_WAITING_TIME && (autoResendTickVotes.lastTickMode == 1))
+        {
+            if (system.latestCreatedTick > 0) system.latestCreatedTick--;
+            autoResendTickVotes.lastCheck = __rdtsc();
+        }
+    }
+}
+
 // try forcing next tick to be empty after certain amount of time
 static void tryForceEmptyNextTick()
 {
@@ -5173,7 +4563,7 @@ static void tryForceEmptyNextTick()
         // This will force the node to set: 
         // (1) currentTick.expectedNextTickTransactionDigest  = 0
         // (2) nextTick.transactionDigest = 0 - it invalidates ts.tickData, no way to recover
-        if ((mainAuxStatus & 1) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
+        if ((isMainMode()) && (AUTO_FORCE_NEXT_TICK_THRESHOLD != 0))
         {
             if (emptyTickResolver.tick != system.tick)
             {
@@ -5275,7 +4665,7 @@ static void tickProcessor(void*)
             }
 
             ts.tickData.acquireLock();
-            bs->CopyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
+            copyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
             ts.tickData.releaseLock();
 
             // This time lock ensures tickData is crafted 2 ticks "ago"
@@ -5463,7 +4853,7 @@ static void tickProcessor(void*)
 
                     if (system.tick > system.latestCreatedTick || system.tick == system.initialTick)
                     {
-                        if (mainAuxStatus & 1)
+                        if (isMainMode())
                         {
                             broadcastTickVotes();
                         }
@@ -5664,12 +5054,12 @@ static void emptyCallback(EFI_EVENT Event, void* Context)
 
 static void shutdownCallback(EFI_EVENT Event, void* Context)
 {
-    bs->CloseEvent(Event);
+    closeEvent(Event);
 }
 
 static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 {
-    bs->CloseEvent(Event);
+    closeEvent(Event);
 
     contractProcessorState = 0;
 }
@@ -5684,7 +5074,7 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
     {
         if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
         {
-            bs->SetMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+            setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
         }
         else
         {
@@ -5804,11 +5194,11 @@ static bool initialize()
 
     initTimeStampCounter();
 
-    bs->SetMem(&tickTicks, sizeof(tickTicks), 0);
+    setMem(&tickTicks, sizeof(tickTicks), 0);
 
-    bs->SetMem(processors, sizeof(processors), 0);
-    bs->SetMem(peers, sizeof(peers), 0);
-    bs->SetMem(publicPeers, sizeof(publicPeers), 0);
+    setMem(processors, sizeof(processors), 0);
+    setMem(peers, sizeof(peers), 0);
+    setMem(publicPeers, sizeof(publicPeers), 0);
 
     requestedComputors.header.setSize<sizeof(requestedComputors)>();
     requestedComputors.header.setType(RequestComputors::type);
@@ -5840,7 +5230,7 @@ static bool initialize()
         }
         
 
-        bs->SetMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
+        setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
 
 
         if (!initSpectrum())
@@ -5868,7 +5258,7 @@ static bool initialize()
         }
         setMem(score, sizeof(*score), 0);
 
-        bs->SetMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
+        setMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
         if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags, __LINE__))
         {
             return false;
@@ -5889,7 +5279,7 @@ static bool initialize()
 #endif
 
         logToConsole(L"Loading system file ...");
-        bs->SetMem(&system, sizeof(system), 0);
+        setMem(&system, sizeof(system), 0);
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
         system.version = VERSION_B;
         system.epoch = EPOCH;
@@ -6019,6 +5409,10 @@ static bool initialize()
         setNewMiningSeed();
     }    
     score->loadScoreCache(system.epoch);
+
+    customMiningInitialize();
+    resetCustomMining();
+
     loadCustomMiningCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
@@ -6027,8 +5421,8 @@ static bool initialize()
     {
         return false;
     }
-    bs->SetMem((void*)dejavu0, 536870912, 0);
-    bs->SetMem((void*)dejavu1, 536870912, 0);
+    setMem((void*)dejavu0, 536870912, 0);
+    setMem((void*)dejavu1, 536870912, 0);
 
     if ((!allocPoolWithErrorLog(L"requestQueueBuffer", REQUEST_QUEUE_BUFFER_SIZE, (void**)&requestQueueBuffer, __LINE__)) ||
         (!allocPoolWithErrorLog(L"respondQueueBuffer", RESPONSE_QUEUE_BUFFER_SIZE, (void**)&responseQueueBuffer, __LINE__)))
@@ -6048,9 +5442,9 @@ static bool initialize()
             return false;
         }
 
-        if ((status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].connectAcceptToken.CompletionToken.Event))
-            || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
-            || (status = bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
+        if ((status = createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].connectAcceptToken.CompletionToken.Event))
+            || (status = createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].receiveToken.CompletionToken.Event))
+            || (status = createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, emptyCallback, NULL, &peers[i].transmitToken.CompletionToken.Event)))
         {
             logStatusToConsole(L"EFI_BOOT_SERVICES.CreateEvent() fails", status, __LINE__);
 
@@ -6080,7 +5474,10 @@ static bool initialize()
         const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(knownPublicPeers[i]);
         addPublicPeer(peer_ip);
         if (numberOfPublicPeers > 0)
-            publicPeers[numberOfPublicPeers - 1].isVerified = true;
+        {
+            publicPeers[numberOfPublicPeers - 1].isHandshaked = true;
+            publicPeers[numberOfPublicPeers - 1].isFullnode = true;
+        }
     }
     if (numberOfPublicPeers < 4)
     {
@@ -6098,9 +5495,6 @@ static bool initialize()
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
 
-    resetCustomMining();
-    gCustomMiningStorage.init();
-    
     return true;
 }
 
@@ -6132,60 +5526,60 @@ static void deinitialize()
     {
         if (contractStates[contractIndex])
         {
-            bs->FreePool(contractStates[contractIndex]);
+            freePool(contractStates[contractIndex]);
         }
     }
 
     if (computorPendingTransactionDigests)
     {
-        bs->FreePool(computorPendingTransactionDigests);
+        freePool(computorPendingTransactionDigests);
     }
     if (computorPendingTransactions)
     {
-        bs->FreePool(computorPendingTransactions);
+        freePool(computorPendingTransactions);
     }
     if (entityPendingTransactionDigests)
     {
-        bs->FreePool(entityPendingTransactionDigests);
+        freePool(entityPendingTransactionDigests);
     }
     if (entityPendingTransactions)
     {
-        bs->FreePool(entityPendingTransactions);
+        freePool(entityPendingTransactions);
     }
     ts.deinit();
 
     if (score)
     {
-        bs->FreePool(score);
+        freePool(score);
     }
     if (minerSolutionFlags)
     {
-        bs->FreePool(minerSolutionFlags);
+        freePool(minerSolutionFlags);
     }
 
     if (dejavu0)
     {
-        bs->FreePool((void*)dejavu0);
+        freePool((void*)dejavu0);
     }
     if (dejavu1)
     {
-        bs->FreePool((void*)dejavu1);
+        freePool((void*)dejavu1);
     }
 
     if (requestQueueBuffer)
     {
-        bs->FreePool(requestQueueBuffer);
+        freePool(requestQueueBuffer);
     }
     if (responseQueueBuffer)
     {
-        bs->FreePool(responseQueueBuffer);
+        freePool(responseQueueBuffer);
     }
 
     for (unsigned int processorIndex = 0; processorIndex < MAX_NUMBER_OF_PROCESSORS; processorIndex++)
     {
         if (processors[processorIndex].buffer)
         {
-            bs->FreePool(processors[processorIndex].buffer);
+            freePool(processors[processorIndex].buffer);
         }
     }
 
@@ -6193,23 +5587,23 @@ static void deinitialize()
     {
         if (peers[i].receiveBuffer)
         {
-            bs->FreePool(peers[i].receiveBuffer);
+            freePool(peers[i].receiveBuffer);
         }
         if (peers[i].transmitData.FragmentTable[0].FragmentBuffer)
         {
-            bs->FreePool(peers[i].transmitData.FragmentTable[0].FragmentBuffer);
+            freePool(peers[i].transmitData.FragmentTable[0].FragmentBuffer);
         }
         if (peers[i].dataToTransmit)
         {
-            bs->FreePool(peers[i].dataToTransmit);
+            freePool(peers[i].dataToTransmit);
 
-            bs->CloseEvent(peers[i].connectAcceptToken.CompletionToken.Event);
-            bs->CloseEvent(peers[i].receiveToken.CompletionToken.Event);
-            bs->CloseEvent(peers[i].transmitToken.CompletionToken.Event);
+            closeEvent(peers[i].connectAcceptToken.CompletionToken.Event);
+            closeEvent(peers[i].receiveToken.CompletionToken.Event);
+            closeEvent(peers[i].transmitToken.CompletionToken.Event);
         }
     }
 
-    gCustomMiningStorage.deinit();
+    customMiningDeinitialize();
 }
 
 static void logInfo()
@@ -6229,13 +5623,19 @@ static void logInfo()
         }
     }
 
-    unsigned int numberOfVerifiedPublicPeers = 0;
+    unsigned int numberOfHandshakedPublicPeers = 0;
+    unsigned int numberOfFullnodePublicPeers = 0;
 
     for (unsigned int i = 0; i < numberOfPublicPeers; i++)
     {
-        if (publicPeers[i].isVerified)
+        if (publicPeers[i].isHandshaked)
         {
-            numberOfVerifiedPublicPeers++;
+            numberOfHandshakedPublicPeers++;
+        }
+
+        if (publicPeers[i].isFullnode)
+        {
+            numberOfFullnodePublicPeers++;
         }
     }
 
@@ -6269,8 +5669,10 @@ static void logInfo()
     appendNumber(message, numberOfConnectedSlots, FALSE);
 
     appendText(message, L" ");
-    appendNumber(message, numberOfVerifiedPublicPeers, TRUE);
+    appendNumber(message, numberOfHandshakedPublicPeers, TRUE);
     appendText(message, L"/");
+    appendNumber(message, numberOfFullnodePublicPeers, TRUE);
+    appendText(message, L"/");    
     appendNumber(message, numberOfPublicPeers, TRUE);
     appendText(message, listOfPeersIsStatic ? L" Static" : L" Dynamic");
     appendText(message, L" (+");
@@ -6303,6 +5705,7 @@ static void logInfo()
     appendText(message, L".");
     appendNumber(message, (tickDuration % frequency) * 10 / frequency, FALSE);
     appendText(message, L" s");
+    
 
     if (consoleLoggingLevel < 2)
     {
@@ -6428,53 +5831,30 @@ static void logInfo()
     logToConsole(message);
 
     // Log infomation about custom mining
-    setText(message, L"CustomMiningState:");
+    setText(message, L"CustomMining: ");
 
-    // System: Active | solutions count at current phase | Total duplicated solutions | Total skipped solutions
-    appendText(message, L" A = ");
+    // System: Active status | Overflow | Collision
+    char isCustomMiningStateActive = 0;
     ACQUIRE(gIsInCustomMiningStateLock);
-    appendNumber(message, gIsInCustomMiningState, false);
+    isCustomMiningStateActive = gIsInCustomMiningState;
     RELEASE(gIsInCustomMiningStateLock);
 
-    appendText(message, L" (Phase = ");
-    ACQUIRE(gSystemCustomMiningSolutionLock);
-    appendNumber(message, gSystemCustomMiningSolutionCount, false);
-    appendText(message, L" | Dup = ");
-    appendNumber(message, gSystemCustomMiningDuplicatedSolutionCount, false);
-    appendText(message, L" | OF = ");
-    appendNumber(message, gSystemCustomMiningSolutionOFCount, false);
-    RELEASE(gSystemCustomMiningSolutionLock);
-    appendText(message, L").");
+    if (isCustomMiningStateActive)
+    {
+        appendText(message, L"Active. ");
+    }
+    else
+    {
+        appendText(message, L"Inactive. ");
+    }
 
-    // SharesCount : Max count of overflow 
-    appendText(message, L" SharesCountOF (");
-    ACQUIRE(gCustomMiningShareCountOverFlowLock);
-    appendNumber(message, gCustomMiningCountOverflow, FALSE);
-    RELEASE(gCustomMiningShareCountOverFlowLock);
-    appendText(message, L").");
-
-    // Task count : Total task in storage | Total solution in storage | Invalid Solutions
-    appendText(message, L" Epoch (Task = ");
-    ACQUIRE(gTotalCustomMiningTaskMessagesLock);
-    appendNumber(message, gTotalCustomMiningTaskMessages, FALSE);
-    RELEASE(gTotalCustomMiningTaskMessagesLock);
-    appendText(message, L" | Sols = ");
-
-    ACQUIRE(gTotalCustomMiningSolutionsLock);
-    appendNumber(message, gTotalCustomMiningSolutions, FALSE);
-    RELEASE(gTotalCustomMiningSolutionsLock);
-
-    appendText(message, L" | Valid = ");
-    ACQUIRE(gCustomMiningInvalidSharesCountLock);
-    appendNumber(message, gCustomMiningValidSharesCount, FALSE);
-    RELEASE(gCustomMiningInvalidSharesCountLock);
-
-    appendText(message, L" | Invalid = ");
-    ACQUIRE(gCustomMiningInvalidSharesCountLock);
-    appendNumber(message, gCustomMiningInvalidSharesCount, FALSE);
-    RELEASE(gCustomMiningInvalidSharesCountLock);
-
-    appendText(message, L") ");
+    long long customMiningShareMaxOFCount = ATOMIC_LOAD64(gCustomMiningStats.maxOverflowShareCount);
+    long long customMiningSharesMaxCollision = ATOMIC_LOAD64(gCustomMiningStats.maxCollisionShareCount);
+    appendText(message, L" Overflow: ");
+    appendNumber(message, customMiningShareMaxOFCount, false);
+    appendText(message, L" | Collision: ");
+    appendNumber(message, customMiningSharesMaxCollision, false);
+    appendText(message, L".");
 
     logToConsole(message);
 
@@ -6482,7 +5862,7 @@ static void logInfo()
 
 static void logHealthStatus()
 {
-    setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+    setText(message, (isMainMode()) ? L"MAIN" : L"aux");
     appendText(message, L"&");
     appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
     logToConsole(message);
@@ -6867,17 +6247,8 @@ static void processKeyPresses()
             appendText(message, L").");
             logToConsole(message);
 
-            setText(message, L"Custom mining solution counters:");
-            const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                appendText(message, L" ");
-                appendText(message, alphabet[i / 26]);
-                appendText(message, alphabet[i % 26]);
-                appendText(message, L"=");
-                appendNumber(message, customMiningMessageCounters[i], FALSE);
-            }
-            appendText(message, L".");
+            setText(message, L"CustomMining: ");
+            gCustomMiningStats.appendLog(message);
             logToConsole(message);
         }
         break;
@@ -7011,7 +6382,7 @@ static void processKeyPresses()
             else
             {
                 mainAuxStatus = (mainAuxStatus + 1) & 3;
-                setText(message, (mainAuxStatus & 1) ? L"MAIN" : L"aux");
+                setText(message, (isMainMode()) ? L"MAIN" : L"aux");
                 appendText(message, L"&");
                 appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
                 logToConsole(message);
@@ -7128,7 +6499,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestProcessorIDs[nRequestProcessorIDs++] = i;
                     }
 
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
+                    createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
 
                     #if !defined(NDEBUG)
@@ -7194,7 +6565,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 logToConsole(L"WARNING: NUMBER_OF_SOLUTION_PROCESSORS should not be greater than half of the total processor number!");
             }
 
-
             // -----------------------------------------------------
             // Main loop
             unsigned int salt;
@@ -7207,6 +6577,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
+            autoResendTickVotes.lastTick = system.initialTick;
+            autoResendTickVotes.lastCheck = __rdtsc();
             logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
@@ -7231,14 +6603,14 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (contractProcessorState == 1)
                 {
                     contractProcessorState = 2;
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
+                    createEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, contractProcessorIDs[0], contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, &processors[computingProcessorNumber], NULL);
                 }
                 /*if (!computationProcessorState && (computation || __computation))
                 {
                     numberOfAllSCs++;
                     computationProcessorState = 1;
-                    bs->CreateEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &computationProcessorEvent);
+                    createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &computationProcessorEvent);
                     if (status = mpServicesProtocol->StartupThisAP(mpServicesProtocol, computationProcessor, computingProcessorNumber, computationProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, NULL, NULL))
                     {
                         numberOfNonLaunchedSCs++;
@@ -7258,7 +6630,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         bool noVerifiedPublicPeers = true;
                         for (unsigned int k = 0; k < numberOfPublicPeers; k++)
                         {
-                            if (publicPeers[k].isVerified)
+                            if (publicPeers[k].isHandshaked && publicPeers[k].isFullnode)
                             {
                                 noVerifiedPublicPeers = false;
 
@@ -7276,7 +6648,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             {
                                 // randomly select verified public peers
                                 const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isVerified)
+                                if (publicPeers[publicPeerIndex].isHandshaked && publicPeers[publicPeerIndex].isFullnode)
                                 {
                                     request->peers[j] = publicPeers[publicPeerIndex].address;
                                 }
@@ -7299,7 +6671,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             || broadcastedComputors.computors.epoch != system.epoch)
                         {
                             requestedComputors.header.randomizeDejavu();
-                            bs->CopyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
+                            copyMem(&peers[i].dataToTransmit[peers[i].dataToTransmitSize], &requestedComputors, requestedComputors.header.size());
                             peers[i].dataToTransmitSize += requestedComputors.header.size();
                             _InterlockedIncrement64(&numberOfDisseminatedRequests);
                         }
@@ -7314,7 +6686,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
 #if !TICK_STORAGE_AUTOSAVE_MODE
                 // Only save system + score cache to file regularly here if on AUX and snapshot auto-save is disabled
-                if ((mainAuxStatus & 1) == 0
+                if ((!isMainMode())
                     && curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
                 {
                     systemDataSavingTick = curTimeTick;
@@ -7324,16 +6696,32 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     saveCustomMiningCache(system.epoch);
                 }
 #endif
+                tryResendTickVotes();
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
                 {
                     peerRefreshingTick = curTimeTick;
 
-                    for (unsigned int i = 0; i < (NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS) / 4; i++)
+                    unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
+                    setMem(suitablePeerIndices, sizeof(suitablePeerIndices), 0);
+                    unsigned short numberOfSuitablePeers = 0;
+                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                     {
-                        closePeer(&peers[random(NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS)]);
+                        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
+                        {
+                            if (!peers[i].isFullNode())
+                            {
+                                suitablePeerIndices[numberOfSuitablePeers++] = i;
+                            }
+                        }
                     }
-                    logToConsole(L"Refreshed peers...");
+
+                    // disconnect 25% of current connections that are not **active fullnode**
+                    for (unsigned short i = 0; i < numberOfSuitablePeers / 4; i++)
+                    {
+                        closePeer(&peers[suitablePeerIndices[random(numberOfSuitablePeers)]]);
+                    }
+                    logToConsole(L"Refreshed connection...");
                 }
 
                 if (curTimeTick - tickRequestingTick >= TICK_REQUESTING_PERIOD * frequency / 1000
@@ -7356,7 +6744,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick;
-                        bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
+                        setMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
                         const Tick* tsCompTicks = ts.ticks.getByTickInCurrentEpoch(system.tick);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
@@ -7366,6 +6754,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             }
                         }
                         pushToAny(&requestedQuorumTick.header);
+                        pushToAnyFullNode(&requestedQuorumTick.header);
                     }
                     tickRequestingIndicator = gTickTotalNumberOfComputors;
                     if (futureTickRequestingIndicator == gFutureTickTotalNumberOfComputors
@@ -7373,7 +6762,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         requestedQuorumTick.header.randomizeDejavu();
                         requestedQuorumTick.requestQuorumTick.quorumTick.tick = system.tick + 1;
-                        bs->SetMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
+                        setMem(&requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags, sizeof(requestedQuorumTick.requestQuorumTick.quorumTick.voteFlags), 0);
                         const Tick* tsCompTicks = ts.ticks.getByTickInCurrentEpoch(system.tick + 1);
                         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                         {
@@ -7383,6 +6772,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             }
                         }
                         pushToAny(&requestedQuorumTick.header);
+                        pushToAnyFullNode(&requestedQuorumTick.header);
                     }
                     futureTickRequestingIndicator = gFutureTickTotalNumberOfComputors;
 
@@ -7397,18 +6787,21 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 1;
                         pushToAny(&requestedTickData.header);
+                        pushToAnyFullNode(&requestedTickData.header);
                     }
                     if (ts.tickData[system.tick + 2 - system.initialTick].epoch != system.epoch && isNewTickPlus2)
                     {
                         requestedTickData.header.randomizeDejavu();
                         requestedTickData.requestTickData.requestedTickData.tick = system.tick + 2;
                         pushToAny(&requestedTickData.header);
+                        pushToAnyFullNode(&requestedTickData.header);
                     }
 
                     if (requestedTickTransactions.requestedTickTransactions.tick)
                     {
                         requestedTickTransactions.header.randomizeDejavu();
                         pushToAny(&requestedTickTransactions.header);
+                        pushToAnyFullNode(&requestedTickTransactions.header);
 
                         requestedTickTransactions.requestedTickTransactions.tick = 0;
                     }
@@ -7475,7 +6868,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #if TICK_STORAGE_AUTOSAVE_MODE
 #if TICK_STORAGE_AUTOSAVE_MODE == 1
                 bool nextAutoSaveTickUpdated = false;
-                if (mainAuxStatus & 1)
+                if (isMainMode())
                 {
                     // MAIN mode: update auto-save schedule (only run save when switched to AUX mode)
                     while (system.tick >= nextPersistingNodeStateTick)

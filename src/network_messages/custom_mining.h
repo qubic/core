@@ -18,6 +18,11 @@ struct RequestedCustomMiningData
     unsigned long long fromTaskIndex;
     unsigned long long toTaskIndex;
 
+    // Determine which task partition
+    unsigned short firstComputorIdx;
+    unsigned short lastComputorIdx;
+    unsigned int padding;
+
     // Type of the request: either task (taskType) or solution (solutionType).
     long long dataType;
 };
@@ -45,8 +50,9 @@ struct RequestedCustomMiningSolutionVerification
         type = 62,
     };
     unsigned long long taskIndex;
+    unsigned short firstComputorIdx;
+    unsigned short lastComputorIdx;
     unsigned int nonce;
-    unsigned int padding;         // XMR padding data
     unsigned long long isValid;  // validity of the solution. 0: invalid, >0: valid
 };
 struct RespondCustomMiningSolutionVerification
@@ -63,8 +69,9 @@ struct RespondCustomMiningSolutionVerification
         customMiningStateEnded = 3, // not in custom mining state
     };
     unsigned long long taskIndex;
+    unsigned short firstComputorIdx;
+    unsigned short lastComputorIdx;
     unsigned int nonce;
-    unsigned int padding;   // XMR padding data
     long long status;       // Flag indicate the status of solution
 };
 
