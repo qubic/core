@@ -564,16 +564,16 @@ private:
     T cache[size];
 
     // lock to prevent race conditions on parallel access
-    volatile char lock = 0;
+    volatile char lock;
 
     // statistics of hits, misses, and collisions
-    unsigned int hits = 0;
-    unsigned int misses = 0;
-    unsigned int collisions = 0;
+    unsigned int hits;
+    unsigned int misses;
+    unsigned int collisions;
 
     // statistics of verification and invalid count
-    unsigned int verification = 0;
-    unsigned int invalid = 0;
+    unsigned int verification;
+    unsigned int invalid;
 };
 
 class CustomMiningSolutionCacheEntry
@@ -1303,7 +1303,6 @@ static CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
 #if SOLUTION_CACHE_DYNAMIC_MEM 
 static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolutionCache = NULL;
 #else
-// This declaration will emit a warning about initialization. But it can be skipped because we call init function in customMiningInitialize().
 static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolutionCache[NUMBER_OF_TASK_PARTITIONS];
 #endif
 
