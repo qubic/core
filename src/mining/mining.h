@@ -564,16 +564,16 @@ private:
     T cache[size];
 
     // lock to prevent race conditions on parallel access
-    volatile char lock = 0;
+    volatile char lock;
 
     // statistics of hits, misses, and collisions
-    unsigned int hits = 0;
-    unsigned int misses = 0;
-    unsigned int collisions = 0;
+    unsigned int hits;
+    unsigned int misses;
+    unsigned int collisions;
 
     // statistics of verification and invalid count
-    unsigned int verification = 0;
-    unsigned int invalid = 0;
+    unsigned int verification;
+    unsigned int invalid;
 };
 
 class CustomMiningSolutionCacheEntry
@@ -1296,9 +1296,16 @@ struct CustomMiningTaskPartition
     unsigned int domainSize;
 };
 
+#define SOLUTION_CACHE_DYNAMIC_MEM 0
+
 static CustomMiningTaskPartition gTaskPartition[NUMBER_OF_TASK_PARTITIONS];
-// This declaration will emit a warning about initialization. But it can be skipped because we call init function in customMiningInitialize().
+
+#if SOLUTION_CACHE_DYNAMIC_MEM 
 static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>* gSystemCustomMiningSolutionCache = NULL;
+#else
+static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolutionCache[NUMBER_OF_TASK_PARTITIONS];
+#endif
+
 static CustomMiningStorage gCustomMiningStorage;
 static CustomMiningStats gCustomMiningStats;
 
@@ -1342,10 +1349,12 @@ int customMiningGetComputorID(unsigned int nonce, int partId)
 int customMiningInitialize()
 {
     gCustomMiningStorage.init();
+#if SOLUTION_CACHE_DYNAMIC_MEM 
     allocPoolWithErrorLog(L"gSystemCustomMiningSolutionCache",
         NUMBER_OF_TASK_PARTITIONS * sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>),
         (void**)&gSystemCustomMiningSolutionCache,
         __LINE__);
+#endif
     setMem((unsigned char*)gSystemCustomMiningSolutionCache, NUMBER_OF_TASK_PARTITIONS * sizeof(CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20>), 0);
     for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
     {
@@ -1359,11 +1368,13 @@ int customMiningInitialize()
 
 int customMiningDeinitialize()
 {
+#if SOLUTION_CACHE_DYNAMIC_MEM 
     if (gSystemCustomMiningSolutionCache)
     {
         freePool(gSystemCustomMiningSolutionCache);
         gSystemCustomMiningSolutionCache = NULL;
     }
+#endif
     gCustomMiningStorage.deinit();
     return 0;
 }
