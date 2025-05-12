@@ -241,6 +241,7 @@ public:
 
     struct submitMuslimId_output
     {
+        uint64 elementIndex;
         uint32 returnCode;
     };
 
@@ -357,6 +358,10 @@ protected:
     };
 
     Array<MKTPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> MKTP;
+
+    /*
+        % Allocation Proposal Information
+    */
     
     struct AlloPInfo
     {
@@ -375,6 +380,10 @@ protected:
 
     Array<AlloPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> AlloP;
 
+    /*
+        Muslim Proposal Information
+    */
+
     struct MSPInfo
     {
         id proposer;
@@ -392,7 +401,7 @@ protected:
     id QCAP_ISSUER;
     id reinvestingAddress;
     id adminAddress;
-    Array<id, 1048576> muslim;
+    HashMap<id, bit, 1048576> muslim;
     uint64 proposalCreateFund, reinvestingFund, totalNotMSRevenue, totalMuslimRevenue, fundForBurn, totalHistoryRevenue, rasiedFundByQcap, lastRoundPriceOfQcap, revenueByQearn;
     Array<uint64, 65536> revenueInQcapPerEpoch;
     Array<uint64, 65536> revenueForOneQcapPerEpoch;
@@ -548,14 +557,7 @@ protected:
                     if (locals.user.amount == 0)
                     {
                         state.numberOfStaker--;
-                        for (; locals._t < (sint32)state.numberOfStaker; locals._t++)
-                        {
-                            if (locals._t == QVAULT_QCAP_MAX_SUPPLY)
-                            {
-                                return ;
-                            }
-                            state.staker.set(locals._t, state.staker.get(locals._t + 1));
-                        }
+                        state.staker.set(locals._t, state.staker.get(state.numberOfStaker));
                     }
                 }
                 return ;
@@ -1510,49 +1512,43 @@ protected:
 
     struct submitMuslimId_locals
     {
-        sint32 _t;
+        bit isMuslim;
     };
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(submitMuslimId)
     {
-        if (state.numberOfMuslim == 1048576)
+        if (state.numberOfMuslim == state.muslim.capacity())
         {
             output.returnCode = QVAULTLogInfo::QvaultMaxMuslimId;
             return ;
         }
-        for (locals._t = 0 ; locals._t < state.numberOfMuslim; locals._t++)
+        state.muslim.get(qpi.invocator(), locals.isMuslim);
+        if (locals.isMuslim == 1)
         {
-            if (state.muslim.get(locals._t) == qpi.invocator())
-            {
-                output.returnCode = QVAULTLogInfo::QvaultDuplicatedMuslimId;
-                return ;
-            }
+            output.returnCode = QVAULTLogInfo::QvaultDuplicatedMuslimId;
+            return ;
         }
-        state.muslim.set(state.numberOfMuslim++, qpi.invocator());
+        output.elementIndex = state.muslim.set(qpi.invocator(), 1);
+        output.returnCode = QVAULTLogInfo::QvaultSuccess;
+        state.numberOfMuslim++;
     }
 
     struct cancelMuslimId_locals
     {
-        sint32 _t;
+        bit isMuslim;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(cancelMuslimId)
     {
-        for (locals._t = 0 ; locals._t < state.numberOfMuslim; locals._t++)
+        state.muslim.get(qpi.invocator(), locals.isMuslim);
+        if (locals.isMuslim == 0)
         {
-            if (state.muslim.get(locals._t) == qpi.invocator())
-            {
-                state.numberOfMuslim--;
-                for (; locals._t < state.numberOfMuslim; locals._t++)
-                {
-                    state.muslim.set(locals._t, state.muslim.get(locals._t + 1));
-                }
-                output.returnCode = QVAULTLogInfo::QvaultSuccess;
-                return ;
-            }
+            output.returnCode = QVAULTLogInfo::QvaultNotMuslimId;
+            return ;
         }
-
-        output.returnCode = QVAULTLogInfo::QvaultNotMuslimId;
+        state.numberOfMuslim--;
+        state.muslim.set(qpi.invocator(), 0);
+        output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
     struct getStakedAmountAndVotingPower_input
@@ -1711,39 +1707,39 @@ protected:
         output.proposal = state.MSP.get(input.proposalId);
     }
 
+    /*
+        Getting the identities having the voting power
+    */
+
     struct getIdentitiesHvVtPw_input
     {
         uint32 offset;
         uint32 count;
     };
 
-    struct HvVtPwListInfo
-    {
-        id address;
-        uint32 power;
-    };
-
     struct getIdentitiesHvVtPw_output
     {
-        Array<HvVtPwListInfo, 256> list;
+        Array<stakingInfo, 256> list;
     };
 
     struct getIdentitiesHvVtPw_locals
     {
-        HvVtPwListInfo tmpList;
-        sint32 _t;
+        sint32 _t, _r;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getIdentitiesHvVtPw)
     {
-        for (locals._t = (sint32)input.offset; locals._t < (sint32)(input.offset + input.count); locals._t++)
+        if(input.count > 256)
         {
-            if (locals._t - input.offset > 256)
+            return ;
+        }
+        for (locals._t = (sint32)input.offset, locals._r = 0; locals._t < (sint32)(input.offset + input.count); locals._t++)
+        {
+            if (locals._t > (sint32)state.numberOfVotingPower)
             {
                 return ;
             }
-            locals.tmpList.address = state.votingPower.get(locals._t).stakerAddress;
-            locals.tmpList.power = state.votingPower.get(locals._t).amount;
+            output.list.set(locals._r++, state.votingPower.get(locals._t));
         }
     }
 
@@ -1916,7 +1912,7 @@ protected:
 
     PUBLIC_FUNCTION(getAmountOfShareQvaultHold)
     {
-        output.amount = (uint32)qpi.numberOfPossessedShares(input.assetInfo.assetName, input.assetInfo.issuer, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+        output.amount = (uint32)qpi.numberOfShares(input.assetInfo, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF));    
     }
 
     struct getNumberOfHolderAndAvgAm_input
@@ -1935,6 +1931,7 @@ protected:
         AssetPossessionIterator iter;
         Asset QCAPId;
         uint32 count;
+        uint32 numberOfDuplicatedPossesor;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getNumberOfHolderAndAvgAm)
@@ -1945,12 +1942,22 @@ protected:
         locals.iter.begin(locals.QCAPId);
         while (!locals.iter.reachedEnd())
         {
-            locals.count++;
+            if (locals.iter.numberOfPossessedShares() > 0)
+            {
+                locals.count++;
+            }
+
+            if (qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.iter.possessor(), locals.iter.possessor(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) > 0 && qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.iter.possessor(), locals.iter.possessor(), QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) > 0)
+            {
+                locals.numberOfDuplicatedPossesor++;
+            }
 
             locals.iter.next();
         }
+    
+        locals.numberOfDuplicatedPossesor = (uint32)div(locals.numberOfDuplicatedPossesor * 1ULL, 2ULL);
 
-        output.numberOfQcapHolder = locals.count;
+        output.numberOfQcapHolder = locals.count - locals.numberOfDuplicatedPossesor;
         output.avgAmount = (uint32)div(QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) * 1ULL, output.numberOfQcapHolder * 1ULL);
     }
 
@@ -2182,6 +2189,7 @@ protected:
         uint8 hour;
         uint8 minute;
         uint8 second;
+        bit isMuslim;
     };
 
     END_EPOCH_WITH_LOCALS()
@@ -2203,16 +2211,27 @@ protected:
 
         locals.circulatedSupply = QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) + state.totalStakedQcapAmount;
 
-        for (locals._t = 0 ; locals._t < state.numberOfMuslim; locals._t++)
+        locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
+        locals.QCAPId.issuer = state.QCAP_ISSUER;
+
+        locals.iter.begin(locals.QCAPId);
+        while (!locals.iter.reachedEnd())
         {
-            locals.amountOfQcapMuslimHold += (uint32)qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, state.muslim.get(locals._t), state.muslim.get(locals._t), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + (uint32)qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, state.muslim.get(locals._t), state.muslim.get(locals._t), QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX);
-            for (locals._r = 0 ; locals._r < (sint32)state.numberOfStaker; locals._r++)
+            locals.possessorPubkey = locals.iter.possessor();
+            state.muslim.get(locals.possessorPubkey, locals.isMuslim);
+            if (locals.isMuslim == 1)
             {
-                if (state.muslim.get(locals._t) == state.staker.get(locals._r).stakerAddress)
-                {
-                    locals.amountOfQcapMuslimHold += state.staker.get(locals._r).amount;
-                    break;
-                }
+                locals.amountOfQcapMuslimHold += (uint32)locals.iter.numberOfPossessedShares();
+            }
+            locals.iter.next();
+        }
+
+        for (locals._r = 0 ; locals._r < (sint32)state.numberOfStaker; locals._r++)
+        {
+            state.muslim.get(state.staker.get(locals._r).stakerAddress, locals.isMuslim);
+            if (locals.isMuslim == 1)
+            {
+                locals.amountOfQcapMuslimHold += state.staker.get(locals._r).amount;
             }
         }
 
@@ -2231,17 +2250,12 @@ protected:
 
             if (locals.possessorPubkey != SELF)
             {
-                qpi.transfer(locals.possessorPubkey, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * (qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX)));
-                for (locals._t = 0 ; locals._t < state.numberOfMuslim; locals._t++)
+                qpi.transfer(locals.possessorPubkey, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * locals.iter.numberOfPossessedShares());
+
+                state.muslim.get(locals.iter.possessor(), locals.isMuslim);
+                if (locals.isMuslim == 0)
                 {
-                    if (state.muslim.get(locals._t) == locals.possessorPubkey)
-                    {
-                        break;
-                    }
-                }
-                if (locals._t == state.numberOfMuslim)
-                {
-                    qpi.transfer(locals.possessorPubkey, div(locals.muslimRevenue, locals.circulatedSupply - locals.amountOfQcapMuslimHold) * (qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX)));
+                    qpi.transfer(locals.possessorPubkey, div(locals.muslimRevenue, locals.circulatedSupply - locals.amountOfQcapMuslimHold) * locals.iter.numberOfPossessedShares());
                 }
             }
 
@@ -2251,15 +2265,9 @@ protected:
         for (locals._t = 0 ; locals._t < (sint32)state.numberOfStaker; locals._t++)
         {
             qpi.transfer(state.staker.get(locals._t).stakerAddress, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * state.staker.get(locals._t).amount);
-            for (locals._r = 0 ; locals._r < state.numberOfMuslim; locals._r++)
-            {
-
-                if (state.muslim.get(locals._r) == state.staker.get(locals._t).stakerAddress)
-                {
-                    break;
-                }
-            }
-            if (locals._r == state.numberOfMuslim)
+            
+            state.muslim.get(state.staker.get(locals._t).stakerAddress, locals.isMuslim);
+            if (locals.isMuslim == 0)
             {
                 qpi.transfer(state.staker.get(locals._t).stakerAddress, div(locals.muslimRevenue, locals.circulatedSupply - locals.amountOfQcapMuslimHold) * state.staker.get(locals._t).amount);
             }
