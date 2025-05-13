@@ -788,8 +788,8 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
             // Update ownComputorIndices and minerPublicKeys
             if (request->computors.epoch == system.epoch)
             {
-                numberOfOwnComputorIndices = 0;
                 ACQUIRE(minerScoreArrayLock);
+                numberOfOwnComputorIndices = 0;
                 for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
                 {
                     minerPublicKeys[i] = request->computors.publicKeys[i];
