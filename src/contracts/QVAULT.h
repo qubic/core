@@ -401,7 +401,7 @@ protected:
     id QCAP_ISSUER;
     id reinvestingAddress;
     id adminAddress;
-    HashMap<id, bit, 1048576> muslim;
+    HashSet<id, 1048576> muslim;
     uint64 proposalCreateFund, reinvestingFund, totalNotMSRevenue, totalMuslimRevenue, fundForBurn, totalHistoryRevenue, rasiedFundByQcap, lastRoundPriceOfQcap, revenueByQearn;
     Array<uint64, 65536> revenueInQcapPerEpoch;
     Array<uint64, 65536> revenueForOneQcapPerEpoch;
@@ -438,6 +438,7 @@ protected:
 
     struct getData_locals
     {
+        Asset qcapAsset;
         sint32 _t;
     };
 
@@ -475,7 +476,11 @@ protected:
         output.maxQuorumRq = 670;
         output.totalQcapBurntAmount = state.totalQcapBurntAmount;
         output.raisedFundByQcap = state.rasiedFundByQcap;
-        output.circulatingSupply = (uint32)(QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) + state.totalStakedQcapAmount);
+
+        locals.qcapAsset.assetName = QVAULT_QCAP_ASSETNAME;
+        locals.qcapAsset.issuer = state.QCAP_ISSUER;
+
+        output.circulatingSupply = (uint32)(QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfShares(locals.qcapAsset, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount);
         for (locals._t = state.numberOfFundP - 1; locals._t >= 0; locals._t--)
         {
             if (state.FundP.get(locals._t).result == 0 && state.FundP.get(locals._t).proposedEpoch + 1 < qpi.epoch())
@@ -569,6 +574,7 @@ protected:
 
     struct submitGP_locals
     {
+        Asset qvaultShare;
         GPInfo newProposal;
         sint32 _t;
     };
@@ -595,7 +601,10 @@ protected:
             }
         }
 
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, NULL_ID, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) <= 0)
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -634,6 +643,7 @@ protected:
 
     struct submitQCP_locals
     {
+        Asset qvaultShare;
         QCPInfo newProposal;
         sint32 _t;
     };
@@ -660,7 +670,10 @@ protected:
             }
         }
 
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, NULL_ID, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) <= 0)
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -701,6 +714,7 @@ protected:
 
     struct submitIPOP_locals
     {
+        Asset qvaultShare;
         IPOPInfo newProposal;
         sint32 _t;
     };
@@ -736,7 +750,10 @@ protected:
             }
         }
 
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, NULL_ID, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) <= 0)
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -779,6 +796,7 @@ protected:
 
     struct submitQEarnP_locals
     {
+        Asset qvaultShare;
         QEarnPInfo newProposal;
         sint32 _t;
     };
@@ -823,7 +841,10 @@ protected:
             }
         }
 
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, NULL_ID, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) <= 0)
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -866,6 +887,7 @@ protected:
 
     struct submitFundP_locals
     {
+        Asset qvaultShare;
         FundPInfo newProposal;
         sint32 _t;
         uint32 curDate;
@@ -899,7 +921,10 @@ protected:
             }
         }
 
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, NULL_ID, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) <= 0)
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -981,6 +1006,7 @@ protected:
 
     struct submitMKTP_locals
     {
+        Asset qvaultShare;
         MKTPInfo newProposal;
         sint32 _t;
     };
@@ -1007,7 +1033,10 @@ protected:
             }
         }
 
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, NULL_ID, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) <= 0)
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -1061,6 +1090,7 @@ protected:
 
     struct submitAlloP_locals
     {
+        Asset qvaultShare;
         AlloPInfo newProposal;
         sint32 _t;
         uint32 curDate;
@@ -1094,7 +1124,10 @@ protected:
             }
         }
 
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, NULL_ID, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) <= 0)
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -1169,6 +1202,7 @@ protected:
 
     struct submitMSP_locals
     {
+        Asset qvaultShare;
         MSPInfo newProposal;
         sint32 _t;
     };
@@ -1195,7 +1229,10 @@ protected:
             }
         }
 
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, NULL_ID, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) <= 0)
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -1510,25 +1547,19 @@ protected:
 		}
     }
 
-    struct submitMuslimId_locals
-    {
-        bit isMuslim;
-    };
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(submitMuslimId)
+	PUBLIC_PROCEDURE(submitMuslimId)
     {
         if (state.numberOfMuslim == state.muslim.capacity())
         {
             output.returnCode = QVAULTLogInfo::QvaultMaxMuslimId;
             return ;
         }
-        state.muslim.get(qpi.invocator(), locals.isMuslim);
-        if (locals.isMuslim == 1)
+        if (state.muslim.contains(qpi.invocator()))
         {
             output.returnCode = QVAULTLogInfo::QvaultDuplicatedMuslimId;
             return ;
         }
-        output.elementIndex = state.muslim.set(qpi.invocator(), 1);
+        output.elementIndex = state.muslim.add(qpi.invocator());
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
         state.numberOfMuslim++;
     }
@@ -1540,14 +1571,13 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(cancelMuslimId)
     {
-        state.muslim.get(qpi.invocator(), locals.isMuslim);
-        if (locals.isMuslim == 0)
+        if (state.muslim.contains(qpi.invocator()) == 0)
         {
             output.returnCode = QVAULTLogInfo::QvaultNotMuslimId;
             return ;
         }
         state.numberOfMuslim--;
-        state.muslim.set(qpi.invocator(), 0);
+        state.muslim.remove(qpi.invocator());
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
@@ -1755,6 +1785,7 @@ protected:
 
     struct ppCreationPower_locals
     {
+        Asset qvaultShare;
         sint32 _t;
     };
 
@@ -1775,7 +1806,10 @@ protected:
                 return ;
             }
         }
-        if (qpi.numberOfPossessedShares(QVAULT_QVAULT_ASSETNAME, NULL_ID, input.address, input.address, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) > 0)
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        if (qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(input.address), AssetPossessionSelect::byPossessor(input.address)) > 0)
         {
             output.status = 1;
         }
@@ -2170,6 +2204,7 @@ protected:
         QPI::Entity entity;
         AssetPossessionIterator iter;
         Asset QCAPId;
+        Asset qvaultShare;
         id possessorPubkey;
         uint64 paymentForShareholders;
         uint64 paymentForQCAPHolders;
@@ -2209,7 +2244,10 @@ protected:
         qpi.transfer(state.adminAddress, locals.paymentForDevelopment);
         qpi.burn(locals.amountOfBurn);
 
-        locals.circulatedSupply = QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) + state.totalStakedQcapAmount;
+        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
+        locals.qvaultShare.issuer = NULL_ID;
+
+        locals.circulatedSupply = QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount;
 
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
         locals.QCAPId.issuer = state.QCAP_ISSUER;
@@ -2218,8 +2256,7 @@ protected:
         while (!locals.iter.reachedEnd())
         {
             locals.possessorPubkey = locals.iter.possessor();
-            state.muslim.get(locals.possessorPubkey, locals.isMuslim);
-            if (locals.isMuslim == 1)
+            if (state.muslim.contains(locals.possessorPubkey))
             {
                 locals.amountOfQcapMuslimHold += (uint32)locals.iter.numberOfPossessedShares();
             }
@@ -2228,8 +2265,7 @@ protected:
 
         for (locals._r = 0 ; locals._r < (sint32)state.numberOfStaker; locals._r++)
         {
-            state.muslim.get(state.staker.get(locals._r).stakerAddress, locals.isMuslim);
-            if (locals.isMuslim == 1)
+            if (state.muslim.contains(state.staker.get(locals._r).stakerAddress))
             {
                 locals.amountOfQcapMuslimHold += state.staker.get(locals._r).amount;
             }
@@ -2252,8 +2288,7 @@ protected:
             {
                 qpi.transfer(locals.possessorPubkey, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * locals.iter.numberOfPossessedShares());
 
-                state.muslim.get(locals.iter.possessor(), locals.isMuslim);
-                if (locals.isMuslim == 0)
+                if (state.muslim.contains(locals.iter.possessor()) == 0)
                 {
                     qpi.transfer(locals.possessorPubkey, div(locals.muslimRevenue, locals.circulatedSupply - locals.amountOfQcapMuslimHold) * locals.iter.numberOfPossessedShares());
                 }
@@ -2266,8 +2301,7 @@ protected:
         {
             qpi.transfer(state.staker.get(locals._t).stakerAddress, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * state.staker.get(locals._t).amount);
             
-            state.muslim.get(state.staker.get(locals._t).stakerAddress, locals.isMuslim);
-            if (locals.isMuslim == 0)
+            if (state.muslim.contains(state.staker.get(locals._t).stakerAddress) == 0)
             {
                 qpi.transfer(state.staker.get(locals._t).stakerAddress, div(locals.muslimRevenue, locals.circulatedSupply - locals.amountOfQcapMuslimHold) * state.staker.get(locals._t).amount);
             }
