@@ -454,3 +454,106 @@ REGISTER_TYPED_TEST_CASE_P(QPIHashMapTest,
 
 typedef Types<std::pair<QPI::id, int>, std::pair<QPI::sint64, char>, std::pair<QPI::bit_1024, QPI::uint64>> KeyValueTypesToTest;
 INSTANTIATE_TYPED_TEST_CASE_P(TypedQPIHashMapTests, QPIHashMapTest, KeyValueTypesToTest);
+
+TEST(QPIHashMapTest, HashSet)
+{
+	constexpr QPI::uint64 capacity = 128;
+	QPI::HashSet<QPI::id, capacity> hashSet;
+	__scratchpadBuffer = new char[2 * sizeof(hashSet)];
+	EXPECT_EQ(hashSet.capacity(), capacity);
+
+	// Test add() and contains()
+	for (int i = 0; i < capacity; ++i)
+	{
+		const QPI::id newId(i / 3, i + 5, i * 3, i % 10);
+		EXPECT_EQ(hashSet.population(), i);
+		auto idx = hashSet.add(newId);
+		EXPECT_NE(idx, QPI::NULL_INDEX);
+		EXPECT_EQ(hashSet.key(idx), newId);
+		EXPECT_EQ(idx, hashSet.add(newId)); // adding a second time just returns same index
+		EXPECT_TRUE(hashSet.contains(newId));
+	}
+	EXPECT_EQ(hashSet.population(), capacity);
+	EXPECT_FALSE(hashSet.contains(QPI::NULL_ID));
+	EXPECT_EQ(hashSet.add(QPI::NULL_ID), QPI::NULL_INDEX); // set is full
+	EXPECT_FALSE(hashSet.contains(QPI::NULL_ID));
+
+	// Test remove()
+	EXPECT_EQ(hashSet.remove(QPI::NULL_ID), QPI::NULL_INDEX);
+	for (int i = 0; i < capacity; i += 4)
+	{
+		const QPI::id theId(i / 3, i + 5, i * 3, i % 10);
+		EXPECT_EQ(hashSet.population(), capacity - i / 4);
+		EXPECT_TRUE(hashSet.contains(theId));
+		EXPECT_NE(hashSet.remove(theId), QPI::NULL_INDEX);
+		EXPECT_FALSE(hashSet.contains(theId));
+	}
+
+	// Check consistency
+	for (int i = 0; i < capacity; i++)
+	{
+		const QPI::id theId(i / 3, i + 5, i * 3, i % 10);
+		if (i % 4 == 0)
+			EXPECT_FALSE(hashSet.contains(theId));
+		else
+			EXPECT_TRUE(hashSet.contains(theId));
+	}
+
+	// Check that it works to reuse slots of removed entries
+	for (int i = 0; i < capacity / 4; ++i)
+	{
+		const QPI::id newId(capacity / 4 - 1 - i, 0, 0, 0);
+		EXPECT_EQ(hashSet.population(), capacity * 3 / 4 + i);
+		auto idx = hashSet.add(newId);
+		EXPECT_NE(idx, QPI::NULL_INDEX);
+		EXPECT_EQ(hashSet.key(idx), newId);
+		EXPECT_EQ(idx, hashSet.add(newId)); // adding a second time just returns same index
+		EXPECT_TRUE(hashSet.contains(newId));
+	}
+	EXPECT_TRUE(hashSet.contains(QPI::id(0, 0, 0, 0)));
+
+	// Check consistency
+	for (int i = 0; i < capacity; i++)
+	{
+		const QPI::id theId(i / 3, i + 5, i * 3, i % 10);
+		if (i % 4 == 0)
+			EXPECT_FALSE(hashSet.contains(theId));
+		else
+			EXPECT_TRUE(hashSet.contains(theId));
+		if (i < capacity / 4)
+		{
+			const QPI::id theId(capacity / 4 - 1 - i, 0, 0, 0);
+			EXPECT_TRUE(hashSet.contains(theId));
+		}
+	}
+
+	// Remove entries added first
+	for (int i = 0; i < capacity; i++)
+	{
+		const QPI::id theId(i / 3, i + 5, i * 3, i % 10);
+		if (i % 4 == 0)
+			EXPECT_EQ(hashSet.remove(theId), QPI::NULL_INDEX); // already removed before
+		else
+			EXPECT_NE(hashSet.remove(theId), QPI::NULL_INDEX);
+		EXPECT_FALSE(hashSet.contains(theId));
+	}
+
+	// Reorganize hash map, speeding up access
+	hashSet.cleanup();
+
+	// Check consistency
+	EXPECT_EQ(hashSet.population(), capacity / 4);
+	for (int i = 0; i < capacity / 4; ++i)
+	{
+		EXPECT_TRUE(hashSet.contains(QPI::id(i, 0, 0, 0)));
+	}
+	for (int i = 0; i < capacity; i++)
+	{
+		EXPECT_FALSE(hashSet.contains(QPI::id(i / 3, i + 5, i * 3, i % 10)));
+	}
+
+	hashSet.reset();
+	EXPECT_EQ(hashSet.population(), 0);
+
+	delete[] __scratchpadBuffer;
+}

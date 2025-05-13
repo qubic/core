@@ -419,6 +419,73 @@ namespace QPI
 		void reset();
 	};
 
+	// Hash set of keys of type KeyT and total element capacity L.
+	template <typename KeyT, uint64 L, typename HashFunc = HashFunction<KeyT>>
+	class HashSet
+	{
+	private:
+		static_assert(L && !(L& (L - 1)),
+			"The capacity of the hash set must be 2^N."
+			);
+		static constexpr sint64 _nEncodedFlags = L > 32 ? 32 : L;
+
+		// Hash set
+		KeyT _keys[L];
+
+		// 2 bits per element of _elements: 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
+		// The state "occupied but marked for removal" is needed for finding the index of a key in the hash map. Setting an entry to
+		// "not occupied" in remove() would potentially undo a collision, create a gap, and mess up the entry search.
+		uint64 _occupationFlags[(L * 2 + 63) / 64];
+
+		uint64 _population;
+		uint64 _markRemovalCounter;
+
+		// Read and encode 32 POV occupation flags, return a 64bits number presents 32 occupation flags
+		uint64 _getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const;
+
+	public:
+		HashSet()
+		{
+			reset();
+		}
+
+		// Return maximum number of elements that may be stored.
+		static constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Return overall number of elements.
+		inline uint64 population() const;
+
+		// Return boolean indicating whether key is contained in the hash set.
+		bool contains(const KeyT& key) const;
+
+		// Return index of element with key in hash set _keys, or NULL_INDEX if not found.
+		sint64 getElementIndex(const KeyT& key) const;
+
+		// Return key at elementIndex.
+		inline KeyT key(sint64 elementIndex) const;
+
+		// Add key to the hash set, return elementIndex of new element.
+		// If key already exists in the hash set, this does nothing.
+		// If the hash map is full, return NULL_INDEX.
+		sint64 add(const KeyT& key);
+
+		// Mark element for removal.
+		void removeByIndex(sint64 elementIdx);
+
+		// Mark element for removal if key is contained in the hash set, 
+		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
+		sint64 remove(const KeyT& key);
+
+		// Remove all elements marked for removal, this is an expensive operation.
+		void cleanup();
+
+		// Reinitialize as empty hash set.
+		void reset();
+	};
+
 
 	// Collection of priority queues of elements with type T and total element capacity L.
 	// Each ID pov (point of view) has an own queue.
