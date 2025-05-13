@@ -86,7 +86,7 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache???
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x0019FFFFU // around 2500 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x000CFFFFU // around 5000 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
