@@ -6630,7 +6630,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         bool noVerifiedPublicPeers = true;
                         for (unsigned int k = 0; k < numberOfPublicPeers; k++)
                         {
-                            if (publicPeers[k].isHandshaked && publicPeers[k].isFullnode)
+                            if (publicPeers[k].isHandshaked /*&& publicPeers[k].isFullnode*/)
                             {
                                 noVerifiedPublicPeers = false;
 
@@ -6648,7 +6648,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             {
                                 // randomly select verified public peers
                                 const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isHandshaked && publicPeers[publicPeerIndex].isFullnode)
+                                if (publicPeers[publicPeerIndex].isHandshaked /*&& publicPeers[publicPeerIndex].isFullnode*/)
                                 {
                                     request->peers[j] = publicPeers[publicPeerIndex].address;
                                 }
