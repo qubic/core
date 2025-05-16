@@ -95,6 +95,9 @@ public:
         sint64 amount;
     };
 
+    typedef Asset GetTotalNumberOfAssetShares_input;
+    typedef sint64 GetTotalNumberOfAssetShares_output;
+
     /**************************************/
     /************CORE FUNCTIONS************/
     /**************************************/
@@ -403,9 +406,18 @@ public:
         return;
     }
 
+    /*
+    * @return Return total number of shares that currently exist of the asset given as input
+    */
+    PUBLIC_FUNCTION(GetTotalNumberOfAssetShares)
+    {
+        output = qpi.numberOfShares(input);
+    }
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
+        REGISTER_USER_FUNCTION(GetTotalNumberOfAssetShares, 4);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
