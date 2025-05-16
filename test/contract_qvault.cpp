@@ -203,6 +203,11 @@ public:
         EXPECT_EQ(muslimId, muslim.key(elementIndex));
     }
 
+    void cancelMuslimIdChecker(id muslimId, uint64 elementIndex)
+    {
+        EXPECT_NE(muslimId, muslim.key(elementIndex));
+    }
+
     void POST_INCOMING_TRANSFER_checker(uint64 distributedAmount, uint32 epoch, uint32 shareIndex)
     {
         EXPECT_EQ(distributedAmount, totalNotMSRevenue);
@@ -682,6 +687,16 @@ public:
         return output;
     }
 
+    QVAULT::cancelMuslimId_output cancelMuslimId(const id& address)
+    {
+        QVAULT::cancelMuslimId_input input;
+        QVAULT::cancelMuslimId_output output;
+
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 15, input, output, address, 0);
+
+        return output;
+    }
+
     sint64 issueAsset(const id& issuer, uint64 assetName, sint64 numberOfShares, uint64 unitOfMeasurement, sint8 numberOfDecimalPlaces)
     {
         QX::IssueAsset_input input{ assetName, numberOfShares, unitOfMeasurement, numberOfDecimalPlaces };
@@ -903,7 +918,10 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     increaseEnergy(QVAULT_QCAP_ISSUER, 1000000);
     EXPECT_EQ(QvaultV2.TransferShareManagementRights(QVAULT_CONTRACT_ID, qcapShare, 10000, QX_CONTRACT_INDEX), 10000);
 
-    QvaultV2.getState()->submitMuslimIdChecker(stakers[0], QvaultV2.submitMuslimId(stakers[0]).elementIndex);
+    uint64 elementIndex = QvaultV2.submitMuslimId(stakers[0]).elementIndex;
+    QvaultV2.getState()->submitMuslimIdChecker(stakers[0], elementIndex);
+    QvaultV2.cancelMuslimId(stakers[0]);
+    QvaultV2.getState()->cancelMuslimIdChecker(stakers[0], elementIndex);
 
     std::vector<std::pair<m256i, unsigned int>> qxSharesHolers{{QVAULT_CONTRACT_ID, 676}};
     issueContractShares(QX_CONTRACT_INDEX, qxSharesHolers);

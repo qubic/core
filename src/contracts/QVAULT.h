@@ -5,7 +5,6 @@ constexpr uint64 QVAULT_QVAULT_ASSETNAME = 92686824592977;
 constexpr uint64 QVAULT_PROPOSAL_FEE = 10000000;
 constexpr uint64 QVAULT_IPO_PARTICIPATION_MIN_FUND = 1000000000;
 constexpr uint32 QVAULT_QCAP_MAX_SUPPLY = 21000000;
-constexpr uint32 QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES = 16;
 constexpr uint32 QVAULT_MAX_NUMBER_OF_PROPOSAL = 65536;
 constexpr uint32 QVAULT_2025MAX_QCAP_SALE_AMOUNT = 10714286;
 constexpr uint32 QVAULT_2026MAX_QCAP_SALE_AMOUNT = 15571429;
@@ -35,7 +34,9 @@ enum QVAULTLogInfo {
     QvaultOverflowProposal = 15,
     QvaultMaxMuslimId = 16,
     QvaultDuplicatedMuslimId = 17,
-    QvaultNotMuslimId = 18
+    QvaultNotMuslimId = 18,
+    QvaultAlreadyVotedId = 19,
+    QvaultOverflowVotes = 20,
 };
 
 struct QVAULT2
@@ -402,6 +403,15 @@ protected:
     id reinvestingAddress;
     id adminAddress;
     HashSet<id, 1048576> muslim;
+
+    struct voteStatusInfo
+    {
+        uint32 proposalId;
+        uint8 proposalType;
+    };
+    HashMap<id, Array<voteStatusInfo, 16>, 1048576> vote;
+    HashMap<id, uint8, 1048576> countOfVote;
+
     uint64 proposalCreateFund, reinvestingFund, totalNotMSRevenue, totalMuslimRevenue, fundForBurn, totalHistoryRevenue, rasiedFundByQcap, lastRoundPriceOfQcap, revenueByQearn;
     Array<uint64, 65536> revenueInQcapPerEpoch;
     Array<uint64, 65536> revenueForOneQcapPerEpoch;
@@ -1281,9 +1291,12 @@ protected:
         MKTPInfo updatedMKTProposal;
         AlloPInfo updatedAlloProposal;
         MSPInfo updatedMSProposal;
+        Array<voteStatusInfo, 16> newVoteList;
+        voteStatusInfo newVote;
         uint32 numberOfYes;
         uint32 numberOfNo;
         sint32 _t;
+        uint8 countOfVote;
         bit statusOfProposal;
     };
 
@@ -1294,6 +1307,24 @@ protected:
             output.returnCode = QVAULTLogInfo::QvaultOverflowProposal;
             return ;
         }
+        if (state.countOfVote.get(qpi.invocator(), locals.countOfVote))
+        {
+            state.vote.get(qpi.invocator(), locals.newVoteList);
+            for (locals._t = 0; locals._t < locals.countOfVote; locals._t++)
+            {
+                if (locals.newVoteList.get(locals._t).proposalId == input.proposalId && locals.newVoteList.get(locals._t).proposalType == input.proposalType)
+                {
+                    output.returnCode = QVAULTLogInfo::QvaultAlreadyVotedId;
+                    return ;
+                }
+            }
+        }
+        if (locals.countOfVote == 16)
+        {
+            output.returnCode = QVAULTLogInfo::QvaultOverflowVotes;
+            return ;
+        }
+        
         switch (input.proposalType)
         {
             case 1:
@@ -1396,6 +1427,21 @@ protected:
                             state.MSP.set(input.proposalId, locals.updatedMSProposal);
                             break;
                     }
+                    if (state.countOfVote.get(qpi.invocator(), locals.countOfVote))
+                    {
+                        locals.newVote.proposalId = input.proposalId;
+                        locals.newVote.proposalType = input.proposalType;
+                        locals.newVoteList.set(locals.countOfVote, locals.newVote);
+                        state.countOfVote.replace(qpi.invocator(), locals.countOfVote + 1);
+                    }
+                    else 
+                    {
+                        locals.newVote.proposalId = input.proposalId;
+                        locals.newVote.proposalType = input.proposalType;
+                        locals.newVoteList.set(0, locals.newVote);
+                        state.countOfVote.set(qpi.invocator(), 1);
+                    }
+                    state.vote.set(qpi.invocator(), locals.newVoteList);
                     output.returnCode = QVAULTLogInfo::QvaultSuccess;
                     return ;
                 }
@@ -2689,6 +2735,9 @@ protected:
             state.totalVotingPower += state.staker.get(locals._t).amount;
         }
         state.numberOfVotingPower = state.numberOfStaker;
+
+        state.vote.reset();
+        state.countOfVote.reset();
 
     }
 
