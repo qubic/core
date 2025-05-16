@@ -5,9 +5,11 @@ using namespace QPI;
 /*
 * A collection of useful functions for smart contract on Qubic:
 * - SendToManyV1 (STM1): Sending qu from a single address to multiple addresses (upto 25)
-* - SendToManyBenchmark: Sending n transfers of 1 qu each to the specified number of addresses 
-* ...
-* ...
+* - SendToManyBenchmark: Sending n transfers of 1 qu each to the specified number of addresses
+* - CreatePoll: Create a poll with a name, type, min amount, and GitHub link
+* - Vote: Cast a Vote in a poll with a specified option (0 to 63), charging 100 QUs
+* - GetCurrentResult: Retrieve the current voting results for a poll (options 0 to 63)
+* - GetPollsByCreator: Retrieve all poll IDs created by a specific address
 */
 
 // Return code for logger and return struct
@@ -17,6 +19,18 @@ constexpr uint64 STM1_WRONG_FUND = 2;
 constexpr uint64 STM1_TRIGGERED = 3;
 constexpr uint64 STM1_SEND_FUND = 4;
 constexpr sint64 STM1_INVOCATION_FEE = 10LL; // fee to be burned and make the SC running
+
+// Voting-specific constants
+constexpr uint64 POLL_TYPE_QUBIC = 1;
+constexpr uint64 POLL_TYPE_CFB = 2;
+constexpr uint64 CFB_ASSET_NAME = 4343363;
+constexpr uint64 MAX_POLL = 256;
+constexpr uint64 MAX_VOTERS_PER_POLL = 131072;
+constexpr uint64 TOTAL_VOTERS = MAX_POLL * MAX_VOTERS_PER_POLL;
+constexpr uint64 MAX_OPTIONS = 64; // Maximum voting options (0 to 63)
+constexpr sint64 VOTE_FEE = 100LL; // Fee for voting, burnt 100%
+constexpr sint64 POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
+constexpr uint16 INIT_EPOCH = 161; // Epoch to initialize state
 
 struct QUtilLogger
 {
@@ -28,6 +42,21 @@ struct QUtilLogger
     uint32 logtype;
     // Other data go here
     char _terminator; // Only data before "_terminator" are logged
+};
+
+// poll and voter structs
+struct Poll {
+    id poll_name;
+    uint64 poll_type;
+    uint64 min_amount; // Minimum Qubic/asset amount for eligibility
+    bit is_active;
+    id creator; // Address that created the poll
+};
+
+struct Voter {
+    id address;
+    uint64 amount;
+    uint64 chosen_option; // Limited to 0-63 by vote procedure
 };
 
 struct QUTIL2
@@ -43,6 +72,50 @@ private:
     uint64 _r0, _r1, _r2, _r3;
     sint64 total;
     QUtilLogger logger;
+
+    // Voting state
+    Array<Poll, MAX_POLL> polls;
+    Array<Voter, TOTAL_VOTERS> voters; // 1d array for all voters
+    Array<uint64, MAX_POLL> poll_ids;
+    Array<uint64, MAX_POLL> poll_results; // stores dominant option per poll
+    Array<uint64, MAX_POLL> voter_counts; // tracks number of voters per poll
+    Array<Array<uint8, 256>, MAX_POLL> poll_links; // github links for polls
+    uint64 current_poll_id;
+
+    // Custom Modulo Function
+    struct custom_mod_input {
+        uint64 a;
+        uint64 b;
+    };
+    struct custom_mod_output {
+        uint64 result;
+    };
+    struct custom_mod_locals {
+        uint64 quotient;
+    };
+
+    // Get Qubic Balance
+    struct get_qubic_balance_input {
+        id address;
+    };
+    struct get_qubic_balance_output {
+        uint64 balance;
+    };
+    struct get_qubic_balance_locals {
+        QPI::Entity entity;
+    };
+
+    // Get Asset Balance
+    struct get_asset_balance_input {
+        id address;
+        uint64 asset_name;
+    };
+    struct get_asset_balance_output {
+        uint64 balance;
+    };
+    struct get_asset_balance_locals {
+    };
+
 public:
     /**************************************/
     /********INPUT AND OUTPUT STRUCTS******/
@@ -83,7 +156,7 @@ public:
     {
         id currentId;
         sint64 t;
-        bool useNext;
+        bit useNext;
     };
 
     struct BurnQubic_input
@@ -94,6 +167,148 @@ public:
     {
         sint64 amount;
     };
+
+    struct CreatePoll_input
+    {
+        id poll_name;
+        uint64 poll_type;
+        uint64 min_amount; // Minimum Qubic/asset amount
+        Array<uint8, 256> github_link; // GitHub link
+    };
+    struct CreatePoll_output
+    {
+        uint64 poll_id;
+    };
+    struct CreatePoll_locals
+    {
+        uint64 idx;
+        custom_mod_input cm_input;
+        custom_mod_output cm_output;
+        custom_mod_locals cm_locals;
+        Poll new_poll;
+        Voter default_voter;
+        uint64 i;
+    };
+
+    struct Vote_input
+    {
+        uint64 poll_id;
+        id address;
+        uint64 amount;
+        uint64 chosen_option; // Limited to 0-63
+    };
+    struct Vote_output
+    {
+        bit success;
+    };
+    struct Vote_locals
+    {
+        uint64 idx;
+        uint64 balance;
+        uint64 poll_type;
+        sint64 voter_idx;
+        custom_mod_input cm_input;
+        custom_mod_output cm_output;
+        custom_mod_locals cm_locals;
+        get_qubic_balance_input gqb_input;
+        get_qubic_balance_output gqb_output;
+        get_qubic_balance_locals gqb_locals;
+        get_asset_balance_input gab_input;
+        get_asset_balance_output gab_output;
+        get_asset_balance_locals gab_locals;
+        uint64 i;
+        uint64 voter_index;
+    };
+
+    struct GetCurrentResult_input
+    {
+        uint64 poll_id;
+    };
+    struct GetCurrentResult_output
+    {
+        Array<uint64, MAX_OPTIONS> result;
+    };
+    struct GetCurrentResult_locals
+    {
+        uint64 idx;
+        uint64 poll_type;
+        uint64 balance;
+        uint64 effective_amount;
+        Voter voter;
+        custom_mod_input cm_input;
+        custom_mod_output cm_output;
+        custom_mod_locals cm_locals;
+        get_qubic_balance_input gqb_input;
+        get_qubic_balance_output gqb_output;
+        get_qubic_balance_locals gqb_locals;
+        get_asset_balance_input gab_input;
+        get_asset_balance_output gab_output;
+        get_asset_balance_locals gab_locals;
+        uint64 i;
+        uint64 voter_index;
+    };
+
+    struct GetPollsByCreator_input
+    {
+        id creator;
+    };
+    struct GetPollsByCreator_output
+    {
+        Array<uint64, MAX_POLL> poll_ids;
+        uint64 count;
+    };
+    struct GetPollsByCreator_locals
+    {
+        uint64 idx;
+    };
+
+    struct END_EPOCH_locals
+    {
+        uint64 i;
+        uint64 d;
+        GetCurrentResult_input gcr_input;
+        GetCurrentResult_output gcr_output;
+        GetCurrentResult_locals gcr_locals;
+        Poll current_poll;
+    };
+
+    struct BEGIN_EPOCH_locals
+    {
+        uint64 i;
+        uint64 j;
+        Poll default_poll;
+        Voter default_voter;
+    };
+
+    /**************************************/
+    /***********HELPER FUNCTIONS***********/
+    /**************************************/
+
+    PRIVATE_FUNCTION_WITH_LOCALS(custom_mod)
+    {
+        locals.quotient = div(input.a, input.b);
+        output.result = input.a - input.b * locals.quotient;
+    }
+
+    PRIVATE_FUNCTION_WITH_LOCALS(get_qubic_balance)
+    {
+        output.balance = 0;
+        if (qpi.getEntity(input.address, locals.entity))
+        {
+            output.balance = locals.entity.incomingAmount - locals.entity.outgoingAmount;
+        }
+    }
+
+    PRIVATE_FUNCTION_WITH_LOCALS(get_asset_balance)
+    {
+        output.balance = qpi.numberOfShares({ NULL_ID, input.asset_name }, AssetOwnershipSelect::byOwner(input.address), AssetPossessionSelect::byPossessor(input.address));
+    }
+
+    // Calculate Voter Index
+    inline static uint64 calculate_voter_index(uint64 poll_idx, uint64 voter_idx)
+    {
+        return poll_idx * MAX_VOTERS_PER_POLL + voter_idx;
+    }
 
     /**************************************/
     /************CORE FUNCTIONS************/
@@ -403,12 +618,224 @@ public:
         return;
     }
 
+    /**
+    * Create a new poll with min amount and GitHub link
+    */
+    PUBLIC_PROCEDURE_WITH_LOCALS(CreatePoll)
+    {
+        if (qpi.invocationReward() < POLL_CREATION_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        if (input.poll_type != POLL_TYPE_QUBIC && input.poll_type != POLL_TYPE_CFB)
+        {
+            return;
+        }
+
+        locals.cm_input.a = state.current_poll_id;
+        locals.cm_input.b = MAX_POLL;
+        custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
+
+        locals.idx = locals.cm_output.result;
+        locals.new_poll.poll_name = input.poll_name;
+        locals.new_poll.poll_type = input.poll_type;
+        locals.new_poll.min_amount = input.min_amount;
+        locals.new_poll.is_active = true;
+        locals.new_poll.creator = qpi.invocator();
+
+        state.polls.set(locals.idx, locals.new_poll);
+        state.poll_ids.set(locals.idx, state.current_poll_id);
+        state.poll_links.set(locals.idx, input.github_link);
+        state.voter_counts.set(locals.idx, 0);
+
+        locals.default_voter.address = NULL_ID;
+        locals.default_voter.amount = 0;
+        locals.default_voter.chosen_option = 0;
+
+        for (locals.i = 0; locals.i < MAX_VOTERS_PER_POLL; locals.i++)
+        {
+            state.voters.set(calculate_voter_index(locals.idx, locals.i), locals.default_voter);
+        }
+        output.poll_id = state.current_poll_id;
+        state.current_poll_id++;
+    }
+
+    /**
+    * Cast a vote in a poll, charging 100 QUs, limiting options to 0-63
+    */
+    PUBLIC_PROCEDURE_WITH_LOCALS(Vote)
+    {
+        output.success = false;
+        if (qpi.invocationReward() < VOTE_FEE)
+        {
+            return;
+        }
+        qpi.transfer(qpi.invocator(), qpi.invocationReward() - VOTE_FEE);
+        qpi.burn(VOTE_FEE);
+
+        locals.cm_input.a = input.poll_id;
+        locals.cm_input.b = MAX_POLL;
+        custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
+        locals.idx = locals.cm_output.result;
+        if (state.poll_ids.get(locals.idx) != input.poll_id || !state.polls.get(locals.idx).is_active)
+        {
+            return;
+        }
+        locals.poll_type = state.polls.get(locals.idx).poll_type;
+        if (locals.poll_type == POLL_TYPE_QUBIC)
+        {
+            locals.gqb_input.address = input.address;
+            get_qubic_balance(qpi, state, locals.gqb_input, locals.gqb_output, locals.gqb_locals);
+            locals.balance = locals.gqb_output.balance;
+        }
+        else if (locals.poll_type == POLL_TYPE_CFB)
+        {
+            locals.gab_input.address = input.address;
+            locals.gab_input.asset_name = CFB_ASSET_NAME;
+            get_asset_balance(qpi, state, locals.gab_input, locals.gab_output, locals.gab_locals);
+            locals.balance = locals.gab_output.balance;
+        }
+        else
+        {
+            return;
+        }
+        if (locals.balance < state.polls.get(locals.idx).min_amount)
+        {
+            return;
+        }
+        if (locals.balance < input.amount)
+        {
+            return;
+        }
+        if (input.chosen_option >= MAX_OPTIONS)
+        {
+            return;
+        }
+
+        // Search for existing voter or empty slot
+        for (locals.i = 0; locals.i < MAX_VOTERS_PER_POLL; locals.i++)
+        {
+            locals.voter_index = calculate_voter_index(locals.idx, locals.i);
+            if (state.voters.get(locals.voter_index).address == input.address)
+            {
+                // Update existing voter
+                state.voters.set(locals.voter_index, Voter{ input.address, input.amount, input.chosen_option });
+                output.success = true;
+                return;
+            }
+            else if (state.voters.get(locals.voter_index).address == NULL_ID)
+            {
+                // Add new voter in empty slot
+                state.voters.set(locals.voter_index, Voter{ input.address, input.amount, input.chosen_option });
+                state.voter_counts.set(locals.idx, state.voter_counts.get(locals.idx) + 1);
+                output.success = true;
+                return;
+            }
+        }
+    }
+
+    /**
+    * Get the current voting results for a poll
+    */
+    PUBLIC_FUNCTION_WITH_LOCALS(GetCurrentResult)
+    {
+        locals.cm_input.a = input.poll_id;
+        locals.cm_input.b = MAX_POLL;
+        custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
+        locals.idx = locals.cm_output.result;
+        if (state.poll_ids.get(locals.idx) != input.poll_id || !state.polls.get(locals.idx).is_active)
+        {
+            return;
+        }
+        locals.poll_type = state.polls.get(locals.idx).poll_type;
+        for (locals.i = 0; locals.i < state.voter_counts.get(locals.idx); locals.i++)
+        {
+            locals.voter_index = calculate_voter_index(locals.idx, locals.i);
+            locals.voter = state.voters.get(locals.voter_index);
+            if (locals.voter.address == NULL_ID)
+            {
+                    continue;  // Skip empty slots
+            }
+            if (locals.poll_type == POLL_TYPE_QUBIC)
+            {
+                locals.gqb_input.address = locals.voter.address;
+                get_qubic_balance(qpi, state, locals.gqb_input, locals.gqb_output, locals.gqb_locals);
+                locals.balance = locals.gqb_output.balance;
+            }
+            else
+            {
+                locals.gab_input.address = locals.voter.address;
+                locals.gab_input.asset_name = CFB_ASSET_NAME;
+                get_asset_balance(qpi, state, locals.gab_input, locals.gab_output, locals.gab_locals);
+                locals.balance = locals.gab_output.balance;
+            }
+            locals.effective_amount = (locals.balance < locals.voter.amount) ? locals.balance : locals.voter.amount;
+            if (locals.voter.chosen_option < MAX_OPTIONS)
+            {
+                output.result.set(locals.voter.chosen_option, output.result.get(locals.voter.chosen_option) + locals.effective_amount);
+            }
+        }
+    }
+
+    /**
+    * Get all poll IDs created by a specific address
+    */
+    PUBLIC_FUNCTION_WITH_LOCALS(GetPollsByCreator)
+    {
+        output.count = 0;
+        for (locals.idx = 0; locals.idx < MAX_POLL; locals.idx++)
+        {
+            if (state.polls.get(locals.idx).is_active && state.polls.get(locals.idx).creator == input.creator)
+            {
+                output.poll_ids.set(output.count, state.poll_ids.get(locals.idx));
+                output.count++;
+            }
+        }
+    }
+
+    /**
+    * End of epoch processing for polls, computes dominant option for options 0-63
+    */
+    END_EPOCH_WITH_LOCALS()
+    {
+        for (locals.i = 0; locals.i < MAX_POLL; locals.i++)
+        {
+            if (state.polls.get(locals.i).is_active)
+            {
+                locals.gcr_input.poll_id = state.poll_ids.get(locals.i);
+                GetCurrentResult(qpi, state, locals.gcr_input, locals.gcr_output, locals.gcr_locals);
+                uint64 max_votes = 0;
+                uint64 dominant_decision = 0;
+                for (locals.d = 0; locals.d < MAX_OPTIONS; locals.d++)
+                {
+                    if (locals.gcr_output.result.get(locals.d) > max_votes)
+                    {
+                        max_votes = locals.gcr_output.result.get(locals.d);
+                        dominant_decision = locals.d;
+                    }
+                }
+                state.poll_results.set(locals.i, dominant_decision);
+
+                // Deactivate the poll
+                locals.current_poll = state.polls.get(locals.i);
+                locals.current_poll.is_active = false;
+                state.polls.set(locals.i, locals.current_poll);
+            }
+        }
+    }
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
+        REGISTER_USER_FUNCTION(GetCurrentResult, 2);
+        REGISTER_USER_FUNCTION(GetPollsByCreator, 3);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
         REGISTER_USER_PROCEDURE(SendToManyBenchmark, 3);
+        REGISTER_USER_PROCEDURE(CreatePoll, 4);
+        REGISTER_USER_PROCEDURE(Vote, 5);
     }
 };
