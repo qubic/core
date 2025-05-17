@@ -873,7 +873,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             {
                 // Copy the sent tick to the tick storage
                 copyMem(tsTick, &request->tick, sizeof(Tick));
-                peer->lastActiveTick = request->tick.tick;
+                peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -939,7 +939,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                             if (digest == targetNextTickDataDigest)
                             {
                                 copyMem(&td, &request->tickData, sizeof(TickData));
-                                peer->lastActiveTick = request->tickData.tick;
+                                peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
                             }
                         }
                     }
@@ -968,7 +968,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                         else
                         {
                             copyMem(&td, &request->tickData, sizeof(TickData));
-                            peer->lastActiveTick = request->tickData.tick;
+                            peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
                         }
                     }
                 }
