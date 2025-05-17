@@ -56,12 +56,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 244
-#define VERSION_C 0
+#define VERSION_B 245
+#define VERSION_C 1
 
 // Epoch and initial tick for node startup
-#define EPOCH 160
-#define TICK 25190000
+#define EPOCH 161
+#define TICK 25620000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 #define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"
@@ -86,7 +86,7 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache???
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x0019FFFFU // around 2500 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x000CFFFFU // around 5000 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
