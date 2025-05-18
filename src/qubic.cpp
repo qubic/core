@@ -3345,6 +3345,76 @@ static void beginEpoch()
     logger.reset(system.initialTick);
 }
 
+// This function will sort the score take the 450th score at reference score
+// Score greater than or equal this will be assigned as scalingThreshold value
+// Score is zero will become zero
+// Score lower than this value will be scaled at score * scalingThreshold / value
+static void computeRevFactor(
+    const unsigned long long* revenueScore,
+    const unsigned long long scalingThreshold,
+    unsigned long long* revenueScoreFactor)
+{
+    // Sort revenue scores to get lowest score of quorum
+    unsigned long long sortedRevenueScore[QUORUM + 1];
+    setMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    {
+        sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
+        unsigned int i = QUORUM;
+        while (i
+            && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
+        {
+            const unsigned long long tmp = sortedRevenueScore[i - 1];
+            sortedRevenueScore[i - 1] = sortedRevenueScore[i];
+            sortedRevenueScore[i--] = tmp;
+        }
+    }
+    if (!sortedRevenueScore[QUORUM - 1])
+    {
+        sortedRevenueScore[QUORUM - 1] = 1;
+    }
+
+    for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    {
+        unsigned long long scoreFactor = 0;
+        if (revenueScore[computorIndex] == 0)
+        {
+            scoreFactor = 0;
+        }
+        else if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
+        {
+            scoreFactor = scalingThreshold;
+        }
+        else // Lower than QUORUM score.
+        {
+            // Checking overflow
+            if (0xFFFFFFFFFFFFFFFFULL / scalingThreshold < revenueScore[computorIndex])
+            {
+                scoreFactor = 0xFFFFFFFFFFFFFFFFULL / sortedRevenueScore[QUORUM - 1];
+            }
+            else
+            {
+                scoreFactor = scalingThreshold * revenueScore[computorIndex] / sortedRevenueScore[QUORUM - 1];
+            }
+
+            // To small will consider at the smallest point
+            scoreFactor = (scoreFactor == 0) ? 1 : scoreFactor;
+        }
+
+        revenueScoreFactor[computorIndex] = scoreFactor;
+    }
+}
+
+static unsigned long long gScoreBuffer[NUMBER_OF_COMPUTORS];
+
+static unsigned long long gTxScoreFactor[NUMBER_OF_COMPUTORS];
+static constexpr unsigned long long gTxScoreScalingThreshold = 1024ULL;
+
+static unsigned long long gVoteScoreFactor[NUMBER_OF_COMPUTORS];
+static constexpr unsigned long long gVoteScoreScalingThreshold = 1024ULL;
+
+static unsigned long long gCustomMiningScoreFactor[NUMBER_OF_COMPUTORS];
+static constexpr unsigned long long gCustomMiningScoreScalingThreshold = 1024ULL;
 
 // called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
@@ -3418,57 +3488,20 @@ static void endEpoch()
                 gRevenueScoreWithCustomMining.customMiningRev);
         }
 
+        copyMem(gScoreBuffer, revenueScore, sizeof(revenueScore));
+        computeRevFactor(gScoreBuffer, gTxScoreScalingThreshold, gTxScoreFactor);
 
-        // Merge votecount to final rev score
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            unsigned long long vote_count = voteCounter.getVoteCount(i);
-            unsigned long long custom_mining_share_count = gCustomMiningSharesCounter.getSharesCount(i);
-            if (vote_count != 0 && custom_mining_share_count != 0)
-            {
-                unsigned long long score_with_vote = vote_count * revenueScore[i];
-                if ((score_with_vote / vote_count) != revenueScore[i]) // detect overflow
-                {
-                    revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
-                }
-                else
-                {
-                    unsigned long long final_score = score_with_vote * custom_mining_share_count;
-                    if ((final_score / custom_mining_share_count) != score_with_vote) // detect overflow
-                    {
-                        revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
-                    }
-                    else
-                    {
-                        revenueScore[i] = final_score;
-                    }
-                }
-            }
-            else
-            {
-                revenueScore[i] = 0;
-            }
+            gScoreBuffer[i] = voteCounter.getVoteCount(i);
         }
+        computeRevFactor(gScoreBuffer, gVoteScoreScalingThreshold, gVoteScoreFactor);
 
-        // Sort revenue scores to get lowest score of quorum
-        unsigned long long sortedRevenueScore[QUORUM + 1];
-        setMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
-        for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
-            unsigned int i = QUORUM;
-            while (i
-                && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
-            {
-                const unsigned long long tmp = sortedRevenueScore[i - 1];
-                sortedRevenueScore[i - 1] = sortedRevenueScore[i];
-                sortedRevenueScore[i--] = tmp;
-            }
+            gScoreBuffer[i] = gCustomMiningSharesCounter.getSharesCount(i);
         }
-        if (!sortedRevenueScore[QUORUM - 1])
-        {
-            sortedRevenueScore[QUORUM - 1] = 1;
-        }
+        computeRevFactor(gScoreBuffer, gCustomMiningScoreScalingThreshold, gCustomMiningScoreFactor);
 
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
@@ -3480,29 +3513,13 @@ static void endEpoch()
         long long arbitratorRevenue = ISSUANCE_RATE;
         constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
         constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
-        static_assert(MAX_NUMBER_OF_TICKS_PER_EPOCH <= 605020, "Redefine scalingFactor");
-        // maxRevenueScore for 605020 ticks = ((7099 * 605020) / 676) * 605020 * 675
-        constexpr unsigned scalingFactor = 208100; // >= (maxRevenueScore600kTicks / 0xFFFFFFFFFFFFFFFFULL) * issuancePerComputor =(approx)= 208078.5
+        static_assert(gTxScoreScalingThreshold * gVoteScoreScalingThreshold * gCustomMiningScoreScalingThreshold <= scalingThreshold, "Normalize factor can cause overflow");
+
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
-            long long revenue;
-            if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
-                revenue = issuancePerComputor;
-            else
-            {
-                if (revenueScore[computorIndex] > scalingThreshold)
-                {
-                    // scale down to prevent overflow, then scale back up after division
-                    unsigned long long scaledRev = revenueScore[computorIndex] / scalingFactor;
-                    revenue = ((issuancePerComputor * scaledRev) / sortedRevenueScore[QUORUM - 1]);
-                    revenue *= scalingFactor;
-                }
-                else
-                {
-                    revenue = ((issuancePerComputor * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
-                }
-            }
+            unsigned long long combinedScoreFactor = gTxScoreFactor[computorIndex] * gVoteScoreFactor[computorIndex] * gCustomMiningScoreFactor[computorIndex];
+            long long revenue = (long long)(combinedScoreFactor * issuancePerComputor / gTxScoreScalingThreshold / gVoteScoreScalingThreshold / gCustomMiningScoreScalingThreshold);
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
