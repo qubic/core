@@ -6,7 +6,7 @@ using namespace QPI;
 * A collection of useful functions for smart contract on Qubic:
 * - SendToManyV1 (STM1): Sending qu from a single address to multiple addresses (upto 25)
 * - SendToManyBenchmark: Sending n transfers of 1 qu each to the specified number of addresses
-* - CreatePoll: Create a poll with a name, type, min amount, and GitHub link
+* - CreatePoll: Create a poll with a name, type, min amount, and GitHub link, and list of allowed assets
 * - Vote: Cast a Vote in a poll with a specified option (0 to 63), charging 100 QUs
 * - GetCurrentResult: Retrieve the current voting results for a poll (options 0 to 63)
 * - GetPollsByCreator: Retrieve all poll IDs created by a specific address
@@ -22,12 +22,12 @@ constexpr sint64 STM1_INVOCATION_FEE = 10LL; // fee to be burned and make the SC
 
 // Voting-specific constants
 constexpr uint64 POLL_TYPE_QUBIC = 1;
-constexpr uint64 POLL_TYPE_CFB = 2;
-constexpr uint64 CFB_ASSET_NAME = 4343363;
+constexpr uint64 POLL_TYPE_ASSET = 2; // Can be either shares or tokens
 constexpr uint64 MAX_POLL = 256;
 constexpr uint64 MAX_VOTERS_PER_POLL = 131072;
 constexpr uint64 TOTAL_VOTERS = MAX_POLL * MAX_VOTERS_PER_POLL;
 constexpr uint64 MAX_OPTIONS = 64; // Maximum voting options (0 to 63)
+constexpr uint64 MAX_ASSETS_PER_POLL = 16; // Maximum assets per poll
 constexpr sint64 VOTE_FEE = 100LL; // Fee for voting, burnt 100%
 constexpr sint64 POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
 constexpr uint16 INIT_EPOCH = 161; // Epoch to initialize state
@@ -47,10 +47,12 @@ struct QUtilLogger
 // poll and voter structs
 struct Poll {
     id poll_name;
-    uint64 poll_type;
+    uint64 poll_type; // POLL_TYPE_QUBIC or POLL_TYPE_ASSET
     uint64 min_amount; // Minimum Qubic/asset amount for eligibility
     bit is_active;
     id creator; // Address that created the poll
+    Array<Asset, MAX_ASSETS_PER_POLL> allowed_assets; // List of allowed assets for POLL_TYPE_ASSET
+    uint8 num_assets; // Number of assets in allowed assets
 };
 
 struct Voter {
@@ -108,7 +110,7 @@ private:
     // Get Asset Balance
     struct get_asset_balance_input {
         id address;
-        uint64 asset_name;
+        Asset asset;
     };
     struct get_asset_balance_output {
         uint64 balance;
@@ -174,6 +176,8 @@ public:
         uint64 poll_type;
         uint64 min_amount; // Minimum Qubic/asset amount
         Array<uint8, 256> github_link; // GitHub link
+        Array<Asset, MAX_ASSETS_PER_POLL> allowed_assets; // List of allowed assets for POLL_TYPE_ASSET
+        uint8 num_assets; // Number of assets in allowed_assets
     };
     struct CreatePoll_output
     {
@@ -218,6 +222,10 @@ public:
         get_asset_balance_locals gab_locals;
         uint64 i;
         uint64 voter_index;
+        Asset current_asset;
+        uint64 current_balance;
+        bit found;
+        uint64 asset_idx;
     };
 
     struct GetCurrentResult_input
@@ -246,6 +254,10 @@ public:
         get_asset_balance_locals gab_locals;
         uint64 i;
         uint64 voter_index;
+        Asset current_asset;
+        uint64 max_balance;
+        uint64 current_balance;
+        uint64 asset_idx;
     };
 
     struct GetPollsByCreator_input
@@ -301,7 +313,7 @@ public:
 
     PRIVATE_FUNCTION_WITH_LOCALS(get_asset_balance)
     {
-        output.balance = qpi.numberOfShares({ NULL_ID, input.asset_name }, AssetOwnershipSelect::byOwner(input.address), AssetPossessionSelect::byPossessor(input.address));
+        output.balance = qpi.numberOfShares(input.asset, AssetOwnershipSelect::byOwner(input.address), AssetPossessionSelect::byPossessor(input.address));
     }
 
     // Calculate Voter Index
@@ -601,7 +613,7 @@ public:
         if (input.amount == 0)
         {
             output.amount = 0;
-            return;            
+            return;
         }
         if (qpi.invocationReward() < input.amount) // not sending enough qu to burn
         {
@@ -619,7 +631,7 @@ public:
     }
 
     /**
-    * Create a new poll with min amount and GitHub link
+    * Create a new poll with min amount, and GitHub link, and list of allowed assets
     */
     PUBLIC_PROCEDURE_WITH_LOCALS(CreatePoll)
     {
@@ -629,9 +641,19 @@ public:
             return;
         }
 
-        if (input.poll_type != POLL_TYPE_QUBIC && input.poll_type != POLL_TYPE_CFB)
+        if (input.poll_type != POLL_TYPE_QUBIC && input.poll_type != POLL_TYPE_ASSET)
         {
             return;
+        }
+
+        if (input.poll_type == POLL_TYPE_QUBIC && input.num_assets != 0)
+        {
+            return; // For Qubic polls, num_assets should be 0
+        }
+
+        if (input.poll_type == POLL_TYPE_ASSET && (input.num_assets == 0 || input.num_assets > MAX_ASSETS_PER_POLL))
+        {
+            return; // For asset polls, num_assets should be between 1 and 16
         }
 
         locals.cm_input.a = state.current_poll_id;
@@ -644,6 +666,8 @@ public:
         locals.new_poll.min_amount = input.min_amount;
         locals.new_poll.is_active = true;
         locals.new_poll.creator = qpi.invocator();
+        locals.new_poll.allowed_assets = input.allowed_assets;
+        locals.new_poll.num_assets = input.num_assets;
 
         state.polls.set(locals.idx, locals.new_poll);
         state.poll_ids.set(locals.idx, state.current_poll_id);
@@ -689,23 +713,33 @@ public:
             locals.gqb_input.address = input.address;
             get_qubic_balance(qpi, state, locals.gqb_input, locals.gqb_output, locals.gqb_locals);
             locals.balance = locals.gqb_output.balance;
+            if (locals.balance < state.polls.get(locals.idx).min_amount)
+            {
+                return;
+            }
         }
-        else if (locals.poll_type == POLL_TYPE_CFB)
+        else if (locals.poll_type == POLL_TYPE_ASSET)
         {
-            locals.gab_input.address = input.address;
-            locals.gab_input.asset_name = CFB_ASSET_NAME;
-            get_asset_balance(qpi, state, locals.gab_input, locals.gab_output, locals.gab_locals);
-            locals.balance = locals.gab_output.balance;
+            locals.found = false;
+            for (locals.asset_idx = 0; locals.asset_idx < state.polls.get(locals.idx).num_assets; locals.asset_idx++)
+            {
+                locals.current_asset = state.polls.get(locals.idx).allowed_assets.get(locals.asset_idx);
+                locals.gab_input.address = input.address;
+                locals.gab_input.asset = locals.current_asset;
+                get_asset_balance(qpi, state, locals.gab_input, locals.gab_output, locals.gab_locals);
+                locals.current_balance = locals.gab_output.balance;
+                if (locals.current_balance >= state.polls.get(locals.idx).min_amount)
+                {
+                    locals.found = true;
+                    break;
+                }
+            }
+            if (!locals.found)
+            {
+                return;
+            }
         }
         else
-        {
-            return;
-        }
-        if (locals.balance < state.polls.get(locals.idx).min_amount)
-        {
-            return;
-        }
-        if (locals.balance < input.amount)
         {
             return;
         }
@@ -756,22 +790,36 @@ public:
             locals.voter = state.voters.get(locals.voter_index);
             if (locals.voter.address == NULL_ID)
             {
-                    continue;  // Skip empty slots
+                continue;  // Skip empty slots
             }
             if (locals.poll_type == POLL_TYPE_QUBIC)
             {
                 locals.gqb_input.address = locals.voter.address;
                 get_qubic_balance(qpi, state, locals.gqb_input, locals.gqb_output, locals.gqb_locals);
                 locals.balance = locals.gqb_output.balance;
+                locals.effective_amount = (locals.balance < locals.voter.amount) ? locals.balance : locals.voter.amount;
+            }
+            else if (locals.poll_type == POLL_TYPE_ASSET)
+            {
+                locals.max_balance = 0;
+                for (locals.asset_idx = 0; locals.asset_idx < state.polls.get(locals.idx).num_assets; locals.asset_idx++)
+                {
+                    locals.current_asset = state.polls.get(locals.idx).allowed_assets.get(locals.asset_idx);
+                    locals.gab_input.address = locals.voter.address;
+                    locals.gab_input.asset = locals.current_asset;
+                    get_asset_balance(qpi, state, locals.gab_input, locals.gab_output, locals.gab_locals);
+                    locals.current_balance = locals.gab_output.balance;
+                    if (locals.current_balance > locals.max_balance)
+                    {
+                        locals.max_balance = locals.current_balance;
+                    }
+                }
+                locals.effective_amount = (locals.max_balance < locals.voter.amount) ? locals.max_balance : locals.voter.amount;
             }
             else
             {
-                locals.gab_input.address = locals.voter.address;
-                locals.gab_input.asset_name = CFB_ASSET_NAME;
-                get_asset_balance(qpi, state, locals.gab_input, locals.gab_output, locals.gab_locals);
-                locals.balance = locals.gab_output.balance;
+                continue;
             }
-            locals.effective_amount = (locals.balance < locals.voter.amount) ? locals.balance : locals.voter.amount;
             if (locals.voter.chosen_option < MAX_OPTIONS)
             {
                 output.result.set(locals.voter.chosen_option, output.result.get(locals.voter.chosen_option) + locals.effective_amount);
