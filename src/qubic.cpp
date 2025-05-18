@@ -212,11 +212,13 @@ struct revenueScore
     unsigned long long txScore[NUMBER_OF_COMPUTORS];    // revenue score with txs
     unsigned long long voteCount[NUMBER_OF_COMPUTORS];  // vote count
     unsigned long long customMiningSharesCount[NUMBER_OF_COMPUTORS]; // the shares count with custom mining
-    unsigned long long currentIntermediateScore[NUMBER_OF_COMPUTORS];
-    unsigned long long currentRev[NUMBER_OF_COMPUTORS]; // old revenue
-    unsigned long long customMiningIntermediateScore[NUMBER_OF_COMPUTORS];
-    unsigned long long customMiningRev[NUMBER_OF_COMPUTORS]; // reveneu with custom mining
-    unsigned long long customMiningRevScale[NUMBER_OF_COMPUTORS];
+
+    unsigned long long txScoreFactor[NUMBER_OF_COMPUTORS];
+    unsigned long long voteScoreFactor[NUMBER_OF_COMPUTORS];
+    unsigned long long customMiningScoreFactor[NUMBER_OF_COMPUTORS];
+
+    unsigned long long revenue[NUMBER_OF_COMPUTORS]; // reveneue with custom mining
+    unsigned long long customMiningRev[NUMBER_OF_COMPUTORS];
 } gRevenueScoreWithCustomMining;
 
 
@@ -3470,24 +3472,6 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
-        // Save data of custom mining.
-        {
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                gRevenueScoreWithCustomMining.voteCount[i] = voteCounter.getVoteCount(i);
-                gRevenueScoreWithCustomMining.txScore[i] = revenueScore[i];
-                gRevenueScoreWithCustomMining.customMiningSharesCount[i] = gCustomMiningSharesCounter.getSharesCount(i);
-            }
-            computeRevWithCustomMining(
-                gRevenueScoreWithCustomMining.txScore,
-                gRevenueScoreWithCustomMining.voteCount,
-                gRevenueScoreWithCustomMining.customMiningSharesCount,
-                gRevenueScoreWithCustomMining.currentIntermediateScore,
-                gRevenueScoreWithCustomMining.currentRev,
-                gRevenueScoreWithCustomMining.customMiningIntermediateScore,
-                gRevenueScoreWithCustomMining.customMiningRev);
-        }
-
         copyMem(gScoreBuffer, revenueScore, sizeof(revenueScore));
         computeRevFactor(gScoreBuffer, gTxScoreScalingThreshold, gTxScoreFactor);
 
@@ -3503,6 +3487,37 @@ static void endEpoch()
         }
         computeRevFactor(gScoreBuffer, gCustomMiningScoreScalingThreshold, gCustomMiningScoreFactor);
 
+        long long arbitratorRevenue = ISSUANCE_RATE;
+        constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
+        constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
+        static_assert(gTxScoreScalingThreshold * gVoteScoreScalingThreshold * gCustomMiningScoreScalingThreshold <= scalingThreshold, "Normalize factor can cause overflow");
+
+        // Save data of custom mining. For verification only
+        {
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                gRevenueScoreWithCustomMining.voteCount[i] = voteCounter.getVoteCount(i);
+                gRevenueScoreWithCustomMining.txScore[i] = revenueScore[i];
+                gRevenueScoreWithCustomMining.customMiningSharesCount[i] = gCustomMiningSharesCounter.getSharesCount(i);
+
+                unsigned long long txFactor = gTxScoreFactor[i];
+                unsigned long long voteFactor = gVoteScoreFactor[i];
+                unsigned long long customFactor = gCustomMiningScoreFactor[i];
+
+                gRevenueScoreWithCustomMining.txScoreFactor[i] = txFactor;
+                gRevenueScoreWithCustomMining.voteScoreFactor[i] = voteFactor;
+                gRevenueScoreWithCustomMining.customMiningScoreFactor[i] = customFactor;
+                unsigned long long combinedScoreFactor = txFactor * voteFactor;
+
+                gRevenueScoreWithCustomMining.revenue[i] = 
+                    (long long)(combinedScoreFactor * issuancePerComputor / gTxScoreScalingThreshold / gVoteScoreScalingThreshold);
+
+                combinedScoreFactor = txFactor * voteFactor * customFactor;
+                gRevenueScoreWithCustomMining.customMiningRev[i] =
+                    (long long)(combinedScoreFactor * issuancePerComputor / gTxScoreScalingThreshold / gVoteScoreScalingThreshold / gVoteScoreScalingThreshold);
+            }
+        }
+
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
         qpiContext.call(5, "", 0);
@@ -3510,11 +3525,6 @@ static void endEpoch()
         const GQMPROP::RevenueDonationT* emissionDist = (GQMPROP::RevenueDonationT*)qpiContext.outputBuffer;
 
         // Compute revenue of computors and arbitrator
-        long long arbitratorRevenue = ISSUANCE_RATE;
-        constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
-        constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
-        static_assert(gTxScoreScalingThreshold * gVoteScoreScalingThreshold * gCustomMiningScoreScalingThreshold <= scalingThreshold, "Normalize factor can cause overflow");
-
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
