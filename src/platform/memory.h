@@ -14,7 +14,7 @@ void freePool(void* buffer);
 
 #else
 
-#include "uefi.h"
+#include <lib/platform_efi/uefi_globals.h>
 
 static inline void setMem(void* buffer, unsigned long long size, unsigned char value)
 {
@@ -34,6 +34,16 @@ static inline bool allocatePool(unsigned long long size, void** buffer)
 static inline void freePool(void* buffer)
 {
     bs->FreePool(buffer);
+}
+
+static inline void closeEvent(EFI_EVENT Event)
+{
+    bs->CloseEvent(Event);
+}
+
+static inline EFI_STATUS createEvent(unsigned int Type, EFI_TPL NotifyTpl, void* NotifyFunction, void* NotifyContext, EFI_EVENT* Event)
+{
+    return bs->CreateEvent(Type, NotifyTpl, NotifyFunction, NotifyContext, Event);
 }
 
 

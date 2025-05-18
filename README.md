@@ -164,3 +164,5 @@ We cannot support you in any case. You are welcome to provide updates, bug fixes
 - [How to contribute](doc/contributing.md)
 - [Developing a smart contract ](doc/contracts.md)
 - [Qubic protocol](doc/protocol.md)
+- [Custom mining](doc/custom_mining.md)
+- [Seamless epoch transition](SEAMLESS.md)

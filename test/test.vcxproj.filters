@@ -25,7 +25,10 @@
     <ClCompile Include="assets.cpp" />
     <ClCompile Include="contract_msvault.cpp" />
     <ClCompile Include="contract_testex.cpp" />
+    <ClCompile Include="contract_qbay.cpp" />
     <ClCompile Include="file_io.cpp" />
+    <ClCompile Include="virtual_memory.cpp" />
+    <ClCompile Include="custom_mining.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />

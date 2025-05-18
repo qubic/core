@@ -1,6 +1,6 @@
 #pragma once
 
-#include "platform/uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "platform/console_logging.h"
 
 #include "network_messages/header.h"
@@ -40,7 +40,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
         else
         {
             EFI_TCP4_CONFIG_DATA configData;
-            bs->SetMem(&configData, sizeof(configData), 0);
+            setMem(&configData, sizeof(configData), 0);
             configData.TimeToLive = 64;
             configData.AccessPoint.UseDefaultAddress = TRUE;
             if (!remoteAddress)
@@ -54,7 +54,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
                 configData.AccessPoint.ActiveFlag = TRUE;
             }
             EFI_TCP4_OPTION option;
-            bs->SetMem(&option, sizeof(option), 0);
+            setMem(&option, sizeof(option), 0);
             option.ReceiveBufferSize = BUFFER_SIZE;
             option.SendBufferSize = BUFFER_SIZE;
             option.KeepAliveProbes = 1;
@@ -74,11 +74,8 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
 
                 if (status == EFI_NO_MAPPING)
                 {
-                    while (!(status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, NULL, &modeData, NULL, NULL))
-                        && !modeData.IsConfigured)
-                    {
-                        _mm_pause();
-                    }
+                    WAIT_WHILE(!(status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, NULL, &modeData, NULL, NULL))
+                        && !modeData.IsConfigured);
                     if (!status)
                     {
                         if (status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))

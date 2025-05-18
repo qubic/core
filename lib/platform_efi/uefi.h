@@ -766,7 +766,4 @@ typedef struct
 	EFI_TCP4_POLL Poll;
 } EFI_TCP4_PROTOCOL;
 
-static EFI_HANDLE ih;
-static EFI_SYSTEM_TABLE* st;
-static EFI_RUNTIME_SERVICES* rs;
-static EFI_BOOT_SERVICES* bs;
+

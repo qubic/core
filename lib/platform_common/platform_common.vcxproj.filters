@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="long_jump.h" />
+    <ClInclude Include="edk2_mdepkg\Include\Base.h">
+      <Filter>edk2_mdepkg</Filter>
+    </ClInclude>
+    <ClInclude Include="edk2_mdepkg\Include\Library\BaseLib.h">
+      <Filter>edk2_mdepkg</Filter>
+    </ClInclude>
+    <ClInclude Include="edk2_mdepkg\Library\BaseLib\BaseLibInternals.h">
+      <Filter>edk2_mdepkg</Filter>
+    </ClInclude>
+    <ClInclude Include="edk2_mdepkg\Include\X64\ProcessorBind.h">
+      <Filter>edk2_mdepkg</Filter>
+    </ClInclude>
+    <ClInclude Include="edk2_mdepkg\Include\Library\DebugLib.h">
+      <Filter>edk2_mdepkg</Filter>
+    </ClInclude>
+    <ClInclude Include="sleep.h" />
+    <ClInclude Include="processor.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="edk2_mdepkg\Library\BaseLib\LongJump.c">
+      <Filter>edk2_mdepkg</Filter>
+    </ClCompile>
+    <ClCompile Include="edk2_mdepkg\Library\BaseLib\SetJump.c">
+      <Filter>edk2_mdepkg</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="edk2_mdepkg\Library\BaseLib\X64\LongJump.asm">
+      <Filter>edk2_mdepkg</Filter>
+    </MASM>
+    <MASM Include="edk2_mdepkg\Library\BaseLib\X64\SetJump.asm">
+      <Filter>edk2_mdepkg</Filter>
+    </MASM>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="edk2_mdepkg">
+      <UniqueIdentifier>{ed3dfa66-046c-4345-88e0-a234e7737a2c}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

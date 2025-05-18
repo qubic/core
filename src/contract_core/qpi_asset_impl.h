@@ -423,8 +423,8 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
 
     // run PRE_RELEASE_SHARES callback in other contract (without invocation reward)
     QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee, currentContractIndex };
-    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
-    __qpiCallSystemProcOfOtherContract<PRE_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, pre_input, pre_output, 0);
+    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProc
+    __qpiCallSystemProc<PRE_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, pre_input, pre_output, 0);
     if (!pre_output.allowTransfer || pre_output.requestedFee < 0 || pre_output.requestedFee > MAX_AMOUNT)
     {
         return INVALID_AMOUNT;
@@ -451,7 +451,7 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
     // run POST_RELEASE_SHARES in other contract (without invocation reward)
     QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee, currentContractIndex };
     QPI::NoData post_output;
-    __qpiCallSystemProcOfOtherContract<POST_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, post_input, post_output, 0);
+    __qpiCallSystemProc<POST_RELEASE_SHARES>(sourceOwnershipManagingContractIndex, post_input, post_output, 0);
 
     // bug check: no other record matches filter criteria
     ASSERT(!it.next());
@@ -462,6 +462,11 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
 
 bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare) const
 {
+    if (contractCallbacksRunning & ContractCallbackPostIncomingTransfer)
+    {
+        return false;
+    }
+
     if (amountPerShare < 0 || amountPerShare * NUMBER_OF_COMPUTORS > MAX_AMOUNT)
     {
         return false;
@@ -485,46 +490,33 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
     {
         ACQUIRE(universeLock);
 
-        for (int issuanceIndex = 0; issuanceIndex < ASSETS_CAPACITY; issuanceIndex++)
+        Asset asset(id::zero(), *((unsigned long long*)contractDescriptions[_currentContractIndex].assetName));
+        AssetPossessionIterator iter(asset);
+        long long totalShareCounter = 0;
+
+        while (!iter.reachedEnd())
         {
-            if (((*((unsigned long long*)assets[issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == *((unsigned long long*)contractDescriptions[_currentContractIndex].assetName)
-                && assets[issuanceIndex].varStruct.issuance.type == ISSUANCE
-                && isZero(assets[issuanceIndex].varStruct.issuance.publicKey))
-            {
-                // TODO: use list to iterate through owners
-                long long shareholderCounter = 0;
-                for (int ownershipIndex = 0; shareholderCounter < NUMBER_OF_COMPUTORS && ownershipIndex < ASSETS_CAPACITY; ownershipIndex++)
-                {
-                    if (assets[ownershipIndex].varStruct.ownership.issuanceIndex == issuanceIndex
-                        && assets[ownershipIndex].varStruct.ownership.type == OWNERSHIP)
-                    {
-                        long long possessorCounter = 0;
+            ASSERT(iter.possessionIndex() < ASSETS_CAPACITY);
 
-                        // TODO: use list to iterate through possessors
-                        for (int possessionIndex = 0; possessorCounter < assets[ownershipIndex].varStruct.ownership.numberOfShares && possessionIndex < ASSETS_CAPACITY; possessionIndex++)
-                        {
-                            if (assets[possessionIndex].varStruct.possession.ownershipIndex == ownershipIndex
-                                && assets[possessionIndex].varStruct.possession.type == POSSESSION)
-                            {
-                                possessorCounter += assets[possessionIndex].varStruct.possession.numberOfShares;
+            const auto& possession = assets[iter.possessionIndex()].varStruct.possession;
+            const long long dividend = amountPerShare * possession.numberOfShares;
 
-                                increaseEnergy(assets[possessionIndex].varStruct.possession.publicKey, amountPerShare * assets[possessionIndex].varStruct.possession.numberOfShares);
+            increaseEnergy(possession.publicKey, dividend);
 
-                                if (!contractActionTracker.addQuTransfer(_currentContractId, assets[possessionIndex].varStruct.possession.publicKey, amountPerShare * assets[possessionIndex].varStruct.possession.numberOfShares))
-                                    __qpiAbort(ContractErrorTooManyActions);
+            if (!contractActionTracker.addQuTransfer(_currentContractId, possession.publicKey, dividend))
+                __qpiAbort(ContractErrorTooManyActions);
 
-                                const QuTransfer quTransfer = { _currentContractId , assets[possessionIndex].varStruct.possession.publicKey , amountPerShare * assets[possessionIndex].varStruct.possession.numberOfShares };
-                                logger.logQuTransfer(quTransfer);
-                            }
-                        }
+            __qpiNotifyPostIncomingTransfer(_currentContractId, possession.publicKey, dividend, TransferType::qpiDistributeDividends);
 
-                        shareholderCounter += possessorCounter;
-                    }
-                }
+            const QuTransfer quTransfer = { _currentContractId, possession.publicKey, dividend };
+            logger.logQuTransfer(quTransfer);
 
-                break;
-            }
+            totalShareCounter += possession.numberOfShares;
+
+            iter.next();
         }
+
+        ASSERT(totalShareCounter == NUMBER_OF_COMPUTORS || totalShareCounter == 0);
 
         RELEASE(universeLock);
     }
@@ -652,8 +644,8 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
 
     // run PRE_ACQUIRE_SHARES callback in other contract (without invocation reward)
     QPI::PreManagementRightsTransfer_input pre_input{ asset, owner, possessor, numberOfShares, offeredTransferFee, currentContractIndex };
-    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProcOfOtherContract
-    __qpiCallSystemProcOfOtherContract<PRE_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, pre_input, pre_output, 0);
+    QPI::PreManagementRightsTransfer_output pre_output; // output is zeroed in __qpiCallSystemProc
+    __qpiCallSystemProc<PRE_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, pre_input, pre_output, 0);
     if (!pre_output.allowTransfer || pre_output.requestedFee < 0 || pre_output.requestedFee > MAX_AMOUNT)
     {
         return INVALID_AMOUNT;
@@ -680,7 +672,7 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
     // run POST_ACQUIRE_SHARES in other contract (without invocation reward)
     QPI::PostManagementRightsTransfer_input post_input{ asset, owner, possessor, numberOfShares, pre_output.requestedFee, currentContractIndex };
     QPI::NoData post_output;
-    __qpiCallSystemProcOfOtherContract<POST_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, post_input, post_output, 0);
+    __qpiCallSystemProc<POST_ACQUIRE_SHARES>(destinationOwnershipManagingContractIndex, post_input, post_output, 0);
 
     // bug check: no other record matches filter criteria
     ASSERT(!it.next());
@@ -745,11 +737,18 @@ iteration:
                                 if (assets[possessionIndex].varStruct.possession.numberOfShares >= numberOfShares)
                                 {
                                     int destinationOwnershipIndex, destinationPossessionIndex;
-                                    ::transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwnerAndPossessor, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
+                                    if (!::transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwnerAndPossessor, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false))
+                                    {
+                                        RELEASE(universeLock);
 
-                                    RELEASE(universeLock);
+                                        return INVALID_AMOUNT;
+                                    }
+                                    else
+                                    {
+                                        RELEASE(universeLock);
 
-                                    return assets[possessionIndex].varStruct.possession.numberOfShares;
+                                        return assets[possessionIndex].varStruct.possession.numberOfShares;
+                                    }
                                 }
                                 else
                                 {

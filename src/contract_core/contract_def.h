@@ -174,12 +174,26 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE MSVAULT2
 #include "contracts/MsVault.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QBAY_CONTRACT_INDEX 12
+#define CONTRACT_INDEX QBAY_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QBAY
+#define CONTRACT_STATE2_TYPE QBAY2
+#include "contracts/Qbay.h"
+
 // new contracts should be added above this line
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
+<<<<<<< HEAD
 #define QSWAP_CONTRACT_INDEX 12
+=======
+#define QSWAP_CONTRACT_INDEX 13
+>>>>>>> develop
 #define CONTRACT_INDEX QSWAP_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QSWAP
 #define CONTRACT_STATE2_TYPE QSWAP2
@@ -202,6 +216,22 @@ constexpr unsigned short TESTEXB_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #define CONTRACT_STATE_TYPE TESTEXB
 #define CONTRACT_STATE2_TYPE TESTEXB2
 #include "contracts/TestExampleB.h"
+constexpr unsigned short TESTEXC_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+#define CONTRACT_INDEX TESTEXC_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE TESTEXC
+#define CONTRACT_STATE2_TYPE TESTEXC2
+#include "contracts/TestExampleC.h"
+constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+#define CONTRACT_INDEX TESTEXD_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE TESTEXD
+#define CONTRACT_STATE2_TYPE TESTEXD2
+#include "contracts/TestExampleD.h"
 #endif
 
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
@@ -215,6 +245,8 @@ constexpr unsigned short TESTEXB_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef PRE_ACQUIRE_SHARES
 #undef POST_RELEASE_SHARES
 #undef POST_ACQUIRE_SHARES
+#undef POST_INCOMING_TRANSFER
+
 
 // The following are included after the contracts to keep their definitions and dependencies
 // inaccessible for contracts
@@ -258,11 +290,18 @@ constexpr struct ContractDescription
     {"QEARN", 137, 10000, sizeof(QEARN)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
     {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
     {"MSVAULT", 149, 10000, sizeof(MSVAULT)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
+    {"QBAY", 154, 10000, sizeof(QBAY)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
     // new contracts should be added above this line
+<<<<<<< HEAD
     {"QSWAP", 150, 10000, sizeof(QSWAP)},
+=======
+    {"QSWAP", 155, 10000, sizeof(QSWAP)},
+>>>>>>> develop
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
     {"TESTEXB", 138, 10000, sizeof(IPO)},
+    {"TESTEXC", 138, 10000, sizeof(IPO)},
+    {"TESTEXD", 155, 10000, sizeof(IPO)},
 #endif
 };
 
@@ -299,6 +338,7 @@ enum SystemProcedureID
     PRE_ACQUIRE_SHARES,
     POST_RELEASE_SHARES,
     POST_ACQUIRE_SHARES,
+    POST_INCOMING_TRANSFER,
     contractSystemProcedureCount,
 };
 
@@ -327,13 +367,15 @@ contractSystemProcedureLocalsSizes[contractIndex][BEGIN_TICK] = contractName::__
 if (!contractName::__endTickEmpty) contractSystemProcedures[contractIndex][END_TICK] = (SYSTEM_PROCEDURE)contractName::__endTick;\
 contractSystemProcedureLocalsSizes[contractIndex][END_TICK] = contractName::__endTickLocalsSize; \
 if (!contractName::__preAcquireSharesEmpty) contractSystemProcedures[contractIndex][PRE_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preAcquireShares;\
-contractSystemProcedureLocalsSizes[contractIndex][PRE_ACQUIRE_SHARES] = contractName::__preAcquireSharesSize; \
+contractSystemProcedureLocalsSizes[contractIndex][PRE_ACQUIRE_SHARES] = contractName::__preAcquireSharesLocalsSize; \
 if (!contractName::__preReleaseSharesEmpty) contractSystemProcedures[contractIndex][PRE_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__preReleaseShares;\
-contractSystemProcedureLocalsSizes[contractIndex][PRE_RELEASE_SHARES] = contractName::__preReleaseSharesSize; \
+contractSystemProcedureLocalsSizes[contractIndex][PRE_RELEASE_SHARES] = contractName::__preReleaseSharesLocalsSize; \
 if (!contractName::__postAcquireSharesEmpty) contractSystemProcedures[contractIndex][POST_ACQUIRE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postAcquireShares;\
-contractSystemProcedureLocalsSizes[contractIndex][POST_ACQUIRE_SHARES] = contractName::__postAcquireSharesSize; \
+contractSystemProcedureLocalsSizes[contractIndex][POST_ACQUIRE_SHARES] = contractName::__postAcquireSharesLocalsSize; \
 if (!contractName::__postReleaseSharesEmpty) contractSystemProcedures[contractIndex][POST_RELEASE_SHARES] = (SYSTEM_PROCEDURE)contractName::__postReleaseShares;\
-contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesSize; \
+contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesLocalsSize; \
+if (!contractName::__postIncomingTransferEmpty) contractSystemProcedures[contractIndex][POST_INCOMING_TRANSFER] = (SYSTEM_PROCEDURE)contractName::__postIncomingTransfer;\
+contractSystemProcedureLocalsSizes[contractIndex][POST_INCOMING_TRANSFER] = contractName::__postIncomingTransferLocalsSize; \
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
@@ -353,10 +395,13 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QEARN);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QVAULT);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MSVAULT);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBAY);
     // new contracts should be added above this line
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSWAP);
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXC);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
 #endif
 }

@@ -19,9 +19,6 @@
     <ClInclude Include="platform\memory.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="platform\uefi.h">
-      <Filter>platform</Filter>
-    </ClInclude>
     <ClInclude Include="platform\time.h">
       <Filter>platform</Filter>
     </ClInclude>
@@ -118,6 +115,9 @@
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contracts\QVAULT.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\QBAY.h">
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
@@ -237,12 +237,40 @@
     <ClInclude Include="network_messages\logging.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> develop
     <ClInclude Include="contracts\Qswap.h">
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="platform\uint128.h">
       <Filter>platform</Filter>
     </ClInclude>
+<<<<<<< HEAD
+=======
+=======
+    <ClInclude Include="K12/kangaroo_twelve_xkcp.h" />
+    <ClInclude Include="contracts\TestExampleC.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\ipo.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_ipo_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\TestExampleD.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\concurrency_impl.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\custom_mining.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+>>>>>>> develop-2
+>>>>>>> develop
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

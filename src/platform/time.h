@@ -1,7 +1,7 @@
 #pragma once
 
 #include "global_var.h"
-#include "uefi.h"
+#include <lib/platform_efi/uefi.h>
 #include "memory.h"
 #include <stddef.h>
 
@@ -16,12 +16,16 @@ void updateTime();
 
 #else
 
+#include <lib/platform_efi/uefi_globals.h>
+#include <lib/platform_common/processor.h>
+
 static void updateTime()
 {
+    ASSERT(isMainProcessor());
     EFI_TIME newTime;
     if (!rs->GetTime(&newTime, NULL))
     {
-        bs->CopyMem(&utcTime, &newTime, sizeof(utcTime));
+        copyMem(&utcTime, &newTime, sizeof(utcTime));
     }
 }
 
@@ -47,3 +51,13 @@ inline long long ms(unsigned char year, unsigned char month, unsigned char day, 
 {
     return (((((long long)dayIndex(year, month, day)) * 24 + hour) * 60 + minute) * 60 + second) * 1000 + millisecond;
 }
+
+#ifndef NO_UEFI
+inline unsigned long long now_ms()
+{
+    // utcTime is updated on main thread - because only main thread can do it
+    return ms(unsigned char(utcTime.Year % 100), utcTime.Month, utcTime.Day, utcTime.Hour, utcTime.Minute, utcTime.Second, utcTime.Nanosecond / 1000000);
+}
+#else
+unsigned long long now_ms();
+#endif

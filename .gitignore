@@ -9,7 +9,18 @@ x64/
 /test/universe.*
 /test/contract0???.???
 /test/tmp_file_*
+<<<<<<< HEAD
 
 .DS_Store
 .clang-format
 tmp
+=======
+<<<<<<< HEAD
+
+.DS_Store
+.clang-format
+tmp
+=======
+/test/*.pg
+>>>>>>> develop-2
+>>>>>>> develop

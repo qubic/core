@@ -3,7 +3,7 @@
 #include "../src/K12/kangaroo_twelve_xkcp.h"
 #include "../src/kangaroo_twelve.h"
 #include "../src/platform/memory.h"
-#include <intrin.h>
+#include <lib/platform_common/qintrin.h>
 #include "gtest/gtest.h"
 
 #include <chrono>

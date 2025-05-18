@@ -17,6 +17,7 @@ static unsigned short SNAPSHOT_TICKS_FILE_NAME[] = L"snapshotTicks.???";
 static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
 static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
 #endif
+constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
 // The number of ticks to keep from the previous epoch is TICKS_TO_KEEP_FROM_PRIOR_EPOCH (defined in public_settings.h).
 //
@@ -648,7 +649,7 @@ public:
         for (unsigned int tickId = oldTickBegin; tickId < oldTickEnd; ++tickId)
         {
             const TickData& tickData = TickDataAccess::getByTickInPreviousEpoch(tickId);
-            ASSERT(tickData.epoch == 0 || (tickData.tick == tickId));
+            ASSERT(tickData.epoch == 0 || tickData.epoch == INVALIDATED_TICK_DATA || (tickData.tick == tickId));
 
             const Tick* computorsTicks = TicksAccess::getByTickInPreviousEpoch(tickId);
             for (unsigned int computor = 0; computor < NUMBER_OF_COMPUTORS; ++computor)
@@ -701,7 +702,7 @@ public:
         for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
         {
             const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);
-            ASSERT(tickData.epoch == 0 || (tickData.tick == tickId));
+            ASSERT(tickData.epoch == 0 || tickData.epoch == INVALIDATED_TICK_DATA || (tickData.tick == tickId));
 
             const Tick* computorsTicks = TicksAccess::getByTickInCurrentEpoch(tickId);
             for (unsigned int computor = 0; computor < NUMBER_OF_COMPUTORS; ++computor)
@@ -805,7 +806,10 @@ public:
                 return nullptr;
 
             TickData* td = tickDataPtr + index;
-            if (td->epoch == 0)
+            // td->epoch == 0: not yet received or temporarily disabled
+            // td->epoch == INVALIDATED_TICK_DATA: invalidated by this node
+            // in both cases, this data shouldn't be sent out
+            if (td->epoch == 0 || td->epoch == INVALIDATED_TICK_DATA)
                 return nullptr;
 
             return td;

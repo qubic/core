@@ -3,7 +3,8 @@
 
 #pragma once
 
-#include "platform/uefi.h"
+#include <lib/platform_common/processor.h>
+#include <lib/platform_efi/uefi.h>
 #include "platform/random.h"
 #include "platform/concurrency.h"
 
@@ -53,11 +54,70 @@ struct Peer
     BOOLEAN isClosing;
     // Indicate the peer is incomming connection type
     BOOLEAN isIncommingConnection;
+
+    // Extra data to determine if this peer is a fullnode
+    // Note: an **active fullnode** is a peer that is able to reply valid tick data, tick vote to this node after getting requested
+    // If a peer is an active fullnode, it will receive more requests from this node than others, as well as longer alive connection time.
+    // Here we also consider relayer as a fullnode (as long as it transmits new&valid tick data)
+    static constexpr unsigned int dejavuListSize = 32;
+    unsigned int trackRequestedDejavu[dejavuListSize];
+    unsigned int trackRequestedTick[dejavuListSize];
+    long trackRequestedCounter; // "long" to discard warning from intrin.h
+    unsigned int lastActiveTick; // indicate the tick number that this peer transfer valid tick/vote data
+
+    bool isFullNode() const
+    {
+        return (lastActiveTick >= system.tick - 100);
+    }
+
+    // store a dejavu number into local list
+    void trackDejavu(unsigned int dejavu)
+    {
+        if (!dejavu) return;
+        long index = _InterlockedIncrement(&trackRequestedCounter);
+        index %= dejavuListSize;
+        trackRequestedDejavu[index] = dejavu;
+        trackRequestedTick[index] = system.tick;
+    }
+
+    // check if dejavu is inside local list
+    // if found, return the tick when the request (with dejavu) was sent
+    unsigned int getDejavuTick(unsigned int dejavu)
+    {
+        if (!dejavu) return 0; // no check for 0 dejavu
+        for (int i = 0; i < dejavuListSize; i++)
+        {
+            if (dejavu == trackRequestedDejavu[i])
+            {
+                return trackRequestedTick[i];
+            }
+        }
+        return 0;
+    }
+
+    // set handler to null and all params to false/zeroes
+    void reset()
+    {
+        tcp4Protocol = NULL;
+        isConnectingAccepting = FALSE;
+        isConnectedAccepted = FALSE;
+        isReceiving = FALSE;
+        isTransmitting = FALSE;
+        exchangedPublicPeers = FALSE;
+        isClosing = FALSE;
+        isIncommingConnection = FALSE;
+        dataToTransmitSize = 0;
+        lastActiveTick = 0;
+        trackRequestedCounter = 0;
+        setMem(trackRequestedTick, sizeof(trackRequestedTick), 0);
+        setMem(trackRequestedDejavu, sizeof(trackRequestedDejavu), 0);
+    }
 };
 
 typedef struct
 {
-    bool isVerified;
+    bool isHandshaked;
+    bool isFullnode;
     IPv4Address address;
 } PublicPeer;
 
@@ -103,6 +163,7 @@ static volatile char responseQueueHeadLock = 0;
 static volatile unsigned long long queueProcessingNumerator = 0, queueProcessingDenominator = 0;
 static volatile unsigned long long tickerLoopNumerator = 0, tickerLoopDenominator = 0;
 
+/*
 static bool isWhiteListPeer(unsigned char address[4])
 {
     for (unsigned int i = 0; i < NUMBER_OF_WHITE_LIST_PEERS; i++)
@@ -118,9 +179,11 @@ static bool isWhiteListPeer(unsigned char address[4])
     }
     return false;
 }
+*/
 
 static void closePeer(Peer* peer)
 {
+    ASSERT(isMainProcessor());
     if (((unsigned long long)peer->tcp4Protocol) > 1)
     {
         if (!peer->isClosing)
@@ -149,12 +212,7 @@ static void closePeer(Peer* peer)
                 numberOfAcceptedIncommingConnection--;
                 ASSERT(numberOfAcceptedIncommingConnection >= 0);
             }
-
-            peer->isConnectedAccepted = FALSE;
-            peer->exchangedPublicPeers = FALSE;
-            peer->isClosing = FALSE;
-            peer->tcp4Protocol = NULL;
-
+            peer->reset();
         }
     }
 }
@@ -169,57 +227,93 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
         {
             // Buffer is full, which indicates a problem
 #ifndef NDEBUG
-            addDebugMessage(L"Warning: Peer transmit buffer overflow -> closing connection!");
+            {
+                CHAR16 debugMessage[256];
+                setText(debugMessage, L"Warning: Peer transmit buffer overflow. IP: ");
+                appendIPv4Address(debugMessage, peer->address);
+                appendText(debugMessage, L" | dataToTransmitSize: ");
+                appendNumber(debugMessage, peer->dataToTransmitSize, true);
+                appendText(debugMessage, L" | requestResponseHeader->size(): ");
+                appendNumber(debugMessage, requestResponseHeader->size(), true);
+                addDebugMessage(debugMessage);
+            }
 #endif
             closePeer(peer);
         }
         else
         {
             // Add message to buffer
-            bs->CopyMem(&peer->dataToTransmit[peer->dataToTransmitSize], requestResponseHeader, requestResponseHeader->size());
+            copyMem(&peer->dataToTransmit[peer->dataToTransmitSize], requestResponseHeader, requestResponseHeader->size());
             peer->dataToTransmitSize += requestResponseHeader->size();
-
+            peer->trackDejavu(requestResponseHeader->dejavu());
             _InterlockedIncrement64(&numberOfDisseminatedRequests);
         }
+    }
+}
+
+// Add message to sending buffer of custom filtered (and random) peer, can only called from main thread (not thread-safe).
+static void pushCustom(RequestResponseHeader* requestResponseHeader, int numberOfReceivers, bool filterFullNode)
+{
+    unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
+    unsigned short numberOfSuitablePeers = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+    {
+        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
+        {
+            if ((filterFullNode && peers[i].isFullNode()) || (!filterFullNode))
+            {
+                suitablePeerIndices[numberOfSuitablePeers++] = i;
+            }
+        }
+    }
+    unsigned short numberOfRemainingSuitablePeers = numberOfReceivers;
+    while (numberOfRemainingSuitablePeers-- && numberOfSuitablePeers)
+    {
+        const unsigned short index = random(numberOfSuitablePeers);
+        push(&peers[suitablePeerIndices[index]], requestResponseHeader);
+        suitablePeerIndices[index] = suitablePeerIndices[--numberOfSuitablePeers];
     }
 }
 
 // Add message to sending buffer of random peer, can only called from main thread (not thread-safe).
 static void pushToAny(RequestResponseHeader* requestResponseHeader)
 {
-    unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
-    unsigned short numberOfSuitablePeers = 0;
-    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
-    {
-        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
-        {
-            suitablePeerIndices[numberOfSuitablePeers++] = i;
-        }
-    }
-    if (numberOfSuitablePeers)
-    {
-        push(&peers[suitablePeerIndices[random(numberOfSuitablePeers)]], requestResponseHeader);
-    }
+    const bool filterFullNode = false;
+    pushCustom(requestResponseHeader, 1, filterFullNode);
 }
 
-// Add message to sending buffer of some random peers, can only called from main thread (not thread-safe).
+// Add message to sending buffer of some(DISSEMINATION_MULTIPLIER) random peers, can only called from main thread (not thread-safe).
 static void pushToSeveral(RequestResponseHeader* requestResponseHeader)
 {
-    unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
-    unsigned short numberOfSuitablePeers = 0;
-    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+    const bool filterFullNode = false;
+    pushCustom(requestResponseHeader, DISSEMINATION_MULTIPLIER, filterFullNode);
+}
+
+// Add message to sending buffer of any full node peer, can only called from main thread (not thread-safe).
+static void pushToAnyFullNode(RequestResponseHeader* requestResponseHeader)
+{
+    const bool filterFullNode = true;
+    pushCustom(requestResponseHeader, 1, filterFullNode);
+}
+
+// Add message to sending buffer of some full node peers, can only called from main thread (not thread-safe).
+static void pushToSeveralFullNode(RequestResponseHeader* requestResponseHeader)
+{
+    const bool filterFullNode = true;
+    pushCustom(requestResponseHeader, DISSEMINATION_MULTIPLIER, filterFullNode);
+}
+
+// Add message to sending buffer of some (limit by DISSEMINATION_MULTIPLIER) full node peer, can only called from main thread (not thread-safe).
+static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int numberOfReceivers)
+{
+    if (numberOfReceivers > DISSEMINATION_MULTIPLIER)
     {
-        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
-        {
-            suitablePeerIndices[numberOfSuitablePeers++] = i;
-        }
+        pushToSeveralFullNode(requestResponseHeader);
     }
-    unsigned short numberOfRemainingSuitablePeers = DISSEMINATION_MULTIPLIER;
-    while (numberOfRemainingSuitablePeers-- && numberOfSuitablePeers)
+    else
     {
-        const unsigned short index = random(numberOfSuitablePeers);
-        push(&peers[suitablePeerIndices[index]], requestResponseHeader);
-        suitablePeerIndices[index] = suitablePeerIndices[--numberOfSuitablePeers];
+        const bool filterFullNode = true;
+        pushCustom(requestResponseHeader, numberOfReceivers, filterFullNode);
     }
 }
 
@@ -236,7 +330,7 @@ static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
         ASSERT(responseQueueBufferHead + responseHeader->size() < RESPONSE_QUEUE_BUFFER_SIZE);
 
         responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
-        bs->CopyMem(&responseQueueBuffer[responseQueueBufferHead], responseHeader, responseHeader->size());
+        copyMem(&responseQueueBuffer[responseQueueBufferHead], responseHeader, responseHeader->size());
         responseQueueBufferHead += responseHeader->size();
         responseQueueElements[responseQueueElementHead].peer = peer;
         if (responseQueueBufferHead > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
@@ -265,12 +359,9 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueBufferHead];
         if (!responseHeader->checkAndSetSize(sizeof(RequestResponseHeader) + dataSize))
         {
-            setText(message, L"Error: Message size ");
-            appendNumber(message, sizeof(RequestResponseHeader) + dataSize, TRUE);
-            appendText(message, L" of message of type ");
-            appendNumber(message, type, FALSE);
-            appendText(message, L" exceeds maximum message size!");
-            logToConsole(message);
+#ifndef NDEBUG
+            addDebugMessage(L"Error: Message size exceeds maximum message size!");
+#endif
         }
         responseHeader->setType(type);
         responseHeader->setDejavu(dejavu);
@@ -351,7 +442,7 @@ static void forgetPublicPeer(const IPv4Address& address)
         {
             if (i != --numberOfPublicPeers)
             {
-                bs->CopyMem(&publicPeers[i], &publicPeers[numberOfPublicPeers], sizeof(PublicPeer));
+                copyMem(&publicPeers[i], &publicPeers[numberOfPublicPeers], sizeof(PublicPeer));
             }
 
             break;
@@ -372,9 +463,10 @@ static void penalizePublicPeerRejectedConnection(const IPv4Address& address)
     {
         if (publicPeers[i].address == address)
         {
-            if (publicPeers[i].isVerified)
+            if (publicPeers[i].isHandshaked || publicPeers[i].isFullnode)
             {
-                publicPeers[i].isVerified = false;
+                publicPeers[i].isHandshaked = false;
+                publicPeers[i].isFullnode = false;
             }
             else
             {
@@ -395,7 +487,11 @@ static void penalizePublicPeerRejectedConnection(const IPv4Address& address)
 
 static void addPublicPeer(const IPv4Address& address)
 {
-    if (isBogonAddress(address))
+    if (isBogonAddress(address)) // not add bogon ip
+    {
+        return;
+    }
+    if (address.u32 == 0) // not add zero address
     {
         return;
     }
@@ -411,7 +507,8 @@ static void addPublicPeer(const IPv4Address& address)
 
     if (numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS)
     {
-        publicPeers[numberOfPublicPeers].isVerified = false;
+        publicPeers[numberOfPublicPeers].isHandshaked = false;
+        publicPeers[numberOfPublicPeers].isFullnode = false;
         publicPeers[numberOfPublicPeers++].address = address;
     }
 
@@ -479,11 +576,12 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     }
                     else
                     {
-                        // Out of slot for preserse IPs. Only accept white list IPs
+                        /* GetModeData() freezes the node occasionally: the quick-fix is to disable whitelisting
+                        // If number of unused incoming connection slots is low, only accept white list IPs
                         if (NUMBER_OF_INCOMING_CONNECTIONS - numberOfAcceptedIncommingConnection < NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS)
                         {
                             EFI_TCP4_CONFIG_DATA tcp4ConfigData;
-                            if (peers[i].tcp4Protocol 
+                            if (peers[i].tcp4Protocol
                                 && !peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, NULL, &tcp4ConfigData, NULL, NULL, NULL))
                             {
                                 if (!isWhiteListPeer(tcp4ConfigData.AccessPoint.RemoteAddress.Addr))
@@ -504,6 +602,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                             }
                         }
                         else
+                        */
                         {
                             peers[i].isConnectedAccepted = TRUE;
                         }
@@ -525,17 +624,11 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
     return false;
 }
 
-static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
+// This function process all data that arrive in FragmentBuffer.
+// based on RequestResponseHeader to determine whether the received packet is completed or not
+// if it receives a completed packet, it will copy the packet to requestQueueElements to process later in requestProcessors
+static void processReceivedData(unsigned int i, unsigned int salt)
 {
-    EFI_STATUS status;
-
-    // poll to receive incoming data and transmit outgoing segments
-    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
-    {
-        peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
-    }
-
-    // process received data
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         if (peers[i].receiveToken.CompletionToken.Status != -1)
@@ -570,6 +663,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                             setText(message, L"Forgetting ");
                             appendIPv4Address(message, peers[i].address);
                             appendText(message, L"...");
+                            logToConsole(message);
                             forgetPublicPeer(peers[i].address);
                             closePeer(&peers[i]);
                         }
@@ -602,7 +696,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                                         ASSERT(requestQueueBufferHead + requestResponseHeader->size() < REQUEST_QUEUE_BUFFER_SIZE);
 
                                         requestQueueElements[requestQueueElementHead].offset = requestQueueBufferHead;
-                                        bs->CopyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
+                                        copyMem(&requestQueueBuffer[requestQueueBufferHead], peers[i].receiveBuffer, requestResponseHeader->size());
                                         requestQueueBufferHead += requestResponseHeader->size();
                                         requestQueueElements[requestQueueElementHead].peer = &peers[i];
                                         if (requestQueueBufferHead > REQUEST_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
@@ -616,7 +710,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                                         {
                                             unsigned long long* tmp = dejavu1;
                                             dejavu1 = dejavu0;
-                                            bs->SetMem(dejavu0 = tmp, 536870912, 0);
+                                            setMem(dejavu0 = tmp, 536870912, 0);
                                             dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
                                         }
                                     }
@@ -632,7 +726,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
                                     _InterlockedIncrement64(&numberOfDuplicateRequests);
                                 }
 
-                                bs->CopyMem(peers[i].receiveBuffer, ((char*)peers[i].receiveBuffer) + requestResponseHeader->size(), receivedDataSize -= requestResponseHeader->size());
+                                copyMem(peers[i].receiveBuffer, ((char*)peers[i].receiveBuffer) + requestResponseHeader->size(), receivedDataSize -= requestResponseHeader->size());
                                 peers[i].receiveData.FragmentTable[0].FragmentBuffer = ((char*)peers[i].receiveBuffer) + receivedDataSize;
 
                                 goto iteration;
@@ -643,6 +737,12 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             }
         }
     }
+}
+
+// Signaling the system to receive data from this connection
+static void receiveData(unsigned int i, unsigned int salt)
+{
+    EFI_STATUS status;
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         if (!peers[i].isReceiving && peers[i].isConnectedAccepted && !peers[i].isClosing)
@@ -650,7 +750,9 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             // check that receive buffer has enough space (less than BUFFER_SIZE is used)
             if ((((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer)) < BUFFER_SIZE)
             {
-                peers[i].receiveData.DataLength = peers[i].receiveData.FragmentTable[0].FragmentLength = BUFFER_SIZE - (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
+                unsigned int receiveSize = BUFFER_SIZE - (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
+                peers[i].receiveData.DataLength = receiveSize;
+                peers[i].receiveData.FragmentTable[0].FragmentLength = receiveSize;
                 if (peers[i].receiveData.DataLength)
                 {
                     EFI_TCP4_CONNECTION_STATE state;
@@ -681,7 +783,11 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             }
         }
     }
+}
 
+// Checking the status last queued data for transmitting
+static void processTransmittedData(unsigned int i, unsigned int salt)
+{
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         // check if transmission is completed
@@ -709,24 +815,54 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
             }
         }
     }
+}
+
+// Enqueue data for transmitting
+static void transmitData(unsigned int i, unsigned int salt)
+{
+    EFI_STATUS status;
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         if (peers[i].dataToTransmitSize && !peers[i].isTransmitting && peers[i].isConnectedAccepted && !peers[i].isClosing)
         {
-            // initiate transmission
-            bs->CopyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
-            peers[i].dataToTransmitSize = 0;
-            if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
+            EFI_TCP4_CONNECTION_STATE state;
+            if ((status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL))
+                || state == Tcp4StateClosed)
             {
-                logStatusToConsole(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
-
                 closePeer(&peers[i]);
             }
             else
             {
-                peers[i].isTransmitting = TRUE;
+                // initiate transmission
+                copyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
+                peers[i].dataToTransmitSize = 0;
+                if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
+                {
+                    logStatusToConsole(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
+
+                    closePeer(&peers[i]);
+                }
+                else
+                {
+                    peers[i].isTransmitting = TRUE;
+                }
             }
         }
+
+    }
+}
+
+static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
+{
+
+    // poll to receive incoming data and transmit outgoing segments
+    if (((unsigned long long)peers[i].tcp4Protocol) > 1)
+    {
+        peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
+        processReceivedData(i, salt);
+        receiveData(i, salt);
+        processTransmittedData(i, salt);
+        transmitData(i, salt);
     }
 }
 
@@ -735,51 +871,49 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
     EFI_STATUS status;
     if (!peers[i].tcp4Protocol)
     {
+        peers[i].reset();
         // peer slot without active connection
         if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
         {
             // outgoing connection:
             // randomly select public peer and try to connect if we do not
             // yet have an outgoing connection to it
-
             peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
             peers[i].isIncommingConnection = FALSE;
 
-            unsigned int j;
-            for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
+            if (peers[i].address.u32 != 0)
             {
-                if (peers[j].tcp4Protocol && peers[j].address == peers[i].address)
+                unsigned int j;
+                for (j = 0; j < NUMBER_OF_OUTGOING_CONNECTIONS; j++)
                 {
-                    break;
-                }
-            }
-            if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
-            {
-                if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
-                {
-                    peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                    peers[i].dataToTransmitSize = 0;
-                    peers[i].isReceiving = FALSE;
-                    peers[i].isTransmitting = FALSE;
-                    peers[i].exchangedPublicPeers = FALSE;
-                    peers[i].isClosing = FALSE;
-
-                    if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
+                    if (peers[j].tcp4Protocol && peers[j].address == peers[i].address)
                     {
-                        logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
+                        break;
+                    }
+                }
+                if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
+                {
+                    if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
+                    {
+                        peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
 
-                        bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
-                        tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
-                        peers[i].tcp4Protocol = NULL;
+                        if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
+                        {
+                            logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
+
+                            bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
+                            tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peers[i].connectAcceptToken.NewChildHandle);
+                            peers[i].tcp4Protocol = NULL;
+                        }
+                        else
+                        {
+                            peers[i].isConnectingAccepting = TRUE;
+                        }
                     }
                     else
                     {
-                        peers[i].isConnectingAccepting = TRUE;
+                        peers[i].tcp4Protocol = NULL;
                     }
-                }
-                else
-                {
-                    peers[i].tcp4Protocol = NULL;
                 }
             }
         }
@@ -791,26 +925,17 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             {
                 peers[i].isIncommingConnection = TRUE;
                 peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
-                peers[i].dataToTransmitSize = 0;
-                peers[i].isReceiving = FALSE;
-                peers[i].isTransmitting = FALSE;
-                peers[i].exchangedPublicPeers = FALSE;
-                peers[i].isClosing = FALSE;
 
                 if (status = peerTcp4Protocol->Accept(peerTcp4Protocol, &peers[i].connectAcceptToken))
                 {
                     logStatusToConsole(L"EFI_TCP4_PROTOCOL.Accept() fails", status, __LINE__);
-                    // NOTE: although these debug log tries to know what's going on here
-                    // but it changes the memory order somehow, and this error wasn't triggered again.
-                    // In short, we have some sort of overflow here when nodes suffer from heavy spamming
-                    // But these debug logging mitigates it
                     if (peerTcp4Protocol == NULL)
                     {
                         logToConsole(L"[CRITICAL-Report to dev] peerTcp4Protocol is NULL. Please report!");
                     }
                     else
                     {
-                        logStatusToConsole(L"[CRITICAL-Report to dev] peers[i].connectAcceptToken.CompletionToken.Status", peers[i].connectAcceptToken.CompletionToken.Status, __LINE__);                        
+                        logStatusToConsole(L"[CRITICAL-Report to dev] peers[i].connectAcceptToken.CompletionToken.Status", peers[i].connectAcceptToken.CompletionToken.Status, __LINE__);
                     }
                     unsigned long long ptr = (unsigned long long)(&peers[i].connectAcceptToken);
                     setText(message, L"[CRITICAL-Report to dev] &peers[i].connectAcceptToken: ");

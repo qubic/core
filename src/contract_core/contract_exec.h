@@ -19,6 +19,8 @@
 // TODO: remove, only for debug output
 #include "system.h"
 
+#include <lib/platform_common/long_jump.h>
+
 
 enum ContractError
 {
@@ -29,7 +31,7 @@ enum ContractError
     ContractErrorAllocContextOtherProcedureCallFailed,
     ContractErrorTooManyActions,
     ContractErrorTimeout,
-    ContractErrorStoppedToResolveDeadlock,
+    ContractErrorStoppedToResolveDeadlock, // only returned by function call, not set to contractError
 };
 
 // Used to store: locals and for first invocation level also input and output
@@ -39,10 +41,19 @@ GLOBAL_VAR_DECL volatile char contractLocalsStackLock[NUMBER_OF_CONTRACT_EXECUTI
 GLOBAL_VAR_DECL volatile long contractLocalsStackLockWaitingCount;
 GLOBAL_VAR_DECL long contractLocalsStackLockWaitingCountMax;
 
+struct ContractExecErrorData
+{
+    LongJumpBuffer longJumpBuffer;
+    unsigned int errorCode;
+    unsigned int _paddingTo8;
+};
+GLOBAL_VAR_DECL ContractExecErrorData contractExecutionErrorData[contractCount];
 
 GLOBAL_VAR_DECL ReadWriteLock contractStateLock[contractCount];
 GLOBAL_VAR_DECL unsigned char* contractStates[contractCount];
 GLOBAL_VAR_DECL volatile long long contractTotalExecutionTicks[contractCount];
+
+// Contract error state, persistent and only set on error of procedure (TODO: only execute procedures if NoContractError)
 GLOBAL_VAR_DECL unsigned int contractError[contractCount];
 
 // TODO: If we ever have parallel procedure calls (of different contracts), we need to make
@@ -55,11 +66,12 @@ GLOBAL_VAR_DECL unsigned long long* contractStateChangeFlags GLOBAL_VAR_INIT(nul
 // This requires special handling in order to prevent deadlocks.
 // Further, calling certain QPI functions in callbacks must be prevented in order
 // to prevent cyclic calling patterns.
-GLOBAL_VAR_DECL unsigned int contractCallbacksRunning;
+GLOBAL_VAR_DECL volatile unsigned int contractCallbacksRunning;
 enum ContractCallbacksRunningFlags
 {
     NoContractCallback = 0,
     ContractCallbackManagementRightsTransfer = 1,
+    ContractCallbackPostIncomingTransfer = 2,
 };
 
 
@@ -151,6 +163,7 @@ static bool initContractExec()
 
     setMem((void*)contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
     setMem((void*)contractError, sizeof(contractError), 0);
+    setMem((void*)contractExecutionErrorData, sizeof(contractExecutionErrorData), 0);
     for (int i = 0; i < contractCount; ++i)
     {
         contractStateLock[i].reset();
@@ -193,13 +206,13 @@ static void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnor
         contractLocalsStackLockWaitingCountMax = waitingCount;
 
     int i = stacksToIgnore;
-    while (TRY_ACQUIRE(contractLocalsStackLock[i]) == false)
+    BEGIN_WAIT_WHILE(TRY_ACQUIRE(contractLocalsStackLock[i]) == false)
     {
-        _mm_pause();
         ++i;
         if (i == NUMBER_OF_CONTRACT_EXECUTION_BUFFERS)
             i = stacksToIgnore;
     }
+    END_WAIT_WHILE();
 
     _InterlockedDecrement(&contractLocalsStackLockWaitingCount);
 
@@ -299,18 +312,21 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
     return newContext;
 }
 
-// Called before one contract calls a procedure of a different contract
-const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructContextOtherContractProcedureCall(unsigned int otherContractIndex, QPI::sint64 invocationReward) const
+// Called before a contract runs a user procedure of another contract or a system procedure
+const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProcedureCallContext(unsigned int procContractIndex, QPI::sint64 invocationReward) const
 {
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
-    ASSERT(otherContractIndex < _currentContractIndex || contractCallbacksRunning != NoContractCallback);
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
+
+    // A contract can only run a procedure of a contract with a lower index, exceptions are callback system procedures
+    ASSERT(procContractIndex < _currentContractIndex || contractCallbacksRunning != NoContractCallback);
+
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
     if (!buffer)
     {
 #ifndef NDEBUG
         CHAR16 dbgMsgBuf[400];
-        setText(dbgMsgBuf, L"__qpiConstructContextOtherContractProcedureCall stack buffer alloc failed in tick ");
+        setText(dbgMsgBuf, L"__qpiConstructProcedureCallContext stack buffer alloc failed in tick ");
         appendNumber(dbgMsgBuf, system.tick, FALSE);
         addDebugMessage(dbgMsgBuf);
         setText(dbgMsgBuf, L"allocSize ");
@@ -324,85 +340,127 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructConte
         // abort execution of contract here
         __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);
     }
-    QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
-    if (transfer(QPI::id(otherContractIndex, 0, 0, 0), invocationReward) < 0)
+
+    // If transfer isn't possible, set invocation reward to 0
+    if (transfer(QPI::id(procContractIndex, 0, 0, 0), invocationReward) < 0)
         invocationReward = 0;
-    newContext.init(otherContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
+
+    QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
+    newContext.init(procContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
+
     return newContext;
 }
 
-// Called before one contract calls a function or procedure of a different contract
-void QPI::QpiContextFunctionCall::__qpiFreeContextOtherContract() const
+// Called after a contract has run a function or procedure of a different contract or a system procedure
+void QPI::QpiContextFunctionCall::__qpiFreeContext() const
 {
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     contractLocalsStack[_stackIndex].free();
 }
 
+static void addDebugMessageAboutContractStateLockChange(const CHAR16* functionName, unsigned int contractIdxCalling, unsigned int contractIdxToLock, unsigned char entryPoint)
+{
+#if !defined(NDEBUG)
+    CHAR16 dbgMsgBuf[200 + contractCount * 5];
+    setText(dbgMsgBuf, functionName);
+    appendText(dbgMsgBuf, L"(");
+    appendNumber(dbgMsgBuf, contractIdxToLock, FALSE);
+    appendText(dbgMsgBuf, L"), called by contract ");
+    appendNumber(dbgMsgBuf, contractIdxCalling, FALSE);
+    appendText(dbgMsgBuf, (entryPoint == USER_FUNCTION_CALL) ? L" function" : L" procedure");
+    appendText(dbgMsgBuf, L"; initial state: ");
+    for (unsigned int i = 0; i < contractCount; ++i)
+    {
+        int readerLockCount = contractStateLock[i].getCurrentReaderLockCount();
+        if (readerLockCount != 0)
+        {
+            appendNumber(dbgMsgBuf, i, FALSE);
+            appendText(dbgMsgBuf, (readerLockCount > 0) ? L"r " : L"w ");
+        }
+    }
+    addDebugMessage(dbgMsgBuf);
+#endif
+}
+
 // Used to acquire a contract state lock when one contract calls a function of a different contract
 void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int contractIndex) const
 {
+#if !defined(NDEBUG)
+    addDebugMessageAboutContractStateLockChange(L"__qpiAcquireStateForReading", _currentContractIndex, contractIndex, _entryPoint);
+#endif
+
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     ASSERT(contractIndex < contractCount);
-    ASSERT(contractIndex < _currentContractIndex);
+    ASSERT(contractIndex <= _currentContractIndex);
 
     // Add rollback info for this lock to the stack
     auto rollbackInfo = reinterpret_cast<ContractRollbackInfo*>(contractLocalsStack[_stackIndex].allocateSpecial(sizeof(ContractRollbackInfo)));
     rollbackInfo->contractIndex = contractIndex;
 
-    if (contractCallbacksRunning == NoContractCallback)
+    // Default case: no callback is running
+    // -> Contracts can only call contracts with lower index.
+    // -> No deadlock possible, because multiple readers are supported by the lock
+    //    and only contract processor acquires write lock
+    //
+    // A callback may also call a contract with a higher index, making deadlocks possible.
+    // -> Deadlocks with function calls and a procedure running a callback are resolved by stopping the function
+    // -> Procedures may already have acquired write lock of a state before
+
+    // Lock depending on cases
+    if (_entryPoint == USER_FUNCTION_CALL)
     {
-        // Default case: no callback is running
-        // -> Contracts can only call contracts with lower index.
-        // -> No deadlock possible, because multiple readers are supported by the lock
-        //    and only contract processor acquires write lock
-        contractStateLock[contractIndex].acquireRead();
-        rollbackInfo->type = ContractRollbackInfo::ContractStateReadLock;
-    }
-    else
-    {
-        // Special case: callback is running
-        // -> Special handling needed to prevent deadlocks
-        if (_entryPoint == USER_FUNCTION_CALL)
+        // Entry point is user function (running in request processor)
+        // -> Default case: either get lock immediately or retry as long as no callback is running
+        BEGIN_WAIT_WHILE(!contractStateLock[contractIndex].tryAcquireRead())
         {
-            // Entry point is user function (running in request processor)
-            if (!contractStateLock[contractIndex].tryAcquireRead())
+            if (contractCallbacksRunning != NoContractCallback)
             {
-                // Waiting for this lock may cause a deadlock
-                // -> This is low priority and should be stopped to prevent potential deadlocks
+                // Special case: callback is running
+                // -> Waiting for this lock may cause a deadlock
+                // -> Contract function is low priority and is stopped to prevent potential deadlocks
                 contractLocalsStack[_stackIndex].free();
                 __qpiAbort(ContractErrorStoppedToResolveDeadlock);
             }
         }
+        END_WAIT_WHILE();
+        rollbackInfo->type = ContractRollbackInfo::ContractStateReadLock;
+    }
+    else
+    {
+        // Entry point is procedure (running in contract processor)
+        //
+        // If running in a callback, the current contract can call a contract of any index and the state may be already
+        // locked for writing!
+        //    For example:
+        //      1. Contract C2 invokes a C1 procedure (C2 and C1 states locked for writing)
+        //      2. Contract C1 runs qpi.releaseShares(), which needs to call the PRE_ACQUIRE_SHARES
+        //         callback of C1.
+        //      3. C1 then calls a function of C2. For this, it tries to acquire a read lock of
+        //         C2's state, ending up here.
+        // -> Because we know that this runs within a procedure entry point, we only have one
+        //    processor running procedures, and a function can never call a procedure, we know that:
+        //      1. all write locks are owned by contract processor (running this) and
+        //      2. all read locks are owned by request processors (other processors).
+        if (contractCallbacksRunning != NoContractCallback
+            && contractStateLock[contractIndex].isLockedForWriting())
+        {
+            // already locked by this processor
+            // -> signal situation for corresponding __qpiReleaseStateForReading()
+            // -> give read access to state without further ado
+            rollbackInfo->type = ContractRollbackInfo::ContractStateReuseLock;
+        }
         else
         {
-            // Entry point is procedure (running in contract processor)
-            // -> Contract can call contract of any index and state may be already locked for writing!
-            //    For example:
-            //      1. Contract C2 invokes a C1 procedure (C2 and C1 states locked for writing)
-            //      2. Contract C1 runs qpi.releaseShares(), which needs to call the PRE_ACQUIRE_SHARES
-            //         callback of C1.
-            //      3. C1 then calls a function of C2. For this, it tries to acquire a read lock of
-            //         C2's state, ending up here.
-            // -> Because we know that this runs within a procedure entry point, we only have one
-            //    processor running procedures, and a function can never call a procedure, we know that:
-            //      1. all write locks are owned by contract processor (running this) and
-            //      2. all read locks are owned by request processors (other processors).
-            if (contractStateLock[contractIndex].isLockedForWriting())
-            {
-                // already locked by this processor
-                // -> signal situation for corresponding __qpiReleaseStateForReading()
-                // -> give read access to state without further ado
-                rollbackInfo->type = ContractRollbackInfo::ContractStateReuseLock;
-            }
-            else
-            {
-                // not locked or already locked by a request processor for reading (contract function)
-                // -> acquire lock as usual
-                // -> if there is a deadlock with a request processor, the following acquireRead()
-                //    needs to wait until it gets resolved by stopping the request processor
-                contractStateLock[contractIndex].acquireRead();
-                rollbackInfo->type = ContractRollbackInfo::ContractStateReadLock;
-            }
+            // Cases:
+            // - no callback running or
+            // - state not locked or
+            // - already locked by a request processor for reading (contract function)
+            //
+            // -> acquire lock as usual
+            // -> if there is a deadlock with a request processor, the following acquireRead()
+            //    needs to wait until it gets resolved by stopping the request processor
+            contractStateLock[contractIndex].acquireRead();
+            rollbackInfo->type = ContractRollbackInfo::ContractStateReadLock;
         }
     }
 
@@ -412,9 +470,13 @@ void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int cont
 // Used to release a contract state lock when one contract calls a function of a different contract
 void QPI::QpiContextFunctionCall::__qpiReleaseStateForReading(unsigned int contractIndex) const
 {
+#if !defined(NDEBUG)
+    addDebugMessageAboutContractStateLockChange(L"__qpiReleaseStateForReading", _currentContractIndex, contractIndex, _entryPoint);
+#endif
+
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     ASSERT(contractIndex < contractCount);
-    ASSERT(contractIndex < _currentContractIndex);
+    ASSERT(contractIndex <= _currentContractIndex);
     if (contractCallbacksRunning == NoContractCallback)
     {
         // Default case: no callback is running
@@ -446,6 +508,10 @@ void QPI::QpiContextFunctionCall::__qpiReleaseStateForReading(unsigned int contr
 // Used to acquire a contract state lock when one contract calls a procedure of a different contract
 void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int contractIndex) const
 {
+#if !defined(NDEBUG)
+    addDebugMessageAboutContractStateLockChange(L"__qpiAcquireStateForWriting", _currentContractIndex, contractIndex, _entryPoint);
+#endif
+
     // Entry point is procedure (running in contract processor), because functions cannot acquire write lock.
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
     ASSERT(contractIndex < contractCount);
@@ -462,6 +528,7 @@ void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int con
         // -> No deadlock possible, because multiple readers are supported by the lock
         //    and only contract processor acquires write lock
         ASSERT(contractIndex < _currentContractIndex);
+        // this needs to be split in a loop considering all cases below, because a deadlock may also happen when the functions is already waiting here
         contractStateLock[contractIndex].acquireWrite();
         rollbackInfo->type = ContractRollbackInfo::ContractStateWriteLock;
     }
@@ -473,7 +540,7 @@ void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int con
         //    For example:
         //      1. Contract C2 invokes a procedure of C1 -> C2 and C1 states are locked for writing
         //      2. Contract C1 runs qpi.releaseShares(), which needs to call the PRE_ACQUIRE_SHARES
-        //         callback of C2 -> __qpiCallSystemProcOfOtherContract() tries to acquire write
+        //         callback of C2 -> __qpiCallSystemProc() tries to acquire write
         //         lock of C2 through __qpiAcquireStateForWriting()
         // -> Because we know that this runs within a procedure entry point, we only have one
         //    processor running procedures, and a function can never call a procedure, we know that:
@@ -503,6 +570,10 @@ void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int con
 // Used to release a contract state lock when one contract calls a procedure of a different contract
 void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int contractIndex) const
 {
+#if !defined(NDEBUG)
+    addDebugMessageAboutContractStateLockChange(L"__qpiReleaseStateForWriting", _currentContractIndex, contractIndex, _entryPoint);
+#endif
+
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
     ASSERT(contractIndex < contractCount);
@@ -536,9 +607,9 @@ void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int cont
     contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
 }
 
-// Used to call a special system procedure of another contract from within a contract for example in asset management rights transfer
+// Used to run a special system procedure from within a contract for example in asset management rights transfer
 template <unsigned int sysProcId, typename InputType, typename OutputType>
-void QPI::QpiContextProcedureCall::__qpiCallSystemProcOfOtherContract(unsigned int otherContractIndex, InputType& input, OutputType& output, QPI::sint64 invocationReward) const
+void QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContractIndex, InputType& input, OutputType& output, QPI::sint64 invocationReward) const
 {
     // Make sure this function is used with an expected combination of sysProcId, input,
     // and output
@@ -547,74 +618,118 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProcOfOtherContract(unsigned i
         || (sysProcId == PRE_ACQUIRE_SHARES && sizeof(InputType) == sizeof(QPI::PreManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::PreManagementRightsTransfer_output))
         || (sysProcId == POST_RELEASE_SHARES && sizeof(InputType) == sizeof(QPI::PostManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
         || (sysProcId == POST_ACQUIRE_SHARES && sizeof(InputType) == sizeof(QPI::PostManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
-        , "Unsupported __qpiCallSystemProcOfOtherContract() call"
+        || (sysProcId == POST_INCOMING_TRANSFER && sizeof(InputType) == sizeof(QPI::PostIncomingTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
+        , "Unsupported __qpiCallSystemProc() call"
     );
 
     // Check that this internal function is used correctly
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
-    ASSERT(otherContractIndex < contractCount);
-    ASSERT(otherContractIndex != _currentContractIndex);
+    ASSERT(sysProcContractIndex < contractCount);
+    ASSERT(contractStates[sysProcContractIndex] != nullptr);
+    if (sysProcId == PRE_RELEASE_SHARES || sysProcId == PRE_ACQUIRE_SHARES
+        || sysProcId == POST_RELEASE_SHARES || sysProcId == POST_ACQUIRE_SHARES)
+    {
+        ASSERT(sysProcContractIndex != _currentContractIndex);
+    }
 
     // Initialize output with 0
     setMem(&output, sizeof(output), 0);
 
     // Empty procedures lead to null pointer in contractSystemProcedures -> return default output (all zero/false)
-    if (!contractSystemProcedures[otherContractIndex][sysProcId])
+    if (!contractSystemProcedures[sysProcContractIndex][sysProcId])
         return;
 
     // Set flags of callbacks currently running (to prevent deadlocks and nested calling of QPI functions)
     auto contractCallbacksRunningBefore = contractCallbacksRunning;
-    if (sysProcId == PRE_RELEASE_SHARES || sysProcId == PRE_ACQUIRE_SHARES
+    if (sysProcId == POST_INCOMING_TRANSFER)
+    {
+        contractCallbacksRunning |= ContractCallbackPostIncomingTransfer;
+    }
+    else if (sysProcId == PRE_RELEASE_SHARES || sysProcId == PRE_ACQUIRE_SHARES
         || sysProcId == POST_RELEASE_SHARES || sysProcId == POST_ACQUIRE_SHARES)
     {
         contractCallbacksRunning |= ContractCallbackManagementRightsTransfer;
     }
 
-    // Create context for other contract and lock state for writing
-    const QpiContextProcedureCall& otherContractContext = __qpiConstructContextOtherContractProcedureCall(otherContractIndex, invocationReward);
-    void* otherContractState = __qpiAcquireStateForWriting(otherContractIndex);
+    // Create context
+    const QpiContextProcedureCall& context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward);
+
+    // Get state (lock state for writing if other contract)
+    const bool otherContract = sysProcContractIndex != _currentContractIndex;
+    void* state = (otherContract) ? __qpiAcquireStateForWriting(sysProcContractIndex) : contractStates[sysProcContractIndex];
 
     // Alloc locals
-    unsigned short localsSize = contractSystemProcedureLocalsSizes[otherContractIndex][sysProcId];
+    unsigned short localsSize = contractSystemProcedureLocalsSizes[sysProcContractIndex][sysProcId];
     char* localsBuffer = contractLocalsStack[_stackIndex].allocate(localsSize);
     if (!localsBuffer)
         __qpiAbort(ContractErrorAllocLocalsFailed);
     setMem(localsBuffer, localsSize, 0);
 
     // Run procedure
-    contractSystemProcedures[otherContractIndex][sysProcId](otherContractContext, otherContractState, &input, &output, localsBuffer);
+    contractSystemProcedures[sysProcContractIndex][sysProcId](context, state, &input, &output, localsBuffer);
 
-    // Release lock and free context and locals
+    // Cleanup: free locals, release state, and free context
     contractLocalsStack[_stackIndex].free();
-    __qpiReleaseStateForWriting(otherContractIndex);
-    __qpiFreeContextOtherContract();
+    if (otherContract)
+        __qpiReleaseStateForWriting(sysProcContractIndex);
+    __qpiFreeContext();
 
     // Restore flags of callbacks currently running
     contractCallbacksRunning = contractCallbacksRunningBefore;
 }
 
-// Enter endless loop leading to timeout of contractProcessor() and rollback
+// If dest is a contract, notify contract by running system procedure POST_INCOMING_TRANSFER
+void QPI::QpiContextProcedureCall::__qpiNotifyPostIncomingTransfer(const QPI::id& source, const QPI::id& dest, QPI::sint64 amount, QPI::uint8 type) const
+{
+    if (dest.u64._3 != 0 || dest.u64._2 != 0 || dest.u64._3 != 0 || dest.u64._0 >= contractCount || amount <= 0)
+        return;
+
+    unsigned int destContractIndex = static_cast<unsigned int>(dest.u64._0);
+    if (!contractSystemProcedures[destContractIndex][POST_INCOMING_TRANSFER])
+        return;
+
+    QPI::PostIncomingTransfer_input input{ source, amount, type };
+    QPI::NoData output; // output is zeroed in __qpiCallSystemProc
+    __qpiCallSystemProc<POST_INCOMING_TRANSFER>(destContractIndex, input, output, 0);
+}
+
+// Enter endless loop leading to timeout
+// -> TODO: unlock everything in case of function entry point, maybe retry later in case of deadlock handling
+// -> TODO: rollback of contract actions on contractProcessor()
+// -> For critical errors, keep error state (contract is dead)
 void QPI::QpiContextFunctionCall::__qpiAbort(unsigned int errorCode) const
 {
     ASSERT(_currentContractIndex < contractCount);
-    contractError[_currentContractIndex] = errorCode;
 
 #if !defined(NDEBUG)
     CHAR16 dbgMsgBuf[200];
     setText(dbgMsgBuf, L"__qpiAbort() called in tick ");
     appendNumber(dbgMsgBuf, system.tick, FALSE);
-    addDebugMessage(dbgMsgBuf);
-    setText(dbgMsgBuf, L"contractIndex ");
+    appendText(dbgMsgBuf, L", contractIndex ");
     appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
     appendText(dbgMsgBuf, L", errorCode ");
     appendNumber(dbgMsgBuf, errorCode, FALSE);
+    appendText(dbgMsgBuf, (_entryPoint == USER_FUNCTION_CALL) ? L", by user function" : L", by procedure");
     addDebugMessage(dbgMsgBuf);
 #endif
+
+    if (_entryPoint == USER_FUNCTION_CALL)
+    {
+        contractExecutionErrorData[_stackIndex].errorCode = errorCode;
+        LongJump(&contractExecutionErrorData[_stackIndex].longJumpBuffer, 1);
+    }
+    else
+    {
+        // TODO: long jump can be also used for procedures
+        contractError[_currentContractIndex] = errorCode;
+    }
+
     // TODO: How to do error handing in user functions? (request processor has no timeout / respawn)
     //       Caller need to be distinguished here (function may be called from procedure)
 
     // we have to wait for the timeout, because there seems to be no function to stop the processor
     // TODO: we may add a function to CustomStack for directly returning from the runFunction()
+    // Idea: use exception to also release locks with destructors of guard objects?
     while (1)
         _mm_pause();
 }
@@ -667,6 +782,7 @@ void QPI::QpiContextForInit::__registerUserProcedure(USER_PROCEDURE userProcedur
 
 
 // QPI context used to call contract system procedure from qubic core (contract processor)
+// Currently, all system procedures that are run from outside a QpiContext are without invocation reward.
 struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
 {
     QpiContextSystemProcedureCall(unsigned int contractIndex, SystemProcedureID systemProcId) : QPI::QpiContextProcedureCall(contractIndex, NULL_ID, 0, systemProcId)
@@ -674,7 +790,32 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
         contractActionTracker.init();
     }
 
+    // Run system procedure without input and output
     void call()
+    {
+        ASSERT(
+            _entryPoint == INITIALIZE
+            || _entryPoint == BEGIN_EPOCH
+            || _entryPoint == END_EPOCH
+            || _entryPoint == BEGIN_TICK
+            || _entryPoint == END_TICK
+        );
+        QPI::NoData noInOutData;
+        runCall(&noInOutData, &noInOutData);
+    }
+
+    // Run callback system procedure POST_INCOMING_TRANSFER
+    void call(QPI::PostIncomingTransfer_input& input)
+    {
+        ASSERT(_entryPoint == POST_INCOMING_TRANSFER);
+        contractCallbacksRunning = ContractCallbackPostIncomingTransfer;
+        QPI::NoData noOutData;
+        runCall(&input, &noOutData);
+        contractCallbacksRunning = NoContractCallback;
+    }
+
+private:
+    void runCall(void* input, void* output)
     {
         const int systemProcId = _entryPoint;
 
@@ -685,18 +826,6 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
         if (!contractSystemProcedures[_currentContractIndex][systemProcId])
             return;
 
-        // At the moment, all contract called from without a QpiContext are without input, output, and invocation reward.
-        // If this changes in the future, we should add a template overload function call() with passing
-        // the input and output types and instance references as additional parameters. Also, the invocation reward should
-        // be passed as an argument to the constructor.
-        ASSERT(
-            systemProcId == INITIALIZE
-            || systemProcId == BEGIN_EPOCH
-            || systemProcId == END_EPOCH
-            || systemProcId == BEGIN_TICK
-            || systemProcId == END_TICK
-        );
-        QPI::NoData noInOutData;
         // reserve resources for this processor (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
@@ -705,7 +834,8 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
         if (localsSize == sizeof(QPI::NoData))
         {
             // no locals -> call
-            contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], &noInOutData, &noInOutData, &noInOutData);
+            QPI::NoData locals;
+            contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], input, output, &locals);
         }
         else
         {
@@ -717,7 +847,7 @@ struct QpiContextSystemProcedureCall : public QPI::QpiContextProcedureCall
             setMem(localsBuffer, localsSize, 0);
 
             // call system proc
-            contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], &noInOutData, &noInOutData, localsBuffer);
+            contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], input, output, localsBuffer);
 
             // free data on stack and release stack
             contractLocalsStack[_stackIndex].free();
@@ -862,8 +992,8 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         freeBuffer();
     }
 
-    // call function
-    void call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
+    // call function and return error code ContractError (output is invalid if != NoContractError)
+    unsigned int call(unsigned short inputType, const void* inputPtr, unsigned short inputSize)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[300];
@@ -929,8 +1059,27 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         copyMem(inputBuffer, inputPtr, inputSize);
         setMem(outputBuffer, outputSize + localsSize, 0);
 
+        // set error handler for canceling
+        contractExecutionErrorData[_stackIndex].errorCode = NoContractError;
+        if (SetJump(&contractExecutionErrorData[_stackIndex].longJumpBuffer) > 0)
+        {
+            // error handling code (long jump returns to here from somewhere inside the call of
+            // contractUserFunctions() below)
+            unsigned int errorCode = contractExecutionErrorData[_stackIndex].errorCode;
+
+            // release all locks using stack unwinding
+            rollbackContractFunctionCall(_stackIndex);
+            ASSERT(contractLocalsStack[_stackIndex].size() == 0);
+
+            // release stack
+            releaseContractLocalsStack(_stackIndex);
+
+            // return error code, allowing to handle error, for example retry later
+            return errorCode;
+        }
+
         // acquire lock of contract state for reading (may block)
-        contractStateLock[_currentContractIndex].acquireRead();
+        __qpiAcquireStateForReading(_currentContractIndex);
 
         // run function
         const unsigned long long startTick = __rdtsc();
@@ -938,7 +1087,9 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
 
         // release lock of contract state
-        contractStateLock[_currentContractIndex].releaseRead();
+        __qpiReleaseStateForReading(_currentContractIndex);
+
+        return NoContractError;
     }
 
     // free buffer after output has been copied
@@ -951,7 +1102,7 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         contractLocalsStack[_stackIndex].free();
         ASSERT(contractLocalsStack[_stackIndex].size() == 0);
 
-        // release locks
+        // release stack
         releaseContractLocalsStack(_stackIndex);
     }
 };
