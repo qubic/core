@@ -118,6 +118,42 @@ private:
     struct get_asset_balance_locals {
     };
 
+    // Get Voter Balance Helper
+    struct get_voter_balance_input {
+        uint64 poll_idx;
+        id address;
+    };
+    struct get_voter_balance_output {
+        uint64 balance;
+    };
+    struct get_voter_balance_locals {
+        uint64 poll_type;
+        uint64 balance;
+        uint64 max_balance;
+        uint64 asset_idx;
+        Asset current_asset;
+        get_qubic_balance_input gqb_input;
+        get_qubic_balance_output gqb_output;
+        get_qubic_balance_locals gqb_locals;
+        get_asset_balance_input gab_input;
+        get_asset_balance_output gab_output;
+        get_asset_balance_locals gab_locals;
+    };
+
+    // Swap Voter to the end of the array helper
+    struct swap_voter_to_end_input {
+        uint64 poll_idx;
+        uint64 i;
+        uint64 end_idx;
+    };
+    struct swap_voter_to_end_output {
+    };
+    struct swap_voter_to_end_locals {
+        uint64 voter_index_i;
+        uint64 voter_index_end;
+        Voter temp_voter;
+    };
+
 public:
     /**************************************/
     /********INPUT AND OUTPUT STRUCTS******/
@@ -173,7 +209,7 @@ public:
     struct CreatePoll_input
     {
         id poll_name;
-        uint64 poll_type;
+        uint64 poll_type; // POLL_TYPE_QUBIC or POLL_TYPE_ASSET
         uint64 min_amount; // Minimum Qubic/asset amount
         Array<uint8, 256> github_link; // GitHub link
         Array<Asset, MAX_ASSETS_PER_POLL> allowed_assets; // List of allowed assets for POLL_TYPE_ASSET
@@ -214,18 +250,18 @@ public:
         custom_mod_input cm_input;
         custom_mod_output cm_output;
         custom_mod_locals cm_locals;
-        get_qubic_balance_input gqb_input;
-        get_qubic_balance_output gqb_output;
-        get_qubic_balance_locals gqb_locals;
-        get_asset_balance_input gab_input;
-        get_asset_balance_output gab_output;
-        get_asset_balance_locals gab_locals;
+        get_voter_balance_input gvb_input;
+        get_voter_balance_output gvb_output;
+        get_voter_balance_locals gvb_locals;
+        swap_voter_to_end_input sve_input;
+        swap_voter_to_end_output sve_output;
+        swap_voter_to_end_locals sve_locals;
         uint64 i;
         uint64 voter_index;
-        Asset current_asset;
-        uint64 current_balance;
-        bit found;
-        uint64 asset_idx;
+        Voter temp_voter;
+        uint64 real_vote;
+        uint64 end_idx;
+        uint64 max_balance;
     };
 
     struct GetCurrentResult_input
@@ -240,24 +276,13 @@ public:
     {
         uint64 idx;
         uint64 poll_type;
-        uint64 balance;
         uint64 effective_amount;
         Voter voter;
         custom_mod_input cm_input;
         custom_mod_output cm_output;
         custom_mod_locals cm_locals;
-        get_qubic_balance_input gqb_input;
-        get_qubic_balance_output gqb_output;
-        get_qubic_balance_locals gqb_locals;
-        get_asset_balance_input gab_input;
-        get_asset_balance_output gab_output;
-        get_asset_balance_locals gab_locals;
         uint64 i;
         uint64 voter_index;
-        Asset current_asset;
-        uint64 max_balance;
-        uint64 current_balance;
-        uint64 asset_idx;
     };
 
     struct GetPollsByCreator_input
@@ -314,6 +339,43 @@ public:
     PRIVATE_FUNCTION_WITH_LOCALS(get_asset_balance)
     {
         output.balance = qpi.numberOfShares(input.asset, AssetOwnershipSelect::byOwner(input.address), AssetPossessionSelect::byPossessor(input.address));
+    }
+
+    PRIVATE_FUNCTION_WITH_LOCALS(get_voter_balance)
+    {
+        output.balance = 0;
+        locals.poll_type = state.polls.get(input.poll_idx).poll_type;
+        if (locals.poll_type == POLL_TYPE_QUBIC)
+        {
+            locals.gqb_input.address = input.address;
+            get_qubic_balance(qpi, state, locals.gqb_input, locals.gqb_output, locals.gqb_locals);
+            output.balance = locals.gqb_output.balance;
+        }
+        else if (locals.poll_type == POLL_TYPE_ASSET)
+        {
+            locals.max_balance = 0;
+            for (locals.asset_idx = 0; locals.asset_idx < state.polls.get(input.poll_idx).num_assets; locals.asset_idx++)
+            {
+                locals.current_asset = state.polls.get(input.poll_idx).allowed_assets.get(locals.asset_idx);
+                locals.gab_input.address = input.address;
+                locals.gab_input.asset = locals.current_asset;
+                get_asset_balance(qpi, state, locals.gab_input, locals.gab_output, locals.gab_locals);
+                if (locals.gab_output.balance > locals.max_balance)
+                {
+                    locals.max_balance = locals.gab_output.balance;
+                }
+            }
+            output.balance = locals.max_balance;
+        }
+    }
+
+    PRIVATE_FUNCTION_WITH_LOCALS(swap_voter_to_end)
+    {
+        locals.voter_index_i = calculate_voter_index(input.poll_idx, input.i);
+        locals.voter_index_end = calculate_voter_index(input.poll_idx, input.end_idx);
+        locals.temp_voter = state.voters.get(locals.voter_index_i);
+        state.voters.set(locals.voter_index_i, state.voters.get(locals.voter_index_end));
+        state.voters.set(locals.voter_index_end, locals.temp_voter);
     }
 
     // Calculate Voter Index
@@ -708,38 +770,18 @@ public:
             return;
         }
         locals.poll_type = state.polls.get(locals.idx).poll_type;
-        if (locals.poll_type == POLL_TYPE_QUBIC)
+
+        // Fetch voter balance using helper function
+        locals.gvb_input.poll_idx = locals.idx;
+        locals.gvb_input.address = input.address;
+        get_voter_balance(qpi, state, locals.gvb_input, locals.gvb_output, locals.gvb_locals);
+        locals.max_balance = locals.gvb_output.balance;
+
+        if (locals.max_balance < state.polls.get(locals.idx).min_amount)
         {
-            locals.gqb_input.address = input.address;
-            get_qubic_balance(qpi, state, locals.gqb_input, locals.gqb_output, locals.gqb_locals);
-            locals.balance = locals.gqb_output.balance;
-            if (locals.balance < state.polls.get(locals.idx).min_amount)
-            {
-                return;
-            }
+            return;
         }
-        else if (locals.poll_type == POLL_TYPE_ASSET)
-        {
-            locals.found = false;
-            for (locals.asset_idx = 0; locals.asset_idx < state.polls.get(locals.idx).num_assets; locals.asset_idx++)
-            {
-                locals.current_asset = state.polls.get(locals.idx).allowed_assets.get(locals.asset_idx);
-                locals.gab_input.address = input.address;
-                locals.gab_input.asset = locals.current_asset;
-                get_asset_balance(qpi, state, locals.gab_input, locals.gab_output, locals.gab_locals);
-                locals.current_balance = locals.gab_output.balance;
-                if (locals.current_balance >= state.polls.get(locals.idx).min_amount)
-                {
-                    locals.found = true;
-                    break;
-                }
-            }
-            if (!locals.found)
-            {
-                return;
-            }
-        }
-        else
+        if (locals.max_balance < input.amount)
         {
             return;
         }
@@ -757,7 +799,7 @@ public:
                 // Update existing voter
                 state.voters.set(locals.voter_index, Voter{ input.address, input.amount, input.chosen_option });
                 output.success = true;
-                return;
+                break;
             }
             else if (state.voters.get(locals.voter_index).address == NULL_ID)
             {
@@ -765,9 +807,82 @@ public:
                 state.voters.set(locals.voter_index, Voter{ input.address, input.amount, input.chosen_option });
                 state.voter_counts.set(locals.idx, state.voter_counts.get(locals.idx) + 1);
                 output.success = true;
-                return;
+                break;
             }
         }
+
+        if (!output.success)
+        {
+            return;
+        }
+
+        // Update voter balances and compact the voter list
+        locals.real_vote = 0;
+        locals.end_idx = state.voter_counts.get(locals.idx) - 1;
+
+        for (locals.i = 0; locals.i <= locals.end_idx; locals.i++)
+        {
+            locals.voter_index = calculate_voter_index(locals.idx, locals.i);
+            locals.temp_voter = state.voters.get(locals.voter_index);
+            if (locals.temp_voter.address == NULL_ID)
+            {
+                // Swap with the last valid voter
+                while (locals.end_idx > locals.i && state.voters.get(calculate_voter_index(locals.idx, locals.end_idx)).address == NULL_ID)
+                {
+                    locals.end_idx--;
+                }
+                if (locals.end_idx > locals.i)
+                {
+                    locals.sve_input.poll_idx = locals.idx;
+                    locals.sve_input.i = locals.i;
+                    locals.sve_input.end_idx = locals.end_idx;
+                    swap_voter_to_end(qpi, state, locals.sve_input, locals.sve_output, locals.sve_locals);
+                    locals.end_idx--;
+                    locals.temp_voter = state.voters.get(locals.voter_index);
+                }
+                else
+                {
+                    continue;
+                }
+            }
+
+            // Update voter balance
+            if (locals.temp_voter.address != NULL_ID)
+            {
+                locals.gvb_input.poll_idx = locals.idx;
+                locals.gvb_input.address = locals.temp_voter.address;
+                get_voter_balance(qpi, state, locals.gvb_input, locals.gvb_output, locals.gvb_locals);
+                locals.max_balance = locals.gvb_output.balance;
+
+                if (locals.max_balance < state.polls.get(locals.idx).min_amount)
+                {
+                    // Mark as invalid by setting address to NULL_ID
+                    state.voters.set(locals.voter_index, Voter{ NULL_ID, 0, 0 });
+                    // Swap with the last valid voter
+                    while (locals.end_idx > locals.i && state.voters.get(calculate_voter_index(locals.idx, locals.end_idx)).address == NULL_ID)
+                    {
+                        locals.end_idx--;
+                    }
+                    if (locals.end_idx > locals.i)
+                    {
+                        locals.sve_input.poll_idx = locals.idx;
+                        locals.sve_input.i = locals.i;
+                        locals.sve_input.end_idx = locals.end_idx;
+                        swap_voter_to_end(qpi, state, locals.sve_input, locals.sve_output, locals.sve_locals);
+                        locals.end_idx--;
+                    }
+                }
+                else
+                {
+                    locals.temp_voter.amount = locals.max_balance < locals.temp_voter.amount ? locals.max_balance : locals.temp_voter.amount;
+                    state.voters.set(locals.voter_index, locals.temp_voter);
+                    locals.real_vote++;
+                }
+            }
+        }
+
+        // Update voter count
+        state.voter_counts.set(locals.idx, locals.real_vote);
     }
 
     /**
@@ -783,46 +898,13 @@ public:
         {
             return;
         }
-        locals.poll_type = state.polls.get(locals.idx).poll_type;
         for (locals.i = 0; locals.i < state.voter_counts.get(locals.idx); locals.i++)
         {
             locals.voter_index = calculate_voter_index(locals.idx, locals.i);
             locals.voter = state.voters.get(locals.voter_index);
-            if (locals.voter.address == NULL_ID)
+            if (locals.voter.address != NULL_ID && locals.voter.chosen_option < MAX_OPTIONS)
             {
-                continue;  // Skip empty slots
-            }
-            if (locals.poll_type == POLL_TYPE_QUBIC)
-            {
-                locals.gqb_input.address = locals.voter.address;
-                get_qubic_balance(qpi, state, locals.gqb_input, locals.gqb_output, locals.gqb_locals);
-                locals.balance = locals.gqb_output.balance;
-                locals.effective_amount = (locals.balance < locals.voter.amount) ? locals.balance : locals.voter.amount;
-            }
-            else if (locals.poll_type == POLL_TYPE_ASSET)
-            {
-                locals.max_balance = 0;
-                for (locals.asset_idx = 0; locals.asset_idx < state.polls.get(locals.idx).num_assets; locals.asset_idx++)
-                {
-                    locals.current_asset = state.polls.get(locals.idx).allowed_assets.get(locals.asset_idx);
-                    locals.gab_input.address = locals.voter.address;
-                    locals.gab_input.asset = locals.current_asset;
-                    get_asset_balance(qpi, state, locals.gab_input, locals.gab_output, locals.gab_locals);
-                    locals.current_balance = locals.gab_output.balance;
-                    if (locals.current_balance > locals.max_balance)
-                    {
-                        locals.max_balance = locals.current_balance;
-                    }
-                }
-                locals.effective_amount = (locals.max_balance < locals.voter.amount) ? locals.max_balance : locals.voter.amount;
-            }
-            else
-            {
-                continue;
-            }
-            if (locals.voter.chosen_option < MAX_OPTIONS)
-            {
-                output.result.set(locals.voter.chosen_option, output.result.get(locals.voter.chosen_option) + locals.effective_amount);
+                output.result.set(locals.voter.chosen_option, output.result.get(locals.voter.chosen_option) + locals.voter.amount);
             }
         }
     }
