@@ -270,7 +270,8 @@ public:
     };
     struct GetCurrentResult_output
     {
-        Array<uint64, MAX_OPTIONS> result;
+        Array<uint64, MAX_OPTIONS> result;  // Total voting power for each option
+        Array<uint64, MAX_OPTIONS> voter_count;  // Number of voters for each option
     };
     struct GetCurrentResult_locals
     {
@@ -369,7 +370,7 @@ public:
         }
     }
 
-    PRIVATE_FUNCTION_WITH_LOCALS(swap_voter_to_end)
+    PRIVATE_PROCEDURE_WITH_LOCALS(swap_voter_to_end)
     {
         locals.voter_index_i = calculate_voter_index(input.poll_idx, input.i);
         locals.voter_index_end = calculate_voter_index(input.poll_idx, input.end_idx);
@@ -905,6 +906,7 @@ public:
             if (locals.voter.address != NULL_ID && locals.voter.chosen_option < MAX_OPTIONS)
             {
                 output.result.set(locals.voter.chosen_option, output.result.get(locals.voter.chosen_option) + locals.voter.amount);
+                output.voter_count.set(locals.voter.chosen_option, output.voter_count.get(locals.voter.chosen_option) + 1);
             }
         }
     }
