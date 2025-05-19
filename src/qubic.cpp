@@ -236,7 +236,7 @@ struct
 static bool saveComputer(CHAR16* directory = NULL);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
-static bool saveCustomMiningRevenue(CHAR16* directory = NULL);
+static bool saveRevenueComponents(CHAR16* directory = NULL);
 
 #if ENABLED_LOGGING
 #define PAUSE_BEFORE_CLEAR_MEMORY 1 // Requiring operators to press F10 to clear memory (before switching epoch)
@@ -4977,7 +4977,7 @@ static void tickProcessor(void*)
                                     endEpoch();
 
                                     // Save the file of revenue. This blocking save can be called from any thread
-                                    saveCustomMiningRevenue(NULL);
+                                    saveRevenueComponents(NULL);
 
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;
@@ -5158,7 +5158,7 @@ static bool saveSystem(CHAR16* directory)
     return false;
 }
 
-static bool saveCustomMiningRevenue(CHAR16* directory)
+static bool saveRevenueComponents(CHAR16* directory)
 {
     CHAR16* fn = CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME;
     long long savedSize = asyncSave(fn, sizeof(gRevenueComponents), (unsigned char*)&gRevenueComponents, directory);
