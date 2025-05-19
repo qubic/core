@@ -158,8 +158,7 @@ TEST(TestCore256BitFunctionsIntrinsicType, isZero) {
     EXPECT_FALSE(isZero(m256i(0, 1, 0, 0).m256i_intr()));
     EXPECT_FALSE(isZero(m256i(0, 0, 1, 0).m256i_intr()));
     EXPECT_FALSE(isZero(m256i(0, 0, 0, 1).m256i_intr()));
-    // Invalid test case, due to type conversion from signed long long to unsigned long long 
-    // EXPECT_FALSE(isZero(m256i(-1, -1, -1, -1).m256i_intr()));
+    EXPECT_FALSE(isZero(m256i(0xffffffffffffffff,0xffffffffffffffff,0xffffffffffffffff,0xffffffffffffffff).m256i_intr()));
 }
 
 TEST(TestCore256BitFunctionsIntrinsicType, isZeroPerformance)
