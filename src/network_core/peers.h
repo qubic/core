@@ -56,13 +56,43 @@ struct Peer
     BOOLEAN isIncommingConnection;
 
     // Extra data to determine if this peer is a fullnode
-    // Note: an **active fullnode** is a peer that is able to transmit valid tick data, tick vote to this node recently
+    // Note: an **active fullnode** is a peer that is able to reply valid tick data, tick vote to this node after getting requested
     // If a peer is an active fullnode, it will receive more requests from this node than others, as well as longer alive connection time.
     // Here we also consider relayer as a fullnode (as long as it transmits new&valid tick data)
+    static constexpr unsigned int dejavuListSize = 32;
+    unsigned int trackRequestedDejavu[dejavuListSize];
+    unsigned int trackRequestedTick[dejavuListSize];
+    long trackRequestedCounter; // "long" to discard warning from intrin.h
     unsigned int lastActiveTick; // indicate the tick number that this peer transfer valid tick/vote data
+
     bool isFullNode() const
     {
         return (lastActiveTick >= system.tick - 100);
+    }
+
+    // store a dejavu number into local list
+    void trackDejavu(unsigned int dejavu)
+    {
+        if (!dejavu) return;
+        long index = _InterlockedIncrement(&trackRequestedCounter);
+        index %= dejavuListSize;
+        trackRequestedDejavu[index] = dejavu;
+        trackRequestedTick[index] = system.tick;
+    }
+
+    // check if dejavu is inside local list
+    // if found, return the tick when the request (with dejavu) was sent
+    unsigned int getDejavuTick(unsigned int dejavu)
+    {
+        if (!dejavu) return 0; // no check for 0 dejavu
+        for (int i = 0; i < dejavuListSize; i++)
+        {
+            if (dejavu == trackRequestedDejavu[i])
+            {
+                return trackRequestedTick[i];
+            }
+        }
+        return 0;
     }
 
     // set handler to null and all params to false/zeroes
@@ -78,6 +108,9 @@ struct Peer
         isIncommingConnection = FALSE;
         dataToTransmitSize = 0;
         lastActiveTick = 0;
+        trackRequestedCounter = 0;
+        setMem(trackRequestedTick, sizeof(trackRequestedTick), 0);
+        setMem(trackRequestedDejavu, sizeof(trackRequestedDejavu), 0);
     }
 };
 
@@ -212,7 +245,7 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
             // Add message to buffer
             copyMem(&peer->dataToTransmit[peer->dataToTransmitSize], requestResponseHeader, requestResponseHeader->size());
             peer->dataToTransmitSize += requestResponseHeader->size();
-
+            peer->trackDejavu(requestResponseHeader->dejavu());
             _InterlockedIncrement64(&numberOfDisseminatedRequests);
         }
     }
