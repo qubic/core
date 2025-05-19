@@ -3394,7 +3394,7 @@ static void endEpoch()
                 gRevenueComponents.txScore[i] = revenueScore[i];
                 gRevenueComponents.customMiningScore[i] = gCustomMiningSharesCounter.getSharesCount(i);
             }
-            computeReveneue(
+            computeRevenue(
                 gRevenueComponents.txScore,
                 gRevenueComponents.voteScore,
                 gRevenueComponents.customMiningScore,

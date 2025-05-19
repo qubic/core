@@ -109,7 +109,7 @@ static void computeRevFactor(
     }
 }
 
-static void computeReveneue(
+static void computeRevenue(
     const unsigned long long* txScore,
     const unsigned long long* voteScore,
     const unsigned long long* customMiningScore,

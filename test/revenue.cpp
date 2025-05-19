@@ -201,7 +201,7 @@ TEST(TestCoreRevenue, ReadFile)
         infile.close();
 
         // Start to compute and write out data
-        computeReveneue(tx, votes, customMining, revenue);
+        computeRevenue(tx, votes, customMining, revenue);
 
         // Write the data out for investigation
         // Open output file in text mode
