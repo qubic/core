@@ -3394,6 +3394,11 @@ static void endEpoch()
                 gRevenueScoreWithCustomMining.txScore[i] = revenueScore[i];
                 gRevenueScoreWithCustomMining.customMiningScore[i] = gCustomMiningSharesCounter.getSharesCount(i);
             }
+            computeReveneue(
+                gRevenueScoreWithCustomMining.txScore,
+                gRevenueScoreWithCustomMining.voteScore,
+                gRevenueScoreWithCustomMining.customMiningScore,
+                gRevenueScoreWithCustomMining.revenue);
         }
 
 
@@ -3465,6 +3470,8 @@ static void endEpoch()
         {
             // Compute initial computor revenue, reducing arbitrator revenue
             long long revenue;
+
+#if USE_CONSERVATIVE_REV_FOLMULA
             if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
                 revenue = issuancePerComputor;
             else
@@ -3481,6 +3488,9 @@ static void endEpoch()
                     revenue = ((issuancePerComputor * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
                 }
             }
+#else
+            revenue = gRevenueScoreWithCustomMining.revenue[computorIndex];
+#endif
             arbitratorRevenue -= revenue;
 
             // Saving the data
