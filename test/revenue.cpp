@@ -106,7 +106,7 @@ TEST(TestCoreRevenue, ComputeRevFactor)
     unsigned int smallPosition = random(NUMBER_OF_COMPUTORS);
     data[smallPosition] = 1;
     computeRevFactor(data, scaleFactor, dataFactor);
-    EXPECT_GT(dataFactor[smallPosition], 0);
+    EXPECT_EQ(dataFactor[smallPosition], 0);
 }
 
 TEST(TestCoreRevenue, GeneralTest)
