@@ -25,7 +25,7 @@ iteration:
         if (assets[universeIndex].varStruct.issuance.type == ISSUANCE
             && assets[universeIndex].varStruct.issuance.publicKey == request->publicKey)
         {
-            bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(AssetRecord));
+            copyMem(&response.asset, &assets[universeIndex], sizeof(AssetRecord));
             response.tick = system.tick;
             response.universeIndex = universeIndex;
             getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
@@ -62,8 +62,8 @@ iteration:
         if (assets[universeIndex].varStruct.issuance.type == OWNERSHIP
             && assets[universeIndex].varStruct.issuance.publicKey == request->publicKey)
         {
-            bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(AssetRecord));
-            bs->CopyMem(&response.issuanceAsset, &assets[assets[universeIndex].varStruct.ownership.issuanceIndex], sizeof(AssetRecord));
+            copyMem(&response.asset, &assets[universeIndex], sizeof(AssetRecord));
+            copyMem(&response.issuanceAsset, &assets[assets[universeIndex].varStruct.ownership.issuanceIndex], sizeof(AssetRecord));
             response.tick = system.tick;
             response.universeIndex = universeIndex;
             getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
@@ -100,9 +100,9 @@ iteration:
         if (assets[universeIndex].varStruct.issuance.type == POSSESSION
             && assets[universeIndex].varStruct.issuance.publicKey == request->publicKey)
         {
-            bs->CopyMem(&response.asset, &assets[universeIndex], sizeof(AssetRecord));
-            bs->CopyMem(&response.ownershipAsset, &assets[assets[universeIndex].varStruct.possession.ownershipIndex], sizeof(AssetRecord));
-            bs->CopyMem(&response.issuanceAsset, &assets[assets[assets[universeIndex].varStruct.possession.ownershipIndex].varStruct.ownership.issuanceIndex], sizeof(AssetRecord));
+            copyMem(&response.asset, &assets[universeIndex], sizeof(AssetRecord));
+            copyMem(&response.ownershipAsset, &assets[assets[universeIndex].varStruct.possession.ownershipIndex], sizeof(AssetRecord));
+            copyMem(&response.issuanceAsset, &assets[assets[assets[universeIndex].varStruct.possession.ownershipIndex].varStruct.ownership.issuanceIndex], sizeof(AssetRecord));
             response.tick = system.tick;
             response.universeIndex = universeIndex;
             getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);

@@ -76,3 +76,6 @@ public:
 #define ATOMIC_INC64(target) _InterlockedIncrement64(&target)
 #define ATOMIC_AND64(target, val) _InterlockedAnd64(&target, val)
 #define ATOMIC_STORE64(target, val) _InterlockedExchange64(&target, val)
+#define ATOMIC_LOAD64(target) _InterlockedCompareExchange64(&target, 0, 0)
+#define ATOMIC_ADD64(target, val) _InterlockedExchangeAdd64(&target, val)
+#define ATOMIC_MAX64(target, val) atomicMax64(&target, val)

@@ -457,7 +457,7 @@ static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int so
 {
     PROFILE_SCOPE();
 
-    if (numberOfShares <= 0 || isZero(destinationPublicKey))
+    if (numberOfShares <= 0)
     {
         return false;
     }
@@ -467,6 +467,8 @@ static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int so
         ACQUIRE(universeLock);
     }
 
+    ASSERT(sourceOwnershipIndex >= 0 && sourceOwnershipIndex < ASSETS_CAPACITY);
+    ASSERT(sourcePossessionIndex >= 0 && sourcePossessionIndex < ASSETS_CAPACITY);
     if (assets[sourceOwnershipIndex].varStruct.ownership.type != OWNERSHIP || assets[sourceOwnershipIndex].varStruct.ownership.numberOfShares < numberOfShares
         || assets[sourcePossessionIndex].varStruct.possession.type != POSSESSION || assets[sourcePossessionIndex].varStruct.possession.numberOfShares < numberOfShares
         || assets[sourcePossessionIndex].varStruct.possession.ownershipIndex != sourceOwnershipIndex)
@@ -479,6 +481,61 @@ static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int so
         return false;
     }
 
+    // Special case: all-zero destination means burning shares
+    if (isZero(destinationPublicKey))
+    {
+        // Don't allow burning of contract shares
+        const unsigned int issuanceIndex = assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex;
+        ASSERT(issuanceIndex < ASSETS_CAPACITY);
+        const auto& issuance = assets[issuanceIndex].varStruct.issuance;
+        ASSERT(issuance.type == ISSUANCE);
+        if (isZero(issuance.publicKey))
+        {
+            if (lock)
+            {
+                RELEASE(universeLock);
+            }
+
+            return false;
+        }
+
+        // Burn by subtracting shares from source records
+        assets[sourceOwnershipIndex].varStruct.ownership.numberOfShares -= numberOfShares;
+        assets[sourcePossessionIndex].varStruct.possession.numberOfShares -= numberOfShares;
+        assetChangeFlags[sourceOwnershipIndex >> 6] |= (1ULL << (sourceOwnershipIndex & 63));
+        assetChangeFlags[sourcePossessionIndex >> 6] |= (1ULL << (sourcePossessionIndex & 63));
+
+        if (lock)
+        {
+            RELEASE(universeLock);
+        }
+
+        AssetOwnershipChange assetOwnershipChange;
+        assetOwnershipChange.sourcePublicKey = assets[sourceOwnershipIndex].varStruct.ownership.publicKey;
+        assetOwnershipChange.destinationPublicKey = destinationPublicKey;
+        assetOwnershipChange.issuerPublicKey = issuance.publicKey;
+        assetOwnershipChange.numberOfShares = numberOfShares;
+        *((unsigned long long*) & assetOwnershipChange.name) = *((unsigned long long*) & issuance.name); // Order must be preserved!
+        assetOwnershipChange.numberOfDecimalPlaces = issuance.numberOfDecimalPlaces; // Order must be preserved!
+        *((unsigned long long*) & assetOwnershipChange.unitOfMeasurement) = *((unsigned long long*) & issuance.unitOfMeasurement); // Order must be preserved!
+        logger.logAssetOwnershipChange(assetOwnershipChange);
+
+        AssetPossessionChange assetPossessionChange;
+        assetPossessionChange.sourcePublicKey = assets[sourcePossessionIndex].varStruct.possession.publicKey;
+        assetPossessionChange.destinationPublicKey = destinationPublicKey;
+        assetPossessionChange.issuerPublicKey = issuance.publicKey;
+        assetPossessionChange.numberOfShares = numberOfShares;
+        *((unsigned long long*) & assetPossessionChange.name) = *((unsigned long long*) & issuance.name); // Order must be preserved!
+        assetPossessionChange.numberOfDecimalPlaces = issuance.numberOfDecimalPlaces; // Order must be preserved!
+        *((unsigned long long*) & assetPossessionChange.unitOfMeasurement) = *((unsigned long long*) & issuance.unitOfMeasurement); // Order must be preserved!
+        logger.logAssetPossessionChange(assetPossessionChange);
+
+        return true;
+    }
+
+    // Default case: transfer shares to destinationPublicKey
+    ASSERT(destinationOwnershipIndex != nullptr);
+    ASSERT(destinationPossessionIndex != nullptr);
     *destinationOwnershipIndex = destinationPublicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
 iteration:
     if (assets[*destinationOwnershipIndex].varStruct.ownership.type == EMPTY

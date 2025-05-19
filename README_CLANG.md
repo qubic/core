@@ -38,14 +38,18 @@ For a example compilation execute the following commands:
 
     ```bash
     # In your build directory
-    cmake .. -D CMAKE_C_COMPILER=clang -D CMAKE_CXX_COMPILER=clang++ -D BUILD_TESTS:BOOL=ON -D CMAKE_BUILD_TYPE=Debug -D ENABLE_AVX512=ON
+    cmake .. -D CMAKE_C_COMPILER=clang -D CMAKE_CXX_COMPILER=clang++ -D BUILD_TESTS:BOOL=ON -D BUILD_EFI:BOOL=OFF -D CMAKE_BUILD_TYPE=Debug -D ENABLE_AVX512=ON
     ```
 
     There are a few option to set during configuration:
 
 * **`-D BUILD_TESTS=<ON|OFF>`**
     * **Values:** `ON`, `OFF`
-    * **Meaning:** `ON` builds the test suite, `OFF` skips building tests. If `BUILD_TESTS=ON`, the EFI application is **NOT** built.
+    * **Meaning:** `ON` builds the test suite, `OFF` skips building tests.
+
+* **`-D BUILD_EFI=<ON|OFF>`**
+    * **Values:** `ON`, `OFF`
+    * **Meaning:** `ON` builds the EFI file, `OFF` skips building EFI file. Currently this build is not working.
 
 * **`-D CMAKE_BUILD_TYPE=<Type>`**
     * **Values:** `Debug`, `Release`, `RelWithDebInfo`, `MinSizeRel`

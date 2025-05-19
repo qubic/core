@@ -737,11 +737,18 @@ iteration:
                                 if (assets[possessionIndex].varStruct.possession.numberOfShares >= numberOfShares)
                                 {
                                     int destinationOwnershipIndex, destinationPossessionIndex;
-                                    ::transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwnerAndPossessor, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false);
+                                    if (!::transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, newOwnerAndPossessor, numberOfShares, &destinationOwnershipIndex, &destinationPossessionIndex, false))
+                                    {
+                                        RELEASE(universeLock);
 
-                                    RELEASE(universeLock);
+                                        return INVALID_AMOUNT;
+                                    }
+                                    else
+                                    {
+                                        RELEASE(universeLock);
 
-                                    return assets[possessionIndex].varStruct.possession.numberOfShares;
+                                        return assets[possessionIndex].varStruct.possession.numberOfShares;
+                                    }
                                 }
                                 else
                                 {
