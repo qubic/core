@@ -49,10 +49,10 @@ struct Poll {
     id poll_name;
     uint64 poll_type; // POLL_TYPE_QUBIC or POLL_TYPE_ASSET
     uint64 min_amount; // Minimum Qubic/asset amount for eligibility
-    bit is_active;
+    uint64 is_active;
     id creator; // Address that created the poll
     Array<Asset, MAX_ASSETS_PER_POLL> allowed_assets; // List of allowed assets for POLL_TYPE_ASSET
-    uint8 num_assets; // Number of assets in allowed assets
+    uint64 num_assets; // Number of assets in allowed assets
 };
 
 struct Voter {
@@ -213,7 +213,7 @@ public:
         uint64 min_amount; // Minimum Qubic/asset amount
         Array<uint8, 256> github_link; // GitHub link
         Array<Asset, MAX_ASSETS_PER_POLL> allowed_assets; // List of allowed assets for POLL_TYPE_ASSET
-        uint8 num_assets; // Number of assets in allowed_assets
+        uint64 num_assets; // Number of assets in allowed_assets
     };
     struct CreatePoll_output
     {
@@ -727,7 +727,7 @@ public:
         locals.new_poll.poll_name = input.poll_name;
         locals.new_poll.poll_type = input.poll_type;
         locals.new_poll.min_amount = input.min_amount;
-        locals.new_poll.is_active = true;
+        locals.new_poll.is_active = 1;
         locals.new_poll.creator = qpi.invocator();
         locals.new_poll.allowed_assets = input.allowed_assets;
         locals.new_poll.num_assets = input.num_assets;
@@ -766,7 +766,7 @@ public:
         locals.cm_input.b = MAX_POLL;
         custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
         locals.idx = locals.cm_output.result;
-        if (state.poll_ids.get(locals.idx) != input.poll_id || !state.polls.get(locals.idx).is_active)
+        if (state.poll_ids.get(locals.idx) != input.poll_id || state.polls.get(locals.idx).is_active == 0)
         {
             return;
         }
@@ -895,7 +895,7 @@ public:
         locals.cm_input.b = MAX_POLL;
         custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
         locals.idx = locals.cm_output.result;
-        if (state.poll_ids.get(locals.idx) != input.poll_id || !state.polls.get(locals.idx).is_active)
+        if (state.poll_ids.get(locals.idx) != input.poll_id || state.polls.get(locals.idx).is_active == 0)
         {
             return;
         }
@@ -919,7 +919,7 @@ public:
         output.count = 0;
         for (locals.idx = 0; locals.idx < MAX_POLL; locals.idx++)
         {
-            if (state.polls.get(locals.idx).is_active && state.polls.get(locals.idx).creator == input.creator)
+            if (state.polls.get(locals.idx).is_active != 0 && state.polls.get(locals.idx).creator == input.creator)
             {
                 output.poll_ids.set(output.count, state.poll_ids.get(locals.idx));
                 output.count++;
@@ -934,7 +934,7 @@ public:
     {
         for (locals.i = 0; locals.i < MAX_POLL; locals.i++)
         {
-            if (state.polls.get(locals.i).is_active)
+            if (state.polls.get(locals.i).is_active != 0)
             {
                 locals.gcr_input.poll_id = state.poll_ids.get(locals.i);
                 GetCurrentResult(qpi, state, locals.gcr_input, locals.gcr_output, locals.gcr_locals);
@@ -952,7 +952,7 @@ public:
 
                 // Deactivate the poll
                 locals.current_poll = state.polls.get(locals.i);
-                locals.current_poll.is_active = false;
+                locals.current_poll.is_active = 0;
                 state.polls.set(locals.i, locals.current_poll);
             }
         }
