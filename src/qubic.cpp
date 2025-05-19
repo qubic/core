@@ -3390,15 +3390,15 @@ static void endEpoch()
         {
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
-                gRevenueScoreWithCustomMining.voteScore[i] = voteCounter.getVoteCount(i);
-                gRevenueScoreWithCustomMining.txScore[i] = revenueScore[i];
-                gRevenueScoreWithCustomMining.customMiningScore[i] = gCustomMiningSharesCounter.getSharesCount(i);
+                gRevenueComponents.voteScore[i] = voteCounter.getVoteCount(i);
+                gRevenueComponents.txScore[i] = revenueScore[i];
+                gRevenueComponents.customMiningScore[i] = gCustomMiningSharesCounter.getSharesCount(i);
             }
             computeReveneue(
-                gRevenueScoreWithCustomMining.txScore,
-                gRevenueScoreWithCustomMining.voteScore,
-                gRevenueScoreWithCustomMining.customMiningScore,
-                gRevenueScoreWithCustomMining.revenue);
+                gRevenueComponents.txScore,
+                gRevenueComponents.voteScore,
+                gRevenueComponents.customMiningScore,
+                gRevenueComponents.revenue);
         }
 
 
@@ -3489,12 +3489,12 @@ static void endEpoch()
                 }
             }
 #else
-            revenue = gRevenueScoreWithCustomMining.revenue[computorIndex];
+            revenue = gRevenueComponents.revenue[computorIndex];
 #endif
             arbitratorRevenue -= revenue;
 
             // Saving the data
-            gRevenueScoreWithCustomMining.conservativeRevenue[computorIndex] = revenue;
+            gRevenueComponents.conservativeRevenue[computorIndex] = revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
             for (unsigned long long i = 0; i < emissionDist->capacity(); ++i)
@@ -5161,8 +5161,8 @@ static bool saveSystem(CHAR16* directory)
 static bool saveCustomMiningRevenue(CHAR16* directory)
 {
     CHAR16* fn = CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME;
-    long long savedSize = asyncSave(fn, sizeof(gRevenueScoreWithCustomMining), (unsigned char*)&gRevenueScoreWithCustomMining, directory);
-    if (savedSize == sizeof(gRevenueScoreWithCustomMining))
+    long long savedSize = asyncSave(fn, sizeof(gRevenueComponents), (unsigned char*)&gRevenueComponents, directory);
+    if (savedSize == sizeof(gRevenueComponents))
     {
         return true;
     }

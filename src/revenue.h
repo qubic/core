@@ -34,7 +34,7 @@ static_assert(((1ULL << VOTE_COUNTER_NUM_BIT_PER_COMP) - 1)* NUMBER_OF_COMPUTORS
     "Max value of custom mininng score can make score overflow");
 
 
-struct RevenueScore
+struct RevenueComponents
 {
     unsigned long long txScore[NUMBER_OF_COMPUTORS];    // revenue score with txs
     unsigned long long voteScore[NUMBER_OF_COMPUTORS];  // vote count
@@ -46,30 +46,31 @@ struct RevenueScore
 
     long long conservativeRevenue[NUMBER_OF_COMPUTORS];
     long long revenue[NUMBER_OF_COMPUTORS];
-} gRevenueScoreWithCustomMining;
+} gRevenueComponents;
 
-unsigned long long getQuorumScore(const unsigned long long* revenueScore)
+// Get the lower bound that start to separate the QUORUM region of score
+unsigned long long getQuorumScore(const unsigned long long* score)
 {
-    unsigned long long sortedRevenueScore[QUORUM + 1];
+    unsigned long long sortedScore[QUORUM + 1];
     // Sort revenue scores to get lowest score of quorum
-    setMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
+    setMem(sortedScore, sizeof(sortedScore), 0);
     for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
-        sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
+        sortedScore[QUORUM] = score[computorIndex];
         unsigned int i = QUORUM;
         while (i
-            && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
+            && sortedScore[i - 1] < sortedScore[i])
         {
-            const unsigned long long tmp = sortedRevenueScore[i - 1];
-            sortedRevenueScore[i - 1] = sortedRevenueScore[i];
-            sortedRevenueScore[i--] = tmp;
+            const unsigned long long tmp = sortedScore[i - 1];
+            sortedScore[i - 1] = sortedScore[i];
+            sortedScore[i--] = tmp;
         }
     }
-    if (!sortedRevenueScore[QUORUM - 1])
+    if (!sortedScore[QUORUM - 1])
     {
-        sortedRevenueScore[QUORUM - 1] = 1;
+        sortedScore[QUORUM - 1] = 1;
     }
-    return sortedRevenueScore[QUORUM - 1];
+    return sortedScore[QUORUM - 1];
 }
 
 // This function will sort the score take the 450th score at reference score
@@ -77,37 +78,34 @@ unsigned long long getQuorumScore(const unsigned long long* revenueScore)
 // Score is zero will become zero
 // Score lower than this value will be scaled at score * scalingThreshold / value
 static void computeRevFactor(
-    const unsigned long long* revenueScore,
+    const unsigned long long* score,
     const unsigned long long scalingThreshold,
-    unsigned long long* revenueScoreFactor)
+    unsigned long long* outputScoreFactor)
 {
     ASSERT(scalingThreshold > 0);
 
     // Sort revenue scores to get lowest score of quorum
-    unsigned long long quorumScore = getQuorumScore(revenueScore);
+    unsigned long long quorumScore = getQuorumScore(score);
 
     for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
     {
         unsigned long long scoreFactor = 0;
-        if (revenueScore[computorIndex] == 0)
+        if (score[computorIndex] == 0)
         {
             scoreFactor = 0;
         }
-        else if (revenueScore[computorIndex] >= quorumScore)
+        else if (score[computorIndex] >= quorumScore)
         {
             scoreFactor = scalingThreshold;
         }
         else // Lower than QUORUM score.
         {
             // Checking overflow. We don't expect falling
-            ASSERT(0xFFFFFFFFFFFFFFFFULL / scalingThreshold >= revenueScore[computorIndex]);
-
-            scoreFactor = scalingThreshold * revenueScore[computorIndex] / quorumScore;
-            // To small will consider at the smallest point
-            scoreFactor = (scoreFactor == 0) ? 1 : scoreFactor;
+            ASSERT(0xFFFFFFFFFFFFFFFFULL / scalingThreshold >= score[computorIndex]);
+            scoreFactor = scalingThreshold * score[computorIndex] / quorumScore;
         }
 
-        revenueScoreFactor[computorIndex] = scoreFactor;
+        outputScoreFactor[computorIndex] = scoreFactor;
     }
 }
 
@@ -118,16 +116,16 @@ static void computeReveneue(
     long long* revenue = NULL)
 {
     // Transaction score
-    copyMem(gRevenueScoreWithCustomMining.txScore, txScore, sizeof(gRevenueScoreWithCustomMining.txScore));
-    computeRevFactor(gRevenueScoreWithCustomMining.txScore, gTxScoreScalingThreshold, gRevenueScoreWithCustomMining.txScoreFactor);
+    copyMem(gRevenueComponents.txScore, txScore, sizeof(gRevenueComponents.txScore));
+    computeRevFactor(gRevenueComponents.txScore, gTxScoreScalingThreshold, gRevenueComponents.txScoreFactor);
 
     // Vote score
-    copyMem(gRevenueScoreWithCustomMining.voteScore, voteScore, sizeof(gRevenueScoreWithCustomMining.voteScore));
-    computeRevFactor(gRevenueScoreWithCustomMining.voteScore, gVoteScoreScalingThreshold, gRevenueScoreWithCustomMining.voteScoreFactor);
+    copyMem(gRevenueComponents.voteScore, voteScore, sizeof(gRevenueComponents.voteScore));
+    computeRevFactor(gRevenueComponents.voteScore, gVoteScoreScalingThreshold, gRevenueComponents.voteScoreFactor);
 
     // Custom mining score
-    copyMem(gRevenueScoreWithCustomMining.customMiningScore, customMiningScore, sizeof(gRevenueScoreWithCustomMining.customMiningScore));
-    computeRevFactor(gRevenueScoreWithCustomMining.customMiningScore, gCustomMiningScoreScalingThreshold, gRevenueScoreWithCustomMining.customMiningScoreFactor);
+    copyMem(gRevenueComponents.customMiningScore, customMiningScore, sizeof(gRevenueComponents.customMiningScore));
+    computeRevFactor(gRevenueComponents.customMiningScore, gCustomMiningScoreScalingThreshold, gRevenueComponents.customMiningScoreFactor);
 
     long long arbitratorRevenue = ISSUANCE_RATE;
     constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
@@ -138,12 +136,17 @@ static void computeReveneue(
     {
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            unsigned long long txFactor = gRevenueScoreWithCustomMining.txScoreFactor[i];
-            unsigned long long voteFactor = gRevenueScoreWithCustomMining.voteScoreFactor[i];
-            unsigned long long customFactor = gRevenueScoreWithCustomMining.customMiningScoreFactor[i];
+            unsigned long long txFactor = gRevenueComponents.txScoreFactor[i];
+            unsigned long long voteFactor = gRevenueComponents.voteScoreFactor[i];
+            unsigned long long customFactor = gRevenueComponents.customMiningScoreFactor[i];
+            ASSERT(txFactor <= gTxScoreScalingThreshold);
+            ASSERT(voteFactor <= gVoteScoreScalingThreshold);
+            ASSERT(customFactor <= gCustomMiningScoreScalingThreshold);
+            static_assert(gTxScoreScalingThreshold * gVoteScoreScalingThreshold * gCustomMiningScoreScalingThreshold < 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor);
+
             unsigned long long combinedScoreFactor = txFactor * voteFactor * customFactor;
 
-            gRevenueScoreWithCustomMining.revenue[i] =
+            gRevenueComponents.revenue[i] =
                 (long long)(combinedScoreFactor * issuancePerComputor / gTxScoreScalingThreshold / gVoteScoreScalingThreshold / gVoteScoreScalingThreshold);
         }
     }
@@ -151,7 +154,7 @@ static void computeReveneue(
     // Apply the new revenue formula
     if (NULL != revenue)
     {
-        copyMem(revenue, gRevenueScoreWithCustomMining.revenue, sizeof(gRevenueScoreWithCustomMining.revenue));
+        copyMem(revenue, gRevenueComponents.revenue, sizeof(gRevenueComponents.revenue));
     }
 }
 

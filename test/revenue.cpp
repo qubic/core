@@ -223,9 +223,9 @@ TEST(TestCoreRevenue, ReadFile)
                 << tx[k] << ","
                 << votes[k] << ","
                 << customMining[k] << ","
-                << gRevenueScoreWithCustomMining.txScoreFactor[k] << ","
-                << gRevenueScoreWithCustomMining.voteScoreFactor[k] << ","
-                << gRevenueScoreWithCustomMining.customMiningScoreFactor[k] << ","
+                << gRevenueComponents.txScoreFactor[k] << ","
+                << gRevenueComponents.voteScoreFactor[k] << ","
+                << gRevenueComponents.customMiningScoreFactor[k] << ","
                 << revenue[k] << ","
                 << (double)revenue[k] * 100 / issuancePerComputor
                 << "\n";
