@@ -32,6 +32,24 @@ constexpr sint64 QUTIL_VOTE_FEE = 100LL; // Fee for voting, burnt 100%
 constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
 constexpr uint16 QUTIL_INIT_EPOCH = 161; // Epoch to initialize state
 
+// Voting log types enum
+enum QUtilVotingLogInfo {
+    PollCreated = 5,                // Poll created successfully
+    InsufficientFundsForPoll = 6,   // Insufficient funds for poll creation
+    InvalidPollType = 7,            // Invalid poll type
+    InvalidNumAssetsQubic = 8,      // Invalid number of assets for Qubic poll
+    InvalidNumAssetsAsset = 9,      // Invalid number of assets for Asset poll
+    VoteCast = 10,                  // Vote cast successfully
+    InsufficientFundsForVote = 11,  // Insufficient funds for voting
+    InvalidPollId = 12,             // Invalid poll ID
+    PollInactive = 13,              // Poll is inactive
+    InsufficientBalance = 14,       // Insufficient voter balance
+    InvalidOption = 15,             // Invalid voting option
+    InvalidPollIdResult = 16,       // Invalid poll ID in GetCurrentResult
+    PollInactiveResult = 17,        // Poll inactive in GetCurrentResult
+    NoPollsByCreator = 18           // No polls found in GetPollsByCreator
+};
+
 struct QUtilLogger
 {
     uint32 contractId; // to distinguish bw SCs
@@ -284,6 +302,7 @@ public:
         custom_mod_locals cm_locals;
         uint64 i;
         uint64 voter_index;
+        QUtilLogger logger;
     };
 
     struct GetPollsByCreator_input
@@ -298,6 +317,7 @@ public:
     struct GetPollsByCreator_locals
     {
         uint64 idx;
+        QUtilLogger logger;
     };
 
     struct END_EPOCH_locals
@@ -700,23 +720,31 @@ public:
     {
         if (qpi.invocationReward() < QUTIL_POLL_CREATION_FEE)
         {
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), InsufficientFundsForPoll };
+            LOG_INFO(state.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
         if (input.poll_type != QUTIL_POLL_TYPE_QUBIC && input.poll_type != QUTIL_POLL_TYPE_ASSET)
         {
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, InvalidPollType };
+            LOG_INFO(state.logger);
             return;
         }
 
         if (input.poll_type == QUTIL_POLL_TYPE_QUBIC && input.num_assets != 0)
         {
-            return; // For Qubic polls, num_assets should be 0
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, InvalidNumAssetsQubic };
+            LOG_INFO(state.logger);
+            return;
         }
 
         if (input.poll_type == QUTIL_POLL_TYPE_ASSET && (input.num_assets == 0 || input.num_assets > QUTIL_MAX_ASSETS_PER_POLL))
         {
-            return; // For asset polls, num_assets should be between 1 and 16
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, InvalidNumAssetsAsset };
+            LOG_INFO(state.logger);
+            return;
         }
 
         locals.cm_input.a = state.current_poll_id;
@@ -747,6 +775,9 @@ public:
         }
         output.poll_id = state.current_poll_id;
         state.current_poll_id++;
+
+        state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_POLL_CREATION_FEE, PollCreated };
+        LOG_INFO(state.logger);
     }
 
     /**
@@ -757,6 +788,8 @@ public:
         output.success = false;
         if (qpi.invocationReward() < QUTIL_VOTE_FEE)
         {
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), InsufficientFundsForVote };
+            LOG_INFO(state.logger);
             return;
         }
         qpi.transfer(qpi.invocator(), qpi.invocationReward() - QUTIL_VOTE_FEE);
@@ -766,8 +799,17 @@ public:
         locals.cm_input.b = QUTIL_MAX_POLL;
         custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
         locals.idx = locals.cm_output.result;
-        if (state.poll_ids.get(locals.idx) != input.poll_id || state.polls.get(locals.idx).is_active == 0)
+
+        if (state.poll_ids.get(locals.idx) != input.poll_id)
         {
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, InvalidPollId };
+            LOG_INFO(state.logger);
+            return;
+        }
+        if (state.polls.get(locals.idx).is_active == 0)
+        {
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, PollInactive };
+            LOG_INFO(state.logger);
             return;
         }
         locals.poll_type = state.polls.get(locals.idx).poll_type;
@@ -778,16 +820,16 @@ public:
         get_voter_balance(qpi, state, locals.gvb_input, locals.gvb_output, locals.gvb_locals);
         locals.max_balance = locals.gvb_output.balance;
 
-        if (locals.max_balance < state.polls.get(locals.idx).min_amount)
+        if (locals.max_balance < state.polls.get(locals.idx).min_amount || locals.max_balance < input.amount)
         {
-            return;
-        }
-        if (locals.max_balance < input.amount)
-        {
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, InsufficientBalance };
+            LOG_INFO(state.logger);
             return;
         }
         if (input.chosen_option >= QUTIL_MAX_OPTIONS)
         {
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, InvalidOption };
+            LOG_INFO(state.logger);
             return;
         }
 
@@ -884,6 +926,12 @@ public:
 
         // Update voter count
         state.voter_counts.set(locals.idx, locals.real_vote);
+
+        if (output.success)
+        {
+            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_VOTE_FEE, VoteCast };
+            LOG_INFO(state.logger);
+        }
     }
 
     /**
@@ -895,10 +943,20 @@ public:
         locals.cm_input.b = QUTIL_MAX_POLL;
         custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
         locals.idx = locals.cm_output.result;
-        if (state.poll_ids.get(locals.idx) != input.poll_id || state.polls.get(locals.idx).is_active == 0)
+
+        if (state.poll_ids.get(locals.idx) != input.poll_id)
         {
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, InvalidPollIdResult };
+            LOG_INFO(locals.logger);
             return;
         }
+        if (state.polls.get(locals.idx).is_active == 0)
+        {
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, PollInactiveResult };
+            LOG_INFO(locals.logger);
+            return;
+        }
+
         for (locals.i = 0; locals.i < state.voter_counts.get(locals.idx); locals.i++)
         {
             locals.voter_index = calculate_voter_index(locals.idx, locals.i);
@@ -924,6 +982,11 @@ public:
                 output.poll_ids.set(output.count, state.poll_ids.get(locals.idx));
                 output.count++;
             }
+        }
+        if (output.count == 0)
+        {
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, NoPollsByCreator };
+            LOG_INFO(locals.logger);
         }
     }
 
