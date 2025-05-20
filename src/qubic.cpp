@@ -5274,6 +5274,9 @@ static bool initialize()
         load(SYSTEM_FILE_NAME, sizeof(system), (unsigned char*)&system);
         system.version = VERSION_B;
         system.epoch = EPOCH;
+        system.initialMillisecond = 0;
+        system.initialSecond = 0;
+        system.initialMinute = 0;
         system.initialHour = 12;
         system.initialDay = 13;
         system.initialMonth = 4;
