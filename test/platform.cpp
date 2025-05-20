@@ -201,6 +201,9 @@ void iterativeProfilingTest(int n)
 
 TEST(TestCoreProfiling, SleepTest)
 {
+    ProfilingStopwatch profStopwatch(__FUNCTION__, __LINE__);
+    profStopwatch.start();
+
     {
         ProfilingScope profScope(__FUNCTION__, __LINE__);
         testStackSizeTrackerKeepSize();
@@ -217,15 +220,21 @@ TEST(TestCoreProfiling, SleepTest)
         recursiveProfilingTest(9);
     }
 
+    profStopwatch.stop();
+
     for (int i = 0; i < 10; ++i)
     {
         ProfilingScope profScope(__FUNCTION__, __LINE__);
         recursiveProfilingTest(4);
+
+        // calling start() multiple times is no problem (last time is relevant for measuring)
+        profStopwatch.start();
     }
 
     {
         ProfilingScope profScope(__FUNCTION__, __LINE__);
         iterativeProfilingTest(5);
+        profStopwatch.stop();
     }
 
     for (int i = 0; i < 5; ++i)
@@ -244,11 +253,14 @@ TEST(TestCoreProfiling, SleepTest)
     //gProfilingDataCollector.writeToFile();
 }
 
+static ProfilingStopwatch gProfStopwatch(__FILE__, __LINE__);
+
 TEST(TestCoreProfiling, AddMeasurementSpeedTest)
 {
     for (unsigned long long i = 0; i < 10000; ++i)
     {
         ProfilingScope profScope(__FUNCTION__, __LINE__);
+        gProfStopwatch.start();
         for (unsigned long long j = 0; j < 10000; ++j)
         {
             ProfilingScope profScope(__FUNCTION__, __LINE__);
@@ -256,6 +268,7 @@ TEST(TestCoreProfiling, AddMeasurementSpeedTest)
             {
             }
         }
+        gProfStopwatch.stop();
     }
 
     gProfilingDataCollector.writeToFile();
