@@ -260,6 +260,7 @@
     <ClInclude Include="platform\profiling.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="revenue.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
