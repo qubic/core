@@ -342,7 +342,11 @@ protected:
     unsigned long long mStartTsc;
 };
 
-// Measure profiling statistics with pairs of start/stop calls
+// Measure profiling statistics with pairs of start/stop calls.
+// CAUTION: Attempts to use this led to freezes on EFI. Furthermore, the main intended use case, which is measuring
+// hand-over time between different processors probably doesn't work reliably because TSC may not be synced between
+// processors.
+// TODO: Remove or rewrite this using another way of measuring run-time.
 class ProfilingStopwatch
 {
 public:
@@ -378,16 +382,22 @@ protected:
 #define PROFILE_SCOPE_BEGIN() { PROFILE_SCOPE()
 #define PROFILE_NAMED_SCOPE_BEGIN(name) { PROFILE_NAMED_SCOPE(name)
 #define PROFILE_SCOPE_END() }
+/*
+See ProfilingStopwatch for comments.
 #define PROFILE_STOPWATCH_DEF(objectName, descriptiveNameString) ProfilingStopwatch objectName(descriptiveNameString, __LINE__)
 #define PROFILE_STOPWATCH_START(objectName) objectName.start();
 #define PROFILE_STOPWATCH_STOP(objectName) objectName.stop();
+*/
 #else
 #define PROFILE_SCOPE()
 #define PROFILE_NAMED_SCOPE(name)
 #define PROFILE_SCOPE_BEGIN() {
 #define PROFILE_NAMED_SCOPE_BEGIN(name) {
 #define PROFILE_SCOPE_END() }
+/*
+See ProfilingStopwatch for comments.
 #define PROFILE_STOPWATCH_DEF(objectName, descriptiveNameString)
 #define PROFILE_STOPWATCH_START(objectName)
 #define PROFILE_STOPWATCH_STOP(objectName)
+*/
 #endif
