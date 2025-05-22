@@ -55,6 +55,8 @@ public:
     // Add run-time measurement to profiling entry of given key (= name + line).
     // For fast access, the address of the name is used to identify the measurement. Using string literals here is recommended.
     // Using a pointer to a dynamic buffer probably cuases problems.
+    // The time stamp counter values startTsc and endTsc should be measured on the same processor, because TSC of
+    // different processors may be not synchronized.
     void addMeasurement(const char* name, unsigned long long line, unsigned long long startTsc, unsigned long long endTsc)
     {
         // Discard measurement on overflow of time stamp counter register
@@ -320,7 +322,8 @@ protected:
 GLOBAL_VAR_DECL ProfilingDataCollector gProfilingDataCollector;
 
 
-// Measure profiling statistics during life-time of object (from construction to destruction)
+// Measure profiling statistics during life-time of object (from construction to destruction).
+// Construction and destruction must happen on the same processor to ensure accurate results.
 class ProfilingScope
 {
 public:

@@ -5239,7 +5239,11 @@ static bool initialize()
     initTimeStampCounter();
 
 #ifdef ENABLE_PROFILING
-    gProfilingDataCollector.init(1024);
+    if (!gProfilingDataCollector.init(1024))
+    {
+        logToConsole(L"gProfilingDataCollector.init() failed!");
+        return false;
+    }
 #endif
 
     setMem(&tickTicks, sizeof(tickTicks), 0);
