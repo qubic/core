@@ -189,11 +189,7 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-<<<<<<< HEAD
-#define QSWAP_CONTRACT_INDEX 12
-=======
 #define QSWAP_CONTRACT_INDEX 13
->>>>>>> develop
 #define CONTRACT_INDEX QSWAP_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QSWAP
 #define CONTRACT_STATE2_TYPE QSWAP2
@@ -292,11 +288,7 @@ constexpr struct ContractDescription
     {"MSVAULT", 149, 10000, sizeof(MSVAULT)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
     {"QBAY", 154, 10000, sizeof(QBAY)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
     // new contracts should be added above this line
-<<<<<<< HEAD
-    {"QSWAP", 150, 10000, sizeof(QSWAP)},
-=======
     {"QSWAP", 155, 10000, sizeof(QSWAP)},
->>>>>>> develop
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
     {"TESTEXB", 138, 10000, sizeof(IPO)},
