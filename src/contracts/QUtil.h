@@ -30,7 +30,8 @@ constexpr uint64 QUTIL_MAX_OPTIONS = 64; // Maximum voting options (0 to 63)
 constexpr uint64 QUTIL_MAX_ASSETS_PER_POLL = 16; // Maximum assets per poll
 constexpr sint64 QUTIL_VOTE_FEE = 100LL; // Fee for voting, burnt 100%
 constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
-constexpr uint16 QUTIL_INIT_EPOCH = 161; // Epoch to initialize state
+constexpr uint16 QUTIL_POLL_INIT_EPOCH = 162; // Epoch to initialize poll-related state
+
 
 // Voting log types enum
 enum QUtilVotingLogInfo {
@@ -336,6 +337,7 @@ public:
         uint64 j;
         QUtilPoll default_poll;
         QUtilVoter default_voter;
+        Array<uint8, 256> zero_link;
     };
 
     /**************************************/
@@ -1017,6 +1019,38 @@ public:
                 locals.current_poll = state.polls.get(locals.i);
                 locals.current_poll.is_active = 0;
                 state.polls.set(locals.i, locals.current_poll);
+            }
+        }
+    }
+
+    BEGIN_EPOCH_WITH_LOCALS()
+    {
+        if (qpi.epoch() == QUTIL_POLL_INIT_EPOCH)
+        {
+            state.current_poll_id = 0;
+
+            // Set default values for default_poll
+            locals.default_poll.is_active = 0;
+            locals.default_poll.poll_name = NULL_ID;
+            locals.default_poll.poll_type = 0;
+            locals.default_poll.min_amount = 0;
+            locals.default_poll.creator = NULL_ID;
+            locals.default_poll.num_assets = 0;
+
+            // Initialize zero_link to all zeros for poll_links
+            for (locals.j = 0; locals.j < 256; locals.j++)
+            {
+                locals.zero_link.set(locals.j, 0);
+            }
+
+            // Initialize all poll-related arrays (except voters, handled by CreatePoll)
+            for (locals.i = 0; locals.i < QUTIL_MAX_POLL; locals.i++)
+            {
+                state.polls.set(locals.i, locals.default_poll);
+                state.poll_ids.set(locals.i, 0);
+                state.poll_results.set(locals.i, 0);
+                state.voter_counts.set(locals.i, 0);
+                state.poll_links.set(locals.i, locals.zero_link);
             }
         }
     }
