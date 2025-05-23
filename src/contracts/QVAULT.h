@@ -1023,39 +1023,6 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(submitMKTP)
     {
-        for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
-        {
-            if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
-            {
-                if (state.votingPower.get(locals._t).amount >= 10000)
-                {
-                    break;
-                }
-                else 
-                {
-                    output.returnCode = QVAULTLogInfo::QvaultInsufficientVotingPower;
-                    if (qpi.invocationReward() > 0)
-                    {
-                        qpi.transfer(qpi.invocator(), qpi.invocationReward());
-                    }
-                    return ;
-                }
-            }
-        }
-
-        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
-        locals.qvaultShare.issuer = NULL_ID;
-
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
-            return ;
-        }
-
         if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
         {
             if (qpi.invocationReward() > 0)
@@ -2261,7 +2228,7 @@ protected:
         uint64 circulatedSupply;
         uint64 requiredFund;
         uint64 tmpAmount;
-        uint32 amountOfQcapMuslimHold;
+        uint32 amountOfQcapMuslimHold, numberOfVote;
         sint32 _t, _r;
         uint32 curDate;
         uint8 year;
@@ -2386,6 +2353,8 @@ protected:
             Quorum Proposal Result
         */
 
+        locals.numberOfVote = 0;
+
         for (locals._t = state.numberOfQCP - 1; locals._t >= 0; locals._t--)
         {
             if (state.QCP.get(locals._t).proposedEpoch == qpi.epoch())
@@ -2402,10 +2371,29 @@ protected:
                 else 
                 {
                     locals.updatedQCProposal.result = 0;
+                    if (locals.numberOfVote < state.QCP.get(locals._t).numberOfYes)
+                    {
+                        locals.numberOfVote = state.QCP.get(locals._t).numberOfYes;
+                    }
+                    
                 }
                 state.QCP.set(locals._t, locals.updatedQCProposal);
             }
             else 
+            {
+                break;
+            }
+        }
+
+        for (locals._t = state.numberOfQCP - 1; locals._t >= 0; locals._t--)
+        {
+            if (state.QCP.get(locals._t).proposedEpoch == qpi.epoch() && state.QCP.get(locals._t).numberOfYes != locals.numberOfVote)
+            {
+                locals.updatedQCProposal = state.QCP.get(locals._t);
+                locals.updatedQCProposal.result = 3;
+                state.QCP.set(locals._t, locals.updatedQCProposal);
+            }
+            if (state.QCP.get(locals._t).proposedEpoch != qpi.epoch())
             {
                 break;
             }
@@ -2674,6 +2662,8 @@ protected:
             Allocation Proposal Result
         */
 
+        locals.numberOfVote = 0;
+
         for (locals._t = state.numberOfAlloP - 1; locals._t >= 0; locals._t--)
         {
             if (state.AlloP.get(locals._t).proposedEpoch == qpi.epoch())
@@ -2690,10 +2680,29 @@ protected:
                 else 
                 {
                     locals.updatedAlloProposal.result = 0;
+                    if (locals.numberOfVote < state.AlloP.get(locals._t).numberOfYes)
+                    {
+                        locals.numberOfVote = state.AlloP.get(locals._t).numberOfYes;
+                    }
+                    
                 }
                 state.AlloP.set(locals._t, locals.updatedAlloProposal);
             }
             else 
+            {
+                break;
+            }
+        }
+
+        for (locals._t = state.numberOfAlloP - 1; locals._t >= 0; locals._t--)
+        {
+            if (state.AlloP.get(locals._t).proposedEpoch == qpi.epoch() && state.AlloP.get(locals._t).numberOfYes != locals.numberOfVote)
+            {
+                locals.updatedAlloProposal = state.AlloP.get(locals._t);
+                locals.updatedAlloProposal.result = 3;
+                state.AlloP.set(locals._t, locals.updatedAlloProposal);
+            }
+            if (state.AlloP.get(locals._t).proposedEpoch != qpi.epoch())
             {
                 break;
             }
