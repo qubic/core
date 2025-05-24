@@ -10,6 +10,7 @@ using namespace QPI;
 * - Vote: Cast a Vote in a poll with a specified option (0 to 63), charging 100 QUs
 * - GetCurrentResult: Retrieve the current voting results for a poll (options 0 to 63)
 * - GetPollsByCreator: Retrieve all poll IDs created by a specific address
+* - GetCurrentPollId: Retrieve the current poll ID
 */
 
 // Return code for logger and return struct
@@ -291,6 +292,7 @@ public:
     {
         Array<uint64, QUTIL_MAX_OPTIONS> result;  // Total voting power for each option
         Array<uint64, QUTIL_MAX_OPTIONS> voter_count;  // Number of voters for each option
+        uint64 is_active;
     };
     struct GetCurrentResult_locals
     {
@@ -304,6 +306,7 @@ public:
         uint64 i;
         uint64 voter_index;
         QUtilLogger logger;
+        uint64 dominant_option;
     };
 
     struct GetPollsByCreator_input
@@ -319,6 +322,22 @@ public:
     {
         uint64 idx;
         QUtilLogger logger;
+    };
+
+    struct GetCurrentPollId_input
+    {
+    };
+
+    struct GetCurrentPollId_output
+    {
+        uint64 current_poll_id;
+        Array<uint64, QUTIL_MAX_POLL> active_poll_ids;
+        uint64 active_count;
+    };
+
+    struct GetCurrentPollId_locals
+    {
+        uint64 i;
     };
 
     struct END_EPOCH_locals
@@ -952,21 +971,25 @@ public:
             LOG_INFO(locals.logger);
             return;
         }
+        output.is_active = state.polls.get(locals.idx).is_active;
         if (state.polls.get(locals.idx).is_active == 0)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, PollInactiveResult };
-            LOG_INFO(locals.logger);
-            return;
+            locals.dominant_option = state.poll_results.get(locals.idx);
+            if (locals.dominant_option < QUTIL_MAX_OPTIONS) {
+                output.result.set(locals.dominant_option, 1);
+            }
         }
-
-        for (locals.i = 0; locals.i < state.voter_counts.get(locals.idx); locals.i++)
+        else
         {
-            locals.voter_index = calculate_voter_index(locals.idx, locals.i);
-            locals.voter = state.voters.get(locals.voter_index);
-            if (locals.voter.address != NULL_ID && locals.voter.chosen_option < QUTIL_MAX_OPTIONS)
+            for (locals.i = 0; locals.i < state.voter_counts.get(locals.idx); locals.i++)
             {
-                output.result.set(locals.voter.chosen_option, output.result.get(locals.voter.chosen_option) + locals.voter.amount);
-                output.voter_count.set(locals.voter.chosen_option, output.voter_count.get(locals.voter.chosen_option) + 1);
+                locals.voter_index = calculate_voter_index(locals.idx, locals.i);
+                locals.voter = state.voters.get(locals.voter_index);
+                if (locals.voter.address != NULL_ID && locals.voter.chosen_option < QUTIL_MAX_OPTIONS)
+                {
+                    output.result.set(locals.voter.chosen_option, output.result.get(locals.voter.chosen_option) + locals.voter.amount);
+                    output.voter_count.set(locals.voter.chosen_option, output.voter_count.get(locals.voter.chosen_option) + 1);
+                }
             }
         }
     }
@@ -989,6 +1012,24 @@ public:
         {
             locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, NoPollsByCreator };
             LOG_INFO(locals.logger);
+        }
+    }
+
+    /**
+    * Get the current poll ID
+    * @return the current value of current_poll_id
+    */
+    PUBLIC_FUNCTION_WITH_LOCALS(GetCurrentPollId)
+    {
+        output.current_poll_id = state.current_poll_id;
+        output.active_count = 0;
+        for (locals.i = 0; locals.i < QUTIL_MAX_POLL; locals.i++)
+        {
+            if (state.polls.get(locals.i).is_active != 0)
+            {
+                output.active_poll_ids.set(output.active_count, state.poll_ids.get(locals.i));
+                output.active_count++;
+            }
         }
     }
 
@@ -1048,7 +1089,7 @@ public:
             {
                 state.polls.set(locals.i, locals.default_poll);
                 state.poll_ids.set(locals.i, 0);
-                state.poll_results.set(locals.i, 0);
+                state.poll_results.set(locals.i, QUTIL_MAX_OPTIONS);
                 state.voter_counts.set(locals.i, 0);
                 state.poll_links.set(locals.i, locals.zero_link);
             }
@@ -1060,6 +1101,7 @@ public:
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
         REGISTER_USER_FUNCTION(GetCurrentResult, 2);
         REGISTER_USER_FUNCTION(GetPollsByCreator, 3);
+        REGISTER_USER_FUNCTION(GetCurrentPollId, 4);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
