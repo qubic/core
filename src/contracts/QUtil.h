@@ -340,6 +340,23 @@ public:
         uint64 i;
     };
 
+    struct GetPollInfo_input {
+        uint64 poll_id;
+    };
+
+    struct GetPollInfo_output {
+        bit found; // 1 if exists, 0 ig not
+        QUtilPoll poll_info;
+    };
+
+    struct GetPollInfo_locals {
+        uint64 idx;
+        custom_mod_input cm_input;
+        custom_mod_output cm_output;
+        custom_mod_locals cm_locals;
+        QUtilPoll default_poll;  // default values if not found
+    };
+
     struct END_EPOCH_locals
     {
         uint64 i;
@@ -1033,6 +1050,32 @@ public:
         }
     }
 
+    PUBLIC_FUNCTION_WITH_LOCALS(GetPollInfo)
+    {
+        // set default poll values (will be returned if poll not found)
+        locals.default_poll.is_active = 0;
+        locals.default_poll.poll_name = NULL_ID;
+        locals.default_poll.poll_type = 0;
+        locals.default_poll.min_amount = 0;
+        locals.default_poll.creator = NULL_ID;
+        locals.default_poll.num_assets = 0;
+
+        output.poll_info = locals.default_poll;
+        output.found = 0;
+
+        locals.cm_input.a = input.poll_id;
+        locals.cm_input.b = QUTIL_MAX_POLL;
+        custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
+        locals.idx = locals.cm_output.result;
+
+        // Sanity index check the poll if index matches the requested ID
+        if (state.poll_ids.get(locals.idx) == input.poll_id)
+        {
+            output.poll_info = state.polls.get(locals.idx);
+            output.found = 1;
+        }
+    }
+
     /**
     * End of epoch processing for polls, computes dominant option for options 0-63
     */
@@ -1102,6 +1145,7 @@ public:
         REGISTER_USER_FUNCTION(GetCurrentResult, 2);
         REGISTER_USER_FUNCTION(GetPollsByCreator, 3);
         REGISTER_USER_FUNCTION(GetCurrentPollId, 4);
+        REGISTER_USER_FUNCTION(GetPollInfo, 5);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
