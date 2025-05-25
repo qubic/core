@@ -345,8 +345,9 @@ public:
     };
 
     struct GetPollInfo_output {
-        bit found; // 1 if exists, 0 ig not
+        uint64 found; // 1 if exists, 0 ig not
         QUtilPoll poll_info;
+        Array<uint8, 256> poll_link;
     };
 
     struct GetPollInfo_locals {
@@ -1072,6 +1073,7 @@ public:
         if (state.poll_ids.get(locals.idx) == input.poll_id)
         {
             output.poll_info = state.polls.get(locals.idx);
+            output.poll_link = state.poll_links.get(locals.idx);
             output.found = 1;
         }
     }
