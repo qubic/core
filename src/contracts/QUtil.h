@@ -417,7 +417,7 @@ public:
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
-        REGISTER_USER_FUNCTION(GetTotalNumberOfAssetShares, 4);
+        REGISTER_USER_FUNCTION(GetTotalNumberOfAssetShares, 2);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
