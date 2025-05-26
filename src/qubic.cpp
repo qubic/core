@@ -3401,58 +3401,6 @@ static void endEpoch()
                 gRevenueComponents.revenue);
         }
 
-
-        // Merge votecount to final rev score
-        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-        {
-            unsigned long long vote_count = voteCounter.getVoteCount(i);
-            unsigned long long custom_mining_share_count = gCustomMiningSharesCounter.getSharesCount(i);
-            if (vote_count != 0 && custom_mining_share_count != 0)
-            {
-                unsigned long long score_with_vote = vote_count * revenueScore[i];
-                if ((score_with_vote / vote_count) != revenueScore[i]) // detect overflow
-                {
-                    revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
-                }
-                else
-                {
-                    unsigned long long final_score = score_with_vote * custom_mining_share_count;
-                    if ((final_score / custom_mining_share_count) != score_with_vote) // detect overflow
-                    {
-                        revenueScore[i] = 0xFFFFFFFFFFFFFFFFULL; // maximum score
-                    }
-                    else
-                    {
-                        revenueScore[i] = final_score;
-                    }
-                }
-            }
-            else
-            {
-                revenueScore[i] = 0;
-            }
-        }
-
-        // Sort revenue scores to get lowest score of quorum
-        unsigned long long sortedRevenueScore[QUORUM + 1];
-        setMem(sortedRevenueScore, sizeof(sortedRevenueScore), 0);
-        for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
-        {
-            sortedRevenueScore[QUORUM] = revenueScore[computorIndex];
-            unsigned int i = QUORUM;
-            while (i
-                && sortedRevenueScore[i - 1] < sortedRevenueScore[i])
-            {
-                const unsigned long long tmp = sortedRevenueScore[i - 1];
-                sortedRevenueScore[i - 1] = sortedRevenueScore[i];
-                sortedRevenueScore[i--] = tmp;
-            }
-        }
-        if (!sortedRevenueScore[QUORUM - 1])
-        {
-            sortedRevenueScore[QUORUM - 1] = 1;
-        }
-
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
         qpiContext.call(5, "", 0);
@@ -3462,39 +3410,11 @@ static void endEpoch()
         // Compute revenue of computors and arbitrator
         long long arbitratorRevenue = ISSUANCE_RATE;
         constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
-        constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
-        static_assert(MAX_NUMBER_OF_TICKS_PER_EPOCH <= 605020, "Redefine scalingFactor");
-        // maxRevenueScore for 605020 ticks = ((7099 * 605020) / 676) * 605020 * 675
-        constexpr unsigned scalingFactor = 208100; // >= (maxRevenueScore600kTicks / 0xFFFFFFFFFFFFFFFFULL) * issuancePerComputor =(approx)= 208078.5
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
-            long long revenue;
-
-#if USE_CONSERVATIVE_REV_FOLMULA
-            if (revenueScore[computorIndex] >= sortedRevenueScore[QUORUM - 1])
-                revenue = issuancePerComputor;
-            else
-            {
-                if (revenueScore[computorIndex] > scalingThreshold)
-                {
-                    // scale down to prevent overflow, then scale back up after division
-                    unsigned long long scaledRev = revenueScore[computorIndex] / scalingFactor;
-                    revenue = ((issuancePerComputor * scaledRev) / sortedRevenueScore[QUORUM - 1]);
-                    revenue *= scalingFactor;
-                }
-                else
-                {
-                    revenue = ((issuancePerComputor * ((unsigned long long)revenueScore[computorIndex])) / sortedRevenueScore[QUORUM - 1]);
-                }
-            }
-#else
-            revenue = gRevenueComponents.revenue[computorIndex];
-#endif
+            long long revenue = gRevenueComponents.revenue[computorIndex];
             arbitratorRevenue -= revenue;
-
-            // Saving the data
-            gRevenueComponents.conservativeRevenue[computorIndex] = revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
             for (unsigned long long i = 0; i < emissionDist->capacity(); ++i)

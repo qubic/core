@@ -6,7 +6,6 @@
 #include "vote_counter.h"
 #include "public_settings.h"
 
-#define USE_CONSERVATIVE_REV_FOLMULA 1
 
 static unsigned long long gVoteScoreBuffer[NUMBER_OF_COMPUTORS];
 static unsigned long long gCustomMiningScoreBuffer[NUMBER_OF_COMPUTORS];
