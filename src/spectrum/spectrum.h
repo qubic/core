@@ -6,6 +6,7 @@
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
 #include "platform/memory.h"
+#include "platform/profiling.h"
 
 #include "network_messages/entity.h"
 
@@ -36,6 +37,7 @@ GLOBAL_VAR_DECL unsigned long long spectrumReorgTotalExecutionTicks GLOBAL_VAR_I
 // Update SpectrumInfo data (exensive, because it iterates the whole spectrum), acquire no lock
 static void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
 {
+    PROFILE_SCOPE();
     si.numberOfEntities = 0;
     si.totalAmount = 0;
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
@@ -54,6 +56,7 @@ static void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
 // Every 2nd balance <= dustThresholdBurnHalf is burned in this case.
 static void updateAndAnalzeEntityCategoryPopulations()
 {
+    PROFILE_SCOPE();
     static_assert(MAX_SUPPLY < (1llu << entityCategoryCount));
     setMem(entityCategoryPopulations, sizeof(entityCategoryPopulations), 0);
 
@@ -142,6 +145,8 @@ private:
 // Clean up spectrum hash map, removing all entities with balance 0. Updates spectrumInfo.
 static void reorganizeSpectrum()
 {
+    PROFILE_SCOPE();
+
     unsigned long long spectrumReorgStartTick = __rdtsc();
 
     ::Entity* reorgSpectrum = (::Entity*)reorgBuffer;

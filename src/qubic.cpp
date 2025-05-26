@@ -27,6 +27,7 @@
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
 #include "platform/memory_util.h"
+#include "platform/profiling.h"
 
 #include "platform/custom_stack.h"
 
@@ -393,6 +394,8 @@ static void enableAVX()
 // Should only be called from tick processor to avoid concurrent state changes, which can cause race conditions as detailed in FIXME below.
 static void getComputerDigest(m256i& digest)
 {
+    PROFILE_SCOPE();
+
     unsigned int digestIndex;
     for (digestIndex = 0; digestIndex < MAX_NUMBER_OF_CONTRACTS; digestIndex++)
     {
@@ -1860,6 +1863,7 @@ static void requestProcessor(void* ProcedureArgument)
         // try to compute a solution if any is queued and this thread is assigned to compute solution
         if (solutionProcessorFlags[processorNumber])
         {
+            PROFILE_NAMED_SCOPE("requestProcessor(): solution processing");
             score->tryProcessSolution(processorNumber);
         }
         
@@ -1877,6 +1881,7 @@ static void requestProcessor(void* ProcedureArgument)
             }
             else
             {
+                PROFILE_NAMED_SCOPE("requestProcessor(): request processing");
                 const unsigned long long beginningTick = __rdtsc();
 
                 {
@@ -2093,6 +2098,8 @@ static void contractProcessor(void*)
 {
     enableAVX();
 
+    PROFILE_SCOPE();
+
     const unsigned long long processorNumber = getRunningProcessorID();
 
     unsigned int executedContractIndex;
@@ -2261,6 +2268,8 @@ static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& d
 
 static void processTickTransactionContractIPO(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2277,6 +2286,8 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
 // Return if money flew
 static bool processTickTransactionContractProcedure(const Transaction* transaction, const int spectrumIndex, const unsigned int contractIndex)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2317,6 +2328,8 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
 
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2521,6 +2534,8 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
 static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2532,6 +2547,8 @@ static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTrans
 
 static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTransactionPrefix* transaction)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2543,6 +2560,8 @@ static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTrans
 
 static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, unsigned long long processorNumber)
 {
+    PROFILE_SCOPE();
+
     ASSERT(nextTickData.epoch == system.epoch);
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
@@ -2705,6 +2724,8 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 #pragma optimize("", off)
 static void processTick(unsigned long long processorNumber)
 {
+    PROFILE_SCOPE();
+
     if (system.tick > system.initialTick)
     {
         etalonTick.prevResourceTestingDigest = resourceTestingDigest;
@@ -2741,21 +2762,27 @@ static void processTick(unsigned long long processorNumber)
 
     if (system.tick == system.initialTick)
     {
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
         WAIT_WHILE(contractProcessorState);
+        PROFILE_SCOPE_END();
 
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): BEGIN_EPOCH");
         logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
         contractProcessorPhase = BEGIN_EPOCH;
         contractProcessorState = 1;
         WAIT_WHILE(contractProcessorState);
+        PROFILE_SCOPE_END();
     }
 
+    PROFILE_NAMED_SCOPE_BEGIN("processTick(): BEGIN_TICK");
     logger.registerNewTx(system.tick, logger.SC_BEGIN_TICK_TX);
     contractProcessorPhase = BEGIN_TICK;
     contractProcessorState = 1;
     WAIT_WHILE(contractProcessorState);
+    PROFILE_SCOPE_END();
 
     unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     ts.tickData.acquireLock();
@@ -2768,6 +2795,7 @@ static void processTick(unsigned long long processorNumber)
 #if ADDON_TX_STATUS_REQUEST
         txStatusData.tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): pre-scan solutions");
         // reset solution task queue
         score->resetTaskQueue();
         // pre-scan any solution tx and add them to solution task queue
@@ -2806,10 +2834,12 @@ static void processTick(unsigned long long processorNumber)
                 }
             }
         }
+        PROFILE_SCOPE_END();
 
         {
             // Process solutions in this tick and store in cache. In parallel, score->tryProcessSolution() is called by
             // request processors to speed up solution processing.
+            PROFILE_NAMED_SCOPE("processTick(): process solutions");
             score->startProcessTaskQueue();
             while (!score->isTaskQueueProcessed())
             {
@@ -2820,6 +2850,7 @@ static void processTick(unsigned long long processorNumber)
         solutionTotalExecutionTicks = __rdtsc() - solutionProcessStartTick; // for tracking the time processing solutions
 
         // Process all transaction of the tick
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): process transactions");
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
             if (!isZero(nextTickData.transactionDigests[transactionIndex]))
@@ -2839,13 +2870,17 @@ static void processTick(unsigned long long processorNumber)
                 }
             }
         }
+        PROFILE_SCOPE_END();
     }
 
+    PROFILE_NAMED_SCOPE_BEGIN("processTick(): END_TICK");
     logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
     contractProcessorState = 1;
     WAIT_WHILE(contractProcessorState);
+    PROFILE_SCOPE_END();
 
+    PROFILE_NAMED_SCOPE_BEGIN("processTick(): get spectrum digest");
     unsigned int digestIndex;
     ACQUIRE(spectrumLock);
     for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
@@ -2877,6 +2912,7 @@ static void processTick(unsigned long long processorNumber)
 
     etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
     RELEASE(spectrumLock);
+    PROFILE_SCOPE_END();
 
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
@@ -2891,6 +2927,8 @@ static void processTick(unsigned long long processorNumber)
             {
                 if (isMainMode())
                 {
+                    PROFILE_NAMED_SCOPE("processTick(): tick leader tick data construction");
+
                     // This is the tick leader in MAIN mode -> construct future tick data (selecting transactions to
                     // include into tick)
                     broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type; // We XOR almost all packets with their type value to make sure an entity cannot be tricked into signing one thing while actually signing something else
@@ -3028,6 +3066,7 @@ static void processTick(unsigned long long processorNumber)
         {
             if (isMainMode())
             {
+                PROFILE_NAMED_SCOPE("processTick(): broadcast vote counter tx");
                 auto& payload = voteCounterPayload; // note: not thread-safe
                 payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
                 payload.transaction.destinationPublicKey = m256i::zero();
@@ -3047,6 +3086,7 @@ static void processTick(unsigned long long processorNumber)
     if (isMainMode())
     {
         // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
+        PROFILE_NAMED_SCOPE("processTick(): broadcast solutions as tx (from BroadcastMessage)");
         for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
         {
             int solutionIndexToPublish = -1;
@@ -3140,6 +3180,7 @@ static void processTick(unsigned long long processorNumber)
         // Also skip the begining of the epoch, because the no thing to do
         if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
         {
+            PROFILE_NAMED_SCOPE("processTick(): broadcast custom mining shares tx");
             long long customMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
@@ -3604,6 +3645,8 @@ static bool invalidateNodeStates(CHAR16* directory)
 // can only called from main thread
 static bool saveAllNodeStates()
 {
+    PROFILE_SCOPE();
+
     CHAR16 directory[16];
     setText(directory, L"ep");
     appendNumber(directory, system.epoch, false);
@@ -4312,6 +4355,8 @@ static void computeTxBodyDigestBase(const int tick)
 // special procedure to sign the tick vote
 static void signTickVote(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* signature)
 {
+    PROFILE_SCOPE();
+
     signWithRandomK(subseed, publicKey, messageDigest, signature);
     bool isOk = verifyTickVoteSignature(publicKey, messageDigest, signature, false);
     while (!isOk)
@@ -4521,6 +4566,12 @@ static bool isTickTimeOut()
     return (__rdtsc() - tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] > TARGET_TICK_DURATION * NEXT_TICK_TIMEOUT_THRESHOLD * frequency / 1000);
 }
 
+// Disabling the optimizer for tickProcessor() is a workaround introduced to solve an issue
+// that has been observed in testnets/2025-04-30-profiling.
+// In this test, the processor calling tickProcessor() was stuck before entering the function.
+// Probably, this was caused by a bug in the optimizer, because disabling the optimizer solved the
+// problem.
+#pragma optimize("", off)
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -4538,6 +4589,8 @@ static void tickProcessor(void*)
     unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
+        PROFILE_NAMED_SCOPE("tickProcessor(): loop iteration");
+
         checkinTime(processorNumber);
 
         const unsigned long long curTimeTick = __rdtsc();
@@ -4958,6 +5011,7 @@ static void tickProcessor(void*)
         tickerLoopDenominator++;
     }
 }
+#pragma optimize("", on)
 
 static void emptyCallback(EFI_EVENT Event, void* Context)
 {
@@ -5104,6 +5158,14 @@ static bool initialize()
         return false;
 
     initTimeStampCounter();
+
+#ifdef ENABLE_PROFILING
+    if (!gProfilingDataCollector.init(1024))
+    {
+        logToConsole(L"gProfilingDataCollector.init() failed!");
+        return false;
+    }
+#endif
 
     setMem(&tickTicks, sizeof(tickTicks), 0);
 
@@ -6216,6 +6278,10 @@ static void processKeyPresses()
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
             saveComputer();
+
+#ifdef ENABLE_PROFILING
+            gProfilingDataCollector.writeToFile();
+#endif
         }
         break;
 
@@ -6511,6 +6577,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     clockTick = curTimeTick;
 
+                    PROFILE_NAMED_SCOPE("main loop: updateTime()");
                     updateTime();
                 }
 
@@ -6820,6 +6887,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     logToConsole(L"Saving node state...");
                     saveAllNodeStates();
+#ifdef ENABLE_PROFILING
+                    gProfilingDataCollector.writeToFile();
+#endif
                     requestPersistingNodeState = 0;
                     logToConsole(L"Complete saving all node states");
                 }
@@ -6924,6 +6994,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             saveSystem();
             score->saveScoreCache(system.epoch);
             saveCustomMiningCache(system.epoch);
+#ifdef ENABLE_PROFILING
+            gProfilingDataCollector.writeToFile();
+#endif
 
             setText(message, L"Qubic ");
             appendQubicVersion(message);
