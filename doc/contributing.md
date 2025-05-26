@@ -246,7 +246,7 @@ The header file `src/platform/profiling.h` provides features for profiling code,
 
 ### How to implement profiling
 
-Currently, profiling is supported through the class `ProfilingScope`, which measures run-time between construction and destruction of an instance.
+Profiling is supported through the class `ProfilingScope`, which measures run-time between construction and destruction of an instance.
 Its most common use case is in local scope, measuring how often a blocks inside a function is executed and how much run-time is spent there.
 It may also be used as a member of an object, for measuring the number of objects constructed / destructed and their life-time.
 However, in EFI it cannot be used in global scope, because constructor and destructor of global objects are not called without the standard runtime library.
@@ -257,12 +257,12 @@ The common use case of measuring a code block is supported by a set of preproces
   When the execution leaves the scope, the run-time measurement is added and the execution counter is incremented.
   This macro can be only used once per scope.
   The measurements are identified by the function name `__FUNCTION__` and the source code line `__LINE__`.
-- `PROFILE_SCOPE_BEGIN();` and `PROFILE_SCOPE_END();` are similar to `PROFILE_SCOPE()`, but can be used multiple times in a scope.
-  This is possible, because the macros create an additional block between begin and end.
-- `PROFILE_NAMED_SCOPE(name);` is like `PROFILE_SCOPE()`, but measurements are identified by the string `name` (instead of the function name) and source code line.
+- `PROFILE_SCOPE_BEGIN();` and `PROFILE_SCOPE_END();` are similar to `PROFILE_SCOPE()`, but the end of the profiling scope is defined explicitly here.
+  They can be used multiple times in a scope, because the macros create an additional block between begin and end.
+- `PROFILE_NAMED_SCOPE(name);` is like `PROFILE_SCOPE()`, but measurements are identified by the string `name` (instead of the function name) and the source code line.
   The `name` should be a `const char*` literal, such as `"my fancy code"`, because the pointer must stay valid until the program is stopped.
 - `PROFILE_NAMED_SCOPE_BEGIN(name);` and `PROFILE_SCOPE_END();` are like using `PROFILE_SCOPE_BEGIN()` and `PROFILE_SCOPE_END()`,
-  but the measurement is identified by the passed `name`.
+  but the measurement is identified by the passed `name` as in `PROFILE_NAMED_SCOPE(name)`.
 
 In order to enable profiling with these macros, you need to define the preprocessor symbol `ENABLE_PROFILING`.
 Ideally, you do this globally in the compiler configuration.
@@ -277,7 +277,7 @@ void processTick()
 
     // other code ...
 
-    // measure code until leaving the scope that is ended with PROFILE_SCOPE_END()
+    // measure code until leaving the scope that is ended with PROFILE_SCOPE_END(); may be also left with return, break etc.
     PROFILE_NAMED_SCOPE_BEGIN("processTick(): BEGIN_TICK");
     contractProcessorPhase = BEGIN_TICK;
     contractProcessorState = 1;
@@ -326,9 +326,9 @@ The rest of the file has one line per scope of measurement, each with one value 
 Profiling scopes that were not executed, don't appear in the file.
 
 These are the columns in the file:
-- `idx`: Index in the hash map. (Not relevant for the user but good to check the quality of the hash function.)
+- `idx`: Index of the measured data in the hash map. (Not relevant for the user but good to check the quality of the hash function.)
 - `name`: The name of the measurement or the name of the function if `PROFILE_SCOPE()` or `PROFILE_SCOPE_BEGIN()` was used.
-- `line`: The source code line of the measurement.
+- `line`: The source code line, where measurement starts.
 - `count`: How often this code has been executed, that is, the total number of run-time measurements of this code.
 - `sum_microseconds`: The total time spent for executing this code block, given in microseconds.
 - `avg_microseconds`: The average time spent for executing this code block, given in microseconds. This is computed by dividing sum by count.
@@ -336,7 +336,8 @@ These are the columns in the file:
 - `max_microseconds`: The maximum run-time measured for executing this code block, given in microseconds.
 
 We recommend to open the file `profiling.csv` with a spreadsheet application, such as LibreOffice Calc.
-When opening the file, there may be import dialog. Make to select "UFT16" as file encoding and "comma" as delimiter / separator.
+When opening the file, you may see an import dialog.
+Make sure to select "UFT16" as file encoding and "comma" as delimiter / separator.
 
 In order to simplify analyzing the file, we recommend the following:
 1. Enable "AutoFilter", which adds filtering and sorting functions to the header row of each column.
@@ -346,7 +347,7 @@ In order to simplify analyzing the file, we recommend the following:
 3. If you want to continue analyzing the file later, save it in the native format of the spreadsheet application, such as ODS.
    This way, the AutoFilter and other changes will be kept when you reopen the file.
 
-When loading the file and activating AutoFilter worked, you should see something like this:
+After loading the file and activating the AutoFilter, you should see something like this:
 
 ![profiling.csv opened in LibreOffice Calc](profiling_csv.png "profiling.csv opened in LibreOffice Calc")
 
@@ -355,10 +356,8 @@ Go through the results starting with the highest total run time until you find e
 These are candidates for digging deeper and potential targets for optimization.
 
 If you compare different runs (files), be aware of the the different total run-times.
-For example, if you want to compare optimization attempts of a specific measurement scope, you should use or create a reference measurement.
-This may be the total run time of the function calling your code of interest, for example.
-Then, you can compute the run-time percentage of your code of interest relative to the reference measurement.
-Additionally, you should make sure the conditions of the runs you compare are as similar as possible.
+For example, if you want to compare optimization attempts of a specific measurement scope, you should focus on average, minimum, and maximum instead of the total sum.
+Additionally, you should make sure that the conditions of the runs you compare are as similar as possible.
 If the runs involve random factors, running the tests for longer may help to average out random effects.
 
 
