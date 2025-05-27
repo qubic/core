@@ -119,8 +119,12 @@
     <ClInclude Include="test_util.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="assets.cpp" />
     <ClCompile Include="common_def.cpp" />
+    <ClCompile Include="stdlib_impl.cpp" />
+    <ClCompile Include="contract_swap.cpp" />
+    <!--
+    <ClCompile Include="uint128.cpp" />
+    <ClCompile Include="assets.cpp" />
     <ClCompile Include="contract_core.cpp" />
     <ClCompile Include="contract_msvault.cpp" />
     <ClCompile Include="contract_qearn.cpp" />
@@ -135,7 +139,6 @@
     <ClCompile Include="kangaroo_twelve.cpp" />
     <ClCompile Include="revenue.cpp" />
     <ClCompile Include="spectrum.cpp" />
-    <ClCompile Include="stdlib_impl.cpp" />
     <ClCompile Include="tx_status_request.cpp" />
     <ClCompile Include="m256.cpp" />
     <ClCompile Include="math_lib.cpp" />
@@ -147,6 +150,7 @@
     <ClCompile Include="tick_storage.cpp" />
     <ClCompile Include="virtual_memory.cpp" />
     <ClCompile Include="vote_counter.cpp" />
+     -->
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

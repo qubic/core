@@ -10,3 +10,6 @@ x64/
 /test/contract0???.???
 /test/tmp_file_*
 /test/*.pg
+.DS_Store
+.clang-format
+tmp
