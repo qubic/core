@@ -5,6 +5,7 @@ unsigned long long top_of_stack;
 #include "platform/memory_util.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
+#include "platform/profiling.h"
 #include "public_settings.h"
 #include "score_cache.h"
 
@@ -488,6 +489,7 @@ struct ScoreFunction
         unsigned short* pNeuronIdices,
         unsigned short* pNeuronSupplier)
     {
+        PROFILE_SCOPE();
         for (unsigned int i = 0; i < RANDOM2_POOL_SIZE; i++)
         {
             const unsigned int poolIdx = i & (RANDOM2_POOL_ACTUAL_SIZE - 1);
@@ -530,6 +532,7 @@ struct ScoreFunction
         unsigned char* batches,
         computeBuffer::Neuron& neurons32)
     {
+        PROFILE_SCOPE();
         return computeNeurons<false>(pNeuronIdices, pNeuronSupplier, skipTicksMap, curCachedNeurons, batches, neurons32);
     }
 
@@ -538,6 +541,7 @@ struct ScoreFunction
         const unsigned short* pNeuronSupplier,
         unsigned char* pBatch)
     {
+        PROFILE_SCOPE();
         int tickBatch = 0;
         setMem(pBatch, sizeof(pBatch[0]) * (maxDuration + BATCH_SIZE - 1) / BATCH_SIZE, 0);
         for (long long batch = 0; batch < maxDuration; batch += BATCH_SIZE, tickBatch++)
@@ -552,6 +556,7 @@ struct ScoreFunction
 
     void computeSkipTicks(const unsigned char* poolRandom2Buffer, long long* skipTicks, unsigned char* skipTicksMap, long long* ticksNumbers)
     {
+        PROFILE_SCOPE();
         long long tailTick = maxDuration - 1;
         for (long long tick = 0; tick < maxDuration; tick++)
         {
@@ -808,12 +813,14 @@ struct ScoreFunction
         unsigned char* batches,
         computeBuffer::Neuron& neurons32)
     {
+        PROFILE_SCOPE();
         return computeNeurons<true>(pNeuronIdices, pNeuronSupplier, skipTicksMap, curCachedNeurons, batches, neurons32);
     }
 
     // Compute score
     unsigned int computeScore(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {
+        PROFILE_SCOPE();
         const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
 
         computeBuffer& cb = _computeBuffer[solutionBufIdx];
@@ -880,6 +887,8 @@ struct ScoreFunction
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {
+        PROFILE_SCOPE();
+
         if (isZero(miningSeed) || miningSeed != currentRandomSeed)
         {
             return DATA_LENGTH + 1; // return invalid score

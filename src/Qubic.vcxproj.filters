@@ -120,6 +120,9 @@
     <ClInclude Include="contracts\QBAY.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Nostromo.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
@@ -256,6 +259,11 @@
     <ClInclude Include="network_messages\custom_mining.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="platform\virtual_memory.h" />
+    <ClInclude Include="platform\profiling.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="revenue.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

@@ -133,6 +133,7 @@
     <ClCompile Include="qpi_collection.cpp" />
     <ClCompile Include="qpi_hash_map.cpp" />
     <ClCompile Include="kangaroo_twelve.cpp" />
+    <ClCompile Include="revenue.cpp" />
     <ClCompile Include="spectrum.cpp" />
     <ClCompile Include="stdlib_impl.cpp" />
     <ClCompile Include="tx_status_request.cpp" />

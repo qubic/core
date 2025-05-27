@@ -4,6 +4,7 @@
 #include "../src/platform/read_write_lock.h"
 #include "../src/platform/stack_size_tracker.h"
 #include "../src/platform/custom_stack.h"
+#include "../src/platform/profiling.h"
 
 TEST(TestCoreReadWriteLock, SimpleSingleThread)
 {
@@ -166,4 +167,160 @@ TEST(TestCoreCustomStack, SimpleTest)
     EXPECT_GT(size4, size3);
 }
 
-// Add test of SetJump/LongJump
+void recursiveProfilingTest(int depth)
+{
+    ProfilingScope profScope(__FUNCTION__, __LINE__);
+    if (depth > 0)
+    {
+        recursiveProfilingTest(depth - 1);
+        recursiveProfilingTest(depth - 2);
+    }
+    else
+    {
+        sleepMicroseconds(10);
+    }
+}
+
+void iterativeProfilingTest(int n)
+{
+    ProfilingScope profScope(__FUNCTION__, __LINE__);
+    for (int i = 0; i < n; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        for (int j = 0; j < n; ++j)
+        {
+            ProfilingScope profScope(__FUNCTION__, __LINE__);
+            for (int k = 0; k < n; ++k)
+            {
+                ProfilingScope profScope(__FUNCTION__, __LINE__);
+                sleepMicroseconds(10);
+            }
+        }
+    }
+}
+
+TEST(TestCoreProfiling, SleepTest)
+{
+    ProfilingStopwatch profStopwatch(__FUNCTION__, __LINE__);
+    profStopwatch.start();
+
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        testStackSizeTrackerKeepSize();
+    }
+
+    for (int i = 0; i < 1000; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        testStackSizeTrackerKeepSize();
+    }
+
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        recursiveProfilingTest(9);
+    }
+
+    profStopwatch.stop();
+
+    for (int i = 0; i < 10; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        recursiveProfilingTest(4);
+
+        // calling start() multiple times is no problem (last time is relevant for measuring)
+        profStopwatch.start();
+    }
+
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        iterativeProfilingTest(5);
+        profStopwatch.stop();
+    }
+
+    for (int i = 0; i < 5; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        iterativeProfilingTest(3);
+    }
+
+    gProfilingDataCollector.writeToFile();
+
+    EXPECT_FALSE(gProfilingDataCollector.init(2));
+    gProfilingDataCollector.clear();
+    gProfilingDataCollector.deinit();
+    gProfilingDataCollector.clear();
+
+    //gProfilingDataCollector.writeToFile();
+}
+
+static ProfilingStopwatch gProfStopwatch(__FILE__, __LINE__);
+
+TEST(TestCoreProfiling, AddMeasurementSpeedTest)
+{
+    for (unsigned long long i = 0; i < 10000; ++i)
+    {
+        ProfilingScope profScope(__FUNCTION__, __LINE__);
+        gProfStopwatch.start();
+        for (unsigned long long j = 0; j < 10000; ++j)
+        {
+            ProfilingScope profScope(__FUNCTION__, __LINE__);
+            for (volatile unsigned long long k = 0; k < 10; ++k)
+            {
+            }
+        }
+        gProfStopwatch.stop();
+    }
+
+    gProfilingDataCollector.writeToFile();
+}
+
+void checkTicksToMicroseconds(int type, unsigned long long ticks, unsigned long long frequency)
+{
+    ::frequency = frequency;
+    unsigned long long microsecondsInt = ProfilingDataCollector::ticksToMicroseconds(ticks);
+    long double microsecondsFloat = long double(ticks) * long double(1000000) / long double(frequency);
+    long double diff = std::abs(microsecondsFloat - microsecondsInt);
+    if (type == 0)
+    {
+        // no overflow
+        EXPECT_LT(diff, 1.0);
+    }
+    else if (type == 1)
+    {
+        // overflow in calculation -> tolerate inaccuracy
+        EXPECT_LT(diff, 1000000.0);
+    }
+    else
+    {
+        // overflow in result -> expect max value
+        EXPECT_EQ(microsecondsInt, 0xffffffffffffffffllu);
+    }
+    ::frequency = 0;
+}
+
+TEST(TestCoreProfiling, CheckTicksToMicroseconds)
+{
+    // non-overflow cases
+    checkTicksToMicroseconds(0, 10000, 100000000);
+    checkTicksToMicroseconds(0, 100000000, 10000);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu, 1000000llu);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu, 1000000llu + 1);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu, 1000000llu - 1);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu - 1, 1000000llu);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu - 1, 1000000llu + 1);
+    checkTicksToMicroseconds(0, 0xffffffffffffffffllu / 1000000llu - 1, 1000000llu - 1);
+
+    // overflow in calculation
+    checkTicksToMicroseconds(1, 0xffffffffffffffffllu / 1000000llu + 1, 1000000llu);
+    checkTicksToMicroseconds(1, 0xffffffffffffffffllu / 1000000llu + 1, 1000000llu + 1);
+    checkTicksToMicroseconds(1, 0xffffffffffffffffllu, 1000000000llu);
+    checkTicksToMicroseconds(1, 0xffffffffffffffllu, 1000000000llu);
+    checkTicksToMicroseconds(1, 0xffffffffffffffffllu, 1234567890llu);
+    checkTicksToMicroseconds(1, 0xffffffffffffffllu, 1234567890llu);
+
+    // overflow in result (low frequency)
+    checkTicksToMicroseconds(2, 0xffffffffffffffffllu, 1000);
+    checkTicksToMicroseconds(2, 0xffffffffffffffllu, 1000);
+    checkTicksToMicroseconds(2, 0xffffffffffffffffllu, 12345);
+    checkTicksToMicroseconds(2, 0xffffffffffffffffllu, 123456);
+}
