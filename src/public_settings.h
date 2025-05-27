@@ -9,7 +9,7 @@
 // random seed is now obtained from spectrumDigests
 
 #define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 12 // do not increase this, because there may be issues due to too fast ticking
+#define NUMBER_OF_SOLUTION_PROCESSORS 12
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
@@ -56,12 +56,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 245
+#define VERSION_B 246
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 161
-#define TICK 25600000
+#define EPOCH 163
+#define TICK 26440000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 #define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"

@@ -9,34 +9,34 @@
 TEST(TestCore256BitClass, ConstructAssignCompare) {
     // Basic construction, comparison, and assignment
     unsigned char buffer_u8[32];
-    for (int i = 0; i < 32; ++i)
+    for (int8_t i = 0; i < 32; ++i)
         buffer_u8[i] = 3 + 2 * i;
 
     m256i v1(buffer_u8);
-    for (int i = 0; i < 32; ++i)
+    for (int8_t i = 0; i < 32; ++i)
         EXPECT_EQ(v1.m256i_u8[i], 3 + 2 * i);
     EXPECT_TRUE(v1 == buffer_u8);
     EXPECT_FALSE(v1 != buffer_u8);
     EXPECT_FALSE(isZero(v1));
 
-    for (int i = 0; i < 32; ++i)
+    for (int8_t i = 0; i < 32; ++i)
         buffer_u8[i] = 250 - 3 * i;
 
-    for (int i = 0; i < 32; ++i)
+    for (int8_t i = 0; i < 32; ++i)
         EXPECT_EQ(v1.m256i_u8[i], 3 + 2 * i);
     EXPECT_TRUE(v1 != buffer_u8);
     EXPECT_FALSE(v1 == buffer_u8);
     EXPECT_FALSE(isZero(v1));
 
     m256i v2(buffer_u8);
-    for (int i = 0; i < 32; ++i)
+    for (int8_t i = 0; i < 32; ++i)
         EXPECT_EQ(v2.m256i_u8[i], 250 - 3 * i);
     EXPECT_TRUE(v1 != v2);
     EXPECT_FALSE(v1 == v2);
     EXPECT_FALSE(isZero(v2));
 
     m256i v3(v1);
-    for (int i = 0; i < 32; ++i)
+    for (int8_t i = 0; i < 32; ++i)
         EXPECT_EQ(v3.m256i_u8[i], 3 + 2 * i);
     EXPECT_TRUE(v1 == v3);
     EXPECT_FALSE(v1 != v3);
@@ -47,7 +47,7 @@ TEST(TestCore256BitClass, ConstructAssignCompare) {
         buffer_intr.m256i_u8[i] = 90 + i;
 
     m256i v4(buffer_intr);
-    for (int i = 0; i < 32; ++i)
+    for (int8_t i = 0; i < 32; ++i)
         EXPECT_EQ(v4.m256i_u8[i], 90 + i);
     EXPECT_TRUE(v4 == buffer_intr);
     EXPECT_FALSE(v4 != buffer_intr);
@@ -119,9 +119,9 @@ TEST(TestCore256BitClass, ConstructAssignCompare) {
 
     // Non-aligned assignment and comparison
     unsigned char buffer_u8_64[64];
-    for (int i = 0; i < 64; ++i)
+    for (int8_t i = 0; i < 64; ++i)
         buffer_u8_64[i] = 7 + i;
-    for (int i = 0; i < 32; ++i)
+    for (int8_t i = 0; i < 32; ++i)
     {
         v1 = buffer_u8_64 + i;
         EXPECT_TRUE(v1 == buffer_u8_64 + i);
@@ -158,7 +158,7 @@ TEST(TestCore256BitFunctionsIntrinsicType, isZero) {
     EXPECT_FALSE(isZero(m256i(0, 1, 0, 0).m256i_intr()));
     EXPECT_FALSE(isZero(m256i(0, 0, 1, 0).m256i_intr()));
     EXPECT_FALSE(isZero(m256i(0, 0, 0, 1).m256i_intr()));
-    EXPECT_FALSE(isZero(m256i(-1, -1, -1, -1).m256i_intr()));
+    EXPECT_FALSE(isZero(m256i(0xffffffffffffffff,0xffffffffffffffff,0xffffffffffffffff,0xffffffffffffffff).m256i_intr()));
 }
 
 TEST(TestCore256BitFunctionsIntrinsicType, isZeroPerformance)
