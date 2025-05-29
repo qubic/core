@@ -143,7 +143,7 @@ public:
     // get and compress number of shares of 676 computors to 676x10 bit numbers
     void compressNewSharesPacket(unsigned int ownComputorIdx, unsigned char customMiningShareCountPacket[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES])
     {
-        setMem(customMiningShareCountPacket, sizeof(customMiningShareCountPacket), 0);
+        setMem(customMiningShareCountPacket, CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES, 0);
         setMem(_buffer, sizeof(_buffer), 0);
         for (int j = 0; j < NUMBER_OF_COMPUTORS; j++)
         {
