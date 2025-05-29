@@ -5291,6 +5291,10 @@ static bool initialize()
         // needs to be called after ts.beginEpoch() because it looks up tickIndex, which requires to setup begin of epoch in ts
         updateNumberOfTickTransactions();
 
+        // Reset the custom mining data here so that Save/Load state for custom mining is correct.
+        customMiningInitialize();
+        resetCustomMining();
+
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
 #else
@@ -5400,9 +5404,6 @@ static bool initialize()
         setNewMiningSeed();
     }    
     score->loadScoreCache(system.epoch);
-
-    customMiningInitialize();
-    resetCustomMining();
 
     loadCustomMiningCache(system.epoch);
 
