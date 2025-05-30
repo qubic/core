@@ -5286,6 +5286,9 @@ static bool initialize()
 
         lastExpectedTickTransactionDigest = m256i::zero();
 
+        //Init custom mining data. Reset function will be called in beginEpoch()
+        customMiningInitialize();
+
         beginEpoch();
 
         // needs to be called after ts.beginEpoch() because it looks up tickIndex, which requires to setup begin of epoch in ts
@@ -5400,9 +5403,6 @@ static bool initialize()
         setNewMiningSeed();
     }    
     score->loadScoreCache(system.epoch);
-
-    customMiningInitialize();
-    resetCustomMining();
 
     loadCustomMiningCache(system.epoch);
 
