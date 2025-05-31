@@ -76,6 +76,7 @@ struct CustomMiningSharePayload
 {
     Transaction transaction;
     unsigned char packedScore[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES];
+    m256i dataLock;
     unsigned char signature[SIGNATURE_SIZE];
 };
 
