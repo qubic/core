@@ -2234,9 +2234,13 @@ static void contractProcessor(void*)
     break;
     }
 
-    // Set state to inactive, signaling end of contractProcessor() execution before contractProcessorShutdownCallback()
-    // for reducing waiting time in tick processor.
-    contractProcessorState = 0;
+    if (!isVirtualMachine)
+    {
+        // at the moment, this can only apply on BM
+        // Set state to inactive, signaling end of contractProcessor() execution before contractProcessorShutdownCallback()
+        // for reducing waiting time in tick processor.
+        contractProcessorState = 0;
+    }
 }
 
 // Notify dest of incoming transfer if dest is a contract.
@@ -5031,7 +5035,11 @@ static void shutdownCallback(EFI_EVENT Event, void* Context)
 static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 {
     closeEvent(Event);
-
+    if (isVirtualMachine)
+    {
+        // This must be called on VM
+        contractProcessorState = 0;
+    }
     // Timeout is disabled so far, because timeout recovery is not implemented yet.
     // So `contractProcessorState = 0` has been moved to the end of contractProcessor() to prevent unnecessary delay
     // in the tick processor, waiting for contract processor to finish.
