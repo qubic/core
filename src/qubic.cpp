@@ -102,6 +102,7 @@ struct Processor : public CustomStack
 
 static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
+static volatile unsigned char isVirtualMachine = 0; // indicate that it is running on VM, to avoid running some functions for BM  (for testing and developing purposes)
 static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
 static volatile bool forceSwitchEpoch = false;
@@ -5481,6 +5482,21 @@ static bool initialize()
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
+    
+
+    auto& addr = nodeAddress.Addr;
+    if ((!addr[0]) || (addr[0] == 127) || (addr[0] == 10)
+        || (addr[0] == 172 && addr[1] >= 16 && addr[1] <= 31)
+        || (addr[0] == 192 && addr[1] == 168) || (addr[0] == 255))
+    {
+        logToConsole(L"Detected node running on virtual machine");
+        isVirtualMachine = 1;
+    }
+    else
+    {
+        logToConsole(L"Detected node running on Bare Metal");
+        isVirtualMachine = 0;
+    }
 
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
