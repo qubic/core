@@ -361,7 +361,7 @@ static void logToConsole(const CHAR16* message)
 
 static unsigned int getTickInMiningPhaseCycle()
 {
-    return (system.tick - system.initialTick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+    return (system.tick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
 }
 
 static int computorIndex(m256i computor)
