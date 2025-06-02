@@ -1638,6 +1638,7 @@ protected:
         }
         state.numberOfMuslim--;
         state.muslim.remove(qpi.invocator());
+        state.muslim.cleanupIfNeeded();
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
