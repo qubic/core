@@ -121,6 +121,32 @@ public:
 		}
 	}
 
+	void processTransactionData(const Transaction* transaction, const m256i& dataLock)
+	{
+		int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
+		if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
+		{
+			if (!transaction->amount
+				&& transaction->inputSize == VOTE_COUNTER_DATA_SIZE_IN_BYTES + sizeof(m256i))
+			{
+				m256i txDataLock = m256i(transaction->inputPtr() + VOTE_COUNTER_DATA_SIZE_IN_BYTES);
+				if (txDataLock == dataLock)
+				{
+					addVotes(transaction->inputPtr(), computorIndex);
+				}
+#ifndef NDEBUG
+				else
+				{
+					CHAR16 dbg[256];
+					setText(dbg, L"TRACE: [Vote counter tx] Wrong datalock from comp ");
+					appendNumber(dbg, computorIndex, false);
+					addDebugMessage(dbg);
+				}
+#endif
+			}
+		}
+	}
+
 	unsigned long long getVoteCount(unsigned int computorIdx)
 	{
 		return accumulatedVoteCount[computorIdx];
