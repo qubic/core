@@ -141,6 +141,18 @@ public:
         copyMem(_shareCount, sharesCount, sizeof(_shareCount));
     }
 
+    bool isAllZeroes()
+    {
+        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            if (_shareCount[i] == 0)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // get and compress number of shares of 676 computors to 676x10 bit numbers
     void compressNewSharesPacket(unsigned int ownComputorIdx, unsigned char customMiningShareCountPacket[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES])
     {

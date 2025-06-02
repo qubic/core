@@ -3042,51 +3042,54 @@ static void processTick(unsigned long long processorNumber)
     {
         // In the begining of mining phase.
         // Also skip the begining of the epoch, because the no thing to do
-        if (getTickInMiningPhaseCycle() == 0 && (system.tick - system.initialTick) > INTERNAL_COMPUTATIONS_INTERVAL)
+        if (getTickInMiningPhaseCycle() == 0)
         {
             PROFILE_NAMED_SCOPE("processTick(): prepare custom mining shares tx");
-            long long customMiningCountOverflow = 0;
-            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+            if (gCustomMiningSharesCounter.isAllZeroes() == false) // only process if counter is non-zero
             {
-                // Update the custom mining share counter
-                ACQUIRE(gCustomMiningSharesCountLock);
-                for (int k = 0; k < NUMBER_OF_COMPUTORS; k++)
+                long long customMiningCountOverflow = 0;
+                for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
                 {
-                    if (gCustomMiningSharesCount[k] > CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL)
+                    // Update the custom mining share counter
+                    ACQUIRE(gCustomMiningSharesCountLock);
+                    for (int k = 0; k < NUMBER_OF_COMPUTORS; k++)
                     {
-                        // Save the max of overflow case
-                        if (gCustomMiningSharesCount[k] > customMiningCountOverflow)
+                        if (gCustomMiningSharesCount[k] > CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL)
                         {
-                            customMiningCountOverflow = gCustomMiningSharesCount[k];
+                            // Save the max of overflow case
+                            if (gCustomMiningSharesCount[k] > customMiningCountOverflow)
+                            {
+                                customMiningCountOverflow = gCustomMiningSharesCount[k];
+                            }
+
+                            // Threshold the value
+                            gCustomMiningSharesCount[k] = CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL;
                         }
-
-                        // Threshold the value
-                        gCustomMiningSharesCount[k] = CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL;
                     }
+                    gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
+                    RELEASE(gCustomMiningSharesCountLock);
+
+                    // Save the transaction to be broadcasted
+                    auto& payload = gCustomMiningBroadcastTxBuffer[i].payload;
+                    payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
+                    payload.transaction.destinationPublicKey = m256i::zero();
+                    payload.transaction.amount = 0;
+                    payload.transaction.tick = 0;
+                    payload.transaction.inputType = CustomMiningSolutionTransaction::transactionType();
+                    payload.transaction.inputSize = sizeof(payload.packedScore) + sizeof(payload.dataLock);
+                    gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
+                    // Set the flag to false, indicating that the transaction is not broadcasted yet
+                    gCustomMiningBroadcastTxBuffer[i].isBroadcasted = false;
                 }
-                gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
+
+                // Keep the max of overflow case
+                ATOMIC_MAX64(gCustomMiningStats.maxOverflowShareCount, customMiningCountOverflow);
+
+                // reset the phase counter
+                ACQUIRE(gCustomMiningSharesCountLock);
+                setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
                 RELEASE(gCustomMiningSharesCountLock);
-
-                // Save the transaction to be broadcasted
-                auto& payload = gCustomMiningBroadcastTxBuffer[i].payload;
-                payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
-                payload.transaction.destinationPublicKey = m256i::zero();
-                payload.transaction.amount = 0;
-                payload.transaction.tick = 0;
-                payload.transaction.inputType = CustomMiningSolutionTransaction::transactionType();
-                payload.transaction.inputSize = sizeof(payload.packedScore) + sizeof(payload.dataLock);
-                gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
-                // Set the flag to false, indicating that the transaction is not broadcasted yet
-                gCustomMiningBroadcastTxBuffer[i].isBroadcasted = false;
             }
-
-            // Keep the max of overflow case
-            ATOMIC_MAX64(gCustomMiningStats.maxOverflowShareCount, customMiningCountOverflow);
-
-            // reset the phase counter
-            ACQUIRE(gCustomMiningSharesCountLock);
-            setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
-            RELEASE(gCustomMiningSharesCountLock);
         }
     }
 
