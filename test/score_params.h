@@ -4,22 +4,21 @@ namespace score_params
 {
 enum ParamType
 {
-    NR_NEURONS = 0,
-    NR_NEIGHBOR_NEURONS,
-    DURATIONS,
-    NR_OPTIMIZATION_STEPS,
+    NUMBER_OF_INPUT_NEURONS, // K
+    NUMBER_OF_OUTPUT_NEURONS,// L
+    NUMBER_OF_TICKS,        // N
+    NUMBER_OF_NEIGHBORS,    // 2M
+    POPULATION_THRESHOLD,  // P
+    NUMBER_OF_MUTATIONS,    // S
+    SOLUTION_THRESHOLD,
     MAX_PARAM_TYPE
 };
 
-static constexpr unsigned long long kDataLength = 256;
 
 // Comment out when we want to reduce the number of running test
 static constexpr unsigned long long kSettings[][MAX_PARAM_TYPE] = {
-    {512, 256, 100000, 10},
-    {856, 520, 120000, 20},
-    {1000, 1000, 1000000, 30},
-    {2844, 2160, 9000000ULL, 89},
-    {3000, 3000, 9000000ULL, 30},
-    {3000, 3000, 9000000ULL, 100},
+    //{32, 32, 20, 16, 100, 8, 12},
+    //{512, 128, 20, 64, 1000, 20, 100},
+    {1024, 1024, 100, 1024, 3000, 100, 768},
 };
 }

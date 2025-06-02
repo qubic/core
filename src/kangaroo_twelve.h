@@ -2545,3 +2545,29 @@ static void random2(
         x = x * 1664525 + 1013904223;// https://en.wikipedia.org/wiki/Linear_congruential_generator#Parameters_in_common_use
     }
 }
+
+static void random2(
+    const unsigned char* randomSeed,
+    unsigned char* output,
+    unsigned long long outputSize, // outputSize must be a multiple of 8
+    unsigned char* poolBuffer // intermediate buffer that have size of RANDOM2_POOL_SIZE
+)
+{
+    unsigned char state[200];
+    *((__m256i*) & state[0]) = *((__m256i*)randomSeed);
+    setMem(&state[32], sizeof(state) - 32, 0);
+
+    for (unsigned int i = 0; i < RANDOM2_POOL_SIZE; i += sizeof(state))
+    {
+        KeccakP1600_Permute_12rounds(state);
+        copyMem(&poolBuffer[i], state, sizeof(state));
+    }
+
+    unsigned int x = 0; // The same sequence is always used, exploit this for optimization
+    for (unsigned long long i = 0; i < outputSize; i += 8)
+    {
+        *((unsigned long long*) & output[i]) = *((unsigned long long*) & poolBuffer[x & (RANDOM2_POOL_ACTUAL_SIZE - 1)]);
+        x = x * 1664525 + 1013904223;// https://en.wikipedia.org/wiki/Linear_congruential_generator#Parameters_in_common_use
+    }
+}
+
