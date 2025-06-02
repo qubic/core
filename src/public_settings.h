@@ -97,6 +97,7 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache???
 
 #define INTERNAL_COMPUTATIONS_INTERVAL 676
 #define EXTERNAL_COMPUTATIONS_INTERVAL (676 + 675)
+static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal computation phase needs to be at least equal NUMBER_OF_COMPUTORS");
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE

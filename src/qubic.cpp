@@ -82,7 +82,6 @@
 #define PORT 21841
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
-#define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 2 // Must be 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
@@ -356,12 +355,6 @@ static void logToConsole(const CHAR16* message)
     else
         outputStringToConsole(timestampedMessage);
 #endif
-}
-
-
-static unsigned int getTickInMiningPhaseCycle()
-{
-    return (system.tick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
 }
 
 static int computorIndex(m256i computor)
@@ -2698,29 +2691,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
                 case CustomMiningSolutionTransaction::transactionType():
                 {
-                    int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
-                    if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex] // this tx was sent by the tick leader of this tick
-                        && transaction->inputSize == CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES + sizeof(m256i))
-                    {
-                        if (!transaction->amount
-                            && transaction->inputSize == CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES + sizeof(m256i))
-                        {
-                            m256i txDataLock = m256i(transaction->inputPtr() + VOTE_COUNTER_DATA_SIZE_IN_BYTES);
-                            if (txDataLock == dataLock)
-                            {
-                                gCustomMiningSharesCounter.addShares(transaction->inputPtr(), computorIndex);
-                            }
-                            #ifndef NDEBUG
-                            else
-                            {
-                                CHAR16 dbg[256];
-                                setText(dbg, L"TRACE: [Custom mining point tx] Wrong datalock from comp ");
-                                appendNumber(dbg, computorIndex, false);
-                                addDebugMessage(dbg);
-                            }
-                            #endif
-                        }
-                    }
+                    gCustomMiningSharesCounter.processTransactionData(transaction, dataLock);
                 }
                 break;
 
