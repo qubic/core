@@ -554,11 +554,21 @@ namespace QPI
 						}
 						break;
 					}
+					// TODO: reuse slots marked for removal, as in in HashSet
 					povIndex = (povIndex + 1) & (L - 1);
 				}
 			}
 		}
 		return NULL_INDEX;
+	}
+
+	template <typename T, uint64 L>
+	void Collection<T, L>::cleanupIfNeeded(uint64 removalThresholdPercent)
+	{
+		if (_markRemovalCounter > (removalThresholdPercent * L / 100))
+		{
+			cleanup();
+		}
 	}
 
 	template <typename T, uint64 L>

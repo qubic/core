@@ -126,7 +126,7 @@ namespace QPI
 							return index;
 						}
 						break;
-					// TODO: fill gaps of "marked for removal!? -> should remove check in cleanup, because cleanup can still speed-up access even if gaps were reused
+					// TODO: fill gaps marked for removal as in HashSet
 					}
 					index = (index + 1) & (L - 1);
 				}
@@ -143,6 +143,14 @@ namespace QPI
 			}
 		}
 		return NULL_INDEX;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	bool HashMap<KeyT, ValueT, L, HashFunc>::isEmptySlot(sint64 elementIndex) const
+	{
+		elementIndex &= (L - 1);
+		uint64 flags = _getEncodedOccupationFlags(_occupationFlags, elementIndex);
+		return ((flags & 3ULL) != 1);
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
@@ -166,20 +174,29 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	sint64 HashMap<KeyT, ValueT, L, HashFunc>::removeByKey(const KeyT& key) 
+	sint64 HashMap<KeyT, ValueT, L, HashFunc>::removeByKey(const KeyT& key)
 	{
 		sint64 elementIndex = getElementIndex(key);
-		if (elementIndex == NULL_INDEX) 
+		if (elementIndex == NULL_INDEX)
 		{
 			return NULL_INDEX;
 		}
-		else 
+		else
 		{
 			removeByIndex(elementIndex);
 			return elementIndex;
 		}
 	}
-
+	
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	void HashMap<KeyT, ValueT, L, HashFunc>::cleanupIfNeeded(uint64 removalThresholdPercent)
+	{
+		if (_markRemovalCounter > (removalThresholdPercent * L / 100))
+		{
+			cleanup();
+		}
+	}
+	
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	void HashMap<KeyT, ValueT, L, HashFunc>::cleanup()
 	{
@@ -350,9 +367,10 @@ namespace QPI
 	template <typename KeyT, uint64 L, typename HashFunc>
 	sint64 HashSet<KeyT, L, HashFunc>::add(const KeyT& key)
 	{
-		if (_population < capacity() && _markRemovalCounter < capacity())
+		if (_population < capacity())
 		{
 			// search in hash map
+			sint64 markedForRemovalIndexForReuse = NULL_INDEX;
 			sint64 index = HashFunc::hash(key) & (L - 1);
 			for (sint64 counter = 0; counter < L; counter += 32)
 			{
@@ -362,7 +380,11 @@ namespace QPI
 					switch (flags & 3ULL)
 					{
 					case 0:
-						// empty entry -> put element and mark as occupied
+						// empty entry -> key isn't in set yet
+						// If we have already seen an entry marked for removal, reuse this slot because it is closer to the hash index
+						if (markedForRemovalIndexForReuse != NULL_INDEX)
+							goto reuse_slot;
+						// ... otherwise put element and mark as occupied
 						_occupationFlags[index >> 5] |= (1ULL << ((index & 31) << 1));
 						_keys[index] = key;
 						_population++;
@@ -376,19 +398,30 @@ namespace QPI
 						}
 						break;
 					case 2:
-						// marked for removal -> reuse slot (put key and set flags from 2 to 1)
-						_occupationFlags[index >> 5] ^= (3ULL << ((index & 31) << 1));
-						_keys[index] = key;
-						_population++;
-						ASSERT(_markRemovalCounter > 0);
-						_markRemovalCounter--;
-						return index;
+						// marked for removal -> reuse slot (first slot we see) later if we are sure that key isn't in the set
+						if (markedForRemovalIndexForReuse == NULL_INDEX)
+							markedForRemovalIndexForReuse = index;
+						break;
 					}
 					index = (index + 1) & (L - 1);
 				}
 			}
+
+			if (markedForRemovalIndexForReuse != NULL_INDEX)
+			{
+			reuse_slot:
+				// Reuse slot marked for removal: put key here and set flags from 2 to 1.
+				// But don't decrement _markRemovalCounter, because it is used to check if cleanup() is needed.
+				// Without cleanup, we don't get new unoccupied slots and at least lookup of keys that aren't contained in the set
+				// stays slow.
+				index = markedForRemovalIndexForReuse;
+				_occupationFlags[index >> 5] ^= (3ULL << ((index & 31) << 1));
+				_keys[index] = key;
+				_population++;
+				return index;
+			}
 		}
-		else if (_population == capacity())
+		else // _population == capacity()
 		{
 			// Check if key exists.
 			sint64 index = getElementIndex(key);
@@ -398,6 +431,14 @@ namespace QPI
 			}
 		}
 		return NULL_INDEX;
+	}
+
+	template <typename KeyT, uint64 L, typename HashFunc>
+	bool HashSet<KeyT, L, HashFunc>::isEmptySlot(sint64 elementIndex) const
+	{
+		elementIndex &= (L - 1);
+		uint64 flags = _getEncodedOccupationFlags(_occupationFlags, elementIndex);
+		return ((flags & 3ULL) != 1);
 	}
 
 	template <typename KeyT, uint64 L, typename HashFunc>
@@ -436,13 +477,28 @@ namespace QPI
 	}
 
 	template <typename KeyT, uint64 L, typename HashFunc>
+	void HashSet<KeyT, L, HashFunc>::cleanupIfNeeded(uint64 removalThresholdPercent)
+	{
+		if (_markRemovalCounter > (removalThresholdPercent * L / 100))
+		{
+			cleanup();
+		}
+	}
+
+	template <typename KeyT, uint64 L, typename HashFunc>
 	void HashSet<KeyT, L, HashFunc>::cleanup()
 	{
 		// _keys gets occupied over time with entries of type 3 which means they are marked for cleanup.
 		// Once cleanup is called it's necessary to remove all these type 3 entries by reconstructing a fresh hash map residing in scratchpad buffer.
 		// Cleanup() called for a hash map having only type 3 entries must give the result equal to reset() memory content wise.
 
-		// Speedup case of empty hash map but existed marked for removal elements
+		// If no elements have been removed, no cleanup is needed
+		if (!_markRemovalCounter)
+		{
+			return;
+		}
+
+		// Speedup case of empty hash map with elements marked for removal
 		if (!population())
 		{
 			reset();
