@@ -102,6 +102,7 @@ struct Processor : public CustomStack
 
 static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
+static volatile unsigned char isVirtualMachine = 0; // indicate that it is running on VM, to avoid running some functions for BM  (for testing and developing purposes)
 static volatile bool forceRefreshPeerList = false;
 static volatile bool forceNextTick = false;
 static volatile bool forceSwitchEpoch = false;
@@ -2233,9 +2234,13 @@ static void contractProcessor(void*)
     break;
     }
 
-    // Set state to inactive, signaling end of contractProcessor() execution before contractProcessorShutdownCallback()
-    // for reducing waiting time in tick processor.
-    contractProcessorState = 0;
+    if (!isVirtualMachine)
+    {
+        // at the moment, this can only apply on BM
+        // Set state to inactive, signaling end of contractProcessor() execution before contractProcessorShutdownCallback()
+        // for reducing waiting time in tick processor.
+        contractProcessorState = 0;
+    }
 }
 
 // Notify dest of incoming transfer if dest is a contract.
@@ -5030,7 +5035,11 @@ static void shutdownCallback(EFI_EVENT Event, void* Context)
 static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 {
     closeEvent(Event);
-
+    if (isVirtualMachine)
+    {
+        // This must be called on VM
+        contractProcessorState = 0;
+    }
     // Timeout is disabled so far, because timeout recovery is not implemented yet.
     // So `contractProcessorState = 0` has been moved to the end of contractProcessor() to prevent unnecessary delay
     // in the tick processor, waiting for contract processor to finish.
@@ -5481,6 +5490,21 @@ static bool initialize()
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
+    
+
+    auto& addr = nodeAddress.Addr;
+    if ((!addr[0]) || (addr[0] == 127) || (addr[0] == 10)
+        || (addr[0] == 172 && addr[1] >= 16 && addr[1] <= 31)
+        || (addr[0] == 192 && addr[1] == 168) || (addr[0] == 255))
+    {
+        logToConsole(L"Detected node running on virtual machine");
+        isVirtualMachine = 1;
+    }
+    else
+    {
+        logToConsole(L"Detected node running on Bare Metal");
+        isVirtualMachine = 0;
+    }
 
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
