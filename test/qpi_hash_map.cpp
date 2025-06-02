@@ -199,6 +199,8 @@ TYPED_TEST_P(QPIHashMapTest, TestGetters)
 	auto values = std::views::values(keyValuePairs);
 	QPI::sint64 returnedIndex;
 
+	EXPECT_TRUE(hashMap.isEmptySlot(0));
+
 	for (int i = 0; i < 4; ++i)
 	{
 		returnedIndex = hashMap.set(ids[i], values[i]);
@@ -207,6 +209,7 @@ TYPED_TEST_P(QPIHashMapTest, TestGetters)
 	EXPECT_EQ(hashMap.getElementIndex(ids[3]), returnedIndex);
 	EXPECT_EQ(hashMap.key(returnedIndex), ids[3]);
 	EXPECT_EQ(hashMap.value(returnedIndex), values[3]);
+	EXPECT_FALSE(hashMap.isEmptySlot(returnedIndex));
 
 	typename TypeParam::second_type valueAfter = {};
 	typename TypeParam::second_type valueBefore = valueAfter;
@@ -218,11 +221,15 @@ TYPED_TEST_P(QPIHashMapTest, TestGetters)
 	EXPECT_EQ(valueAfter, values[0]);
 
 	// Test getElementIndex when all slots are marked for removal so it has to iterate through the whole hash map.
-	for (int i = 0; i < 3; ++i)
+	for (int i = 0; i < 4; ++i)
 	{
 		hashMap.removeByKey(ids[i]);
 	}
 	EXPECT_EQ(hashMap.getElementIndex(ids[0]), QPI::NULL_INDEX);
+
+	EXPECT_TRUE(hashMap.isEmptySlot(0));
+
+	hashMap.cleanupIfNeeded();
 }
 
 TYPED_TEST_P(QPIHashMapTest, TestSet)

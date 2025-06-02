@@ -126,7 +126,7 @@ namespace QPI
 							return index;
 						}
 						break;
-					// TODO: fill gaps of "marked for removal!? -> should remove check in cleanup, because cleanup can still speed-up access even if gaps were reused
+					// TODO: fill gaps marked for removal as in HashSet
 					}
 					index = (index + 1) & (L - 1);
 				}
@@ -143,6 +143,14 @@ namespace QPI
 			}
 		}
 		return NULL_INDEX;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	bool HashMap<KeyT, ValueT, L, HashFunc>::isEmptySlot(sint64 elementIndex) const
+	{
+		elementIndex &= (L - 1);
+		uint64 flags = _getEncodedOccupationFlags(_occupationFlags, elementIndex);
+		return ((flags & 3ULL) != 1);
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
@@ -166,20 +174,29 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	sint64 HashMap<KeyT, ValueT, L, HashFunc>::removeByKey(const KeyT& key) 
+	sint64 HashMap<KeyT, ValueT, L, HashFunc>::removeByKey(const KeyT& key)
 	{
 		sint64 elementIndex = getElementIndex(key);
-		if (elementIndex == NULL_INDEX) 
+		if (elementIndex == NULL_INDEX)
 		{
 			return NULL_INDEX;
 		}
-		else 
+		else
 		{
 			removeByIndex(elementIndex);
 			return elementIndex;
 		}
 	}
-
+	
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	void HashMap<KeyT, ValueT, L, HashFunc>::cleanupIfNeeded(uint64 removalThresholdPercent)
+	{
+		if (_markRemovalCounter > (removalThresholdPercent * L / 100))
+		{
+			cleanup();
+		}
+	}
+	
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	void HashMap<KeyT, ValueT, L, HashFunc>::cleanup()
 	{
