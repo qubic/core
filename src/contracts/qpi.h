@@ -419,7 +419,8 @@ namespace QPI
 		void reset();
 	};
 
-	// Hash set of keys of type KeyT and total element capacity L.
+	// Hash set of keys of type KeyT and total element capacity L. Access time is approx. constant with
+	// population < 80% of L but gets close to linear with population > 90% of L.
 	template <typename KeyT, uint64 L, typename HashFunc = HashFunction<KeyT>>
 	class HashSet
 	{
@@ -464,7 +465,10 @@ namespace QPI
 		// Return index of element with key in hash set _keys, or NULL_INDEX if not found.
 		sint64 getElementIndex(const KeyT& key) const;
 
-		// Return key at elementIndex.
+		// Return if slot at elementIndex is empty (not occupied by an element). If false, key() is valid.
+		inline bool isEmptySlot(sint64 elementIndex) const;
+
+		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
 		inline KeyT key(sint64 elementIndex) const;
 
 		// Add key to the hash set, return elementIndex of new element.
@@ -479,7 +483,11 @@ namespace QPI
 		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
 		sint64 remove(const KeyT& key);
 
-		// Remove all elements marked for removal, this is an expensive operation.
+		// Call cleanup() if it makes sense. The content of this object may be reordered, so prior indices are invalidated.
+		void cleanupIfNeeded(uint64 removalThresholdPercent = 50);
+
+		// Remove all elements marked for removal. This is an expensive operation, but it improves lookup performance
+		// if remove has been called often. Content is reordered, so prior indices are invalidated.
 		void cleanup();
 
 		// Reinitialize as empty hash set.
