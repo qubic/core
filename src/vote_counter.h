@@ -123,6 +123,7 @@ public:
 
 	void processTransactionData(const Transaction* transaction, const m256i& dataLock)
 	{
+#ifndef NO_UEFI
 		int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
 		if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex]) // this tx was sent by the tick leader of this tick
 		{
@@ -145,6 +146,7 @@ public:
 #endif
 			}
 		}
+#endif
 	}
 
 	unsigned long long getVoteCount(unsigned int computorIdx)

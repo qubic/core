@@ -12,7 +12,11 @@
 
 static unsigned int getTickInMiningPhaseCycle()
 {
+#ifdef NO_UEFI
+    return 0;
+#else
     return (system.tick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+#endif
 }
 
 struct MiningSolutionTransaction : public Transaction
@@ -147,11 +151,11 @@ public:
         copyMem(_shareCount, sharesCount, sizeof(_shareCount));
     }
 
-    bool isAllZeroes()
+    bool isEmptyPacket(const unsigned char* data) const
     {
-        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        for (int i = 0; i < CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES; i++)
         {
-            if (_shareCount[i] == 0)
+            if (data[i] != 0)
             {
                 return false;
             }
@@ -217,16 +221,16 @@ public:
 
     void processTransactionData(const Transaction* transaction, const m256i& dataLock)
     {
+#ifndef NO_UEFI
         int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
         int tickPhase = getTickInMiningPhaseCycle();
         if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex] // this tx was sent by the tick leader of this tick
             && transaction->inputSize == CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES + sizeof(m256i)
             && tickPhase <= NUMBER_OF_COMPUTORS + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) // only accept tick within internal mining phase (+ 2 from broadcast time)
         {
-            if (!transaction->amount
-                && transaction->inputSize == CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES + sizeof(m256i))
+            if (!transaction->amount)
             {
-                m256i txDataLock = m256i(transaction->inputPtr() + VOTE_COUNTER_DATA_SIZE_IN_BYTES);
+                m256i txDataLock = m256i(transaction->inputPtr() + CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES);
                 if (txDataLock == dataLock)
                 {
                     addShares(transaction->inputPtr(), computorIndex);
@@ -242,6 +246,7 @@ public:
 #endif
             }
         }
+#endif
     }
 };
 
