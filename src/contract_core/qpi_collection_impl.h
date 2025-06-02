@@ -554,7 +554,7 @@ namespace QPI
 						}
 						break;
 					}
-					// TODO: reuse slots marked for removal, as in in HashSet
+					// TODO: reuse slots marked for removal, as in HashSet
 					povIndex = (povIndex + 1) & (L - 1);
 				}
 			}
