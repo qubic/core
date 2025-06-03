@@ -1642,10 +1642,12 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 newTime.TimeZone = 0;
                 newTime.Daylight = 0;
                 EFI_STATUS status = rs->SetTime(&newTime);
+#ifndef NDEBUG
                 if (status != EFI_SUCCESS)
                 {
-                    logStatusToConsole(L"SetTime() failed!", status, __LINE__);
+                    addDebugMessage(L"SetTime() SPECIAL_COMMAND_SEND_TIME failed");
                 }
+#endif
             }
             // this has no break by intention, because SPECIAL_COMMAND_SEND_TIME responds the same way as SPECIAL_COMMAND_QUERY_TIME
             case SPECIAL_COMMAND_QUERY_TIME:
