@@ -386,7 +386,6 @@ protected:
     uint32 numberOfFundP;
     uint32 numberOfMKTP;
     uint32 numberOfAlloP;
-    uint32 numberOfMSP;
     uint32 transferRightsFee;
     uint32 quorumPercent;
     
