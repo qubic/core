@@ -359,7 +359,6 @@ protected:
     Array<AlloPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> AlloP;
 
     id QCAP_ISSUER;
-    id reinvestingAddress;
     id adminAddress;
     struct voteStatusInfo
     {
