@@ -10,6 +10,15 @@
 
 #include <lib/platform_efi/uefi.h>
 
+static unsigned int getTickInMiningPhaseCycle()
+{
+#ifdef NO_UEFI
+    return 0;
+#else
+    return (system.tick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+#endif
+}
+
 struct MiningSolutionTransaction : public Transaction
 {
     static constexpr unsigned char transactionType()
@@ -68,6 +77,7 @@ struct CustomMiningSolution
 
 #define CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES 848
 #define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
+#define TICK_VOTE_COUNTER_PUBLICATION_OFFSET 2 // Must be 2
 static constexpr int CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL = (1U << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) - 1;
 static_assert((1 << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) >= NUMBER_OF_COMPUTORS, "Invalid number of bit per datum");
 static_assert(CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES * 8 >= NUMBER_OF_COMPUTORS * CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP, "Invalid data size");
@@ -76,6 +86,7 @@ struct CustomMiningSharePayload
 {
     Transaction transaction;
     unsigned char packedScore[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES];
+    m256i dataLock;
     unsigned char signature[SIGNATURE_SIZE];
 };
 
@@ -140,6 +151,18 @@ public:
         copyMem(_shareCount, sharesCount, sizeof(_shareCount));
     }
 
+    bool isEmptyPacket(const unsigned char* data) const
+    {
+        for (int i = 0; i < CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES; i++)
+        {
+            if (data[i] != 0)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // get and compress number of shares of 676 computors to 676x10 bit numbers
     void compressNewSharesPacket(unsigned int ownComputorIdx, unsigned char customMiningShareCountPacket[CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES])
     {
@@ -194,6 +217,36 @@ public:
     {
         copyMem(&_shareCount[0], src, sizeof(_shareCount));
         copyMem(&_accumulatedSharesCount[0], src + sizeof(_shareCount), sizeof(_accumulatedSharesCount));
+    }
+
+    void processTransactionData(const Transaction* transaction, const m256i& dataLock)
+    {
+#ifndef NO_UEFI
+        int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
+        int tickPhase = getTickInMiningPhaseCycle();
+        if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex] // this tx was sent by the tick leader of this tick
+            && transaction->inputSize == CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES + sizeof(m256i)
+            && tickPhase <= NUMBER_OF_COMPUTORS + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) // only accept tick within internal mining phase (+ 2 from broadcast time)
+        {
+            if (!transaction->amount)
+            {
+                m256i txDataLock = m256i(transaction->inputPtr() + CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES);
+                if (txDataLock == dataLock)
+                {
+                    addShares(transaction->inputPtr(), computorIndex);
+                }
+#ifndef NDEBUG
+                else
+                {
+                    CHAR16 dbg[256];
+                    setText(dbg, L"TRACE: [Custom mining point tx] Wrong datalock from comp ");
+                    appendNumber(dbg, computorIndex, false);
+                    addDebugMessage(dbg);
+                }
+#endif
+            }
+        }
+#endif
     }
 };
 
