@@ -31,10 +31,7 @@ enum QVAULTLogInfo {
     QvaultErrorTransferAsset = 12,
     QvaultInsufficientVotingPower = 13,
     QvaultInputError = 14,
-    QvaultOverflowProposal = 15,
-    QvaultMaxMuslimId = 16,
-    QvaultDuplicatedMuslimId = 17,
-    QvaultNotMuslimId = 18,
+    QvaultOverflowProposal = 15, 
     QvaultAlreadyVotedId = 19,
     QvaultOverflowVotes = 20,
 };
@@ -58,8 +55,7 @@ public:
         uint64 totalVotingPower;
         uint64 proposalCreateFund;
         uint64 reinvestingFund;
-        uint64 totalNotMSRevenue;
-        uint64 totalMuslimRevenue;
+        uint64 totalEpochRevenue;
         uint64 fundForBurn;
         uint64 totalStakedQcapAmount;
         uint64 qcapMarketCap;
@@ -83,8 +79,6 @@ public:
         uint32 numberOfMKTP;
         uint32 numberOfAlloP;
         uint32 transferRightsFee;
-        uint32 numberOfMuslim;
-        uint32 numberOfMuslimShare;
         uint32 minQuorumRq;
         uint32 maxQuorumRq;
         uint32 totalQcapBurntAmount;
@@ -197,17 +191,6 @@ public:
         uint32 returnCode;
     };
 
-    struct submitMSP_input
-    {
-        uint32 shareIndex;
-        Array<uint8, 256> url;
-    };
-
-    struct submitMSP_output
-    {
-        uint32 returnCode;
-    };
-
     struct voteInProposal_input
     {
         uint64 priceOfIPO;
@@ -242,26 +225,6 @@ public:
 		sint64 transferredNumberOfShares;
 		uint32 returnCode;
 	};
-
-    struct submitMuslimId_input
-    {
-    };
-
-    struct submitMuslimId_output
-    {
-        uint64 elementIndex;
-        uint32 returnCode;
-    };
-
-    struct cancelMuslimId_input
-    {
-
-    };
-
-    struct cancelMuslimId_output
-    {
-        uint32 returnCode;
-    };
 
 protected:
 
@@ -395,30 +358,9 @@ protected:
 
     Array<AlloPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> AlloP;
 
-    /*
-        Muslim Proposal Information
-    */
-
-    struct MSPInfo
-    {
-        id proposer;
-        uint32 currentTotalVotingPower;
-        uint32 numberOfYes;
-        uint32 numberOfNo;
-        uint32 proposedEpoch;
-        uint32 muslimShareIndex;
-        uint32 currentQuorumPercent;
-        Array<uint8, 256> url;
-        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum.
-    };
-
-    Array<MSPInfo, 1024> MSP;
-
     id QCAP_ISSUER;
     id reinvestingAddress;
     id adminAddress;
-    HashSet<id, 1048576> muslim;
-
     struct voteStatusInfo
     {
         uint32 proposalId;
@@ -427,14 +369,12 @@ protected:
     HashMap<id, Array<voteStatusInfo, 16>, 1048576> vote;
     HashMap<id, uint8, 1048576> countOfVote;
 
-    uint64 proposalCreateFund, reinvestingFund, totalNotMSRevenue, totalMuslimRevenue, fundForBurn, totalHistoryRevenue, rasiedFundByQcap, lastRoundPriceOfQcap, revenueByQearn;
+    uint64 proposalCreateFund, reinvestingFund, totalEpochRevenue, fundForBurn, totalHistoryRevenue, rasiedFundByQcap, lastRoundPriceOfQcap, revenueByQearn;
     Array<uint64, 65536> revenueInQcapPerEpoch;
     Array<uint64, 65536> revenueForOneQcapPerEpoch;
-    Array<uint64, 65536> revenueForOneMuslimPerEpoch;
     Array<uint64, 65536> revenueForOneQvaultPerEpoch;
     Array<uint64, 65536> revenueForReinvestPerEpoch;
     Array<uint64, 1024> revenuePerShare;
-    Array<uint32, 64> muslimShares;
     Array<uint32, 65536> burntQcapAmPerEpoch;
     uint32 totalVotingPower, totalStakedQcapAmount, qcapSoldAmount;
     uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille, burnPermille, qcapBurnPermille, totalQcapBurntAmount;
@@ -448,8 +388,6 @@ protected:
     uint32 numberOfAlloP;
     uint32 numberOfMSP;
     uint32 transferRightsFee;
-    uint32 numberOfMuslimShare;
-    sint32 numberOfMuslim;
     uint32 quorumPercent;
     
     /**
@@ -474,8 +412,7 @@ protected:
         output.totalVotingPower = state.totalVotingPower;
         output.proposalCreateFund = state.proposalCreateFund;
         output.reinvestingFund = state.reinvestingFund;
-        output.totalNotMSRevenue = state.totalNotMSRevenue;
-        output.totalMuslimRevenue = state.totalMuslimRevenue;
+        output.totalEpochRevenue = state.totalEpochRevenue;
         output.shareholderDividend = state.shareholderDividend;
         output.QCAPHolderPermille = state.QCAPHolderPermille;
         output.reinvestingPermille = state.reinvestingPermille;
@@ -493,9 +430,7 @@ protected:
         output.numberOfMKTP = state.numberOfMKTP;
         output.numberOfAlloP = state.numberOfAlloP;
         output.transferRightsFee = state.transferRightsFee;
-        output.numberOfMuslim = state.numberOfMuslim;
         output.fundForBurn = state.fundForBurn;
-        output.numberOfMuslimShare = state.numberOfMuslimShare;
         output.totalStakedQcapAmount = state.totalStakedQcapAmount;
         output.minQuorumRq = 330;
         output.maxQuorumRq = 670;
@@ -1223,78 +1158,8 @@ protected:
     struct submitMSP_locals
     {
         Asset qvaultShare;
-        MSPInfo newProposal;
         sint32 _t;
     };
-
-    PUBLIC_PROCEDURE_WITH_LOCALS(submitMSP)
-    {
-        for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
-        {
-            if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
-            {
-                if (state.votingPower.get(locals._t).amount >= 10000)
-                {
-                    break;
-                }
-                else 
-                {
-                    output.returnCode = QVAULTLogInfo::QvaultInsufficientVotingPower;
-                    if (qpi.invocationReward() > 0)
-                    {
-                        qpi.transfer(qpi.invocator(), qpi.invocationReward());
-                    }
-                    return ;
-                }
-            }
-        }
-
-        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
-        locals.qvaultShare.issuer = NULL_ID;
-
-        if(locals._t == state.numberOfVotingPower && qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
-            return ;
-        }
-        
-        if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
-            return ;
-        }
-        if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
-        {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QVAULT_PROPOSAL_FEE);
-        }
-        state.proposalCreateFund += QVAULT_PROPOSAL_FEE;
-
-        locals.newProposal.currentQuorumPercent = state.quorumPercent;
-        locals.newProposal.currentTotalVotingPower = state.totalVotingPower;
-        for (locals._t = 0; locals._t < 256; locals._t++)
-        {
-            locals.newProposal.url.set(locals._t, input.url.get(locals._t));
-        }
-        locals.newProposal.proposedEpoch = qpi.epoch();
-        locals.newProposal.numberOfYes = 0;
-        locals.newProposal.numberOfNo = 0;
-        locals.newProposal.proposer = qpi.invocator();
-        locals.newProposal.result = 0;
-
-        locals.newProposal.muslimShareIndex = input.shareIndex;
-
-        state.MSP.set(state.numberOfMSP++, locals.newProposal);
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
-    }
-    
     struct voteInProposal_locals
     {
         GPInfo updatedGProposal;
@@ -1304,7 +1169,6 @@ protected:
         FundPInfo updatedFundProposal;
         MKTPInfo updatedMKTProposal;
         AlloPInfo updatedAlloProposal;
-        MSPInfo updatedMSProposal;
         Array<voteStatusInfo, 16> newVoteList;
         voteStatusInfo newVote;
         uint32 numberOfYes;
@@ -1369,10 +1233,6 @@ protected:
                 locals.updatedAlloProposal = state.AlloP.get(input.proposalId);
                 locals.statusOfProposal = state.AlloP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
                 break;
-            case 8:
-                locals.updatedMSProposal = state.MSP.get(input.proposalId);
-                locals.statusOfProposal = state.MSP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
-                break;
         }
 
         if (locals.statusOfProposal == 0)
@@ -1434,11 +1294,6 @@ protected:
                             locals.updatedAlloProposal.numberOfYes += locals.numberOfYes;
                             locals.updatedAlloProposal.numberOfNo += locals.numberOfNo;
                             state.AlloP.set(input.proposalId, locals.updatedAlloProposal);
-                            break;
-                        case 8:
-                            locals.updatedMSProposal.numberOfYes += locals.numberOfYes;
-                            locals.updatedMSProposal.numberOfNo += locals.numberOfNo;
-                            state.MSP.set(input.proposalId, locals.updatedMSProposal);
                             break;
                     }
                     if (state.countOfVote.get(qpi.invocator(), locals.countOfVote))
@@ -1607,41 +1462,6 @@ protected:
 		}
     }
 
-	PUBLIC_PROCEDURE(submitMuslimId)
-    {
-        if (state.numberOfMuslim == state.muslim.capacity())
-        {
-            output.returnCode = QVAULTLogInfo::QvaultMaxMuslimId;
-            return ;
-        }
-        if (state.muslim.contains(qpi.invocator()))
-        {
-            output.returnCode = QVAULTLogInfo::QvaultDuplicatedMuslimId;
-            return ;
-        }
-        output.elementIndex = state.muslim.add(qpi.invocator());
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
-        state.numberOfMuslim++;
-    }
-
-    struct cancelMuslimId_locals
-    {
-        bit isMuslim;
-    };
-
-    PUBLIC_PROCEDURE_WITH_LOCALS(cancelMuslimId)
-    {
-        if (state.muslim.contains(qpi.invocator()) == 0)
-        {
-            output.returnCode = QVAULTLogInfo::QvaultNotMuslimId;
-            return ;
-        }
-        state.numberOfMuslim--;
-        state.muslim.remove(qpi.invocator());
-        state.muslim.cleanupIfNeeded();
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
-    }
-
 public:
     struct getStakedAmountAndVotingPower_input
     {
@@ -1782,21 +1602,6 @@ public:
     PUBLIC_FUNCTION(getAlloP)
     {
         output.proposal = state.AlloP.get(input.proposalId);
-    }
-
-    struct getMSP_input
-    {
-        uint32 proposalId;
-    };
-
-    struct getMSP_output
-    {
-        MSPInfo proposal;
-    };
-
-    PUBLIC_FUNCTION(getMSP)
-    {
-        output.proposal = state.MSP.get(input.proposalId);
     }
 
     /*
@@ -1967,7 +1772,6 @@ public:
     {
         uint64 epochTotalRevenue;
         uint64 epochOneQcapRevenue;
-        uint64 epochOneMuslimRevenue;
         uint64 epochOneQvaultRevenue;
         uint64 epochReinvestAmount;
     };
@@ -1976,7 +1780,6 @@ public:
     {
         output.epochTotalRevenue = state.revenueInQcapPerEpoch.get(input.epoch);
         output.epochOneQcapRevenue = state.revenueForOneQcapPerEpoch.get(input.epoch);
-        output.epochOneMuslimRevenue = state.revenueForOneMuslimPerEpoch.get(input.epoch);
         output.epochOneQvaultRevenue = state.revenueForOneQvaultPerEpoch.get(input.epoch);
         output.epochReinvestAmount = state.revenueForReinvestPerEpoch.get(input.epoch);
     }
@@ -2098,7 +1901,6 @@ public:
         REGISTER_USER_FUNCTION(getFundP, 7);
         REGISTER_USER_FUNCTION(getMKTP, 8);
         REGISTER_USER_FUNCTION(getAlloP, 9);
-        REGISTER_USER_FUNCTION(getMSP, 10);
         REGISTER_USER_FUNCTION(getIdentitiesHvVtPw, 11);
         REGISTER_USER_FUNCTION(ppCreationPower, 12);
         REGISTER_USER_FUNCTION(getQcapBurntAmountInLastEpoches, 13);
@@ -2119,13 +1921,9 @@ public:
         REGISTER_USER_PROCEDURE(submitFundP, 7);
         REGISTER_USER_PROCEDURE(submitMKTP, 8);
         REGISTER_USER_PROCEDURE(submitAlloP, 9);
-        REGISTER_USER_PROCEDURE(submitMSP, 10);
         REGISTER_USER_PROCEDURE(voteInProposal, 11);
         REGISTER_USER_PROCEDURE(buyQcap, 12);
         REGISTER_USER_PROCEDURE(TransferShareManagementRights, 13);
-        REGISTER_USER_PROCEDURE(submitMuslimId, 14);
-        REGISTER_USER_PROCEDURE(cancelMuslimId, 15);
-
     }
 
 	INITIALIZE()
@@ -2201,18 +1999,6 @@ public:
             }
         }
 
-        for (locals._t = state.numberOfMSP - 1; locals._t >= 0; locals._t--)
-        {
-            if (state.MSP.get(locals._t).result == 0 && state.MSP.get(locals._t).proposedEpoch + 2 == qpi.epoch())
-            {
-                state.muslimShares.set(state.numberOfMuslimShare++, state.MSP.get(locals._t).muslimShareIndex);
-            }
-            if (state.MSP.get(locals._t).proposedEpoch + 2 < qpi.epoch())
-            {
-                break;
-            }
-        }
-
         locals.purchasedQcap = 0;
         while(state.fundForBurn > 0)
         {
@@ -2262,7 +2048,6 @@ public:
         FundPInfo updatedFundProposal;
         MKTPInfo updatedMKTProposal;
         AlloPInfo updatedAlloProposal;
-        MSPInfo updatedMSProposal;
         QPI::Entity entity;
         AssetPossessionIterator iter;
         Asset QCAPId;
@@ -2272,12 +2057,11 @@ public:
         uint64 paymentForQCAPHolders;
         uint64 paymentForReinvest;
         uint64 paymentForDevelopment;
-        uint64 muslimRevenue;
         uint64 amountOfBurn;
         uint64 circulatedSupply;
         uint64 requiredFund;
         uint64 tmpAmount;
-        uint32 amountOfQcapMuslimHold, numberOfVote;
+        uint32 numberOfVote;
         sint32 _t, _r;
         uint32 curDate;
         uint8 year;
@@ -2286,21 +2070,18 @@ public:
         uint8 hour;
         uint8 minute;
         uint8 second;
-        bit isMuslim;
     };
 
     END_EPOCH_WITH_LOCALS()
     {
-        locals.paymentForShareholders = div((state.totalNotMSRevenue + state.totalMuslimRevenue) * state.shareholderDividend, 1000ULL);
-        locals.paymentForQCAPHolders = div(state.totalNotMSRevenue * state.QCAPHolderPermille, 1000ULL);
-        locals.muslimRevenue = div(state.totalMuslimRevenue * state.QCAPHolderPermille, 1000ULL);
-        state.reinvestingFund += div((state.totalNotMSRevenue + state.totalMuslimRevenue) * state.reinvestingPermille, 1000ULL);
-        state.fundForBurn += div((state.totalNotMSRevenue + state.totalMuslimRevenue) * state.qcapBurnPermille, 1000ULL);
-        locals.amountOfBurn = div((state.totalNotMSRevenue + state.totalMuslimRevenue) * state.burnPermille, 1000ULL);
-        locals.paymentForDevelopment = state.totalNotMSRevenue + state.totalMuslimRevenue - locals.paymentForShareholders - locals.paymentForQCAPHolders - locals.muslimRevenue - locals.paymentForReinvest - locals.amountOfBurn;
+        locals.paymentForShareholders = div(state.totalEpochRevenue * state.shareholderDividend, 1000ULL);
+        locals.paymentForQCAPHolders = div(state.totalEpochRevenue * state.QCAPHolderPermille, 1000ULL);
+        state.reinvestingFund += div(state.totalEpochRevenue * state.reinvestingPermille, 1000ULL);
+        state.fundForBurn += div(state.totalEpochRevenue * state.qcapBurnPermille, 1000ULL);
+        locals.amountOfBurn = div(state.totalEpochRevenue * state.burnPermille, 1000ULL);
+        locals.paymentForDevelopment = state.totalEpochRevenue - locals.paymentForShareholders - locals.paymentForQCAPHolders - locals.paymentForReinvest - locals.amountOfBurn;
 
-        state.totalNotMSRevenue = 0;
-        state.totalMuslimRevenue = 0;
+        state.totalEpochRevenue = 0;
         qpi.distributeDividends(div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
         state.proposalCreateFund = 0;
         qpi.transfer(state.adminAddress, locals.paymentForDevelopment);
@@ -2311,32 +2092,9 @@ public:
 
         locals.circulatedSupply = QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount;
 
-        locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
-        locals.QCAPId.issuer = state.QCAP_ISSUER;
-
-        locals.iter.begin(locals.QCAPId);
-        while (!locals.iter.reachedEnd())
-        {
-            locals.possessorPubkey = locals.iter.possessor();
-            if (state.muslim.contains(locals.possessorPubkey))
-            {
-                locals.amountOfQcapMuslimHold += (uint32)locals.iter.numberOfPossessedShares();
-            }
-            locals.iter.next();
-        }
-
-        for (locals._r = 0 ; locals._r < (sint32)state.numberOfStaker; locals._r++)
-        {
-            if (state.muslim.contains(state.staker.get(locals._r).stakerAddress))
-            {
-                locals.amountOfQcapMuslimHold += state.staker.get(locals._r).amount;
-            }
-        }
-
-        state.revenueForOneQcapPerEpoch.set(qpi.epoch(), div(locals.paymentForQCAPHolders, locals.circulatedSupply * 1ULL) + div(locals.muslimRevenue, locals.circulatedSupply - locals.amountOfQcapMuslimHold));
-        state.revenueForOneMuslimPerEpoch.set(qpi.epoch(), div(locals.paymentForQCAPHolders, locals.circulatedSupply * 1ULL));
+        state.revenueForOneQcapPerEpoch.set(qpi.epoch(), div(locals.paymentForQCAPHolders, locals.circulatedSupply * 1ULL));
         state.revenueForOneQvaultPerEpoch.set(qpi.epoch(), div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
-        state.revenueForReinvestPerEpoch.set(qpi.epoch(), div((state.totalNotMSRevenue + state.totalMuslimRevenue) * state.reinvestingPermille, 1000ULL));
+        state.revenueForReinvestPerEpoch.set(qpi.epoch(), div(state.totalEpochRevenue * state.reinvestingPermille, 1000ULL));
 
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
         locals.QCAPId.issuer = state.QCAP_ISSUER;
@@ -2349,11 +2107,6 @@ public:
             if (locals.possessorPubkey != SELF)
             {
                 qpi.transfer(locals.possessorPubkey, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * locals.iter.numberOfPossessedShares());
-
-                if (state.muslim.contains(locals.iter.possessor()) == 0)
-                {
-                    qpi.transfer(locals.possessorPubkey, div(locals.muslimRevenue, locals.circulatedSupply - locals.amountOfQcapMuslimHold) * locals.iter.numberOfPossessedShares());
-                }
             }
 
             locals.iter.next();
@@ -2362,11 +2115,6 @@ public:
         for (locals._t = 0 ; locals._t < (sint32)state.numberOfStaker; locals._t++)
         {
             qpi.transfer(state.staker.get(locals._t).stakerAddress, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * state.staker.get(locals._t).amount);
-            
-            if (state.muslim.contains(state.staker.get(locals._t).stakerAddress) == 0)
-            {
-                qpi.transfer(state.staker.get(locals._t).stakerAddress, div(locals.muslimRevenue, locals.circulatedSupply - locals.amountOfQcapMuslimHold) * state.staker.get(locals._t).amount);
-            }
         }
 
         /*
@@ -2757,35 +2505,6 @@ public:
             }
         }
 
-        /*
-            Muslim Proposal Result
-        */
-
-        for (locals._t = state.numberOfMSP - 1; locals._t >= 0; locals._t--)
-        {
-            if (state.MSP.get(locals._t).proposedEpoch == qpi.epoch())
-            {
-                locals.updatedMSProposal = state.MSP.get(locals._t);
-                if (state.MSP.get(locals._t).numberOfYes + state.MSP.get(locals._t).numberOfNo < div(state.MSP.get(locals._t).currentQuorumPercent * state.MSP.get(locals._t).currentTotalVotingPower * 1ULL, 1000ULL))
-                {
-                    locals.updatedMSProposal.result = 2;
-                }
-                else if (state.MSP.get(locals._t).numberOfYes <= state.MSP.get(locals._t).numberOfNo)
-                {
-                    locals.updatedMSProposal.result = 1;
-                }
-                else 
-                {
-                    locals.updatedMSProposal.result = 0;
-                }
-                state.MSP.set(locals._t, locals.updatedMSProposal);
-            }
-            else 
-            {
-                break;
-            }
-        }
-
         state.totalVotingPower = 0;
         for (locals._t = 0 ; locals._t < (sint32)state.numberOfStaker; locals._t++)
         {
@@ -2825,7 +2544,7 @@ public:
                         }
                     }
                     state.reinvestingFund += locals.lockedFund;
-                    state.totalNotMSRevenue += input.amount - locals.lockedFund;
+                    state.totalEpochRevenue += input.amount - locals.lockedFund;
                     state.totalHistoryRevenue += input.amount - locals.lockedFund;
                     state.revenueInQcapPerEpoch.set(qpi.epoch(), state.revenueInQcapPerEpoch.get(qpi.epoch()) + input.amount - locals.lockedFund);
                     state.revenueByQearn += input.amount - locals.lockedFund;
@@ -2840,18 +2559,7 @@ public:
                 state.revenueInQcapPerEpoch.set(qpi.epoch(), state.revenueInQcapPerEpoch.get(qpi.epoch()) + input.amount);
                 state.revenuePerShare.set(input.sourceId.u64._0, input.amount);
                 
-                for (locals._t = 0; locals._t < (sint32)state.numberOfMuslimShare; locals._t++)
-                {
-                    if (state.muslimShares.get(locals._t) == input.sourceId.u64._0)
-                    {
-                        state.totalMuslimRevenue += input.amount;
-                        break;
-                    }
-                }
-                if (locals._t == state.numberOfMuslimShare)
-                {
-                    state.totalNotMSRevenue += input.amount;
-                }
+                state.totalEpochRevenue += input.amount;
                 break;
         }
     }
