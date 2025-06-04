@@ -2075,13 +2075,8 @@ public:
         locals.paymentForQcapBurn = div(state.totalEpochRevenue * state.qcapBurnPermille, 1000ULL);
         locals.amountOfBurn = div(state.totalEpochRevenue * state.burnPermille, 1000ULL);
         locals.paymentForDevelopment = state.totalEpochRevenue - locals.paymentForShareholders - locals.paymentForQCAPHolders - locals.paymentForReinvest - locals.paymentForQcapBurn - locals.amountOfBurn;
-        
-        state.reinvestingFund += locals.paymentForReinvest;
-        state.fundForBurn += locals.paymentForQcapBurn;
-        state.totalEpochRevenue = 0;
 
         qpi.distributeDividends(div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
-        state.proposalCreateFund = 0;
         qpi.transfer(state.adminAddress, locals.paymentForDevelopment);
         qpi.burn(locals.amountOfBurn);
 
@@ -2092,8 +2087,13 @@ public:
 
         state.revenueForOneQcapPerEpoch.set(qpi.epoch(), div(locals.paymentForQCAPHolders, locals.circulatedSupply * 1ULL));
         state.revenueForOneQvaultPerEpoch.set(qpi.epoch(), div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
-        state.revenueForReinvestPerEpoch.set(qpi.epoch(), div(state.totalEpochRevenue * state.reinvestingPermille, 1000ULL));
+        state.revenueForReinvestPerEpoch.set(qpi.epoch(), div(locals.paymentForReinvest, 1000ULL));
 
+        state.reinvestingFund += locals.paymentForReinvest;
+        state.fundForBurn += locals.paymentForQcapBurn;
+        state.totalEpochRevenue = 0;
+        state.proposalCreateFund = 0;
+        
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
         locals.QCAPId.issuer = state.QCAP_ISSUER;
 
