@@ -100,6 +100,21 @@ std::map<QPI::id, unsigned long long> getPovElementCounts(const QPI::Collection<
 }
 
 template <typename T, unsigned long long capacity>
+void checkCollectionValidState(const QPI::Collection<T, capacity>& collection, QPI::sint64 expectedNumOfPoV = -1, bool verbose = false)
+{
+    auto povCounts = getPovElementCounts(collection);
+    if (expectedNumOfPoV != -1)
+    {
+        EXPECT_EQ(expectedNumOfPoV, povCounts.size());
+    }
+    for (const auto& idCountPair : povCounts)
+    {
+        QPI::id pov = idCountPair.first;
+        checkPriorityQueue(collection, pov, verbose);
+    }
+}
+
+template <typename T, unsigned long long capacity>
 bool isCompletelySame(const QPI::Collection<T, capacity>& coll1, const QPI::Collection<T, capacity>& coll2)
 {
     return memcmp(&coll1, &coll2, sizeof(coll1)) == 0;
@@ -174,6 +189,9 @@ void cleanupCollectionReferenceImplementation(const QPI::Collection<T, capacity>
 template <typename T, unsigned long long capacity>
 void cleanupCollection(QPI::Collection<T, capacity>& coll)
 {
+    // check that collection in itself is in valid state
+    checkCollectionValidState(coll);
+
     // save original data for checking
     QPI::Collection<T, capacity> origColl;
     copyMem(&origColl, &coll, sizeof(coll));
@@ -960,6 +978,108 @@ TEST(TestCoreQPI, CollectionMultiPovOneElement)
     testCollectionMultiPovOneElement<32>(cleanupAfterEachRemove);
     testCollectionMultiPovOneElement<64>(cleanupAfterEachRemove);
     testCollectionMultiPovOneElement<128>(cleanupAfterEachRemove);
+}
+
+template <unsigned long long capacity>
+void testCollectionMultiPovOneElementReuseFreedSlotsBeforeCleanup()
+{
+    // for valid init you either need to call reset or load the data from a file (in SC, state is zeroed before INITIALIZE is called)
+    QPI::Collection<int, capacity> coll;
+    coll.reset();
+
+    // add and remove same item multiple times for tsting simple case of reusing slot
+    for (int i = 0; i < capacity / 2; ++i)
+    {
+        for (int j = 0; j <= i; ++j)
+        {
+            QPI::id pov(j, 0, 0, 0);
+            QPI::sint64 elementIndex = coll.add(pov, i, 2 * j);
+
+            EXPECT_TRUE(elementIndex != QPI::NULL_INDEX);
+            EXPECT_EQ(coll.pov(elementIndex), pov);
+            EXPECT_EQ(coll.population(pov), 1);
+            EXPECT_EQ(coll.population(), 1);
+            checkCollectionValidState(coll, 1);
+
+            EXPECT_EQ(coll.remove(elementIndex), QPI::NULL_INDEX);
+            EXPECT_EQ(coll.population(pov), 0);
+            EXPECT_EQ(coll.population(), 0);
+            checkCollectionValidState(coll, 0);
+        }
+    }
+
+    // fill collection up to capacity
+    for (int i = 0; i < capacity; ++i)
+    {
+        // select pov to ensure hash collisions
+        QPI::id pov(i / 3, i % 2, i * 2, i * 3);
+        int value = i * 4;
+        QPI::sint64 prio = i * 5;
+
+        EXPECT_EQ(coll.capacity(), capacity);
+        EXPECT_EQ(coll.population(pov), 0);
+        EXPECT_EQ(coll.population(), i);
+
+        QPI::sint64 elementIndex = coll.add(pov, value, prio);
+
+        EXPECT_TRUE(elementIndex != QPI::NULL_INDEX);
+        EXPECT_EQ(coll.population(pov), 1);
+        EXPECT_EQ(coll.population(), i + 1);
+        checkCollectionValidState(coll, i + 1);
+
+        EXPECT_EQ(coll.element(elementIndex), value);
+        EXPECT_EQ(coll.priority(elementIndex), prio);
+        EXPECT_EQ(coll.pov(elementIndex), pov);
+    }
+
+    // check that nothing can be added
+    QPI::sint64 elementIndex = coll.add(QPI::id(1, 2, 3, 4), 12345, 123456);
+    EXPECT_TRUE(elementIndex == QPI::NULL_INDEX);
+    EXPECT_EQ(coll.capacity(), coll.population());
+
+    // check and remove all one by one
+    for (int j = 0; j < capacity; ++j)
+    {
+        // check integrity of povs not removed yet
+        checkCollectionValidState(coll, capacity - j);
+
+        // remove
+        QPI::id removePov(j / 3, j % 2, j * 2, j * 3);
+        EXPECT_EQ(coll.population(removePov), 1);
+        EXPECT_EQ(coll.remove(coll.headIndex(removePov)), QPI::NULL_INDEX);
+        EXPECT_EQ(coll.population(removePov), 0);
+        EXPECT_EQ(coll.population(), capacity - j - 1);
+    }
+
+    // reuse pov slots without cleanup
+    for (int i = 0; i < capacity; ++i)
+    {
+        // select pov to ensure hash collisions
+        QPI::id pov(i / 2, i % 4, i * 5, i + 1);
+        int value = i * 6;
+        QPI::sint64 prio = i * 9;
+
+        EXPECT_EQ(coll.population(pov), 0);
+        EXPECT_EQ(coll.population(), i);
+        checkCollectionValidState(coll, i);
+
+        QPI::sint64 elementIndex = coll.add(pov, value, prio);
+
+        EXPECT_TRUE(elementIndex != QPI::NULL_INDEX);
+        EXPECT_EQ(coll.population(pov), 1);
+        EXPECT_EQ(coll.population(), i + 1);
+        checkCollectionValidState(coll, i + 1);
+
+        EXPECT_EQ(coll.element(elementIndex), value);
+        EXPECT_EQ(coll.priority(elementIndex), prio);
+        EXPECT_EQ(coll.pov(elementIndex), pov);
+    }
+}
+
+TEST(TestCoreQPI, CollectionMultiPovOneElementReuseSlotsBeforeCleanup)
+{
+    testCollectionMultiPovOneElementReuseFreedSlotsBeforeCleanup<4>();
+    testCollectionMultiPovOneElementReuseFreedSlotsBeforeCleanup<16>();
 }
 
 TEST(TestCoreQPI, CollectionOneRemoveLastHeadTail)
