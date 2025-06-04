@@ -1834,12 +1834,12 @@ public:
         locals.iter.begin(locals.QCAPId);
         while (!locals.iter.reachedEnd())
         {
-            if (locals.iter.numberOfPossessedShares() > 0)
+            if (locals.iter.numberOfPossessedShares() > 0 && locals.iter.possessor() != SELF)
             {
                 locals.count++;
             }
 
-            if (qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.iter.possessor(), locals.iter.possessor(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) > 0 && qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.iter.possessor(), locals.iter.possessor(), QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) > 0)
+            if (qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.iter.possessor(), locals.iter.possessor(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) > 0 && qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.iter.possessor(), locals.iter.possessor(), QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) > 0 && locals.iter.possessor() != SELF)
             {
                 locals.numberOfDuplicatedPossesor++;
             }
