@@ -1154,11 +1154,6 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
-    struct submitMSP_locals
-    {
-        Asset qvaultShare;
-        sint32 _t;
-    };
     struct voteInProposal_locals
     {
         GPInfo updatedGProposal;
