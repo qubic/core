@@ -2055,6 +2055,7 @@ public:
         uint64 circulatedSupply;
         uint64 requiredFund;
         uint64 tmpAmount;
+        uint64 paymentForQcapBurn;
         uint32 numberOfVote;
         sint32 _t, _r;
         uint32 curDate;
@@ -2070,12 +2071,15 @@ public:
     {
         locals.paymentForShareholders = div(state.totalEpochRevenue * state.shareholderDividend, 1000ULL);
         locals.paymentForQCAPHolders = div(state.totalEpochRevenue * state.QCAPHolderPermille, 1000ULL);
-        state.reinvestingFund += div(state.totalEpochRevenue * state.reinvestingPermille, 1000ULL);
-        state.fundForBurn += div(state.totalEpochRevenue * state.qcapBurnPermille, 1000ULL);
+        locals.paymentForReinvest = div(state.totalEpochRevenue * state.reinvestingPermille, 1000ULL);
+        locals.paymentForQcapBurn = div(state.totalEpochRevenue * state.qcapBurnPermille, 1000ULL);
         locals.amountOfBurn = div(state.totalEpochRevenue * state.burnPermille, 1000ULL);
-        locals.paymentForDevelopment = state.totalEpochRevenue - locals.paymentForShareholders - locals.paymentForQCAPHolders - locals.paymentForReinvest - locals.amountOfBurn;
-
+        locals.paymentForDevelopment = state.totalEpochRevenue - locals.paymentForShareholders - locals.paymentForQCAPHolders - locals.paymentForReinvest - locals.paymentForQcapBurn - locals.amountOfBurn;
+        
+        state.reinvestingFund += locals.paymentForReinvest;
+        state.fundForBurn += locals.paymentForQcapBurn;
         state.totalEpochRevenue = 0;
+
         qpi.distributeDividends(div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
         state.proposalCreateFund = 0;
         qpi.transfer(state.adminAddress, locals.paymentForDevelopment);
