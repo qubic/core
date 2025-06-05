@@ -1531,12 +1531,14 @@ TEST(TestCoreQPI, CollectionInsertRemoveCleanupRandom)
         testCollectionPseudoRandom<256>(256, 1234 + i, povCollisions, numCleanups, 60, 40);
         testCollectionPseudoRandom<256>(10, 123 + i, povCollisions, numCleanups, 60, 40);
         testCollectionPseudoRandom<16>(10, 12 + i, povCollisions, numCleanups, 55, 45);
+        testCollectionPseudoRandom<4>(4, 42 + i, povCollisions, numCleanups, 52, 48);
 
         povCollisions = true;
         testCollectionPseudoRandom<512>(300, 12345 + i, povCollisions, numCleanups, 70, 40);
         testCollectionPseudoRandom<256>(256, 1234 + i, povCollisions, numCleanups, 60, 40);
         testCollectionPseudoRandom<256>(10, 123 + i, povCollisions, numCleanups, 60, 40);
         testCollectionPseudoRandom<16>(10, 12 + i, povCollisions, numCleanups, 55, 45);
+        testCollectionPseudoRandom<4>(4, 42 + i, povCollisions, numCleanups, 52, 48);
     }
     delete[] __scratchpadBuffer;
     __scratchpadBuffer = nullptr;
