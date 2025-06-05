@@ -83,6 +83,25 @@ public:
             ++it1; ++it2;
         }
     }
+
+    void cleanupCollections()
+    {
+        constexpr bool forceCleanup = false;
+        const auto population = _entityOrders.population();
+        checkCollectionConsistency();
+        if (forceCleanup)
+        {
+            _entityOrders.cleanup();
+            _assetOrders.cleanup();
+        }
+        else
+        {
+            _entityOrders.cleanupIfNeeded(30);
+            _assetOrders.cleanupIfNeeded(30);
+        }
+        checkCollectionConsistency();
+        EXPECT_EQ(population, _entityOrders.population());
+    }
 };
 
 class ContractTestingQx : protected ContractTesting
@@ -133,6 +152,11 @@ public:
     }
 
     // TODO: add other procedures
+
+    void endTick(bool expectSuccess = true)
+    {
+        callSystemProcedure(QX_CONTRACT_INDEX, END_TICK, expectSuccess);
+    }
 };
 
 
@@ -210,4 +234,20 @@ TEST(ContractQx, BugEntityBidOrders)
     }
 
     EXPECT_EQ(assertBidOrdersCount, entityBidOrdersCount);
+}
+
+TEST(ContractQx, CleanupCollections)
+{
+    ContractTestingQx qx;
+    if (qx.loadState(L"contract0001.163"))
+    {
+        std::cout << "QX state file:" << std::endl;
+        QxChecker* state = qx.getState();
+        qx.endTick();
+        state->cleanupCollections();
+    }
+    else
+    {
+        std::cout << "QX state file not found. Skipping file test..." << std::endl;
+    }
 }
