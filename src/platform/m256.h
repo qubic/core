@@ -2,7 +2,7 @@
 
 #include <lib/platform_common/qintrin.h>
 #include <lib/platform_common/qstdint.h>
-#include "lib/platform_common/compiler_warnings.h"
+#include <lib/platform_common/compiler_warnings.h>
 
 // Used for all kinds of IDs, including in QPI and contracts.
 // Existing interface and behavior should never be changed! (However, it may be extended.)
@@ -152,13 +152,12 @@ union m256i
     }
 
     // Safely retrieves the content of the m256i union as an __m256i value.
-    // TODO: Maybe rename to get_intrinsic_value().
-    __m256i m256i_intr() const noexcept
+    __m256i getIntrinsicValue() const noexcept
     {
         return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(this));
     }
 
-    __m256i m256i_intr() const volatile noexcept 
+    __m256i getIntrinsicValue() const volatile noexcept 
     {
         return _mm256_loadu_si256(
             reinterpret_cast<const __m256i*>( // Step 2: Reinterpret type
@@ -168,7 +167,7 @@ union m256i
     }
 
     // Safely sets the content of the m256i union from an __m256i value.
-    void set_intrinsic_value(const __m256i& newValue) noexcept
+    void setIntrinsicValue(const __m256i& newValue) noexcept
     {
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(this), newValue);
     }
@@ -204,13 +203,13 @@ static inline const __m256i& __m256i_convert(const __m256i& a)
 
 static inline __m256i __m256i_convert(const m256i& a)
 {
-    return a.m256i_intr();
+    return a.getIntrinsicValue();
 }
 
 static inline __m256i __m256i_convert(volatile const m256i& a)
 {
 
-    return a.m256i_intr();
+    return a.getIntrinsicValue();
 }
 
 static inline __m256i __m256i_convert(const unsigned char a[32])

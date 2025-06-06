@@ -44,8 +44,8 @@ TEST(TestCore256BitClass, ConstructAssignCompare) {
 
     __m256i buffer_intr;
     unsigned char* bytes_of_buffer_intr = reinterpret_cast<unsigned char*>(&buffer_intr);
-    for (int i = 0; i < 32; ++i) {
-        bytes_of_buffer_intr[i] = 90 + static_cast<uint8_t>(i);
+    for (uint8_t i = 0; i < 32; ++i) {
+        bytes_of_buffer_intr[i] = 90 + i;
     }
 
     m256i v4(buffer_intr);
@@ -167,12 +167,12 @@ TEST(TestCore256BitClass, ConstructAssignCompare) {
 }
 
 TEST(TestCore256BitFunctionsIntrinsicType, isZero) {
-    EXPECT_TRUE(isZero(m256i(0, 0, 0, 0).m256i_intr()));
-    EXPECT_FALSE(isZero(m256i(1, 0, 0, 0).m256i_intr()));
-    EXPECT_FALSE(isZero(m256i(0, 1, 0, 0).m256i_intr()));
-    EXPECT_FALSE(isZero(m256i(0, 0, 1, 0).m256i_intr()));
-    EXPECT_FALSE(isZero(m256i(0, 0, 0, 1).m256i_intr()));
-    EXPECT_FALSE(isZero(m256i(0xffffffffffffffff,0xffffffffffffffff,0xffffffffffffffff,0xffffffffffffffff).m256i_intr()));
+    EXPECT_TRUE(isZero(m256i(0, 0, 0, 0).getIntrinsicValue()));
+    EXPECT_FALSE(isZero(m256i(1, 0, 0, 0).getIntrinsicValue()));
+    EXPECT_FALSE(isZero(m256i(0, 1, 0, 0).getIntrinsicValue()));
+    EXPECT_FALSE(isZero(m256i(0, 0, 1, 0).getIntrinsicValue()));
+    EXPECT_FALSE(isZero(m256i(0, 0, 0, 1).getIntrinsicValue()));
+    EXPECT_FALSE(isZero(m256i(0xffffffffffffffff,0xffffffffffffffff,0xffffffffffffffff,0xffffffffffffffff).getIntrinsicValue()));
 }
 
 TEST(TestCore256BitFunctionsIntrinsicType, isZeroPerformance)
@@ -222,7 +222,8 @@ TEST(TestCore256BitFunctionsIntrinsicType, isZeroPerformance)
     std::cout << N << " x compare with new zero instance: " << ms << " milliseconds" << std::endl;
 }
 
-TEST(TestCore256BitFunctionsIntrinsicType, operatorEqual) {
+
+TEST(TestCore256BitFunctions, operatorEqual) {
     EXPECT_TRUE(m256i(0, 0, 0, 0)  == m256i(0, 0, 0, 0));
     EXPECT_FALSE(m256i(0, 0, 0, 0) == m256i(0, 0, 0, 1));
     EXPECT_FALSE(m256i(0, 0, 0, 0) == m256i(0, 0, 1, 0));
