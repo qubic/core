@@ -31,7 +31,7 @@ constexpr uint64 QUTIL_MAX_OPTIONS = 64; // Maximum voting options (0 to 63)
 constexpr uint64 QUTIL_MAX_ASSETS_PER_POLL = 16; // Maximum assets per poll
 constexpr sint64 QUTIL_VOTE_FEE = 100LL; // Fee for voting, burnt 100%
 constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
-constexpr uint16 QUTIL_POLL_INIT_EPOCH = 163; // Epoch to initialize poll-related state
+constexpr uint16 QUTIL_POLL_INIT_EPOCH = 164; // Epoch to initialize poll-related state
 
 
 // Voting log types enum
@@ -225,6 +225,9 @@ public:
     {
         sint64 amount;
     };
+
+    typedef Asset GetTotalNumberOfAssetShares_input;
+    typedef sint64 GetTotalNumberOfAssetShares_output;
 
     struct CreatePoll_input
     {
@@ -1141,13 +1144,22 @@ public:
         }
     }
 
+    /*
+    * @return Return total number of shares that currently exist of the asset given as input
+    */
+    PUBLIC_FUNCTION(GetTotalNumberOfAssetShares)
+    {
+        output = qpi.numberOfShares(input);
+    }
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
-        REGISTER_USER_FUNCTION(GetCurrentResult, 2);
-        REGISTER_USER_FUNCTION(GetPollsByCreator, 3);
-        REGISTER_USER_FUNCTION(GetCurrentPollId, 4);
-        REGISTER_USER_FUNCTION(GetPollInfo, 5);
+        REGISTER_USER_FUNCTION(GetTotalNumberOfAssetShares, 2);
+        REGISTER_USER_FUNCTION(GetCurrentResult, 3);
+        REGISTER_USER_FUNCTION(GetPollsByCreator, 4);
+        REGISTER_USER_FUNCTION(GetCurrentPollId, 5);
+        REGISTER_USER_FUNCTION(GetPollInfo, 6);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);

@@ -20,6 +20,9 @@ typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state,
 #include <unordered_set>
 #include <array>
 #include <ranges>
+#include <set>
+#include <random>
+#include <chrono>
 
 
 // New KeyT, ValueT combinations for testing need to implement the following functions:
@@ -196,6 +199,8 @@ TYPED_TEST_P(QPIHashMapTest, TestGetters)
 	auto values = std::views::values(keyValuePairs);
 	QPI::sint64 returnedIndex;
 
+	EXPECT_TRUE(hashMap.isEmptySlot(0));
+
 	for (int i = 0; i < 4; ++i)
 	{
 		returnedIndex = hashMap.set(ids[i], values[i]);
@@ -204,6 +209,7 @@ TYPED_TEST_P(QPIHashMapTest, TestGetters)
 	EXPECT_EQ(hashMap.getElementIndex(ids[3]), returnedIndex);
 	EXPECT_EQ(hashMap.key(returnedIndex), ids[3]);
 	EXPECT_EQ(hashMap.value(returnedIndex), values[3]);
+	EXPECT_FALSE(hashMap.isEmptySlot(returnedIndex));
 
 	typename TypeParam::second_type valueAfter = {};
 	typename TypeParam::second_type valueBefore = valueAfter;
@@ -215,11 +221,15 @@ TYPED_TEST_P(QPIHashMapTest, TestGetters)
 	EXPECT_EQ(valueAfter, values[0]);
 
 	// Test getElementIndex when all slots are marked for removal so it has to iterate through the whole hash map.
-	for (int i = 0; i < 3; ++i)
+	for (int i = 0; i < 4; ++i)
 	{
 		hashMap.removeByKey(ids[i]);
 	}
 	EXPECT_EQ(hashMap.getElementIndex(ids[0]), QPI::NULL_INDEX);
+
+	EXPECT_TRUE(hashMap.isEmptySlot(0));
+
+	hashMap.cleanupIfNeeded();
 }
 
 TYPED_TEST_P(QPIHashMapTest, TestSet)
@@ -454,3 +464,312 @@ REGISTER_TYPED_TEST_CASE_P(QPIHashMapTest,
 
 typedef Types<std::pair<QPI::id, int>, std::pair<QPI::sint64, char>, std::pair<QPI::bit_1024, QPI::uint64>> KeyValueTypesToTest;
 INSTANTIATE_TYPED_TEST_CASE_P(TypedQPIHashMapTests, QPIHashMapTest, KeyValueTypesToTest);
+
+TEST(QPIHashMapTest, HashSet)
+{
+	constexpr QPI::uint64 capacity = 128;
+	QPI::HashSet<QPI::id, capacity> hashSet;
+	__scratchpadBuffer = new char[2 * sizeof(hashSet)];
+	EXPECT_EQ(hashSet.capacity(), capacity);
+
+	// Test add() and contains()
+	for (int i = 0; i < capacity; ++i)
+	{
+		const QPI::id newId(i / 3, i + 5, i * 3, i % 10);
+		EXPECT_EQ(hashSet.population(), i);
+		auto idx = hashSet.add(newId);
+		EXPECT_NE(idx, QPI::NULL_INDEX);
+		EXPECT_EQ(hashSet.key(idx), newId);
+		EXPECT_FALSE(hashSet.isEmptySlot(idx));
+		EXPECT_EQ(idx, hashSet.add(newId)); // adding a second time just returns same index
+		EXPECT_TRUE(hashSet.contains(newId));
+	}
+	EXPECT_EQ(hashSet.population(), capacity);
+	EXPECT_FALSE(hashSet.contains(QPI::NULL_ID));
+	EXPECT_EQ(hashSet.add(QPI::NULL_ID), QPI::NULL_INDEX); // set is full
+	EXPECT_FALSE(hashSet.contains(QPI::NULL_ID));
+
+	// Test remove()
+	EXPECT_EQ(hashSet.remove(QPI::NULL_ID), QPI::NULL_INDEX);
+	for (int i = 0; i < capacity; i += 4)
+	{
+		const QPI::id theId(i / 3, i + 5, i * 3, i % 10);
+		EXPECT_EQ(hashSet.population(), capacity - i / 4);
+		EXPECT_TRUE(hashSet.contains(theId));
+		EXPECT_NE(hashSet.remove(theId), QPI::NULL_INDEX);
+		EXPECT_FALSE(hashSet.contains(theId));
+	}
+
+	// Check consistency
+	for (int i = 0; i < capacity; i++)
+	{
+		const QPI::id theId(i / 3, i + 5, i * 3, i % 10);
+		if (i % 4 == 0)
+			EXPECT_FALSE(hashSet.contains(theId));
+		else
+			EXPECT_TRUE(hashSet.contains(theId));
+	}
+
+	// Check that it works to reuse slots of removed entries
+	for (int i = 0; i < capacity / 4; ++i)
+	{
+		const QPI::id newId(capacity / 4 - 1 - i, 0, 0, 0);
+		EXPECT_EQ(hashSet.population(), capacity * 3 / 4 + i);
+		auto idx = hashSet.add(newId);
+		EXPECT_NE(idx, QPI::NULL_INDEX);
+		EXPECT_EQ(hashSet.key(idx), newId);
+		EXPECT_FALSE(hashSet.isEmptySlot(idx));
+		EXPECT_EQ(idx, hashSet.add(newId)); // adding a second time just returns same index
+		EXPECT_TRUE(hashSet.contains(newId));
+	}
+	EXPECT_TRUE(hashSet.contains(QPI::id(0, 0, 0, 0)));
+
+	// Check consistency
+	for (int i = 0; i < capacity; i++)
+	{
+		const QPI::id theId(i / 3, i + 5, i * 3, i % 10);
+		if (i % 4 == 0)
+			EXPECT_FALSE(hashSet.contains(theId));
+		else
+			EXPECT_TRUE(hashSet.contains(theId));
+		if (i < capacity / 4)
+		{
+			const QPI::id theId(capacity / 4 - 1 - i, 0, 0, 0);
+			EXPECT_TRUE(hashSet.contains(theId));
+		}
+	}
+
+	// Remove entries added first
+	for (int i = 0; i < capacity; i++)
+	{
+		const QPI::id theId(i / 3, i + 5, i * 3, i % 10);
+		if (i % 4 == 0)
+			EXPECT_EQ(hashSet.remove(theId), QPI::NULL_INDEX); // already removed before
+		else
+			EXPECT_NE(hashSet.remove(theId), QPI::NULL_INDEX);
+		EXPECT_FALSE(hashSet.contains(theId));
+	}
+
+	// Reorganize hash map, speeding up access
+	hashSet.cleanup();
+
+	// Check consistency
+	EXPECT_EQ(hashSet.population(), capacity / 4);
+	for (int i = 0; i < capacity / 4; ++i)
+	{
+		EXPECT_TRUE(hashSet.contains(QPI::id(i, 0, 0, 0)));
+	}
+	for (int i = 0; i < capacity; i++)
+	{
+		EXPECT_FALSE(hashSet.contains(QPI::id(i / 3, i + 5, i * 3, i % 10)));
+	}
+
+	hashSet.reset();
+	EXPECT_EQ(hashSet.population(), 0);
+
+	delete[] __scratchpadBuffer;
+	__scratchpadBuffer = nullptr;
+}
+
+template <class T, unsigned int capacity>
+void hasSameContent(QPI::HashSet<T, capacity>& set, const std::set<T>& referenceSet)
+{
+	EXPECT_EQ(set.population(), referenceSet.size());
+	for (const T& item: referenceSet)
+	{
+		EXPECT_TRUE(set.contains(item));
+	}
+	for (unsigned int i = 0; i < capacity; ++i)
+	{
+		T key = set.key(i);	// returns key value at slot i (like 0), even if the value is not contained
+		if (!set.isEmptySlot(i))
+		{
+			// key is valid, part of set, and exactly at this position
+			EXPECT_NE(referenceSet.find(key), referenceSet.end());
+			EXPECT_EQ(set.getElementIndex(key), i);
+		}
+		else
+		{
+			// key is invalid and not at this slot
+			QPI::uint64 elementIndex = set.getElementIndex(key);
+			EXPECT_NE(elementIndex, i);
+			if (elementIndex == QPI::NULL_INDEX)
+			{
+				// not in set
+				EXPECT_EQ(referenceSet.find(key), referenceSet.end());
+			}
+			else
+			{
+				// in set, but at different position
+				EXPECT_NE(referenceSet.find(key), referenceSet.end());
+			}
+		}
+	}
+}
+
+template <class T, unsigned int capacity>
+void cleanupHashSet(QPI::HashSet<T, capacity>& set, const std::set<T>& referenceSet)
+{
+	hasSameContent(set, referenceSet);
+	set.cleanup();
+	//set.cleanupIfNeeded();
+	hasSameContent(set, referenceSet);
+}
+
+void getValue(std::mt19937_64& gen64, QPI::id& value)
+{
+	value.u64._0 = gen64();
+	value.u64._1 = gen64();
+	value.u64._2 = gen64();
+	value.u64._3 = gen64();
+}
+
+void getValue(std::mt19937_64& gen64, QPI::uint8& value)
+{
+	value = gen64() & 0xff;
+}
+
+template <class T, unsigned int capacity>
+void testHashSetPseudoRandom(int seed, int cleanups, int percentAdd, int percentAddSecondHalf = -1)
+{
+	// add and remove entries with pseudo-random sequence
+	std::mt19937_64 gen64(seed);
+
+	std::set<T> referenceSet;
+	QPI::HashSet<T, capacity> set;
+
+	__scratchpadBuffer = new char[2 * sizeof(set)];
+
+	set.reset();
+
+	// test cleanup of empty collection
+	cleanupHashSet(set, referenceSet);
+
+	// add default value of empty slot to set
+	referenceSet.insert(set.key(0));
+	EXPECT_NE(set.add(set.key(0)), QPI::NULL_INDEX);
+	hasSameContent(set, referenceSet);
+
+	// Randomly add, remove, and cleanup until 50 cleanups are reached
+	int cleanupCounter = 0;
+	while (cleanupCounter < cleanups)
+	{
+		int p = gen64() % 100;
+
+		if (p == 0)
+		{
+			// cleanup (with 1% probability)
+			cleanupHashSet(set, referenceSet);
+			++cleanupCounter;
+
+			if (cleanupCounter == cleanups / 2 && percentAddSecondHalf >= 0)
+				percentAdd = percentAddSecondHalf;
+		}
+
+		if (p < percentAdd)
+		{
+			// add to set (more probable than remove)
+			T value;
+			getValue(gen64, value);
+			if (set.add(value) != QPI::NULL_INDEX)
+				referenceSet.insert(value);
+			hasSameContent(set, referenceSet);
+		}
+		else
+		{
+			// remove from set
+			QPI::sint64 removeIdx = gen64() % set.capacity();
+			T key = set.key(removeIdx);
+			if (!set.isEmptySlot(removeIdx))
+			{
+				referenceSet.erase(key);
+				EXPECT_EQ(set.remove(key), removeIdx);
+			}
+			else if (referenceSet.find(key) == referenceSet.end())
+			{
+				EXPECT_EQ(set.remove(key), QPI::NULL_INDEX);
+			}
+			hasSameContent(set, referenceSet);
+		}
+
+		// std::cout << "capacity: " << set.capacity() << ", pupulation:" << set.population() << std::endl;
+	}
+
+	delete[] __scratchpadBuffer;
+	__scratchpadBuffer = nullptr;
+}
+
+TEST(QPIHashMapTest, HashSetPseudoRandom)
+{
+	constexpr unsigned int numCleanups = 5;
+	testHashSetPseudoRandom<QPI::id, 1>(42, numCleanups, 20);
+	testHashSetPseudoRandom<QPI::id, 1>(1337, numCleanups, 80);
+	testHashSetPseudoRandom<QPI::id, 8>(42, 4 * numCleanups, 30);
+	testHashSetPseudoRandom<QPI::id, 8>(1337, 4 * numCleanups, 50);
+	testHashSetPseudoRandom<QPI::id, 8>(123456789, 4 * numCleanups, 70);
+	testHashSetPseudoRandom<QPI::id, 8>(42, 10 * numCleanups, 30, 70);
+	testHashSetPseudoRandom<QPI::id, 8>(1337, 10 * numCleanups, 50, 10);
+	testHashSetPseudoRandom<QPI::id, 8>(123456789, 10 * numCleanups, 70, 10);
+	testHashSetPseudoRandom<QPI::id, 128>(42 + 1, 6 * numCleanups, 30);
+	testHashSetPseudoRandom<QPI::id, 128>(1337 + 1, 6 * numCleanups, 50);
+	testHashSetPseudoRandom<QPI::id, 128>(123456789 + 1, 6 * numCleanups, 70);
+	testHashSetPseudoRandom<QPI::id, 1024>(42 + 2, 10 * numCleanups, 30);
+	testHashSetPseudoRandom<QPI::id, 1024>(1337 + 2, 10 * numCleanups, 50);
+	testHashSetPseudoRandom<QPI::id, 1024>(123456789 + 2, 10 * numCleanups, 70);
+	testHashSetPseudoRandom<QPI::uint8, 1>(42, numCleanups, 20);
+	testHashSetPseudoRandom<QPI::uint8, 8>(42 + 1, 10 * numCleanups, 30, 70);
+	testHashSetPseudoRandom<QPI::uint8, 8>(1337, 10 * numCleanups, 50, 10);
+	testHashSetPseudoRandom<QPI::uint8, 8>(123456789, 10 * numCleanups, 70, 10);
+	testHashSetPseudoRandom<QPI::uint8, 128>(1337 + 1, 6 * numCleanups, 50);
+	testHashSetPseudoRandom<QPI::uint8, 1024>(123456789 + 2, 10 * numCleanups, 70);
+}
+
+
+
+template <unsigned int capacity>
+static void perfTestCleanup(int seed)
+{
+	std::mt19937_64 gen64(seed);
+
+	auto* set = new QPI::HashSet<QPI::id, capacity>();
+	__scratchpadBuffer = new char[sizeof(*set)];
+
+	for (QPI::uint64 i = 1; i <= 100; ++i)
+	{
+		QPI::uint64 population = capacity * i / 100;
+		set->reset();
+
+		// add random items
+		auto startTime1 = std::chrono::high_resolution_clock::now();
+		for (QPI::uint64 j = 0; j < population; ++j)
+		{
+			EXPECT_NE(set->add(QPI::id(gen64(), 0, 0, 0)), QPI::NULL_INDEX);
+		}
+		auto addMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime1).count();
+
+		// measure run-time of cleanup
+		auto startTime2 = std::chrono::high_resolution_clock::now();
+		set->cleanup();
+		auto cleanupMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime2).count();
+
+		std::cout << "HastSet<uint64, " << capacity << ">::cleanup() with " << population * 100 / capacity << "% population takes " << cleanupMilliseconds << " ms (adding took " << addMilliseconds * 1000000 / population << " ms/million)" << std::endl;
+	}
+
+	delete set;
+	delete[] __scratchpadBuffer;
+	__scratchpadBuffer = nullptr;
+}
+
+TEST(QPIHashMapTest, HashSetPerfTest)
+{
+	// How often should cleanup() be run?
+
+	// for a set of capacities: vary population
+	// keep sequence of add/remove
+
+	// measure run-time of cleanups -> O(N^2) with N = population
+	//perfTestCleanup<2 * 1024 * 1024>(42);
+	//perfTestCleanup<2 * 1024 * 1024>(13);
+
+	// measure lookups/seconds -> O(1) if population is sparse -> O(N) if population is high with N = max population since last cleanup
+}
