@@ -47,22 +47,24 @@ public:
 
     void beginEpoch(bool expectSuccess = true)
     {
-        callSystemProcedure(MSVAULT_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+        callSystemProcedure(QUTIL_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
     }
 
     void endEpoch(bool expectSuccess = true)
     {
-        callSystemProcedure(MSVAULT_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(QUTIL_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
     QUTIL::CreatePoll_output createPoll(const id& creator, const QUTIL::CreatePoll_input& input, uint64_t fee) {
         QUTIL::CreatePoll_output output;
+        memset(&output, 0, sizeof(output));
         invokeUserProcedure(QUTIL_CONTRACT_INDEX, 4, input, output, creator, fee);
         return output;
     }
 
     QUTIL::Vote_output vote(const id& voter, const QUTIL::Vote_input& input, uint64_t fee) {
         QUTIL::Vote_output output;
+        memset(&output, 0, sizeof(output));
         invokeUserProcedure(QUTIL_CONTRACT_INDEX, 5, input, output, voter, fee);
         return output;
     }
@@ -71,7 +73,8 @@ public:
         QUTIL::GetCurrentResult_input input;
         input.poll_id = poll_id;
         QUTIL::GetCurrentResult_output output;
-        callFunction(QUTIL_CONTRACT_INDEX, 2, input, output);
+        memset(&output, 0, sizeof(output));
+        callFunction(QUTIL_CONTRACT_INDEX, 3, input, output);
         return output;
     }
 
@@ -79,7 +82,8 @@ public:
         QUTIL::GetPollsByCreator_input input;
         input.creator = creator;
         QUTIL::GetPollsByCreator_output output;
-        callFunction(QUTIL_CONTRACT_INDEX, 3, input, output);
+        memset(&output, 0, sizeof(output));
+        callFunction(QUTIL_CONTRACT_INDEX, 4, input, output);
         return output;
     }
 
@@ -87,7 +91,8 @@ public:
     {
         QUTIL::GetCurrentPollId_input input;
         QUTIL::GetCurrentPollId_output output;
-        callFunction(QUTIL_CONTRACT_INDEX, 4, input, output);
+        memset(&output, 0, sizeof(output));
+        callFunction(QUTIL_CONTRACT_INDEX, 5, input, output);
         return output;
     }
 
@@ -96,7 +101,8 @@ public:
         QUTIL::GetPollInfo_input input;
         input.poll_id = poll_id;
         QUTIL::GetPollInfo_output output;
-        callFunction(QUTIL_CONTRACT_INDEX, 5, input, output);
+        memset(&output, 0, sizeof(output));
+        callFunction(QUTIL_CONTRACT_INDEX, 6, input, output);
         return output;
     }
 };
