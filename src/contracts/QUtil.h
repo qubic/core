@@ -32,6 +32,7 @@ constexpr uint64 QUTIL_MAX_ASSETS_PER_POLL = 16; // Maximum assets per poll
 constexpr sint64 QUTIL_VOTE_FEE = 100LL; // Fee for voting, burnt 100%
 constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
 constexpr uint16 QUTIL_POLL_INIT_EPOCH = 164; // Epoch to initialize poll-related state
+constexpr uint16 QUTIL_POLL_GITHUB_URL_MAX_SIZE = 256; // Max String Length for Poll's Github URLs
 
 
 // Voting log types enum
@@ -101,7 +102,7 @@ private:
     Array<uint64, QUTIL_MAX_POLL> poll_ids;
     Array<uint64, QUTIL_MAX_POLL> poll_results; // stores dominant option per poll
     Array<uint64, QUTIL_MAX_POLL> voter_counts; // tracks number of voters per poll
-    Array<Array<uint8, 256>, QUTIL_MAX_POLL> poll_links; // github links for polls
+    Array<Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE>, QUTIL_MAX_POLL> poll_links; // github links for polls
     uint64 current_poll_id;
 
     // Custom Modulo Function
@@ -234,7 +235,7 @@ public:
         id poll_name;
         uint64 poll_type; // QUTIL_POLL_TYPE_QUBIC or QUTIL_POLL_TYPE_ASSET
         uint64 min_amount; // Minimum Qubic/asset amount
-        Array<uint8, 256> github_link; // GitHub link
+        Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE> github_link; // GitHub link
         Array<Asset, QUTIL_MAX_ASSETS_PER_POLL> allowed_assets; // List of allowed assets for QUTIL_POLL_TYPE_ASSET
         uint64 num_assets; // Number of assets in allowed_assets
     };
@@ -350,7 +351,7 @@ public:
     struct GetPollInfo_output {
         uint64 found; // 1 if exists, 0 ig not
         QUtilPoll poll_info;
-        Array<uint8, 256> poll_link;
+        Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE> poll_link;
     };
 
     struct GetPollInfo_locals {
@@ -365,6 +366,7 @@ public:
     {
         uint64 i;
         uint64 d;
+        uint64 opt;
         GetCurrentResult_input gcr_input;
         GetCurrentResult_output gcr_output;
         GetCurrentResult_locals gcr_locals;
@@ -377,7 +379,7 @@ public:
         uint64 j;
         QUtilPoll default_poll;
         QUtilVoter default_voter;
-        Array<uint8, 256> zero_link;
+        Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE> zero_link;
     };
 
     /**************************************/
@@ -1088,8 +1090,16 @@ public:
     {
         for (locals.i = 0; locals.i < QUTIL_MAX_POLL; locals.i++)
         {
-            if (state.polls.get(locals.i).is_active != 0)
+            locals.current_poll = state.polls.get(locals.i);
+            if (locals.current_poll.is_active != 0)
             {
+                for (locals.opt = 0; locals.opt < QUTIL_MAX_OPTIONS; locals.opt++)
+                {
+                    locals.gcr_output.result.set(locals.opt, 0);
+                    locals.gcr_output.voter_count.set(locals.opt, 0);
+                }
+                locals.gcr_output.is_active = 0;
+
                 locals.gcr_input.poll_id = state.poll_ids.get(locals.i);
                 GetCurrentResult(qpi, state, locals.gcr_input, locals.gcr_output, locals.gcr_locals);
                 uint64 max_votes = 0;
@@ -1105,7 +1115,6 @@ public:
                 state.poll_results.set(locals.i, dominant_decision);
 
                 // Deactivate the poll
-                locals.current_poll = state.polls.get(locals.i);
                 locals.current_poll.is_active = 0;
                 state.polls.set(locals.i, locals.current_poll);
             }
@@ -1127,7 +1136,7 @@ public:
             locals.default_poll.num_assets = 0;
 
             // Initialize zero_link to all zeros for poll_links
-            for (locals.j = 0; locals.j < 256; locals.j++)
+            for (locals.j = 0; locals.j < QUTIL_POLL_GITHUB_URL_MAX_SIZE; locals.j++)
             {
                 locals.zero_link.set(locals.j, 0);
             }

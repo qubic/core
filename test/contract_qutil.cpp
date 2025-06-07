@@ -152,7 +152,7 @@ TEST(QUtilTest, CreateMultiplePolls_CheckIds)
     uint64_t num_polls = 30;
     std::vector<uint64_t> created_poll_ids;
 
-    for (uint64_t i = 0; i < num_polls; ++i) 
+    for (uint64_t i = 0; i < num_polls; ++i)
     {
         id poll_name = generateRandomId();
         uint64_t min_amount = 1000;
@@ -453,7 +453,7 @@ TEST(QUtilTest, CreatePolls_Vote_PassEpoch_CreateNewPolls_Vote_CheckResults) {
     EXPECT_EQ(result1.result.get(1), 1); // Dominant option 1
     for (uint64_t i = 0; i < QUTIL_MAX_OPTIONS; ++i)
     {
-        if (i != 1) 
+        if (i != 1)
         {
             EXPECT_EQ(result1.result.get(i), 0);
         }
