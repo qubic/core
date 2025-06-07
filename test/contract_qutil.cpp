@@ -4,6 +4,38 @@
 
 #include <random>
 
+class ContractTestingQX : public ContractTesting {
+public:
+    ContractTestingQX() {
+        initEmptySpectrum();
+        initEmptyUniverse();
+        INIT_CONTRACT(QX);
+        callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
+    }
+
+    QX::IssueAsset_output issueAsset(const id& issuer, uint64_t assetName, uint64_t numberOfShares) {
+        QX::IssueAsset_input input;
+        input.assetName = assetName;
+        input.numberOfShares = numberOfShares;
+        input.unitOfMeasurement = 0;
+        input.numberOfDecimalPlaces = 0;
+        QX::IssueAsset_output output;
+        invokeUserProcedure(QX_CONTRACT_INDEX, 1, input, output, issuer, 1000000000);
+        return output;
+    }
+
+    QX::TransferShareOwnershipAndPossession_output transferAsset(const id& from, const id& to, const Asset& asset, uint64_t amount) {
+        QX::TransferShareOwnershipAndPossession_input input;
+        input.issuer = asset.issuer;
+        input.newOwnerAndPossessor = to;
+        input.assetName = asset.assetName;
+        input.numberOfShares = amount;
+        QX::TransferShareOwnershipAndPossession_output output;
+        invokeUserProcedure(QX_CONTRACT_INDEX, 2, input, output, from, 1000000);
+        return output;
+    }
+};
+
 class ContractTestingQUtil : public ContractTesting {
 public:
     ContractTestingQUtil() {
@@ -50,6 +82,23 @@ public:
         callFunction(QUTIL_CONTRACT_INDEX, 3, input, output);
         return output;
     }
+
+    QUTIL::GetCurrentPollId_output getCurrentPollId()
+    {
+        QUTIL::GetCurrentPollId_input input;
+        QUTIL::GetCurrentPollId_output output;
+        callFunction(QUTIL_CONTRACT_INDEX, 4, input, output);
+        return output;
+    }
+
+    QUTIL::GetPollInfo_output getPollInfo(uint64_t poll_id)
+    {
+        QUTIL::GetPollInfo_input input;
+        input.poll_id = poll_id;
+        QUTIL::GetPollInfo_output output;
+        callFunction(QUTIL_CONTRACT_INDEX, 5, input, output);
+        return output;
+    }
 };
 
 // Helper function to generate random ID
@@ -88,6 +137,348 @@ Asset generateAsset() {
     asset.issuer = generateRandomId();
     asset.assetName = 12345; // Simple name for testing
     return asset;
+}
+
+TEST(QUtilTest, CreateMultiplePolls_CheckIds)
+{
+    ContractTestingQUtil qutil;
+    id creator = generateRandomId();
+    uint64_t num_polls = 30;
+    std::vector<uint64_t> created_poll_ids;
+
+    for (uint64_t i = 0; i < num_polls; ++i) 
+    {
+        id poll_name = generateRandomId();
+        uint64_t min_amount = 1000;
+        Array<uint8, 256> github_link = stringToArray("https://github.com/qubic/proposal/test" + std::to_string(i));
+        uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
+
+        QUTIL::CreatePoll_input input;
+        input.poll_name = poll_name;
+        input.poll_type = poll_type;
+        input.min_amount = min_amount;
+        input.github_link = github_link;
+        input.num_assets = 0;
+
+        increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+        auto output = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE);
+        created_poll_ids.push_back(output.poll_id);
+    }
+
+    auto current_poll_info = qutil.getCurrentPollId();
+    EXPECT_EQ(current_poll_info.current_poll_id, num_polls);
+    EXPECT_EQ(current_poll_info.active_count, num_polls);
+
+    std::set<uint64_t> expected_ids(created_poll_ids.begin(), created_poll_ids.end());
+    std::set<uint64_t> active_ids;
+    for (uint64_t i = 0; i < current_poll_info.active_count; ++i)
+    {
+        active_ids.insert(current_poll_info.active_poll_ids.get(i));
+    }
+    EXPECT_EQ(active_ids, expected_ids);
+}
+
+TEST(QUtilTest, CreateMultiplePolls_CheckNames)
+{
+    ContractTestingQUtil qutil;
+    id creator = generateRandomId();
+    uint64_t num_polls = 5;
+    std::vector<id> poll_names;
+    std::vector<uint64_t> poll_ids;
+
+    for (uint64_t i = 0; i < num_polls; ++i)
+    {
+        id poll_name = generateRandomId();
+        poll_names.push_back(poll_name);
+        uint64_t min_amount = 1000;
+        Array<uint8, 256> github_link = stringToArray("https://github.com/qubic/proposal/test" + std::to_string(i));
+        uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
+
+        QUTIL::CreatePoll_input input;
+        input.poll_name = poll_name;
+        input.poll_type = poll_type;
+        input.min_amount = min_amount;
+        input.github_link = github_link;
+        input.num_assets = 0;
+
+        increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+        auto output = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE);
+        poll_ids.push_back(output.poll_id);
+    }
+
+    for (uint64_t i = 0; i < num_polls; ++i)
+    {
+        auto poll_info = qutil.getPollInfo(poll_ids[i]);
+        EXPECT_EQ(poll_info.found, 1);
+        EXPECT_EQ(poll_info.poll_info.poll_name, poll_names[i]);
+    }
+}
+
+TEST(QUtilTest, CreatePollsMoreThanMax_CheckActiveIds)
+{
+    ContractTestingQUtil qutil;
+    id creator = generateRandomId();
+    uint64_t num_polls = 70;
+    std::vector<uint64_t> created_poll_ids;
+
+    for (uint64_t i = 0; i < num_polls; ++i)
+    {
+        id poll_name = generateRandomId();
+        uint64_t min_amount = 1000;
+        Array<uint8, 256> github_link = stringToArray("https://github.com/qubic/proposal/test" + std::to_string(i));
+        uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
+
+        QUTIL::CreatePoll_input input;
+        input.poll_name = poll_name;
+        input.poll_type = poll_type;
+        input.min_amount = min_amount;
+        input.github_link = github_link;
+        input.num_assets = 0;
+
+        increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+        auto output = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE);
+        created_poll_ids.push_back(output.poll_id);
+    }
+
+    auto current_poll_info = qutil.getCurrentPollId();
+    EXPECT_EQ(current_poll_info.current_poll_id, num_polls);
+    EXPECT_EQ(current_poll_info.active_count, QUTIL_MAX_POLL);
+
+    std::set<uint64_t> expected_active_ids;
+    for (uint64_t i = num_polls - QUTIL_MAX_POLL; i < num_polls; ++i)
+    {
+        expected_active_ids.insert(i);
+    }
+
+    std::set<uint64_t> active_ids;
+    for (uint64_t i = 0; i < current_poll_info.active_count; ++i)
+    {
+        active_ids.insert(current_poll_info.active_poll_ids.get(i));
+    }
+    EXPECT_EQ(active_ids, expected_active_ids);
+}
+
+TEST(QUtilTest, CreatePollsMoreThanMax_CheckPollInfo)
+{
+    ContractTestingQUtil qutil;
+    id creator = generateRandomId();
+    uint64_t num_polls = 70;
+    std::map<uint64_t, id> poll_id_to_name;
+
+    for (uint64_t i = 0; i < num_polls; ++i)
+    {
+        id poll_name = generateRandomId();
+        poll_id_to_name[i] = poll_name;
+        uint64_t min_amount = 1000;
+        Array<uint8, 256> github_link = stringToArray("https://github.com/qubic/proposal/test" + std::to_string(i));
+        uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
+
+        QUTIL::CreatePoll_input input;
+        input.poll_name = poll_name;
+        input.poll_type = poll_type;
+        input.min_amount = min_amount;
+        input.github_link = github_link;
+        input.num_assets = 0;
+
+        increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+        auto output = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE);
+        EXPECT_EQ(output.poll_id, i);
+    }
+
+    // Check polls 0 to 5 (should be overwritten)
+    for (uint64_t i = 0; i < 6; ++i)
+    {
+        auto poll_info = qutil.getPollInfo(i);
+        EXPECT_EQ(poll_info.found, 0);
+    }
+
+    // Check polls 6 to 69
+    for (uint64_t i = 6; i < num_polls; ++i)
+    {
+        auto poll_info = qutil.getPollInfo(i);
+        EXPECT_EQ(poll_info.found, 1);
+        EXPECT_EQ(poll_info.poll_info.poll_name, poll_id_to_name[i]);
+    }
+}
+
+TEST(QUtilTest, CreatePolls_Vote_PassEpoch_CreateNewPolls_Vote_CheckResults) {
+    ContractTestingQUtil qutil;
+    id creator = generateRandomId();
+    uint64_t min_amount = 1000;
+
+    // Create poll 0
+    id poll_name0 = generateRandomId();
+    QUTIL::CreatePoll_input create_input0;
+    create_input0.poll_name = poll_name0;
+    create_input0.poll_type = QUTIL_POLL_TYPE_QUBIC;
+    create_input0.min_amount = min_amount;
+    create_input0.github_link = stringToArray("https://github.com/qubic/proposal/poll0");
+    create_input0.num_assets = 0;
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    auto create_output0 = qutil.createPoll(creator, create_input0, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id0 = create_output0.poll_id;
+
+    // Create poll 1
+    id poll_name1 = generateRandomId();
+    QUTIL::CreatePoll_input create_input1;
+    create_input1.poll_name = poll_name1;
+    create_input1.poll_type = QUTIL_POLL_TYPE_QUBIC;
+    create_input1.min_amount = min_amount;
+    create_input1.github_link = stringToArray("https://github.com/qubic/proposal/poll1");
+    create_input1.num_assets = 0;
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    auto create_output1 = qutil.createPoll(creator, create_input1, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id1 = create_output1.poll_id;
+
+    // Vote on poll 0: 2 votes for option 0, 1 for option 1
+    id voter0 = generateRandomId();
+    increaseEnergy(voter0, min_amount + QUTIL_VOTE_FEE);
+    QUTIL::Vote_input vote_input0;
+    vote_input0.poll_id = poll_id0;
+    vote_input0.address = voter0;
+    vote_input0.amount = min_amount;
+    vote_input0.chosen_option = 0;
+    qutil.vote(voter0, vote_input0, QUTIL_VOTE_FEE);
+
+    id voter1 = generateRandomId();
+    increaseEnergy(voter1, min_amount + QUTIL_VOTE_FEE);
+    QUTIL::Vote_input vote_input1;
+    vote_input1.poll_id = poll_id0;
+    vote_input1.address = voter1;
+    vote_input1.amount = min_amount;
+    vote_input1.chosen_option = 0;
+    qutil.vote(voter1, vote_input1, QUTIL_VOTE_FEE);
+
+    id voter2 = generateRandomId();
+    increaseEnergy(voter2, min_amount + QUTIL_VOTE_FEE);
+    QUTIL::Vote_input vote_input2;
+    vote_input2.poll_id = poll_id0;
+    vote_input2.address = voter2;
+    vote_input2.amount = min_amount;
+    vote_input2.chosen_option = 1;
+    qutil.vote(voter2, vote_input2, QUTIL_VOTE_FEE);
+
+    // Vote on poll 1: 1 vote for option 0, 2 for option 1
+    id voter3 = generateRandomId();
+    increaseEnergy(voter3, min_amount + QUTIL_VOTE_FEE);
+    QUTIL::Vote_input vote_input3;
+    vote_input3.poll_id = poll_id1;
+    vote_input3.address = voter3;
+    vote_input3.amount = min_amount;
+    vote_input3.chosen_option = 0;
+    qutil.vote(voter3, vote_input3, QUTIL_VOTE_FEE);
+
+    id voter4 = generateRandomId();
+    increaseEnergy(voter4, min_amount + QUTIL_VOTE_FEE);
+    QUTIL::Vote_input vote_input4;
+    vote_input4.poll_id = poll_id1;
+    vote_input4.address = voter4;
+    vote_input4.amount = min_amount;
+    vote_input4.chosen_option = 1;
+    qutil.vote(voter4, vote_input4, QUTIL_VOTE_FEE);
+
+    id voter5 = generateRandomId();
+    increaseEnergy(voter5, min_amount + QUTIL_VOTE_FEE);
+    QUTIL::Vote_input vote_input5;
+    vote_input5.poll_id = poll_id1;
+    vote_input5.address = voter5;
+    vote_input5.amount = min_amount;
+    vote_input5.chosen_option = 1;
+    qutil.vote(voter5, vote_input5, QUTIL_VOTE_FEE);
+
+    // Pass the epoch
+    qutil.endEpoch();
+
+    // Create poll 2
+    id poll_name2 = generateRandomId();
+    QUTIL::CreatePoll_input create_input2;
+    create_input2.poll_name = poll_name2;
+    create_input2.poll_type = QUTIL_POLL_TYPE_QUBIC;
+    create_input2.min_amount = min_amount;
+    create_input2.github_link = stringToArray("https://github.com/qubic/proposal/poll2");
+    create_input2.num_assets = 0;
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    auto create_output2 = qutil.createPoll(creator, create_input2, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id2 = create_output2.poll_id;
+
+    // Create poll 3
+    id poll_name3 = generateRandomId();
+    QUTIL::CreatePoll_input create_input3;
+    create_input3.poll_name = poll_name3;
+    create_input3.poll_type = QUTIL_POLL_TYPE_QUBIC;
+    create_input3.min_amount = min_amount;
+    create_input3.github_link = stringToArray("https://github.com/qubic/proposal/poll3");
+    create_input3.num_assets = 0;
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    auto create_output3 = qutil.createPoll(creator, create_input3, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id3 = create_output3.poll_id;
+
+    // Vote on poll 2: 1 vote for option 2
+    id voter6 = generateRandomId();
+    increaseEnergy(voter6, min_amount + QUTIL_VOTE_FEE);
+    QUTIL::Vote_input vote_input6;
+    vote_input6.poll_id = poll_id2;
+    vote_input6.address = voter6;
+    vote_input6.amount = min_amount;
+    vote_input6.chosen_option = 2;
+    qutil.vote(voter6, vote_input6, QUTIL_VOTE_FEE);
+
+    // Vote on poll 3: 1 vote for option 3
+    id voter7 = generateRandomId();
+    increaseEnergy(voter7, min_amount + QUTIL_VOTE_FEE);
+    QUTIL::Vote_input vote_input7;
+    vote_input7.poll_id = poll_id3;
+    vote_input7.address = voter7;
+    vote_input7.amount = min_amount;
+    vote_input7.chosen_option = 3;
+    qutil.vote(voter7, vote_input7, QUTIL_VOTE_FEE);
+
+    // Check results for old polls
+    auto result0 = qutil.getCurrentResult(poll_id0);
+    EXPECT_EQ(result0.is_active, 0);
+    EXPECT_EQ(result0.result.get(0), 1); // Dominant option 0
+    for (uint64_t i = 1; i < QUTIL_MAX_OPTIONS; ++i)
+    {
+        EXPECT_EQ(result0.result.get(i), 0);
+    }
+
+    auto result1 = qutil.getCurrentResult(poll_id1);
+    EXPECT_EQ(result1.is_active, 0);
+    EXPECT_EQ(result1.result.get(1), 1); // Dominant option 1
+    for (uint64_t i = 0; i < QUTIL_MAX_OPTIONS; ++i)
+    {
+        if (i != 1) 
+        {
+            EXPECT_EQ(result1.result.get(i), 0);
+        }
+    }
+
+    // Check results for new polls
+    auto result2 = qutil.getCurrentResult(poll_id2);
+    EXPECT_EQ(result2.is_active, 1);
+    EXPECT_EQ(result2.result.get(2), min_amount);
+    EXPECT_EQ(result2.voter_count.get(2), 1);
+    for (uint64_t i = 0; i < QUTIL_MAX_OPTIONS; ++i)
+    {
+        if (i != 2)
+        {
+            EXPECT_EQ(result2.result.get(i), 0);
+            EXPECT_EQ(result2.voter_count.get(i), 0);
+        }
+    }
+
+    auto result3 = qutil.getCurrentResult(poll_id3);
+    EXPECT_EQ(result3.is_active, 1);
+    EXPECT_EQ(result3.result.get(3), min_amount);
+    EXPECT_EQ(result3.voter_count.get(3), 1);
+    for (uint64_t i = 0; i < QUTIL_MAX_OPTIONS; ++i)
+    {
+        if (i != 3)
+        {
+            EXPECT_EQ(result3.result.get(i), 0);
+            EXPECT_EQ(result3.voter_count.get(i), 0);
+        }
+    }
 }
 
 // Test successful Qubic poll creation
