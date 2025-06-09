@@ -163,6 +163,16 @@ public:
 
 	};
 
+	struct upgradeTier_input
+	{
+		uint32 newTierLevel;
+	};
+
+	struct upgradeTier_output
+	{
+
+	};
+
 	struct getStats_input
 	{
 
@@ -1123,6 +1133,113 @@ protected:
 		}
 	}
 
+	struct upgradeTier_locals
+	{
+		userInfo user;
+		uint32 i;
+		uint8 currentTierLevel;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(upgradeTier)
+	{
+		for ( locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
+		{
+			if (state.Users.get(locals.i).userId == qpi.invocator())
+			{
+				locals.currentTierLevel = state.Users.get(locals.i).tierLevel;
+				break;
+			}
+		}
+		
+		switch (locals.currentTierLevel)
+		{
+			case 1:
+				if (input.newTierLevel != 2 || qpi.invocationReward() < NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return ;
+				}
+				else 
+				{
+					locals.user.userId = qpi.invocator();
+					locals.user.tierLevel = input.newTierLevel;
+					state.Users.set(locals.i, locals.user);
+					if (qpi.invocationReward() > NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward() - (NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT));
+					}
+					state.totalPoolWeight += NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT - NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT;
+				}
+				break;
+			case 2:
+				if (input.newTierLevel != 3 || qpi.invocationReward() < NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return ;
+				}
+				else 
+				{
+					locals.user.userId = qpi.invocator();
+					locals.user.tierLevel = input.newTierLevel;
+					state.Users.set(locals.i, locals.user);
+					if (qpi.invocationReward() > NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward() - (NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT));
+					}
+					state.totalPoolWeight += NOSTROMO_TIER_DOG_POOL_WEIGHT - NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
+				}
+				break;
+			case 3:
+				if (input.newTierLevel != 4 || qpi.invocationReward() < NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return ;
+				}
+				else 
+				{
+					locals.user.userId = qpi.invocator();
+					locals.user.tierLevel = input.newTierLevel;
+					state.Users.set(locals.i, locals.user);
+					if (qpi.invocationReward() > NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward() - (NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT));
+					}
+					state.totalPoolWeight += NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT - NOSTROMO_TIER_DOG_POOL_WEIGHT;
+				}
+				break;
+			case 4:
+				if (input.newTierLevel != 5 || qpi.invocationReward() < NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return ;
+				}
+				else 
+				{
+					locals.user.userId = qpi.invocator();
+					locals.user.tierLevel = input.newTierLevel;
+					state.Users.set(locals.i, locals.user);
+					if (qpi.invocationReward() > NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward() - (NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT));
+					}
+					state.totalPoolWeight += NOSTROMO_TIER_WARRIOR_POOL_WEIGHT - NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
+				}
+				break;
+		}
+	}
+
 	PUBLIC_FUNCTION(getStats)
 	{
 		output.epochRevenue = state.epochRevenue;
@@ -1241,6 +1358,7 @@ public:
 		REGISTER_USER_PROCEDURE(createFundaraising, 5);
 		REGISTER_USER_PROCEDURE(investInProject, 6);
 		REGISTER_USER_PROCEDURE(claimToken, 7);
+		REGISTER_USER_PROCEDURE(upgradeTier, 8);
 	}
 
 	struct END_EPOCH_locals
