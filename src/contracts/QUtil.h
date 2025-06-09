@@ -215,7 +215,7 @@ public:
     {
         id currentId;
         sint64 t;
-        bit useNext;
+        uint64 useNext;
         QUtilLogger logger;
     };
 
@@ -689,17 +689,17 @@ public:
 
         // Loop through the number of addresses and do the transfers
         locals.currentId = qpi.invocator();
-        locals.useNext = true;
+        locals.useNext = 1;
         while (output.dstCount < input.dstCount)
         {
-            if (locals.useNext)
+            if (locals.useNext == 1)
                 locals.currentId = qpi.nextId(locals.currentId);
             else
                 locals.currentId = qpi.prevId(locals.currentId);
             if (locals.currentId == m256i::zero())
             {
                 locals.currentId = qpi.invocator();
-                locals.useNext = !locals.useNext;
+                locals.useNext = 1 - locals.useNext;
                 continue;
             }
 
