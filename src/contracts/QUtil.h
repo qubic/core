@@ -100,7 +100,6 @@ private:
     Array<QUtilPoll, QUTIL_MAX_POLL> polls;
     Array<QUtilVoter, QUTIL_TOTAL_VOTERS> voters; // 1d array for all voters
     Array<uint64, QUTIL_MAX_POLL> poll_ids;
-    Array<uint64, QUTIL_MAX_POLL> poll_results; // stores dominant option per poll
     Array<uint64, QUTIL_MAX_POLL> voter_counts; // tracks number of voters per poll
     Array<Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE>, QUTIL_MAX_POLL> poll_links; // github links for polls
     uint64 current_poll_id;
@@ -365,11 +364,6 @@ public:
     struct END_EPOCH_locals
     {
         uint64 i;
-        uint64 d;
-        uint64 opt;
-        GetCurrentResult_input gcr_input;
-        GetCurrentResult_output gcr_output;
-        GetCurrentResult_locals gcr_locals;
         QUtilPoll current_poll;
     };
 
@@ -995,24 +989,14 @@ public:
             return;
         }
         output.is_active = state.polls.get(locals.idx).is_active;
-        if (state.polls.get(locals.idx).is_active == 0)
+        for (locals.i = 0; locals.i < state.voter_counts.get(locals.idx); locals.i++)
         {
-            locals.dominant_option = state.poll_results.get(locals.idx);
-            if (locals.dominant_option < QUTIL_MAX_OPTIONS) {
-                output.result.set(locals.dominant_option, 1);
-            }
-        }
-        else
-        {
-            for (locals.i = 0; locals.i < state.voter_counts.get(locals.idx); locals.i++)
+            locals.voter_index = calculate_voter_index(locals.idx, locals.i);
+            locals.voter = state.voters.get(locals.voter_index);
+            if (locals.voter.address != NULL_ID && locals.voter.chosen_option < QUTIL_MAX_OPTIONS)
             {
-                locals.voter_index = calculate_voter_index(locals.idx, locals.i);
-                locals.voter = state.voters.get(locals.voter_index);
-                if (locals.voter.address != NULL_ID && locals.voter.chosen_option < QUTIL_MAX_OPTIONS)
-                {
-                    output.result.set(locals.voter.chosen_option, output.result.get(locals.voter.chosen_option) + locals.voter.amount);
-                    output.voter_count.set(locals.voter.chosen_option, output.voter_count.get(locals.voter.chosen_option) + 1);
-                }
+                output.result.set(locals.voter.chosen_option, output.result.get(locals.voter.chosen_option) + locals.voter.amount);
+                output.voter_count.set(locals.voter.chosen_option, output.voter_count.get(locals.voter.chosen_option) + 1);
             }
         }
     }
@@ -1093,27 +1077,6 @@ public:
             locals.current_poll = state.polls.get(locals.i);
             if (locals.current_poll.is_active != 0)
             {
-                for (locals.opt = 0; locals.opt < QUTIL_MAX_OPTIONS; locals.opt++)
-                {
-                    locals.gcr_output.result.set(locals.opt, 0);
-                    locals.gcr_output.voter_count.set(locals.opt, 0);
-                }
-                locals.gcr_output.is_active = 0;
-
-                locals.gcr_input.poll_id = state.poll_ids.get(locals.i);
-                GetCurrentResult(qpi, state, locals.gcr_input, locals.gcr_output, locals.gcr_locals);
-                uint64 max_votes = 0;
-                uint64 dominant_decision = 0;
-                for (locals.d = 0; locals.d < QUTIL_MAX_OPTIONS; locals.d++)
-                {
-                    if (locals.gcr_output.result.get(locals.d) > max_votes)
-                    {
-                        max_votes = locals.gcr_output.result.get(locals.d);
-                        dominant_decision = locals.d;
-                    }
-                }
-                state.poll_results.set(locals.i, dominant_decision);
-
                 // Deactivate the poll
                 locals.current_poll.is_active = 0;
                 state.polls.set(locals.i, locals.current_poll);
@@ -1146,7 +1109,6 @@ public:
             {
                 state.polls.set(locals.i, locals.default_poll);
                 state.poll_ids.set(locals.i, 0);
-                state.poll_results.set(locals.i, QUTIL_MAX_OPTIONS);
                 state.voter_counts.set(locals.i, 0);
                 state.poll_links.set(locals.i, locals.zero_link);
             }
