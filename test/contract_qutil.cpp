@@ -442,22 +442,17 @@ TEST(QUtilTest, CreatePolls_Vote_PassEpoch_CreateNewPolls_Vote_CheckResults) {
     // Check results for old polls
     auto result0 = qutil.getCurrentResult(poll_id0);
     EXPECT_EQ(result0.is_active, 0);
-    EXPECT_EQ(result0.result.get(0), 1); // Dominant option 0
-    for (uint64_t i = 1; i < QUTIL_MAX_OPTIONS; ++i)
-    {
-        EXPECT_EQ(result0.result.get(i), 0);
-    }
+    EXPECT_EQ(result0.result.get(0), 2 * min_amount);
+    EXPECT_EQ(result0.result.get(1), min_amount);
+    EXPECT_EQ(result0.voter_count.get(0), 2);
+    EXPECT_EQ(result0.voter_count.get(1), 1);
 
     auto result1 = qutil.getCurrentResult(poll_id1);
     EXPECT_EQ(result1.is_active, 0);
-    EXPECT_EQ(result1.result.get(1), 1); // Dominant option 1
-    for (uint64_t i = 0; i < QUTIL_MAX_OPTIONS; ++i)
-    {
-        if (i != 1)
-        {
-            EXPECT_EQ(result1.result.get(i), 0);
-        }
-    }
+    EXPECT_EQ(result1.result.get(0), min_amount); // One vote for option 0
+    EXPECT_EQ(result1.result.get(1), 2 * min_amount); // Two votes for option 1
+    EXPECT_EQ(result1.voter_count.get(0), 1);
+    EXPECT_EQ(result1.voter_count.get(1), 2);
 
     // Check results for new polls
     auto result2 = qutil.getCurrentResult(poll_id2);
