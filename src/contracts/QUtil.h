@@ -92,7 +92,6 @@ private:
     sint64 _i64_0, _i64_1, _i64_2, _i64_3;
     uint64 _r0, _r1, _r2, _r3;
     sint64 total;
-    QUtilLogger logger;
 
     // Voting state
     Array<QUtilPoll, QUTIL_MAX_POLL> polls;
@@ -187,6 +186,10 @@ public:
     {
         sint32 returnCode;
     };
+    struct SendToManyV1_locals
+    {
+        QUtilLogger logger;
+    };
 
     struct GetSendToManyV1Fee_input
     {
@@ -213,6 +216,7 @@ public:
         id currentId;
         sint64 t;
         bit useNext;
+        QUtilLogger logger;
     };
 
     struct BurnQubic_input
@@ -249,6 +253,7 @@ public:
         QUtilPoll new_poll;
         QUtilVoter default_voter;
         uint64 i;
+        QUtilLogger logger;
     };
 
     struct Vote_input
@@ -283,6 +288,7 @@ public:
         uint64 real_vote;
         uint64 end_idx;
         uint64 max_balance;
+        QUtilLogger logger;
     };
 
     struct GetCurrentResult_input
@@ -307,7 +313,6 @@ public:
         uint64 i;
         uint64 voter_index;
         QUtilLogger logger;
-        uint64 dominant_option;
     };
 
     struct GetPollsByCreator_input
@@ -458,17 +463,17 @@ public:
     * @param list of 25 amounts (200 bytes): 8 bytes(long long) for each amount, leave empty(zeroes) for unused memory space
     * @return returnCode (0 means success)
     */
-    PUBLIC_PROCEDURE(SendToManyV1)
+    PUBLIC_PROCEDURE_WITH_LOCALS(SendToManyV1)
     {
-        state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_TRIGGERED };
-        LOG_INFO(state.logger);
+        locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_TRIGGERED };
+        LOG_INFO(locals.logger);
         state.total = input.amt0 + input.amt1 + input.amt2 + input.amt3 + input.amt4 + input.amt5 + input.amt6 + input.amt7 + input.amt8 + input.amt9 + input.amt10 + input.amt11 + input.amt12 + input.amt13 + input.amt14 + input.amt15 + input.amt16 + input.amt17 + input.amt18 + input.amt19 + input.amt20 + input.amt21 + input.amt22 + input.amt23 + input.amt24 + QUTIL_STM1_INVOCATION_FEE;
         // invalid amount (<0), return fund and exit
         if ((input.amt0 < 0) || (input.amt1 < 0) || (input.amt2 < 0) || (input.amt3 < 0) || (input.amt4 < 0) || (input.amt5 < 0) || (input.amt6 < 0) || (input.amt7 < 0) || (input.amt8 < 0) || (input.amt9 < 0) || (input.amt10 < 0) || (input.amt11 < 0) || (input.amt12 < 0) || (input.amt13 < 0) || (input.amt14 < 0) || (input.amt15 < 0) || (input.amt16 < 0) || (input.amt17 < 0) || (input.amt18 < 0) || (input.amt19 < 0) || (input.amt20 < 0) || (input.amt21 < 0) || (input.amt22 < 0) || (input.amt23 < 0) || (input.amt24 < 0))
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
             output.returnCode = QUTIL_STM1_INVALID_AMOUNT_NUMBER;
-            LOG_INFO(state.logger);
+            LOG_INFO(locals.logger);
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -477,8 +482,8 @@ public:
         // insufficient or too many qubic transferred, return fund and exit (we don't want to return change)
         if (qpi.invocationReward() != state.total)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_WRONG_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_WRONG_FUND };
+            LOG_INFO(locals.logger);
             output.returnCode = QUTIL_STM1_WRONG_FUND;
             if (qpi.invocationReward() > 0)
             {
@@ -489,156 +494,156 @@ public:
 
         if (input.dst0 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst0, input.amt0, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst0, input.amt0, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst0, input.amt0);
         }
         if (input.dst1 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst1, input.amt1, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst1, input.amt1, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst1, input.amt1);
         }
         if (input.dst2 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst2, input.amt2, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst2, input.amt2, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst2, input.amt2);
         }
         if (input.dst3 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst3, input.amt3, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst3, input.amt3, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst3, input.amt3);
         }
         if (input.dst4 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst4, input.amt4, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst4, input.amt4, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst4, input.amt4);
         }
         if (input.dst5 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst5, input.amt5, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst5, input.amt5, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst5, input.amt5);
         }
         if (input.dst6 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst6, input.amt6, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst6, input.amt6, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst6, input.amt6);
         }
         if (input.dst7 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst7, input.amt7, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst7, input.amt7, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst7, input.amt7);
         }
         if (input.dst8 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst8, input.amt8, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst8, input.amt8, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst8, input.amt8);
         }
         if (input.dst9 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst9, input.amt9, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst9, input.amt9, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst9, input.amt9);
         }
         if (input.dst10 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst10, input.amt10, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst10, input.amt10, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst10, input.amt10);
         }
         if (input.dst11 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst11, input.amt11, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst11, input.amt11, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst11, input.amt11);
         }
         if (input.dst12 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst12, input.amt12, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst12, input.amt12, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst12, input.amt12);
         }
         if (input.dst13 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst13, input.amt13, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst13, input.amt13, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst13, input.amt13);
         }
         if (input.dst14 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst14, input.amt14, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst14, input.amt14, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst14, input.amt14);
         }
         if (input.dst15 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst15, input.amt15, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst15, input.amt15, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst15, input.amt15);
         }
         if (input.dst16 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst16, input.amt16, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst16, input.amt16, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst16, input.amt16);
         }
         if (input.dst17 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst17, input.amt17, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst17, input.amt17, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst17, input.amt17);
         }
         if (input.dst18 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst18, input.amt18, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst18, input.amt18, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst18, input.amt18);
         }
         if (input.dst19 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst19, input.amt19, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst19, input.amt19, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst19, input.amt19);
         }
         if (input.dst20 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst20, input.amt20, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst20, input.amt20, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst20, input.amt20);
         }
         if (input.dst21 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst21, input.amt21, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst21, input.amt21, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst21, input.amt21);
         }
         if (input.dst22 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst22, input.amt22, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst22, input.amt22, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst22, input.amt22);
         }
         if (input.dst23 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst23, input.amt23, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst23, input.amt23, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst23, input.amt23);
         }
         if (input.dst24 != NULL_ID)
         {
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst24, input.amt24, QUTIL_STM1_SEND_FUND };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst24, input.amt24, QUTIL_STM1_SEND_FUND };
+            LOG_INFO(locals.logger);
             qpi.transfer(input.dst24, input.amt24);
         }
-        state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, state.total, QUTIL_STM1_SUCCESS };
-        LOG_INFO(state.logger);
+        locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, state.total, QUTIL_STM1_SUCCESS };
+        LOG_INFO(locals.logger);
         output.returnCode = QUTIL_STM1_SUCCESS;
         qpi.burn(QUTIL_STM1_INVOCATION_FEE);
     }
@@ -652,8 +657,8 @@ public:
     */
     PUBLIC_PROCEDURE_WITH_LOCALS(SendToManyBenchmark)
     {
-        state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_TRIGGERED };
-        LOG_INFO(state.logger);
+        locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_TRIGGERED };
+        LOG_INFO(locals.logger);
         output.total = 0;
 
         // Number of addresses and transfers is > 0 and total transfers do not exceed limit (including 2 transfers from invocator to contract and contract to invocator)
@@ -663,8 +668,8 @@ public:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
+            LOG_INFO(locals.logger);
             output.returnCode = QUTIL_STM1_INVALID_AMOUNT_NUMBER;
             return;
         }
@@ -676,8 +681,8 @@ public:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
+            LOG_INFO(locals.logger);
             output.returnCode = QUTIL_STM1_INVALID_AMOUNT_NUMBER;
             return;
         }
@@ -712,8 +717,8 @@ public:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - output.total);
         }
 
-        state.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, output.total, QUTIL_STM1_SUCCESS };
-        LOG_INFO(state.logger);
+        locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, output.total, QUTIL_STM1_SUCCESS };
+        LOG_INFO(locals.logger);
     }
 
     /**
@@ -756,30 +761,30 @@ public:
     {
         if (qpi.invocationReward() < QUTIL_POLL_CREATION_FEE)
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QutilLogTypeInsufficientFundsForPoll };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QutilLogTypeInsufficientFundsForPoll };
+            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
         if (input.poll_type != QUTIL_POLL_TYPE_QUBIC && input.poll_type != QUTIL_POLL_TYPE_ASSET)
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollType };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollType };
+            LOG_INFO(locals.logger);
             return;
         }
 
         if (input.poll_type == QUTIL_POLL_TYPE_QUBIC && input.num_assets != 0)
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidNumAssetsQubic };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidNumAssetsQubic };
+            LOG_INFO(locals.logger);
             return;
         }
 
         if (input.poll_type == QUTIL_POLL_TYPE_ASSET && (input.num_assets == 0 || input.num_assets > QUTIL_MAX_ASSETS_PER_POLL))
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidNumAssetsAsset };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidNumAssetsAsset };
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -812,8 +817,8 @@ public:
         output.poll_id = state.current_poll_id;
         state.current_poll_id++;
 
-        state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_POLL_CREATION_FEE, QutilLogTypePollCreated };
-        LOG_INFO(state.logger);
+        locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_POLL_CREATION_FEE, QutilLogTypePollCreated };
+        LOG_INFO(locals.logger);
     }
 
     /**
@@ -824,8 +829,8 @@ public:
         output.success = false;
         if (qpi.invocationReward() < QUTIL_VOTE_FEE)
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QutilLogTypeInsufficientFundsForVote };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QutilLogTypeInsufficientFundsForVote };
+            LOG_INFO(locals.logger);
             return;
         }
         qpi.transfer(qpi.invocator(), qpi.invocationReward() - QUTIL_VOTE_FEE);
@@ -838,14 +843,14 @@ public:
 
         if (state.poll_ids.get(locals.idx) != input.poll_id)
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollId };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollId };
+            LOG_INFO(locals.logger);
             return;
         }
         if (state.polls.get(locals.idx).is_active == 0)
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypePollInactive };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypePollInactive };
+            LOG_INFO(locals.logger);
             return;
         }
         locals.poll_type = state.polls.get(locals.idx).poll_type;
@@ -858,14 +863,14 @@ public:
 
         if (locals.max_balance < state.polls.get(locals.idx).min_amount || locals.max_balance < input.amount)
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInsufficientBalance };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInsufficientBalance };
+            LOG_INFO(locals.logger);
             return;
         }
         if (input.chosen_option >= QUTIL_MAX_OPTIONS)
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidOption };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidOption };
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -965,8 +970,8 @@ public:
 
         if (output.success)
         {
-            state.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_VOTE_FEE, QutilLogTypeVoteCast };
-            LOG_INFO(state.logger);
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_VOTE_FEE, QutilLogTypeVoteCast };
+            LOG_INFO(locals.logger);
         }
     }
 
@@ -1066,7 +1071,7 @@ public:
     }
 
     /**
-    * End of epoch processing for polls, computes dominant option for options 0-63
+    * End of epoch processing for polls, sets active polls to inactive
     */
     END_EPOCH_WITH_LOCALS()
     {
