@@ -2,6 +2,7 @@
 // Given several assumptions such as no CPU seed change and no hibernating, it
 // can be used to measure run-time with low overhead.
 // See https://en.wikipedia.org/wiki/Time_Stamp_Counter
+// TSC of different processors may be out of sync.
 
 #pragma once
 
@@ -13,7 +14,7 @@
 #include <lib/platform_common/sleep.h>
 
 // frequency of CPU clock
-GLOBAL_VAR_DECL unsigned long long frequency;
+GLOBAL_VAR_DECL unsigned long long frequency GLOBAL_VAR_INIT(0);
 
 
 static void initTimeStampCounter()

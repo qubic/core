@@ -17,6 +17,7 @@ static EFI_SERVICE_BINDING_PROTOCOL* tcp4ServiceBindingProtocol = NULL;
 static EFI_GUID tcp4ProtocolGuid = EFI_TCP4_PROTOCOL_GUID;
 static EFI_TCP4_PROTOCOL* peerTcp4Protocol = NULL;
 static EFI_HANDLE peerChildHandle = NULL;
+static EFI_IPv4_ADDRESS nodeAddress;
 
 
 static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsigned short port, EFI_TCP4_PROTOCOL** tcp4Protocol)
@@ -111,6 +112,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
                             appendNumber(message, configData.AccessPoint.StationPort, FALSE);
                             appendText(message, L".");
                             logToConsole(message);
+                            nodeAddress = configData.AccessPoint.StationAddress;
 
                             logToConsole(L"Routes:");
                             for (unsigned int i = 0; i < modeData.RouteCount; i++)

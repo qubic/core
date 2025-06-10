@@ -256,6 +256,11 @@
     <ClInclude Include="network_messages\custom_mining.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="platform\virtual_memory.h" />
+    <ClInclude Include="platform\profiling.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="revenue.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

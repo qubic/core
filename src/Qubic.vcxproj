@@ -90,12 +90,14 @@
     <ClInclude Include="platform\file_io.h" />
     <ClInclude Include="platform\console_logging.h" />
     <ClInclude Include="platform\common_types.h" />
+    <ClInclude Include="platform\profiling.h" />
     <ClInclude Include="platform\random.h" />
     <ClInclude Include="platform\read_write_lock.h" />
     <ClInclude Include="platform\stack_size_tracker.h" />
     <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="platform\global_var.h" />
     <ClInclude Include="platform\virtual_memory.h" />
+    <ClInclude Include="revenue.h" />
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />
