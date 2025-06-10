@@ -11,6 +11,7 @@ include(CompilerSetup)
 
 # Build options
 option(BUILD_TESTS "Build the test suite" ON)
+option(BUILD_BENCHMARK "Build the EFI benchmark application" OFF)
 option(BUILD_EFI "Build the EFI application" ON)
 option(USE_SANITIZER "Build test with sanitizer support (clang only)" ON)
 
@@ -24,7 +25,7 @@ endif()
 # Always include platform_common as it's needed for both application and tests
 add_subdirectory(lib/platform_common)
 
-if(BUILD_EFI OR BUILD_TESTS)
+if(BUILD_EFI OR BUILD_BENCHMARK)
     add_subdirectory(lib/platform_efi)
 endif()
 
@@ -33,13 +34,13 @@ if(BUILD_TESTS)
     message(STATUS "Building test suite")
     enable_testing()
     add_subdirectory(lib/platform_os)
-    
+
     # If we're not building the application, we still need src for tests
     # but don't make it a default target
     if(NOT BUILD_EFI)
         add_subdirectory(src EXCLUDE_FROM_ALL)
     endif()
-    
+
     add_subdirectory(test)
 endif()
 
@@ -47,4 +48,10 @@ endif()
 if(BUILD_EFI)
     message(STATUS "Building EFI application")
     add_subdirectory(src)
+endif()
+
+# Add the UEFI m256i benchmark
+if(BUILD_BENCHMARK)
+    message(STATUS "Building EFI Benchmark")
+    add_subdirectory(benchmark_uefi)
 endif()
