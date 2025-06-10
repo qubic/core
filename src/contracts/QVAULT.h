@@ -2044,7 +2044,6 @@ public:
         QPI::Entity entity;
         AssetPossessionIterator iter;
         Asset QCAPId;
-        Asset qvaultShare;
         id possessorPubkey;
         uint64 paymentForShareholders;
         uint64 paymentForQCAPHolders;
@@ -2079,22 +2078,19 @@ public:
         qpi.transfer(state.adminAddress, locals.paymentForDevelopment);
         qpi.burn(locals.amountOfBurn);
 
-        locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
-        locals.qvaultShare.issuer = NULL_ID;
+        locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
+        locals.QCAPId.issuer = state.QCAP_ISSUER;
 
-        locals.circulatedSupply = QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount;
+        locals.circulatedSupply = QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfShares(locals.QCAPId, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount;
 
         state.revenueForOneQcapPerEpoch.set(qpi.epoch(), div(locals.paymentForQCAPHolders, locals.circulatedSupply * 1ULL));
         state.revenueForOneQvaultPerEpoch.set(qpi.epoch(), div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
-        state.revenueForReinvestPerEpoch.set(qpi.epoch(), div(locals.paymentForReinvest, 1000ULL));
+        state.revenueForReinvestPerEpoch.set(qpi.epoch(), locals.paymentForReinvest);
 
         state.reinvestingFund += locals.paymentForReinvest;
         state.fundForBurn += locals.paymentForQcapBurn;
         state.totalEpochRevenue = 0;
         state.proposalCreateFund = 0;
-        
-        locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
-        locals.QCAPId.issuer = state.QCAP_ISSUER;
 
         locals.iter.begin(locals.QCAPId);
         while (!locals.iter.reachedEnd())
@@ -2554,7 +2550,7 @@ public:
             case TransferType::qpiDistributeDividends:
                 state.totalHistoryRevenue += input.amount;
                 state.revenueInQcapPerEpoch.set(qpi.epoch(), state.revenueInQcapPerEpoch.get(qpi.epoch()) + input.amount);
-                state.revenuePerShare.set(input.sourceId.u64._0, input.amount);
+                state.revenuePerShare.set(input.sourceId.u64._0, state.revenuePerShare.get(input.sourceId.u64._0) + input.amount);
                 
                 state.totalEpochRevenue += input.amount;
                 break;
