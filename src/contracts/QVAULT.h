@@ -438,7 +438,7 @@ protected:
         locals.qcapAsset.assetName = QVAULT_QCAP_ASSETNAME;
         locals.qcapAsset.issuer = state.QCAP_ISSUER;
 
-        output.circulatingSupply = (uint32)(QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfShares(locals.qcapAsset, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount);
+        output.circulatingSupply = (uint32)(qpi.numberOfShares(locals.qcapAsset) - qpi.numberOfShares(locals.qcapAsset, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount);
         for (locals._t = state.numberOfFundP - 1; locals._t >= 0; locals._t--)
         {
             if (state.FundP.get(locals._t).result == 0 && state.FundP.get(locals._t).proposedEpoch + 1 < qpi.epoch())
@@ -2081,7 +2081,7 @@ public:
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
         locals.QCAPId.issuer = state.QCAP_ISSUER;
 
-        locals.circulatedSupply = QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfShares(locals.QCAPId, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount;
+        locals.circulatedSupply = qpi.numberOfShares(locals.QCAPId) - qpi.numberOfShares(locals.QCAPId, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount;
 
         state.revenueForOneQcapPerEpoch.set(qpi.epoch(), div(locals.paymentForQCAPHolders, locals.circulatedSupply * 1ULL));
         state.revenueForOneQvaultPerEpoch.set(qpi.epoch(), div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
@@ -2516,7 +2516,6 @@ public:
         AssetPossessionIterator iter;
         Asset QCAPId;
         id possessorPubkey;
-        uint64 circulatedSupply;
         uint64 lockedFund;
         sint32 _t;
     };
