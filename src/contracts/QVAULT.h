@@ -2542,6 +2542,13 @@ public:
                     state.revenueByQearn += input.amount - locals.lockedFund;
 
                 }
+                else
+                {
+                    state.totalHistoryRevenue += input.amount;
+                    state.revenueInQcapPerEpoch.set(qpi.epoch(), state.revenueInQcapPerEpoch.get(qpi.epoch()) + input.amount);
+
+                    state.totalEpochRevenue += input.amount;
+                }
                 break;
             case TransferType::ipoBidRefund:
                 state.reinvestingFund += input.amount;
