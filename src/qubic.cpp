@@ -1780,6 +1780,28 @@ static void checkAndSwitchCustomMiningPhase()
 
 }
 
+// a function to check and switch mining phase especially for begin/end epoch event
+// if we are in internal mining phase (no matter beginning or in the middle) => reset mining seed to new spectrum of the new epoch
+// same for external mining phase => reset all counters are needed
+// this function should be called after beginEpoch procedure
+// TODO: merge checkMiningPhaseBeginAndEndEpoch + checkAndSwitchCustomMiningPhase + checkAndSwitchMiningPhase
+static void checkMiningPhaseBeginAndEndEpoch()
+{
+    const unsigned int r = getTickInMiningPhaseCycle();
+    if (r < INTERNAL_COMPUTATIONS_INTERVAL)
+    {
+        setNewMiningSeed();
+    }
+    else
+    {
+        score->initMiningData(m256i::zero());
+        beginCustomMiningPhase();
+        ACQUIRE(gIsInCustomMiningStateLock);
+        gIsInCustomMiningState = 1;
+        RELEASE(gIsInCustomMiningStateLock);
+    }
+}
+
 // Updates the global numberTickTransactions based on the tick data in the tick storage.
 static void updateNumberOfTickTransactions()
 {
@@ -4999,8 +5021,7 @@ static void tickProcessor(void*)
                                     epochTransitionState = 2;
 
                                     beginEpoch();
-                                    checkAndSwitchMiningPhase();
-                                    checkAndSwitchCustomMiningPhase();
+                                    checkMiningPhaseBeginAndEndEpoch();
 
                                     // Some debug checks that we are ready for the next epoch
                                     ASSERT(system.numberOfSolutions == 0);
@@ -5442,8 +5463,7 @@ static bool initialize()
     }
     else
     {
-        checkAndSwitchMiningPhase();
-        checkAndSwitchCustomMiningPhase();
+        checkMiningPhaseBeginAndEndEpoch();
     }    
     score->loadScoreCache(system.epoch);
 
