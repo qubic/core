@@ -559,228 +559,228 @@ public:
     }
 };
 
-// TEST(TestContractNostromo, registerAndLogoutAndUpgradeFromTierChecker)
-// {
-//     ContractTestingNostromo nostromo;
+TEST(TestContractNostromo, registerAndLogoutAndUpgradeFromTierChecker)
+{
+    ContractTestingNostromo nostromo;
 
-//     std::map<id, bool> duplicatedUser;
-//     auto registers = getRandomUsers(10000, 10000);
+    std::map<id, bool> duplicatedUser;
+    auto registers = getRandomUsers(10000, 10000);
 
-//     uint32 countOfRegister = 0, totalPoolWeight = 0;
-//     uint64 totalDepositedQubic = 0, totalLogoutFeeAmount = 0;
+    uint32 countOfRegister = 0, totalPoolWeight = 0;
+    uint64 totalDepositedQubic = 0, totalLogoutFeeAmount = 0;
 
-//     for (const auto& user : registers)
-//     {
-//         if (duplicatedUser[user])
-//         {
-//             continue;
-//         }
-//         uint32 tierLevel = (uint32)random(1, 5);
-//         uint64 depositeAmount, upgradeDeltaDepositeAmount;
-//         switch (tierLevel)
-//         {
-//         case 1:
-//             depositeAmount = NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
-//             upgradeDeltaDepositeAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
-//             totalLogoutFeeAmount += NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT * NOSTROMO_TIER_CHESTBURST_UNSTAKE_FEE / 100;
-//             totalPoolWeight += NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
-//             break;
-//         case 2:
-//             depositeAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
-//             upgradeDeltaDepositeAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
-//             totalLogoutFeeAmount += NOSTROMO_TIER_DOG_STAKE_AMOUNT * NOSTROMO_TIER_DOG_UNSTAKE_FEE / 100;
-//             totalPoolWeight += NOSTROMO_TIER_DOG_POOL_WEIGHT;
-//             break;
-//         case 3:
-//             depositeAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT;
-//             upgradeDeltaDepositeAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT;
-//             totalLogoutFeeAmount += NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT * NOSTROMO_TIER_XENOMORPH_UNSTAKE_FEE / 100;
-//             totalPoolWeight += NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
-//             break;
-//         case 4:
-//             depositeAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
-//             upgradeDeltaDepositeAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
-//             totalLogoutFeeAmount += NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE / 100;
-//             totalPoolWeight += NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
-//             break;
-//         case 5:
-//             depositeAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT;
-//             totalLogoutFeeAmount += NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE / 100;
-//             totalPoolWeight += NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
-//             break;
-//         default:
-//             break;
-//         }
-//         /*
-//             Register Tier
-//         */
-//         totalDepositedQubic += depositeAmount;
-//         increaseEnergy(user, depositeAmount);
-//         nostromo.registerInTier(user, tierLevel, depositeAmount);
-//         nostromo.getState()->registerChecker(user, tierLevel, countOfRegister);
-//         /*
-//             Upgrade Tier
-//         */
-//         totalDepositedQubic += upgradeDeltaDepositeAmount;
-//         increaseEnergy(user, upgradeDeltaDepositeAmount);
-//         nostromo.upgradeTier(user, tierLevel + 1, upgradeDeltaDepositeAmount);
+    for (const auto& user : registers)
+    {
+        if (duplicatedUser[user])
+        {
+            continue;
+        }
+        uint32 tierLevel = (uint32)random(1, 5);
+        uint64 depositeAmount, upgradeDeltaDepositeAmount;
+        switch (tierLevel)
+        {
+        case 1:
+            depositeAmount = NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
+            upgradeDeltaDepositeAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
+            totalLogoutFeeAmount += NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT * NOSTROMO_TIER_CHESTBURST_UNSTAKE_FEE / 100;
+            totalPoolWeight += NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
+            break;
+        case 2:
+            depositeAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
+            upgradeDeltaDepositeAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
+            totalLogoutFeeAmount += NOSTROMO_TIER_DOG_STAKE_AMOUNT * NOSTROMO_TIER_DOG_UNSTAKE_FEE / 100;
+            totalPoolWeight += NOSTROMO_TIER_DOG_POOL_WEIGHT;
+            break;
+        case 3:
+            depositeAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT;
+            upgradeDeltaDepositeAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT;
+            totalLogoutFeeAmount += NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT * NOSTROMO_TIER_XENOMORPH_UNSTAKE_FEE / 100;
+            totalPoolWeight += NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
+            break;
+        case 4:
+            depositeAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
+            upgradeDeltaDepositeAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
+            totalLogoutFeeAmount += NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE / 100;
+            totalPoolWeight += NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
+            break;
+        case 5:
+            depositeAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT;
+            totalLogoutFeeAmount += NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE / 100;
+            totalPoolWeight += NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
+            break;
+        default:
+            break;
+        }
+        /*
+            Register Tier
+        */
+        totalDepositedQubic += depositeAmount;
+        increaseEnergy(user, depositeAmount);
+        nostromo.registerInTier(user, tierLevel, depositeAmount);
+        nostromo.getState()->registerChecker(user, tierLevel, countOfRegister);
+        /*
+            Upgrade Tier
+        */
+        totalDepositedQubic += upgradeDeltaDepositeAmount;
+        increaseEnergy(user, upgradeDeltaDepositeAmount);
+        nostromo.upgradeTier(user, tierLevel + 1, upgradeDeltaDepositeAmount);
 
-//         if (tierLevel == 5)
-//         {
-//             nostromo.getState()->registerChecker(user, tierLevel, countOfRegister);
-//         }
-//         else 
-//         {
-//             nostromo.getState()->registerChecker(user, tierLevel + 1, countOfRegister);
-//         }
+        if (tierLevel == 5)
+        {
+            nostromo.getState()->registerChecker(user, tierLevel, countOfRegister);
+        }
+        else 
+        {
+            nostromo.getState()->registerChecker(user, tierLevel + 1, countOfRegister);
+        }
         
-//         duplicatedUser[user] = 1;
-//         countOfRegister++;
-//     }
-//     nostromo.getState()->countOfRegisterChecker(countOfRegister);
-//     nostromo.getState()->epochRevenueChecker(0);
-//     nostromo.getState()->totalPoolWeightChecker(totalPoolWeight);
-//     EXPECT_EQ(totalDepositedQubic, getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
+        duplicatedUser[user] = 1;
+        countOfRegister++;
+    }
+    nostromo.getState()->countOfRegisterChecker(countOfRegister);
+    nostromo.getState()->epochRevenueChecker(0);
+    nostromo.getState()->totalPoolWeightChecker(totalPoolWeight);
+    EXPECT_EQ(totalDepositedQubic, getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
     
-//     duplicatedUser.clear();
-//     for (const auto& user : registers)
-//     {
-//         if (duplicatedUser[user])
-//         {
-//             continue;
-//         }
-//         /*
-//             Logout From Tier
-//         */
-//         nostromo.logoutFromTier(user);
-//         duplicatedUser[user] = 1;
-//         nostromo.getState()->logoutFromTierChecker(user);
-//     }
-//     EXPECT_EQ(totalLogoutFeeAmount, getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
-//     nostromo.getState()->countOfRegisterChecker(0);
-//     nostromo.getState()->epochRevenueChecker(totalLogoutFeeAmount);
-//     nostromo.getState()->totalPoolWeightChecker(0);
-// }
+    duplicatedUser.clear();
+    for (const auto& user : registers)
+    {
+        if (duplicatedUser[user])
+        {
+            continue;
+        }
+        /*
+            Logout From Tier
+        */
+        nostromo.logoutFromTier(user);
+        duplicatedUser[user] = 1;
+        nostromo.getState()->logoutFromTierChecker(user);
+    }
+    EXPECT_EQ(totalLogoutFeeAmount, getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
+    nostromo.getState()->countOfRegisterChecker(0);
+    nostromo.getState()->epochRevenueChecker(totalLogoutFeeAmount);
+    nostromo.getState()->totalPoolWeightChecker(0);
+}
 
-// TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
-// {
-//     ContractTestingNostromo nostromo;
+TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
+{
+    ContractTestingNostromo nostromo;
 
-//     auto registers = getRandomUsers(10000, 10000);
+    auto registers = getRandomUsers(10000, 10000);
 
-//     /*
-//         Register in each Tiers
-//     */
-//     increaseEnergy(registers[0], NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
-//     nostromo.registerInTier(registers[0], 1, NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT);
+    /*
+        Register in each Tiers
+    */
+    increaseEnergy(registers[0], NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    nostromo.registerInTier(registers[0], 1, NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT);
 
-//     increaseEnergy(registers[1], NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
-//     nostromo.registerInTier(registers[1], 2, NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT);
+    increaseEnergy(registers[1], NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    nostromo.registerInTier(registers[1], 2, NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT);
     
-//     increaseEnergy(registers[2], NOSTROMO_TIER_DOG_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
-//     nostromo.registerInTier(registers[2], 3, NOSTROMO_TIER_DOG_STAKE_AMOUNT);
+    increaseEnergy(registers[2], NOSTROMO_TIER_DOG_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    nostromo.registerInTier(registers[2], 3, NOSTROMO_TIER_DOG_STAKE_AMOUNT);
     
-//     increaseEnergy(registers[3], NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
-//     nostromo.registerInTier(registers[3], 4, NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT);
+    increaseEnergy(registers[3], NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    nostromo.registerInTier(registers[3], 4, NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT);
     
-//     increaseEnergy(registers[4], NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
-//     nostromo.registerInTier(registers[4], 5, NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT);
+    increaseEnergy(registers[4], NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    nostromo.registerInTier(registers[4], 5, NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT);
     
-//     setMemory(utcTime, 0);
-//     utcTime.Year = 2025;
-//     utcTime.Month = 6;
-//     utcTime.Day = 12;
-//     utcTime.Hour = 0;
-//     updateQpiTime();
+    setMemory(utcTime, 0);
+    utcTime.Year = 2025;
+    utcTime.Month = 6;
+    utcTime.Day = 12;
+    utcTime.Hour = 0;
+    updateQpiTime();
 
-//     uint64 assetName = assetNameFromString("AAAA");
+    uint64 assetName = assetNameFromString("AAAA");
 
-//     /*
-//         This creation should be failed because there is no qualified to create the project.
-//     */
-//     nostromo.createProject(registers[0], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
-//     nostromo.getState()->numberOfCreatedProjectChecker(0);
-//     nostromo.getState()->epochRevenueChecker(0);
-//     EXPECT_EQ(getBalance(registers[0]), NOSTROMO_CREATE_PROJECT_FEE);
+    /*
+        This creation should be failed because there is no qualified to create the project.
+    */
+    nostromo.createProject(registers[0], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromo.getState()->numberOfCreatedProjectChecker(0);
+    nostromo.getState()->epochRevenueChecker(0);
+    EXPECT_EQ(getBalance(registers[0]), NOSTROMO_CREATE_PROJECT_FEE);
 
-//     /*
-//         This creation should be failed because there is no qualified to create the project.
-//     */
-//     assetName = assetNameFromString("BBBB");
-//     nostromo.createProject(registers[1], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
-//     nostromo.getState()->numberOfCreatedProjectChecker(0);
-//     nostromo.getState()->epochRevenueChecker(0);
-//     EXPECT_EQ(getBalance(registers[1]), NOSTROMO_CREATE_PROJECT_FEE);
+    /*
+        This creation should be failed because there is no qualified to create the project.
+    */
+    assetName = assetNameFromString("BBBB");
+    nostromo.createProject(registers[1], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromo.getState()->numberOfCreatedProjectChecker(0);
+    nostromo.getState()->epochRevenueChecker(0);
+    EXPECT_EQ(getBalance(registers[1]), NOSTROMO_CREATE_PROJECT_FEE);
 
-//     /*
-//         This creation should be failed because there is no qualified to create the project.
-//     */
-//     assetName = assetNameFromString("CCCC");
-//     nostromo.createProject(registers[2], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
-//     nostromo.getState()->numberOfCreatedProjectChecker(0);
-//     nostromo.getState()->epochRevenueChecker(0);
-//     EXPECT_EQ(getBalance(registers[2]), NOSTROMO_CREATE_PROJECT_FEE);
+    /*
+        This creation should be failed because there is no qualified to create the project.
+    */
+    assetName = assetNameFromString("CCCC");
+    nostromo.createProject(registers[2], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromo.getState()->numberOfCreatedProjectChecker(0);
+    nostromo.getState()->epochRevenueChecker(0);
+    EXPECT_EQ(getBalance(registers[2]), NOSTROMO_CREATE_PROJECT_FEE);
 
-//     /*
-//         This creation should be succeed because there is a qualified to create the project.
-//     */
-//     assetName = assetNameFromString("DDDD");
-//     nostromo.createProject(registers[3], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
-//     nostromo.getState()->numberOfCreatedProjectChecker(1);
-//     nostromo.getState()->epochRevenueChecker(NOSTROMO_CREATE_PROJECT_FEE);
-//     nostromo.getState()->createdProjectChecker(0, registers[3], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
-//     EXPECT_EQ(getBalance(registers[3]), 0);
+    /*
+        This creation should be succeed because there is a qualified to create the project.
+    */
+    assetName = assetNameFromString("DDDD");
+    nostromo.createProject(registers[3], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromo.getState()->numberOfCreatedProjectChecker(1);
+    nostromo.getState()->epochRevenueChecker(NOSTROMO_CREATE_PROJECT_FEE);
+    nostromo.getState()->createdProjectChecker(0, registers[3], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    EXPECT_EQ(getBalance(registers[3]), 0);
 
-//     /*
-//         This creation should be succeed because there is a qualified to create the project.
-//     */
-//     assetName = assetNameFromString("EEEE");
-//     nostromo.createProject(registers[4], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
-//     nostromo.getState()->numberOfCreatedProjectChecker(2);
-//     nostromo.getState()->epochRevenueChecker(NOSTROMO_CREATE_PROJECT_FEE * 2);
-//     nostromo.getState()->createdProjectChecker(1, registers[4], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
-//     EXPECT_EQ(getBalance(registers[4]), 0);
+    /*
+        This creation should be succeed because there is a qualified to create the project.
+    */
+    assetName = assetNameFromString("EEEE");
+    nostromo.createProject(registers[4], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromo.getState()->numberOfCreatedProjectChecker(2);
+    nostromo.getState()->epochRevenueChecker(NOSTROMO_CREATE_PROJECT_FEE * 2);
+    nostromo.getState()->createdProjectChecker(1, registers[4], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    EXPECT_EQ(getBalance(registers[4]), 0);
 
-//     setMemory(utcTime, 0);
-//     utcTime.Year = 2025;
-//     utcTime.Month = 6;
-//     utcTime.Day = 13;
-//     utcTime.Hour = 0;
-//     updateQpiTime();
+    setMemory(utcTime, 0);
+    utcTime.Year = 2025;
+    utcTime.Month = 6;
+    utcTime.Day = 13;
+    utcTime.Hour = 0;
+    updateQpiTime();
 
-//     Array<uint32, 64> votedList;
+    Array<uint32, 64> votedList;
 
-//     nostromo.voteInProject(registers[0], 0, 0);
-//     votedList.set(0, 0);
-//     nostromo.voteInProject(registers[1], 0, 1);
-//     nostromo.voteInProject(registers[2], 0, 1);
-//     nostromo.voteInProject(registers[3], 0, 1);
-//     nostromo.voteInProject(registers[4], 0, 0);
+    nostromo.voteInProject(registers[0], 0, 0);
+    votedList.set(0, 0);
+    nostromo.voteInProject(registers[1], 0, 1);
+    nostromo.voteInProject(registers[2], 0, 1);
+    nostromo.voteInProject(registers[3], 0, 1);
+    nostromo.voteInProject(registers[4], 0, 0);
 
-//     nostromo.getState()->voteInProjectChecker(0, 3, 2);
-//     nostromo.getState()->numberOfVotedProjectAndVotedListChecker(registers[0], 1, votedList);
+    nostromo.getState()->voteInProjectChecker(0, 3, 2);
+    nostromo.getState()->numberOfVotedProjectAndVotedListChecker(registers[0], 1, votedList);
 
-//     /*
-//         This vote should be failed.
-//     */
-//     nostromo.voteInProject(registers[0], 0, 0);
-//     nostromo.getState()->voteInProjectChecker(0, 3, 2);
-//     nostromo.getState()->numberOfVotedProjectAndVotedListChecker(registers[0], 1, votedList);
+    /*
+        This vote should be failed.
+    */
+    nostromo.voteInProject(registers[0], 0, 0);
+    nostromo.getState()->voteInProjectChecker(0, 3, 2);
+    nostromo.getState()->numberOfVotedProjectAndVotedListChecker(registers[0], 1, votedList);
 
-//     /*
-//         This vote should be succeed.
-//     */
-//     nostromo.voteInProject(registers[0], 1, 0);
-//     votedList.set(1, 1);
-//     nostromo.getState()->voteInProjectChecker(1, 0, 1);
-//     nostromo.getState()->numberOfVotedProjectAndVotedListChecker(registers[0], 2, votedList);
+    /*
+        This vote should be succeed.
+    */
+    nostromo.voteInProject(registers[0], 1, 0);
+    votedList.set(1, 1);
+    nostromo.getState()->voteInProjectChecker(1, 0, 1);
+    nostromo.getState()->numberOfVotedProjectAndVotedListChecker(registers[0], 2, votedList);
 
-//     nostromo.voteInProject(registers[1], 1, 1);
-//     nostromo.voteInProject(registers[2], 1, 1);
-//     nostromo.voteInProject(registers[3], 1, 1);
-//     nostromo.voteInProject(registers[4], 1, 1);
-//     nostromo.getState()->voteInProjectChecker(1, 4, 1);
-// }
+    nostromo.voteInProject(registers[1], 1, 1);
+    nostromo.voteInProject(registers[2], 1, 1);
+    nostromo.voteInProject(registers[3], 1, 1);
+    nostromo.voteInProject(registers[4], 1, 1);
+    nostromo.getState()->voteInProjectChecker(1, 4, 1);
+}
 
 TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChecker)
 {
