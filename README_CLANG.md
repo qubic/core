@@ -59,6 +59,10 @@ For a example compilation execute the following commands:
     * **Values:** `ON`, `OFF`
     * **Meaning:** `ON` enables code using AVX-512 CPU instructions (requires support), `OFF` disables it.
 
+* **`-D USE_SANITIZER=<ON|OFF>`**
+    * **Values:** `ON`, `OFF`
+    * **Meaning:** `ON` enables linking to santizers when building with clang, `OFF` disables sanitizers.
+
 4.  **Build the Project:**
     Use the CMake `--build` command to invoke the underlying build tool (like `make` or `ninja`).
 
@@ -85,7 +89,7 @@ Current state of the working tests:
 | Contract qVault    | `contract_qvault.cpp`   | Pending     |
 | Contract qX        | `contract_qx.cpp`       | Pending     |
 | KangarooTwelve     | `kangaroo_twelve.cpp`   | Pending     |
-| M256               | `m256.cpp`              | Pending     |
+| M256               | `m256.cpp`              | **Working** |
 | Math Lib           | `math_lib.cpp`          | **Working** |
 | Network Messages   | `network_messages.cpp`  | Pending     |
 | Platform           | `platform.cpp`          | Pending     |
