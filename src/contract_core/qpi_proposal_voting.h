@@ -76,9 +76,9 @@ namespace QPI
 			return INVALID_PROPOSAL_INDEX;
 		}
 
-		// Get voter index for given ID or INVALID_VOTER_INDEX if has no right to vote
+		// Get voter index for given ID or INVALID_VOTER_INDEX if has no right to vote.
 		// Voter index is computor index
-		uint32 getVoterIndex(const QpiContextFunctionCall& qpi, const id& voterId) const
+		uint32 getVoterIndex(const QpiContextFunctionCall& qpi, const id& voterId, uint16 proposalIndex = 0) const
 		{
 			// NULL_ID is invalid
 			if (isZero(voterId))
@@ -92,8 +92,17 @@ namespace QPI
 			return INVALID_VOTER_INDEX;
 		}
 
+		// Get count of votes of a voter specified by voter index (return 0 on error).
+		uint32 getVoteCount(const QpiContextFunctionCall& qpi, uint32 voterIndex, uint16 proposalIndex = 0) const
+		{
+			if (voterIndex >= maxVoters)
+				return 0;
+
+			return 1;
+		}
+
 		// Return voter ID for given voter index or NULL_ID on error
-		id getVoterId(const QpiContextFunctionCall& qpi, uint16 voterIndex) const
+		id getVoterId(const QpiContextFunctionCall& qpi, uint32 voterIndex, uint16 proposalIndex = 0) const
 		{
 			if (voterIndex >= maxVoters)
 				return NULL_ID;
@@ -116,9 +125,227 @@ namespace QPI
 		}
 	};
 
-	template <unsigned int maxShareholders>
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting and setting proposals for contract shareholders only.
+	// A shareholder can have multiple votes and each may be set individually. Voting rights are assigned to current shareholders when a proposal
+	// is created or overwritten and cannot be sold or transferred afterwards.
+	template <uint16 proposalSlotCount, uint64 contractAssetName>
 	struct ProposalAndVotingByShareholders
 	{
+		// Maximum number of proposals (may be lower than number of proposers = IDs with right to propose and lower than num. of voters)
+		static constexpr uint16 maxProposals = proposalSlotCount;
+
+		// Maximum number of voters
+		static constexpr uint32 maxVoters = NUMBER_OF_COMPUTORS;
+
+		// Check if proposer has right to propose (and is not NULL_ID)
+		bool isValidProposer(const QpiContextFunctionCall& qpi, const id& proposerId) const
+		{
+			return qpi.numberOfShares({ NULL_ID, contractAssetName }, AssetOwnershipSelect::byOwner(proposerId), AssetPossessionSelect::byPossessor(proposerId)) > 0;
+		};
+
+		// Setup proposal in proposal index. Asset possession at this point in time defines the right to vote.
+		void setupNewProposal(const QpiContextFunctionCall& qpi, const id& proposerId, uint16 propsalIdx)
+		{
+			if (propsalIdx >= maxProposals || isZero(proposerId))
+				return;
+
+			currentProposalProposers[propsalIdx] = proposerId;
+
+			// prepare temporary array to gather shareholder info
+			struct Shareholder
+			{
+				id possessor;
+				sint64 shares;
+			};
+			Shareholder* shareholders = reinterpret_cast<Shareholder*>(__scratchpad());
+			setMem(shareholders, sizeof(Shareholder) * maxVoters, 0);
+			int lastShareholderIdx = -1;
+
+			// gather shareholder info in sorted array
+			for (AssetPossessionIterator iter({ NULL_ID, contractAssetName }); !iter.reachedEnd(); iter.next())
+			{
+				if (iter.numberOfPossessedShares() > 0)
+				{
+					// search sorted array backwards
+					// (iter will provide possessors mostly in increasing order leading to low number of search
+					// and move iterations)
+					const id& possessor = iter.possessor();
+					int idx = lastShareholderIdx;
+					while (idx >= 0 && possessor < shareholders[idx].possessor)
+					{
+						--idx;
+					}
+					++idx;
+
+					// update array: idx is the position to insert at with ID[idx] >= NewID
+					if (idx < lastShareholderIdx && shareholders[idx].possessor == possessor)
+					{
+						// possessor is already in array -> increase number of shares
+						shareholders[idx].shares += iter.numberOfPossessedShares();
+					}
+					else
+					{
+						// possessor is not in array yet -> add it to the right place (after moving items if needed)
+						for (int idxMove = lastShareholderIdx; idxMove >= idx; --idxMove)
+						{
+							shareholders[idxMove + 1] = shareholders[idxMove];
+						}
+						shareholders[idx].possessor = possessor;
+						shareholders[idx].shares = iter.numberOfPossessedShares();
+						++lastShareholderIdx;
+					}
+				}
+			}
+
+#ifndef NDEBUG
+			// sanity check of array (sorted, has expected size, and 676 shares in total)
+			ASSERT(lastShareholderIdx >= 0);
+			ASSERT(lastShareholderIdx < maxVoters);
+			sint64 totalShares = 0;
+			for (int idx = 0; idx < lastShareholderIdx; ++idx)
+			{
+				ASSERT(shareholders[idx].possessor < shareholders[idx + 1].possessor);
+				ASSERT(shareholders[idx].shares > 0);
+				totalShares += shareholders[idx].shares;
+			}
+			ASSERT(shareholders[lastShareholderIdx].shares > 0);
+			totalShares += shareholders[lastShareholderIdx].shares;
+			ASSERT(totalShares == maxVoters);
+#endif
+
+			// build sorted array of voters (one entry per share)
+			int voterIdx = 0;
+			for (int shareholderIdx = 0; shareholderIdx <= lastShareholderIdx; ++shareholderIdx)
+			{
+				const Shareholder& shareholder = shareholders[shareholderIdx];
+				for (int shareIdx = 0; shareIdx < shareholder.shares; ++shareIdx)
+				{
+					currentProposalShareholders[propsalIdx][voterIdx] = shareholder.possessor;
+					++voterIdx;
+				}
+			}
+			ASSERT(voterIdx == maxVoters);
+		}
+
+		// Get new proposal slot (each proposer may have at most one).
+		// Returns proposal index or INVALID_PROPOSAL_INDEX on error.
+		// CAUTION: Only pass valid proposers!
+		uint16 getNewProposalIndex(const QpiContextFunctionCall& qpi, const id& proposerId)
+		{
+			// Reuse slot if proposer has existing proposal
+			uint16 idx = getExistingProposalIndex(qpi, proposerId);
+			if (idx < maxProposals)
+			{
+				setupNewProposal(qpi, proposerId, idx);
+				return idx;
+			}
+
+			// Otherwise, try to find empty slot
+			for (idx = 0; idx < maxProposals; ++idx)
+			{
+				if (isZero(currentProposalProposers[idx]))
+				{
+					setupNewProposal(qpi, proposerId, idx);
+					return idx;
+				}
+			}
+
+			// No empty slot -> fail
+			return INVALID_PROPOSAL_INDEX;
+		}
+
+		void freeProposalByIndex(const QpiContextFunctionCall& qpi, uint16 proposalIndex)
+		{
+			if (proposalIndex < maxProposals)
+			{
+				currentProposalProposers[proposalIndex] = NULL_ID;
+				setMem(currentProposalShareholders[proposalIndex], sizeof(id) * maxVoters, 0);
+			}
+		}
+
+		// Return proposer ID for given proposal index or NULL_ID if there is no proposal
+		id getProposerId(const QpiContextFunctionCall& qpi, uint16 proposalIndex) const
+		{
+			if (proposalIndex >= maxProposals)
+				return NULL_ID;
+			return currentProposalProposers[proposalIndex];
+		}
+
+		// Get new index of existing used proposal of proposer if any; only pass valid proposers!
+		// Returns proposal index or INVALID_PROPOSAL_INDEX if there is no proposal for given proposer..
+		uint16 getExistingProposalIndex(const QpiContextFunctionCall& qpi, const id& proposerId) const
+		{
+			if (isZero(proposerId))
+				return INVALID_PROPOSAL_INDEX;
+			for (uint16 i = 0; i < maxProposals; ++i)
+			{
+				if (currentProposalProposers[i] == proposerId)
+					return i;
+			}
+			return INVALID_PROPOSAL_INDEX;
+		}
+
+		// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote. If the voter has multiple
+		// votes, this returns the first index. All votes of a voter are stored consecutively.
+		uint32 getVoterIndex(const QpiContextFunctionCall& qpi, const id& voterId, uint16 proposalIndex) const
+		{
+			// NULL_ID is invalid
+			if (isZero(voterId) || proposalIndex >= maxProposals)
+				return INVALID_VOTER_INDEX;
+
+			// Search for first voter index with voterId
+			// Note: This may be speeded up a bit because the array is sorted, but it is required to return the first element
+			//       in a set of duplicates.
+			for (uint16 voterIdx = 0; voterIdx < maxVoters; ++voterIdx)
+			{
+				if (currentProposalShareholders[proposalIndex][voterIdx] == voterId)
+					return voterIdx;
+			}
+
+			return INVALID_VOTER_INDEX;
+		}
+
+		// Get count of votes of a voter specified by voter index (return 0 on error).
+		uint32 getVoteCount(const QpiContextFunctionCall& qpi, uint32 voterIndex, uint16 proposalIndex) const
+		{
+			if (voterIndex >= maxVoters || proposalIndex >= maxProposals)
+				return 0;
+
+			const id* shareholders = currentProposalShareholders[proposalIndex];
+			uint32 count = 1;
+			const id& voterId = shareholders[voterIndex];
+			for (uint32 idx = voterIndex + 1; idx < maxVoters; ++idx)
+			{
+				if (shareholders[idx] != voterId)
+					break;
+				++count;
+			}
+
+			return count;
+		}
+
+		// Return voter ID for given voter index or NULL_ID on error
+		id getVoterId(const QpiContextFunctionCall& qpi, uint32 voterIndex, uint16 proposalIndex) const
+		{
+			if (voterIndex >= maxVoters || proposalIndex >= maxProposals)
+				return NULL_ID;
+			return currentProposalShareholders[proposalIndex][voterIndex];
+		}
+
+		// 1 Shareholder-ID kann N votes haben!!!
+		// Stimmrechte werden bei Erstellung des Proposals zugeordnet, Verkaufen von Shares hat keinen Einfluss
+
+		// ProposalSingleVoteDataV2 wird superset von V1 für mehrere Votes
+		// ProposalSingleVoteDataV1 (neue Felder von V2 = 0) setzt alle votes
+
+
+
+		// Vote-Content für Var-Set wird in contract gespeichert: -> var set options idx in proposal
+
+	protected:
+		// needs to be initialized with zeros
+		id currentProposalProposers[maxProposals];
+		id currentProposalShareholders[maxProposals][NUMBER_OF_COMPUTORS];
 	};
 
 	// Check if given type is valid (supported by most comprehensive ProposalData class).
@@ -416,7 +643,7 @@ namespace QPI
 			return false;
 
 		// Return voter index (which may be INVALID_VOTER_INDEX if voter has no right to vote)
-		unsigned int voterIndex = pv.proposersAndVoters.getVoterIndex(qpi, voter);
+		unsigned int voterIndex = pv.proposersAndVoters.getVoterIndex(qpi, voter, vote.proposalIndex);
 
 		// Set vote value (checking that voter index and value are valid)
 		return proposal.setVoteValue(voterIndex, vote.voteValue);
@@ -592,22 +819,36 @@ namespace QPI
 		return pv.proposersAndVoters.getProposerId(qpi, proposalIndex);
 	}
 
-	// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote
+	// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote. If the voter has multiple
+	// votes, this returns the first index. All votes of a voter are stored consecutively.
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	uint32 QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::voterIndex(
-		const id& voterId
+		const id& voterId,
+		uint16 proposalIndex
 	) const
 	{
-		return pv.proposersAndVoters.getVoterIndex(qpi, voterId);
+		return pv.proposersAndVoters.getVoterIndex(qpi, voterId, proposalIndex);
 	}
 
 	// Return ID for given voter index or NULL_ID if index is invalid
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	id QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::voterId(
-		uint32 voterIndex
+		uint32 voterIndex,
+		uint16 proposalIndex
 	) const
 	{
-		return pv.proposersAndVoters.getVoterId(qpi, voterIndex);
+		return pv.proposersAndVoters.getVoterId(qpi, voterIndex, proposalIndex);
+	}
+
+	// Return count of votes of a voter if the first voter index is passed. Otherwise return the number of votes
+	// including this and the following indices. Returns 0 if an invalid index is passed.
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	uint32 QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::voteCount(
+		uint32 voterIndex,
+		uint16 proposalIndex
+	) const
+	{
+		return pv.proposersAndVoters.voteCount(qpi, voterIndex, proposalIndex);
 	}
 
 	// Return next proposal index of proposals of given epoch (default: current epoch)

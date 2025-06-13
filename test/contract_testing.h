@@ -215,4 +215,5 @@ static inline void issueContractShares(unsigned int contractIndex, std::vector<s
     {
         EXPECT_TRUE(transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, ownerShareCountPair.first, ownerShareCountPair.second, &dstOwnershipIndex, &dstPossessionIndex, true));
     }
+    EXPECT_EQ(numberOfShares({ m256i::zero(), *(uint64*)contractDescriptions[contractIndex].assetName }), NUMBER_OF_COMPUTORS);
 }

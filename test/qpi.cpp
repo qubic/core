@@ -1,18 +1,10 @@
 #define NO_UEFI
 
-#include "gtest/gtest.h"
+#include "contract_testing.h"
 
 #include <type_traits>
 
-// workaround for name clash with stdlib
-#define system qubicSystemStruct
 
-#include "contract_core/contract_def.h"
-#include "contract_core/contract_exec.h"
-
-#include "../src/contract_core/qpi_trivial_impl.h"
-#include "../src/contract_core/qpi_proposal_voting.h"
-#include "../src/contract_core/qpi_system_impl.h"
 
 // changing offset simulates changed computor set with changed epoch
 void initComputors(unsigned short computorIdOffset)
@@ -260,12 +252,14 @@ TEST(TestCoreQPI, ProposalAndVotingByComputors)
     {
         EXPECT_EQ(pv.getVoterIndex(qpi, qpi.computor(i)), i);
         EXPECT_EQ(pv.getVoterId(qpi, i), qpi.computor(i));
+        EXPECT_EQ(pv.getVoteCount(qpi, i), 1);
     }
     for (int i = NUMBER_OF_COMPUTORS; i < 800; ++i)
     {
         QPI::id testId(i, 9, 8, 7);
         EXPECT_EQ(pv.getVoterIndex(qpi, testId), QPI::INVALID_VOTER_INDEX);
         EXPECT_EQ(pv.getVoterId(qpi, i), QPI::NULL_ID);
+        EXPECT_EQ(pv.getVoteCount(qpi, i), 0);
     }
     EXPECT_EQ(pv.getVoterIndex(qpi, qpi.originator()), QPI::INVALID_VOTER_INDEX);
 
@@ -319,6 +313,180 @@ TEST(TestCoreQPI, ProposalAndVotingByComputors)
         int j = NUMBER_OF_COMPUTORS - 1 - i;
         EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, qpi.computor(j)), i);
     }
+}
+
+static void sortContractShareVector(std::vector<std::pair<m256i, unsigned int>> & shareholders)
+{
+    std::sort(shareholders.begin(), shareholders.end(),
+        [](const std::pair<m256i, unsigned int>& a, const std::pair<m256i, unsigned int>& b)
+        {
+            return a.first < b.first;
+        });
+}
+
+template <uint16 proposalSlotCount, uint64 contractAssetName>
+static void checkShareholderVotingRights(const QpiContextUserProcedureCall& qpi, const ProposalAndVotingByShareholders<proposalSlotCount, contractAssetName>& pv, uint16 proposalIdx, std::vector<std::pair<m256i, unsigned int>>& shareholderVec)
+{
+    unsigned int voterIdx = 0;
+    for (const auto& ownerSharesPair : shareholderVec)
+    {
+        const m256i owner = ownerSharesPair.first;
+        const auto shareCount = ownerSharesPair.second;
+        EXPECT_EQ(pv.getVoterIndex(qpi, owner, proposalIdx), voterIdx);
+        for (unsigned int i = 0; i < shareCount; ++i)
+        {
+            EXPECT_EQ(pv.getVoterId(qpi, voterIdx, proposalIdx), owner);
+            EXPECT_EQ(pv.getVoteCount(qpi, voterIdx, proposalIdx), shareCount - i);
+            ++voterIdx;
+        }
+    }
+    EXPECT_EQ(voterIdx, NUMBER_OF_COMPUTORS);
+    EXPECT_EQ(pv.getVoterIndex(qpi, NULL_ID, proposalIdx), INVALID_VOTER_INDEX);
+    EXPECT_EQ(pv.getVoterIndex(qpi, id(12345678, 901234, 5678, 90), proposalIdx), INVALID_VOTER_INDEX);
+    EXPECT_EQ(pv.getVoterId(qpi, voterIdx, proposalIdx), NULL_ID);
+    EXPECT_EQ(pv.getVoteCount(qpi, voterIdx, proposalIdx), 0);
+}
+
+TEST(TestCoreQPI, ProposalAndVotingByShareholders)
+{
+    static constexpr uint64 MSVAULT_ASSET_NAME = 23727827095802701;
+    ContractTesting test;
+    test.initEmptyUniverse();
+    QpiContextUserProcedureCall qpi(QX_CONTRACT_INDEX, QPI::id(1, 2, 3, 4), 123);
+    ProposalAndVotingByShareholders<3, MSVAULT_ASSET_NAME> pv;
+    initComputors(0);
+    
+    // Memory must be zeroed to work, which is done in contract states on init
+    setMemory(pv, 0);
+
+    // create contract shares
+    std::vector<std::pair<id, unsigned int>> initialPossessorShares{
+        {id(100, 2, 3, 4), 10},
+        {id(1, 2, 3, 4), 200},
+        {id(1, 2, 2, 1), 65},
+        {id(1, 2, 3, 1), 1},
+        {id(0, 0, 0, 1), 400},
+    };
+    issueContractShares(MSVAULT_CONTRACT_INDEX, initialPossessorShares);
+    sortContractShareVector(initialPossessorShares);
+
+    // no existing proposals
+    for (int i = 0; i < initialPossessorShares.size(); ++i)
+        EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[i].first), (int)INVALID_PROPOSAL_INDEX);
+
+    // valid proposers are current shareholders
+    for (int i = 0; i < initialPossessorShares.size(); ++i)
+        EXPECT_TRUE(pv.isValidProposer(qpi, initialPossessorShares[i].first));
+    for (int i = 0; i < 2 * NUMBER_OF_COMPUTORS; ++i)
+        EXPECT_FALSE(pv.isValidProposer(qpi, QPI::id(i, 9, 8, 7)));
+    EXPECT_FALSE(pv.isValidProposer(qpi, QPI::NULL_ID));
+
+    // add proposal
+    EXPECT_EQ((int)pv.getNewProposalIndex(qpi, initialPossessorShares[0].first), 0);
+    for (int i = 0; i < initialPossessorShares.size(); ++i)
+        EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[i].first), (i == 0) ? 0 : (int)INVALID_PROPOSAL_INDEX);
+
+    // check voting rights (voters are shareholders at time of creating/updating proposal)
+    checkShareholderVotingRights(qpi, pv, 0, initialPossessorShares);
+
+    // transfer some shares
+    EXPECT_EQ(qpi.transferShareOwnershipAndPossession(MSVAULT_ASSET_NAME, NULL_ID, qpi.invocator(), qpi.invocator(), 1, id(20, 2, 3, 5)), 199);
+    EXPECT_EQ(qpi.transferShareOwnershipAndPossession(MSVAULT_ASSET_NAME, NULL_ID, qpi.invocator(), qpi.invocator(), 1, id(30, 2, 3, 5)), 198);
+    EXPECT_EQ(qpi.transferShareOwnershipAndPossession(MSVAULT_ASSET_NAME, NULL_ID, qpi.invocator(), qpi.invocator(), 1, id(40, 2, 3, 5)), 197);
+    EXPECT_EQ(qpi.transferShareOwnershipAndPossession(MSVAULT_ASSET_NAME, NULL_ID, qpi.invocator(), qpi.invocator(), 1, id(50, 2, 3, 5)), 196);
+    EXPECT_EQ(qpi.transferShareOwnershipAndPossession(MSVAULT_ASSET_NAME, NULL_ID, qpi.invocator(), qpi.invocator(), 16, id(1, 2, 3, 5)), 180);
+    EXPECT_EQ(qpi.transferShareOwnershipAndPossession(MSVAULT_ASSET_NAME, NULL_ID, qpi.invocator(), qpi.invocator(), 60, id(1, 2, 3, 1)), 120);
+    EXPECT_EQ(qpi.transferShareOwnershipAndPossession(MSVAULT_ASSET_NAME, NULL_ID, qpi.invocator(), qpi.invocator(), 39, id(1, 2, 3, 0)), 81);
+    EXPECT_EQ(qpi.transferShareOwnershipAndPossession(MSVAULT_ASSET_NAME, NULL_ID, qpi.invocator(), qpi.invocator(), 1, id(1, 2, 3, 2)), 80);
+    std::vector<std::pair<id, unsigned int>> changedPossessorShares{
+        {id(0, 0, 0, 1), 400},
+        {id(1, 2, 2, 1), 65},
+        {id(1, 2, 3, 0), 39},
+        {id(1, 2, 3, 1), 61},
+        {id(1, 2, 3, 2), 1},
+        {id(1, 2, 3, 4), 80},
+        {id(1, 2, 3, 5), 16},
+        {id(20, 2, 3, 5), 1},
+        {id(30, 2, 3, 5), 1},
+        {id(40, 2, 3, 5), 1},
+        {id(50, 2, 3, 5), 1},
+        {id(100, 2, 3, 4), 10},
+    };
+
+    // assetsEndEpoch() and as.indexLists.rebuild(), which are called at the end of each epoch, lead to speeding up creating a new proposal (by requiring less sorting operations)
+    as.indexLists.rebuild();
+
+    // add another proposal (has changed set of voters)
+    EXPECT_EQ((int)pv.getNewProposalIndex(qpi, initialPossessorShares[1].first), 1);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[0].first), 0);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[1].first), 1);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[2].first), (int)INVALID_PROPOSAL_INDEX);
+
+    // check voting rights (voters are shareholders at time of creating/updating proposal)
+    checkShareholderVotingRights(qpi, pv, 0, initialPossessorShares);
+    checkShareholderVotingRights(qpi, pv, 1, changedPossessorShares);
+
+    // add third proposal (has changed set of voters)
+    EXPECT_EQ((int)pv.getNewProposalIndex(qpi, initialPossessorShares[2].first), 2);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[0].first), 0);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[1].first), 1);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[2].first), 2);
+
+    // check voting rights (voters are shareholders at time of creating/updating proposal)
+    checkShareholderVotingRights(qpi, pv, 0, initialPossessorShares);
+    checkShareholderVotingRights(qpi, pv, 1, changedPossessorShares);
+    checkShareholderVotingRights(qpi, pv, 2, changedPossessorShares);
+
+    // transfer some shares
+    qpi.transferShareOwnershipAndPossession(MSVAULT_ASSET_NAME, NULL_ID, qpi.invocator(), qpi.invocator(), 80, id(1, 2, 2, 0));
+    std::vector<std::pair<id, unsigned int>> changedPossessorShares2{
+        {id(0, 0, 0, 1), 400},
+        {id(1, 2, 2, 0), 80},
+        {id(1, 2, 2, 1), 65},
+        {id(1, 2, 3, 0), 39},
+        {id(1, 2, 3, 1), 61},
+        {id(1, 2, 3, 2), 1},
+        //{id(1, 2, 3, 4), 0},
+        {id(1, 2, 3, 5), 16},
+        {id(20, 2, 3, 5), 1},
+        {id(30, 2, 3, 5), 1},
+        {id(40, 2, 3, 5), 1},
+        {id(50, 2, 3, 5), 1},
+        {id(100, 2, 3, 4), 10},
+    };
+
+    // all slots filled -> adding proposal using other ID fails
+    EXPECT_EQ((int)pv.getNewProposalIndex(qpi, initialPossessorShares[3].first), (int)INVALID_PROPOSAL_INDEX);
+
+    // free one slot
+    pv.freeProposalByIndex(qpi, 1);
+
+    // using other ID now works
+    EXPECT_EQ((int)pv.getNewProposalIndex(qpi, initialPossessorShares[3].first), 1);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[0].first), 0);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[1].first), (int)INVALID_PROPOSAL_INDEX);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[2].first), 2);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[3].first), 1);
+
+    // check voting rights (voters are shareholders at time of creating/updating proposal)
+    checkShareholderVotingRights(qpi, pv, 0, initialPossessorShares);
+    checkShareholderVotingRights(qpi, pv, 1, changedPossessorShares2);
+    checkShareholderVotingRights(qpi, pv, 2, changedPossessorShares);
+
+    // reusing all slots should work (overwriting proposals sets voters)
+    EXPECT_EQ((int)pv.getNewProposalIndex(qpi, initialPossessorShares[0].first), 0);
+    EXPECT_EQ((int)pv.getNewProposalIndex(qpi, initialPossessorShares[1].first), (int)INVALID_PROPOSAL_INDEX);
+    EXPECT_EQ((int)pv.getNewProposalIndex(qpi, initialPossessorShares[2].first), 2);
+    EXPECT_EQ((int)pv.getNewProposalIndex(qpi, initialPossessorShares[3].first), 1);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[0].first), 0);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[1].first), (int)INVALID_PROPOSAL_INDEX);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[2].first), 2);
+    EXPECT_EQ((int)pv.getExistingProposalIndex(qpi, initialPossessorShares[3].first), 1);
+
+    // check voting rights (voters are shareholders at time of creating/updating proposal)
+    checkShareholderVotingRights(qpi, pv, 0, changedPossessorShares2);
+    checkShareholderVotingRights(qpi, pv, 1, changedPossessorShares2);
+    checkShareholderVotingRights(qpi, pv, 2, changedPossessorShares2);
 }
 
 // Test internal class ProposalWithAllVoteData that stores valid proposals along with its votes

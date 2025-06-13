@@ -1235,7 +1235,8 @@ namespace QPI
 	template <uint16 proposalSlotCount>
 	struct ProposalByAnyoneVotingByComputors;
 
-	template <unsigned int maxShareholders>
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting and setting proposals for contract shareholders only.
+	template <uint16 proposalSlotCount, uint64 contractAssetName>
 	struct ProposalAndVotingByShareholders;
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
@@ -1301,11 +1302,19 @@ namespace QPI
 		// Return proposer ID of given proposal index or NULL_ID if there is no proposal at this index
 		id proposerId(uint16 proposalIndex) const;
 
-		// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote
-		uint32 voterIndex(const id& voterId) const;
+		// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote. If the voter has multiple
+		// votes, this returns the first index. All votes of a voter are stored consecutively.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		uint32 voterIndex(const id& voterId, uint16 proposalIndex = 0) const;
 
 		// Return ID for given voter index or NULL_ID if index is invalid
-		id voterId(uint32 voterIndex) const;
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		id voterId(uint32 voterIndex, uint16 proposalIndex = 0) const;
+
+		// Return count of votes of a voter if the first voter index is passed. Otherwise return the number of votes
+		// including this and the following indices. Returns 0 if an invalid index is passed.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		uint32 voteCount(uint32 voterIndex, uint16 proposalIndex = 0) const;
 
 		// Return next proposal index of proposals of given epoch (default: current epoch)
 		// or -1 if there are not any more such proposals behind the passed index.
