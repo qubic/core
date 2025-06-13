@@ -31,7 +31,7 @@ endif()
 
 # Build the tests first. On fail, the build will fail completely
 if(BUILD_TESTS)
-    message(STATUS "Building test suite")
+    message(STATUS "--- Test suite ---")
     enable_testing()
     add_subdirectory(lib/platform_os)
 
@@ -46,12 +46,12 @@ endif()
 
 # Build the application if requested
 if(BUILD_EFI)
-    message(STATUS "Building EFI application")
+    message(STATUS "--- EFI Core application ---")
     add_subdirectory(src)
 endif()
 
 # Add the UEFI m256i benchmark
 if(BUILD_BENCHMARK)
-    message(STATUS "Building EFI Benchmark")
+    message(STATUS "-- EFI Benchmark ---")
     add_subdirectory(benchmark_uefi)
 endif()

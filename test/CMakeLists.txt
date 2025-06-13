@@ -64,7 +64,6 @@ target_link_libraries(
   GTest::gtest_main
   platform_common
   platform_os
-  platform_efi #Currently still needed due to various imports
 )
 
 include(GoogleTest)

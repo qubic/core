@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.10)
 
 project(M256UefiBenchmark CXX)
 
-
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -27,37 +26,21 @@ if(IS_CLANG)
     )
 elseif(IS_MSVC)
     # MSVC-specific flags
-    target_compile_options(m256_uefi_benchmark PRIVATE
-        /Gs1638400  # Control stack checking
-        /W3         # Warning level
-    )
+    target_compile_options(m256_uefi_benchmark PRIVATE)
 endif()
 
 # Link with platform libraries
-if(BUILD_TESTS)
-  # When building for tests, link only with platform_common and platform_os
-  target_link_libraries(m256_uefi_benchmark
-    platform_common
-    platform_os
-  )
-else()
   # When building the application, link with platform_common and platform_efi
-  target_link_libraries(m256_uefi_benchmark
+target_link_libraries(m256_uefi_benchmark
     platform_common
     platform_efi
-  )
-endif()
+)
 
 # Configure linker settings based on compiler
 if(IS_MSVC)
     # MSVC-specific linker settings
-    set_target_properties(m256_uefi_benchmark PROPERTIES
-        LINK_FLAGS "/SUBSYSTEM:EFI_APPLICATION /ENTRY:efi_main /IGNORE:4086 /IGNORE:4108 /NODEFAULTLIB"
-        SUFFIX ".efi"
-    )
+    set_target_properties(m256_uefi_benchmark PROPERTIES SUFFIX ".efi")
     
-    # Set stack size for MSVC
-    set_property(TARGET m256_uefi_benchmark APPEND_STRING PROPERTY LINK_FLAGS " /STACK:131072")
 elseif(IS_CLANG)
     # Clang-specific linker settings
     set(CMAKE_LINKER "lld")
@@ -74,4 +57,3 @@ elseif(IS_CLANG)
         SUFFIX ".efi"
     )
 endif()
-
