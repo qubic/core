@@ -1095,14 +1095,16 @@ protected:
 
 		// No need to initialize _earnedAmount and other variables with 0, whole contract state is zeroed before initialization is invoked
 
-		state._assetIssuanceFee = 1000000000;
-		state._transferFee = 1000000;
-		state._tradeFee = 5000000; // 0.5%
+		/* Original values
+        state._assetIssuanceFee = 1000000000;
+        state._transferFee = 1000000;
+        state._tradeFee = 5000000; // 0.5%
+        */
 
-		/* New values since epoch 138
-		state._transferFee = 100;
-		state._tradeFee = 3000000; // 0.3%
-		*/
+        // New values since epoch 138
+        state._assetIssuanceFee = 1000000000;
+        state._transferFee = 100;
+        state._tradeFee = 3000000; // 0.3%
 	}
 
 	END_TICK()

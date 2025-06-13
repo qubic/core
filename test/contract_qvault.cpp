@@ -8,7 +8,7 @@
 static std::mt19937_64 rand64;
 static constexpr uint64 QVAULT_QCAP_MAX_HOLDERS = 131072;
 static constexpr uint64 QVAULT_ISSUE_ASSET_FEE = 1000000000ull;
-static constexpr uint64 QVAULT_TOKEN_TRANSFER_FEE = 1000000ull;
+static constexpr uint64 QVAULT_TOKEN_TRANSFER_FEE = 100;
 static constexpr uint32 QVAULT_SMALL_AMOUNT_QCAP_TRANSFER = 1000;
 static constexpr uint32 QVAULT_BIG_AMOUNT_QCAP_TRANSFER = 1000000;
 static constexpr uint32 QVAULT_QCAP_SOLD_AMOUNT = 1652235;
@@ -605,7 +605,7 @@ public:
         input.numberOfShares = numberOfShares;
         input.newManagingContractIndex = newManagingContractIndex;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 13, input, output, address, 1000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 13, input, output, address, 100);
 
         return output.transferredNumberOfShares;
     }
