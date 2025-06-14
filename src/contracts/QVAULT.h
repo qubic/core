@@ -1226,6 +1226,8 @@ protected:
                 locals.updatedAlloProposal = state.AlloP.get(input.proposalId);
                 locals.statusOfProposal = state.AlloP.get(input.proposalId).proposedEpoch == qpi.epoch() ? 1 : 0;
                 break;
+            default:
+                break;
         }
 
         if (locals.statusOfProposal == 0)
@@ -1238,7 +1240,7 @@ protected:
         {
             locals.numberOfYes = 0;
             locals.numberOfNo = 0;
-            for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t)
+            for (locals._t = 0 ; locals._t < (sint32)state.numberOfVotingPower; locals._t++)
             {
                 if (state.votingPower.get(locals._t).stakerAddress == qpi.invocator())
                 {
@@ -1263,7 +1265,7 @@ protected:
                             state.QCP.set(input.proposalId, locals.updatedQCProposal);
                             break;
                         case 3:
-                            locals.updatedIPOProposal.totalWeight = locals.numberOfYes * input.priceOfIPO;
+                            locals.updatedIPOProposal.totalWeight += locals.numberOfYes * input.priceOfIPO;
                             locals.updatedIPOProposal.numberOfYes += locals.numberOfYes;
                             locals.updatedIPOProposal.numberOfNo += locals.numberOfNo;
                             state.IPOP.set(input.proposalId, locals.updatedIPOProposal);
@@ -1288,13 +1290,15 @@ protected:
                             locals.updatedAlloProposal.numberOfNo += locals.numberOfNo;
                             state.AlloP.set(input.proposalId, locals.updatedAlloProposal);
                             break;
+                        default:
+                            break;
                     }
                     if (state.countOfVote.get(qpi.invocator(), locals.countOfVote))
                     {
                         locals.newVote.proposalId = input.proposalId;
                         locals.newVote.proposalType = input.proposalType;
                         locals.newVoteList.set(locals.countOfVote, locals.newVote);
-                        state.countOfVote.replace(qpi.invocator(), locals.countOfVote + 1);
+                        state.countOfVote.set(qpi.invocator(), locals.countOfVote + 1);
                     }
                     else 
                     {
@@ -1609,7 +1613,8 @@ public:
 
     struct getIdentitiesHvVtPw_output
     {
-        Array<stakingInfo, 256> list;
+        Array<id, 256> idList;
+        Array<uint32, 256> amountList;
     };
 
     struct getIdentitiesHvVtPw_locals
@@ -1629,7 +1634,8 @@ public:
             {
                 return ;
             }
-            output.list.set(locals._r++, state.votingPower.get(locals._t));
+            output.idList.set(locals._r, state.votingPower.get(locals._t).stakerAddress);
+            output.amountList.set(locals._r++, state.votingPower.get(locals._t).amount);
         }
     }
 
@@ -1850,7 +1856,7 @@ public:
         locals.numberOfDuplicatedPossesor = (uint32)div(locals.numberOfDuplicatedPossesor * 1ULL, 2ULL);
 
         output.numberOfQcapHolder = locals.count - locals.numberOfDuplicatedPossesor;
-        output.avgAmount = (uint32)div(QVAULT_QCAP_MAX_SUPPLY - state.totalQcapBurntAmount - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) * 1ULL, output.numberOfQcapHolder * 1ULL);
+        output.avgAmount = (uint32)div(qpi.numberOfShares(locals.QCAPId) - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) * 1ULL, output.numberOfQcapHolder * 1ULL);
     }
 
     struct getAmountForQearnInUpcomingEpoch_input
@@ -2524,6 +2530,12 @@ public:
     {
         switch (input.type)
         {
+            case TransferType::standardTransaction:
+                state.totalHistoryRevenue += input.amount;
+                state.revenueInQcapPerEpoch.set(qpi.epoch(), state.revenueInQcapPerEpoch.get(qpi.epoch()) + input.amount);
+
+                state.totalEpochRevenue += input.amount;
+            break;
             case TransferType::qpiTransfer:
                 if (input.sourceId.u64._0 == QEARN_CONTRACT_INDEX)
                 {
@@ -2559,6 +2571,8 @@ public:
                 state.revenuePerShare.set(input.sourceId.u64._0, state.revenuePerShare.get(input.sourceId.u64._0) + input.amount);
                 
                 state.totalEpochRevenue += input.amount;
+                break;
+            default:
                 break;
         }
     }
