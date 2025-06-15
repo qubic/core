@@ -5790,7 +5790,7 @@ static void logInfo()
     }
     else
     {
-        appendText(message, L"[Owning ");Add commentMore actions
+        appendText(message, L"[Owning ");
         appendNumber(message, numberOfOwnComputorIndices, false);
         appendText(message, L" indices]");
         // const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
