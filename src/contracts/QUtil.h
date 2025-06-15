@@ -101,18 +101,6 @@ private:
     Array<Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE>, QUTIL_MAX_POLL> poll_links; // github links for polls
     uint64 current_poll_id;
 
-    // Custom Modulo Function
-    struct custom_mod_input {
-        uint64 a;
-        uint64 b;
-    };
-    struct custom_mod_output {
-        uint64 result;
-    };
-    struct custom_mod_locals {
-        uint64 quotient;
-    };
-
     // Get Qubic Balance
     struct get_qubic_balance_input {
         id address;
@@ -247,9 +235,6 @@ public:
     struct CreatePoll_locals
     {
         uint64 idx;
-        custom_mod_input cm_input;
-        custom_mod_output cm_output;
-        custom_mod_locals cm_locals;
         QUtilPoll new_poll;
         QUtilVoter default_voter;
         uint64 i;
@@ -273,9 +258,6 @@ public:
         uint64 balance;
         uint64 poll_type;
         sint64 voter_idx;
-        custom_mod_input cm_input;
-        custom_mod_output cm_output;
-        custom_mod_locals cm_locals;
         get_voter_balance_input gvb_input;
         get_voter_balance_output gvb_output;
         get_voter_balance_locals gvb_locals;
@@ -307,9 +289,6 @@ public:
         uint64 poll_type;
         uint64 effective_amount;
         QUtilVoter voter;
-        custom_mod_input cm_input;
-        custom_mod_output cm_output;
-        custom_mod_locals cm_locals;
         uint64 i;
         uint64 voter_index;
         QUtilLogger logger;
@@ -358,9 +337,6 @@ public:
 
     struct GetPollInfo_locals {
         uint64 idx;
-        custom_mod_input cm_input;
-        custom_mod_output cm_output;
-        custom_mod_locals cm_locals;
         QUtilPoll default_poll;  // default values if not found
     };
 
@@ -382,12 +358,6 @@ public:
     /**************************************/
     /***********HELPER FUNCTIONS***********/
     /**************************************/
-
-    PRIVATE_FUNCTION_WITH_LOCALS(custom_mod)
-    {
-        locals.quotient = div(input.a, input.b);
-        output.result = input.a - input.b * locals.quotient;
-    }
 
     PRIVATE_FUNCTION_WITH_LOCALS(get_qubic_balance)
     {
@@ -788,11 +758,7 @@ public:
             return;
         }
 
-        locals.cm_input.a = state.current_poll_id;
-        locals.cm_input.b = QUTIL_MAX_POLL;
-        custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
-
-        locals.idx = locals.cm_output.result;
+        locals.idx = mod(state.current_poll_id, QUTIL_MAX_POLL);
         locals.new_poll.poll_name = input.poll_name;
         locals.new_poll.poll_type = input.poll_type;
         locals.new_poll.min_amount = input.min_amount;
@@ -836,10 +802,7 @@ public:
         qpi.transfer(qpi.invocator(), qpi.invocationReward() - QUTIL_VOTE_FEE);
         qpi.burn(QUTIL_VOTE_FEE);
 
-        locals.cm_input.a = input.poll_id;
-        locals.cm_input.b = QUTIL_MAX_POLL;
-        custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
-        locals.idx = locals.cm_output.result;
+        locals.idx = mod(input.poll_id, QUTIL_MAX_POLL);
 
         if (state.poll_ids.get(locals.idx) != input.poll_id)
         {
@@ -980,11 +943,7 @@ public:
     */
     PUBLIC_FUNCTION_WITH_LOCALS(GetCurrentResult)
     {
-        locals.cm_input.a = input.poll_id;
-        locals.cm_input.b = QUTIL_MAX_POLL;
-        custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
-        locals.idx = locals.cm_output.result;
-
+        locals.idx = mod(input.poll_id, QUTIL_MAX_POLL);
         if (state.poll_ids.get(locals.idx) != input.poll_id)
         {
             locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollIdResult };
@@ -1055,11 +1014,7 @@ public:
 
         output.poll_info = locals.default_poll;
         output.found = 0;
-
-        locals.cm_input.a = input.poll_id;
-        locals.cm_input.b = QUTIL_MAX_POLL;
-        custom_mod(qpi, state, locals.cm_input, locals.cm_output, locals.cm_locals);
-        locals.idx = locals.cm_output.result;
+        locals.idx = mod(input.poll_id, QUTIL_MAX_POLL);
 
         // Sanity index check the poll if index matches the requested ID
         if (state.poll_ids.get(locals.idx) == input.poll_id)
