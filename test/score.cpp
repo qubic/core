@@ -353,3 +353,83 @@ TEST(TestQubicScoreFunction, CommonTests)
 {
     runCommonTests();
 }
+
+TEST(TestQubicScoreFunction, TestDeterministic)
+{
+    constexpr int NUMBER_OF_THREADS = 4;
+    constexpr int NUMBER_OF_PHASES = 2;
+    constexpr int NUMBER_OF_SAMPLES = 4;
+
+    // Read the parameters and results
+    auto sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
+    ASSERT_FALSE(sampleString.empty());
+
+    // Convert the raw string and do the data verification
+    unsigned long long numberOfSamples = sampleString.size();
+    if (COMMON_TEST_NUMBER_OF_SAMPLES > 0)
+    {
+        numberOfSamples = std::min(COMMON_TEST_NUMBER_OF_SAMPLES, numberOfSamples);
+    }
+
+    std::vector<m256i> miningSeeds(numberOfSamples);
+    std::vector<m256i> publicKeys(numberOfSamples);
+    std::vector<m256i> nonces(numberOfSamples);
+
+    // Reading the input samples
+    for (unsigned long long i = 0; i < numberOfSamples; ++i)
+    {
+        miningSeeds[i] = hexToByte(sampleString[i][0], 32);
+        publicKeys[i] = hexToByte(sampleString[i][1], 32);
+        nonces[i] = hexToByte(sampleString[i][2], 32);
+    }
+
+    auto pScore = std::make_unique<ScoreFunction<
+        ::NUMBER_OF_INPUT_NEURONS,
+        ::NUMBER_OF_OUTPUT_NEURONS,
+        ::NUMBER_OF_TICKS,
+        ::NUMBER_OF_NEIGHBORS,
+        ::POPULATION_THRESHOLD,
+        ::NUMBER_OF_MUTATIONS,
+        ::SOLUTION_THRESHOLD,
+        NUMBER_OF_THREADS
+        >>();
+    pScore->initMemory();
+
+    // Run with 4 mining seeds, each run 4 separate threads and the result need to matched
+    int scores[NUMBER_OF_PHASES][NUMBER_OF_THREADS * NUMBER_OF_SAMPLES] = {0};
+    for (unsigned long long i = 0; i < NUMBER_OF_PHASES; ++i)
+    {
+        pScore->initMiningData(miningSeeds[i]);
+
+#pragma omp parallel for num_threads(NUMBER_OF_THREADS)
+        for (int threadId = 0; threadId < NUMBER_OF_THREADS; ++threadId)
+        {
+            if (threadId % 2 == 0)
+            {
+                for (int sampleId = 0; sampleId < NUMBER_OF_SAMPLES; ++sampleId)
+                {
+                    scores[i][threadId * NUMBER_OF_SAMPLES + sampleId] = (*pScore)(threadId, publicKeys[sampleId], miningSeeds[i], nonces[sampleId]);
+                }
+            }
+            else
+            {
+                for (int sampleId = NUMBER_OF_SAMPLES - 1; sampleId >= 0; --sampleId)
+                {
+                    scores[i][threadId * NUMBER_OF_SAMPLES + sampleId] = (*pScore)(threadId, publicKeys[sampleId], miningSeeds[i], nonces[sampleId]);
+                }
+            }
+        }
+    }
+
+    // Each threads run with the same samples but the order is reversed. Expect the scores are matched.
+    for (unsigned long long i = 0; i < NUMBER_OF_PHASES; ++i)
+    {
+        for (int threadId = 0; threadId < NUMBER_OF_THREADS - 1; ++threadId)
+        {
+            for (int sampleId = 0; sampleId < NUMBER_OF_SAMPLES; ++sampleId)
+            {
+                EXPECT_EQ(scores[i][threadId * NUMBER_OF_SAMPLES + sampleId], scores[i][(threadId + 1) * NUMBER_OF_SAMPLES + sampleId]);
+            }
+        }
+    }
+}
