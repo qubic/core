@@ -36,20 +36,20 @@ constexpr uint16 QUTIL_POLL_GITHUB_URL_MAX_SIZE = 256; // Max String Length for 
 
 
 // Voting log types enum
-#define QutilLogTypePollCreated 5                // Poll created successfully
-#define QutilLogTypeInsufficientFundsForPoll 6   // Insufficient funds for poll creation
-#define QutilLogTypeInvalidPollType 7            // Invalid poll type
-#define QutilLogTypeInvalidNumAssetsQubic 8      // Invalid number of assets for Qubic poll
-#define QutilLogTypeInvalidNumAssetsAsset 9      // Invalid number of assets for Asset poll
-#define QutilLogTypeVoteCast 10                  // Vote cast successfully
-#define QutilLogTypeInsufficientFundsForVote 11  // Insufficient funds for voting
-#define QutilLogTypeInvalidPollId 12             // Invalid poll ID
-#define QutilLogTypePollInactive 13              // Poll is inactive
-#define QutilLogTypeInsufficientBalance 14       // Insufficient voter balance
-#define QutilLogTypeInvalidOption 15             // Invalid voting option
-#define QutilLogTypeInvalidPollIdResult 16       // Invalid poll ID in GetCurrentResult
-#define QutilLogTypePollInactiveResult 17        // Poll inactive in GetCurrentResult
-#define QutilLogTypeNoPollsByCreator 18          // No polls found in GetPollsByCreator
+const uint64 QutilLogTypePollCreated = 5;                // Poll created successfully
+const uint64 QutilLogTypeInsufficientFundsForPoll = 6;   // Insufficient funds for poll creation
+const uint64 QutilLogTypeInvalidPollType = 7;            // Invalid poll type
+const uint64 QutilLogTypeInvalidNumAssetsQubic = 8;      // Invalid number of assets for Qubic poll
+const uint64 QutilLogTypeInvalidNumAssetsAsset = 9;      // Invalid number of assets for Asset poll
+const uint64 QutilLogTypeVoteCast = 10;                  // Vote cast successfully
+const uint64 QutilLogTypeInsufficientFundsForVote = 11;  // Insufficient funds for voting
+const uint64 QutilLogTypeInvalidPollId = 12;             // Invalid poll ID
+const uint64 QutilLogTypePollInactive = 13;              // Poll is inactive
+const uint64 QutilLogTypeInsufficientBalance = 14;       // Insufficient voter balance
+const uint64 QutilLogTypeInvalidOption = 15;             // Invalid voting option
+const uint64 QutilLogTypeInvalidPollIdResult = 16;       // Invalid poll ID in GetCurrentResult
+const uint64 QutilLogTypePollInactiveResult = 17;        // Poll inactive in GetCurrentResult
+const uint64 QutilLogTypeNoPollsByCreator = 18;          // No polls found in GetPollsByCreator
 
 struct QUtilLogger
 {
