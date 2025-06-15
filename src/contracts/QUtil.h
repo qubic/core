@@ -36,20 +36,23 @@ constexpr uint16 QUTIL_POLL_GITHUB_URL_MAX_SIZE = 256; // Max String Length for 
 
 
 // Voting log types enum
-const uint64 QutilLogTypePollCreated = 5;                // Poll created successfully
-const uint64 QutilLogTypeInsufficientFundsForPoll = 6;   // Insufficient funds for poll creation
-const uint64 QutilLogTypeInvalidPollType = 7;            // Invalid poll type
-const uint64 QutilLogTypeInvalidNumAssetsQubic = 8;      // Invalid number of assets for Qubic poll
-const uint64 QutilLogTypeInvalidNumAssetsAsset = 9;      // Invalid number of assets for Asset poll
-const uint64 QutilLogTypeVoteCast = 10;                  // Vote cast successfully
-const uint64 QutilLogTypeInsufficientFundsForVote = 11;  // Insufficient funds for voting
-const uint64 QutilLogTypeInvalidPollId = 12;             // Invalid poll ID
-const uint64 QutilLogTypePollInactive = 13;              // Poll is inactive
-const uint64 QutilLogTypeInsufficientBalance = 14;       // Insufficient voter balance
-const uint64 QutilLogTypeInvalidOption = 15;             // Invalid voting option
-const uint64 QutilLogTypeInvalidPollIdResult = 16;       // Invalid poll ID in GetCurrentResult
-const uint64 QutilLogTypePollInactiveResult = 17;        // Poll inactive in GetCurrentResult
-const uint64 QutilLogTypeNoPollsByCreator = 18;          // No polls found in GetPollsByCreator
+const uint64 QutilLogTypePollCreated = 5;                       // Poll created successfully
+const uint64 QutilLogTypeInsufficientFundsForPoll = 6;          // Insufficient funds for poll creation
+const uint64 QutilLogTypeInvalidPollType = 7;                   // Invalid poll type
+const uint64 QutilLogTypeInvalidNumAssetsQubic = 8;             // Invalid number of assets for Qubic poll
+const uint64 QutilLogTypeInvalidNumAssetsAsset = 9;             // Invalid number of assets for Asset poll
+const uint64 QutilLogTypeVoteCast = 10;                         // Vote cast successfully
+const uint64 QutilLogTypeInsufficientFundsForVote = 11;         // Insufficient funds for voting
+const uint64 QutilLogTypeInvalidPollId = 12;                    // Invalid poll ID
+const uint64 QutilLogTypePollInactive = 13;                     // Poll is inactive
+const uint64 QutilLogTypeInsufficientBalance = 14;              // Insufficient voter balance
+const uint64 QutilLogTypeInvalidOption = 15;                    // Invalid voting option
+const uint64 QutilLogTypeInvalidPollIdResult = 16;              // Invalid poll ID in GetCurrentResult
+const uint64 QutilLogTypePollInactiveResult = 17;               // Poll inactive in GetCurrentResult
+const uint64 QutilLogTypeNoPollsByCreator = 18;                 // No polls found in GetPollsByCreator
+const uint64 QutilLogTypePollCancelled = 19;                    // Poll cancelled successfully
+const uint64 QutilLogTypeNotAuthorized = 20;                    // Not authorized to cancel the poll
+const uint64 QutilLogTypeInsufficientFundsForCancel = 21;       // Not have enough funds for poll calcellation
 
 struct QUtilLogger
 {
@@ -270,6 +273,23 @@ public:
         uint64 real_vote;
         uint64 end_idx;
         uint64 max_balance;
+        QUtilLogger logger;
+    };
+
+    struct CancelPoll_input
+    {
+        uint64 poll_id;
+    };
+
+    struct CancelPoll_output
+    {
+        bit success;
+    };
+
+    struct CancelPoll_locals
+    {
+        uint64 idx;
+        QUtilPoll current_poll;
         QUtilLogger logger;
     };
 
@@ -948,6 +968,59 @@ public:
         }
     }
 
+    PUBLIC_PROCEDURE_WITH_LOCALS(CancelPoll)
+    {
+        if (qpi.invocationReward() < QUTIL_POLL_CREATION_FEE)
+        {
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QutilLogTypeInsufficientFundsForCancel };
+            LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.success = false;
+            return;
+        }
+
+        locals.idx = mod(input.poll_id, QUTIL_MAX_POLL);
+
+        if (state.poll_ids.get(locals.idx) != input.poll_id)
+        {
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollId };
+            LOG_INFO(locals.logger);
+            output.success = false;
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        locals.current_poll = state.polls.get(locals.idx);
+
+        if (locals.current_poll.creator != qpi.invocator())
+        {
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeNotAuthorized };
+            LOG_INFO(locals.logger);
+            output.success = false;
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        if (locals.current_poll.is_active == 0)
+        {
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypePollInactive };
+            LOG_INFO(locals.logger);
+            output.success = false;
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        locals.current_poll.is_active = 0;
+        state.polls.set(locals.idx, locals.current_poll);
+
+        locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypePollCancelled };
+        LOG_INFO(locals.logger);
+        output.success = true;
+
+        qpi.transfer(qpi.invocator(), qpi.invocationReward() - QUTIL_POLL_CREATION_FEE);
+        qpi.burn(QUTIL_POLL_CREATION_FEE);
+    }
+
     /**
     * Get the current voting results for a poll
     */
@@ -1065,5 +1138,6 @@ public:
         REGISTER_USER_PROCEDURE(SendToManyBenchmark, 3);
         REGISTER_USER_PROCEDURE(CreatePoll, 4);
         REGISTER_USER_PROCEDURE(Vote, 5);
+        REGISTER_USER_PROCEDURE(CancelPoll, 6);
     }
 };
