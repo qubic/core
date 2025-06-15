@@ -729,6 +729,7 @@ public:
     */
     PUBLIC_PROCEDURE_WITH_LOCALS(CreatePoll)
     {
+        // insufficient fund
         if (qpi.invocationReward() < QUTIL_POLL_CREATION_FEE)
         {
             locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QutilLogTypeInsufficientFundsForPoll };
@@ -737,26 +738,35 @@ public:
             return;
         }
 
+        // invalid poll type
         if (input.poll_type != QUTIL_POLL_TYPE_QUBIC && input.poll_type != QUTIL_POLL_TYPE_ASSET)
         {
             locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollType };
             LOG_INFO(locals.logger);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
+        // invalid number of assets in Qubic poll
         if (input.poll_type == QUTIL_POLL_TYPE_QUBIC && input.num_assets != 0)
         {
             locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidNumAssetsQubic };
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
+        // invalid number of assets in Asset poll
         if (input.poll_type == QUTIL_POLL_TYPE_ASSET && (input.num_assets == 0 || input.num_assets > QUTIL_MAX_ASSETS_PER_POLL))
         {
             locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidNumAssetsAsset };
             LOG_INFO(locals.logger);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
+
+        qpi.transfer(qpi.invocator(), qpi.invocationReward() - QUTIL_POLL_CREATION_FEE);
+        qpi.burn(QUTIL_POLL_CREATION_FEE);
 
         locals.idx = mod(state.current_poll_id, QUTIL_MAX_POLL);
         locals.new_poll.poll_name = input.poll_name;
