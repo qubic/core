@@ -1856,7 +1856,7 @@ public:
         locals.numberOfDuplicatedPossesor = (uint32)div(locals.numberOfDuplicatedPossesor * 1ULL, 2ULL);
 
         output.numberOfQcapHolder = locals.count - locals.numberOfDuplicatedPossesor;
-        output.avgAmount = (uint32)div(qpi.numberOfShares(locals.QCAPId) - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) - qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX) * 1ULL, output.numberOfQcapHolder * 1ULL);
+        output.avgAmount = (uint32)div(qpi.numberOfShares(locals.QCAPId) - qpi.numberOfShares(locals.QCAPId, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount * 1ULL, output.numberOfQcapHolder * 1ULL);
     }
 
     struct getAmountForQearnInUpcomingEpoch_input
