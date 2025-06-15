@@ -1004,15 +1004,6 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetPollInfo)
     {
-        // set default poll values (will be returned if poll not found)
-        locals.default_poll.is_active = 0;
-        locals.default_poll.poll_name = NULL_ID;
-        locals.default_poll.poll_type = 0;
-        locals.default_poll.min_amount = 0;
-        locals.default_poll.creator = NULL_ID;
-        locals.default_poll.num_assets = 0;
-
-        output.poll_info = locals.default_poll;
         output.found = 0;
         locals.idx = mod(input.poll_id, QUTIL_MAX_POLL);
 
@@ -1038,37 +1029,6 @@ public:
                 // Deactivate the poll
                 locals.current_poll.is_active = 0;
                 state.polls.set(locals.i, locals.current_poll);
-            }
-        }
-    }
-
-    BEGIN_EPOCH_WITH_LOCALS()
-    {
-        if (qpi.epoch() == QUTIL_POLL_INIT_EPOCH)
-        {
-            state.current_poll_id = 0;
-
-            // Set default values for default_poll
-            locals.default_poll.is_active = 0;
-            locals.default_poll.poll_name = NULL_ID;
-            locals.default_poll.poll_type = 0;
-            locals.default_poll.min_amount = 0;
-            locals.default_poll.creator = NULL_ID;
-            locals.default_poll.num_assets = 0;
-
-            // Initialize zero_link to all zeros for poll_links
-            for (locals.j = 0; locals.j < QUTIL_POLL_GITHUB_URL_MAX_SIZE; locals.j++)
-            {
-                locals.zero_link.set(locals.j, 0);
-            }
-
-            // Initialize all poll-related arrays (except voters, handled by CreatePoll)
-            for (locals.i = 0; locals.i < QUTIL_MAX_POLL; locals.i++)
-            {
-                state.polls.set(locals.i, locals.default_poll);
-                state.poll_ids.set(locals.i, 0);
-                state.voter_counts.set(locals.i, 0);
-                state.poll_links.set(locals.i, locals.zero_link);
             }
         }
     }
