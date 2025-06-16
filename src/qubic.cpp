@@ -180,11 +180,13 @@ static int nContractProcessorIDs = 0;
 static int nSolutionProcessorIDs = 0;
 
 static ScoreFunction<
-    DATA_LENGTH,
-    NUMBER_OF_HIDDEN_NEURONS, 
-    NUMBER_OF_NEIGHBOR_NEURONS,
-    MAX_DURATION,
-    NUMBER_OF_OPTIMIZATION_STEPS,
+    NUMBER_OF_INPUT_NEURONS,
+    NUMBER_OF_OUTPUT_NEURONS,
+    NUMBER_OF_TICKS,
+    NUMBER_OF_NEIGHBORS,
+    POPULATION_THRESHOLD,
+    NUMBER_OF_MUTATIONS,
+    SOLUTION_THRESHOLD_DEFAULT,
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static volatile char solutionsLock = 0;
@@ -3412,7 +3414,7 @@ static void beginEpoch()
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
 
-    if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > DATA_LENGTH)) { // invalid threshold
+    if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > NUMBER_OF_OUTPUT_NEURONS)) { // invalid threshold
         solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
     }
 
