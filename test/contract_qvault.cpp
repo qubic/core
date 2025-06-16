@@ -56,7 +56,7 @@ public:
         EXPECT_EQ(GP.get(index).numberOfYes, 0);
         EXPECT_EQ(GP.get(index).proposedEpoch, 139);
         EXPECT_EQ(GP.get(index).proposer, proposer);
-        EXPECT_EQ(GP.get(index).result, 0);
+        EXPECT_EQ(GP.get(index).result, 4);
     }
 
     void submitQCPChecker(uint32 index, id proposer, uint32 newQuorumPercent)
@@ -67,7 +67,7 @@ public:
         EXPECT_EQ(QCP.get(index).numberOfYes, 0);
         EXPECT_EQ(QCP.get(index).proposedEpoch, 139);
         EXPECT_EQ(QCP.get(index).proposer, proposer);
-        EXPECT_EQ(QCP.get(index).result, 0);
+        EXPECT_EQ(QCP.get(index).result, 4);
         EXPECT_EQ(QCP.get(index).newQuorumPercent, newQuorumPercent);
     }
 
@@ -79,7 +79,7 @@ public:
         EXPECT_EQ(IPOP.get(index).numberOfYes, 0);
         EXPECT_EQ(IPOP.get(index).proposedEpoch, 139);
         EXPECT_EQ(IPOP.get(index).proposer, proposer);
-        EXPECT_EQ(IPOP.get(index).result, 0);
+        EXPECT_EQ(IPOP.get(index).result, 4);
         EXPECT_EQ(IPOP.get(index).ipoContractIndex, ipoContractIndex);
         EXPECT_EQ(IPOP.get(index).totalWeight, 0);
         EXPECT_EQ(IPOP.get(index).assignedFund, 0);
@@ -93,7 +93,7 @@ public:
         EXPECT_EQ(QEarnP.get(index).numberOfYes, 0);
         EXPECT_EQ(QEarnP.get(index).proposedEpoch, 139);
         EXPECT_EQ(QEarnP.get(index).proposer, proposer);
-        EXPECT_EQ(QEarnP.get(index).result, 0);
+        EXPECT_EQ(QEarnP.get(index).result, 4);
         EXPECT_EQ(QEarnP.get(index).amountOfInvestPerEpoch, amountPerEpoch);
         EXPECT_EQ(QEarnP.get(index).assignedFundPerEpoch, amountPerEpoch);
         EXPECT_EQ(QEarnP.get(index).numberOfEpoch, numberOfEpoch);
@@ -107,7 +107,7 @@ public:
         EXPECT_EQ(FundP.get(index).numberOfYes, 0);
         EXPECT_EQ(FundP.get(index).proposedEpoch, 139);
         EXPECT_EQ(FundP.get(index).proposer, proposer);
-        EXPECT_EQ(FundP.get(index).result, 0);
+        EXPECT_EQ(FundP.get(index).result, 4);
         EXPECT_EQ(FundP.get(index).amountOfQcap, amountOfQcap);
         EXPECT_EQ(FundP.get(index).pricePerOneQcap, pricePerOneQcap);
         EXPECT_EQ(FundP.get(index).restSaleAmount, amountOfQcap);   
@@ -121,7 +121,7 @@ public:
         EXPECT_EQ(MKTP.get(index).numberOfYes, 0);
         EXPECT_EQ(MKTP.get(index).proposedEpoch, 139);
         EXPECT_EQ(MKTP.get(index).proposer, proposer);
-        EXPECT_EQ(MKTP.get(index).result, 0);
+        EXPECT_EQ(MKTP.get(index).result, 4);
         EXPECT_EQ(MKTP.get(index).amountOfQcap, amountOfQcap);
         EXPECT_EQ(MKTP.get(index).amountOfQubic, amountOfQubic);
         EXPECT_EQ(MKTP.get(index).shareName, shareName);
@@ -137,7 +137,7 @@ public:
         EXPECT_EQ(AlloP.get(index).numberOfYes, 0);
         EXPECT_EQ(AlloP.get(index).proposedEpoch, 139);
         EXPECT_EQ(AlloP.get(index).proposer, proposer);
-        EXPECT_EQ(AlloP.get(index).result, 0);
+        EXPECT_EQ(AlloP.get(index).result, 4);
         EXPECT_EQ(AlloP.get(index).reinvested, reinvested);
         EXPECT_EQ(AlloP.get(index).team, team);
         EXPECT_EQ(AlloP.get(index).burnQcap, burn);
