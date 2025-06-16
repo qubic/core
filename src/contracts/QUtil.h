@@ -33,6 +33,7 @@ constexpr sint64 QUTIL_VOTE_FEE = 100LL; // Fee for voting, burnt 100%
 constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
 constexpr uint16 QUTIL_POLL_INIT_EPOCH = 164; // Epoch to initialize poll-related state
 constexpr uint16 QUTIL_POLL_GITHUB_URL_MAX_SIZE = 256; // Max String Length for Poll's Github URLs
+constexpr uint64 QUTIL_MAX_NEW_POLL = QUTIL_MAX_POLL / 4; // Max number of new poll per epoch
 
 
 // Voting log types enum
@@ -53,6 +54,7 @@ const uint64 QutilLogTypeNoPollsByCreator = 18;                 // No polls foun
 const uint64 QutilLogTypePollCancelled = 19;                    // Poll cancelled successfully
 const uint64 QutilLogTypeNotAuthorized = 20;                    // Not authorized to cancel the poll
 const uint64 QutilLogTypeInsufficientFundsForCancel = 21;       // Not have enough funds for poll calcellation
+const uint64 QutilLogTypeMaxPollsReached = 22;                  // Max epoch per epoch reached
 
 struct QUtilLogger
 {
@@ -103,6 +105,7 @@ private:
     Array<uint64, QUTIL_MAX_POLL> voter_counts; // tracks number of voters per poll
     Array<Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE>, QUTIL_MAX_POLL> poll_links; // github links for polls
     uint64 current_poll_id;
+    uint64 new_polls_this_epoch;
 
     // Get Qubic Balance
     struct get_qubic_balance_input {
@@ -749,6 +752,15 @@ public:
     */
     PUBLIC_PROCEDURE_WITH_LOCALS(CreatePoll)
     {
+        // max new poll exceeded
+        if (state.new_polls_this_epoch >= QUTIL_MAX_NEW_POLL)
+        {
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeMaxPollsReached };
+            LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
         // insufficient fund
         if (qpi.invocationReward() < QUTIL_POLL_CREATION_FEE)
         {
@@ -812,6 +824,8 @@ public:
         }
         output.poll_id = state.current_poll_id;
         state.current_poll_id++;
+
+        state.new_polls_this_epoch++;
 
         locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_POLL_CREATION_FEE, QutilLogTypePollCreated };
         LOG_INFO(locals.logger);
@@ -1114,6 +1128,8 @@ public:
                 state.polls.set(locals.i, locals.current_poll);
             }
         }
+
+        state.new_polls_this_epoch = 0;
     }
 
     /*
