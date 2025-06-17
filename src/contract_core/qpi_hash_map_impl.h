@@ -8,6 +8,7 @@
 #include "../contracts/qpi.h"
 #include "../platform/memory.h"
 #include "../kangaroo_twelve.h"
+#include "../contracts/math_lib.h"
 
 namespace QPI
 {
@@ -439,6 +440,45 @@ namespace QPI
 		elementIndex &= (L - 1);
 		uint64 flags = _getEncodedOccupationFlags(_occupationFlags, elementIndex);
 		return ((flags & 3ULL) != 1);
+	}
+
+	template <typename KeyT, uint64 L, typename HashFunc>
+	sint64 HashSet<KeyT, L, HashFunc>::nextElementIndex(sint64 elementIndex) const
+	{
+		if (!_population)
+			return NULL_INDEX;
+
+		if (elementIndex < 0)
+			elementIndex = 0;
+		else
+			++elementIndex;
+
+		// search for next occupied element until end of hash map array
+		constexpr uint64 flagsLength = math_lib::max(L >> 5, 1ull);
+		sint64 flagsIdx = elementIndex >> 5;
+		sint64 offset = elementIndex & 31ll;
+		uint64 flags = _occupationFlags[flagsIdx] >> (2 * offset);
+		while (flagsIdx < flagsLength)
+		{
+			for (sint64 i = offset; i < _nEncodedFlags; ++i, flags >>= 2)
+			{
+				if (!flags)
+				{
+					// no occupied entries in current flags
+					break;
+				}
+				if ((flags & 3ULL) == 1)
+				{
+					// found occupied entry
+					return (flagsIdx << 5) + i;
+				}
+			}
+
+			flags = _occupationFlags[++flagsIdx];
+			offset = 0;
+		}
+
+		return NULL_INDEX;
 	}
 
 	template <typename KeyT, uint64 L, typename HashFunc>

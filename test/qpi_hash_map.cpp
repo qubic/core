@@ -605,6 +605,18 @@ void hasSameContent(QPI::HashSet<T, capacity>& set, const std::set<T>& reference
 			}
 		}
 	}
+
+	// test iterator
+	QPI::sint64 i = set.nextElementIndex(QPI::NULL_INDEX);
+	unsigned int cnt = 0;
+	while (i != QPI::NULL_INDEX)
+	{
+		cnt++;
+		EXPECT_FALSE(set.isEmptySlot(i));
+		EXPECT_NE(referenceSet.find(set.key(i)), referenceSet.end());
+		i = set.nextElementIndex(i);
+	}
+	EXPECT_EQ(cnt, referenceSet.size());
 }
 
 template <class T, unsigned int capacity>
@@ -645,10 +657,13 @@ void testHashSetPseudoRandom(int seed, int cleanups, int percentAdd, int percent
 	// test cleanup of empty collection
 	cleanupHashSet(set, referenceSet);
 
-	// add default value of empty slot to set
-	referenceSet.insert(set.key(0));
-	EXPECT_NE(set.add(set.key(0)), QPI::NULL_INDEX);
-	hasSameContent(set, referenceSet);
+	if (seed & 1)
+	{
+		// add default value of empty slot to set
+		referenceSet.insert(set.key(0));
+		EXPECT_NE(set.add(set.key(0)), QPI::NULL_INDEX);
+		hasSameContent(set, referenceSet);
+	}
 
 	// Randomly add, remove, and cleanup until 50 cleanups are reached
 	int cleanupCounter = 0;
