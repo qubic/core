@@ -34,6 +34,7 @@ enum QVAULTLogInfo {
     QvaultOverflowProposal = 15, 
     QvaultAlreadyVotedId = 19,
     QvaultOverflowVotes = 20,
+    QvaultSameDecision = 21,
 };
 
 struct QVAULT2
@@ -364,6 +365,7 @@ protected:
     {
         uint32 proposalId;
         uint8 proposalType;
+        bit decision;
     };
     HashMap<id, Array<voteStatusInfo, 16>, 1048576> vote;
     HashMap<id, uint8, 1048576> countOfVote;
@@ -1164,9 +1166,9 @@ protected:
         AlloPInfo updatedAlloProposal;
         Array<voteStatusInfo, 16> newVoteList;
         voteStatusInfo newVote;
-        uint32 numberOfYes;
-        uint32 numberOfNo;
-        sint32 _t;
+        sint32 numberOfYes;
+        sint32 numberOfNo;
+        sint32 _t, _r;
         uint8 countOfVote;
         bit statusOfProposal;
     };
@@ -1181,18 +1183,22 @@ protected:
         if (state.countOfVote.get(qpi.invocator(), locals.countOfVote))
         {
             state.vote.get(qpi.invocator(), locals.newVoteList);
-            for (locals._t = 0; locals._t < locals.countOfVote; locals._t++)
+            for (locals._r = 0; locals._r < locals.countOfVote; locals._r++)
             {
-                if (locals.newVoteList.get(locals._t).proposalId == input.proposalId && locals.newVoteList.get(locals._t).proposalType == input.proposalType)
+                if (locals.newVoteList.get(locals._r).proposalId == input.proposalId && locals.newVoteList.get(locals._r).proposalType == input.proposalType)
                 {
-                    output.returnCode = QVAULTLogInfo::QvaultAlreadyVotedId;
-                    return ;
+                    break;
                 }
             }
         }
-        if (locals.countOfVote == 16)
+        if (locals.countOfVote == 16 && locals._r == locals.countOfVote)
         {
             output.returnCode = QVAULTLogInfo::QvaultOverflowVotes;
+            return ;
+        }
+        if (locals._r < locals.countOfVote && locals.newVoteList.get(locals._r).decision == input.yes)
+        {
+            output.returnCode = QVAULTLogInfo::QvaultSameDecision;
             return ;
         }
         
@@ -1247,10 +1253,18 @@ protected:
                     if (input.yes == 1)
                     {
                         locals.numberOfYes = state.votingPower.get(locals._t).amount;
+                        if (locals._r < locals.countOfVote)
+                        {
+                            locals.numberOfNo -= state.votingPower.get(locals._t).amount;
+                        }
                     }
                     else 
                     {
                         locals.numberOfNo = state.votingPower.get(locals._t).amount;
+                        if (locals._r < locals.countOfVote)
+                        {
+                            locals.numberOfYes -= state.votingPower.get(locals._t).amount;
+                        }
                     }
                     switch (input.proposalType)
                     {
@@ -1297,6 +1311,7 @@ protected:
                     {
                         locals.newVote.proposalId = input.proposalId;
                         locals.newVote.proposalType = input.proposalType;
+                        locals.newVote.decision = input.yes;
                         locals.newVoteList.set(locals.countOfVote, locals.newVote);
                         state.countOfVote.set(qpi.invocator(), locals.countOfVote + 1);
                     }
@@ -1304,6 +1319,7 @@ protected:
                     {
                         locals.newVote.proposalId = input.proposalId;
                         locals.newVote.proposalType = input.proposalType;
+                        locals.newVote.decision = input.yes;
                         locals.newVoteList.set(0, locals.newVote);
                         state.countOfVote.set(qpi.invocator(), 1);
                     }
