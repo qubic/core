@@ -384,6 +384,9 @@ namespace QPI
 		inline uint64 population() const;
 
 		// Return boolean indicating whether key is contained in the hash map.
+		bool contains(const KeyT& key) const;
+
+		// Return boolean indicating whether key is contained in the hash map.
 		// If key is contained, write the associated value into the provided ValueT&. 
 		bool get(const KeyT& key, ValueT& value) const;
 

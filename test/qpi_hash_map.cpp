@@ -199,6 +199,8 @@ TYPED_TEST_P(QPIHashMapTest, TestGetters)
 	auto values = std::views::values(keyValuePairs);
 	QPI::sint64 returnedIndex;
 
+	EXPECT_EQ(hashMap.getElementIndex(ids[3]), QPI::NULL_INDEX);
+	EXPECT_FALSE(hashMap.contains(ids[3]));
 	EXPECT_TRUE(hashMap.isEmptySlot(0));
 
 	for (int i = 0; i < 4; ++i)
@@ -207,6 +209,7 @@ TYPED_TEST_P(QPIHashMapTest, TestGetters)
 	}
 
 	EXPECT_EQ(hashMap.getElementIndex(ids[3]), returnedIndex);
+	EXPECT_TRUE(hashMap.contains(ids[3]));
 	EXPECT_EQ(hashMap.key(returnedIndex), ids[3]);
 	EXPECT_EQ(hashMap.value(returnedIndex), values[3]);
 	EXPECT_FALSE(hashMap.isEmptySlot(returnedIndex));
@@ -286,6 +289,9 @@ TYPED_TEST_P(QPIHashMapTest, TestRemove)
 	EXPECT_NE(hashMap.getElementIndex(ids[0]), QPI::NULL_INDEX);
 	EXPECT_NE(hashMap.getElementIndex(ids[1]), QPI::NULL_INDEX);
 	EXPECT_EQ(hashMap.getElementIndex(ids[2]), QPI::NULL_INDEX);
+	EXPECT_TRUE(hashMap.contains(ids[0]));
+	EXPECT_TRUE(hashMap.contains(ids[1]));
+	EXPECT_FALSE(hashMap.contains(ids[2]));
 
 	// Try to remove key not contained in the hash map. 
 	returnedIndex = hashMap.removeByKey(TestData::GetKeyNotInTestPairs());
@@ -299,6 +305,9 @@ TYPED_TEST_P(QPIHashMapTest, TestRemove)
 	EXPECT_EQ(hashMap.getElementIndex(ids[0]), QPI::NULL_INDEX);
 	EXPECT_NE(hashMap.getElementIndex(ids[1]), QPI::NULL_INDEX);
 	EXPECT_EQ(hashMap.getElementIndex(ids[2]), QPI::NULL_INDEX);
+	EXPECT_FALSE(hashMap.contains(ids[0]));
+	EXPECT_TRUE(hashMap.contains(ids[1]));
+	EXPECT_FALSE(hashMap.contains(ids[2]));
 }
 
 TYPED_TEST_P(QPIHashMapTest, TestCleanup)

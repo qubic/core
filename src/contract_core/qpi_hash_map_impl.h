@@ -43,6 +43,12 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	bool HashMap<KeyT, ValueT, L, HashFunc>::contains(const KeyT& key) const
+	{
+		return getElementIndex(key) != NULL_INDEX;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	bool HashMap<KeyT, ValueT, L, HashFunc>::get(const KeyT& key, ValueT& value) const 
 	{
 		sint64 elementIndex = getElementIndex(key);
