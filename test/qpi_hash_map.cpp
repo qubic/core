@@ -474,6 +474,181 @@ REGISTER_TYPED_TEST_CASE_P(QPIHashMapTest,
 typedef Types<std::pair<QPI::id, int>, std::pair<QPI::sint64, char>, std::pair<QPI::bit_1024, QPI::uint64>> KeyValueTypesToTest;
 INSTANTIATE_TYPED_TEST_CASE_P(TypedQPIHashMapTests, QPIHashMapTest, KeyValueTypesToTest);
 
+template <class KeyT, class ValueT, unsigned int capacity>
+void hasSameContent(QPI::HashMap<KeyT, ValueT, capacity>& map, const std::map<KeyT, ValueT>& referenceMap)
+{
+	EXPECT_EQ(map.population(), referenceMap.size());
+	for (const auto& item : referenceMap)
+	{
+		EXPECT_TRUE(map.contains(item.first));
+		ValueT value;
+		EXPECT_TRUE(map.get(item.first, value));
+		EXPECT_EQ(value, item.second);
+	}
+	for (unsigned int i = 0; i < capacity; ++i)
+	{
+		KeyT key = map.key(i);	// returns key value at slot i (like 0), even if the value is not contained
+		if (!map.isEmptySlot(i))
+		{
+			// key is valid, part of map, and exactly at this position
+			EXPECT_NE(referenceMap.find(key), referenceMap.end());
+			EXPECT_EQ(map.getElementIndex(key), i);
+		}
+		else
+		{
+			// key is invalid and not at this slot
+			QPI::uint64 elementIndex = map.getElementIndex(key);
+			EXPECT_NE(elementIndex, i);
+			if (elementIndex == QPI::NULL_INDEX)
+			{
+				// not in map
+				EXPECT_EQ(referenceMap.find(key), referenceMap.end());
+			}
+			else
+			{
+				// in map, but at different position
+				EXPECT_NE(referenceMap.find(key), referenceMap.end());
+			}
+		}
+	}
+
+	// test iterator
+	QPI::sint64 i = map.nextElementIndex(QPI::NULL_INDEX);
+	unsigned int cnt = 0;
+	while (i != QPI::NULL_INDEX)
+	{
+		cnt++;
+		EXPECT_FALSE(map.isEmptySlot(i));
+		auto it = referenceMap.find(map.key(i));
+		EXPECT_NE(it, referenceMap.end());
+		EXPECT_EQ(it->second, map.value(i));
+		i = map.nextElementIndex(i);
+	}
+	EXPECT_EQ(cnt, referenceMap.size());
+}
+
+template <class KeyT, class ValueT, unsigned int capacity>
+void cleanupHashMap(QPI::HashMap<KeyT, ValueT, capacity>& map, const std::map<KeyT, ValueT>& referenceMap)
+{
+	hasSameContent(map, referenceMap);
+	map.cleanup();
+	//map.cleanupIfNeeded();
+	hasSameContent(map, referenceMap);
+}
+
+void getValue(std::mt19937_64& gen64, QPI::id& value)
+{
+	value.u64._0 = gen64();
+	value.u64._1 = gen64();
+	value.u64._2 = gen64();
+	value.u64._3 = gen64();
+}
+
+void getValue(std::mt19937_64& gen64, QPI::uint8& value)
+{
+	value = gen64() & 0xff;
+}
+
+template <class KeyT, class ValueT, unsigned int capacity>
+void testHashMapPseudoRandom(int seed, int cleanups, int percentAdd, int percentAddSecondHalf = -1)
+{
+	// add and remove entries with pseudo-random sequence
+	std::mt19937_64 gen64(seed);
+
+	std::map<KeyT, ValueT> referenceMap;
+	QPI::HashMap<KeyT, ValueT, capacity> map;
+
+	__scratchpadBuffer = new char[2 * sizeof(map)];
+
+	map.reset();
+
+	// test cleanup of empty collection
+	cleanupHashMap(map, referenceMap);
+
+	if (seed & 1)
+	{
+		// add default value of empty slot to set
+		referenceMap[map.key(0)] = map.value(0);
+		EXPECT_NE(map.set(map.key(0), map.value(0)), QPI::NULL_INDEX);
+		hasSameContent(map, referenceMap);
+	}
+
+	// Randomly add, remove, and cleanup until 50 cleanups are reached
+	int cleanupCounter = 0;
+	while (cleanupCounter < cleanups)
+	{
+		int p = gen64() % 100;
+
+		if (p == 0)
+		{
+			// cleanup (with 1% probability)
+			cleanupHashMap(map, referenceMap);
+			++cleanupCounter;
+
+			if (cleanupCounter == cleanups / 2 && percentAddSecondHalf >= 0)
+				percentAdd = percentAddSecondHalf;
+		}
+
+		if (p < percentAdd)
+		{
+			// add to map (more probable than remove)
+			KeyT key;
+			ValueT value;
+			getValue(gen64, key);
+			getValue(gen64, value);
+			if (map.set(key, value) != QPI::NULL_INDEX)
+				referenceMap[key] = value;
+			hasSameContent(map, referenceMap);
+		}
+		else
+		{
+			// remove from map
+			QPI::sint64 removeIdx = gen64() % map.capacity();
+			KeyT key = map.key(removeIdx);
+			if (!map.isEmptySlot(removeIdx))
+			{
+				referenceMap.erase(key);
+				EXPECT_EQ(map.removeByKey(key), removeIdx);
+			}
+			else if (referenceMap.find(key) == referenceMap.end())
+			{
+				EXPECT_EQ(map.removeByKey(key), QPI::NULL_INDEX);
+			}
+			hasSameContent(map, referenceMap);
+		}
+
+		// std::cout << "capacity: " << set.capacity() << ", pupulation:" << set.population() << std::endl;
+	}
+
+	delete[] __scratchpadBuffer;
+	__scratchpadBuffer = nullptr;
+}
+
+TEST(QPIHashMapTest, HashMapPseudoRandom)
+{
+	constexpr unsigned int numCleanups = 5;
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 1>(42, numCleanups, 20);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 1>(1337, numCleanups, 80);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 8>(42, 4 * numCleanups, 30);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 8>(1337, 4 * numCleanups, 50);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 8>(123456789, 4 * numCleanups, 70);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 8>(42, 10 * numCleanups, 30, 70);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 8>(1337, 10 * numCleanups, 50, 10);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 8>(123456789, 10 * numCleanups, 70, 10);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 128>(42 + 1, 6 * numCleanups, 30);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 128>(1337 + 1, 6 * numCleanups, 50);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 128>(123456789 + 1, 6 * numCleanups, 70);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 1024>(42 + 2, 10 * numCleanups, 30);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 1024>(1337 + 2, 10 * numCleanups, 50);
+	testHashMapPseudoRandom<QPI::id, QPI::uint8, 1024>(123456789 + 2, 10 * numCleanups, 70);
+	testHashMapPseudoRandom<QPI::uint8, QPI::id, 1>(42, numCleanups, 20);
+	testHashMapPseudoRandom<QPI::uint8, QPI::id, 8>(42 + 1, 10 * numCleanups, 30, 70);
+	testHashMapPseudoRandom<QPI::uint8, QPI::id, 8>(1337, 10 * numCleanups, 50, 10);
+	testHashMapPseudoRandom<QPI::uint8, QPI::id, 8>(123456789, 10 * numCleanups, 70, 10);
+	testHashMapPseudoRandom<QPI::uint8, QPI::id, 128>(1337 + 1, 6 * numCleanups, 50);
+	testHashMapPseudoRandom<QPI::uint8, QPI::id, 1024>(123456789 + 2, 10 * numCleanups, 70);
+}
+
 TEST(QPIHashMapTest, HashSet)
 {
 	constexpr QPI::uint64 capacity = 128;
@@ -635,19 +810,6 @@ void cleanupHashSet(QPI::HashSet<T, capacity>& set, const std::set<T>& reference
 	set.cleanup();
 	//set.cleanupIfNeeded();
 	hasSameContent(set, referenceSet);
-}
-
-void getValue(std::mt19937_64& gen64, QPI::id& value)
-{
-	value.u64._0 = gen64();
-	value.u64._1 = gen64();
-	value.u64._2 = gen64();
-	value.u64._3 = gen64();
-}
-
-void getValue(std::mt19937_64& gen64, QPI::uint8& value)
-{
-	value = gen64() & 0xff;
 }
 
 template <class T, unsigned int capacity>
