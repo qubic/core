@@ -212,36 +212,45 @@ TEST(QUtilTest, CreatePollsMoreThanMax_CheckActiveIds)
 {
     ContractTestingQUtil qutil;
     id creator = generateRandomId();
-    uint64_t num_polls = 70;
+    uint64_t num_polls_per_epoch = QUTIL_MAX_NEW_POLL; // 16 polls per epoch
+    uint64_t num_epochs = 2;
     std::vector<uint64_t> created_poll_ids;
 
-    for (uint64_t i = 0; i < num_polls; ++i)
+    for (uint64_t epoch = 0; epoch < num_epochs; ++epoch)
     {
-        id poll_name = generateRandomId();
-        uint64_t min_amount = 1000;
-        Array<uint8, 256> github_link = stringToArray("https://github.com/qubic/proposal/test" + std::to_string(i));
-        uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
+        for (uint64_t i = 0; i < num_polls_per_epoch; ++i)
+        {
+            id poll_name = generateRandomId();
+            uint64_t min_amount = 1000;
+            Array<uint8, 256> github_link = stringToArray("https://github.com/qubic/proposal/test" + std::to_string(epoch * num_polls_per_epoch + i));
+            uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
 
-        QUTIL::CreatePoll_input input;
-        input.poll_name = poll_name;
-        input.poll_type = poll_type;
-        input.min_amount = min_amount;
-        input.github_link = github_link;
-        input.num_assets = 0;
+            QUTIL::CreatePoll_input input;
+            input.poll_name = poll_name;
+            input.poll_type = poll_type;
+            input.min_amount = min_amount;
+            input.github_link = github_link;
+            input.num_assets = 0;
 
-        increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
-        auto output = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE);
-        created_poll_ids.push_back(output.poll_id);
+            increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+            auto output = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE);
+            created_poll_ids.push_back(output.poll_id);
+        }
+        if (epoch < num_epochs - 1)
+        {
+            qutil.endEpoch();
+            qutil.beginEpoch();
+        }
     }
 
     auto current_poll_info = qutil.getCurrentPollId();
-    EXPECT_EQ(current_poll_info.current_poll_id, num_polls);
-    EXPECT_EQ(current_poll_info.active_count, QUTIL_MAX_POLL);
+    EXPECT_EQ(current_poll_info.current_poll_id, num_polls_per_epoch * num_epochs); // Total polls created: 32
+    EXPECT_EQ(current_poll_info.active_count, num_polls_per_epoch); // Only 16 active in current epoch
 
     std::set<uint64_t> expected_active_ids;
-    for (uint64_t i = num_polls - QUTIL_MAX_POLL; i < num_polls; ++i)
+    for (uint64_t i = (num_epochs - 1) * num_polls_per_epoch; i < num_epochs * num_polls_per_epoch; ++i)
     {
-        expected_active_ids.insert(i);
+        expected_active_ids.insert(i); // IDs 16 to 31 should be active
     }
 
     std::set<uint64_t> active_ids;
@@ -256,41 +265,53 @@ TEST(QUtilTest, CreatePollsMoreThanMax_CheckPollInfo)
 {
     ContractTestingQUtil qutil;
     id creator = generateRandomId();
-    uint64_t num_polls = 70;
+    uint64_t num_polls_per_epoch = QUTIL_MAX_NEW_POLL; // 16 polls per epoch
+    uint64_t num_epochs = 2;
     std::map<uint64_t, id> poll_id_to_name;
 
-    for (uint64_t i = 0; i < num_polls; ++i)
+    for (uint64_t epoch = 0; epoch < num_epochs; ++epoch)
     {
-        id poll_name = generateRandomId();
-        poll_id_to_name[i] = poll_name;
-        uint64_t min_amount = 1000;
-        Array<uint8, 256> github_link = stringToArray("https://github.com/qubic/proposal/test" + std::to_string(i));
-        uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
+        for (uint64_t i = 0; i < num_polls_per_epoch; ++i)
+        {
+            id poll_name = generateRandomId();
+            uint64_t poll_id = epoch * num_polls_per_epoch + i;
+            poll_id_to_name[poll_id] = poll_name;
+            uint64_t min_amount = 1000;
+            Array<uint8, 256> github_link = stringToArray("https://github.com/qubic/proposal/test" + std::to_string(poll_id));
+            uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
 
-        QUTIL::CreatePoll_input input;
-        input.poll_name = poll_name;
-        input.poll_type = poll_type;
-        input.min_amount = min_amount;
-        input.github_link = github_link;
-        input.num_assets = 0;
+            QUTIL::CreatePoll_input input;
+            input.poll_name = poll_name;
+            input.poll_type = poll_type;
+            input.min_amount = min_amount;
+            input.github_link = github_link;
+            input.num_assets = 0;
 
-        increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
-        auto output = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE);
-        EXPECT_EQ(output.poll_id, i);
+            increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+            auto output = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE);
+            EXPECT_EQ(output.poll_id, poll_id);
+        }
+        if (epoch < num_epochs - 1)
+        {
+            qutil.endEpoch();
+            qutil.beginEpoch();
+        }
     }
 
-    // Check polls 0 to 5 (should be overwritten)
-    for (uint64_t i = 0; i < 6; ++i)
+    // Check polls from the first epoch (IDs 0-15, should be deactivated)
+    for (uint64_t i = 0; i < num_polls_per_epoch; ++i)
     {
         auto poll_info = qutil.getPollInfo(i);
-        EXPECT_EQ(poll_info.found, 0);
+        EXPECT_EQ(poll_info.found, 1); // Poll exists but is inactive
+        EXPECT_EQ(poll_info.poll_info.is_active, 0);
     }
 
-    // Check polls 6 to 69
-    for (uint64_t i = 6; i < num_polls; ++i)
+    // Check polls from the second epoch (IDs 16-31, should be active)
+    for (uint64_t i = num_polls_per_epoch; i < num_polls_per_epoch * 2; ++i)
     {
         auto poll_info = qutil.getPollInfo(i);
         EXPECT_EQ(poll_info.found, 1);
+        EXPECT_EQ(poll_info.poll_info.is_active, 1);
         EXPECT_EQ(poll_info.poll_info.poll_name, poll_id_to_name[i]);
     }
 }
