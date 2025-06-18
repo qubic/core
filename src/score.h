@@ -743,10 +743,12 @@ struct ScoreFunction
 
             // Initalize with nonce and public key
             {
+                ACQUIRE(random2PoolLock);
                 random2(hash, pRandom2Pool, paddingInitValue, paddingInitValueSizeInBytes);
 
                 // Init the neuron input and expected output value
                 copyMem((unsigned char*)&miningData, pRandom2Pool, sizeof(MiningData));
+                RELEASE(random2PoolLock);
             }
 
             unsigned long long& population = currentANN.population;
@@ -840,10 +842,10 @@ struct ScoreFunction
 
     void initMiningData(m256i randomSeed)
     {
-        currentRandomSeed = randomSeed; // persist the initial random seed to be able to send it back on system info response
-
         // Below assume when a new mining seed is provided, we need to re-calculate the random2 pool
         ACQUIRE(random2PoolLock);
+        currentRandomSeed = randomSeed; // persist the initial random seed to be able to send it back on system info response
+
         // Check if random pool need to be re-generated
         initPool(randomSeed.m256i_u8);
         RELEASE(random2PoolLock);
