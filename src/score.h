@@ -24,6 +24,7 @@ constexpr unsigned long long POOL_VEC_SIZE = (((1ULL << 32) + 64)) >> 3; // 2^32
 constexpr unsigned long long POOL_VEC_PADDING_SIZE = (POOL_VEC_SIZE + 200 - 1) / 200 * 200; // padding for multiple of 200
 constexpr unsigned long long STATE_SIZE = 200;
 static const char gLUT3States[] = { 0, 1, -1 };
+volatile char gRandom2PoolLock = 0;
 
 void generateRandom2Pool(const unsigned char* miningSeed, unsigned char* state, unsigned char* pool)
 {
@@ -135,7 +136,6 @@ struct ScoreFunction
         return val;
     }
 
-    volatile char random2PoolLock;
     unsigned char state[STATE_SIZE];
     unsigned char poolVec[POOL_VEC_PADDING_SIZE];
 
@@ -743,10 +743,12 @@ struct ScoreFunction
 
             // Initalize with nonce and public key
             {
+                ACQUIRE(gRandom2PoolLock);
                 random2(hash, pRandom2Pool, paddingInitValue, paddingInitValueSizeInBytes);
 
                 // Init the neuron input and expected output value
                 copyMem((unsigned char*)&miningData, pRandom2Pool, sizeof(MiningData));
+                RELEASE(gRandom2PoolLock);
             }
 
             unsigned long long& population = currentANN.population;
@@ -840,13 +842,16 @@ struct ScoreFunction
 
     void initMiningData(m256i randomSeed)
     {
+        // Below assume when a new mining seed is provided, we need to re-calculate the random2 pool
+        ACQUIRE(gRandom2PoolLock);
         currentRandomSeed = randomSeed; // persist the initial random seed to be able to send it back on system info response
 
-        // Below assume when a new mining seed is provided, we need to re-calculate the random2 pool
-        ACQUIRE(random2PoolLock);
         // Check if random pool need to be re-generated
-        initPool(randomSeed.m256i_u8);
-        RELEASE(random2PoolLock);
+        if (!isZero(randomSeed))
+        {
+            initPool(randomSeed.m256i_u8);
+        }
+        RELEASE(gRandom2PoolLock);
     }
 
     ~ScoreFunction()
@@ -860,9 +865,12 @@ struct ScoreFunction
 
     bool initMemory()
     {
+<<<<<<< HEAD
         random2PoolLock = 0;
         currentRandomSeed = m256i::zero();
 
+=======
+>>>>>>> ae4ac14 (a)
         setMem(_computeBuffer, sizeof(_computeBuffer), 0);
 
         for (int i = 0; i < solutionBufferCount; i++)
