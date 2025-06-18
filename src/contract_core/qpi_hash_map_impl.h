@@ -107,9 +107,10 @@ namespace QPI
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	sint64 HashMap<KeyT, ValueT, L, HashFunc>::set(const KeyT& key, const ValueT& value)
 	{
-		if (_population < capacity() && _markRemovalCounter < capacity())
+		if (_population < capacity())
 		{
 			// search in hash map
+			sint64 markedForRemovalIndexForReuse = NULL_INDEX;
 			sint64 index = HashFunc::hash(key) & (L - 1);
 			for (sint64 counter = 0; counter < L; counter += 32)
 			{
@@ -119,7 +120,11 @@ namespace QPI
 					switch (flags & 3ULL)
 					{
 					case 0:
-						// empty entry -> put element and mark as occupied
+						// empty entry -> key isn't in set yet
+						// If we have already seen an entry marked for removal, reuse this slot because it is closer to the hash index
+						if (markedForRemovalIndexForReuse != NULL_INDEX)
+							goto reuse_slot;
+						// ... otherwise put element and mark as occupied
 						_occupationFlags[index >> 5] |= (1ULL << ((index & 31) << 1));
 						_elements[index].key = key;
 						_elements[index].value = value;
@@ -133,13 +138,32 @@ namespace QPI
 							return index;
 						}
 						break;
-					// TODO: fill gaps marked for removal as in HashSet
+					case 2:
+						// marked for removal -> reuse slot (first slot we see) later if we are sure that key isn't in the map
+						if (markedForRemovalIndexForReuse == NULL_INDEX)
+							markedForRemovalIndexForReuse = index;
+						break;
 					}
 					index = (index + 1) & (L - 1);
 				}
 			}
+
+			if (markedForRemovalIndexForReuse != NULL_INDEX)
+			{
+			reuse_slot:
+				// Reuse slot marked for removal: put key here and set flags from 2 to 1.
+				// But don't decrement _markRemovalCounter, because it is used to check if cleanup() is needed.
+				// Without cleanup, we don't get new unoccupied slots and at least lookup of keys that aren't contained in the map
+				// stays slow.
+				index = markedForRemovalIndexForReuse;
+				_occupationFlags[index >> 5] ^= (3ULL << ((index & 31) << 1));
+				_elements[index].key = key;
+				_elements[index].value = value;
+				_population++;
+				return index;
+			}
 		}
-		else if (_population == capacity())
+		else // _population == capacity()
 		{
 			// Check if key exists for value replacement.
 			sint64 index = getElementIndex(key);

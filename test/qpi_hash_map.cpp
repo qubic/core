@@ -310,6 +310,65 @@ TYPED_TEST_P(QPIHashMapTest, TestRemove)
 	EXPECT_FALSE(hashMap.contains(ids[2]));
 }
 
+TYPED_TEST_P(QPIHashMapTest, TestRemoveReuse)
+{
+	constexpr QPI::uint64 capacity = 4;
+	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	hashMap.reset();
+
+	typedef HashMapTestData<TypeParam::first_type, TypeParam::second_type> TestData;
+
+	const auto keyValuePairs = TestData::CreateKeyValueTestPairs();
+	auto ids = std::views::keys(keyValuePairs);
+	auto values = std::views::values(keyValuePairs);
+
+    // add and remove same item multiple times for testing simple case of reusing slot
+    for (int i = 0; i < capacity; ++i)
+    {
+        for (int j = 0; j <= i; ++j)
+        {
+            QPI::sint64 elementIndex =  hashMap.set(ids[j], values[j]);
+            EXPECT_NE(elementIndex, QPI::NULL_INDEX);
+			EXPECT_FALSE(hashMap.isEmptySlot(elementIndex));
+			EXPECT_EQ(hashMap.key(elementIndex), ids[j]);
+			EXPECT_EQ(hashMap.value(elementIndex), values[j]);
+			EXPECT_EQ(hashMap.population(), 1);
+
+			hashMap.removeByIndex(elementIndex);
+			EXPECT_TRUE(hashMap.isEmptySlot(elementIndex));
+			EXPECT_EQ(hashMap.population(), 0);
+        }
+    }
+
+	// fill to full capacity
+	for (int i = capacity - 1; i >= 0; --i)
+	{
+		QPI::sint64 elementIndex = hashMap.set(ids[i], values[i]);
+		EXPECT_NE(elementIndex, QPI::NULL_INDEX);
+		EXPECT_FALSE(hashMap.isEmptySlot(elementIndex));
+		EXPECT_EQ(hashMap.key(elementIndex), ids[i]);
+		EXPECT_EQ(hashMap.value(elementIndex), values[i]);
+		EXPECT_EQ(hashMap.population(), capacity - i);
+	}
+
+	// adding another item fails
+	EXPECT_EQ(hashMap.set(TestData::GetKeyNotInTestPairs(), TestData::GetValueNotInTestPairs()), QPI::NULL_INDEX);
+
+	// mark all items for removal
+	for (int i = 0; i < capacity; ++i)
+	{
+		EXPECT_NE(hashMap.removeByKey(ids[i]), QPI::NULL_INDEX);
+	}
+	EXPECT_EQ(hashMap.population(), 0);
+
+	// lookup of non-existing key will now need to iterate through the whole hash map until next cleanup
+	EXPECT_FALSE(hashMap.contains(ids[0]));
+
+	// for adding an item, set() also needs to go through the whole hash map until next cleanup
+	EXPECT_NE(hashMap.set(ids[0], values[0]), QPI::NULL_INDEX);
+	EXPECT_EQ(hashMap.population(), 1);
+}
+
 TYPED_TEST_P(QPIHashMapTest, TestCleanup)
 {
 	constexpr QPI::uint64 capacity = 4;
@@ -327,12 +386,17 @@ TYPED_TEST_P(QPIHashMapTest, TestCleanup)
 		hashMap.set(ids[i], values[i]);
 	}
 
-	// This will mark for removal but slot will not become available.
+	// This will mark for removal
 	hashMap.removeByKey(ids[3]);
 	EXPECT_EQ(hashMap.population(), 3);
-	// So the next set will fail because no slot is available.
-	returnedIndex = hashMap.set(ids[3], values[3]);
-	EXPECT_EQ(returnedIndex, QPI::NULL_INDEX);
+
+	// Slots marked for removal will be reused, but performance may suffer with increasing number of removes without
+	// calling cleanup
+	EXPECT_NE(hashMap.set(ids[3], values[3]), QPI::NULL_INDEX);
+	EXPECT_EQ(hashMap.population(), 4);
+
+	// Remove again
+	hashMap.removeByKey(ids[3]);
 	EXPECT_EQ(hashMap.population(), 3);
 
 	// Cleanup will properly remove the element marked for removal.
@@ -344,7 +408,7 @@ TYPED_TEST_P(QPIHashMapTest, TestCleanup)
 	EXPECT_NE(hashMap.getElementIndex(ids[2]), QPI::NULL_INDEX);
 	EXPECT_EQ(hashMap.getElementIndex(ids[3]), QPI::NULL_INDEX);
 
-	// So the next set should work again.
+	// Regular set() without reusing slot of element marked for removal (after cleanup, faster on average)
 	returnedIndex = hashMap.set(ids[3], values[3]);
 	EXPECT_NE(returnedIndex, QPI::NULL_INDEX);
 	EXPECT_EQ(hashMap.population(), 4);
@@ -465,6 +529,7 @@ REGISTER_TYPED_TEST_CASE_P(QPIHashMapTest,
 	TestGetters,
 	TestSet,
 	TestRemove,
+	TestRemoveReuse,
 	TestCleanup,
 	TestCleanupPerformanceShortcuts,
 	TestReplace,
