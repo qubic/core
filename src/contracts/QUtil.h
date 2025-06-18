@@ -338,7 +338,7 @@ public:
 
     struct GetCurrentPollId_output
     {
-        uint64 current_poll_id;
+        uint64 current_poll_id; // All current and past poll IDs must be below this number
         Array<uint64, QUTIL_MAX_POLL> active_poll_ids;
         uint64 active_count;
     };
