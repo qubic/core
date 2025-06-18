@@ -44,13 +44,13 @@ elseif(IS_MSVC)
 endif()
 
 # Link with platform libraries
-if(BUILD_TESTS)
-  # When building for tests, link only with platform_common and platform_os
-  target_link_libraries(Qubic
-    platform_common
-    platform_os
-  )
-else()
+# if(BUILD_TESTS)
+#   # When building for tests, link only with platform_common and platform_os
+#   target_link_libraries(Qubic
+#     platform_common
+#     platform_os
+#   )
+# else()
   # Apply EFI-specific compiler flags from the centralized detection module
   apply_efi_compiler_flags(Qubic)
   # When building the application, link with platform_common and platform_efi
@@ -58,7 +58,7 @@ else()
     platform_common
     platform_efi
   )
-endif()
+# endif()
 
 # Configure linker settings based on compiler
 if(IS_MSVC)
