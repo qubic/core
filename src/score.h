@@ -743,12 +743,12 @@ struct ScoreFunction
 
             // Initalize with nonce and public key
             {
-                ACQUIRE(random2PoolLock);
+                //ACQUIRE(random2PoolLock);
                 random2(hash, pRandom2Pool, paddingInitValue, paddingInitValueSizeInBytes);
 
                 // Init the neuron input and expected output value
                 copyMem((unsigned char*)&miningData, pRandom2Pool, sizeof(MiningData));
-                RELEASE(random2PoolLock);
+                //RELEASE(random2PoolLock);
             }
 
             unsigned long long& population = currentANN.population;
