@@ -56,8 +56,6 @@ At this point, a node in `MAIN` mode will start ticking automatically **once the
 
 ## Updating Your Node
 
-Operators are now free to deploy updates at their convenience. However:
-
 You can update your node **at any time**: during an epoch, right before or right after an epoch transition. However, to ensure your node continues ticking correctly, there are two important things to consider:
 
 ### 1. Sync Before the Epoch Transition (if updating shortly before)
