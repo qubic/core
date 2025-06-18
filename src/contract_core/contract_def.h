@@ -362,6 +362,7 @@ contractSystemProcedureLocalsSizes[contractIndex][POST_INCOMING_TRANSFER] = cont
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
+static_assert(sizeof(contractName) <= MAX_CONTRACT_STATE_SIZE, "Size of contract state " #contractName " is too large!"); \
 }
 
 
