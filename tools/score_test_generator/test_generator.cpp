@@ -1,6 +1,9 @@
 #define NO_UEFI
 
 #include <iostream>
+#include <assert.h>
+
+
 
 #include "../../src/public_settings.h"
 #include "../../src/platform/m256.h"
@@ -17,6 +20,8 @@
 using namespace score_params;
 using namespace test_utils;
 
+EFI_TIME utcTime;
+
 constexpr unsigned int kDefaultTotalSamples = 32;
 std::vector<m256i> miningSeeds;
 std::vector<m256i> publicKeys;
@@ -28,7 +33,15 @@ std::vector<std::vector<unsigned long long>> scoreProcessingTimes;
 template <unsigned long long i>
 static void processElement(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int threadId, bool writeFile)
 {
-    ScoreReferenceImplementation<kDataLength, kSettings[i][NR_NEURONS], kSettings[i][NR_NEIGHBOR_NEURONS], kSettings[i][DURATIONS], kSettings[i][NR_OPTIMIZATION_STEPS], 1> score;
+    score_reference::ScoreReferenceImplementation< 
+        kSettings[i][score_params::NUMBER_OF_INPUT_NEURONS],
+        kSettings[i][score_params::NUMBER_OF_OUTPUT_NEURONS],
+        kSettings[i][score_params::NUMBER_OF_TICKS],
+        kSettings[i][score_params::NUMBER_OF_NEIGHBORS],
+        kSettings[i][score_params::POPULATION_THRESHOLD],
+        kSettings[i][score_params::NUMBER_OF_MUTATIONS],
+        kSettings[i][score_params::SOLUTION_THRESHOLD], 
+        1> score;
     score.initMemory();
     score.initMiningData(miningSeed);
 
@@ -49,7 +62,13 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
         std::ofstream output_file(fileName, std::ios::app);
         if (output_file.is_open())
         {
-            output_file << kSettings[i][NR_NEURONS] << "-" << kSettings[i][NR_NEIGHBOR_NEURONS] << "-" << kSettings[i][DURATIONS] << ", " << score_value << std::endl;
+            output_file << kSettings[i][score_params::NUMBER_OF_INPUT_NEURONS] 
+                << "-" << kSettings[i][score_params::NUMBER_OF_OUTPUT_NEURONS]
+                << "-" << kSettings[i][score_params::NUMBER_OF_TICKS]
+                << "-" << kSettings[i][score_params::NUMBER_OF_NEIGHBORS]
+                << "-" << kSettings[i][score_params::POPULATION_THRESHOLD]
+                << "-" << kSettings[i][score_params::NUMBER_OF_MUTATIONS]
+                << ", " << score_value << std::endl;
             output_file.close();
         }
     }
@@ -275,10 +294,13 @@ void generateScore(
             processingTime += scoreProcessingTimes[i][j];
         }
         processingTime = processingTime / totalSamples;
-        std::cout << "Setting " << j << ", NEURON " << kSettings[j][NR_NEURONS]
-            << ", NEIGHBOR " << kSettings[j][NR_NEIGHBOR_NEURONS]
-            << ", DURATION " << kSettings[j][DURATIONS]
-            << ", OPT_STEPS " << kSettings[j][NR_OPTIMIZATION_STEPS]
+        std::cout << "Setting " << j 
+            << "NUMBER_OF_INPUT_NEURONS " << kSettings[j][score_params::NUMBER_OF_INPUT_NEURONS] << ", "
+            << "NUMBER_OF_OUTPUT_NEURONS " << kSettings[j][score_params::NUMBER_OF_OUTPUT_NEURONS] << ", "
+            << "NUMBER_OF_NEIGHBORS " << kSettings[j][score_params::NUMBER_OF_NEIGHBORS] << ", "
+            << "NUMBER_OF_TICKS " << kSettings[j][score_params::NUMBER_OF_TICKS] << ", "
+            << "POPULATION_THRESHOLD " << kSettings[j][score_params::POPULATION_THRESHOLD] << ", "
+            << "NUMBER_OF_MUTATIONS " << kSettings[j][score_params::NUMBER_OF_MUTATIONS] << ", "
             << ": time " << processingTime << " ms"
             << std::endl;
     }

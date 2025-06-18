@@ -75,13 +75,14 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_revenue.eoe";
 static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache???.???";
 
-#define DATA_LENGTH 256
-#define NUMBER_OF_HIDDEN_NEURONS 3000
-#define NUMBER_OF_NEIGHBOR_NEURONS 3000
-#define MAX_DURATION 9000000
-#define NUMBER_OF_OPTIMIZATION_STEPS 60
-#define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 137
+static constexpr unsigned long long NUMBER_OF_INPUT_NEURONS = 256;     // K
+static constexpr unsigned long long NUMBER_OF_OUTPUT_NEURONS = 256;    // L
+static constexpr unsigned long long NUMBER_OF_TICKS = 120;               // N
+static constexpr unsigned long long NUMBER_OF_NEIGHBORS = 256;    // 2M. Must divided by 2
+static constexpr unsigned long long NUMBER_OF_MUTATIONS = 100;
+static constexpr unsigned long long POPULATION_THRESHOLD = NUMBER_OF_INPUT_NEURONS + NUMBER_OF_OUTPUT_NEURONS + NUMBER_OF_MUTATIONS; // P
+static constexpr long long NEURON_VALUE_LIMIT = 1LL;
+static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 171;
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
