@@ -157,8 +157,7 @@ namespace QPI
 				id possessor;
 				sint64 shares;
 			};
-			Shareholder* shareholders = reinterpret_cast<Shareholder*>(__scratchpad());
-			setMem(shareholders, sizeof(Shareholder) * maxVoters, 0);
+			Shareholder* shareholders = reinterpret_cast<Shareholder*>(__scratchpad(sizeof(Shareholder) * maxVoters));
 			int lastShareholderIdx = -1;
 
 			// gather shareholder info in sorted array

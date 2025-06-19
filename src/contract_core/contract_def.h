@@ -42,7 +42,11 @@ template <typename T> static void __logContractDebugMessage(unsigned int, T&);
 template <typename T> static void __logContractErrorMessage(unsigned int, T&);
 template <typename T> static void __logContractInfoMessage(unsigned int, T&);
 template <typename T> static void __logContractWarningMessage(unsigned int, T&);
-static void* __scratchpad();    // TODO: concurrency support (n buffers for n allowed concurrent contract executions)
+
+// Get buffer for temporary use. Can only be used in contract procedures / tick processor / contract processor!
+// Always returns the samey one buffer, no concurrent access!
+static void* __scratchpad(unsigned long long sizeToMemsetZero = 0);
+
 // static void* __tryAcquireScratchpad(unsigned int size);  // Thread-safe, may return nullptr if no appropriate buffer is available
 // static void __ReleaseScratchpad(void*);
 
