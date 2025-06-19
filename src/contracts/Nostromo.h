@@ -20,9 +20,9 @@ constexpr uint32 NOSTROMO_TIER_XENOMORPH_UNSTAKE_FEE = 2;
 constexpr uint32 NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE = 1;
 constexpr uint32 NOSTROMO_CREATE_PROJECT_FEE = 100000000;
 
-constexpr uint32 NOSTROMO_MAX_USER = 524288;
-constexpr uint32 NOSTROMO_MAX_NUMBER_PROJECT = 524288;
-constexpr uint32 NOSTROMO_MAX_NUMBER_TOKEN = 524288;
+constexpr uint32 NOSTROMO_MAX_USER = 262144;
+constexpr uint32 NOSTROMO_MAX_NUMBER_PROJECT = 262144;
+constexpr uint32 NOSTROMO_MAX_NUMBER_TOKEN = 262144;
 constexpr uint32 NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST = 64;
 
 struct NOST2
@@ -238,13 +238,7 @@ public:
 	};
 
 protected:
-
-	struct userInfo
-	{
-		id userId;
-		uint8 tierLevel;
-	};
-	Array<userInfo, NOSTROMO_MAX_USER> Users;
+	HashMap<id, uint8, NOSTROMO_MAX_USER> Users;
 	HashMap<id, Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST>, NOSTROMO_MAX_USER> voteStatus;
 	HashMap<id, uint32, NOSTROMO_MAX_USER> numberOfVotedProject;
 	HashSet<uint64, NOSTROMO_MAX_NUMBER_TOKEN> tokens;
@@ -322,24 +316,20 @@ protected:
 
 	struct registerInTier_locals
 	{
-		userInfo newUser;
-		uint32 i;
+		uint64 tierStakedAmount;
+		uint32 poolWeight;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(registerInTier)
 	{
-		for ( locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
+		if (state.Users.contains(qpi.invocator()))
 		{
-			if (state.Users.get(locals.i).userId == qpi.invocator())
+			if (qpi.invocationReward() > 0)
 			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
+			return ;
 		}
-
 		if (input.tierLevel < 1 || input.tierLevel > 5)
 		{
 			if (qpi.invocationReward() > 0)
@@ -352,142 +342,63 @@ protected:
 		switch (input.tierLevel)
 		{
 		case 1:
-			if (qpi.invocationReward() < NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
-			}
-			else 
-			{
-				locals.newUser.userId = qpi.invocator();
-				locals.newUser.tierLevel = input.tierLevel;
-				state.Users.set(state.numberOfRegister++, locals.newUser);
-				if (qpi.invocationReward() > NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT);
-				}
-				state.totalPoolWeight += NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT;
-				output.tierLevel = input.tierLevel;
-			}
+			locals.tierStakedAmount = NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
+			locals.poolWeight = NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT;
 			break;
 		case 2:
-			if (qpi.invocationReward() < NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
-			}
-			else 
-			{
-				locals.newUser.userId = qpi.invocator();
-				locals.newUser.tierLevel = input.tierLevel;
-				state.Users.set(state.numberOfRegister++, locals.newUser);
-				if (qpi.invocationReward() > NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT);
-				}
-				state.totalPoolWeight += NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
-				output.tierLevel = input.tierLevel;
-			}
+			locals.tierStakedAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
+			locals.poolWeight = NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
 			break;
 		case 3:
-			if (qpi.invocationReward() < NOSTROMO_TIER_DOG_STAKE_AMOUNT)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
-			}
-			else 
-			{
-				locals.newUser.userId = qpi.invocator();
-				locals.newUser.tierLevel = input.tierLevel;
-				state.Users.set(state.numberOfRegister++, locals.newUser);
-				if (qpi.invocationReward() > NOSTROMO_TIER_DOG_STAKE_AMOUNT)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() - NOSTROMO_TIER_DOG_STAKE_AMOUNT);
-				}
-				state.totalPoolWeight += NOSTROMO_TIER_DOG_POOL_WEIGHT;
-				output.tierLevel = input.tierLevel;
-			}
+			locals.tierStakedAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT;
+			locals.poolWeight = NOSTROMO_TIER_DOG_POOL_WEIGHT;
 			break;
 		case 4:
-			if (qpi.invocationReward() < NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
-			}
-			else 
-			{
-				locals.newUser.userId = qpi.invocator();
-				locals.newUser.tierLevel = input.tierLevel;
-				state.Users.set(state.numberOfRegister++, locals.newUser);
-				if (qpi.invocationReward() > NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT);
-				}
-				state.totalPoolWeight += NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
-				output.tierLevel = input.tierLevel;
-			}
+			locals.tierStakedAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
+			locals.poolWeight = NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
 			break;
 		case 5:
-			if (qpi.invocationReward() < NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
-			}
-			else 
-			{
-				locals.newUser.userId = qpi.invocator();
-				locals.newUser.tierLevel = input.tierLevel;
-				state.Users.set(state.numberOfRegister++, locals.newUser);
-				if (qpi.invocationReward() > NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() - NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT);
-				}
-				state.totalPoolWeight += NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
-				output.tierLevel = input.tierLevel;
-			}
+			locals.tierStakedAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT;
+			locals.poolWeight = NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
 			break;
 		default:
 			break;
+		}
+		if (qpi.invocationReward() < (sint64)locals.tierStakedAmount)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+		else 
+		{
+			state.Users.set(qpi.invocator(), input.tierLevel);
+			state.numberOfRegister++;
+			if (qpi.invocationReward() > (sint64)locals.tierStakedAmount)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.tierStakedAmount);
+			}
+			state.totalPoolWeight += locals.poolWeight;
+			output.tierLevel = input.tierLevel;
 		}
 	}
 
 	struct logoutFromTier_locals
 	{
 		uint64 earnedAmount;
-		uint32 elementIndex, i;
+		uint32 elementIndex;
 		uint8 tierLevel;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(logoutFromTier)
 	{
-		for ( locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
-		{
-			if (state.Users.get(locals.i).userId == qpi.invocator())
-			{
-				break;
-			}
-		}
-		if (locals.i == state.numberOfRegister)
+		if (state.Users.contains(qpi.invocator()) == 0)
 		{
 			return ;
 		}
-		
-		locals.tierLevel = state.Users.get(locals.i).tierLevel;
+		state.Users.get(qpi.invocator(), locals.tierLevel);
 		switch (locals.tierLevel)
 		{
 		case 1:
@@ -524,14 +435,15 @@ protected:
 			break;
 		}
 
-		state.Users.set(locals.i, state.Users.get(--state.numberOfRegister));
+		state.Users.removeByKey(qpi.invocator());
+		state.numberOfRegister -= 1;
 		output.result = 1;
 	}
 
 	struct createProject_locals
 	{
 		projectInfo newProject;
-		uint32 elementIndex, startDate, endDate, curDate, i;
+		uint32 elementIndex, startDate, endDate, curDate;
 		uint8 tierLevel;
 	};
 
@@ -561,16 +473,8 @@ protected:
 			return ;
 		}
 
-		for ( locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
-		{
-			if (state.Users.get(locals.i).userId == qpi.invocator())
-			{
-				locals.tierLevel = state.Users.get(locals.i).tierLevel;
-				break;
-			}
-		}
-
-		if (locals.i != state.numberOfRegister && (locals.tierLevel == 4 || locals.tierLevel == 5))
+		state.Users.get(qpi.invocator(), locals.tierLevel);
+		if (state.Users.contains(qpi.invocator()) && (locals.tierLevel == 4 || locals.tierLevel == 5))
 		{
 			if (qpi.invocationReward() < NOSTROMO_CREATE_PROJECT_FEE)
 			{
@@ -623,14 +527,7 @@ protected:
 		{
 			return ;
 		}
-		for ( locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
-		{
-			if (state.Users.get(locals.i).userId == qpi.invocator())
-			{
-				break;
-			}
-		}
-		if (locals.i == state.numberOfRegister)
+		if (state.Users.contains(qpi.invocator()) == 0)
 		{
 			return ;
 		}
@@ -831,14 +728,7 @@ protected:
 
 		if (locals.curDate >= state.fundaraisings.get(input.indexOfFundaraising).firstPhaseStartDate && locals.curDate < state.fundaraisings.get(input.indexOfFundaraising).firstPhaseEndDate)
 		{
-			for ( locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
-			{
-				if (state.Users.get(locals.i).userId == qpi.invocator())
-				{
-					break;
-				}
-			}
-			if (locals.i == state.numberOfRegister)
+			if (state.Users.contains(qpi.invocator()) == 0)
 			{
 				if (qpi.invocationReward() > 0)
 				{	
@@ -847,7 +737,7 @@ protected:
 				return ;
 			}
 			
-			locals.tierLevel = state.Users.get(locals.i).tierLevel;
+			state.Users.get(qpi.invocator(), locals.tierLevel);
 			switch (locals.tierLevel)
 			{
 			case 1:
@@ -930,14 +820,7 @@ protected:
 		}
 		else if (locals.curDate >= state.fundaraisings.get(input.indexOfFundaraising).secondPhaseStartDate && locals.curDate < state.fundaraisings.get(input.indexOfFundaraising).secondPhaseEndDate)
 		{
-			for ( locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
-			{
-				if (state.Users.get(locals.i).userId == qpi.invocator())
-				{
-					break;
-				}
-			}
-			if (locals.i == state.numberOfRegister)
+			if (state.Users.contains(qpi.invocator()) == 0)
 			{
 				if (qpi.invocationReward() > 0)
 				{	
@@ -946,7 +829,7 @@ protected:
 				return ;
 			}
 			
-			locals.tierLevel = state.Users.get(locals.i).tierLevel;
+			state.Users.get(qpi.invocator(), locals.tierLevel);
 			if (locals.tierLevel < 4)
 			{
 				if (qpi.invocationReward() > 0)
@@ -1223,23 +1106,14 @@ protected:
 
 	struct upgradeTier_locals
 	{
-		userInfo user;
-		uint32 i;
+		uint64 deltaAmount;
+		uint32 i, deltaPoolWeight;
 		uint8 currentTierLevel;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(upgradeTier)
 	{
-		for ( locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
-		{
-			if (state.Users.get(locals.i).userId == qpi.invocator())
-			{
-				locals.currentTierLevel = state.Users.get(locals.i).tierLevel;
-				break;
-			}
-		}
-
-		if (locals.i == state.numberOfRegister)
+		if (state.Users.contains(qpi.invocator()) == 0)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -1247,95 +1121,46 @@ protected:
 			}
 			return ;
 		}
-		
+
+		state.Users.get(qpi.invocator(), locals.currentTierLevel);
+
 		switch (locals.currentTierLevel)
 		{
 			case 1:
-				if (input.newTierLevel != 2 || qpi.invocationReward() < NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT)
-				{
-					if (qpi.invocationReward() > 0)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-				else 
-				{
-					locals.user.userId = qpi.invocator();
-					locals.user.tierLevel = input.newTierLevel;
-					state.Users.set(locals.i, locals.user);
-					if (qpi.invocationReward() > NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward() - (NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT));
-					}
-					state.totalPoolWeight += NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT - NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT;
-				}
+				locals.deltaAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
+				locals.deltaPoolWeight = NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT - NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT;
 				break;
 			case 2:
-				if (input.newTierLevel != 3 || qpi.invocationReward() < NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT)
-				{
-					if (qpi.invocationReward() > 0)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-				else 
-				{
-					locals.user.userId = qpi.invocator();
-					locals.user.tierLevel = input.newTierLevel;
-					state.Users.set(locals.i, locals.user);
-					if (qpi.invocationReward() > NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward() - (NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT));
-					}
-					state.totalPoolWeight += NOSTROMO_TIER_DOG_POOL_WEIGHT - NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
-				}
+				locals.deltaAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
+				locals.deltaPoolWeight = NOSTROMO_TIER_DOG_POOL_WEIGHT - NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
 				break;
 			case 3:
-				if (input.newTierLevel != 4 || qpi.invocationReward() < NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT)
-				{
-					if (qpi.invocationReward() > 0)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-				else 
-				{
-					locals.user.userId = qpi.invocator();
-					locals.user.tierLevel = input.newTierLevel;
-					state.Users.set(locals.i, locals.user);
-					if (qpi.invocationReward() > NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward() - (NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT));
-					}
-					state.totalPoolWeight += NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT - NOSTROMO_TIER_DOG_POOL_WEIGHT;
-				}
+				locals.deltaAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT;
+				locals.deltaPoolWeight = NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT - NOSTROMO_TIER_DOG_POOL_WEIGHT;
 				break;
 			case 4:
-				if (input.newTierLevel != 5 || qpi.invocationReward() < NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT)
-				{
-					if (qpi.invocationReward() > 0)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-				else 
-				{
-					locals.user.userId = qpi.invocator();
-					locals.user.tierLevel = input.newTierLevel;
-					state.Users.set(locals.i, locals.user);
-					if (qpi.invocationReward() > NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward() - (NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT));
-					}
-					state.totalPoolWeight += NOSTROMO_TIER_WARRIOR_POOL_WEIGHT - NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
-				}
+				locals.deltaAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
+				locals.deltaPoolWeight = NOSTROMO_TIER_WARRIOR_POOL_WEIGHT - NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
 				break;
 			default:
 				break;
+		}
+		if (input.newTierLevel != locals.currentTierLevel + 1 || qpi.invocationReward() < (sint64)locals.deltaAmount)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+		else 
+		{
+			state.Users.set(qpi.invocator(), input.newTierLevel);
+			if (qpi.invocationReward() > (sint64)locals.deltaAmount)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.deltaAmount);
+			}
+			state.totalPoolWeight += locals.deltaPoolWeight;
 		}
 	}
 
@@ -1389,21 +1214,9 @@ protected:
 		output.totalPoolWeight = state.totalPoolWeight;
 	}
 
-	struct getTierLevelByUser_locals
+	PUBLIC_FUNCTION(getTierLevelByUser)
 	{
-		uint32 i;
-	};
-
-	PUBLIC_FUNCTION_WITH_LOCALS(getTierLevelByUser)
-	{
-		for (locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
-		{
-			if (input.userId == state.Users.get(locals.i).userId)
-			{
-				output.tierLevel = state.Users.get(locals.i).tierLevel;
-				return ;
-			}
-		}
+		state.Users.get(input.userId, output.tierLevel);
 	}
 
 	PUBLIC_FUNCTION(getUserVoteStatus)
@@ -1510,11 +1323,11 @@ public:
 	struct END_EPOCH_locals
 	{
 		fundaraisingInfo tmpFundaraising;
-		userInfo user;
 		investInfo tmpInvest;
 		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> votedList;
 		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> clearedVotedList;
-		uint32 numberOfVotedProject, clearedNumberOfVotedProject, i, j, curDate, indexOfProject, numberOfInvestors, numberOfInvestedProjects;
+		id userId;
+		uint32 numberOfVotedProject, clearedNumberOfVotedProject, i, j, curDate, indexOfProject, numberOfInvestors, numberOfInvestedProjects, idx, tierLevel;
 	};
 
 	END_EPOCH_WITH_LOCALS()
@@ -1560,11 +1373,14 @@ public:
 		qpi.distributeDividends(div(state.epochRevenue, 676ULL));
 		state.epochRevenue -= div(state.epochRevenue, 676ULL) * 676;
 		
-		for (locals.i = 0; locals.i < state.numberOfRegister; locals.i++)
+		locals.idx = (uint32)state.Users.nextElementIndex(NULL_INDEX);
+		while (locals.idx != NULL_INDEX)
 		{
-			locals.user = state.Users.get(locals.i);
-			state.numberOfVotedProject.get(locals.user.userId, locals.numberOfVotedProject);
-			state.voteStatus.get(locals.user.userId, locals.votedList);
+			locals.userId = state.Users.key(locals.idx);
+			locals.tierLevel = state.Users.value(locals.idx);
+
+			state.numberOfVotedProject.get(locals.userId, locals.numberOfVotedProject);
+			state.voteStatus.get(locals.userId, locals.votedList);
 
 			for (locals.j = 0; locals.j < locals.numberOfVotedProject; locals.j++)
 			{
@@ -1576,9 +1392,13 @@ public:
 				}
 			}
 
-			state.numberOfVotedProject.set(locals.user.userId, locals.clearedNumberOfVotedProject);
-			state.voteStatus.set(locals.user.userId, locals.clearedVotedList);
+			state.numberOfVotedProject.set(locals.userId, locals.clearedNumberOfVotedProject);
+			state.voteStatus.set(locals.userId, locals.clearedVotedList);
+
+			locals.idx = (uint32)state.Users.nextElementIndex(locals.idx);
 		}
+
+		state.Users.cleanupIfNeeded();
 	}
 
 	PRE_ACQUIRE_SHARES()

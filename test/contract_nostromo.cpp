@@ -39,8 +39,10 @@ class NostromoChecker : public NOST
 public:
     void registerChecker(id registerId, uint32 tierLevel, uint32 indexOfRegister)
     {
-        EXPECT_EQ(registerId, Users.get(indexOfRegister).userId);
-        EXPECT_EQ(tierLevel, Users.get(indexOfRegister).tierLevel);
+        EXPECT_EQ(Users.contains(registerId), 1);
+        uint8 stateTierLevel;
+        Users.get(registerId, stateTierLevel);
+        EXPECT_EQ(tierLevel, stateTierLevel);
     }
     void countOfRegisterChecker(uint32 totalUser)
     {
@@ -48,15 +50,7 @@ public:
     }
     void logoutFromTierChecker(id registerId)
     {
-        uint32 i;
-        for (i = 0; i < numberOfRegister; i++)
-        {
-            if (registerId == Users.get(i).userId)
-            {
-                break;
-            }
-        }
-        EXPECT_EQ(i, numberOfRegister);
+        EXPECT_EQ(Users.contains(registerId), 0);
     }
     void numberOfCreatedProjectChecker(uint32 numberOfProjects)
     {
@@ -193,14 +187,13 @@ public:
         EXPECT_EQ(stepOfVesting, fundaraisings.get(indexOfFundaraising).stepOfVesting);
         
     }
-    uint32 getTierLevel(id registerId)
+    uint8 getTierLevel(id registerId)
     {
-        for (uint32 i = 0; i < numberOfRegister; i++)
+        if (Users.contains(registerId))
         {
-            if (Users.get(i).userId == registerId)
-            {
-                return Users.get(i).tierLevel;
-            }
+            uint8 tierLevel;
+            Users.get(registerId, tierLevel);
+            return tierLevel;
         }
         return 0;
     }
@@ -976,7 +969,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         }
         ct++;
         increaseEnergy(user, 180000000000);
-        uint32 tierLevel = nostromoTestCaseC.getState()->getTierLevel(user);
+        uint8 tierLevel = nostromoTestCaseC.getState()->getTierLevel(user);
 
         if (ct = 4000)
         {
