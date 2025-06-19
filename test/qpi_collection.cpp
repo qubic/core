@@ -3,8 +3,10 @@
 #include "gtest/gtest.h"
 
 static void* __scratchpadBuffer = nullptr;
-static void* __scratchpad()
+static void* __scratchpad(unsigned long long sizeToMemsetZero = 0)
 {
+    if (sizeToMemsetZero)
+        memset(__scratchpadBuffer, 0, sizeToMemsetZero);
     return __scratchpadBuffer;
 }
 namespace QPI

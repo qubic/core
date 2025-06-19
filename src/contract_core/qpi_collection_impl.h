@@ -615,11 +615,10 @@ namespace QPI
 		}
 
 		// Init buffers
-		auto* _povsBuffer = reinterpret_cast<PoV*>(::__scratchpad());
+		auto* _povsBuffer = reinterpret_cast<PoV*>(::__scratchpad(sizeof(_povs) + sizeof(_povOccupationFlags)));
 		auto* _povOccupationFlagsBuffer = reinterpret_cast<uint64*>(_povsBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(
 			_povOccupationFlagsBuffer + sizeof(_povOccupationFlags) / sizeof(_povOccupationFlags[0]));
-		setMem(::__scratchpad(), sizeof(_povs) + sizeof(_povOccupationFlags), 0);
 		uint64 newPopulation = 0;
 
 		// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new Collection's pov buffers and
