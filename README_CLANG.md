@@ -51,6 +51,10 @@ For a example compilation execute the following commands:
     * **Values:** `ON`, `OFF`
     * **Meaning:** `ON` builds the EFI file, `OFF` skips building EFI file. Currently this build is not working.
 
+* **`-D BUILD_BENCHMARK=<ON|OFF>`**
+    * **Values:** `ON`, `OFF`
+    * **Meaning:** `ON` builds a EFI file that allows to run a benchmark directly in the uefi. `OFF` skips building this EFI Benchmark.
+
 * **`-D CMAKE_BUILD_TYPE=<Type>`**
     * **Values:** `Debug`, `Release`, `RelWithDebInfo`, `MinSizeRel`
     * **Meaning:** Sets the build mode for optimization and debug info (e.g., `Debug` for debugging, `Release` for performance).
