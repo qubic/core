@@ -357,6 +357,7 @@ namespace QPI
 		switch (cls)
 		{
 		case ProposalTypes::Class::GeneralOptions:
+		case ProposalTypes::Class::MultiVariables:
 			valid = (options >= 2 && options <= 8);
 			break;
 		case ProposalTypes::Class::Transfer:

@@ -630,6 +630,34 @@ void testProposalWithAllVoteData()
         testProposalWithAllVoteDataOptionVotes(pwav, proposal, 26);
     else
         EXPECT_FALSE(pwav.set(proposal));
+
+    // MultiVariablesYesNo proposal
+    proposal.type = QPI::ProposalTypes::MultiVariablesYesNo;
+    proposal.multiVariablesOptions.dataRefIdx = 0;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
+
+    // MultiVariablesThreeOptions proposal
+    proposal.type = QPI::ProposalTypes::MultiVariablesThreeOptions;
+    proposal.multiVariablesOptions.dataRefIdx = 123;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 3);
+
+    // MultiVariablesFourOptions proposal
+    proposal.type = QPI::ProposalTypes::MultiVariablesFourOptions;
+    proposal.multiVariablesOptions.dataRefIdx = 123456;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 4);
+
+    // MultiVariables proposal with 8 options
+    proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::MultiVariables, 8);
+    proposal.multiVariablesOptions.dataRefIdx = 123456789;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 8);
+
+    // fail: test MultiVariables proposal with too many or too few options
+    proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::MultiVariables, 1);
+    EXPECT_FALSE(QPI::ProposalTypes::isValid(proposal.type));
+    EXPECT_FALSE(proposal.checkValidity());
+    proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::MultiVariables, 9);
+    EXPECT_FALSE(QPI::ProposalTypes::isValid(proposal.type));
+    EXPECT_FALSE(proposal.checkValidity());
 }
 
 TEST(TestCoreQPI, ProposalWithAllVoteDataWithScalarVoteSupport)
@@ -644,6 +672,8 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataWithoutScalarVoteSupport)
 
 TEST(TestCoreQPI, ProposalWithAllVoteDataYesNoProposals)
 {
+    // Using ProposalDataYesNo saves storage space by only supporting yes/no choices
+    // (or up to 3 options for proposal classes that don't store option values)
     ContractExecInitDeinitGuard initDeinitGuard;
     typedef QPI::ProposalDataYesNo ProposalT;
     QPI::ProposalWithAllVoteData<ProposalT, 42> pwav;
@@ -653,7 +683,7 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataYesNoProposals)
     proposal.type = QPI::ProposalTypes::YesNo;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
 
-    // ThreeOption proposal (accepted for general proposal only, because it does not cost anything)
+    // ThreeOption proposal (accepted for general proposal, because it does not cost anything)
     proposal.type = QPI::ProposalTypes::ThreeOptions;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 3);
 
@@ -703,6 +733,20 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataYesNoProposals)
 
     // VariableScalarMean proposal
     proposal.type = QPI::ProposalTypes::VariableScalarMean;
+    EXPECT_FALSE(proposal.checkValidity());
+
+    // MultiVariablesYesNo proposal
+    proposal.type = QPI::ProposalTypes::MultiVariablesYesNo;
+    proposal.multiVariablesOptions.dataRefIdx = 0;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
+
+    // MultiVariablesThreeOptions proposal (accepted for multiple variables proposal, because it does not cost anything)
+    proposal.type = QPI::ProposalTypes::MultiVariablesThreeOptions;
+    proposal.multiVariablesOptions.dataRefIdx = 1;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 3);
+
+    // MultiVariablesFourOptions proposal
+    proposal.type = QPI::ProposalTypes::MultiVariablesFourOptions;
     EXPECT_FALSE(proposal.checkValidity());
 }
 
