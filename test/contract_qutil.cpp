@@ -491,6 +491,234 @@ TEST(QUtilTest, CreatePolls_Vote_PassEpoch_CreateNewPolls_Vote_CheckResults) {
     }
 }
 
+TEST(QUtilTest, VoterListUpdateAndCompaction) {
+    ContractTestingQUtil qutil;
+
+    id creator = generateRandomId();
+    uint64_t min_amount = 1000;
+    id poll_name = generateRandomId();
+    Array<uint8, 256> github_link = stringToArray("https://github.com/qubic/proposal/test");
+    uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
+
+    QUTIL::CreatePoll_input create_input;
+    create_input.poll_name = poll_name;
+    create_input.poll_type = poll_type;
+    create_input.min_amount = min_amount;
+    create_input.github_link = github_link;
+    create_input.num_assets = 0;
+
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    auto create_output = qutil.createPoll(creator, create_input, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id0 = create_output.poll_id;
+
+    id voterA = generateRandomId();
+    id voterB = generateRandomId();
+    id voterC = generateRandomId();
+    id voterD = generateRandomId();
+    id voterE = generateRandomId();
+    id voterF = generateRandomId();
+    id voterG = generateRandomId();
+
+    // Give each voter enough energy for voting (min_amount + fee) for two polls
+    increaseEnergy(voterA, min_amount + 2 * QUTIL_VOTE_FEE);
+    increaseEnergy(voterB, min_amount + 2 * QUTIL_VOTE_FEE);
+    increaseEnergy(voterC, min_amount + 2 * QUTIL_VOTE_FEE);
+    increaseEnergy(voterD, min_amount + 2 * QUTIL_VOTE_FEE);
+    increaseEnergy(voterE, min_amount + 2 * QUTIL_VOTE_FEE);
+    increaseEnergy(voterF, min_amount + 2 * QUTIL_VOTE_FEE);
+    increaseEnergy(voterG, min_amount + 2 * QUTIL_VOTE_FEE);
+
+    int voterA_index = spectrumIndex(voterA);
+    int voterB_index = spectrumIndex(voterB);
+    int voterC_index = spectrumIndex(voterC);
+    int voterD_index = spectrumIndex(voterD);
+    int voterE_index = spectrumIndex(voterE);
+    int voterF_index = spectrumIndex(voterF);
+    int voterG_index = spectrumIndex(voterG);
+
+    // Scenario 1: All voters valid for Poll 0
+    QUTIL::Vote_input vote_inputA;
+    vote_inputA.poll_id = poll_id0;
+    vote_inputA.address = voterA;
+    vote_inputA.amount = min_amount;
+    vote_inputA.chosen_option = 0;
+    qutil.vote(voterA, vote_inputA, QUTIL_VOTE_FEE);
+
+    QUTIL::Vote_input vote_inputB;
+    vote_inputB.poll_id = poll_id0;
+    vote_inputB.address = voterB;
+    vote_inputB.amount = min_amount;
+    vote_inputB.chosen_option = 0;
+    qutil.vote(voterB, vote_inputB, QUTIL_VOTE_FEE);
+
+    QUTIL::Vote_input vote_inputC;
+    vote_inputC.poll_id = poll_id0;
+    vote_inputC.address = voterC;
+    vote_inputC.amount = min_amount;
+    vote_inputC.chosen_option = 0;
+    qutil.vote(voterC, vote_inputC, QUTIL_VOTE_FEE);
+
+    auto result = qutil.getCurrentResult(poll_id0);
+    EXPECT_EQ(result.result.get(0), 3000); // A, B, C: 1000 each
+    EXPECT_EQ(result.voter_count.get(0), 3);
+
+    auto balance_b = getBalance(voterB);
+    // Scenario 2: Invalidate voterB by decreasing energy below min_amount
+    decreaseEnergy(voterB_index, min_amount + QUTIL_VOTE_FEE - 500); // Leave 500, below min_amount
+    balance_b = getBalance(voterB);
+
+    QUTIL::Vote_input vote_inputD;
+    vote_inputD.poll_id = poll_id0;
+    vote_inputD.address = voterD;
+    vote_inputD.amount = min_amount;
+    vote_inputD.chosen_option = 0;
+    qutil.vote(voterD, vote_inputD, QUTIL_VOTE_FEE);
+
+    result = qutil.getCurrentResult(poll_id0);
+    EXPECT_EQ(result.result.get(0), 3000); // A, C, D: 1000 each, B invalid
+    EXPECT_EQ(result.voter_count.get(0), 3);
+
+    // Scenario 3: Invalidate voterA and voterC
+    decreaseEnergy(voterA_index, min_amount + QUTIL_VOTE_FEE - 500); // Leave 500
+    decreaseEnergy(voterC_index, min_amount + QUTIL_VOTE_FEE - 500); // Leave 500
+
+    QUTIL::Vote_input vote_inputE;
+    vote_inputE.poll_id = poll_id0;
+    vote_inputE.address = voterE;
+    vote_inputE.amount = min_amount;
+    vote_inputE.chosen_option = 0;
+    qutil.vote(voterE, vote_inputE, QUTIL_VOTE_FEE);
+
+    result = qutil.getCurrentResult(poll_id0);
+    EXPECT_EQ(result.result.get(0), 2000); // D, E: 1000 each, others invalid
+    EXPECT_EQ(result.voter_count.get(0), 2);
+
+    // Scenario 4: Single voter with new poll
+    id poll_name2 = generateRandomId();
+    QUTIL::CreatePoll_input create_input2;
+    create_input2.poll_name = poll_name2;
+    create_input2.poll_type = poll_type;
+    create_input2.min_amount = min_amount;
+    create_input2.github_link = github_link;
+    create_input2.num_assets = 0;
+
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    auto create_output2 = qutil.createPoll(creator, create_input2, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id2 = create_output2.poll_id;
+
+    id voterH = generateRandomId();
+    increaseEnergy(voterH, min_amount + QUTIL_VOTE_FEE);
+    int voterH_index = spectrumIndex(voterH);
+    QUTIL::Vote_input vote_inputH;
+    vote_inputH.poll_id = poll_id2;
+    vote_inputH.address = voterH;
+    vote_inputH.amount = min_amount;
+    vote_inputH.chosen_option = 0;
+    qutil.vote(voterH, vote_inputH, QUTIL_VOTE_FEE);
+
+    result = qutil.getCurrentResult(poll_id2);
+    EXPECT_EQ(result.result.get(0), 1000); // H: 1000
+    EXPECT_EQ(result.voter_count.get(0), 1);
+
+    // Scenario 5: Multiple polls with voter invalidation and new votes
+    // Create a new poll (Poll 1)
+    id poll_name1 = generateRandomId();
+    QUTIL::CreatePoll_input create_input1;
+    create_input1.poll_name = poll_name1;
+    create_input1.poll_type = poll_type;
+    create_input1.min_amount = min_amount;
+    create_input1.github_link = github_link;
+    create_input1.num_assets = 0;
+
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    auto create_output1 = qutil.createPoll(creator, create_input1, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id1 = create_output1.poll_id;
+
+    // Voters D, E voted for Poll 0, already did above. Only A, B, C need to revote again. F now votes for Poll 0
+    increaseEnergy(voterA, 500 + 2 * QUTIL_VOTE_FEE);
+    increaseEnergy(voterB, 500 + 2 * QUTIL_VOTE_FEE);
+    increaseEnergy(voterC, 500 + 2 * QUTIL_VOTE_FEE);
+
+    EXPECT_EQ(getBalance(voterA), 1200);
+    EXPECT_EQ(getBalance(voterB), 1200);
+    EXPECT_EQ(getBalance(voterC), 1200);
+    EXPECT_EQ(getBalance(voterD), 1100);
+    EXPECT_EQ(getBalance(voterE), 1100);
+    EXPECT_EQ(getBalance(voterF), 1200);
+    EXPECT_EQ(getBalance(voterG), 1200);
+
+    vote_inputB.poll_id = poll_id0;
+    qutil.vote(voterB, vote_inputB, QUTIL_VOTE_FEE);
+
+    QUTIL::Vote_input vote_inputF;
+    vote_inputF.poll_id = poll_id0;
+    vote_inputF.address = voterF;
+    vote_inputF.amount = min_amount;
+    vote_inputF.chosen_option = 0;
+    qutil.vote(voterF, vote_inputF, QUTIL_VOTE_FEE);
+
+    // Add A and C voting for Poll 0 again
+    vote_inputA.poll_id = poll_id0;
+    qutil.vote(voterA, vote_inputA, QUTIL_VOTE_FEE);
+    vote_inputC.poll_id = poll_id0;
+    qutil.vote(voterC, vote_inputC, QUTIL_VOTE_FEE);
+
+    // Voters A, B, C, D, E, F vote for Poll 1
+    vote_inputA.poll_id = poll_id1;
+    qutil.vote(voterA, vote_inputA, QUTIL_VOTE_FEE);
+    vote_inputB.poll_id = poll_id1;
+    qutil.vote(voterB, vote_inputB, QUTIL_VOTE_FEE);
+    vote_inputC.poll_id = poll_id1;
+    qutil.vote(voterC, vote_inputC, QUTIL_VOTE_FEE);
+    vote_inputD.poll_id = poll_id1;
+    qutil.vote(voterD, vote_inputD, QUTIL_VOTE_FEE);
+    vote_inputE.poll_id = poll_id1;
+    qutil.vote(voterE, vote_inputE, QUTIL_VOTE_FEE);
+    vote_inputF.poll_id = poll_id1;
+    qutil.vote(voterF, vote_inputF, QUTIL_VOTE_FEE);
+
+    EXPECT_EQ(getBalance(voterA), 1000);
+    EXPECT_EQ(getBalance(voterB), 1000);
+    EXPECT_EQ(getBalance(voterC), 1000);
+    EXPECT_EQ(getBalance(voterD), 1000);
+    EXPECT_EQ(getBalance(voterE), 1000);
+    EXPECT_EQ(getBalance(voterF), 1000);
+    EXPECT_EQ(getBalance(voterG), 1200);
+
+    // Decrease energy for voters B and D below min_amount for both polls
+    decreaseEnergy(voterB_index, 500);
+    decreaseEnergy(voterD_index, 500);
+
+    EXPECT_EQ(getBalance(voterA), 1000);
+    EXPECT_EQ(getBalance(voterB), 500);
+    EXPECT_EQ(getBalance(voterC), 1000);
+    EXPECT_EQ(getBalance(voterD), 500);
+    EXPECT_EQ(getBalance(voterE), 1000);
+    EXPECT_EQ(getBalance(voterF), 1000);
+    EXPECT_EQ(getBalance(voterG), 1200);
+
+    // Voter G votes for both Poll 0 and Poll 1
+    QUTIL::Vote_input vote_inputG;
+    vote_inputG.address = voterG;
+    vote_inputG.amount = min_amount;
+    vote_inputG.chosen_option = 0;
+
+    vote_inputG.poll_id = poll_id0;
+    qutil.vote(voterG, vote_inputG, QUTIL_VOTE_FEE);
+    vote_inputG.poll_id = poll_id1;
+    qutil.vote(voterG, vote_inputG, QUTIL_VOTE_FEE);
+
+    // Get and verify results for Poll 0
+    result = qutil.getCurrentResult(poll_id0);
+    EXPECT_EQ(result.result.get(0), 5000); // A, C, E, F, G: 1000 each, B and D invalid
+    EXPECT_EQ(result.voter_count.get(0), 5);
+
+    // Get and verify results for Poll 1
+    result = qutil.getCurrentResult(poll_id1);
+    EXPECT_EQ(result.result.get(0), 5000); // A, C, E, F, G: 1000 each, B and D invalid
+    EXPECT_EQ(result.voter_count.get(0), 5);
+}
+
 // Test successful Qubic poll creation
 TEST(QUtilTest, CreatePoll_Success_Qubic) {
     ContractTestingQUtil qutil;

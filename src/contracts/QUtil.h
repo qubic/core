@@ -24,14 +24,13 @@ constexpr sint64 QUTIL_STM1_INVOCATION_FEE = 10LL; // fee to be burned and make 
 // Voting-specific constants
 constexpr uint64 QUTIL_POLL_TYPE_QUBIC = 1;
 constexpr uint64 QUTIL_POLL_TYPE_ASSET = 2; // Can be either shares or tokens
-constexpr uint64 QUTIL_MAX_POLL = 64;
+constexpr uint64 QUTIL_MAX_POLL = 128;
 constexpr uint64 QUTIL_MAX_VOTERS_PER_POLL = 131072;
 constexpr uint64 QUTIL_TOTAL_VOTERS = QUTIL_MAX_POLL * QUTIL_MAX_VOTERS_PER_POLL;
 constexpr uint64 QUTIL_MAX_OPTIONS = 64; // Maximum voting options (0 to 63)
 constexpr uint64 QUTIL_MAX_ASSETS_PER_POLL = 16; // Maximum assets per poll
 constexpr sint64 QUTIL_VOTE_FEE = 100LL; // Fee for voting, burnt 100%
 constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
-constexpr uint16 QUTIL_POLL_INIT_EPOCH = 164; // Epoch to initialize poll-related state
 constexpr uint16 QUTIL_POLL_GITHUB_URL_MAX_SIZE = 256; // Max String Length for Poll's Github URLs
 constexpr uint64 QUTIL_MAX_NEW_POLL = QUTIL_MAX_POLL / 4; // Max number of new poll per epoch
 
@@ -910,8 +909,9 @@ public:
         // Update voter balances and compact the voter list
         locals.real_vote = 0;
         locals.end_idx = state.voter_counts.get(locals.idx) - 1;
+        locals.i = 0;
 
-        for (locals.i = 0; locals.i <= locals.end_idx; locals.i++)
+        while (locals.i <= locals.end_idx)
         {
             locals.voter_index = calculate_voter_index(locals.idx, locals.i);
             locals.temp_voter = state.voters.get(locals.voter_index);
@@ -929,10 +929,11 @@ public:
                     locals.sve_input.end_idx = locals.end_idx;
                     swap_voter_to_end(qpi, state, locals.sve_input, locals.sve_output, locals.sve_locals);
                     locals.end_idx--;
-                    locals.temp_voter = state.voters.get(locals.voter_index);
+                    continue;
                 }
                 else
                 {
+                    locals.i++;
                     continue;
                 }
             }
@@ -961,6 +962,7 @@ public:
                         locals.sve_input.end_idx = locals.end_idx;
                         swap_voter_to_end(qpi, state, locals.sve_input, locals.sve_output, locals.sve_locals);
                         locals.end_idx--;
+                        continue;
                     }
                 }
                 else
@@ -970,6 +972,7 @@ public:
                     locals.real_vote++;
                 }
             }
+            locals.i++;
         }
 
         // Update voter count
