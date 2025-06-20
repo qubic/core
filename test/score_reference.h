@@ -74,6 +74,31 @@ void random2(
     memcpy(output, paddingOutput, outputSizeInByte);
 }
 
+// Clamp the neuron value
+template <typename T>
+T clampNeuron(T neuronValue)
+{
+    if (neuronValue > 1)
+    {
+        return 1;
+    }
+
+    if (neuronValue < -1)
+    {
+        return -1;
+    }
+    return neuronValue;
+}
+
+void extract64Bits(unsigned long long number, char* output)
+{
+    int count = 0;
+    for (int i = 0; i < 64; ++i)
+    {
+        output[i] = ((number >> i) & 1);
+    }
+}
+
 template <
     unsigned long long numberOfInputNeurons, // K
     unsigned long long numberOfOutputNeurons,// L
@@ -86,29 +111,6 @@ template <
 >
 struct ScoreReferenceImplementation
 {
-    static constexpr unsigned long long numberOfNeurons = numberOfInputNeurons + numberOfOutputNeurons;
-    static constexpr unsigned long long maxNumberOfNeurons = populationThreshold;
-    static constexpr unsigned long long maxNumberOfSynapses = populationThreshold * numberOfNeighbors;
-
-    static_assert(numberOfNeighbors % 2 == 0, "NUMBER_OF_NEIGHBOR_NEURONS must divided by 2");
-    static_assert(populationThreshold > numberOfNeurons, "populationThreshold must be greater than numberOfNeurons");
-    static_assert(numberOfNeurons > numberOfNeighbors, "Number of neurons must be greater than the number of neighbors");
-
-    // Clamp the neuron value
-    template <typename T>
-    static T clampNeuron(T neuronValue)
-    {
-        if (neuronValue > 1)
-        {
-            return 1;
-        }
-
-        if (neuronValue < -1)
-        {
-            return -1;
-        }
-        return neuronValue;
-    }
 
     void initMemory()
     {
@@ -143,11 +145,16 @@ struct ScoreReferenceImplementation
         static constexpr unsigned long long numberOfNeurons = numberOfInputNeurons + numberOfOutputNeurons;
         static constexpr unsigned long long maxNumberOfNeurons = populationThreshold;
         static constexpr unsigned long long maxNumberOfSynapses = populationThreshold * numberOfNeighbors;
+        static constexpr unsigned long long initNumberOfSynapses = numberOfNeurons * numberOfNeighbors;
 
+        static_assert(numberOfInputNeurons % 64 == 0, "numberOfInputNeurons must be divided by 64");
+        static_assert(numberOfOutputNeurons % 64 == 0, "numberOfOutputNeurons must be divided by 64");
         static_assert(maxNumberOfSynapses <= (0xFFFFFFFFFFFFFFFF << 1ULL), "maxNumberOfSynapses must less than or equal MAX_UINT64/2");
+        static_assert(initNumberOfSynapses % 32 == 0, "initNumberOfSynapses must be divided by 32");
         static_assert(numberOfNeighbors % 2 == 0, "numberOfNeighbors must divided by 2");
         static_assert(populationThreshold > numberOfNeurons, "populationThreshold must be greater than numberOfNeurons");
         static_assert(numberOfNeurons > numberOfNeighbors, "Number of neurons must be greater than the number of neighbors");
+
 
         std::vector<unsigned char> poolVec;
 
@@ -191,14 +198,14 @@ struct ScoreReferenceImplementation
         struct InitValue
         {
             unsigned long long outputNeuronPositions[numberOfOutputNeurons];
-            unsigned long long synapseWeight[maxNumberOfSynapses];
+            unsigned long long synapseWeight[initNumberOfSynapses / 32]; // each 64bits elements will decide value of 32 synapses
             unsigned long long synpaseMutation[numberOfMutations];
         } initValue;
 
         struct MiningData
         {
-            unsigned char inputNeuronRandomNumber[numberOfInputNeurons];
-            unsigned char outputNeuronRandomNumber[numberOfOutputNeurons];
+            unsigned long long inputNeuronRandomNumber[numberOfInputNeurons / 64];  // each bit will use for generate input neuron value
+            unsigned long long outputNeuronRandomNumber[numberOfOutputNeurons / 64]; // each bit will use for generate expected output neuron value
         } miningData;
 
         unsigned long long neuronIndices[numberOfNeurons];
@@ -671,29 +678,24 @@ struct ScoreReferenceImplementation
             unsigned long long population = currentANN.population;
             Neuron* neurons = currentANN.neurons;
             unsigned long long inputNeuronInitIndex = 0;
+
+            char neuronArray[64] = { 0 };
             for (unsigned long long i = 0; i < population; ++i)
             {
                 // Input will use the init value
                 if (neurons[i].type == Neuron::kInput)
                 {
-                    char neuronValue = 0;
-                    unsigned char randomValue = miningData.inputNeuronRandomNumber[inputNeuronInitIndex];
-                    inputNeuronInitIndex++;
-                    if (randomValue % 3 == 0)
+                    // Prepare new pack
+                    if (inputNeuronInitIndex % 64 == 0)
                     {
-                        neuronValue = 0;
+                        extract64Bits(miningData.inputNeuronRandomNumber[inputNeuronInitIndex / 64], neuronArray);
                     }
-                    else if (randomValue % 3 == 1)
-                    {
-                        neuronValue = 1;
-                    }
-                    else
-                    {
-                        neuronValue = -1;
-                    }
+                    char neuronValue = neuronArray[inputNeuronInitIndex % 64];
 
                     // Convert value of neuron to trits (keeping 1 as 1, and changing 0 to -1.).
                     neurons[i].value = (neuronValue == 0) ? -1 : neuronValue;
+
+                    inputNeuronInitIndex++;
                 }
             }
         }
@@ -713,23 +715,16 @@ struct ScoreReferenceImplementation
 
         void initExpectedOutputNeuron()
         {
+            char neuronArray[64] = { 0 };
             for (unsigned long long i = 0; i < numberOfOutputNeurons; ++i)
             {
-                char neuronValue = 0;
-                unsigned char randomNumber = miningData.outputNeuronRandomNumber[i];
-                if (randomNumber % 3 == 0)
+                // Prepare new pack
+                if (i % 64 == 0)
                 {
-                    neuronValue = 0;
+                    extract64Bits(miningData.outputNeuronRandomNumber[i / 64], neuronArray);
                 }
-                else if (randomNumber % 3 == 1)
-                {
-                    neuronValue = 1;
-                }
-                else
-                {
-                    neuronValue = -1;
-                }
-
+                char neuronValue = neuronArray[i % 64];
+                // Convert value of neuron (keeping 1 as 1, and changing 0 to -1.).
                 outputNeuronExpectedValue[i] = (neuronValue == 0) ? -1 : neuronValue;
             }
         }
@@ -773,20 +768,20 @@ struct ScoreReferenceImplementation
             }
 
             // Synapse weight initialization
-            const unsigned long long initNumberOfSynapses = population * numberOfNeighbors;
-            for (unsigned long long i = 0; i < initNumberOfSynapses; ++i)
+            for (unsigned long long i = 0; i < (initNumberOfSynapses / 32); ++i)
             {
-                if (initValue.synapseWeight[i] % 3 == 0)
+                const unsigned long long mask = 0b11;
+
+                for (int j = 0; j < 32; ++j)
                 {
-                    synapses[i].weight = 0;
-                }
-                else if (initValue.synapseWeight[i] % 3 == 1)
-                {
-                    synapses[i].weight = 1;
-                }
-                else if (initValue.synapseWeight[i] % 3 == 2)
-                {
-                    synapses[i].weight = -1;
+                    int shiftVal = j * 2;
+                    unsigned char extractValue = (unsigned char)((initValue.synapseWeight[i] >> shiftVal) & mask);
+                    switch (extractValue)
+                    {
+                    case 2: synapses[32 * i + j].weight = -1; break;
+                    case 3: synapses[32 * i + j].weight = 1; break;
+                    default: synapses[32 * i + j].weight = 0;
+                    }
                 }
             }
 
