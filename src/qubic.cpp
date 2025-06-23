@@ -1720,8 +1720,14 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
-static void checkAndSwitchMiningPhase()
+static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
 {
+    // Check if current time is for full custom mining period
+    if (tickEpoch == system.tick)
+    {
+
+    }
+
     const unsigned int r = getTickInMiningPhaseCycle();
     if (!r)
     {
@@ -1748,8 +1754,14 @@ static void beginCustomMiningPhase()
     gCustomMiningStats.phaseResetAndEpochAccumulate();
 }
 
-static void checkAndSwitchCustomMiningPhase()
+static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
 {
+    // Check if current time is for full custom mining period
+    if (tickEpoch == system.tick)
+    {
+
+    }
+
     const unsigned int r = getTickInMiningPhaseCycle();
     bool isBeginOfCustomMiningPhase = false;
     char isInCustomMiningPhase = 0;
@@ -4999,9 +5011,22 @@ static void tickProcessor(void*)
 
                                 updateNumberOfTickTransactions();
 
-                                checkAndSwitchMiningPhase();
+                                short tickEpoch = 0;
+                                TimeDate currentTickDate;
+                                ts.tickData.acquireLock();
+                                const TickData& td = ts.tickData[currentTickIndex];
+                                currentTickDate.second = td.second;
+                                currentTickDate.minute = td.minute;
+                                currentTickDate.hour = td.hour;
+                                currentTickDate.day = td.day;
+                                currentTickDate.month = td.month;
+                                currentTickDate.year = td.year;
+                                tickEpoch = td.epoch == system.epoch ? system.epoch : 0;
+                                ts.tickData.releaseLock();
 
-                                checkAndSwitchCustomMiningPhase();
+                                checkAndSwitchMiningPhase(tickEpoch, currentTickDate);
+
+                                checkAndSwitchCustomMiningPhase(tickEpoch, currentTickDate);
 
                                 if (epochTransitionState == 1)
                                 {

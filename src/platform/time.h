@@ -52,6 +52,71 @@ inline long long ms(unsigned char year, unsigned char month, unsigned char day, 
     return (((((long long)dayIndex(year, month, day)) * 24 + hour) * 60 + minute) * 60 + second) * 1000 + millisecond;
 }
 
+// Compute the total days from first month of the year to current beginning of the month
+static inline unsigned int accumulatedDay(unsigned char month)
+{
+    unsigned int res = 0;
+    switch (month)
+    {
+    case 1: res = 0; break;
+    case 2: res = 31; break;
+    case 3: res = 59; break;
+    case 4: res = 90; break;
+    case 5: res = 120; break;
+    case 6: res = 151; break;
+    case 7: res = 181; break;
+    case 8: res = 212; break;
+    case 9: res = 243; break;
+    case 10:res = 273; break;
+    case 11:res = 304; break;
+    case 12:res = 334; break;
+    }
+    return res;
+}
+
+// Check if a year (offset from 2000) is a leap year
+static inline bool isLeapYear(unsigned char year)
+{
+    int y = year + 2000;
+    return (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
+}
+
+
+struct TimeDate
+{
+    unsigned char second;
+    unsigned char minute;
+    unsigned char hour;
+    unsigned char day;
+    unsigned char month;
+    unsigned char year;
+};
+
+// Compute time difference in seconds between 2 time date. A must be smaller or equal B
+static inline unsigned long long diffDateSecond(const TimeDate& A, const TimeDate& B)
+{
+    unsigned long long dayA = accumulatedDay(A.month) + A.day;
+    unsigned long long dayB = accumulatedDay(B.month) + B.day;
+    dayB += ((unsigned long long)B.year - A.year) * 365ULL;
+
+    // handling leap-year
+    for (unsigned char i = A.year; i < B.year; i++)
+    {
+        if (isLeapYear(i))
+        {
+            dayB++;
+        }
+    }
+    if (isLeapYear(A.year) && (A.month > 2)) dayA++;
+    if (isLeapYear(B.year) && (B.month > 2)) dayB++;
+
+    unsigned long long res = (dayB - dayA) * 3600ULL * 24;
+    res += B.hour * 3600 + B.minute * 60 + B.second;
+    res -= A.hour * 3600 + A.minute * 60 + A.second;
+
+    return res;
+}
+
 #ifndef NO_UEFI
 inline unsigned long long now_ms()
 {
