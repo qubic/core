@@ -135,6 +135,9 @@ namespace QPI
 		case ProposalTypes::Class::Transfer:
 			valid = (options >= 2 && options <= 5);
 			break;
+		case ProposalTypes::Class::TransferInEpoch:
+			valid = options == 2;
+			break;
 		case ProposalTypes::Class::Variable:
 			valid =
 				(options >= 2 && options <= 5) // option voting

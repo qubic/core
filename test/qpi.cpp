@@ -416,6 +416,21 @@ void testProposalWithAllVoteData()
     proposal.transfer.amounts.set(3, 1234567);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 5);
 
+    // TransferInEpochYesNo proposal
+    proposal.type = QPI::ProposalTypes::TransferInEpochYesNo;
+    proposal.transferInEpoch.destination = QPI::id(1, 2, 3, 4);
+    proposal.transferInEpoch.amount = 10;
+    proposal.transferInEpoch.targetEpoch = 123;
+    testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
+
+    // fail: test TransferInEpoch proposal with too many or too few options
+    proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::TransferInEpoch, 1);
+    EXPECT_FALSE(QPI::ProposalTypes::isValid(proposal.type));
+    EXPECT_FALSE(proposal.checkValidity());
+    proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::TransferInEpoch, 3);
+    EXPECT_FALSE(QPI::ProposalTypes::isValid(proposal.type));
+    EXPECT_FALSE(proposal.checkValidity());
+
     // VariableYesNo proposal
     proposal.type = QPI::ProposalTypes::VariableYesNo;
     proposal.variableOptions.variable = 42;
@@ -509,6 +524,10 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataYesNoProposals)
 
     // TransferThreeAmounts
     proposal.type = QPI::ProposalTypes::TransferThreeAmounts;
+    EXPECT_FALSE(proposal.checkValidity());
+
+    // fail: TransferInEpochYesNo proposal not supported due to lack of storage
+    proposal.type = QPI::ProposalTypes::TransferInEpochYesNo;
     EXPECT_FALSE(proposal.checkValidity());
 
     // VariableYesNo proposal
