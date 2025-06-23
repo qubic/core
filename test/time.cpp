@@ -100,3 +100,28 @@ TEST(TestTime, DiffDateSecond)
     EXPECT_EQ(stdSecondsBetween(A, B), diffDateSecond(A, B));
 
 }
+
+TEST(TestTime, Comparison)
+{
+    TimeDate A;
+    TimeDate B;
+
+    // Normal
+    A.second = 56;
+    A.minute = 12;
+    A.hour = 4;
+    A.day = 7;
+    A.month = 5;
+    A.year = 1;
+
+    B.second = 56;
+    B.minute = 12;
+    B.hour = 4;
+    B.day = 7;
+    B.month = 5;
+    B.year = 11;
+
+    EXPECT_EQ(compareTimeDate(A, A), 0);
+    EXPECT_EQ(compareTimeDate(B, A), 1);
+    EXPECT_EQ(compareTimeDate(A, B), -1);
+}

@@ -5074,6 +5074,7 @@ static void tickProcessor(void*)
                                 TimeDate currentTickDate;
                                 ts.tickData.acquireLock();
                                 const TickData& td = ts.tickData[currentTickIndex];
+                                currentTickDate.millisecond = td.millisecond;
                                 currentTickDate.second = td.second;
                                 currentTickDate.minute = td.minute;
                                 currentTickDate.hour = td.hour;

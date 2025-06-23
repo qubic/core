@@ -84,6 +84,7 @@ static inline bool isLeapYear(unsigned char year)
 
 struct TimeDate
 {
+    unsigned short millisecond;
     unsigned char second;
     unsigned char minute;
     unsigned char hour;
@@ -92,9 +93,37 @@ struct TimeDate
     unsigned char year;
 };
 
-// Compute time difference in seconds between 2 time date. A must be smaller or equal B
-static inline unsigned long long diffDateSecond(const TimeDate& A, const TimeDate& B)
+// Return 1 if a > b, -1 if a < b, 0 if equal
+static inline int compareTimeDate(TimeDate a, TimeDate b)
 {
+    if (a.year != b.year) return (a.year > b.year) ? 1 : -1;
+    if (a.month != b.month) return (a.month > b.month) ? 1 : -1;
+    if (a.day != b.day) return (a.day > b.day) ? 1 : -1;
+    if (a.hour != b.hour) return (a.hour > b.hour) ? 1 : -1;
+    if (a.minute != b.minute) return (a.minute > b.minute) ? 1 : -1;
+    if (a.second != b.second) return (a.second > b.second) ? 1 : -1;
+    if (a.millisecond != b.millisecond) return (a.millisecond > b.millisecond) ? 1 : -1;
+    return 0;
+}
+
+// Return the earlier of two times
+static inline TimeDate minTimeDate(struct TimeDate a, struct TimeDate b)
+{
+    return (compareTimeDate(a, b) <= 0) ? a : b;
+}
+
+// Return the later of two times
+static inline TimeDate maxTimeDate(struct TimeDate a, struct TimeDate b)
+{
+    return (compareTimeDate(a, b) >= 0) ? a : b;
+}
+
+// Compute time difference in seconds between 2 time date
+static inline unsigned long long diffDateSecond(const TimeDate& C, const TimeDate& D)
+{
+    TimeDate A = minTimeDate(C, D);
+    TimeDate B = maxTimeDate(C, D);
+
     unsigned long long dayA = accumulatedDay(A.month) + A.day;
     unsigned long long dayB = accumulatedDay(B.month) + B.day;
     dayB += ((unsigned long long)B.year - A.year) * 365ULL;
