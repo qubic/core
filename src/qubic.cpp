@@ -1720,24 +1720,70 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
+static unsigned long long secondFromInitSystemTime(TimeDate tickDate)
+{
+    TimeDate systemDate;
+    systemDate.second = system.initialSecond;
+    systemDate.minute = system.initialMinute;
+    systemDate.hour = system.initialHour;
+    systemDate.day = system.initialDay;
+    systemDate.month = system.initialMonth;
+    systemDate.year = system.initialYear;
+
+    return diffDateSecond(systemDate, tickDate);
+}
+
+static bool isFullExternalComputationTime(TimeDate tickDate)
+{
+    unsigned long long secondsFromBeginEpoch = secondFromInitSystemTime(tickDate);
+    if (FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME <= secondsFromBeginEpoch && secondsFromBeginEpoch <= FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME)
+    {
+        return true;
+    }
+    return false;
+}
+
 static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
 {
     // Check if current time is for full custom mining period
+    static bool fullExternalTimeBegin = false;
     if (tickEpoch == system.tick)
     {
-
-    }
-
-    const unsigned int r = getTickInMiningPhaseCycle();
-    if (!r)
-    {
-        setNewMiningSeed();
-    }
-    else
-    {
-        if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
+        if (isFullExternalComputationTime(tickDate))
         {
-            score->initMiningData(m256i::zero());
+            // Trigger time
+            if (!fullExternalTimeBegin)
+            {
+                fullExternalTimeBegin = true;
+
+                // Turn off the qubic mining phase
+                score->initMiningData(m256i::zero());
+            }
+            else // In full custom mining period already
+            {
+
+            }
+        }
+        else // Not in the full external time, just behavior like normal.
+        {
+            fullExternalTimeBegin = false;
+        }
+    }
+    
+    // Incase of the full custom mining is just end. The setNewMiningSeed() will wait for next period of qubic mining phase
+    if (!fullExternalTimeBegin)
+    {
+        const unsigned int r = getTickInMiningPhaseCycle();
+        if (!r)
+        {
+            setNewMiningSeed();
+        }
+        else
+        {
+            if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
+            {
+                score->initMiningData(m256i::zero());
+            }
         }
     }
 }
@@ -1756,27 +1802,48 @@ static void beginCustomMiningPhase()
 
 static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
 {
-    // Check if current time is for full custom mining period
-    if (tickEpoch == system.tick)
-    {
-
-    }
-
-    const unsigned int r = getTickInMiningPhaseCycle();
     bool isBeginOfCustomMiningPhase = false;
     char isInCustomMiningPhase = 0;
-    
-    if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+
+    // Check if current time is for full custom mining period
+    static bool fullExternalTimeBegin = false;
+    if (tickEpoch == system.tick)
     {
-        isInCustomMiningPhase = 1;
-        if (r == INTERNAL_COMPUTATIONS_INTERVAL)
+        if (isFullExternalComputationTime(tickDate))
         {
-            isBeginOfCustomMiningPhase = true;
+            // Trigger time
+            if (!fullExternalTimeBegin)
+            {
+                fullExternalTimeBegin = true;
+                isBeginOfCustomMiningPhase = true;
+            }
+            else // In full custom mining period already
+            {
+
+            }
+            isInCustomMiningPhase = 1;
+        }
+        else // Not in the full external time, just behavior like normal.
+        {
+            fullExternalTimeBegin = false;
         }
     }
-    else
+
+    if (!fullExternalTimeBegin)
     {
-        isInCustomMiningPhase = 0;
+        const unsigned int r = getTickInMiningPhaseCycle();
+        if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+        {
+            isInCustomMiningPhase = 1;
+            if (r == INTERNAL_COMPUTATIONS_INTERVAL)
+            {
+                isBeginOfCustomMiningPhase = true;
+            }
+        }
+        else
+        {
+            isInCustomMiningPhase = 0;
+        }
     }
 
     // Variables need to be reset in the beginning of custom mining phase

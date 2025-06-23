@@ -80,6 +80,7 @@ TEST(TestTime, DiffDateSecond)
     B.day = 1;
     B.month = 3;
     B.year = 24;
+    EXPECT_EQ(stdSecondsBetween(A, B), diffDateSecond(A, B));
 
     // A,B is  gap
     A.second = 56;
