@@ -1747,6 +1747,9 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
 {
     // Check if current time is for full custom mining period
     static bool fullExternalTimeBegin = false;
+    bool restartTheMiningPhase = false;
+
+    // Make sure the tick is valid
     if (tickEpoch == system.epoch)
     {
         if (isFullExternalComputationTime(tickDate))
@@ -1762,6 +1765,11 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
         }
         else // Not in the full external time, just behavior like normal.
         {
+            // Switch back to qubic mining phase if neccessary
+            if (fullExternalTimeBegin && 0 != getTickInMiningPhaseCycle())
+            {
+                setNewMiningSeed();
+            }
             fullExternalTimeBegin = false;
         }
     }
@@ -1803,6 +1811,8 @@ static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
 
     // Check if current time is for full custom mining period
     static bool fullExternalTimeBegin = false;
+
+    // Make sure the tick is valid
     if (tickEpoch == system.epoch)
     {
         if (isFullExternalComputationTime(tickDate))
