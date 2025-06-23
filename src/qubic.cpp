@@ -1747,7 +1747,7 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
 {
     // Check if current time is for full custom mining period
     static bool fullExternalTimeBegin = false;
-    if (tickEpoch == system.tick)
+    if (tickEpoch == system.epoch)
     {
         if (isFullExternalComputationTime(tickDate))
         {
@@ -1758,10 +1758,6 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
 
                 // Turn off the qubic mining phase
                 score->initMiningData(m256i::zero());
-            }
-            else // In full custom mining period already
-            {
-
             }
         }
         else // Not in the full external time, just behavior like normal.
@@ -1807,7 +1803,7 @@ static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
 
     // Check if current time is for full custom mining period
     static bool fullExternalTimeBegin = false;
-    if (tickEpoch == system.tick)
+    if (tickEpoch == system.epoch)
     {
         if (isFullExternalComputationTime(tickDate))
         {
@@ -1816,10 +1812,6 @@ static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
             {
                 fullExternalTimeBegin = true;
                 isBeginOfCustomMiningPhase = true;
-            }
-            else // In full custom mining period already
-            {
-
             }
             isInCustomMiningPhase = 1;
         }
