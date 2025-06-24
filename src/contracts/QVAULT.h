@@ -1391,7 +1391,7 @@ protected:
 
         for (locals._t = state.numberOfFundP - 1; locals._t >= 0; locals._t--)
         {
-            if (state.FundP.get(locals._t).result == 0 && state.FundP.get(locals._t).proposedEpoch + 1 < qpi.epoch() && state.FundP.get(locals._t).restSaleAmount > input.amount)
+            if (state.FundP.get(locals._t).result == 0 && state.FundP.get(locals._t).proposedEpoch + 1 < qpi.epoch() && state.FundP.get(locals._t).restSaleAmount >= input.amount)
             {
                 if (qpi.invocationReward() >= (sint64)state.FundP.get(locals._t).pricePerOneQcap * input.amount)
                 {
@@ -2291,7 +2291,7 @@ public:
 
         for (locals._t = state.numberOfQEarnP - 1; locals._t >= 0; locals._t--)
         {
-            if (state.IPOP.get(locals._t).proposedEpoch == qpi.epoch())
+            if (state.QEarnP.get(locals._t).proposedEpoch == qpi.epoch())
             {
                 locals.updatedQEarnProposal = state.QEarnP.get(locals._t);
                 if (state.QEarnP.get(locals._t).numberOfYes + state.QEarnP.get(locals._t).numberOfNo < div(state.QEarnP.get(locals._t).currentQuorumPercent * state.QEarnP.get(locals._t).currentTotalVotingPower * 1ULL, 1000ULL))
