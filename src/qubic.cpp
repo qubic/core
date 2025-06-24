@@ -1757,7 +1757,7 @@ static bool isFullExternalComputationTime(TimeDate tickDate)
         {
             // Check time is in custom mining phase. If it is still in qubic mining phase
             // don't stop the event
-            if (getTickInMiningPhaseCycle() < INTERNAL_COMPUTATIONS_INTERVAL)
+            if (getTickInMiningPhaseCycle() <= INTERNAL_COMPUTATIONS_INTERVAL)
             {
                 return true;
             }
