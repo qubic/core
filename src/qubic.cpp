@@ -1723,8 +1723,10 @@ static void setNewMiningSeed()
 WeekDay gFullExternalStartTime;
 WeekDay gFullExternalEndTime;
 
+
 static bool isFullExternalComputationTime(TimeDate tickDate)
 {
+    static bool eventON = false;
     // Get current day of the week
     WeekDay tickWeekDay;
     tickWeekDay.hour = tickDate.hour;
@@ -1737,9 +1739,32 @@ static bool isFullExternalComputationTime(TimeDate tickDate)
     // Check if the day is in range.
     if (isWeekDayInRange(tickWeekDay, gFullExternalStartTime, gFullExternalEndTime))
     {
+        eventON = true;
         return true;
     }
+
+    // When not in range, and the time pass the gFullExternalEndTime. We need to make sure the ending happen
+    // in custom mining period, so that the score of custom mining is recorded.
+    if (eventON)
+    {
+        // Check time pass the end time
+        TimeDate endTimeDate = tickDate;
+        endTimeDate.hour = gFullExternalEndTime.hour;
+        endTimeDate.minute = gFullExternalEndTime.minute;
+        endTimeDate.second = gFullExternalEndTime.second;
+
+        if (compareTimeDate(tickDate, endTimeDate) == 1)
+        {
+            // Check time is in custom mining phase. If it is still in qubic mining phase
+            // don't stop the event
+            if (getTickInMiningPhaseCycle() < INTERNAL_COMPUTATIONS_INTERVAL)
+            {
+                return true;
+            }
+        }
+    }
     
+    eventON = false;
     return false;
 }
 
