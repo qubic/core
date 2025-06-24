@@ -1766,9 +1766,12 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
         else // Not in the full external time, just behavior like normal.
         {
             // Switch back to qubic mining phase if neccessary
-            if (fullExternalTimeBegin && 0 != getTickInMiningPhaseCycle())
+            if (fullExternalTimeBegin)
             {
-                setNewMiningSeed();
+                if (getTickInMiningPhaseCycle() <= INTERNAL_COMPUTATIONS_INTERVAL)
+                {
+                    setNewMiningSeed();
+                }
             }
             fullExternalTimeBegin = false;
         }
