@@ -31,7 +31,7 @@
     #define WARNING_IGNORE_CAST_ALIGN PRAGMA(clang diagnostic ignored "-Wcast-align")
     #define WARNING_IGNORE_UNUSED PRAGMA(clang diagnostic ignored "-Wunused-parameter")
     #define WARNING_IGNORE_SELFASSIGNMENT PRAGMA(clang diagnostic ignored "-Wself-assign-overloaded")
-    #define WARNING_IGNORE_COVNERSION_DATALOSS PRAGMA(clang diagnostic ignored "-Wconversion")
+    #define WARNING_IGNORE_CONVERSION_DATALOSS PRAGMA(clang diagnostic ignored "-Wconversion")
 
 #else
     #define WARNING_PUSH
