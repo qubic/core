@@ -1,6 +1,6 @@
 #pragma once
 #ifdef NO_UEFI
-unsigned long long top_of_stack;
+static unsigned long long top_of_stack;
 #endif
 #include "platform/memory_util.h"
 #include "platform/m256.h"
@@ -28,7 +28,7 @@ constexpr unsigned long long POOL_VEC_PADDING_SIZE = (POOL_VEC_SIZE + 200 - 1) /
 constexpr unsigned long long STATE_SIZE = 200;
 static const char gLUT3States[] = { 0, 1, -1 };
 
-void generateRandom2Pool(const unsigned char* miningSeed, unsigned char* state, unsigned char* pool)
+static void generateRandom2Pool(const unsigned char* miningSeed, unsigned char* state, unsigned char* pool)
 {
     // same pool to be used by all computors/candidates and pool content changing each phase
     copyMem(&state[0], miningSeed, 32);
@@ -41,11 +41,11 @@ void generateRandom2Pool(const unsigned char* miningSeed, unsigned char* state, 
     }
 }
 
-void random2(
+static void random2(
     unsigned char* seed,                // 32 bytes
     const unsigned char* pool,
     unsigned char* output,
-    unsigned long long outputSizeInByte // Must divided by 64
+    unsigned long long outputSizeInByte // must be divided by 64
 )
 {
     ASSERT(outputSizeInByte % 64 == 0);
@@ -132,11 +132,10 @@ struct ScoreFunction
     static_assert(numberOfOutputNeurons % 64 == 0, "numberOfOutputNeurons must be divided by 64");
     static_assert(maxNumberOfSynapses <= (0xFFFFFFFFFFFFFFFF << 1ULL), "maxNumberOfSynapses must less than or equal MAX_UINT64/2");
     static_assert(initNumberOfSynapses % 32 == 0, "initNumberOfSynapses must be divided by 32");
-    static_assert(numberOfNeighbors % 2 == 0, "numberOfNeighbors must divided by 2");
+    static_assert(numberOfNeighbors % 2 == 0, "numberOfNeighbors must be divided by 2");
     static_assert(populationThreshold > numberOfNeurons, "populationThreshold must be greater than numberOfNeurons");
     static_assert(numberOfNeurons > numberOfNeighbors, "Number of neurons must be greater than the number of neighbors");
 
-    // Intermediate data
     // Intermediate data
     struct InitValue
     {

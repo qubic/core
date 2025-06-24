@@ -12,7 +12,7 @@ namespace score_reference
 constexpr unsigned long long POOL_VEC_SIZE = (((1ULL << 32) + 64)) >> 3; // 2^32+64 bits ~ 512MB
 constexpr unsigned long long POOL_VEC_PADDING_SIZE = (POOL_VEC_SIZE + 200 - 1) / 200 * 200; // padding for multiple of 200
 
-void generateRandom2Pool(unsigned char miningSeed[32], unsigned char* pool)
+static void generateRandom2Pool(unsigned char miningSeed[32], unsigned char* pool)
 {
     unsigned char state[200];
     // same pool to be used by all computors/candidates and pool content changing each phase
@@ -26,7 +26,7 @@ void generateRandom2Pool(unsigned char miningSeed[32], unsigned char* pool)
     }
 }
 
-void random2(
+static void random2(
     unsigned char seed[32],
     const unsigned char* pool,
     unsigned char* output,
@@ -151,7 +151,7 @@ struct ScoreReferenceImplementation
         static_assert(numberOfOutputNeurons % 64 == 0, "numberOfOutputNeurons must be divided by 64");
         static_assert(maxNumberOfSynapses <= (0xFFFFFFFFFFFFFFFF << 1ULL), "maxNumberOfSynapses must less than or equal MAX_UINT64/2");
         static_assert(initNumberOfSynapses % 32 == 0, "initNumberOfSynapses must be divided by 32");
-        static_assert(numberOfNeighbors % 2 == 0, "numberOfNeighbors must divided by 2");
+        static_assert(numberOfNeighbors % 2 == 0, "numberOfNeighbors must be divided by 2");
         static_assert(populationThreshold > numberOfNeurons, "populationThreshold must be greater than numberOfNeurons");
         static_assert(numberOfNeurons > numberOfNeighbors, "Number of neurons must be greater than the number of neighbors");
 
@@ -445,7 +445,7 @@ struct ScoreReferenceImplementation
                 else // Case: neurons in range [inserted N4 N5 N6], left synapses will be affected
                 {
                     // Right side is kept as it is, only need to shift to the left side
-                    for (unsigned long long k = 0; k < insertedNeuronIdxInNeigborList; ++k)
+                    for (long long k = 0; k < insertedNeuronIdxInNeigborList; ++k)
                     {
                         // Updated synapse
                         pUpdatedSynapses[k] = pUpdatedSynapses[k + 1];
@@ -567,7 +567,7 @@ struct ScoreReferenceImplementation
             memset(neuronValueBuffer, 0, sizeof(neuronValueBuffer));
 
             // Loop though all neurons
-            for (long long n = 0; n < population; ++n)
+            for (unsigned long long n = 0; n < population; ++n)
             {
                 const Synapse* kSynapses = getSynapses(n);
                 long long neuronValue = neurons[n].value;
@@ -592,9 +592,9 @@ struct ScoreReferenceImplementation
             }
 
             // Clamp the neuron value
-            for (long long n = 0; n < population; ++n)
+            for (unsigned long long n = 0; n < population; ++n)
             {
-                long long neuronValue = clampNeuron(neuronValueBuffer[n]);
+                char neuronValue = (char)clampNeuron(neuronValueBuffer[n]);
                 neurons[n].value = neuronValue;
             }
         }
@@ -622,7 +622,7 @@ struct ScoreReferenceImplementation
                 bool shouldExit = true;
                 bool allNeuronsUnchanged = true;
                 bool allOutputNeuronsIsNonZeros = true;
-                for (long long n = 0; n < population; ++n)
+                for (unsigned long long n = 0; n < population; ++n)
                 {
                     // Neuron unchanged check
                     if (previousNeuronValue[n] != neurons[n].value)
@@ -643,7 +643,7 @@ struct ScoreReferenceImplementation
                 }
 
                 // Copy the neuron value
-                for (long long n = 0; n < population; ++n)
+                for (unsigned long long n = 0; n < population; ++n)
                 {
                     previousNeuronValue[n] = neurons[n].value;
                 }
@@ -817,7 +817,7 @@ struct ScoreReferenceImplementation
             {
 
                 // Do the mutation
-                mutate(nonce, s);
+                mutate(nonce, (int)s);
 
                 // Exit if the number of population reaches the maximum allowed
                 if (currentANN.population >= populationThreshold)
