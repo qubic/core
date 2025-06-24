@@ -124,9 +124,9 @@ static inline WeekDay convertWeekTimeFromPackedData(unsigned int packedWeekTime)
     WeekDay wd;
     wd.millisecond = 0;
     wd.second = packedWeekTime & 0xFF;
-    wd.minute = (packedWeekTime >> 1) & 0xFF;
-    wd.hour = (packedWeekTime >> 2) & 0xFF;
-    wd.dayOfWeek = (packedWeekTime >> 3) & 0xFF;
+    wd.minute = (packedWeekTime >> 8) & 0xFF;
+    wd.hour = (packedWeekTime >> 16) & 0xFF;
+    wd.dayOfWeek = (packedWeekTime >> 24) & 0xFF;
     return wd;
 }
 

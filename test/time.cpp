@@ -101,6 +101,36 @@ TEST(TestTime, DiffDateSecond)
 
 }
 
+TEST(TestTime, Unpack)
+{
+    unsigned int packedWeekTime;
+    WeekDay wd;
+
+    // Thurs 15:20:30
+    packedWeekTime = 0x040F141E;
+    wd = convertWeekTimeFromPackedData(packedWeekTime);
+    EXPECT_EQ(wd.dayOfWeek, 4);
+    EXPECT_EQ(wd.hour, 15);
+    EXPECT_EQ(wd.minute, 20);
+    EXPECT_EQ(wd.second, 30);
+
+    // Sat 12:00:00
+    packedWeekTime = 0x060C0000;
+    wd = convertWeekTimeFromPackedData(packedWeekTime);
+    EXPECT_EQ(wd.dayOfWeek, 6);
+    EXPECT_EQ(wd.hour, 12);
+    EXPECT_EQ(wd.minute, 0);
+    EXPECT_EQ(wd.second, 0);
+
+    // Sun 12:00:00
+    packedWeekTime = 0x000C0000;
+    wd = convertWeekTimeFromPackedData(packedWeekTime);
+    EXPECT_EQ(wd.dayOfWeek, 0);
+    EXPECT_EQ(wd.hour, 12);
+    EXPECT_EQ(wd.minute, 0);
+    EXPECT_EQ(wd.second, 0);
+}
+
 TEST(TestTime, WeekDay)
 {
     TimeDate A;
