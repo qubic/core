@@ -1722,11 +1722,11 @@ static void setNewMiningSeed()
 
 WeekDay gFullExternalStartTime;
 WeekDay gFullExternalEndTime;
+static bool gSpecialEventFullExternalComputationPeriod = false; // a flag indicates a special event (period) that the network running 100% external computation
 
 
 static bool isFullExternalComputationTime(TimeDate tickDate)
 {
-    static bool eventON = false;
     // Get current day of the week
     WeekDay tickWeekDay;
     tickWeekDay.hour = tickDate.hour;
@@ -1739,13 +1739,13 @@ static bool isFullExternalComputationTime(TimeDate tickDate)
     // Check if the day is in range.
     if (isWeekDayInRange(tickWeekDay, gFullExternalStartTime, gFullExternalEndTime))
     {
-        eventON = true;
+        gSpecialEventFullExternalComputationPeriod = true;
         return true;
     }
 
     // When not in range, and the time pass the gFullExternalEndTime. We need to make sure the ending happen
     // in custom mining period, so that the score of custom mining is recorded.
-    if (eventON)
+    if (gSpecialEventFullExternalComputationPeriod)
     {
         // Check time pass the end time
         TimeDate endTimeDate = tickDate;
@@ -1764,7 +1764,8 @@ static bool isFullExternalComputationTime(TimeDate tickDate)
         }
     }
     
-    eventON = false;
+    // The event only happen once
+    gSpecialEventFullExternalComputationPeriod = false;
     return false;
 }
 
