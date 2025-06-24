@@ -81,6 +81,32 @@ static inline bool isLeapYear(unsigned char year)
     return (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
 }
 
+// Zeller’s Congruence : Returns 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+static inline int getDayOfWeek(int day, int month, int year)
+{
+    if (month < 3)
+    {
+        month += 12;
+        year -= 1;
+    }
+    int K = year % 100;
+    int J = year / 100;
+
+    int h = (day + (13 * (month + 1)) / 5 + K + K / 4 + J / 4 + 5 * J) % 7;
+
+    // Convert Zeller's output to ISO: 0 = Sunday ... 6 = Saturday
+    int d = ((h + 6) % 7);
+    return d;
+}
+
+struct WeekDay
+{
+    unsigned short millisecond;
+    unsigned char second;
+    unsigned char minute;
+    unsigned char hour;
+    unsigned char dayOfWeek;
+};
 
 struct TimeDate
 {
@@ -92,6 +118,53 @@ struct TimeDate
     unsigned char month;
     unsigned char year;
 };
+
+static inline WeekDay convertWeekTimeFromPackedData(unsigned int packedWeekTime)
+{
+    WeekDay wd;
+    wd.millisecond = 0;
+    wd.second = packedWeekTime & 0xFF;
+    wd.minute = (packedWeekTime >> 1) & 0xFF;
+    wd.hour = (packedWeekTime >> 2) & 0xFF;
+    wd.dayOfWeek = (packedWeekTime >> 3) & 0xFF;
+    return wd;
+}
+
+// Check of weekday is in range [startDay, endDay]
+static inline bool isWeekDayInRange(unsigned char day, unsigned char startDay, unsigned char endDay)
+{
+    if (startDay <= endDay)
+        return day >= startDay && day <= endDay;
+    else
+        return day >= startDay || day <= endDay;
+}
+
+static inline bool isWeekDayInRange(WeekDay day, WeekDay startDay, WeekDay endDay)
+{
+    // Day is not in range. return imediately
+    if (!isWeekDayInRange(day.dayOfWeek, startDay.dayOfWeek, endDay.dayOfWeek))
+    {
+        return false;
+    }
+
+    // Check other field
+    if ((day.dayOfWeek == startDay.dayOfWeek && day.hour < startDay.hour)
+        || (day.dayOfWeek == startDay.dayOfWeek && day.hour == startDay.hour && day.minute < startDay.minute)
+        || (day.dayOfWeek == startDay.dayOfWeek && day.hour == startDay.hour && day.minute == startDay.minute && day.second < startDay.second))
+    {
+        return false;
+    }
+
+
+    if ((day.dayOfWeek == endDay.dayOfWeek && day.hour > endDay.hour)
+        || (day.dayOfWeek == endDay.dayOfWeek && day.hour == endDay.hour && day.minute > endDay.minute)
+        || (day.dayOfWeek == endDay.dayOfWeek && day.hour == endDay.hour && day.minute == endDay.minute && day.second > endDay.second))
+    {
+        return false;
+    }
+
+    return true;
+}
 
 // Return 1 if a > b, -1 if a < b, 0 if equal
 static inline int compareTimeDate(TimeDate a, TimeDate b)

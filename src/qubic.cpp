@@ -1720,26 +1720,26 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
-static unsigned long long secondFromInitSystemTime(TimeDate tickDate)
-{
-    TimeDate systemDate;
-    systemDate.second = system.initialSecond;
-    systemDate.minute = system.initialMinute;
-    systemDate.hour = system.initialHour;
-    systemDate.day = system.initialDay;
-    systemDate.month = system.initialMonth;
-    systemDate.year = system.initialYear;
-
-    return diffDateSecond(systemDate, tickDate);
-}
+WeekDay gFullExternalStartTime;
+WeekDay gFullExternalEndTime;
 
 static bool isFullExternalComputationTime(TimeDate tickDate)
 {
-    unsigned long long secondsFromBeginEpoch = secondFromInitSystemTime(tickDate);
-    if (FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME <= secondsFromBeginEpoch && secondsFromBeginEpoch <= FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME)
+    // Get current day of the week
+    WeekDay tickWeekDay;
+    tickWeekDay.hour = tickDate.hour;
+    tickWeekDay.minute = tickDate.minute;
+    tickWeekDay.second = tickDate.second;
+    tickWeekDay.millisecond = tickDate.millisecond;
+    tickWeekDay.dayOfWeek = getDayOfWeek(tickDate.day, tickDate.month, 2000 + tickDate.year);
+
+
+    // Check if the day is in range.
+    if (isWeekDayInRange(tickWeekDay, gFullExternalStartTime, gFullExternalEndTime))
     {
         return true;
     }
+    
     return false;
 }
 
@@ -5661,6 +5661,10 @@ static bool initialize()
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
+
+    // Convert time parameters for full custom mining time
+    gFullExternalStartTime = convertWeekTimeFromPackedData(FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME);
+    gFullExternalEndTime = convertWeekTimeFromPackedData(FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME);
 
     return true;
 }

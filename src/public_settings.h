@@ -99,8 +99,10 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache???
 #define EXTERNAL_COMPUTATIONS_INTERVAL (676 + 1)
 static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal computation phase needs to be at least equal NUMBER_OF_COMPUTORS");
 
-#define FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME 259200 // Seconds from start of epoch
-#define FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME 345600 // Seconds from start of epoch
+// Format is DoW-hh-mm-ss, total 4bytes, each use 1 bytes
+// DoW: Day of the week 0: Sunday, 1 = Monday ...
+#define FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME 0x06120000 // Sat 12:00:00
+#define FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME 0x00120000 // Sun 12:00:00
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
