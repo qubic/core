@@ -95,7 +95,7 @@ Current state of the working tests:
 | KangarooTwelve     | `kangaroo_twelve.cpp`   | Pending     |
 | M256               | `m256.cpp`              | **Working** |
 | Math Lib           | `math_lib.cpp`          | **Working** |
-| Network Messages   | `network_messages.cpp`  | Pending     |
+| Network Messages   | `network_messages.cpp`  | **Working** |
 | Platform           | `platform.cpp`          | Pending     |
 | QPI Collection     | `qpi_collection.cpp`    | Pending     |
 | QPI                | `qpi.cpp`               | Pending     |
