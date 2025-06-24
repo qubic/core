@@ -1357,8 +1357,8 @@ namespace QPI
 		// are discarded).
 		// If there is no free slot, one of the oldest proposals from prior epochs is deleted to free a slot.
 		// This may be also used to clear a proposal by setting proposal.epoch = 0.
-		// Return whether proposal has been set.
-		bool setProposal(
+		// Return proposalIndex if proposal has been set, or INVALID_PROPOSAL_INDEX on error.
+		uint16 setProposal(
 			const id& proposer,
 			const ProposalDataType& proposal
 		);
