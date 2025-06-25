@@ -473,8 +473,7 @@ protected:
 			return ;
 		}
 
-		state.Users.get(qpi.invocator(), locals.tierLevel);
-		if (state.Users.contains(qpi.invocator()) && (locals.tierLevel == 4 || locals.tierLevel == 5))
+		if (state.Users.get(qpi.invocator(), locals.tierLevel) && (locals.tierLevel == 4 || locals.tierLevel == 5))
 		{
 			if (qpi.invocationReward() < NOSTROMO_CREATE_PROJECT_FEE)
 			{
