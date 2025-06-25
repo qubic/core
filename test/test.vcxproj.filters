@@ -29,6 +29,7 @@
     <ClCompile Include="virtual_memory.cpp" />
     <ClCompile Include="custom_mining.cpp" />
     <ClCompile Include="revenue.cpp" />
+    <ClCompile Include="time.cpp" />
     <ClCompile Include="contract_gqmprop.cpp" />
   </ItemGroup>
   <ItemGroup>
