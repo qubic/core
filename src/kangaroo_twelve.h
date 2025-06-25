@@ -3,6 +3,7 @@
 #include <lib/platform_common/qintrin.h>
 
 #include "platform/memory.h"
+#include "platform/assert.h"
 
 // Compiler flag to determine AVX512 or generic implementation of K12
 
@@ -2514,34 +2515,4 @@ static void random(const unsigned char* publicKey, const unsigned char* nonce, u
     }
 }
 
-static constexpr unsigned int RANDOM2_POOL_ACTUAL_SIZE = 1048576;
-static constexpr unsigned int RANDOM2_POOL_SIZE = RANDOM2_POOL_ACTUAL_SIZE + 24;  // Need a multiple of 200
-static_assert(RANDOM2_POOL_SIZE % 200 == 0, "Random2: pool buffer size must be a multiple of 200");
 
-// Provide the pool buffer from outside
-static void random2(
-    const unsigned char* publicKey,
-    const unsigned char* nonce,
-    unsigned char* output,
-    unsigned long long outputSize, // outputSize must be a multiple of 8
-    unsigned char* poolBuffer // intermediate buffer that have size of RANDOM2_POOL_SIZE
-)
-{
-    unsigned char state[200];
-    *((__m256i*) & state[0]) = *((__m256i*)publicKey);
-    *((__m256i*) & state[32]) = *((__m256i*)nonce);
-    setMem(&state[64], sizeof(state) - 64, 0);
-
-    for (unsigned int i = 0; i < RANDOM2_POOL_SIZE; i += sizeof(state))
-    {
-        KeccakP1600_Permute_12rounds(state);
-        copyMem(&poolBuffer[i], state, sizeof(state));
-    }
-
-    unsigned int x = 0; // The same sequence is always used, exploit this for optimization
-    for (unsigned long long i = 0; i < outputSize; i += 8)
-    {
-        *((unsigned long long*) & output[i]) = *((unsigned long long*) & poolBuffer[x & (RANDOM2_POOL_ACTUAL_SIZE - 1)]);
-        x = x * 1664525 + 1013904223;// https://en.wikipedia.org/wiki/Linear_congruential_generator#Parameters_in_common_use
-    }
-}
