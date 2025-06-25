@@ -1173,6 +1173,12 @@ namespace QPI
 
 		// Whether to support scalar votes next to option votes.
 		static constexpr bool supportScalarVotes = SupportScalarVotes;
+
+		ProposalDataV1() = default;
+		ProposalDataV1(const ProposalDataV1<SupportScalarVotes>& src)
+		{
+			copyMemory(*this, src);
+		}
 	};
 	static_assert(sizeof(ProposalDataV1<true>) == 256 + 8 + 64, "Unexpected struct size.");
 
