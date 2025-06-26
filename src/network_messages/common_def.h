@@ -16,7 +16,7 @@
 
 #define MAX_INPUT_SIZE 1024ULL
 #define ISSUANCE_RATE 1000000000000LL
-#define MAX_AMOUNT (ISSUANCE_RATE * 1000ULL)
+#define MAX_AMOUNT (ISSUANCE_RATE * 1000LL)
 #define MAX_SUPPLY (ISSUANCE_RATE * 200ULL)
 
 
@@ -26,6 +26,7 @@
 #if defined(NETWORK_MESSAGES_WITHOUT_CORE_DEPENDENCIES)
 
 #include <lib/platform_common/qintrin.h>
+#include <lib/platform_common/qstdint.h>
 
 typedef union m256i
 {

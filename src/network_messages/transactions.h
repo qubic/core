@@ -31,7 +31,7 @@ struct Transaction
     // Check if transaction is valid
     bool checkValidity() const
     {
-        return amount >= 0 && static_cast<unsigned long long>(amount) <= MAX_AMOUNT && inputSize <= MAX_INPUT_SIZE;
+        return amount >= 0 && amount <= MAX_AMOUNT && inputSize <= MAX_INPUT_SIZE;
     }
 
     // Return pointer to transaction's payload (CAUTION: This is behind the memory reserved for this struct!)
