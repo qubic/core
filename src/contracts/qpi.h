@@ -384,6 +384,9 @@ namespace QPI
 		inline uint64 population() const;
 
 		// Return boolean indicating whether key is contained in the hash map.
+		bool contains(const KeyT& key) const;
+
+		// Return boolean indicating whether key is contained in the hash map.
 		// If key is contained, write the associated value into the provided ValueT&. 
 		bool get(const KeyT& key, ValueT& value) const;
 
@@ -392,6 +395,10 @@ namespace QPI
 
 		// Return if slot at elementIndex is empty (not occupied by an element). If false, key() is valid.
 		inline bool isEmptySlot(sint64 elementIndex) const;
+
+		// Return index of the next occupied element following the index passed as an argument. Pass NULL_INDEX to get
+		// the first occupied element. Returns NULL_INDEX if there are no more occupied elements.
+		inline sint64 nextElementIndex(sint64 elementIndex) const;
 
 		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
 		inline KeyT key(sint64 elementIndex) const;
@@ -475,6 +482,10 @@ namespace QPI
 
 		// Return if slot at elementIndex is empty (not occupied by an element). If false, key() is valid.
 		inline bool isEmptySlot(sint64 elementIndex) const;
+
+		// Return index of the next occupied element following the index passed as an argument. Pass NULL_INDEX to get
+		// the first occupied element. Returns NULL_INDEX if there are no more occupied elements.
+		inline sint64 nextElementIndex(sint64 elementIndex) const;
 
 		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
 		inline KeyT key(sint64 elementIndex) const;

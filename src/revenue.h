@@ -146,7 +146,7 @@ static void computeRevenue(
             unsigned long long combinedScoreFactor = txFactor * voteFactor * customFactor;
 
             gRevenueComponents.revenue[i] =
-                (long long)(combinedScoreFactor * issuancePerComputor / gTxScoreScalingThreshold / gVoteScoreScalingThreshold / gVoteScoreScalingThreshold);
+                (long long)(combinedScoreFactor * issuancePerComputor / gTxScoreScalingThreshold / gVoteScoreScalingThreshold / gCustomMiningScoreScalingThreshold);
         }
     }
 
