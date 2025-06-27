@@ -438,6 +438,34 @@ public:
         return poll_idx * QUTIL_MAX_VOTERS_PER_POLL + voter_idx;
     }
 
+    static inline bit check_github_prefix(const Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE>& github_link)
+    {
+        return github_link.get(0) == 'h' &&
+            github_link.get(1) == 't' &&
+            github_link.get(2) == 't' &&
+            github_link.get(3) == 'p' &&
+            github_link.get(4) == 's' &&
+            github_link.get(5) == ':' &&
+            github_link.get(6) == '/' &&
+            github_link.get(7) == '/' &&
+            github_link.get(8) == 'g' &&
+            github_link.get(9) == 'i' &&
+            github_link.get(10) == 't' &&
+            github_link.get(11) == 'h' &&
+            github_link.get(12) == 'u' &&
+            github_link.get(13) == 'b' &&
+            github_link.get(14) == '.' &&
+            github_link.get(15) == 'c' &&
+            github_link.get(16) == 'o' &&
+            github_link.get(17) == 'm' &&
+            github_link.get(18) == '/' &&
+            github_link.get(19) == 'q' &&
+            github_link.get(20) == 'u' &&
+            github_link.get(21) == 'b' &&
+            github_link.get(22) == 'i' &&
+            github_link.get(23) == 'c';
+    }
+
     /**************************************/
     /************CORE FUNCTIONS************/
     /**************************************/
@@ -793,6 +821,14 @@ public:
             locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidNumAssetsAsset };
             LOG_INFO(locals.logger);
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        if (!check_github_prefix(input.github_link))
+        {
+            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollType }; // reusing existing log type for invalid GitHub link
+            LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
