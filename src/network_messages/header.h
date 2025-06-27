@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lib/platform_common/qintrin.h>
+#include <lib/platform_common/compiler_warnings.h>
 
 struct RequestResponseHeader
 {
@@ -23,10 +24,13 @@ public:
     template<unsigned int size>
     constexpr inline void setSize()
     {
+        SUPPRESS_WARNINGS_BEGIN
+        IGNORE_CONVERSION_DATALOSS_WARNING
         static_assert(size <= max_size);
         _size[0] = (unsigned char)size;
         _size[1] = (unsigned char)(size >> 8);
         _size[2] = (unsigned char)(size >> 16);
+        SUPPRESS_WARNINGS_END
     }
 
     // Set message size with run-time check of size (returns false if message is too big)
