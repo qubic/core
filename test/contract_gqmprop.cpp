@@ -515,4 +515,23 @@ TEST(ContractGQmProp, RevDonation)
         else
             test.getState()->checkRevenueDonations(&revDonationOrder, nullptr, false);
     }
+
+    //-------------------------------------------------------------
+    // test that IDs are not removed even if donation percentage is 0
+    proposalIndex = test.setupProposal(0, ProposalTypes::TransferYesNo, ENTITY0, 0);
+    test.voteMultipleComputors(proposalIndex, 100, 500);
+
+    proposalIndex = test.setupProposal(1, ProposalTypes::TransferYesNo, ENTITY3, 0);
+    test.voteMultipleComputors(proposalIndex, 100, 500);
+
+    ++system.epoch;
+    test.beginEpoch();
+    revDonationEntries = {
+        {ENTITY0, 0, 333},
+        {ENTITY1, 15000, 205},
+        {ENTITY2, 2000, 205},
+        {ENTITY3, 0, 333},
+        {ENTITY4, 41000, 225},
+    };
+    test.getState()->checkRevenueDonations(&revDonationOrder, &revDonationEntries);
 }

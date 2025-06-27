@@ -48,6 +48,7 @@ protected:
 	// - each pair of ID and firstEpoch exists at most once (it identifies the entry that may be overwritten)
 	// - entries of the same ID are grouped in a continuous block and sorted by firstEpoch in ascending order
 	// - the first entry with NULL_ID marks the end of the current table
+	// - an ID is never completely removed, even if donation is set to 0% (for keeping order)
 	RevenueDonationT revenueDonation;
 
 	//----------------------------------------------------------------------------
