@@ -228,16 +228,22 @@ TEST(ContractGQmProp, RevDonation)
     test.beginEpoch();
     test.getState()->checkRevenueDonations(&revDonationOrder, &revDonationEntries);
     
-    // one successful and two unsuccessful proposal (testing insert at end)
+    // one successful and several unsuccessful proposals (testing insert at end)
     proposalIndex = test.setupProposal(0, ProposalTypes::TransferYesNo, ENTITY1, 1000);
     test.voteMultipleComputors(proposalIndex, 200, 350);
     revDonationOrder.push_back(ENTITY1);
 
     proposalIndex = test.setupProposal(1, ProposalTypes::TransferYesNo, ENTITY2, 10000);
-    test.voteMultipleComputors(proposalIndex, 100, 200);
+    test.voteMultipleComputors(proposalIndex, 100, 200); // total votes < QUORUM
 
     proposalIndex = test.setupProposal(2, ProposalTypes::TransferYesNo, ENTITY2, 20000);
-    test.voteMultipleComputors(proposalIndex, 379, 256);
+    test.voteMultipleComputors(proposalIndex, 379, 256); // most noted is "no"
+
+    proposalIndex = test.setupProposal(3, ProposalTypes::TransferThreeAmounts, ENTITY2, 30000);
+    test.voteMultipleComputors(proposalIndex, 10, 20, 400); // total votes < QUORUM
+
+    proposalIndex = test.setupProposal(4, ProposalTypes::TransferThreeAmounts, ENTITY2, 40000);
+    test.voteMultipleComputors(proposalIndex, 201, 202, 203); // max voted < QUORUM/2
 
     //-------------------------------------------------------------
     // epoch 201
