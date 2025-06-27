@@ -24,7 +24,7 @@ constexpr sint64 QUTIL_STM1_INVOCATION_FEE = 10LL; // fee to be burned and make 
 // Voting-specific constants
 constexpr uint64 QUTIL_POLL_TYPE_QUBIC = 1;
 constexpr uint64 QUTIL_POLL_TYPE_ASSET = 2; // Can be either shares or tokens
-constexpr uint64 QUTIL_MAX_POLL = 128;
+constexpr uint64 QUTIL_MAX_POLL = 64;
 constexpr uint64 QUTIL_MAX_VOTERS_PER_POLL = 131072;
 constexpr uint64 QUTIL_TOTAL_VOTERS = QUTIL_MAX_POLL * QUTIL_MAX_VOTERS_PER_POLL;
 constexpr uint64 QUTIL_MAX_OPTIONS = 64; // Maximum voting options (0 to 63)
