@@ -1154,3 +1154,30 @@ TEST(QUtilTest, ScenarioID1_CreatePoll_10Voters) {
     EXPECT_EQ(polls.count, 1);
     EXPECT_EQ(polls.poll_ids.get(0), poll_id);
 }
+
+TEST(QUtilTest, CreatePoll_InvalidGithubLink) {
+    ContractTestingQUtil qutil;
+    id creator = generateRandomId();
+    id poll_name = generateRandomId();
+    uint64_t min_amount = 1000;
+    // Invalid GitHub link (does not start with "https://github.com/qubic")
+    Array<uint8, 256> invalid_github_link = stringToArray("https://github.com/invalidorg/proposal/abc");
+    uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
+
+    QUTIL::CreatePoll_input input;
+    input.poll_name = poll_name;
+    input.poll_type = poll_type;
+    input.min_amount = min_amount;
+    input.github_link = invalid_github_link;
+    input.num_assets = 0;
+
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    // Attempt to create the poll with invalid GitHub link
+    auto output = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE);
+    // Expect poll_id to be 0 indicating failure
+    EXPECT_EQ(output.poll_id, 0);
+
+    // Verify that no poll was created for the creator
+    auto polls = qutil.getPollsByCreator(creator);
+    EXPECT_EQ(polls.count, 0);
+}
