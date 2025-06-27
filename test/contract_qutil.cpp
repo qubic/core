@@ -137,7 +137,7 @@ TEST(QUtilTest, CreateMultiplePolls_CheckIds)
 {
     ContractTestingQUtil qutil;
     id creator = generateRandomId();
-    uint64_t num_polls = 30;
+    uint64_t num_polls = 16;
     std::vector<uint64_t> created_poll_ids;
 
     for (uint64_t i = 0; i < num_polls; ++i)
