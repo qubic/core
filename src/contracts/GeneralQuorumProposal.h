@@ -395,9 +395,9 @@ public:
 						// The total number of votes needs to be at least the quorum
 						if (locals.results.totalVotes >= QUORUM)
 						{
-							// Find most voted "change" option (option 0 is "no change")
+							// Find most voted option
 							locals.mostVotedOptionIndex = 0;
-							locals.mostVotedOptionVotes = 0;
+							locals.mostVotedOptionVotes = locals.results.optionVoteCount.get(0);
 							for (locals.optionIndex = 1; locals.optionIndex < locals.results.optionCount; ++locals.optionIndex)
 							{
 								locals.optionVotes = locals.results.optionVoteCount.get(locals.optionIndex);
@@ -408,8 +408,8 @@ public:
 								}
 							}
 
-							// Option for changing status quo has been accepted?
-							if (locals.mostVotedOptionVotes > QUORUM / 2)
+							// Option for changing status quo has been accepted? (option 0 is "no change")
+							if (locals.mostVotedOptionIndex > 0 && locals.mostVotedOptionVotes > QUORUM / 2)
 							{
 								// Set in revenueDonation table (cannot be done in END_EPOCH, because this may overwrite entries that
 								// are still needed unchanged for this epoch for the revenue donation which is run after END_EPOCH)
