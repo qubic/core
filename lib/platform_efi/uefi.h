@@ -96,7 +96,12 @@
 #define TPL_NOTIFY 16
 
 typedef unsigned char BOOLEAN;
-typedef unsigned short CHAR16;
+// Uefi Specification defines CHAR16 as unsigned char, however L"" string literals are defined as wchar_t in C++.
+// MSVC uses 16 bit wchar_t for wide characters, which is compatible with UEFI's CHAR16.
+// C++ standard defines wchar_t as a 32-bit type, which is not compatible with UEFI's CHAR16.
+// However with the compiler flag -f-short-wchar, GCC can also use 16-bit wchar_t.
+// To be able to handle wchar_t as CHAR16, we define CHAR16 as wchar_t instead of unsigned char.
+typedef wchar_t CHAR16;
 typedef void* EFI_EVENT;
 typedef void* EFI_HANDLE;
 typedef unsigned long long EFI_PHYSICAL_ADDRESS;
