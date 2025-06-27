@@ -81,7 +81,7 @@ static inline bool isLeapYear(unsigned char year)
     return (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
 }
 
-// Zeller’s Congruence : Returns 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+// Zeller's Congruence : Returns 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 static inline int getDayOfWeek(int day, int month, int year)
 {
     if (month < 3)
