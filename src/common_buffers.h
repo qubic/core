@@ -2,6 +2,7 @@
 
 #include "platform/global_var.h"
 #include "platform/memory_util.h"
+#include "platform/assert.h"
 
 #include "network_messages/entity.h"
 #include "network_messages/assets.h"
@@ -35,7 +36,10 @@ static void deinitCommonBuffers()
     }
 }
 
-static void* __scratchpad()
+static void* __scratchpad(unsigned long long sizeToMemsetZero)
 {
+    ASSERT(sizeToMemsetZero <= reorgBufferSize);
+    if (sizeToMemsetZero)
+        setMem(reorgBuffer, sizeToMemsetZero, 0);
     return reorgBuffer;
 }
