@@ -1312,8 +1312,15 @@ protected:
                         locals.newVote.proposalId = input.proposalId;
                         locals.newVote.proposalType = input.proposalType;
                         locals.newVote.decision = input.yes;
-                        locals.newVoteList.set(locals.countOfVote, locals.newVote);
-                        state.countOfVote.set(qpi.invocator(), locals.countOfVote + 1);
+                        if (locals._r < locals.countOfVote)
+                        {
+                            locals.newVoteList.set(locals._r, locals.newVote);
+                        }
+                        else
+                        {
+                            locals.newVoteList.set(locals.countOfVote, locals.newVote);
+                            state.countOfVote.set(qpi.invocator(), locals.countOfVote + 1);
+                        }
                     }
                     else 
                     {
