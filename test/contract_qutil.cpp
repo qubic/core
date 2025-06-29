@@ -4,14 +4,29 @@
 
 #include <random>
 
-class ContractTestingQX : public ContractTesting {
+class ContractTestingQUtil : public ContractTesting {
 public:
-    ContractTestingQX() {
+    ContractTestingQUtil() {
         initEmptySpectrum();
         initEmptyUniverse();
+        INIT_CONTRACT(QUTIL);
+        callSystemProcedure(QUTIL_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
     }
+
+    void beginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QUTIL_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+        callSystemProcedure(QX_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
+    void endEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QUTIL_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(QX_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+    }
+
 
     QX::IssueAsset_output issueAsset(const id& issuer, uint64_t assetName, uint64_t numberOfShares) {
         QX::IssueAsset_input input;
@@ -33,26 +48,6 @@ public:
         QX::TransferShareOwnershipAndPossession_output output;
         invokeUserProcedure(QX_CONTRACT_INDEX, 2, input, output, from, 1000000);
         return output;
-    }
-};
-
-class ContractTestingQUtil : public ContractTesting {
-public:
-    ContractTestingQUtil() {
-        initEmptySpectrum();
-        initEmptyUniverse();
-        INIT_CONTRACT(QUTIL);
-        callSystemProcedure(QUTIL_CONTRACT_INDEX, INITIALIZE);
-    }
-
-    void beginEpoch(bool expectSuccess = true)
-    {
-        callSystemProcedure(QUTIL_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
-    }
-
-    void endEpoch(bool expectSuccess = true)
-    {
-        callSystemProcedure(QUTIL_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
     QUTIL::CreatePoll_output createPoll(const id& creator, const QUTIL::CreatePoll_input& input, uint64_t fee) {
@@ -1180,4 +1175,403 @@ TEST(QUtilTest, CreatePoll_InvalidGithubLink) {
     // Verify that no poll was created for the creator
     auto polls = qutil.getPollsByCreator(creator);
     EXPECT_EQ(polls.count, 0);
+}
+
+// Create an asset poll and have voters with allowed assets vote
+TEST(QUtilTest, CreateAssetPoll_VotersWithAssets)
+{
+    ContractTestingQUtil qutil;
+
+    id creator = generateRandomId();
+    id issuer = generateRandomId();
+    id voterX = generateRandomId();
+    id voterY = generateRandomId();
+    id voterZ = generateRandomId();
+    id voterW = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000 + 1000000 * 10); // For issuance and transfers
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    increaseEnergy(voterX, 10000000); // for votes and transfers
+    increaseEnergy(voterY, 10000000);
+    increaseEnergy(voterZ, 10000000);
+    increaseEnergy(voterW, 10000000);
+
+    // Issue assets with valid names
+    unsigned long long assetNameA = assetNameFromString("ASSETA");
+    unsigned long long assetNameB = assetNameFromString("ASSETB");
+    Asset assetA = { issuer, assetNameA };
+    Asset assetB = { issuer, assetNameB };
+    qutil.issueAsset(issuer, assetNameA, 1000000);
+    qutil.issueAsset(issuer, assetNameB, 1000000);
+
+    // Transfer assets
+    auto transferred_amount1 = qutil.transferAsset(issuer, voterX, assetA, 2000);
+    auto transferred_amount2 = qutil.transferAsset(issuer, voterX, assetB, 1500);
+    auto transferred_amount3 = qutil.transferAsset(issuer, voterY, assetA, 1000);
+    auto transferred_amount4 = qutil.transferAsset(issuer, voterZ, assetB, 1200);
+
+    // Create asset poll
+    Array<Asset, QUTIL_MAX_ASSETS_PER_POLL> allowed_assets;
+    allowed_assets.set(0, assetA);
+    allowed_assets.set(1, assetB);
+    QUTIL::CreatePoll_input create_input;
+    create_input.poll_name = generateRandomId();
+    create_input.poll_type = QUTIL_POLL_TYPE_ASSET;
+    create_input.min_amount = 1000;
+    create_input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    create_input.allowed_assets = allowed_assets;
+    create_input.num_assets = 2;
+
+    auto create_output = qutil.createPoll(creator, create_input, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id = create_output.poll_id;
+
+    auto current_poll_id = qutil.getCurrentPollId();
+
+    // Voters vote
+    QUTIL::Vote_input vote_inputX;
+    vote_inputX.poll_id = poll_id;
+    vote_inputX.address = voterX;
+    vote_inputX.amount = 2000; // Max of A and B
+    vote_inputX.chosen_option = 0;
+    auto vote_outputX = qutil.vote(voterX, vote_inputX, QUTIL_VOTE_FEE);
+    EXPECT_TRUE(vote_outputX.success);
+
+    QUTIL::Vote_input vote_inputY;
+    vote_inputY.poll_id = poll_id;
+    vote_inputY.address = voterY;
+    vote_inputY.amount = 1000; // Holding of A
+    vote_inputY.chosen_option = 1;
+    auto vote_outputY = qutil.vote(voterY, vote_inputY, QUTIL_VOTE_FEE);
+    EXPECT_TRUE(vote_outputY.success);
+
+    QUTIL::Vote_input vote_inputZ;
+    vote_inputZ.poll_id = poll_id;
+    vote_inputZ.address = voterZ;
+    vote_inputZ.amount = 1200; // Holding of B
+    vote_inputZ.chosen_option = 0;
+    auto vote_outputZ = qutil.vote(voterZ, vote_inputZ, QUTIL_VOTE_FEE);
+    EXPECT_TRUE(vote_outputZ.success);
+
+    QUTIL::Vote_input vote_inputW;
+    vote_inputW.poll_id = poll_id;
+    vote_inputW.address = voterW;
+    vote_inputW.amount = 1000; // No assets
+    vote_inputW.chosen_option = 0;
+    auto vote_outputW = qutil.vote(voterW, vote_inputW, QUTIL_VOTE_FEE);
+    EXPECT_FALSE(vote_outputW.success);
+
+    // Check results
+    auto result = qutil.getCurrentResult(poll_id);
+    EXPECT_EQ(result.result.get(0), 2000 + 1200); // VoterX + VoterZ
+    EXPECT_EQ(result.result.get(1), 1000); // VoterY
+    EXPECT_EQ(result.voter_count.get(0), 2);
+    EXPECT_EQ(result.voter_count.get(1), 1);
+}
+
+// Voters with no allowed assets cannot vote
+TEST(QUtilTest, VotersNoAllowedAssets)
+{
+    ContractTestingQUtil qutil;
+
+    id creator = generateRandomId();
+    id issuer = generateRandomId();
+    id voterW = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    increaseEnergy(voterW, QUTIL_VOTE_FEE);
+
+    unsigned long long assetNameA = assetNameFromString("ASSETA");
+    Asset assetA = { issuer, assetNameA };
+    qutil.issueAsset(issuer, assetNameA, 1000000);
+
+    Array<Asset, QUTIL_MAX_ASSETS_PER_POLL> allowed_assets;
+    allowed_assets.set(0, assetA);
+    QUTIL::CreatePoll_input create_input;
+    create_input.poll_name = generateRandomId();
+    create_input.poll_type = QUTIL_POLL_TYPE_ASSET;
+    create_input.min_amount = 1000;
+    create_input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    create_input.allowed_assets = allowed_assets;
+    create_input.num_assets = 1;
+
+    auto create_output = qutil.createPoll(creator, create_input, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id = create_output.poll_id;
+
+    QUTIL::Vote_input vote_inputW;
+    vote_inputW.poll_id = poll_id;
+    vote_inputW.address = voterW;
+    vote_inputW.amount = 1000;
+    vote_inputW.chosen_option = 0;
+    auto vote_outputW = qutil.vote(voterW, vote_inputW, QUTIL_VOTE_FEE);
+    EXPECT_FALSE(vote_outputW.success);
+
+    auto result = qutil.getCurrentResult(poll_id);
+    EXPECT_EQ(result.result.get(0), 0);
+    EXPECT_EQ(result.voter_count.get(0), 0);
+}
+
+// Voters with one allowed asset can vote
+TEST(QUtilTest, VotersWithOneAllowedAsset)
+{
+    ContractTestingQUtil qutil;
+
+    id creator = generateRandomId();
+    id issuer = generateRandomId();
+    id voterY = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000 + 1000000);
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    increaseEnergy(voterY, QUTIL_VOTE_FEE);
+
+    unsigned long long assetNameA = assetNameFromString("ASSETA");
+    unsigned long long assetNameB = assetNameFromString("ASSETB");
+    Asset assetA = { issuer, assetNameA };
+    Asset assetB = { issuer, assetNameB };
+    qutil.issueAsset(issuer, assetNameA, 1000000);
+    qutil.issueAsset(issuer, assetNameB, 1000000);
+    qutil.transferAsset(issuer, voterY, assetA, 1000);
+
+    Array<Asset, QUTIL_MAX_ASSETS_PER_POLL> allowed_assets;
+    allowed_assets.set(0, assetA);
+    allowed_assets.set(1, assetB);
+    QUTIL::CreatePoll_input create_input;
+    create_input.poll_name = generateRandomId();
+    create_input.poll_type = QUTIL_POLL_TYPE_ASSET;
+    create_input.min_amount = 1000;
+    create_input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    create_input.allowed_assets = allowed_assets;
+    create_input.num_assets = 2;
+
+    auto create_output = qutil.createPoll(creator, create_input, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id = create_output.poll_id;
+
+    QUTIL::Vote_input vote_inputY;
+    vote_inputY.poll_id = poll_id;
+    vote_inputY.address = voterY;
+    vote_inputY.amount = 1000;
+    vote_inputY.chosen_option = 1;
+    auto vote_outputY = qutil.vote(voterY, vote_inputY, QUTIL_VOTE_FEE);
+    EXPECT_TRUE(vote_outputY.success);
+
+    auto result = qutil.getCurrentResult(poll_id);
+    EXPECT_EQ(result.result.get(1), 1000);
+    EXPECT_EQ(result.voter_count.get(1), 1);
+}
+
+// Decrease voter shares and update voting power
+TEST(QUtilTest, DecreaseShares_UpdateVotingPower)
+{
+    ContractTestingQUtil qutil;
+
+    id creator = generateRandomId();
+    id issuer = generateRandomId();
+    id voterX = generateRandomId();
+    id voterY = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000 + 1000000 * 10);
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    increaseEnergy(voterX, 10000000);
+    increaseEnergy(voterY, 10000000);
+
+    unsigned long long assetNameA = assetNameFromString("ASSETA");
+    Asset assetA = { issuer, assetNameA };
+    qutil.issueAsset(issuer, assetNameA, 1000000);
+    qutil.transferAsset(issuer, voterX, assetA, 2000);
+    qutil.transferAsset(issuer, voterY, assetA, 1000);
+
+    Array<Asset, QUTIL_MAX_ASSETS_PER_POLL> allowed_assets;
+    allowed_assets.set(0, assetA);
+    QUTIL::CreatePoll_input create_input;
+    create_input.poll_name = generateRandomId();
+    create_input.poll_type = QUTIL_POLL_TYPE_ASSET;
+    create_input.min_amount = 1000;
+    create_input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    create_input.allowed_assets = allowed_assets;
+    create_input.num_assets = 1;
+
+    auto create_output = qutil.createPoll(creator, create_input, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id = create_output.poll_id;
+
+    // Initial votes
+    QUTIL::Vote_input vote_inputX;
+    vote_inputX.poll_id = poll_id;
+    vote_inputX.address = voterX;
+    vote_inputX.amount = 2000;
+    vote_inputX.chosen_option = 0;
+    qutil.vote(voterX, vote_inputX, QUTIL_VOTE_FEE);
+
+    QUTIL::Vote_input vote_inputY;
+    vote_inputY.poll_id = poll_id;
+    vote_inputY.address = voterY;
+    vote_inputY.amount = 1000;
+    vote_inputY.chosen_option = 1;
+    qutil.vote(voterY, vote_inputY, QUTIL_VOTE_FEE);
+
+    auto result = qutil.getCurrentResult(poll_id);
+    EXPECT_EQ(result.result.get(0), 2000);
+    EXPECT_EQ(result.result.get(1), 1000);
+    EXPECT_EQ(result.voter_count.get(0), 1);
+    EXPECT_EQ(result.voter_count.get(1), 1);
+
+    // Decrease voterX's shares below min_amount
+    qutil.transferAsset(voterX, issuer, assetA, 1900); // Leaves 100
+
+    // VoterY votes again to trigger update
+    qutil.vote(voterY, vote_inputY, QUTIL_VOTE_FEE);
+
+    // Check updated results
+    result = qutil.getCurrentResult(poll_id);
+    EXPECT_EQ(result.result.get(0), 0); // VoterX removed
+    EXPECT_EQ(result.result.get(1), 1000); // VoterY remains
+    EXPECT_EQ(result.voter_count.get(0), 0);
+    EXPECT_EQ(result.voter_count.get(1), 1);
+
+    // VoterX tries to vote again with insufficient shares
+    auto vote_outputX = qutil.vote(voterX, vote_inputX, QUTIL_VOTE_FEE);
+    EXPECT_FALSE(vote_outputX.success);
+}
+
+TEST(QUtilTest, MultipleVoters_ShareTransfers_EligibilityTest)
+{
+    ContractTestingQUtil qutil;
+
+    id creator = generateRandomId();
+    id issuer = generateRandomId();
+    std::vector<id> voters(10);
+    for (auto& v : voters) 
+    {
+        v = generateRandomId();
+    }
+
+    increaseEnergy(issuer, 4000000000); // for issuance and transfers
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    for (const auto& v : voters)
+    {
+        increaseEnergy(v, 10000000); // for votes and transfers
+    }
+
+    // Issue 3 asset
+    unsigned long long assetNameA = assetNameFromString("ASSETA");
+    unsigned long long assetNameB = assetNameFromString("ASSETB");
+    unsigned long long assetNameC = assetNameFromString("ASSETC");
+    Asset assetA = { issuer, assetNameA };
+    Asset assetB = { issuer, assetNameB };
+    Asset assetC = { issuer, assetNameC };
+    qutil.issueAsset(issuer, assetNameA, 1000000);
+    qutil.issueAsset(issuer, assetNameB, 1000000);
+    qutil.issueAsset(issuer, assetNameC, 1000000);
+
+    // Distribute assets
+    // Voters 0-2: 2000 A, 500 B, 500 C
+    for (int i = 0; i < 3; i++)
+    {
+        qutil.transferAsset(issuer, voters[i], assetA, 2000);
+        qutil.transferAsset(issuer, voters[i], assetB, 500);
+        qutil.transferAsset(issuer, voters[i], assetC, 500);
+    }
+    // Voters 3-5: 500 A, 2000 B, 500 C
+    for (int i = 3; i < 6; i++)
+    {
+        qutil.transferAsset(issuer, voters[i], assetA, 500);
+        qutil.transferAsset(issuer, voters[i], assetB, 2000);
+        qutil.transferAsset(issuer, voters[i], assetC, 500);
+    }
+    // Voters 6-9: 500 A, 500 B, 2000 C
+    for (int i = 6; i < 10; i++)
+    {
+        qutil.transferAsset(issuer, voters[i], assetA, 500);
+        qutil.transferAsset(issuer, voters[i], assetB, 500);
+        qutil.transferAsset(issuer, voters[i], assetC, 2000);
+    }
+
+    // Create asset poll
+    Array<Asset, QUTIL_MAX_ASSETS_PER_POLL> allowed_assets;
+    allowed_assets.set(0, assetA);
+    allowed_assets.set(1, assetB);
+    allowed_assets.set(2, assetC);
+    QUTIL::CreatePoll_input create_input;
+    create_input.poll_name = generateRandomId();
+    create_input.poll_type = QUTIL_POLL_TYPE_ASSET;
+    create_input.min_amount = 1000;
+    create_input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    create_input.allowed_assets = allowed_assets;
+    create_input.num_assets = 3;
+    auto create_output = qutil.createPoll(creator, create_input, QUTIL_POLL_CREATION_FEE);
+    uint64_t poll_id = create_output.poll_id;
+
+    for (int i = 0; i < 10; i++)
+    {
+        uint64_t option = (i < 3) ? 0 : (i < 6 ? 1 : 2);
+        QUTIL::Vote_input vote_input;
+        vote_input.poll_id = poll_id;
+        vote_input.address = voters[i];
+        vote_input.amount = 2000; // Max holding
+        vote_input.chosen_option = option;
+        auto vote_output = qutil.vote(voters[i], vote_input, QUTIL_VOTE_FEE);
+        EXPECT_TRUE(vote_output.success);
+    }
+
+    // Check initial results
+    auto result = qutil.getCurrentResult(poll_id);
+    EXPECT_EQ(result.is_active, 1);
+    EXPECT_EQ(result.result.get(0), 3 * 2000); // Voters 0-2
+    EXPECT_EQ(result.result.get(1), 3 * 2000); // Voters 3-5
+    EXPECT_EQ(result.result.get(2), 4 * 2000); // Voters 6-9
+    EXPECT_EQ(result.voter_count.get(0), 3);
+    EXPECT_EQ(result.voter_count.get(1), 3);
+    EXPECT_EQ(result.voter_count.get(2), 4);
+
+    // Make 3 voters ineligible
+    // Voter 0: All assets to 999
+    qutil.transferAsset(voters[0], issuer, assetA, 1001); // A: 2000 - 1001 = 999
+    qutil.transferAsset(issuer, voters[0], assetB, 499); // B: 500 + 499 = 999
+    qutil.transferAsset(issuer, voters[0], assetC, 499); // C: 500 + 499 = 999
+    // Voter 3: Reduce B to 999
+    qutil.transferAsset(voters[3], issuer, assetB, 1001); // B: 2000 - 1001 = 999
+    // Voter 6: Reduce C to 999
+    qutil.transferAsset(voters[6], issuer, assetC, 1001); // C: 2000 - 1001 = 999
+
+    // Trigger voter list to update
+    QUTIL::Vote_input vote_input1;
+    vote_input1.poll_id = poll_id;
+    vote_input1.address = voters[1];
+    vote_input1.amount = 2000;
+    vote_input1.chosen_option = 0;
+    auto vote_output1 = qutil.vote(voters[1], vote_input1, QUTIL_VOTE_FEE);
+    EXPECT_TRUE(vote_output1.success);
+
+    // Check updated results
+    result = qutil.getCurrentResult(poll_id);
+    EXPECT_EQ(result.result.get(0), 2 * 2000); // Voters 1,2
+    EXPECT_EQ(result.result.get(1), 2 * 2000); // Voters 4,5
+    EXPECT_EQ(result.result.get(2), 3 * 2000); // Voters 7-9
+    EXPECT_EQ(result.voter_count.get(0), 2);
+    EXPECT_EQ(result.voter_count.get(1), 2);
+    EXPECT_EQ(result.voter_count.get(2), 3);
+
+    // Verify ineligible voters cannot vote
+    for (int i : {0, 3, 6})
+    {
+        QUTIL::Vote_input vote_input;
+        vote_input.poll_id = poll_id;
+        vote_input.address = voters[i];
+        vote_input.amount = 2000;
+        vote_input.chosen_option = (i < 3) ? 0 : (i < 6 ? 1 : 2);
+        auto vote_output = qutil.vote(voters[i], vote_input, QUTIL_VOTE_FEE);
+        EXPECT_FALSE(vote_output.success);
+    }
+
+    qutil.endEpoch();
+    qutil.beginEpoch();
+
+    // Check updated results
+    result = qutil.getCurrentResult(poll_id);
+    EXPECT_EQ(result.is_active, 0);
+    EXPECT_EQ(result.result.get(0), 2 * 2000); // Voters 1,2
+    EXPECT_EQ(result.result.get(1), 2 * 2000); // Voters 4,5
+    EXPECT_EQ(result.result.get(2), 3 * 2000); // Voters 7-9
+    EXPECT_EQ(result.voter_count.get(0), 2);
+    EXPECT_EQ(result.voter_count.get(1), 2);
+    EXPECT_EQ(result.voter_count.get(2), 3);
 }
