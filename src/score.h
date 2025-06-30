@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #ifdef NO_UEFI
 static unsigned long long top_of_stack;
 #endif
@@ -8,6 +8,18 @@ static unsigned long long top_of_stack;
 #include "platform/profiling.h"
 #include "public_settings.h"
 #include "score_cache.h"
+
+#if defined(_MSC_VER)
+
+#define popcnt32(x)  static_cast<int>(__popcnt(static_cast<unsigned int>(x)))
+#define popcnt64(x)  static_cast<int>(__popcnt64(static_cast<unsigned long long>(x)))
+
+#else
+
+#define popcnt32(x)  __builtin_popcount  (static_cast<unsigned int>(x))
+#define popcnt64(x)  __builtin_popcountll(static_cast<unsigned long long>(x))
+
+#endif
 
 
 ////////// Scoring algorithm \\\\\\\\\\
@@ -21,6 +33,12 @@ constexpr unsigned char EVOLUTION_NEURON_TYPE = 2;
 
 #if !(defined (__AVX512F__) || defined(__AVX2__))
 static_assert(false, "Either AVX2 or AVX512 is required.");
+#endif
+
+#if defined (__AVX512F__)
+    static constexpr int BATCH_SIZE = 64;
+#elif defined(__AVX2__)
+    static constexpr int BATCH_SIZE = 32;
 #endif
 
 constexpr unsigned long long POOL_VEC_SIZE = (((1ULL << 32) + 64)) >> 3; // 2^32+64 bits ~ 512MB
@@ -127,6 +145,8 @@ struct ScoreFunction
     static constexpr unsigned long long maxNumberOfNeurons = populationThreshold;
     static constexpr unsigned long long maxNumberOfSynapses = populationThreshold * numberOfNeighbors;
     static constexpr unsigned long long initNumberOfSynapses = numberOfNeurons * numberOfNeighbors;
+    static constexpr long long radius = (long long)numberOfNeighbors / 2;
+    static constexpr long long paddingNeuronsCount = maxNumberOfNeurons + numberOfNeighbors;
 
     static_assert(numberOfInputNeurons % 64 == 0, "numberOfInputNeurons must be divided by 64");
     static_assert(numberOfOutputNeurons % 64 == 0, "numberOfOutputNeurons must be divided by 64");
@@ -135,6 +155,7 @@ struct ScoreFunction
     static_assert(numberOfNeighbors % 2 == 0, "numberOfNeighbors must be divided by 2");
     static_assert(populationThreshold > numberOfNeurons, "populationThreshold must be greater than numberOfNeurons");
     static_assert(numberOfNeurons > numberOfNeighbors, "Number of neurons must be greater than the number of neighbors");
+    static_assert(numberOfNeighbors < ((1ULL << 63) - 1), "numberOfNeighbors must be in long long range");
 
     // Intermediate data
     struct InitValue
@@ -164,24 +185,41 @@ struct ScoreFunction
 
     struct computeBuffer
     {
-        struct Synapse
-        {
-            char weight;
-        };
+        typedef char Synapse;
+        typedef char Neuron;
+        typedef unsigned char NeuronType;
 
-        // Data for running the ANN
-        struct Neuron
-        {
-            unsigned char type;
-            char value;
-            bool markForRemoval;
-        };
-
+ 
         // Data for roll back
         struct ANN
         {
-            Neuron neurons[maxNumberOfNeurons];
+            void init()
+            {
+                neurons = paddingNeurons + radius;
+            }
+            void prepareData()
+            {
+                // Padding start and end of neuron array
+                neurons = paddingNeurons + radius;
+                copyMem(paddingNeurons, neurons + population - radius, radius * sizeof(Neuron));
+                copyMem(paddingNeurons + radius + population, neurons, radius * sizeof(Neuron));
+            }
+
+            void copyDataTo(ANN& rOther)
+            {
+                copyMem(rOther.neurons, neurons, population * sizeof(Neuron));
+                copyMem(rOther.neuronTypes, neuronTypes, population * sizeof(NeuronType));
+                copyMem(rOther.synapses, synapses, maxNumberOfSynapses * sizeof(Synapse));
+
+                rOther.population = population;
+            }
+
+            Neuron* neurons;
+            // Padding start and end of neurons so that we can reduce the condition checking
+            Neuron paddingNeurons[maxNumberOfNeurons + numberOfNeighbors];
+            NeuronType neuronTypes[maxNumberOfNeurons];
             Synapse synapses[maxNumberOfSynapses];
+
             unsigned long long population;
         };
         ANN bestANN;
@@ -192,13 +230,19 @@ struct ScoreFunction
         MiningData miningData;
 
         unsigned long long neuronIndices[numberOfNeurons];
-        char previousNeuronValue[maxNumberOfNeurons];
+        Neuron previousNeuronValue[maxNumberOfNeurons];
 
-        char outputNeuronExpectedValue[numberOfOutputNeurons];
+        Neuron outputNeuronExpectedValue[numberOfOutputNeurons];
 
-        long long neuronValueBuffer[maxNumberOfNeurons];
+        Neuron neuronValueBuffer[maxNumberOfNeurons];
         unsigned char hash[32];
         unsigned char combined[64];
+
+        unsigned long long removalNeuronsCount;
+
+        // Contain incomming synapse of neurons. The center one will be zeros
+        Synapse incommingSynapses[maxNumberOfSynapses + maxNumberOfNeurons];
+
 
         void mutate(unsigned long long mutateStep)
         {
@@ -222,12 +266,12 @@ struct ScoreFunction
                 weightChange = 1;
             }
 
-            char newWeight = synapses[synapseIdx].weight + weightChange;
+            char newWeight = synapses[synapseIdx] + weightChange;
 
             // Valid weight. Update it
             if (newWeight >= -1 && newWeight <= 1)
             {
-                synapses[synapseIdx].weight = newWeight;
+                synapses[synapseIdx] = newWeight;
             }
             else // Invalid weight. Insert a neuron
             {
@@ -291,7 +335,7 @@ struct ScoreFunction
                     {
                         pNNSynapses[k] = pNNSynapses[k + 1];
                     }
-                    pNNSynapses[numberOfNeighbors - 1].weight = 0;
+                    pNNSynapses[numberOfNeighbors - 1] = 0;
                 }
                 else
                 {
@@ -299,7 +343,7 @@ struct ScoreFunction
                     {
                         pNNSynapses[k] = pNNSynapses[k - 1];
                     }
-                    pNNSynapses[0].weight = 0;
+                    pNNSynapses[0] = 0;
                 }
             }
 
@@ -308,6 +352,7 @@ struct ScoreFunction
             for (unsigned long long shiftIdx = neuronIdx; shiftIdx < currentANN.population; shiftIdx++)
             {
                 currentANN.neurons[shiftIdx] = currentANN.neurons[shiftIdx + 1];
+                currentANN.neuronTypes[shiftIdx] = currentANN.neuronTypes[shiftIdx + 1];
 
                 // Also shift the synapses
                 copyMem(getSynapses(shiftIdx), getSynapses(shiftIdx + 1), numberOfNeighbors * sizeof(Synapse));
@@ -371,7 +416,7 @@ struct ScoreFunction
                     // Incomming synapse from original neuron -> inserted neuron must be zero
                     if (delta == -1)
                     {
-                        pUpdatedSynapses[insertedNeuronIdxInNeigborList].weight = 0;
+                        pUpdatedSynapses[insertedNeuronIdxInNeigborList] = 0;
                     }
                 }
                 else // Case: neurons in range [inserted N4 N5 N6], left synapses will be affected
@@ -395,32 +440,33 @@ struct ScoreFunction
 
             Synapse* synapses = currentANN.synapses;
             Neuron* neurons = currentANN.neurons;
+            NeuronType* neuronTypes = currentANN.neuronTypes;
             unsigned long long& population = currentANN.population;
 
             // Copy original neuron to the inserted one and set it as  EVOLUTION_NEURON_TYPE type
-            Neuron insertNeuron;
-            insertNeuron = neurons[outgoingNeuron];
-            insertNeuron.type = EVOLUTION_NEURON_TYPE;
+            Neuron insertNeuron = neurons[outgoingNeuron];
             unsigned long long insertedNeuronIdx = outgoingNeuron + 1;
 
-            char originalWeight = synapses[synapseIdx].weight;
+            Synapse originalWeight = synapses[synapseIdx];
 
             // Insert the neuron into array, population increased one, all neurons next to original one need to shift right
             for (unsigned long long i = population; i > outgoingNeuron; --i)
             {
                 neurons[i] = neurons[i - 1];
+                neuronTypes[i] = neuronTypes[i - 1];
 
                 // Also shift the synapses to the right
                 copyMem(getSynapses(i), getSynapses(i - 1), numberOfNeighbors * sizeof(Synapse));
             }
             neurons[insertedNeuronIdx] = insertNeuron;
+            neuronTypes[insertedNeuronIdx] = EVOLUTION_NEURON_TYPE;
             population++;
 
             // Try to update the synapse of inserted neuron. All outgoing synapse is init as zero weight
             Synapse* pInsertNeuronSynapse = getSynapses(insertedNeuronIdx);
             for (unsigned long long synIdx = 0; synIdx < numberOfNeighbors; ++synIdx)
             {
-                pInsertNeuronSynapse[synIdx].weight = 0;
+                pInsertNeuronSynapse[synIdx] = 0;
             }
 
             // Copy the outgoing synapse of original neuron
@@ -430,14 +476,14 @@ struct ScoreFunction
                 if (incomingNeighborSynapseIdx > 0)
                 {
                     // Decrease by one because the new neuron is next to the original one
-                    pInsertNeuronSynapse[incomingNeighborSynapseIdx - 1].weight = originalWeight;
+                    pInsertNeuronSynapse[incomingNeighborSynapseIdx - 1] = originalWeight;
                 }
                 // Incase of the outgoing synapse point too far, don't add the synapse
             }
             else
             {
                 // No need to adjust the added neuron but need to remove the synapse of the original neuron
-                pInsertNeuronSynapse[incomingNeighborSynapseIdx].weight = originalWeight;
+                pInsertNeuronSynapse[incomingNeighborSynapseIdx] = originalWeight;
             }
 
             updateSynapseOfInsertedNN(insertedNeuronIdx);
@@ -467,7 +513,7 @@ struct ScoreFunction
             Synapse* synapse = getSynapses(neuronIdx);
             for (unsigned long long n = 0; n < numberOfNeighbors; n++)
             {
-                char synapseW = synapse[n].weight;
+                Synapse synapseW = synapse[n];
                 if (synapseW != 0)
                 {
                     return false;
@@ -489,7 +535,7 @@ struct ScoreFunction
                 {
                     continue;
                 }
-                char synapseW = nnSynapses[synapseIdx].weight;
+                Synapse synapseW = nnSynapses[synapseIdx];
 
                 if (synapseW != 0)
                 {
@@ -505,92 +551,111 @@ struct ScoreFunction
             unsigned long long population = currentANN.population;
             Synapse* synapses = currentANN.synapses;
             Neuron* neurons = currentANN.neurons;
+            NeuronType* neuronTypes = currentANN.neuronTypes;
 
-            unsigned long long numberOfRedundantNeurons = 0;
+            removalNeuronsCount = 0;
             // After each mutation, we must verify if there are neurons that do not affect the ANN output.
             // These are neurons that either have all incoming synapse weights as 0,
             // or all outgoing synapse weights as 0. Such neurons must be removed.
             for (unsigned long long i = 0; i < population; i++)
             {
-                neurons[i].markForRemoval = false;
-                if (neurons[i].type == EVOLUTION_NEURON_TYPE)
+                if (neuronTypes[i] == EVOLUTION_NEURON_TYPE)
                 {
                     if (isAllOutgoingSynapsesZeros(i) || isAllIncomingSynapsesZeros(i))
                     {
-                        neurons[i].markForRemoval = true;
-                        numberOfRedundantNeurons++;
+                        neuronIndices[removalNeuronsCount] = i;
+                        removalNeuronsCount++;
                     }
                 }
             }
-            return numberOfRedundantNeurons;
+            return removalNeuronsCount;
         }
 
         // Remove neurons and synapses that do not affect the ANN
         void cleanANN()
         {
-            Synapse* synapses = currentANN.synapses;
-            Neuron* neurons = currentANN.neurons;
-            unsigned long long& population = currentANN.population;
-
             // Scan and remove neurons/synapses
-            unsigned long long neuronIdx = 0;
-            while (neuronIdx < population)
+            for (unsigned long long i = 0; i < removalNeuronsCount; i++)
             {
-                if (neurons[neuronIdx].markForRemoval)
-                {
-                    // Remove it from the neuron list. Overwrite data
-                    // Remove its synapses in the synapses array
-                    removeNeuron(neuronIdx);
-                }
-                else
-                {
-                    neuronIdx++;
-                }
+                unsigned long long neuronIdx = neuronIndices[i];
+                // Remove it from the neuron list. Overwrite data
+                // Remove its synapses in the synapses array
+                removeNeuron(neuronIdx);
             }
+            removalNeuronsCount = 0;
         }
 
         void processTick()
         {
             unsigned long long population = currentANN.population;
-            Synapse* synapses = currentANN.synapses;
-            Neuron* neurons = currentANN.neurons;
+
+            // Prepare the padding regions
+            currentANN.prepareData();
 
             // Memset value of current one
             setMem(neuronValueBuffer, sizeof(neuronValueBuffer), 0);
+            Neuron* pPaddingNeurons = currentANN.paddingNeurons;
+            Synapse* synapses = incommingSynapses;
+            Neuron* neurons = currentANN.neurons;
 
-            // Loop though all neurons
-            for (unsigned long long n = 0; n < population; ++n)
+            for (unsigned long long n = 0; n < population; ++n, pPaddingNeurons++, synapses += (numberOfNeighbors + 1))
             {
-                char neuronValue = neurons[n].value;
-                const Synapse* kSynapses = getSynapses(n);
-                // Scan through all neighbor neurons and sum all connected neurons.
-                // The synapses are arranged as neuronIndex * numberOfNeighbors
-                for (long long m = 0; m < numberOfNeighbors / 2; m++)
+                int neuronValue = 0;
+                long long m = 0;
+#if defined (__AVX512F__)
+                const __m512i zeros512 = _mm512_setzero_si512();
+                for (; m + BATCH_SIZE <= numberOfNeighbors; m += BATCH_SIZE)
                 {
-                    char synapseWeight = kSynapses[m].weight;
-                    unsigned long long nnIndex =  clampNeuronIndex(n + m, -(long long)numberOfNeighbors / 2);
-                    // Weight-sum
-                    neuronValueBuffer[nnIndex] += synapseWeight * neuronValue;
+                    const __m512i neurons512 = _mm512_loadu_si512((const __m512i*)(pPaddingNeurons + m));
+                    const __m512i synapses512 = _mm512_loadu_si512((const __m512i*)(synapses + m));
 
+                    __mmask64 nonZerosMask = _mm512_cmpneq_epi8_mask(synapses512, zeros512) & _mm512_cmpneq_epi8_mask(neurons512, zeros512);
+                    __mmask64 negMask = nonZerosMask & _mm512_cmpgt_epi8_mask(zeros512, _mm512_xor_si512(synapses512, neurons512));
+                    __mmask64 posMask = nonZerosMask & ~negMask;
+
+                    neuronValue += popcnt64(posMask);
+                    neuronValue -= popcnt64(negMask);
                 }
 
-                for (long long m = numberOfNeighbors / 2; m < numberOfNeighbors; m++)
+#elif defined(__AVX2__)
+                const __m256i zeros256 = _mm256_setzero_si256();
+                const __m256i allOnes256 = _mm256_set1_epi8(-1);
+                unsigned int negMask = 0;
+                unsigned int posMask = 0;
+                for (; m + BATCH_SIZE <= numberOfNeighbors; m += BATCH_SIZE)
                 {
-                    char synapseWeight = kSynapses[m].weight;
-                    unsigned long long nnIndex = clampNeuronIndex(n + m + 1, -(long long)numberOfNeighbors / 2);
-                    // Weight-sum
-                    neuronValueBuffer[nnIndex] += synapseWeight * neuronValue;
+                    const __m256i neurons256 = _mm256_loadu_si256((const __m256i*)(pPaddingNeurons + m));
+                    const __m256i synapses256 = _mm256_loadu_si256((const __m256i*)(synapses + m));
 
+                    __m256i nonZeros256 = _mm256_andnot_si256(_mm256_or_si256(_mm256_cmpeq_epi8(neurons256, zeros256), _mm256_cmpeq_epi8(synapses256, zeros256)), allOnes256);
+                    __m256i neg256 = _mm256_cmpgt_epi8(zeros256, _mm256_and_si256(_mm256_xor_si256(synapses256, neurons256), nonZeros256));
+                    __m256i pos256 = _mm256_andnot_si256(neg256, nonZeros256);
+
+                    int tmp = _mm256_movemask_epi8(neg256);
+                    negMask = *((unsigned int*) &tmp);
+
+                    tmp = _mm256_movemask_epi8(pos256);
+                    posMask = *((unsigned int*) &tmp);
+                    
+                    neuronValue -= popcnt32(negMask);
+                    neuronValue += popcnt32(posMask);
                 }
 
+#endif
+
+                for (; m <= numberOfNeighbors; ++m)
+                {
+                    const Synapse synapseWeight = synapses[m];
+                    const Neuron nVal = pPaddingNeurons[m];
+
+                    // Weight-sum
+                    neuronValue += synapseWeight * nVal;
+                }
+
+                neuronValueBuffer[n] = (Neuron)clampNeuron(neuronValue);
             }
 
-            // Clamp the neuron value
-            for (unsigned long long n = 0; n < population; ++n)
-            {
-                long long neuronValue = clampNeuron(neuronValueBuffer[n]);
-                neurons[n].value = (char)neuronValue;
-            }
+            copyMem(neurons, neuronValueBuffer, population * sizeof(Neuron));
         }
 
         void runTickSimulation()
@@ -598,12 +663,37 @@ struct ScoreFunction
             unsigned long long population = currentANN.population;
             Synapse* synapses = currentANN.synapses;
             Neuron* neurons = currentANN.neurons;
+            NeuronType* neuronTypes = currentANN.neuronTypes;
 
             // Save the neuron value for comparison
             for (unsigned long long i = 0; i < population; ++i)
             {
                 // Backup the neuron value
-                previousNeuronValue[i] = neurons[i].value;
+                previousNeuronValue[i] = neurons[i];
+            }
+
+            // Compute the incomming synapse of each neurons
+           
+            for (unsigned long long n = 0; n < population; ++n)
+            {
+               const Synapse* kSynapses = getSynapses(n);
+               // Scan through all neighbor neurons and sum all connected neurons.
+               // The synapses are arranged as neuronIndex * numberOfNeighbors
+               for (long long m = 0; m < radius; m++)
+               {
+                   Synapse synapseWeight = kSynapses[m];
+                   unsigned long long nnIndex =  clampNeuronIndex(n + m, -(long long)numberOfNeighbors / 2);
+                   incommingSynapses[nnIndex * (numberOfNeighbors + 1) + (numberOfNeighbors - m)] = synapseWeight; // need to pad 1
+               }
+
+               incommingSynapses[n * (numberOfNeighbors + 1) + radius] = 0;
+
+               for (long long m = radius; m < numberOfNeighbors; m++)
+               {
+                   Synapse synapseWeight = kSynapses[m];
+                   unsigned long long nnIndex = clampNeuronIndex(n + m + 1, -(long long)numberOfNeighbors / 2);
+                   incommingSynapses[nnIndex * (numberOfNeighbors + 1) + (numberOfNeighbors - m - 1)] = synapseWeight;
+               }
             }
 
             for (unsigned long long tick = 0; tick < numberOfTicks; ++tick)
@@ -619,13 +709,13 @@ struct ScoreFunction
                 for (unsigned long long n = 0; n < population; ++n)
                 {
                     // Neuron unchanged check
-                    if (previousNeuronValue[n] != neurons[n].value)
+                    if (previousNeuronValue[n] != neurons[n])
                     {
                         allNeuronsUnchanged = false;
                     }
 
                     // Ouput neuron value check
-                    if (neurons[n].type == OUTPUT_NEURON_TYPE && neurons[n].value == 0)
+                    if (neuronTypes[n] == OUTPUT_NEURON_TYPE && neurons[n] == 0)
                     {
                         allOutputNeuronsIsNonZeros = false;
                     }
@@ -637,10 +727,7 @@ struct ScoreFunction
                 }
 
                 // Copy the neuron value
-                for (unsigned long long n = 0; n < population; ++n)
-                {
-                    previousNeuronValue[n] = neurons[n].value;
-                }
+                copyMem(previousNeuronValue, neurons, population * sizeof(Neuron));
             }
         }
 
@@ -648,6 +735,7 @@ struct ScoreFunction
         {
             unsigned long long population = currentANN.population;
             Neuron* neurons = currentANN.neurons;
+            NeuronType* neuronTypes = currentANN.neuronTypes;
 
             // Compute the non-matching value R between output neuron value and initial value
             // Because the output neuron order never changes, the order is preserved
@@ -655,9 +743,9 @@ struct ScoreFunction
             unsigned long long outputIdx = 0;
             for (unsigned long long i = 0; i < population; i++)
             {
-                if (neurons[i].type == OUTPUT_NEURON_TYPE)
+                if (neuronTypes[i] == OUTPUT_NEURON_TYPE)
                 {
-                    if (neurons[i].value != outputNeuronExpectedValue[outputIdx])
+                    if (neurons[i] != outputNeuronExpectedValue[outputIdx])
                     {
                         R++;
                     }
@@ -671,12 +759,13 @@ struct ScoreFunction
         {
             unsigned long long population = currentANN.population;
             Neuron* neurons = currentANN.neurons;
-            char neuronArray[64] = { 0 };
+            NeuronType* neuronTypes = currentANN.neuronTypes;
+            Neuron neuronArray[64] = { 0 };
             unsigned long long inputNeuronInitIndex = 0;
             for (unsigned long long i = 0; i < population; ++i)
             {
                 // Input will use the init value
-                if (neurons[i].type == INPUT_NEURON_TYPE)
+                if (neuronTypes[i] == INPUT_NEURON_TYPE)
                 {
                     // Prepare new pack
                     if (inputNeuronInitIndex % 64 == 0)
@@ -686,7 +775,7 @@ struct ScoreFunction
                     char neuronValue = neuronArray[inputNeuronInitIndex % 64];
 
                     // Convert value of neuron to trits (keeping 1 as 1, and changing 0 to -1.).
-                    neurons[i].value = (neuronValue == 0) ? -1 : neuronValue;
+                    neurons[i] = (neuronValue == 0) ? -1 : neuronValue;
 
                     inputNeuronInitIndex++;
                 }
@@ -699,12 +788,13 @@ struct ScoreFunction
 
             // Starting value of output neuron is zero
             Neuron* neurons = currentANN.neurons;
+            NeuronType* neuronTypes = currentANN.neuronTypes;
             unsigned long long population = currentANN.population;
             for (unsigned long long i = 0; i < population; ++i)
             {
-                if (neurons[i].type == OUTPUT_NEURON_TYPE)
+                if (neuronTypes[i] == OUTPUT_NEURON_TYPE)
                 {
-                    neurons[i].value = 0;
+                    neurons[i] = 0;
                 }
             }
         }
@@ -713,13 +803,14 @@ struct ScoreFunction
         {
             unsigned long long population = currentANN.population;
             Neuron* neurons = currentANN.neurons;
+            NeuronType* neuronTypes = currentANN.neuronTypes;
             InitValue* initValue = (InitValue*)paddingInitValue;
 
             // Randomly choose the positions of neurons types
             for (unsigned long long i = 0; i < population; ++i)
             {
                 neuronIndices[i] = i;
-                neurons[i].type = INPUT_NEURON_TYPE;
+                neuronTypes[i] = INPUT_NEURON_TYPE;
             }
             unsigned long long neuronCount = population;
             for (unsigned long long i = 0; i < numberOfOutputNeurons; ++i)
@@ -727,7 +818,7 @@ struct ScoreFunction
                 unsigned long long outputNeuronIdx = initValue->outputNeuronPositions[i] % neuronCount;
 
                 // Fill the neuron type
-                neurons[neuronIndices[outputNeuronIdx]].type = OUTPUT_NEURON_TYPE;
+                neuronTypes[neuronIndices[outputNeuronIdx]] = OUTPUT_NEURON_TYPE;
 
                 // This index is used, copy the end of indices array to current position and decrease the number of picking neurons
                 neuronCount = neuronCount - 1;
@@ -737,7 +828,7 @@ struct ScoreFunction
 
         void initExpectedOutputNeuron()
         {
-            char neuronArray[64] = { 0 };
+            Neuron neuronArray[64] = { 0 };
             for (unsigned long long i = 0; i < numberOfOutputNeurons; ++i)
             {
                 // Prepare new pack
@@ -771,6 +862,11 @@ struct ScoreFunction
 
         unsigned int initializeANN()
         {
+            currentANN.init();
+            currentANN.population = numberOfNeurons;
+            bestANN.init();
+            bestANN.population = numberOfNeurons;
+
             unsigned long long& population = currentANN.population;
             Synapse* synapses = currentANN.synapses;
             Neuron* neurons = currentANN.neurons;
@@ -778,6 +874,7 @@ struct ScoreFunction
 
             // Initialization
             population = numberOfNeurons;
+            removalNeuronsCount = 0;
 
             // Synapse weight initialization
             for (unsigned long long i = 0; i < (initNumberOfSynapses / 32); ++i)
@@ -789,9 +886,9 @@ struct ScoreFunction
                     unsigned char extractValue = (unsigned char)((initValue->synapseWeight[i] >> shiftVal) & mask);
                     switch (extractValue)
                     {
-                        case 2: synapses[32 * i + j].weight = -1; break;
-                        case 3: synapses[32 * i + j].weight = 1; break;
-                        default: synapses[32 * i + j].weight = 0;
+                        case 2: synapses[32 * i + j] = -1; break;
+                        case 3: synapses[32 * i + j] = 1; break;
+                        default: synapses[32 * i + j] = 0;
                     }
                 }
             }
@@ -809,7 +906,7 @@ struct ScoreFunction
             runTickSimulation();
 
             // Copy the state for rollback later
-            copyMem(&bestANN, &currentANN, sizeof(ANN));
+            currentANN.copyDataTo(bestANN);
 
             // Compute R and roll back if neccessary
             unsigned int R = computeNonMatchingOutput();
@@ -847,14 +944,16 @@ struct ScoreFunction
                 if (R > bestR)
                 {
                     // Roll back
-                    copyMem(&currentANN, &bestANN, sizeof(bestANN));
+                    //copyMem(&currentANN, &bestANN, sizeof(ANN));
+                    bestANN.copyDataTo(currentANN);
                 }
                 else
                 {
                     bestR = R;
 
                     // Better R. Save the state
-                    copyMem(&bestANN, &currentANN, sizeof(bestANN));
+                    //copyMem(&bestANN, &currentANN, sizeof(ANN));
+                    currentANN.copyDataTo(bestANN);
                 }
 
                 ASSERT(bestANN.population <= populationThreshold);
