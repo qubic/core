@@ -627,11 +627,11 @@ protected:
                 FileItem& item = mFileItems[mPriorityArray[i]._key];
                 if (isSave)
                 {
-                    sts = save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+                     save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
                 }
                 else
                 {
-                    sts = load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+                     load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
                 }
                 item.markAsDone();
             }
@@ -670,7 +670,7 @@ protected:
         if (maxIdx >= 0)
         {
             FileItem& item = mFileItems[maxIdx];
-            long long sts = 0;
+            long long  0;
             if (isSave)
             {
                 save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
@@ -771,7 +771,7 @@ public:
         mpSaveBuffer = NULL;
         if (totalWriteSize > 0)
         {
-            bool sts = allocatePool(totalWriteSize, (void**)&mpSaveBuffer);
+            bool  allocatePool(totalWriteSize, (void**)&mpSaveBuffer);
             if (!sts)
             {
                 return false;
