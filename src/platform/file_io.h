@@ -670,7 +670,6 @@ protected:
         if (maxIdx >= 0)
         {
             FileItem& item = mFileItems[maxIdx];
-            long long  0;
             if (isSave)
             {
                 save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
