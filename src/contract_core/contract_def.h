@@ -270,7 +270,7 @@ constexpr struct ContractDescription
     {"QX", 66, 10000, sizeof(QX)},
     {"QTRY", 72, 10000, sizeof(QUOTTERY)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
-    {"QUTIL", 99, 10000, sizeof(IPO)},
+    {"QUTIL", 99, 10000, sizeof(QUTIL)},
     {"MLM", 112, 10000, sizeof(IPO)},
     {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
