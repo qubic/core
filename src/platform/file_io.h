@@ -771,11 +771,6 @@ public:
         if (totalWriteSize > 0)
         {
             bool  allocatePool(totalWriteSize, (void**)&mpSaveBuffer);
-            if (!sts)
-            {
-                return false;
-            }
-
             mFileWriteQueue.initializeQueue(mpSaveBuffer);
             setMem(mpSaveBuffer, totalWriteSize, 0);
             mEnableNonBlockSave = true;
