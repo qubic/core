@@ -29,6 +29,22 @@ static constexpr int ASYNC_FILE_IO_MAX_FILE_NAME = 64;
 static constexpr int ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS = (1ULL << ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS_2FACTOR);
 static constexpr int ASYNC_FILE_IO_MAX_QUEUE_ITEMS = (1ULL << ASYNC_FILE_IO_MAX_QUEUE_ITEMS_2FACTOR);
 
+
+#ifdef NO_UEFI
+static FILE* open_file_cross_platform(const wchar_t* fileName, const wchar_t* mode) {
+#ifdef _MSC_VER
+    FILE* file;
+    if (_wfopen_s(&file, fileName, mode) != 0) {
+        return NULL;
+    }
+    return file;
+#else
+    // Everything else (clang, gcc, etc.) - use cast
+    return fopen((const char*)fileName, (const char*)mode);
+#endif
+}
+#endif
+
 static EFI_FILE_PROTOCOL* root = NULL;
 class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
@@ -231,8 +247,8 @@ static long long load(const CHAR16* fileName, unsigned long long totalSize, unsi
         logToConsole(L"Argument directory not implemented for NO_UEFI load()! Pass full path as fileName!");
         return -1;
     }
-    FILE* file = nullptr;
-    if (_wfopen_s(&file, fileName, L"rb") != 0 || !file)
+    FILE* file = open_file_cross_platform(fileName, L"rb");
+    if (!file)
     {
         wprintf(L"Error opening file %s!\n", fileName);
         return -1;
@@ -315,8 +331,8 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
         logToConsole(L"Argument directory not implemented for NO_UEFI save()! Pass full path as fileName!");
         return -1;
     }
-    FILE* file = nullptr;
-    if (_wfopen_s(&file, fileName, L"wb") != 0 || !file)
+    FILE* file = open_file_cross_platform(fileName, L"wb");
+    if (!file)
     {
         wprintf(L"Error opening file %s!\n", fileName);
         return -1;
