@@ -1905,7 +1905,7 @@ public:
         }
         for (locals._t = state.numberOfQEarnP - 1; locals._t >= 0; locals._t--)
         {
-            if (state.QEarnP.get(locals._t).proposedEpoch + 1 < qpi.epoch() && state.QEarnP.get(locals._t).result == 0 && state.QEarnP.get(locals._t).numberOfEpoch + state.QEarnP.get(locals._t).proposedEpoch + 1 >= qpi.epoch())
+            if (state.QEarnP.get(locals._t).proposedEpoch + 1 < qpi.epoch() && state.QEarnP.get(locals._t).result == 0 && state.QEarnP.get(locals._t).numberOfEpoch + state.QEarnP.get(locals._t).proposedEpoch + 1 >= input.epoch)
             {
                 output.amount += state.QEarnP.get(locals._t).assignedFundPerEpoch;
             }
