@@ -64,6 +64,31 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     endif()
 endif()
 
+# --- Clear all default flags to use only specified ones ---
+set(CMAKE_CONFIGURATION_TYPES Debug Release CACHE STRING "Available build types" FORCE)
+
+message(STATUS "CLEARING CMAKE DEFAULT FLAGS")
+# Set all default flag variables to an empty string to take full control.
+set(CMAKE_C_FLAGS "" CACHE INTERNAL "")
+set(CMAKE_CXX_FLAGS "" CACHE INTERNAL "")
+set(CMAKE_EXE_LINKER_FLAGS "" CACHE INTERNAL "")
+
+set(CMAKE_C_FLAGS_DEBUG "" CACHE INTERNAL "")
+set(CMAKE_CXX_FLAGS_DEBUG "" CACHE INTERNAL "")
+set(CMAKE_EXE_LINKER_FLAGS_DEBUG "" CACHE INTERNAL "")
+
+set(CMAKE_C_FLAGS_RELEASE "" CACHE INTERNAL "")
+set(CMAKE_CXX_FLAGS_RELEASE "" CACHE INTERNAL "")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "" CACHE INTERNAL "")
+
+# set(CMAKE_C_FLAGS_RELWITHDEBINFO "" CACHE INTERNAL "")
+# set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "" CACHE INTERNAL "")
+# set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "" CACHE INTERNAL "")
+
+# set(CMAKE_C_FLAGS_MINSIZEREL "" CACHE INTERNAL "")
+# set(CMAKE_CXX_FLAGS_MINSIZEREL "" CACHE INTERNAL "")
+# set(CMAKE_EXE_LINKER_FLAGS_MINSIZEREL "" CACHE INTERNAL "")
+
 # --- Common Compiler Flags ---
 
 # Define common flags for all compilers
@@ -86,14 +111,44 @@ if(IS_MSVC)
     # MSVC-specific common flags
     set(COMMON_C_FLAGS "/W4 /GF" CACHE INTERNAL "Common C compiler flags" FORCE)
     set(COMMON_CXX_FLAGS "${COMMON_C_FLAGS}" CACHE INTERNAL "Common C++ compiler flags" FORCE)
-    set(COMMON_DEBUG_FLAGS "/RTC1" CACHE INTERNAL "Common debug compiler flags" FORCE)
+    set(COMMON_DEBUG_FLAGS "" CACHE INTERNAL "Common debug compiler flags" FORCE)
     set(COMMON_RELEASE_FLAGS "/GL- /Gw /Oi /Ob2 /O2 /Oy" CACHE INTERNAL "Common release compiler flags" FORCE)
     set(COMMON_LINK_FLAGS "" CACHE INTERNAL "Common linker flags" FORCE)
     
     # MSVC-specific EFI flags
-    set(EFI_C_FLAGS "/GS- /guard:cf- /fp:except- /Zc:wchar_t-" CACHE INTERNAL "EFI-specific C compiler flags" FORCE)
-    set(EFI_CXX_FLAGS "${EFI_C_FLAGS} /EHsc-" CACHE INTERNAL "EFI-specific C++ compiler flags" FORCE)
-    set(EFI_LINK_FLAGS "/IGNOREALLDEFAULTLIBS" CACHE INTERNAL "EFI-specific linker flags" FORCE)
+    # /W3                      # WarningLevel: Level3
+    # /permissive-             # ConformanceMode: true
+    # /Zc:wchar_t-             # TreatWChar_tAsBuiltInType: false
+    # /EHs-c-                  # ExceptionHandling: false
+    # /GS-                     # BufferSecurityCheck: false / SDLCheck: false
+    # /GF                      # StringPooling: true
+    # /Gy-                     # FunctionLevelLinking: false
+    # /Oi                      # IntrinsicFunctions: true
+    # /O2                      # Optimization: MaxSpeed
+    # /Ot                      # FavorSizeOrSpeed: Speed
+    # /Ob2                     # InlineFunctionExpansion: AnySuitable
+    # /Oy                      # OmitFramePointers: true
+    # /GT                      # EnableFiberSafeOptimizations: true
+    # /fp:except-              # FloatingPointExceptions: false
+    # /guard:cf-               # ControlFlowGuard: false
+    # /Gs1638400               # AdditionalOptions: /Gs...
+    # /Zl                      # OmitDefaultLibName: true
+    # /FAcs                    # AssemblerOutput: All (DISABLED)
+    # /Fa${CMAKE_INTDIR}/Qubic.asm # AssemblerListingLocation (DISABLED)
+    set(EFI_C_FLAGS "/W3 /permissive- /Zc:wchar_t- /EHs-c- /GS- /GF /Gy- /Oi /O2 /Ot /Ob2 /Oy /GT /fp:except- /guard:cf- /Gs1638400 /Zl" CACHE INTERNAL "EFI-specific C compiler flags" FORCE)
+    set(EFI_CXX_FLAGS "${EFI_C_FLAGS}" CACHE INTERNAL "EFI-specific C++ compiler flags" FORCE)
+
+    # /SUBSYSTEM:EFI_APPLICATION # SubSystem: EFI Application
+    # /ENTRY:efi_main            # EntryPointSymbol: efi_main
+    # /NODEFAULTLIB              # IgnoreAllDefaultLibraries: true
+    # /DEBUG:NONE                # GenerateDebugInformation: false
+    # /OPT:REF                   # EnableCOMDATFolding: true
+    # /OPT:ICF                   # OptimizeReferences: true
+    # /DYNAMICBASE:NO            # RandomizedBaseAddress: false
+    # /NXCOMPAT:NO               # DataExecutionPrevention: false
+    # /MANIFEST:NO               # GenerateManifest: false
+    # /STACK:131072              # StackReserveSize / StackCommitSize
+    set(EFI_LINK_FLAGS "/SUBSYSTEM:EFI_APPLICATION /ENTRY:efi_main /NODEFAULTLIB /DEBUG:NONE /OPT:REF /OPT:ICF /MANIFEST:NO /DYNAMICBASE:NO /NXCOMPAT:NO /STACK:131072" CACHE INTERNAL "EFI-specific linker flags" FORCE)
     
     # MSVC-specific OS flags
     set(OS_C_FLAGS "" CACHE INTERNAL "OS-specific C compiler flags" FORCE)
@@ -148,7 +203,7 @@ endif()
 set(TEST_SPECIFIC_FLAGS "" CACHE INTERNAL "Test-specific compiler flags")
 
 if(IS_MSVC)
-    set(TEST_SPECIFIC_FLAGS "/WX" CACHE INTERNAL "Test-specific compiler flags" FORCE)
+    set(TEST_SPECIFIC_FLAGS "/WX /EHsc" CACHE INTERNAL "Test-specific compiler flags" FORCE)
 elseif(IS_CLANG OR IS_GCC)
     if(USE_SANITIZER)
         set(TEST_SPECIFIC_FLAGS "-Wpedantic -Werror -mrdrnd -Wcast-align -fsanitize=alignment -fno-sanitize-recover=alignment" CACHE INTERNAL "Test-specific compiler flags" FORCE)
@@ -190,6 +245,7 @@ function(apply_common_compiler_flags target)
             UNICODE _UNICODE
             $<$<CONFIG:Release>:NDEBUG>
         )
+        message("Apply Common Flags MSVC to " ${target})
     else()
         # Convert space-separated flags to list for Clang/GCC
         separate_arguments(C_FLAGS UNIX_COMMAND ${COMMON_C_FLAGS})
@@ -209,6 +265,7 @@ function(apply_common_compiler_flags target)
             _LIB
             $<$<CONFIG:Release>:NDEBUG>
         )
+        message("Apply Common Flags Clang to " ${target})
     endif()
 endfunction()
 
@@ -224,6 +281,7 @@ function(apply_os_compiler_flags target)
             ${OS_C_FLAGS_LIST}
             $<$<COMPILE_LANGUAGE:CXX>:${OS_CXX_FLAGS_LIST}>
         )
+        message("Apply OS Flags MSVC to " ${target})
     else()
         separate_arguments(OS_C_FLAGS_LIST UNIX_COMMAND ${OS_C_FLAGS})
         separate_arguments(OS_CXX_FLAGS_LIST UNIX_COMMAND ${OS_CXX_FLAGS})
@@ -232,6 +290,7 @@ function(apply_os_compiler_flags target)
             ${OS_C_FLAGS_LIST}
             $<$<COMPILE_LANGUAGE:CXX>:${OS_CXX_FLAGS_LIST}>
         )
+        message("Apply OS Flags CLANG to " ${target})
     endif()
 endfunction()
 
@@ -251,6 +310,7 @@ function(apply_efi_compiler_flags target)
         if(EFI_LINK_FLAGS)
             set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS ${EFI_LINK_FLAGS})
         endif()
+        message("Apply Efi Flags MSVC to " ${target})
     else()
         separate_arguments(EFI_C_FLAGS_LIST UNIX_COMMAND ${EFI_C_FLAGS})
         separate_arguments(EFI_CXX_FLAGS_LIST UNIX_COMMAND ${EFI_CXX_FLAGS})
@@ -259,6 +319,7 @@ function(apply_efi_compiler_flags target)
             ${EFI_C_FLAGS_LIST}
             $<$<COMPILE_LANGUAGE:CXX>:${EFI_CXX_FLAGS_LIST}>
         )
+        message("Apply Efi Flags CLANG to " ${target})
     endif()
 endfunction()
 
@@ -269,6 +330,7 @@ function(apply_test_compiler_flags target)
     if(IS_MSVC)
         separate_arguments(TEST_FLAGS WINDOWS_COMMAND ${TEST_SPECIFIC_FLAGS})
         target_compile_options(${target} PRIVATE ${TEST_FLAGS})
+        message("Apply Test Flags CLANG to " ${target})
     else()
         separate_arguments(TEST_FLAGS UNIX_COMMAND ${TEST_SPECIFIC_FLAGS})
         target_compile_options(${target} PRIVATE ${TEST_FLAGS})
@@ -277,5 +339,6 @@ function(apply_test_compiler_flags target)
             separate_arguments(TEST_LINK_FLAGS UNIX_COMMAND ${TEST_SPECIFIC_LINK_FLAGS})
             target_link_options(${target} PRIVATE ${TEST_LINK_FLAGS})
         endif()
+        message("Apply Test Flags CLANG to " ${target})
     endif()
 endfunction()
