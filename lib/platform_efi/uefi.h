@@ -1,6 +1,6 @@
 #pragma once
 
-////////// UEFI \\\\\\\\\\
+/********* UEFI *********/
 
 #define FALSE ((BOOLEAN)0)
 #define IN

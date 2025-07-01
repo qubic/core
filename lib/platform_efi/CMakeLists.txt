@@ -9,7 +9,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-
 # --- Include Directories (Common) ---
 # Get the project root directory by going up two levels from the current directory
 get_filename_component(PROJECT_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
@@ -24,6 +23,7 @@ include_directories(
 # Source files
 set(SOURCES
     edk2_debug.c
+    processor.cpp
     sleep.cpp
     uefi_globals.cpp
 )
