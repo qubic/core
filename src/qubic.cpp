@@ -1265,7 +1265,7 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
     }
     else
     {
-        copyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
+        copyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(EntityRecord));
         ACQUIRE(spectrumLock);
         getSiblings<SPECTRUM_DEPTH>(respondedEntity.spectrumIndex, spectrumDigests, respondedEntity.siblings);
         RELEASE(spectrumLock);
@@ -5524,7 +5524,7 @@ static bool initialize()
                     numberOfLeafs >>= 1;
                 }
 
-                setNumber(message, SPECTRUM_CAPACITY * sizeof(::Entity), TRUE);
+                setNumber(message, SPECTRUM_CAPACITY * sizeof(EntityRecord), TRUE);
                 appendText(message, L" bytes of the spectrum data are hashed (");
                 appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
                 appendText(message, L" microseconds).");
