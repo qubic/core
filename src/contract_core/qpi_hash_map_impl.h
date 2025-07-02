@@ -288,11 +288,10 @@ namespace QPI
 		}
 
 		// Init buffers
-		auto* _elementsBuffer = reinterpret_cast<Element*>(::__scratchpad());
+		auto* _elementsBuffer = reinterpret_cast<Element*>(::__scratchpad(sizeof(_elements) + sizeof(_occupationFlags)));
 		auto* _occupationFlagsBuffer = reinterpret_cast<uint64*>(_elementsBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(
 			_occupationFlagsBuffer + sizeof(_occupationFlags) / sizeof(_occupationFlags[0]));
-		setMem(::__scratchpad(), sizeof(_elements) + sizeof(_occupationFlags), 0);
 		uint64 newPopulation = 0;
 
 		// Go through hash map. For each element that is occupied but not marked for removal, insert element in new hash map's buffers.
@@ -615,11 +614,10 @@ namespace QPI
 		}
 
 		// Init buffers
-		auto* _keyBuffer = reinterpret_cast<KeyT*>(::__scratchpad());
+		auto* _keyBuffer = reinterpret_cast<KeyT*>(::__scratchpad(sizeof(_keys) + sizeof(_occupationFlags)));
 		auto* _occupationFlagsBuffer = reinterpret_cast<uint64*>(_keyBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(
 			_occupationFlagsBuffer + sizeof(_occupationFlags) / sizeof(_occupationFlags[0]));
-		setMem(::__scratchpad(), sizeof(_keys) + sizeof(_occupationFlags), 0);
 		uint64 newPopulation = 0;
 
 		// Go through hash map. For each element that is occupied but not marked for removal, insert element in new hash map's buffers.
