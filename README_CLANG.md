@@ -51,6 +51,10 @@ For a example compilation execute the following commands:
     * **Values:** `ON`, `OFF`
     * **Meaning:** `ON` builds the EFI file, `OFF` skips building EFI file. Currently this build is not working.
 
+* **`-D BUILD_BENCHMARK=<ON|OFF>`**
+    * **Values:** `ON`, `OFF`
+    * **Meaning:** `ON` builds a EFI file that allows to run a benchmark directly in the uefi. `OFF` skips building this EFI Benchmark.
+
 * **`-D CMAKE_BUILD_TYPE=<Type>`**
     * **Values:** `Debug`, `Release`, `RelWithDebInfo`, `MinSizeRel`
     * **Meaning:** Sets the build mode for optimization and debug info (e.g., `Debug` for debugging, `Release` for performance).
@@ -58,6 +62,10 @@ For a example compilation execute the following commands:
 * **`-D ENABLE_AVX512=<ON|OFF>`**
     * **Values:** `ON`, `OFF`
     * **Meaning:** `ON` enables code using AVX-512 CPU instructions (requires support), `OFF` disables it.
+
+* **`-D USE_SANITIZER=<ON|OFF>`**
+    * **Values:** `ON`, `OFF`
+    * **Meaning:** `ON` enables linking to santizers when building with clang, `OFF` disables sanitizers.
 
 4.  **Build the Project:**
     Use the CMake `--build` command to invoke the underlying build tool (like `make` or `ninja`).
@@ -85,9 +93,9 @@ Current state of the working tests:
 | Contract qVault    | `contract_qvault.cpp`   | Pending     |
 | Contract qX        | `contract_qx.cpp`       | Pending     |
 | KangarooTwelve     | `kangaroo_twelve.cpp`   | Pending     |
-| M256               | `m256.cpp`              | Pending     |
+| M256               | `m256.cpp`              | **Working** |
 | Math Lib           | `math_lib.cpp`          | **Working** |
-| Network Messages   | `network_messages.cpp`  | Pending     |
+| Network Messages   | `network_messages.cpp`  | **Working** |
 | Platform           | `platform.cpp`          | Pending     |
 | QPI Collection     | `qpi_collection.cpp`    | Pending     |
 | QPI                | `qpi.cpp`               | Pending     |

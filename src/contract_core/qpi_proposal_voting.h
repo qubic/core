@@ -135,6 +135,9 @@ namespace QPI
 		case ProposalTypes::Class::Transfer:
 			valid = (options >= 2 && options <= 5);
 			break;
+		case ProposalTypes::Class::TransferInEpoch:
+			valid = options == 2;
+			break;
 		case ProposalTypes::Class::Variable:
 			valid =
 				(options >= 2 && options <= 5) // option voting
@@ -323,7 +326,7 @@ namespace QPI
 	};
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
-	bool QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType>::setProposal(
+	uint16 QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType>::setProposal(
 		const id& proposer,
 		const ProposalDataType& proposal
 	)
@@ -333,15 +336,18 @@ namespace QPI
 
 		// epoch 0 means to clear proposal
 		if (proposal.epoch == 0)
-			return clearProposal(pv.proposersAndVoters.getExistingProposalIndex(qpi, proposer));
+		{
+			unsigned int proposalIndex = pv.proposersAndVoters.getExistingProposalIndex(qpi, proposer);
+			return clearProposal(proposalIndex) ? proposalIndex : INVALID_PROPOSAL_INDEX;
+		}
 
 		// check if proposal is valid
 		if (!proposal.checkValidity())
-			return false;
+			return INVALID_PROPOSAL_INDEX;
 
 		// check if proposer ID has right to propose
 		if (!pv.proposersAndVoters.isValidProposer(qpi, proposer))
-			return false;
+			return INVALID_PROPOSAL_INDEX;
 
 		// get proposal index
 		unsigned int proposalIndex = pv.proposersAndVoters.getNewProposalIndex(qpi, proposer);
@@ -360,7 +366,7 @@ namespace QPI
 
 			// all occupied slots are used in current epoch? -> error
 			if (proposalIndex >= pv.maxProposals)
-				return false;
+				return INVALID_PROPOSAL_INDEX;
 			
 			// remove oldest proposal
 			clearProposal(proposalIndex);
@@ -370,11 +376,19 @@ namespace QPI
 		}
 
 		// set proposal (and reset previous votes if any)
-		bool okay = pv.proposals[proposalIndex].set(proposal);
-		pv.proposals[proposalIndex].tick = qpi.tick();
-		pv.proposals[proposalIndex].epoch = qpi.epoch();
-
-		return okay;
+		ASSERT(proposalIndex < pv.maxProposals);
+		if (pv.proposals[proposalIndex].set(proposal))
+		{
+			pv.proposals[proposalIndex].tick = qpi.tick();
+			pv.proposals[proposalIndex].epoch = qpi.epoch();
+			return proposalIndex;
+		}
+		else
+		{
+			// cleanup in case of this error, which indicates a bug
+			pv.proposersAndVoters.freeProposalByIndex(qpi, proposalIndex);
+			return INVALID_PROPOSAL_INDEX;
+		}
 	}
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>

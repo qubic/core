@@ -1114,6 +1114,10 @@ protected:
 				state._distributedAmount += div((state._earnedAmount - state._distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
 			}
 		}
+
+		// Cleanup collections if more than 30% of hash maps are marked for removal
+		state._assetOrders.cleanupIfNeeded(30);
+		state._entityOrders.cleanupIfNeeded(30);
 	}
 
 	PRE_RELEASE_SHARES()

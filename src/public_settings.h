@@ -56,12 +56,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 248
+#define VERSION_B 249
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 167
-#define TICK 28025000
+#define EPOCH 168
+#define TICK 28375000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 #define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"
@@ -82,7 +82,7 @@ static constexpr unsigned long long NUMBER_OF_NEIGHBORS = 256;    // 2M. Must be
 static constexpr unsigned long long NUMBER_OF_MUTATIONS = 100;
 static constexpr unsigned long long POPULATION_THRESHOLD = NUMBER_OF_INPUT_NEURONS + NUMBER_OF_OUTPUT_NEURONS + NUMBER_OF_MUTATIONS; // P
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
-static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 176;
+static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 178;
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
