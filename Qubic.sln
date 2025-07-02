@@ -16,6 +16,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "platform_efi", "lib\platfor
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "platform_os", "lib\platform_os\platform_os.vcxproj", "{88B4CDA8-8248-44D0-848E-0E938A2AAD6D}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "benchmark", "benchmark_uefi\benchmark.vcxproj", "{AD7B4795-A54D-631F-A159-B0324B09BE5E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -53,6 +55,12 @@ Global
 		{88B4CDA8-8248-44D0-848E-0E938A2AAD6D}.Release|x64.Build.0 = Release|x64
 		{88B4CDA8-8248-44D0-848E-0E938A2AAD6D}.ReleaseAVX512|x64.ActiveCfg = Release|x64
 		{88B4CDA8-8248-44D0-848E-0E938A2AAD6D}.ReleaseAVX512|x64.Build.0 = Release|x64
+		{AD7B4795-A54D-631F-A159-B0324B09BE5E}.Debug|x64.ActiveCfg = Debug|x64
+		{AD7B4795-A54D-631F-A159-B0324B09BE5E}.Debug|x64.Build.0 = Debug|x64
+		{AD7B4795-A54D-631F-A159-B0324B09BE5E}.Release|x64.ActiveCfg = Release|x64
+		{AD7B4795-A54D-631F-A159-B0324B09BE5E}.Release|x64.Build.0 = Release|x64
+		{AD7B4795-A54D-631F-A159-B0324B09BE5E}.ReleaseAVX512|x64.ActiveCfg = ReleaseAVX512|x64
+		{AD7B4795-A54D-631F-A159-B0324B09BE5E}.ReleaseAVX512|x64.Build.0 = ReleaseAVX512|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

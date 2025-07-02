@@ -58,7 +58,7 @@ TEST(TestCoreCommonDef, IPv4Address) {
     EXPECT_EQ(ip_ref.u8[3], 4);
     EXPECT_EQ(ip_ref.u32, 0x04030201);
 
-    IPv4Address ip2 {100, 200, 32, 4};
+    IPv4Address ip2 {{100, 200, 32, 4}};
     EXPECT_TRUE(ip_ref != ip2);
     EXPECT_FALSE(ip_ref == ip2);
 

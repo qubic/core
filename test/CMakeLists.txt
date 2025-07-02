@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.15)
 project(qubic_core_tests CXX C)
 
 # GoogleTest requires at least C++20
@@ -34,9 +34,9 @@ add_executable(
   # contract_qvault.cpp
   # contract_qx.cpp
   # kangaroo_twelve.cpp
-  # m256.cpp
+  m256.cpp
   math_lib.cpp
-  # network_messages.cpp
+  network_messages.cpp
   # platform.cpp
   # qpi_collection.cpp
   # qpi.cpp
@@ -64,7 +64,6 @@ target_link_libraries(
   GTest::gtest_main
   platform_common
   platform_os
-  platform_efi #Currently still needed due to various imports
 )
 
 include(GoogleTest)

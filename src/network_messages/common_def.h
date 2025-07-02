@@ -16,7 +16,7 @@
 
 #define MAX_INPUT_SIZE 1024ULL
 #define ISSUANCE_RATE 1000000000000LL
-#define MAX_AMOUNT (ISSUANCE_RATE * 1000ULL)
+#define MAX_AMOUNT (ISSUANCE_RATE * 1000LL)
 #define MAX_SUPPLY (ISSUANCE_RATE * 200ULL)
 
 
@@ -26,17 +26,18 @@
 #if defined(NETWORK_MESSAGES_WITHOUT_CORE_DEPENDENCIES)
 
 #include <lib/platform_common/qintrin.h>
+#include <lib/platform_common/qstdint.h>
 
 typedef union m256i
 {
-    __int8              m256i_i8[32];
-    __int16             m256i_i16[16];
-    __int32             m256i_i32[8];
-    __int64             m256i_i64[4];
-    unsigned __int8     m256i_u8[32];
-    unsigned __int16    m256i_u16[16];
-    unsigned __int32    m256i_u32[8];
-    unsigned __int64    m256i_u64[4];
+    int8_t              m256i_i8[32];
+    int16_t             m256i_i16[16];
+    int32_t             m256i_i32[8];
+    int64_t             m256i_i64[4];
+    uint8_t             m256i_u8[32];
+    uint16_t            m256i_u16[16];
+    uint32_t            m256i_u32[8];
+    uint64_t            m256i_u64[4];
 } m256i;
 
 #else
@@ -47,8 +48,8 @@ typedef union m256i
 
 typedef union IPv4Address
 {
-    unsigned __int8     u8[4];
-    unsigned __int32    u32;
+    uint8_t     u8[4];
+    uint32_t    u32;
 } IPv4Address;
 
 static_assert(sizeof(IPv4Address) == 4, "Unexpected size!");
