@@ -120,6 +120,9 @@
     <ClInclude Include="contracts\QBAY.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Nostromo.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
