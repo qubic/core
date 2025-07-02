@@ -301,6 +301,7 @@ protected:
 
 	Array<fundaraisingInfo, NOSTROMO_MAX_NUMBER_PROJECT> fundaraisings;
 
+	id teamAddress;
 	sint64 transferRightsFee;
 	uint64 epochRevenue, totalPoolWeight;
 	uint32 numberOfRegister, numberOfCreatedProject, numberOfFundaraising;
@@ -1316,6 +1317,7 @@ public:
 
 	INITIALIZE()
 	{
+		state.teamAddress = ID(_G, _E, _H, _N, _R, _F, _U, _O, _I, _I, _C, _S, _B, _C, _S, _R, _F, _M, _N, _J, _T, _C, _J, _K, _C, _J, _H, _A, _T, _Z, _X, _A, _X, _Y, _O, _F, _W, _X, _U, _F, _L, _C, _K, _F, _P, _B, _W, _X, _Q, _A, _C, _B, _S, _Z, _F, _F);
 		state.transferRightsFee = 1000000;
 	}
 
@@ -1369,6 +1371,8 @@ public:
 			}
 		}
 
+		qpi.transfer(state.teamAddress, div(state.epochRevenue, 10ULL));
+		state.epochRevenue -= div(state.epochRevenue, 10ULL);
 		qpi.distributeDividends(div(state.epochRevenue, 676ULL));
 		state.epochRevenue -= div(state.epochRevenue, 676ULL) * 676;
 		
