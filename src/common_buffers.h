@@ -7,7 +7,7 @@
 #include "network_messages/assets.h"
 
 
-constexpr unsigned long long spectrumSizeInBytes = SPECTRUM_CAPACITY * sizeof(::Entity);
+constexpr unsigned long long spectrumSizeInBytes = SPECTRUM_CAPACITY * sizeof(EntityRecord);
 constexpr unsigned long long universeSizeInBytes = ASSETS_CAPACITY * sizeof(AssetRecord);
 // TODO: check that max contract state size does not exceed size of spectrum or universe
 constexpr unsigned long long reorgBufferSize = (spectrumSizeInBytes >= universeSizeInBytes) ? spectrumSizeInBytes : universeSizeInBytes;

@@ -604,7 +604,7 @@ protected:
 
     struct END_EPOCH_locals 
     {
-        ::Entity entity;
+        Entity entity;
         AssetPossessionIterator iter;
         Asset QCAPId;
         uint64 revenue;
