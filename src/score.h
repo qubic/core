@@ -146,7 +146,8 @@ struct ScoreFunction
     static constexpr unsigned long long maxNumberOfSynapses = populationThreshold * numberOfNeighbors;
     static constexpr unsigned long long initNumberOfSynapses = numberOfNeurons * numberOfNeighbors;
     static constexpr long long radius = (long long)numberOfNeighbors / 2;
-    static constexpr long long paddingNeuronsCount = maxNumberOfNeurons + numberOfNeighbors;
+    static constexpr long long paddingNeuronsCount = (maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE;
+    static constexpr long long incommingSynapsesPitch = (numberOfNeighbors + 1 + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE;
 
     static_assert(numberOfInputNeurons % 64 == 0, "numberOfInputNeurons must be divided by 64");
     static_assert(numberOfOutputNeurons % 64 == 0, "numberOfOutputNeurons must be divided by 64");
@@ -216,7 +217,8 @@ struct ScoreFunction
 
             Neuron* neurons;
             // Padding start and end of neurons so that we can reduce the condition checking
-            Neuron paddingNeurons[maxNumberOfNeurons + numberOfNeighbors];
+            // Also padding at the end so that is divided by BATCH_SIZE
+            Neuron paddingNeurons[paddingNeuronsCount];
             NeuronType neuronTypes[maxNumberOfNeurons];
             Synapse synapses[maxNumberOfSynapses];
 
@@ -241,8 +243,7 @@ struct ScoreFunction
         unsigned long long removalNeuronsCount;
 
         // Contain incomming synapse of neurons. The center one will be zeros
-        Synapse incommingSynapses[maxNumberOfSynapses + maxNumberOfNeurons];
-
+        Synapse incommingSynapses[maxNumberOfNeurons * incommingSynapsesPitch];
 
         void mutate(unsigned long long mutateStep)
         {
@@ -596,15 +597,14 @@ struct ScoreFunction
             setMem(neuronValueBuffer, sizeof(neuronValueBuffer), 0);
             Neuron* pPaddingNeurons = currentANN.paddingNeurons;
             Synapse* synapses = incommingSynapses;
-            Neuron* neurons = currentANN.neurons;
 
-            for (unsigned long long n = 0; n < population; ++n, pPaddingNeurons++, synapses += (numberOfNeighbors + 1))
+            for (unsigned long long n = 0; n < population; ++n, pPaddingNeurons++, synapses += incommingSynapsesPitch)
             {
                 int neuronValue = 0;
-                long long m = 0;
 #if defined (__AVX512F__)
                 const __m512i zeros512 = _mm512_setzero_si512();
-                for (; m + BATCH_SIZE <= numberOfNeighbors; m += BATCH_SIZE)
+                const __m512i allOnes512 = _mm512_set1_epi8(char(-1));
+                for (long long m = 0; m < incommingSynapsesPitch; m += BATCH_SIZE)
                 {
                     const __m512i neurons512 = _mm512_loadu_si512((const __m512i*)(pPaddingNeurons + m));
                     const __m512i synapses512 = _mm512_loadu_si512((const __m512i*)(synapses + m));
@@ -622,7 +622,7 @@ struct ScoreFunction
                 const __m256i allOnes256 = _mm256_set1_epi8(-1);
                 unsigned int negMask = 0;
                 unsigned int posMask = 0;
-                for (; m + BATCH_SIZE <= numberOfNeighbors; m += BATCH_SIZE)
+                for (long long m = 0; m < incommingSynapsesPitch; m += BATCH_SIZE)
                 {
                     const __m256i neurons256 = _mm256_loadu_si256((const __m256i*)(pPaddingNeurons + m));
                     const __m256i synapses256 = _mm256_loadu_si256((const __m256i*)(synapses + m));
@@ -642,20 +642,10 @@ struct ScoreFunction
                 }
 
 #endif
-
-                for (; m <= numberOfNeighbors; ++m)
-                {
-                    const Synapse synapseWeight = synapses[m];
-                    const Neuron nVal = pPaddingNeurons[m];
-
-                    // Weight-sum
-                    neuronValue += synapseWeight * nVal;
-                }
-
                 neuronValueBuffer[n] = (Neuron)clampNeuron(neuronValue);
             }
 
-            copyMem(neurons, neuronValueBuffer, population * sizeof(Neuron));
+            copyMem(currentANN.neurons, neuronValueBuffer, population * sizeof(Neuron));
         }
 
         void runTickSimulation()
@@ -682,18 +672,19 @@ struct ScoreFunction
                for (long long m = 0; m < radius; m++)
                {
                    Synapse synapseWeight = kSynapses[m];
-                   unsigned long long nnIndex =  clampNeuronIndex(n + m, -(long long)numberOfNeighbors / 2);
-                   incommingSynapses[nnIndex * (numberOfNeighbors + 1) + (numberOfNeighbors - m)] = synapseWeight; // need to pad 1
+                   unsigned long long nnIndex =  clampNeuronIndex(n + m, -radius);
+                   incommingSynapses[nnIndex * incommingSynapsesPitch + (numberOfNeighbors - m)] = synapseWeight;
                }
-
-               incommingSynapses[n * (numberOfNeighbors + 1) + radius] = 0;
 
                for (long long m = radius; m < numberOfNeighbors; m++)
                {
                    Synapse synapseWeight = kSynapses[m];
-                   unsigned long long nnIndex = clampNeuronIndex(n + m + 1, -(long long)numberOfNeighbors / 2);
-                   incommingSynapses[nnIndex * (numberOfNeighbors + 1) + (numberOfNeighbors - m - 1)] = synapseWeight;
+                   unsigned long long nnIndex = clampNeuronIndex(n + m + 1, -radius);
+                   incommingSynapses[nnIndex * incommingSynapsesPitch + (numberOfNeighbors - m - 1)] = synapseWeight;
                }
+
+               // Self incomming synapse is set as zero
+               incommingSynapses[n * incommingSynapsesPitch + radius] = 0;
             }
 
             for (unsigned long long tick = 0; tick < numberOfTicks; ++tick)
@@ -872,6 +863,7 @@ struct ScoreFunction
             Neuron* neurons = currentANN.neurons;
             InitValue* initValue = (InitValue*)paddingInitValue;
 
+
             // Initialization
             population = numberOfNeurons;
             removalNeuronsCount = 0;
@@ -1000,6 +992,8 @@ struct ScoreFunction
     bool initMemory()
     {
         random2PoolLock = 0;
+
+        // Make sure all padding data is set as zeros
         setMem(_computeBuffer, sizeof(_computeBuffer), 0);
 
         for (int i = 0; i < solutionBufferCount; i++)
