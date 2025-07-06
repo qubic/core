@@ -6,8 +6,7 @@ constexpr uint64 QSWAP_MAX_POOL = QSWAP_INITIAL_MAX_POOL * X_MULTIPLIER;
 constexpr uint64 QSWAP_MAX_USER_PER_POOL = 256;
 constexpr sint64 QSWAP_MIN_LIQUDITY = 1000;
 constexpr uint32 QSWAP_SWAP_FEE_BASE = 10000;
-constexpr uint32 QSWAP_PROTOCOL_FEE_BASE = 100;
-constexpr uint32 QSWAP_POOL_CREATION_FEE_BASE = 100; // poolCreataionFee = assetIssueFee / POOL_CREATION_RATIO
+constexpr uint32 QSWAP_FEE_BASE_100 = 100;
 
 struct QSWAP2 
 {
@@ -18,11 +17,26 @@ struct QSWAP : public ContractBase
 public:
 	struct Fees_input{};
 	struct Fees_output{
-		uint32 assetIssuanceFee; // Amount of qus
-		uint32 poolCreationFee; // Amount of qus
-		uint32 transferFee; // Amount of qus
-		uint32 swapFee; // Number of billionths
-		uint32 protocolFee;
+		uint32 assetIssuanceFee; 	// Amount of qus
+		uint32 poolCreationFee; 	// Amount of qus
+		uint32 transferFee; 		// Amount of qus
+
+		uint32 swapFee; 			// 30 -> 0.3%
+		uint32 protocolFee;			// 20 -> 20%, for ipo share holders
+		uint32 teamFee;				// 20 -> 20%, for dev team 
+	};
+
+	struct TeamInfo_input{};
+	struct TeamInfo_output{
+		uint32 teamFee;				// 20 -> 20%
+		id teamId;
+	};
+
+	struct SetTeamInfo_input{
+		id newTeamId;
+	};
+	struct SetTeamInfo_output{
+		bool success;
 	};
 
 	struct GetPoolBasicState_input{
@@ -185,11 +199,16 @@ public:
 
 protected:
 	uint32 swapFeeRate; 		// e.g. 30: 0.3% (base: 10_000)
+	uint32 teamFeeRate;			// e.g. 20: 20% (base: 100)
 	uint32 protocolFeeRate; 	// e.g. 20: 20% (base: 100) only charge in qu
-	uint32 poolCreationRate;	// e.g. 10: 10% (base: 100)
+	uint32 poolCreationFeeRate;	// e.g. 10: 10% (base: 100)
+
+	id teamId;
+	uint64 teamEarnedFee;
+	uint64 teamDistributedAmount;
 
 	uint64 protocolEarnedFee;
-	uint64 distributedAmount;
+	uint64 protocolDistributedAmount;
 
 	struct PoolBasicState{
 		id poolID;
@@ -325,9 +344,10 @@ protected:
 		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
 
 		output.assetIssuanceFee = locals.feesOutput.assetIssuanceFee;
-		output.poolCreationFee = uint32(div(uint64(locals.feesOutput.assetIssuanceFee) * uint64(state.poolCreationRate), uint64(QSWAP_POOL_CREATION_FEE_BASE)));
+		output.poolCreationFee = uint32(div(uint64(locals.feesOutput.assetIssuanceFee) * uint64(state.poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
 		output.transferFee = locals.feesOutput.transferFee;
 		output.swapFee = state.swapFeeRate;
+		output.teamFee = state.teamFeeRate;
 		output.protocolFee = state.protocolFeeRate;
 	}
 
@@ -621,6 +641,12 @@ protected:
 		);
 	}
 
+	PUBLIC_FUNCTION(TeamInfo)
+	{
+		output.teamId = state.teamId;
+		output.teamFee = state.teamFeeRate;
+	}
+
 //
 // procedure
 // 
@@ -692,7 +718,7 @@ protected:
 		output.success = false;
 
 		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
-		locals.poolCreationFee = uint32(div(uint64(locals.feesOutput.assetIssuanceFee) * uint64(state.poolCreationRate), uint64(QSWAP_POOL_CREATION_FEE_BASE)));
+		locals.poolCreationFee = uint32(div(uint64(locals.feesOutput.assetIssuanceFee) * uint64(state.poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
 
 		// fee check
 		if(qpi.invocationReward() < locals.poolCreationFee ) {
@@ -1163,12 +1189,13 @@ protected:
 		sint64 poolSlot;
 		sint64 quAmountIn;
 		PoolBasicState poolBasicState;
-		sint64 feeAmount;
 		sint64 assetAmountOut;
-		sint64 feeToProtocol;
 
 		uint32 i0;
 		uint128 i1, i2, i3, i4;
+		uint128 swapFee;
+		uint128 feeToTeam;
+		uint128 feeToProtocol;
 	};
 
 	// given an input qu amountIn, only execute swap in case (amountOut >= amountOutMin)
@@ -1252,19 +1279,17 @@ protected:
 			return;
 		}
 
-		// take fee from qu
-		// quAmountIn * swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
-		// no overflow risk
-		locals.feeToProtocol = sint64(div(
-				div(
-					uint128(locals.quAmountIn) * uint128(state.swapFeeRate),
-					uint128(QSWAP_SWAP_FEE_BASE)
-				) * uint128(state.protocolFeeRate),
-				uint128(QSWAP_PROTOCOL_FEE_BASE)
-			).low);
-		state.protocolEarnedFee += locals.feeToProtocol;
+		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
+		// feeToTeam = swapFee * 20% (teamFeeRate/100)
+		// feeToProtocol = (swapFee - feeToTeam) * 20% (protocolFeeRate/100)
+		locals.swapFee = div(uint128(locals.quAmountIn)*uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		locals.feeToTeam = div(locals.swapFee * uint128(state.teamFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToProtocol = div((locals.swapFee - locals.feeToTeam) * uint128(state.protocolFeeRate), uint128(QSWAP_FEE_BASE_100));
 
-		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - locals.feeToProtocol;
+		state.teamEarnedFee += locals.feeToTeam.low;
+		state.protocolEarnedFee += locals.feeToProtocol.low;
+
+		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToTeam.low) - sint64(locals.feeToProtocol.low);
 		locals.poolBasicState.reservedAssetAmount -= locals.assetAmountOut;
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 	}
@@ -1274,11 +1299,13 @@ protected:
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
 		sint64 quAmountIn;
-		sint64 feeToProtocol;
 		sint64 transferredAssetAmount;
 
 		uint32 i0;
 		uint128 i1;
+		uint128 swapFee;
+		uint128 feeToTeam;
+		uint128 feeToProtocol;
 	};
 
 	// https://docs.uniswap.org/contracts/v2/reference/smart-contracts/router-02#swaptokensforexacttokens
@@ -1374,21 +1401,18 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.quAmountIn);
 		}
 
-		// update pool states
-		// no overflow risk
-		// locals.quAmountIn * state.swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
-		locals.feeToProtocol = sint64(div(
-				div(
-					uint128(locals.quAmountIn) * uint128(state.swapFeeRate),
-					uint128(QSWAP_SWAP_FEE_BASE)
-				) * uint128(state.protocolFeeRate),
-				uint128(QSWAP_PROTOCOL_FEE_BASE)
-			).low);
+		// swapFee = quAmountIn * 0.3%
+		// feeToTeam = swapFee * 20%
+		// feeToProtocol = (swapFee - feeToTeam) * 20%
+		locals.swapFee = div(uint128(locals.quAmountIn)*uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		locals.feeToTeam = div(locals.swapFee * uint128(state.teamFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToProtocol = div((locals.swapFee - locals.feeToTeam) * uint128(state.protocolFeeRate), uint128(QSWAP_FEE_BASE_100));
 
-		state.protocolEarnedFee += locals.feeToProtocol;
-		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - locals.feeToProtocol;
+		state.teamEarnedFee += locals.feeToTeam.low;
+		state.protocolEarnedFee += locals.feeToProtocol.low;
+
+		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToTeam.low) - sint64(locals.feeToProtocol.low);
 		locals.poolBasicState.reservedAssetAmount -= input.assetAmountOut;
-
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 	}
 
@@ -1398,12 +1422,14 @@ protected:
 		PoolBasicState poolBasicState;
 		sint64 quAmountOut;
 		sint64 quAmountOutWithFee;
-		sint64 protocolFee;
 		sint64 transferredAssetAmountBefore;
 		sint64 transferredAssetAmountAfter;
 
 		uint32 i0;
 		uint128 i1, i2, i3;
+		uint128 swapFee;
+		uint128 feeToTeam;
+		uint128 feeToProtocol;
 	};
 
 	// given an amount of asset swap in, only execute swaping if quAmountOut >= input.amountOutMin
@@ -1476,17 +1502,6 @@ protected:
 				uint128(QSWAP_SWAP_FEE_BASE)
 			).low);
 
-		// no overflow risk
-		// locals.quAmountOutWithFee * state.swapFeeRate / QSWAP_SWAP_FEE_BASE * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
-		locals.protocolFee = sint64(div(
-				div(
-					uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), 
-					uint128(QSWAP_SWAP_FEE_BASE)
-				) * uint128(state.protocolFeeRate),
-				uint128(QSWAP_PROTOCOL_FEE_BASE)
-			).low
-		);
-
 		// not meet user min amountOut requirement
 		if (locals.quAmountOut < input.quAmountOutMin) {
 			return;
@@ -1525,12 +1540,21 @@ protected:
 		qpi.transfer(qpi.invocator(), locals.quAmountOut);
 		output.quAmountOut = locals.quAmountOut;
 
+		// swapFee = quAmountOutWithFee * 0.3%
+		// feeToTeam = swapFee * 20%
+		// feeToProtocol = (swapFee - feeToTeam) * 20%
+		locals.swapFee = div(uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		locals.feeToTeam = div(locals.swapFee * uint128(state.teamFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToProtocol = div((locals.swapFee - locals.feeToTeam) * uint128(state.protocolFeeRate), uint128(QSWAP_FEE_BASE_100));
+
 		// update pool states
 		locals.poolBasicState.reservedAssetAmount += input.assetAmountIn;
 		locals.poolBasicState.reservedQuAmount -= locals.quAmountOut;
-		locals.poolBasicState.reservedQuAmount -= locals.protocolFee;
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToTeam.low);
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToProtocol.low);
 
-		state.protocolEarnedFee += locals.protocolFee;
+		state.teamEarnedFee += locals.feeToTeam.low;
+		state.protocolEarnedFee += locals.feeToProtocol.low;
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 	}
@@ -1540,12 +1564,14 @@ protected:
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
 		sint64 assetAmountIn;
-		sint64 protocolFee;
 		sint64 transferredAssetAmountBefore;
 		sint64 transferredAssetAmountAfter;
 
 		uint32 i0;
 		uint128 i1, i2, i3;
+		uint128 swapFee;
+		uint128 feeToTeam;
+		uint128 feeToProtocol;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SwapAssetForExactQu)
@@ -1597,21 +1623,10 @@ protected:
 			locals.i3
 		);
 
-		// above call overflow
+		// invalid input, assetAmountIn overflow
 		if (locals.assetAmountIn == -1) {
 			return;
 		}
-
-		// no overflow risk
-		// input.quAmountOut * state.swapFeeRate / (QSWAP_SWAP_FEE_BASE - state.swapFeeRate) * state.protocolFeeRate / QSWAP_PROTOCOL_FEE_BASE
-		locals.protocolFee = sint64(div(
-				div(
-					uint128(input.quAmountOut) * uint128(state.swapFeeRate),
-					uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate)
-				) * uint128(state.protocolFeeRate),
-				uint128(QSWAP_PROTOCOL_FEE_BASE)
-			).low
-		);
 
 		// user does not hold enough asset
 		if (qpi.numberOfPossessedShares(
@@ -1662,13 +1677,21 @@ protected:
 		qpi.transfer(qpi.invocator(), input.quAmountOut);
 		output.assetAmountIn = locals.assetAmountIn;
 
+		// swapFee = quAmountOut * 30/(10_000 - 30)
+		// feeToTeam = swapFee * 20% (teamFeeRate/100)
+		// feeToProtocol = (swapFee - feeToTeam) * 20% (protocolFeeRate/100)
+		locals.swapFee = div(uint128(input.quAmountOut) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate));
+		locals.feeToTeam = div(locals.swapFee * uint128(state.teamFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToProtocol = div((locals.swapFee - locals.feeToTeam) * uint128(state.protocolFeeRate), uint128(QSWAP_FEE_BASE_100));
+
+		state.teamEarnedFee += locals.feeToTeam.low;
+		state.protocolEarnedFee += locals.feeToProtocol.low;
+
 		// update pool states
 		locals.poolBasicState.reservedAssetAmount += locals.assetAmountIn;
 		locals.poolBasicState.reservedQuAmount -= input.quAmountOut;
-		locals.poolBasicState.reservedQuAmount -= locals.protocolFee;
-
-		state.protocolEarnedFee += locals.protocolFee;
-
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToTeam.low);
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToProtocol.low);
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 	}
 
@@ -1728,6 +1751,17 @@ protected:
 		state.protocolEarnedFee += locals.feesOutput.transferFee;
 	}
 
+	PUBLIC_PROCEDURE(SetTeamInfo)
+	{
+		output.success = false;
+		if (qpi.invocator() != state.teamId) {
+			return;
+		}
+
+		state.teamId = input.newTeamId;
+		output.success = true;
+	}
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		// functions
@@ -1738,6 +1772,7 @@ protected:
 		REGISTER_USER_FUNCTION(QuoteExactQuOutput, 5);
 		REGISTER_USER_FUNCTION(QuoteExactAssetInput, 6);
 		REGISTER_USER_FUNCTION(QuoteExactAssetOutput, 7);
+		REGISTER_USER_FUNCTION(TeamInfo, 8);
 
 		// procedure
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
@@ -1749,22 +1784,35 @@ protected:
 		REGISTER_USER_PROCEDURE(SwapQuForExactAsset, 7);
 		REGISTER_USER_PROCEDURE(SwapExactAssetForQu, 8);
 		REGISTER_USER_PROCEDURE(SwapAssetForExactQu, 9);
+		REGISTER_USER_PROCEDURE(SetTeamInfo, 10);
 	}
 
 	INITIALIZE()
 	{
-		state.swapFeeRate = 30; 	// 0.3%, must less than 10000
-		state.protocolFeeRate = 20; // 20%, must less than 100
-		state.poolCreationRate = 20; // 20%, must less than 100
+		state.swapFeeRate = 30; 		// 0.3%, must less than 10000
+		state.poolCreationFeeRate = 20; 	// 20%, must less than 100
+		// earned fee: 20% to team, 80% to (shareholders and stakers), share holders take 16% (20% * 80%), stakers take  64% (80% * 80%)
+		state.teamFeeRate = 20;			// 20%
+		state.protocolFeeRate = 20; 	// 20%, must less than 100
+		// IRUNQTXZRMLDEENHPRZQPSGPCFACORRUJYSBVJPQEHFCEKLLURVDDJVEXNBL
+		state.teamId = ID(_I, _R, _U, _N, _Q, _T, _X, _Z, _R, _M, _L, _D, _E, _E, _N, _H, _P, _R, _Z, _Q, _P, _S, _G, _P, _C, _F, _A, _C, _O, _R, _R, _U, _J, _Y, _S, _B, _V, _J, _P, _Q, _E, _H, _F, _C, _E, _K, _L, _L, _U, _R, _V, _D, _D, _J, _V, _E);
 	}
 
 	END_TICK()
 	{
-		if ((div((state.protocolEarnedFee - state.distributedAmount), 676ULL) > 0) && (state.protocolEarnedFee > state.distributedAmount))
+		// distribute team fee
+		if (state.teamEarnedFee > state.teamDistributedAmount)
 		{
-			if (qpi.distributeDividends(div((state.protocolEarnedFee - state.distributedAmount), 676ULL)))
+			qpi.transfer(state.teamId, state.teamEarnedFee - state.teamDistributedAmount);
+			state.teamDistributedAmount += state.teamEarnedFee - state.teamDistributedAmount;
+		}
+
+		// distribute ipo fee
+		if ((div((state.protocolEarnedFee - state.protocolDistributedAmount), 676ULL) > 0) && (state.protocolEarnedFee > state.protocolDistributedAmount))
+		{
+			if (qpi.distributeDividends(div((state.protocolEarnedFee - state.protocolDistributedAmount), 676ULL)))
 			{
-				state.distributedAmount += div((state.protocolEarnedFee- state.distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
+				state.protocolDistributedAmount += div((state.protocolEarnedFee- state.protocolDistributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
 			}
 		}
 	}
