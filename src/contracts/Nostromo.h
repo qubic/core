@@ -255,7 +255,7 @@ protected:
 		uint32 indexOfFundaraising;
 	}; 
 
-	HashMap<uint32, Array<investInfo, NOSTROMO_MAX_USER>, 16> investors;
+	HashMap<uint32, Array<investInfo, NOSTROMO_MAX_USER>, 32> investors;
 	HashMap<id, Array<claimInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST>, NOSTROMO_MAX_USER> claimers;
 	Array<uint32, NOSTROMO_MAX_USER> numberOfInvestors;
 	HashMap<id, uint32, NOSTROMO_MAX_USER> numberOfInvestedProjects;
@@ -1350,9 +1350,11 @@ public:
 				for (locals.j = 0; locals.j < locals.numberOfInvestors; locals.j++)
 				{
 					qpi.transfer(state.tmpInvestedList.get(locals.j).investorId, state.tmpInvestedList.get(locals.j).investedAmount);
-					state.tmpInvestedList.set(locals.j, locals.tmpInvest);
+	
 					state.numberOfInvestedProjects.get(state.tmpInvestedList.get(locals.j).investorId, locals.numberOfInvestedProjects);
 					state.numberOfInvestedProjects.set(state.tmpInvestedList.get(locals.j).investorId, locals.numberOfInvestedProjects - 1);
+
+					state.tmpInvestedList.set(locals.j, locals.tmpInvest);
 				}
 
 				state.investors.set(locals.i, state.tmpInvestedList);

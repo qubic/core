@@ -234,6 +234,11 @@ public:
         EXPECT_EQ(numberOfPossessedShares(assetName, id(NOST_CONTRACT_INDEX, 0, 0, 0), creator, creator, NOST_CONTRACT_INDEX, NOST_CONTRACT_INDEX), projects.get(fundaraisings.get(indexOfFundaraising).indexOfProject).supplyOfToken - div(totalInvestedFund, fundaraisings.get(indexOfFundaraising).tokenPrice));
         EXPECT_EQ(fundaraisings.get(indexOfFundaraising).raisedFunds, 0);
     }
+    void endEpochFailedFundaraisingChecker(uint32 indexOfFundaraising)
+    {
+        EXPECT_EQ(fundaraisings.get(indexOfFundaraising).raisedFunds, 0);
+        EXPECT_EQ(numberOfInvestors.get(indexOfFundaraising), 0);
+    }
 };
 
 class ContractTestingNostromo : protected ContractTesting
@@ -1287,5 +1292,204 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     nostromoTestCaseC.endEpoch();
     EXPECT_EQ(getBalance(registers[0]) - originalCreatorBalance, totalInvestedAmount - div(totalInvestedAmount * 5, 100ULL) + totalInvestedAmount_2 - div(totalInvestedAmount_2 * 5, 100ULL));
     nostromoTestCaseC.getState()->endEpochSucceedFundaraisingChecker(registers[0], 1, totalInvestedAmount_2, originalCreatorBalance, assetName);
+
+    /*
+        EndEpochFailedFundaraising Checker
+    */
+
+    utcTime.Year = 2025;
+    utcTime.Month = 6;
+    utcTime.Day = 20;
+    utcTime.Hour = 0;
+    updateQpiTime();
+
+    increaseEnergy(registers[0], NOSTROMO_CREATE_PROJECT_FEE);
+    assetName = assetNameFromString("BBBB");
+    nostromoTestCaseC.createProject(registers[0], assetName, 21000000, 25, 6, 22, 0, 25, 6, 25, 0);
+
+    utcTime.Year = 2025;
+    utcTime.Month = 6;
+    utcTime.Day = 23;
+    utcTime.Hour = 0;
+    updateQpiTime();
+
+    Ynumber = 0; Nnumber = 0;
+    duplicatedUser.clear();
+
+    for (const auto& user : registers)
+    {
+        if (duplicatedUser[user])
+        {
+            continue;
+        }
+        
+        bit decision = (bit)random(0, 3);
+        if (decision)
+        {
+            Ynumber++;
+        }
+        else
+        {
+            Nnumber++;
+        }
+        
+        nostromoTestCaseC.voteInProject(user, 2, decision);
+        duplicatedUser[user] = 1;
+    }
+    nostromoTestCaseC.getState()->voteInProjectChecker(2, Ynumber, Nnumber);
+
+    utcTime.Year = 2025;
+    utcTime.Month = 6;
+    utcTime.Day = 26;
+    utcTime.Hour = 0;
+    updateQpiTime();
+    increaseEnergy(registers[0], NOSTROMO_QX_TOKEN_ISSUANCE_FEE);
+
+    nostromoTestCaseC.createFundaraising(registers[0], 100000, 2000000, 150000000000, 2, 
+        25, 6, 27, 0,
+        25, 7, 5, 0,
+        25, 7, 8, 0,
+        25, 7, 10, 0,
+        25, 7, 20, 0,
+        25, 7, 23, 0,
+        25, 7, 25, 0,
+        25, 7, 27, 0,
+        26, 7, 27, 0,
+        20, 10, 12);
+    
+    nostromoTestCaseC.getState()->countOfFundaraisingChecker(3);
+    nostromoTestCaseC.getState()->createFundaraisingChecker(registers[0], 100000, 2000000, 150000000000, 2, 
+        25, 6, 27, 0,
+        25, 7, 5, 0,
+        25, 7, 8, 0,
+        25, 7, 10, 0,
+        25, 7, 20, 0,
+        25, 7, 23, 0,
+        25, 7, 25, 0,
+        25, 7, 27, 0,
+        26, 7, 27, 0,
+        20, 10, 12, 2);
+
+    utcTime.Year = 2025;
+    utcTime.Month = 6;
+    utcTime.Day = 27;
+    utcTime.Hour = 1;
+    updateQpiTime();
+
+    uint64 totalInvestedAmount_3 = 0;
+    duplicatedUser.clear();
+    ct = 0;
+    originalSCBalance = getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0));
+    for (const auto& user : registers)
+    {
+        if (duplicatedUser[user])
+        {
+            ct++;
+            continue;
+        }
+        ct++;
+        increaseEnergy(user, 180000000000);
+        uint8 tierLevel = nostromoTestCaseC.getState()->getTierLevel(user);
+
+        if (ct = 4000)
+        {
+            /*
+                Phase 2 Investment
+            */
+            utcTime.Year = 2025;
+            utcTime.Month = 7;
+            utcTime.Day = 9;
+            utcTime.Hour = 0;
+            updateQpiTime();
+        }
+
+        bit sg = 0;
+        switch (tierLevel)
+        {
+        case 1:
+            if (ct < 4000)
+            {
+                if (totalInvestedAmount_3 + facehuggerMaxInvestAmount > 120000000000)
+                {
+                    sg = 1; 
+                    break;
+                }
+                totalInvestedAmount_3 += facehuggerMaxInvestAmount;
+            }
+            nostromoTestCaseC.investInProject(user, 2, facehuggerMaxInvestAmount);
+            break;
+        case 2:
+            if (ct < 4000)
+            {
+                if (totalInvestedAmount_3 + chestburstMaxInvestAmount > 120000000000)
+                {
+                    sg = 1;
+                    break;
+                }
+                totalInvestedAmount_3 += chestburstMaxInvestAmount;
+            }
+            nostromoTestCaseC.investInProject(user, 2, chestburstMaxInvestAmount);
+            break;
+        case 3:
+            if (ct < 4000)
+            {
+                if (totalInvestedAmount_3 + dogMaxInvestAmount > 120000000000)
+                {
+                    sg = 1;
+                    break;
+                }
+                totalInvestedAmount_3 += dogMaxInvestAmount;
+            }
+            nostromoTestCaseC.investInProject(user, 2, dogMaxInvestAmount);
+            break;
+        case 4:
+            if (totalInvestedAmount_3 + xenomorphMaxInvestAmount > 120000000000)
+            {
+                sg = 1;
+                break;
+            }
+            totalInvestedAmount_3 += xenomorphMaxInvestAmount;
+            nostromoTestCaseC.investInProject(user, 2, xenomorphMaxInvestAmount);
+            break;
+        case 5:
+            if (totalInvestedAmount_3 + warriorMaxInvestAmount > 120000000000)
+            {
+                sg = 1;
+                break;
+            }
+            totalInvestedAmount_3 += warriorMaxInvestAmount;
+            nostromoTestCaseC.investInProject(user, 2, warriorMaxInvestAmount);
+            break;
+        
+        default:
+            break;
+        }
+
+        if (sg)
+        {
+            break;
+        }
+        
+        duplicatedUser[user] = 1;
+    }
+
+    nostromoTestCaseC.getState()->totalRaisedFundChecker(2, totalInvestedAmount_3, assetName);
+
+    utcTime.Year = 2025;
+    utcTime.Month = 7;
+    utcTime.Day = 24;
+    utcTime.Hour = 0;
+    updateQpiTime();
+
+    originalCreatorBalance = getBalance(registers[0]);
+    EXPECT_EQ(originalSCBalance + totalInvestedAmount_3, getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
+
+    uint64 epochRevenue = nostromoTestCaseC.getState()->getEpochRevenue();
+    uint64 teamFee = div(epochRevenue, 10ULL);
+    epochRevenue -= teamFee;
+    nostromoTestCaseC.endEpoch();
+
+    EXPECT_EQ(originalSCBalance - teamFee - (div(epochRevenue, 676ULL) * 676), getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
+    nostromoTestCaseC.getState()->endEpochFailedFundaraisingChecker(2);
 
 }
