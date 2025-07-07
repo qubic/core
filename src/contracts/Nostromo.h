@@ -1328,7 +1328,8 @@ public:
 		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> votedList;
 		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> clearedVotedList;
 		id userId;
-		uint32 numberOfVotedProject, clearedNumberOfVotedProject, i, j, curDate, indexOfProject, numberOfInvestors, numberOfInvestedProjects, idx, tierLevel;
+		sint64 idx;
+		uint32 numberOfVotedProject, clearedNumberOfVotedProject, i, j, curDate, indexOfProject, numberOfInvestors, numberOfInvestedProjects, tierLevel;
 	};
 
 	END_EPOCH_WITH_LOCALS()
@@ -1376,7 +1377,7 @@ public:
 		qpi.distributeDividends(div(state.epochRevenue, 676ULL));
 		state.epochRevenue -= div(state.epochRevenue, 676ULL) * 676;
 		
-		locals.idx = (uint32)state.Users.nextElementIndex(NULL_INDEX);
+		locals.idx = state.Users.nextElementIndex(NULL_INDEX);
 		while (locals.idx != NULL_INDEX)
 		{
 			locals.userId = state.Users.key(locals.idx);
@@ -1398,7 +1399,7 @@ public:
 			state.numberOfVotedProject.set(locals.userId, locals.clearedNumberOfVotedProject);
 			state.voteStatus.set(locals.userId, locals.clearedVotedList);
 
-			locals.idx = (uint32)state.Users.nextElementIndex(locals.idx);
+			locals.idx = state.Users.nextElementIndex(locals.idx);
 		}
 
 		state.Users.cleanupIfNeeded();
