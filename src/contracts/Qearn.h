@@ -45,7 +45,7 @@ constexpr sint32 QEARN_UNLOCK_SUCCESS = 5;
 constexpr sint32 QEARN_OVERFLOW_USER = 6;
 constexpr sint32 QEARN_LIMIT_LOCK = 7;
 
-enum QearnLogInfo {
+enum QEARNLogInfo {
     QearnSuccessLocking = 0,
     QearnFailedTransfer = 1,
     QearnLimitLocking = 2,
@@ -54,14 +54,14 @@ enum QearnLogInfo {
     QearnSuccessEarlyUnlocking = 5,
     QearnSuccessFullyUnlocking = 6,
 };
-struct QearnLogger
+struct QEARNLogger
 {
     uint32 _contractIndex;
     id sourcePublicKey;
     id destinationPublicKey;
     sint64 amount;
     uint32 _type;
-    char _terminator; 
+    sint8 _terminator; 
 };
 
 struct QEARN2
@@ -308,7 +308,7 @@ protected:
         output.currentLockedAmount = state._currentRoundInfo.get(input.Epoch)._totalLockedAmount;
         if(state._currentRoundInfo.get(input.Epoch)._totalLockedAmount) 
         {
-            output.yield = state._currentRoundInfo.get(input.Epoch)._epochBonusAmount * 10000000ULL / state._currentRoundInfo.get(input.Epoch)._totalLockedAmount;
+            output.yield = div(state._currentRoundInfo.get(input.Epoch)._epochBonusAmount * 10000000ULL, state._currentRoundInfo.get(input.Epoch)._totalLockedAmount);
         }
         else 
         {
@@ -482,7 +482,7 @@ protected:
         LockInfo newLocker;
         RoundInfo updatedRoundInfo;
         EpochIndexInfo tmpIndex;
-        QearnLogger log;
+        QEARNLogger log;
         uint32 t;
         uint32 endIndex;
         
@@ -605,7 +605,7 @@ protected:
         LockInfo updatedUserInfo;
         HistoryInfo unlockerInfo;
         StatsInfo tmpStats;
-        QearnLogger log;
+        QEARNLogger log;
         
         uint64 amountOfUnlocking;
         uint64 amountOfReward;
@@ -938,7 +938,7 @@ protected:
         RoundInfo INITIALIZE_ROUNDINFO;
         EpochIndexInfo tmpEpochIndex;
         StatsInfo tmpStats; 
-        QearnLogger log;
+        QEARNLogger log;
 
         uint64 _rewardPercent;
         uint64 _rewardAmount;
