@@ -284,6 +284,19 @@ namespace QPI
 			}
 			return true;
 		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline Array<T, L>& operator=(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline Array(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
 	};
 	
 	// Array convenience definitions
@@ -401,10 +414,10 @@ namespace QPI
 		inline sint64 nextElementIndex(sint64 elementIndex) const;
 
 		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
-		inline KeyT key(sint64 elementIndex) const;
+		inline const KeyT& key(sint64 elementIndex) const;
 
 		// Return value at elementIndex.
-		inline ValueT value(sint64 elementIndex) const;
+		inline const ValueT& value(sint64 elementIndex) const;
 
 		// Add element (key, value) to the hash map, return elementIndex of new element.
 		// If key already exists in the hash map, the old value will be overwritten.
