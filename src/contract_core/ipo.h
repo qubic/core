@@ -128,7 +128,7 @@ static void finishIPOs()
 {
     for (unsigned int contractIndex = 1; contractIndex < contractCount; contractIndex++)
     {
-        if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
+        if (system.epoch < contractDescriptions[contractIndex].constructionEpoch && contractStates[contractIndex])
         {
             contractStateLock[contractIndex].acquireRead();
             IPO* ipo = (IPO*)contractStates[contractIndex];

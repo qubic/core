@@ -9,6 +9,7 @@
 #include "../platform/memory.h"
 #include "../kangaroo_twelve.h"
 #include "../contracts/math_lib.h"
+#include "../contract_core/qpi_trivial_impl.h"
 
 namespace QPI
 {
@@ -54,7 +55,7 @@ namespace QPI
 		sint64 elementIndex = getElementIndex(key);
 		if (elementIndex != NULL_INDEX) 
 		{
-			value = _elements[elementIndex].value;
+			copyMemory(value, _elements[elementIndex].value);
 			return true;
 		}
 		return false;
@@ -127,14 +128,14 @@ namespace QPI
 						// ... otherwise put element and mark as occupied
 						_occupationFlags[index >> 5] |= (1ULL << ((index & 31) << 1));
 						_elements[index].key = key;
-						_elements[index].value = value;
+						copyMemory(_elements[index].value, value);
 						_population++;
 						return index;
 					case 1:
 						if (_elements[index].key == key)
 						{
 							// found key -> insert new value
-							_elements[index].value = value;
+							copyMemory(_elements[index].value, value);
 							return index;
 						}
 						break;
@@ -158,7 +159,7 @@ namespace QPI
 				index = markedForRemovalIndexForReuse;
 				_occupationFlags[index >> 5] ^= (3ULL << ((index & 31) << 1));
 				_elements[index].key = key;
-				_elements[index].value = value;
+				copyMemory(_elements[index].value, value);
 				_population++;
 				return index;
 			}
@@ -169,7 +170,7 @@ namespace QPI
 			sint64 index = getElementIndex(key);
 			if (index != NULL_INDEX)
 			{
-				_elements[index].value = value;
+				copyMemory(_elements[index].value, value);
 				return index;
 			}
 		}
@@ -363,7 +364,7 @@ namespace QPI
 		sint64 elementIndex = getElementIndex(key);
 		if (elementIndex != NULL_INDEX) 
 		{
-			_elements[elementIndex].value = newValue;
+			copyMemory(_elements[elementIndex].value, newValue);
 			return true;
 		}
 		return false;

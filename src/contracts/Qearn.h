@@ -318,7 +318,7 @@ protected:
 
     struct getStatsPerEpoch_locals 
     {
-        ::Entity entity;
+        Entity entity;
         uint32 cnt, _t;
     };
 
@@ -900,7 +900,7 @@ protected:
         bit status;
         uint64 pre_epoch_balance;
         uint64 current_balance;
-        ::Entity entity;
+        Entity entity;
         uint32 locked_epoch;
     };
 
