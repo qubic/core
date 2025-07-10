@@ -6,6 +6,7 @@
 #include <cstdio>
 #endif
 #include <lib/platform_common/processor.h>
+#include <lib/platform_common/compiler_optimization.h>
 #include <lib/platform_efi/uefi.h>
 #include "console_logging.h"
 #include "concurrency.h"
@@ -397,7 +398,7 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
 #endif
 }
 
-#pragma optimize("", off)
+OPTIMIZE_OFF()
 
 struct FileItem
 {
@@ -1060,7 +1061,7 @@ private:
     volatile char mCreateDirQueueLock;
 };
 
-#pragma optimize("", on)
+OPTIMIZE_ON()
 
 // Asynchorous save file
 // This function can be called from any thread and have blocking and non blocking mode
@@ -1260,7 +1261,7 @@ static void registerAsynFileIO(EFI_MP_SERVICES_PROTOCOL* pServiceProtocol)
     gAsyncFileIO->init(pServiceProtocol, ASYNC_FILE_IO_WRITE_QUEUE_BUFFER_SIZE);
 }
 
-#pragma optimize("", off)
+OPTIMIZE_OFF()
 
 static void deInitFileSystem()
 {
@@ -1280,7 +1281,7 @@ static int flushAsyncFileIOBuffer(int numberOfItemsPerQueue = 0)
     }
     return 0;
 }
-#pragma optimize("", on)
+OPTIMIZE_ON()
 
 // add epoch number as an extension to a filename
 static void addEpochToFileName(unsigned short* filename, int nameSize, short epoch)

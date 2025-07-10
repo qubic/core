@@ -23,6 +23,7 @@
 
 #include <lib/platform_efi/uefi.h>
 #include <lib/platform_common/processor.h>
+#include <lib/platform_common/compiler_optimization.h>
 #include "platform/time.h"
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
@@ -1943,7 +1944,7 @@ static void updateNumberOfTickTransactions()
 // In this test, the processors calling requestProcessor() were stuck before entering the function.
 // Probably, this was caused by a bug in the optimizer, because disabling the optimizer solved the
 // problem.
-#pragma optimize("", off)
+OPTIMIZE_OFF()
 static void requestProcessor(void* ProcedureArgument)
 {
     enableAVX();
@@ -2223,7 +2224,7 @@ static void requestProcessor(void* ProcedureArgument)
         }
     }
 }
-#pragma optimize("", on)
+OPTIMIZE_ON()
 
 static void contractProcessor(void*)
 {
@@ -2930,7 +2931,7 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
     return false;
 }
 
-#pragma optimize("", off)
+OPTIMIZE_OFF()
 static void processTick(unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -3440,7 +3441,7 @@ static void processTick(unsigned long long processorNumber)
     logger.updateTick(system.tick);
 }
 
-#pragma optimize("", on)
+OPTIMIZE_ON()
 
 static void resetCustomMining()
 {
@@ -4746,7 +4747,7 @@ static bool isTickTimeOut()
 // In this test, the processor calling tickProcessor() was stuck before entering the function.
 // Probably, this was caused by a bug in the optimizer, because disabling the optimizer solved the
 // problem.
-#pragma optimize("", off)
+OPTIMIZE_OFF()
 static void tickProcessor(void*)
 {
     enableAVX();
@@ -5200,7 +5201,7 @@ static void tickProcessor(void*)
         tickerLoopDenominator++;
     }
 }
-#pragma optimize("", on)
+OPTIMIZE_ON()
 
 static void emptyCallback(EFI_EVENT Event, void* Context)
 {
