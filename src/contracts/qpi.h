@@ -284,6 +284,19 @@ namespace QPI
 			}
 			return true;
 		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline Array<T, L>& operator=(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline Array(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
 	};
 	
 	// Array convenience definitions
