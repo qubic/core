@@ -1,8 +1,7 @@
-#ifndef OPTIMIZATION_CONTROL_H
-#define OPTIMIZATION_CONTROL_H
+#pragma once
 
 // Compiler detection
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
     // Microsoft Visual C++
     #define OPTIMIZE_OFF() __pragma(optimize("", off))
     #define OPTIMIZE_ON()  __pragma(optimize("", on))
@@ -19,5 +18,3 @@
     #define NO_OPTIMIZE
     #warning "Optimization control not supported for this compiler"
 #endif
-
-#endif 
