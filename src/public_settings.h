@@ -87,7 +87,7 @@ static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x000CFFFFU // around 5000 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x00095CBEU // around 7000 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
