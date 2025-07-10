@@ -220,7 +220,7 @@ protected:
 		sint64 price;
 		sint64 numberOfShares;
 
-		char _terminator;
+		sint8 _terminator;
 	} _tradeMessage;
 
 	struct _NumberOfReservedShares_input
@@ -625,7 +625,7 @@ protected:
 								state._elementIndex2 = state._entityOrders.nextElementIndex(state._elementIndex2);
 							}
 
-							state._fee = (state._price * state._assetOrder.numberOfShares * state._tradeFee / 1000000000UL) + 1;
+							state._fee = div(state._price * state._assetOrder.numberOfShares * state._tradeFee, 1000000000LL) + 1;
 							state._earnedAmount += state._fee;
 							qpi.transfer(qpi.invocator(), state._price * state._assetOrder.numberOfShares - state._fee);
 							qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), state._assetOrder.numberOfShares, state._assetOrder.entity);
@@ -659,7 +659,7 @@ protected:
 								state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
 							}
 
-							state._fee = (state._price * input.numberOfShares * state._tradeFee / 1000000000UL) + 1;
+							state._fee = div(state._price * input.numberOfShares * state._tradeFee, 1000000000LL) + 1;
 							state._earnedAmount += state._fee;
 							qpi.transfer(qpi.invocator(), state._price * input.numberOfShares - state._fee);
 							qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, state._assetOrder.entity);
@@ -788,7 +788,7 @@ protected:
 							state._elementIndex2 = state._entityOrders.nextElementIndex(state._elementIndex2);
 						}
 
-						state._fee = (state._price * state._assetOrder.numberOfShares * state._tradeFee / 1000000000UL) + 1;
+						state._fee = div(state._price * state._assetOrder.numberOfShares * state._tradeFee, 1000000000LL) + 1;
 						state._earnedAmount += state._fee;
 						qpi.transfer(state._assetOrder.entity, state._price * state._assetOrder.numberOfShares - state._fee);
 						qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, state._assetOrder.numberOfShares, qpi.invocator());
@@ -826,7 +826,7 @@ protected:
 							state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
 						}
 
-						state._fee = (state._price * input.numberOfShares * state._tradeFee / 1000000000UL) + 1;
+						state._fee = div(state._price * input.numberOfShares * state._tradeFee, 1000000000LL) + 1;
 						state._earnedAmount += state._fee;
 						qpi.transfer(state._assetOrder.entity, state._price * input.numberOfShares - state._fee);
 						qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, input.numberOfShares, qpi.invocator());
