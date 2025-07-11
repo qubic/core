@@ -23,7 +23,7 @@ constexpr uint32 NOSTROMO_CREATE_PROJECT_FEE = 100000000;
 constexpr uint32 NOSTROMO_MAX_USER = 262144;
 constexpr uint32 NOSTROMO_MAX_NUMBER_PROJECT = 262144;
 constexpr uint32 NOSTROMO_MAX_NUMBER_TOKEN = 262144;
-constexpr uint32 NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST = 64;
+constexpr uint32 NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST = 128;
 
 struct NOST2
 {
@@ -160,7 +160,7 @@ public:
 
 	struct claimToken_output
 	{
-
+		uint64 claimedAmount;
 	};
 
 	struct upgradeTier_input
@@ -226,15 +226,14 @@ public:
 		bit result;             // result = 1 is the token already issued by SC
 	};
 
-	struct getNumberOfInvestedAndClaimedProjects_input
+	struct getNumberOfInvestedProjects_input
 	{
 		id userId;
 	};
 
-	struct getNumberOfInvestedAndClaimedProjects_output
+	struct getNumberOfInvestedProjects_output
 	{
 		uint32 numberOfInvestedProjects;
-		uint32 numberOfClaimedProjects;
 	};
 
 protected:
@@ -245,23 +244,14 @@ protected:
 
 	struct investInfo
 	{
-		id investorId;
 		uint64 investedAmount;
-	}; 
-
-	struct claimInfo
-	{
 		uint64 claimedAmount;
 		uint32 indexOfFundaraising;
 	}; 
 
-	HashMap<uint32, Array<investInfo, NOSTROMO_MAX_USER>, 32> investors;
-	HashMap<id, Array<claimInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST>, NOSTROMO_MAX_USER> claimers;
-	Array<uint32, NOSTROMO_MAX_USER> numberOfInvestors;
+	HashMap<id, Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST>, NOSTROMO_MAX_USER> investors;
 	HashMap<id, uint32, NOSTROMO_MAX_USER> numberOfInvestedProjects;
-	HashMap<id, uint32, NOSTROMO_MAX_USER> numberOfClaimedProjects;
-	Array<investInfo, NOSTROMO_MAX_USER> tmpInvestedList;
-	Array<claimInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> tmpClaimedList;
+	Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> tmpInvestedList;
 
 	struct projectInfo
 	{
@@ -686,9 +676,8 @@ protected:
 		investInfo tmpInvestData;
 		fundaraisingInfo tmpFundaraising;
 		uint64 maxCap, minCap, maxInvestmentPerUser, userInvestedAmount;
-		uint32 curDate, elementIndex, i, numberOfInvestors, numberOfClaimers, numberOfInvestedProjects;
+		uint32 curDate, elementIndex, i, numberOfInvestedProjects;
 		uint8 tierLevel;
-		bit flag;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(investInProject)
@@ -712,8 +701,7 @@ protected:
 			}
 			return ;
 		}
-		locals.flag = state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-		if (locals.flag && locals.numberOfInvestedProjects >= NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST)
+		if (state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects) && locals.numberOfInvestedProjects >= NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -759,21 +747,21 @@ protected:
 				break;
 			}
 
-			state.investors.get(input.indexOfFundaraising, state.tmpInvestedList);
-			locals.numberOfInvestors = state.numberOfInvestors.get(input.indexOfFundaraising);
+			state.investors.get(qpi.invocator(), state.tmpInvestedList);
+			state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
 
-			for (locals.i = 0; locals.i < locals.numberOfInvestors; locals.i++)
+			for (locals.i = 0; locals.i < locals.numberOfInvestedProjects; locals.i++)
 			{
-				if (state.tmpInvestedList.get(locals.i).investorId == qpi.invocator())
+				if (state.tmpInvestedList.get(locals.i).indexOfFundaraising == input.indexOfFundaraising)
 				{
 					locals.userInvestedAmount = state.tmpInvestedList.get(locals.i).investedAmount;
 					break;
 				}
 			}
 			
-			locals.tmpInvestData.investorId = qpi.invocator();
+			locals.tmpInvestData.indexOfFundaraising = input.indexOfFundaraising;
 
-			if (locals.i < locals.numberOfInvestors)
+			if (locals.i < locals.numberOfInvestedProjects)
 			{
 				if (qpi.invocationReward() + locals.userInvestedAmount > locals.maxInvestmentPerUser)
 				{
@@ -788,7 +776,7 @@ protected:
 					locals.tmpFundaraising.raisedFunds += qpi.invocationReward();
 				}
 				state.tmpInvestedList.set(locals.i, locals.tmpInvestData);
-				state.investors.set(input.indexOfFundaraising, state.tmpInvestedList);
+				state.investors.set(qpi.invocator(), state.tmpInvestedList);
 			}
 			else 
 			{
@@ -804,11 +792,9 @@ protected:
 					locals.tmpFundaraising.raisedFunds += qpi.invocationReward();
 				}
 
-				state.tmpInvestedList.set(locals.numberOfInvestors, locals.tmpInvestData);
-				state.investors.set(input.indexOfFundaraising, state.tmpInvestedList);
-				state.numberOfInvestors.set(input.indexOfFundaraising, locals.numberOfInvestors + 1);
-				locals.flag = state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-				if (locals.flag)
+				state.tmpInvestedList.set(locals.numberOfInvestedProjects, locals.tmpInvestData);
+				state.investors.set(qpi.invocator(), state.tmpInvestedList);
+				if (state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects))
 				{
 					state.numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects + 1);
 				}
@@ -850,21 +836,21 @@ protected:
 				break;
 			}
 
-			state.investors.get(input.indexOfFundaraising, state.tmpInvestedList);
-			locals.numberOfInvestors = state.numberOfInvestors.get(input.indexOfFundaraising);
+			state.investors.get(qpi.invocator(), state.tmpInvestedList);
+			state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
 
-			for (locals.i = 0; locals.i < locals.numberOfInvestors; locals.i++)
+			for (locals.i = 0; locals.i < locals.numberOfInvestedProjects; locals.i++)
 			{
-				if (state.tmpInvestedList.get(locals.i).investorId == qpi.invocator())
+				if (state.tmpInvestedList.get(locals.i).indexOfFundaraising == input.indexOfFundaraising)
 				{
 					locals.userInvestedAmount = state.tmpInvestedList.get(locals.i).investedAmount;
 					break;
 				}
 			}
 			
-			locals.tmpInvestData.investorId = qpi.invocator();
+			locals.tmpInvestData.indexOfFundaraising = input.indexOfFundaraising;
 
-			if (locals.i < locals.numberOfInvestors)
+			if (locals.i < locals.numberOfInvestedProjects)
 			{
 				if (qpi.invocationReward() + locals.userInvestedAmount > locals.maxInvestmentPerUser)
 				{
@@ -879,7 +865,7 @@ protected:
 					locals.tmpFundaraising.raisedFunds += qpi.invocationReward();
 				}
 				state.tmpInvestedList.set(locals.i, locals.tmpInvestData);
-				state.investors.set(input.indexOfFundaraising, state.tmpInvestedList);
+				state.investors.set(qpi.invocator(), state.tmpInvestedList);
 			}
 			else 
 			{
@@ -895,11 +881,9 @@ protected:
 					locals.tmpFundaraising.raisedFunds += qpi.invocationReward();
 				}
 
-				state.tmpInvestedList.set(locals.numberOfInvestors, locals.tmpInvestData);
-				state.investors.set(input.indexOfFundaraising, state.tmpInvestedList);
-				state.numberOfInvestors.set(input.indexOfFundaraising, locals.numberOfInvestors + 1);
-				locals.flag = state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-				if (locals.flag)
+				state.tmpInvestedList.set(locals.numberOfInvestedProjects, locals.tmpInvestData);
+				state.investors.set(qpi.invocator(), state.tmpInvestedList);
+				if (state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects))
 				{
 					state.numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects + 1);
 				}
@@ -911,36 +895,33 @@ protected:
 		}
 		else if (locals.curDate >= state.fundaraisings.get(input.indexOfFundaraising).thirdPhaseStartDate && locals.curDate < state.fundaraisings.get(input.indexOfFundaraising).thirdPhaseEndDate)
 		{
-			state.investors.get(input.indexOfFundaraising, state.tmpInvestedList);
-			locals.numberOfInvestors = state.numberOfInvestors.get(input.indexOfFundaraising);
+			state.investors.get(qpi.invocator(), state.tmpInvestedList);
+			state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
 
-			for (locals.i = 0; locals.i < locals.numberOfInvestors; locals.i++)
+			for (locals.i = 0; locals.i < locals.numberOfInvestedProjects; locals.i++)
 			{
-				if (state.tmpInvestedList.get(locals.i).investorId == qpi.invocator())
+				if (state.tmpInvestedList.get(locals.i).indexOfFundaraising == input.indexOfFundaraising)
 				{
 					locals.userInvestedAmount = state.tmpInvestedList.get(locals.i).investedAmount;
 					break;
 				}
 			}
 
-			locals.tmpInvestData.investorId = qpi.invocator();
+			locals.tmpInvestData.indexOfFundaraising = input.indexOfFundaraising;
 
-			if (locals.i < locals.numberOfInvestors)
+			if (locals.i < locals.numberOfInvestedProjects)
 			{
 				locals.tmpInvestData.investedAmount = qpi.invocationReward() + locals.userInvestedAmount;
 				state.tmpInvestedList.set(locals.i, locals.tmpInvestData);
-				state.investors.set(input.indexOfFundaraising, state.tmpInvestedList);
+				state.investors.set(qpi.invocator(), state.tmpInvestedList);
 			}
 			else 
 			{
 				locals.tmpInvestData.investedAmount = qpi.invocationReward();
 
-				state.tmpInvestedList.set(locals.numberOfInvestors, locals.tmpInvestData);
-				state.investors.set(input.indexOfFundaraising, state.tmpInvestedList);
-				state.numberOfInvestors.set(input.indexOfFundaraising, locals.numberOfInvestors + 1);
-
-				locals.flag = state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-				if (locals.flag)
+				state.tmpInvestedList.set(locals.numberOfInvestedProjects, locals.tmpInvestData);
+				state.investors.set(qpi.invocator(), state.tmpInvestedList);
+				if (state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects))
 				{
 					state.numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects + 1);
 				}
@@ -982,31 +963,39 @@ protected:
 	struct claimToken_locals
 	{
 		investInfo tmpInvestData;
-		claimInfo tmpClaimData;
 		uint64 maxClaimAmount, investedAmount, dayA, dayB, start_cur_diffSecond, cur_end_diffSecond, claimedAmount;
-		uint32 curDate, tmpDate, numberOfInvestors, numberOfClaimedProjects, numberOfInvestedProjects;
+		uint32 curDate, tmpDate, numberOfInvestedProjects;
 		sint32 i, j;
 		uint8 curVestingStep, vestingPercent;
-		bit flag;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(claimToken)
 	{
 		getCurrentDate(qpi, locals.curDate);
 
-		state.investors.get(input.indexOfFundaraising, state.tmpInvestedList);
-		locals.numberOfInvestors = state.numberOfInvestors.get(input.indexOfFundaraising);
-
-		for (locals.i = 0; locals.i < (sint32)locals.numberOfInvestors; locals.i++)
+		if (input.indexOfFundaraising >= state.numberOfFundaraising)
 		{
-			if (state.tmpInvestedList.get(locals.i).investorId == qpi.invocator())
+			return ;
+		}
+
+		state.investors.get(qpi.invocator(), state.tmpInvestedList);
+		if (state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects) == 0)
+		{
+			return ;
+		}
+
+		for (locals.i = 0; locals.i < (sint32)locals.numberOfInvestedProjects; locals.i++)
+		{
+			if (state.tmpInvestedList.get(locals.i).indexOfFundaraising == input.indexOfFundaraising)
 			{
 				locals.investedAmount = state.tmpInvestedList.get(locals.i).investedAmount;
+				locals.claimedAmount = state.tmpInvestedList.get(locals.i).claimedAmount;
+				locals.tmpInvestData = state.tmpInvestedList.get(locals.i);
 				break;
 			}
 		}
 
-		if (locals.i == locals.numberOfInvestors)
+		if (locals.i == locals.numberOfInvestedProjects)
 		{
 			return ;
 		}
@@ -1018,11 +1007,11 @@ protected:
 		else if (locals.curDate >= state.fundaraisings.get(input.indexOfFundaraising).cliffEndDate && locals.curDate < state.fundaraisings.get(input.indexOfFundaraising).vestingEndDate)
 		{
 			locals.tmpDate = state.fundaraisings.get(input.indexOfFundaraising).cliffEndDate;
-			QUOTTERY::diffDateInSecond(locals.tmpDate, locals.curDate, locals.i, locals.dayA, locals.dayB, locals.start_cur_diffSecond);
+			QUOTTERY::diffDateInSecond(locals.tmpDate, locals.curDate, locals.j, locals.dayA, locals.dayB, locals.start_cur_diffSecond);
 			locals.tmpDate = state.fundaraisings.get(input.indexOfFundaraising).vestingEndDate;
-			QUOTTERY::diffDateInSecond(locals.curDate, locals.tmpDate, locals.i, locals.dayA, locals.dayB, locals.cur_end_diffSecond);
+			QUOTTERY::diffDateInSecond(locals.curDate, locals.tmpDate, locals.j, locals.dayA, locals.dayB, locals.cur_end_diffSecond);
 
-			locals.curVestingStep = (uint8)div(locals.start_cur_diffSecond, div(locals.start_cur_diffSecond + locals.cur_end_diffSecond, state.fundaraisings.get(input.indexOfFundaraising).stepOfVesting * 1ULL));
+			locals.curVestingStep = (uint8)div(locals.start_cur_diffSecond, div(locals.start_cur_diffSecond + locals.cur_end_diffSecond, state.fundaraisings.get(input.indexOfFundaraising).stepOfVesting * 1ULL)) + 1;
 			locals.vestingPercent = (uint8)div(100ULL - state.fundaraisings.get(input.indexOfFundaraising).TGE, state.fundaraisings.get(input.indexOfFundaraising).stepOfVesting * 1ULL) * locals.curVestingStep;
 			locals.maxClaimAmount = div(div(locals.investedAmount, state.fundaraisings.get(input.indexOfFundaraising).tokenPrice) * (state.fundaraisings.get(input.indexOfFundaraising).TGE + locals.vestingPercent), 100ULL);
 		}
@@ -1031,76 +1020,31 @@ protected:
 			locals.maxClaimAmount = div(locals.investedAmount, state.fundaraisings.get(input.indexOfFundaraising).tokenPrice);
 		}
 
-		state.claimers.get(qpi.invocator(), state.tmpClaimedList);
-		locals.flag = state.numberOfClaimedProjects.get(qpi.invocator(), locals.numberOfClaimedProjects);
-
-		for (locals.j = 0; locals.j < (sint32)locals.numberOfClaimedProjects; locals.j++)
+		if (input.amount + locals.claimedAmount > locals.maxClaimAmount)
 		{
-			if (state.tmpClaimedList.get(locals.j).indexOfFundaraising == input.indexOfFundaraising)
-			{
-				locals.claimedAmount = state.tmpClaimedList.get(locals.j).claimedAmount;
-				break;
-			}
-		}
-
-		locals.tmpClaimData.indexOfFundaraising = input.indexOfFundaraising;
-		if (locals.flag && locals.j < (sint32)locals.numberOfClaimedProjects)
-		{
-			if (input.amount + locals.claimedAmount > locals.maxClaimAmount)
-			{
-				return ;
-			}
-			else 
-			{
-				qpi.transferShareOwnershipAndPossession(state.projects.get(state.fundaraisings.get(input.indexOfFundaraising).indexOfProject).tokenName, SELF, SELF, SELF, input.amount, qpi.invocator());
-				if (input.amount + locals.claimedAmount == locals.maxClaimAmount && locals.curDate >= state.fundaraisings.get(input.indexOfFundaraising).vestingEndDate)
-				{
-					state.tmpClaimedList.set(locals.j, state.tmpClaimedList.get(locals.numberOfClaimedProjects - 1));
-					state.numberOfClaimedProjects.set(qpi.invocator(), locals.numberOfClaimedProjects - 1);
-					state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-					state.numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects - 1);
-
-					state.investors.get(input.indexOfFundaraising, state.tmpInvestedList);
-					state.tmpInvestedList.set(locals.i, state.tmpInvestedList.get(locals.numberOfInvestors - 1));
-					state.investors.set(input.indexOfFundaraising, state.tmpInvestedList);
-					state.numberOfInvestors.set(input.indexOfFundaraising, locals.numberOfInvestors - 1);
-				}
-				else 
-				{
-					locals.tmpClaimData.claimedAmount = input.amount + locals.claimedAmount;
-					state.tmpClaimedList.set(locals.j, locals.tmpClaimData);
-				}
-				state.claimers.set(qpi.invocator(), state.tmpClaimedList);
-			}
+			return ;
 		}
 		else 
 		{
-			if (input.amount > locals.maxClaimAmount)
+			qpi.transferShareOwnershipAndPossession(state.projects.get(state.fundaraisings.get(input.indexOfFundaraising).indexOfProject).tokenName, SELF, SELF, SELF, input.amount, qpi.invocator());
+			if (input.amount + locals.claimedAmount == locals.maxClaimAmount && state.fundaraisings.get(input.indexOfFundaraising).vestingEndDate <= locals.curDate)
 			{
-				return ;
+				state.tmpInvestedList.set(locals.i, state.tmpInvestedList.get(locals.numberOfInvestedProjects - 1));
+				state.numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects - 1);
 			}
 			else 
 			{
-				qpi.transferShareOwnershipAndPossession(state.projects.get(state.fundaraisings.get(input.indexOfFundaraising).indexOfProject).tokenName, SELF, SELF, SELF, input.amount, qpi.invocator());
-				if (input.amount == locals.maxClaimAmount && locals.curDate >= state.fundaraisings.get(input.indexOfFundaraising).vestingEndDate)
-				{
-					state.tmpClaimedList.set(locals.j, state.tmpClaimedList.get(locals.numberOfClaimedProjects - 1));
-					state.numberOfClaimedProjects.set(qpi.invocator(), locals.numberOfClaimedProjects - 1);
-					state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-					state.numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects - 1);
-
-					state.investors.get(input.indexOfFundaraising, state.tmpInvestedList);
-					state.tmpInvestedList.set(locals.i, state.tmpInvestedList.get(locals.numberOfInvestors - 1));
-					state.investors.set(input.indexOfFundaraising, state.tmpInvestedList);
-					state.numberOfInvestors.set(input.indexOfFundaraising, locals.numberOfInvestors - 1);
-				}
-				else 
-				{
-					locals.tmpClaimData.claimedAmount = input.amount;
-					state.tmpClaimedList.set(locals.j, locals.tmpClaimData);
-				}
-				state.claimers.set(qpi.invocator(), state.tmpClaimedList);
+				locals.tmpInvestData.claimedAmount = input.amount + locals.claimedAmount;
+				state.tmpInvestedList.set(locals.i, locals.tmpInvestData);
 			}
+			state.investors.set(qpi.invocator(), state.tmpInvestedList);
+			state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
+			if (locals.numberOfInvestedProjects == 0)
+			{
+				state.investors.removeByKey(qpi.invocator());
+				state.numberOfInvestedProjects.removeByKey(qpi.invocator());
+			}
+			output.claimedAmount = input.amount;
 		}
 	}
 
@@ -1230,10 +1174,9 @@ protected:
 		output.result = state.tokens.contains(input.tokenName);
 	}
 
-	PUBLIC_FUNCTION(getNumberOfInvestedAndClaimedProjects)
+	PUBLIC_FUNCTION(getNumberOfInvestedProjects)
 	{
 		state.numberOfInvestedProjects.get(input.userId, output.numberOfInvestedProjects);
-		state.numberOfClaimedProjects.get(input.userId, output.numberOfClaimedProjects);
 	}
 
 public:
@@ -1291,6 +1234,104 @@ public:
 				output.indexListForProjects.set(locals.countOfProject++, locals.i);
 			}
 		}
+		for (locals.i = locals.countOfProject; locals.i < NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST; locals.i++)
+		{
+			output.indexListForProjects.set(locals.i, NOSTROMO_MAX_NUMBER_PROJECT);
+		}
+	}
+
+	struct getInfoUserInvested_input
+	{
+		id investorId;
+	};
+
+	struct getInfoUserInvested_output
+	{
+		Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> listUserInvested;
+	};
+
+	struct getInfoUserInvested_locals
+	{
+		uint32 i, countOfProject;
+	};
+
+	PUBLIC_FUNCTION_WITH_LOCALS(getInfoUserInvested)
+	{
+		state.investors.get(input.investorId, output.listUserInvested);
+	}
+
+	struct getMaxClaimAmount_input
+	{
+		id investorId;
+		uint32 indexOfFundaraising;
+	};
+
+	struct getMaxClaimAmount_output
+	{
+		uint64 amount;
+	};
+
+	struct getMaxClaimAmount_locals
+	{
+		Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> tmpInvestedList;
+		investInfo tmpInvestData;
+		uint64 maxClaimAmount, investedAmount, dayA, dayB, dayC, dayD, start_cur_diffSecond, cur_end_diffSecond, claimedAmount;
+		uint32 curDate, tmpDate, numberOfInvestedProjects;
+		sint32 i, j, k;
+		uint8 curVestingStep, vestingPercent;
+		bit flag;
+	};
+
+	PUBLIC_FUNCTION_WITH_LOCALS(getMaxClaimAmount)
+	{
+		getCurrentDate(qpi, locals.curDate);
+
+		if (input.indexOfFundaraising >= state.numberOfFundaraising)
+		{
+			return ;
+		}
+
+		state.investors.get(input.investorId, locals.tmpInvestedList);
+		if (state.numberOfInvestedProjects.get(input.investorId, locals.numberOfInvestedProjects) == 0)
+		{
+			return ;
+		}
+
+		for (locals.i = 0; locals.i < (sint32)locals.numberOfInvestedProjects; locals.i++)
+		{
+			if (locals.tmpInvestedList.get(locals.i).indexOfFundaraising == input.indexOfFundaraising)
+			{
+				locals.investedAmount = locals.tmpInvestedList.get(locals.i).investedAmount;
+				locals.claimedAmount = locals.tmpInvestedList.get(locals.i).claimedAmount;
+				locals.tmpInvestData = locals.tmpInvestedList.get(locals.i);
+				break;
+			}
+		}
+
+		if (locals.i == locals.numberOfInvestedProjects)
+		{
+			return ;
+		}
+
+		if (locals.curDate >= state.fundaraisings.get(input.indexOfFundaraising).listingStartDate && locals.curDate < state.fundaraisings.get(input.indexOfFundaraising).cliffEndDate)
+		{
+			output.amount = div(div(locals.investedAmount, state.fundaraisings.get(input.indexOfFundaraising).tokenPrice) * state.fundaraisings.get(input.indexOfFundaraising).TGE, 100ULL);
+		}
+		else if (locals.curDate >= state.fundaraisings.get(input.indexOfFundaraising).cliffEndDate && locals.curDate < state.fundaraisings.get(input.indexOfFundaraising).vestingEndDate)
+		{
+			locals.tmpDate = state.fundaraisings.get(input.indexOfFundaraising).cliffEndDate;
+			QUOTTERY::diffDateInSecond(locals.tmpDate, locals.curDate, locals.j, locals.dayA, locals.dayB, locals.start_cur_diffSecond);
+			locals.tmpDate = state.fundaraisings.get(input.indexOfFundaraising).vestingEndDate;
+			QUOTTERY::diffDateInSecond(locals.curDate, locals.tmpDate, locals.k, locals.dayC, locals.dayD, locals.cur_end_diffSecond);
+
+			locals.curVestingStep = (uint8)div(locals.start_cur_diffSecond, div(locals.start_cur_diffSecond + locals.cur_end_diffSecond, state.fundaraisings.get(input.indexOfFundaraising).stepOfVesting * 1ULL)) + 1;
+			locals.vestingPercent = (uint8)div(100ULL - state.fundaraisings.get(input.indexOfFundaraising).TGE, state.fundaraisings.get(input.indexOfFundaraising).stepOfVesting * 1ULL) * locals.curVestingStep;
+			output.amount = div(div(locals.investedAmount, state.fundaraisings.get(input.indexOfFundaraising).tokenPrice) * (state.fundaraisings.get(input.indexOfFundaraising).TGE + locals.vestingPercent), 100ULL);
+		}
+		else if (locals.curDate >= state.fundaraisings.get(input.indexOfFundaraising).vestingEndDate)
+		{
+			output.amount = div(locals.investedAmount, state.fundaraisings.get(input.indexOfFundaraising).tokenPrice);
+		}
 	}
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -1299,10 +1340,12 @@ public:
 		REGISTER_USER_FUNCTION(getTierLevelByUser, 2);
 		REGISTER_USER_FUNCTION(getUserVoteStatus, 3);
 		REGISTER_USER_FUNCTION(checkTokenCreatability, 4);
-		REGISTER_USER_FUNCTION(getNumberOfInvestedAndClaimedProjects, 5);
+		REGISTER_USER_FUNCTION(getNumberOfInvestedProjects, 5);
 		REGISTER_USER_FUNCTION(getProjectByIndex, 6);
 		REGISTER_USER_FUNCTION(getFundarasingByIndex, 7);
 		REGISTER_USER_FUNCTION(getProjectIndexListByCreator, 8);
+		REGISTER_USER_FUNCTION(getInfoUserInvested, 9);
+		REGISTER_USER_FUNCTION(getMaxClaimAmount, 10);
 		
 		REGISTER_USER_PROCEDURE(registerInTier, 1);
 		REGISTER_USER_PROCEDURE(logoutFromTier, 2);
@@ -1329,12 +1372,40 @@ public:
 		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> clearedVotedList;
 		id userId;
 		sint64 idx;
-		uint32 numberOfVotedProject, clearedNumberOfVotedProject, i, j, curDate, indexOfProject, numberOfInvestors, numberOfInvestedProjects, tierLevel;
+		uint32 numberOfVotedProject, clearedNumberOfVotedProject, i, j, curDate, indexOfProject, numberOfInvestedProjects, tierLevel;
 	};
 
 	END_EPOCH_WITH_LOCALS()
 	{
 		getCurrentDate(qpi, locals.curDate);
+
+		locals.idx = state.investors.nextElementIndex(NULL_INDEX);
+		while (locals.idx != NULL_INDEX)
+		{
+			locals.userId = state.investors.key(locals.idx);
+			state.investors.get(locals.userId, state.tmpInvestedList);
+			state.numberOfInvestedProjects.get(locals.userId, locals.numberOfInvestedProjects);
+
+			for (locals.i = 0; locals.i < locals.numberOfInvestedProjects; locals.i++)
+			{
+				if (state.fundaraisings.get(locals.i).thirdPhaseEndDate < locals.curDate && state.fundaraisings.get(locals.i).isCreatedToken == 0 && state.fundaraisings.get(locals.i).raisedFunds != 0)
+				{	
+					qpi.transfer(locals.userId, state.tmpInvestedList.get(locals.i).investedAmount);
+					state.tmpInvestedList.set(locals.i, state.tmpInvestedList.get(--locals.numberOfInvestedProjects));
+				}
+			}
+			if (locals.numberOfInvestedProjects == 0)
+			{
+				state.investors.removeByKey(locals.userId);
+				state.numberOfInvestedProjects.removeByKey(locals.userId);
+			}
+			else
+			{
+				state.investors.set(locals.userId, state.tmpInvestedList);
+				state.numberOfInvestedProjects.set(locals.userId, locals.numberOfInvestedProjects);
+			}
+			locals.idx = state.investors.nextElementIndex(locals.idx);
+		}
 
 		for (locals.i = 0; locals.i < state.numberOfFundaraising; locals.i++)
 		{
@@ -1343,22 +1414,6 @@ public:
 				locals.tmpFundaraising = state.fundaraisings.get(locals.i);
 				locals.tmpFundaraising.raisedFunds = 0;
 				state.fundaraisings.set(locals.i, locals.tmpFundaraising);
-				
-				state.investors.get(locals.i, state.tmpInvestedList);
-				locals.numberOfInvestors = state.numberOfInvestors.get(locals.i);
-
-				for (locals.j = 0; locals.j < locals.numberOfInvestors; locals.j++)
-				{
-					qpi.transfer(state.tmpInvestedList.get(locals.j).investorId, state.tmpInvestedList.get(locals.j).investedAmount);
-	
-					state.numberOfInvestedProjects.get(state.tmpInvestedList.get(locals.j).investorId, locals.numberOfInvestedProjects);
-					state.numberOfInvestedProjects.set(state.tmpInvestedList.get(locals.j).investorId, locals.numberOfInvestedProjects - 1);
-
-					state.tmpInvestedList.set(locals.j, locals.tmpInvest);
-				}
-
-				state.investors.set(locals.i, state.tmpInvestedList);
-				state.numberOfInvestors.set(locals.i, 0);
 			}
 			else if (state.fundaraisings.get(locals.i).thirdPhaseEndDate < locals.curDate && state.fundaraisings.get(locals.i).isCreatedToken == 1 && state.fundaraisings.get(locals.i).raisedFunds != 0)
 			{
@@ -1385,26 +1440,39 @@ public:
 			locals.userId = state.Users.key(locals.idx);
 			locals.tierLevel = state.Users.value(locals.idx);
 
-			state.numberOfVotedProject.get(locals.userId, locals.numberOfVotedProject);
-			state.voteStatus.get(locals.userId, locals.votedList);
-
-			for (locals.j = 0; locals.j < locals.numberOfVotedProject; locals.j++)
+			if (state.numberOfVotedProject.get(locals.userId, locals.numberOfVotedProject))
 			{
-				locals.indexOfProject = locals.votedList.get(locals.j);
-
-				if (state.projects.get(locals.indexOfProject).endDate > locals.curDate)
+				state.voteStatus.get(locals.userId, locals.votedList);
+				locals.clearedNumberOfVotedProject = 0;
+				for (locals.j = 0; locals.j < locals.numberOfVotedProject; locals.j++)
 				{
-					locals.clearedVotedList.set(locals.clearedNumberOfVotedProject++, locals.indexOfProject);
+					locals.indexOfProject = locals.votedList.get(locals.j);
+
+					if (state.projects.get(locals.indexOfProject).endDate > locals.curDate)
+					{
+						locals.clearedVotedList.set(locals.clearedNumberOfVotedProject++, locals.indexOfProject);
+					}
+				}
+				if (locals.clearedNumberOfVotedProject == 0)
+				{
+					state.numberOfVotedProject.removeByKey(locals.userId);
+					state.voteStatus.removeByKey(locals.userId);
+				}
+				else
+				{
+					state.numberOfVotedProject.set(locals.userId, locals.clearedNumberOfVotedProject);
+					state.voteStatus.set(locals.userId, locals.clearedVotedList);
 				}
 			}
-
-			state.numberOfVotedProject.set(locals.userId, locals.clearedNumberOfVotedProject);
-			state.voteStatus.set(locals.userId, locals.clearedVotedList);
 
 			locals.idx = state.Users.nextElementIndex(locals.idx);
 		}
 
 		state.Users.cleanupIfNeeded();
+		state.investors.cleanupIfNeeded();
+		state.numberOfInvestedProjects.cleanupIfNeeded();
+		state.numberOfVotedProject.cleanupIfNeeded();
+		state.voteStatus.cleanupIfNeeded();
 	}
 
 	PRE_ACQUIRE_SHARES()
