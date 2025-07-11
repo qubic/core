@@ -297,6 +297,8 @@ namespace QPI
 		{
 			copyMemory(*this, other);
 		}
+
+		Array() = default;
 	};
 	
 	// Array convenience definitions
@@ -995,6 +997,12 @@ namespace QPI
 			// Scalar voting result (currently only for proposalType VariableScalarMean, mean value of all valid votes)
 			sint64 scalarVotingResult;
 		};
+
+		ProposalSummarizedVotingDataV1() = default;
+		ProposalSummarizedVotingDataV1(const ProposalSummarizedVotingDataV1& src)
+		{
+			copyMemory(*this, src);
+		}
 	};
 	static_assert(sizeof(ProposalSummarizedVotingDataV1) == 16 + 8*4, "Unexpected struct size.");
 
