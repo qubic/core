@@ -442,7 +442,7 @@ protected:
 	{
 		QUOTTERY::packQuotteryDate(input.startYear, input.startMonth, input.startDay, input.startHour, 0, 0, locals.startDate);
 		QUOTTERY::packQuotteryDate(input.endYear, input.endMonth, input.endDay, input.endHour, 0, 0, locals.endDate);
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate > locals.startDate || locals.startDate >= locals.endDate || QUOTTERY::checkValidQtryDateTime(locals.startDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.endDate) == 0)
 		{
@@ -534,7 +534,7 @@ protected:
 				return ;
 			}
 		}
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 		if (locals.curDate >= state.projects.get(input.indexOfProject).startDate && locals.curDate < state.projects.get(input.indexOfProject).endDate)
 		{
 			locals.votedProject = state.projects.get(input.indexOfProject);
@@ -562,7 +562,7 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(createFundaraising)
 	{
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 		QUOTTERY::packQuotteryDate(input.firstPhaseStartYear, input.firstPhaseStartMonth, input.firstPhaseStartDay, input.firstPhaseStartHour, 0, 0, locals.firstPhaseStartDate);
 		QUOTTERY::packQuotteryDate(input.secondPhaseStartYear, input.secondPhaseStartMonth, input.secondPhaseStartDay, input.secondPhaseStartHour, 0, 0, locals.secondPhaseStartDate);
 		QUOTTERY::packQuotteryDate(input.thirdPhaseStartYear, input.thirdPhaseStartMonth, input.thirdPhaseStartDay, input.thirdPhaseStartHour, 0, 0, locals.thirdPhaseStartDate);
@@ -710,7 +710,7 @@ protected:
 			return ;
 		}
 		
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		locals.tmpFundaraising = state.fundaraisings.get(input.indexOfFundaraising);
 
@@ -971,7 +971,7 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(claimToken)
 	{
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if (input.indexOfFundaraising >= state.numberOfFundaraising)
 		{
@@ -1284,7 +1284,7 @@ public:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getMaxClaimAmount)
 	{
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if (input.indexOfFundaraising >= state.numberOfFundaraising)
 		{
@@ -1377,7 +1377,7 @@ public:
 
 	END_EPOCH_WITH_LOCALS()
 	{
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		locals.idx = state.investors.nextElementIndex(NULL_INDEX);
 		while (locals.idx != NULL_INDEX)
