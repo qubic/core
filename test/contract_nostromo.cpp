@@ -505,7 +505,7 @@ public:
         input.newManagingContractIndex = newManagingContractIndex;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(NOST_CONTRACT_INDEX, 9, input, output, user, 1000000);
+        invokeUserProcedure(NOST_CONTRACT_INDEX, 9, input, output, user, 100);
 
         return output.transferredNumberOfShares;
     }

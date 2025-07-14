@@ -1352,7 +1352,7 @@ public:
 	INITIALIZE()
 	{
 		state.teamAddress = ID(_G, _E, _H, _N, _R, _F, _U, _O, _I, _I, _C, _S, _B, _C, _S, _R, _F, _M, _N, _J, _T, _C, _J, _K, _C, _J, _H, _A, _T, _Z, _X, _A, _X, _Y, _O, _F, _W, _X, _U, _F, _L, _C, _K, _F, _P, _B, _W, _X, _Q, _A, _C, _B, _S, _Z, _F, _F);
-		state.transferRightsFee = 1000000;
+		state.transferRightsFee = 100;
 	}
 
 	struct END_EPOCH_locals
