@@ -39,9 +39,9 @@ class NostromoChecker : public NOST
 public:
     void registerChecker(id registerId, uint32 tierLevel, uint32 indexOfRegister)
     {
-        EXPECT_EQ(Users.contains(registerId), 1);
+        EXPECT_EQ(users.contains(registerId), 1);
         uint8 stateTierLevel;
-        Users.get(registerId, stateTierLevel);
+        users.get(registerId, stateTierLevel);
         EXPECT_EQ(tierLevel, stateTierLevel);
     }
     void countOfRegisterChecker(uint32 totalUser)
@@ -50,7 +50,7 @@ public:
     }
     void logoutFromTierChecker(id registerId)
     {
-        EXPECT_EQ(Users.contains(registerId), 0);
+        EXPECT_EQ(users.contains(registerId), 0);
     }
     void numberOfCreatedProjectChecker(uint32 numberOfProjects)
     {
@@ -98,11 +98,11 @@ public:
             EXPECT_EQ(vote.get(i), votedList.get(i));
         }
     }
-    void countOfFundaraisingChecker(uint32 count)
+    void countOfFundraisingChecker(uint32 count)
     {
-        EXPECT_EQ(count, numberOfFundaraising);
+        EXPECT_EQ(count, numberOfFundraising);
     }
-    void createFundaraisingChecker(const id& registerId,
+    void createFundraisingChecker(const id& registerId,
         uint64 tokenPrice,
 		uint64 soldAmount,
 		uint64 requiredFunds,
@@ -125,7 +125,7 @@ public:
 		uint32 secondPhaseEndMonth,
 		uint32 secondPhaseEndDay,
 		uint32 secondPhaseEndHour,
-    
+
         uint32 thirdPhaseStartYear,
 		uint32 thirdPhaseStartMonth,
 		uint32 thirdPhaseStartDay,
@@ -134,7 +134,7 @@ public:
 		uint32 thirdPhaseEndMonth,
 		uint32 thirdPhaseEndDay,
 		uint32 thirdPhaseEndHour,
-    
+
         uint32 listingStartYear,
 		uint32 listingStartMonth,
 		uint32 listingStartDay,
@@ -153,8 +153,8 @@ public:
 		uint8 threshold,
 		uint8 TGE,
 		uint8 stepOfVesting,
-    
-        uint32 indexOfFundaraising)
+
+        uint32 indexOfFundraising)
     {
         uint32 firstPhaseStartDate_t, secondPhaseStartDate_t, thirdPhaseStartDate_t, firstPhaseEndDate_t, secondPhaseEndDate_t, thirdPhaseEndDate_t, listingStartDate_t, cliffEndDate_t, vestingEndDate_t;
         QUOTTERY::packQuotteryDate(firstPhaseStartYear, firstPhaseStartMonth, firstPhaseStartDay, firstPhaseStartHour, 0, 0, firstPhaseStartDate_t);
@@ -167,37 +167,37 @@ public:
 		QUOTTERY::packQuotteryDate(cliffEndYear, cliffEndMonth, cliffEndDay, cliffEndHour, 0, 0, cliffEndDate_t);
 		QUOTTERY::packQuotteryDate(vestingEndYear, vestingEndMonth, vestingEndDay, vestingEndHour, 0, 0, vestingEndDate_t);
 
-        EXPECT_EQ(registerId, projects.get(fundaraisings.get(indexOfFundaraising).indexOfProject).creator);
-        EXPECT_EQ(tokenPrice, fundaraisings.get(indexOfFundaraising).tokenPrice);
+        EXPECT_EQ(registerId, projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).creator);
+        EXPECT_EQ(tokenPrice, fundaraisings.get(indexOfFundraising).tokenPrice);
 
-        EXPECT_EQ(soldAmount, fundaraisings.get(indexOfFundaraising).soldAmount);
-        EXPECT_EQ(requiredFunds, fundaraisings.get(indexOfFundaraising).requiredFunds);
-        EXPECT_EQ(indexOfProject, fundaraisings.get(indexOfFundaraising).indexOfProject);
-        EXPECT_EQ(firstPhaseStartDate_t, fundaraisings.get(indexOfFundaraising).firstPhaseStartDate);
-        EXPECT_EQ(secondPhaseStartDate_t, fundaraisings.get(indexOfFundaraising).secondPhaseStartDate);
-        EXPECT_EQ(thirdPhaseStartDate_t, fundaraisings.get(indexOfFundaraising).thirdPhaseStartDate);
-        EXPECT_EQ(firstPhaseEndDate_t, fundaraisings.get(indexOfFundaraising).firstPhaseEndDate);
-        EXPECT_EQ(secondPhaseEndDate_t, fundaraisings.get(indexOfFundaraising).secondPhaseEndDate);
-        EXPECT_EQ(thirdPhaseEndDate_t, fundaraisings.get(indexOfFundaraising).thirdPhaseEndDate);
-        EXPECT_EQ(listingStartDate_t, fundaraisings.get(indexOfFundaraising).listingStartDate);
-        EXPECT_EQ(cliffEndDate_t, fundaraisings.get(indexOfFundaraising).cliffEndDate);
-        EXPECT_EQ(vestingEndDate_t, fundaraisings.get(indexOfFundaraising).vestingEndDate);
-        EXPECT_EQ(threshold, fundaraisings.get(indexOfFundaraising).threshold);
-        EXPECT_EQ(TGE, fundaraisings.get(indexOfFundaraising).TGE);
-        EXPECT_EQ(stepOfVesting, fundaraisings.get(indexOfFundaraising).stepOfVesting);
+        EXPECT_EQ(soldAmount, fundaraisings.get(indexOfFundraising).soldAmount);
+        EXPECT_EQ(requiredFunds, fundaraisings.get(indexOfFundraising).requiredFunds);
+        EXPECT_EQ(indexOfProject, fundaraisings.get(indexOfFundraising).indexOfProject);
+        EXPECT_EQ(firstPhaseStartDate_t, fundaraisings.get(indexOfFundraising).firstPhaseStartDate);
+        EXPECT_EQ(secondPhaseStartDate_t, fundaraisings.get(indexOfFundraising).secondPhaseStartDate);
+        EXPECT_EQ(thirdPhaseStartDate_t, fundaraisings.get(indexOfFundraising).thirdPhaseStartDate);
+        EXPECT_EQ(firstPhaseEndDate_t, fundaraisings.get(indexOfFundraising).firstPhaseEndDate);
+        EXPECT_EQ(secondPhaseEndDate_t, fundaraisings.get(indexOfFundraising).secondPhaseEndDate);
+        EXPECT_EQ(thirdPhaseEndDate_t, fundaraisings.get(indexOfFundraising).thirdPhaseEndDate);
+        EXPECT_EQ(listingStartDate_t, fundaraisings.get(indexOfFundraising).listingStartDate);
+        EXPECT_EQ(cliffEndDate_t, fundaraisings.get(indexOfFundraising).cliffEndDate);
+        EXPECT_EQ(vestingEndDate_t, fundaraisings.get(indexOfFundraising).vestingEndDate);
+        EXPECT_EQ(threshold, fundaraisings.get(indexOfFundraising).threshold);
+        EXPECT_EQ(TGE, fundaraisings.get(indexOfFundraising).TGE);
+        EXPECT_EQ(stepOfVesting, fundaraisings.get(indexOfFundraising).stepOfVesting);
         
     }
     uint8 getTierLevel(id registerId)
     {
-        if (Users.contains(registerId))
+        if (users.contains(registerId))
         {
             uint8 tierLevel;
-            Users.get(registerId, tierLevel);
+            users.get(registerId, tierLevel);
             return tierLevel;
         }
         return 0;
     }
-    uint64 getInvestedAmount(uint32 indexOfFundaraising, id registerId)
+    uint64 getInvestedAmount(uint32 indexOfFundraising, id registerId)
     {
         investors.get(registerId, tmpInvestedList);
         uint32 numberOfProject;
@@ -205,7 +205,7 @@ public:
 
         for (uint32 i = 0; i < numberOfProject; i++)
 		{
-			if (tmpInvestedList.get(i).indexOfFundaraising == indexOfFundaraising)
+			if (tmpInvestedList.get(i).indexOfFundraising == indexOfFundraising)
 			{
 				return tmpInvestedList.get(i).investedAmount;
 			}
@@ -217,52 +217,52 @@ public:
     {
         return epochRevenue;
     }
-    void totalRaisedFundChecker(uint32 indexOfFundaraising, uint64 raisedFund, uint64 assetName)
+    void totalRaisedFundChecker(uint32 indexOfFundraising, uint64 raisedFund, uint64 assetName)
     {
-        EXPECT_EQ(raisedFund, fundaraisings.get(indexOfFundaraising).raisedFunds);
+        EXPECT_EQ(raisedFund, fundaraisings.get(indexOfFundraising).raisedFunds);
         
-        if (fundaraisings.get(indexOfFundaraising).isCreatedToken)
+        if (fundaraisings.get(indexOfFundraising).isCreatedToken)
         {
             Asset assetInfo;
             assetInfo.assetName = assetName;
             assetInfo.issuer = id(NOST_CONTRACT_INDEX, 0, 0, 0);
-            EXPECT_EQ(numberOfShares(assetInfo), projects.get(fundaraisings.get(indexOfFundaraising).indexOfProject).supplyOfToken);
-            EXPECT_EQ(numberOfPossessedShares(assetName, id(NOST_CONTRACT_INDEX, 0, 0, 0), projects.get(fundaraisings.get(indexOfFundaraising).indexOfProject).creator, projects.get(fundaraisings.get(indexOfFundaraising).indexOfProject).creator, 13, 13), projects.get(fundaraisings.get(indexOfFundaraising).indexOfProject).supplyOfToken - fundaraisings.get(indexOfFundaraising).soldAmount);
+            EXPECT_EQ(numberOfShares(assetInfo), projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).supplyOfToken);
+            EXPECT_EQ(numberOfPossessedShares(assetName, id(NOST_CONTRACT_INDEX, 0, 0, 0), projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).creator, projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).creator, 13, 13), projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).supplyOfToken - fundaraisings.get(indexOfFundraising).soldAmount);
         }
     }
-    void endEpochSucceedFundaraisingChecker(id creator, uint32 indexOfFundaraising, uint64 totalInvestedFund, uint64 originalCreatorBalance, uint64 assetName)
+    void endEpochSucceedFundraisingChecker(id creator, uint32 indexOfFundraising, uint64 totalInvestedFund, uint64 originalCreatorBalance, uint64 assetName)
     {
-        EXPECT_EQ(numberOfPossessedShares(assetName, id(NOST_CONTRACT_INDEX, 0, 0, 0), creator, creator, NOST_CONTRACT_INDEX, NOST_CONTRACT_INDEX), projects.get(fundaraisings.get(indexOfFundaraising).indexOfProject).supplyOfToken - div(totalInvestedFund, fundaraisings.get(indexOfFundaraising).tokenPrice));
-        EXPECT_EQ(fundaraisings.get(indexOfFundaraising).raisedFunds, 0);
+        EXPECT_EQ(numberOfPossessedShares(assetName, id(NOST_CONTRACT_INDEX, 0, 0, 0), creator, creator, NOST_CONTRACT_INDEX, NOST_CONTRACT_INDEX), projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).supplyOfToken - div(totalInvestedFund, fundaraisings.get(indexOfFundraising).tokenPrice));
+        EXPECT_EQ(fundaraisings.get(indexOfFundraising).raisedFunds, 0);
     }
-    void endEpochFailedFundaraisingChecker(uint32 indexOfFundaraising)
+    void endEpochFailedFundraisingChecker(uint32 indexOfFundraising)
     {
-        EXPECT_EQ(fundaraisings.get(indexOfFundaraising).raisedFunds, 0);
+        EXPECT_EQ(fundaraisings.get(indexOfFundraising).raisedFunds, 0);
     }
     void endEpochVoteStatusClearChecker()
     {
         id userId;
         uint64 tierLevel;
-        uint64 idx = Users.nextElementIndex(NULL_INDEX);
+        uint64 idx = users.nextElementIndex(NULL_INDEX);
         uint32 numberOfProject;
         Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> votedList;
 		while (idx != NULL_INDEX)
 		{
-			userId = Users.key(idx);
-			tierLevel = Users.value(idx);
+			userId = users.key(idx);
+			tierLevel = users.value(idx);
 
             EXPECT_EQ(voteStatus.get(userId, votedList), 0);
             EXPECT_EQ(numberOfVotedProject.get(userId, numberOfProject), 0);
 
-			idx = Users.nextElementIndex(idx);
+			idx = users.nextElementIndex(idx);
 		}
     }
-    void getStatsChecker(uint64 epochRevenu_t, uint64 totalPoolWeight_t, uint32 numberOfCreatedProject_t, uint32 numberOfFundaraising_t, uint32 numberOfRegister_t)
+    void getStatsChecker(uint64 epochRevenu_t, uint64 totalPoolWeight_t, uint32 numberOfCreatedProject_t, uint32 numberOfFundraising_t, uint32 numberOfRegister_t)
     {   
         EXPECT_EQ(epochRevenu_t, epochRevenue);
         EXPECT_EQ(totalPoolWeight_t, totalPoolWeight);
         EXPECT_EQ(numberOfCreatedProject_t, numberOfCreatedProject);
-        EXPECT_EQ(numberOfFundaraising_t, numberOfFundaraising);
+        EXPECT_EQ(numberOfFundraising_t, numberOfFundraising);
         EXPECT_EQ(numberOfRegister_t, numberOfRegister);
     }
     void removeElementAfterClaimChecker(id user)
@@ -353,7 +353,7 @@ public:
 
         invokeUserProcedure(NOST_CONTRACT_INDEX, 4, input, output, registerId, 0);
     }
-    void createFundaraising(const id& registerId,
+    void createFundraising(const id& registerId,
         uint64 tokenPrice,
 		uint64 soldAmount,
 		uint64 requiredFunds,
@@ -405,8 +405,8 @@ public:
 		uint8 TGE,
 		uint8 stepOfVesting)
     {
-        NOST::createFundaraising_input input;
-        NOST::createFundaraising_output output;
+        NOST::createFundraising_input input;
+        NOST::createFundraising_output output;
 
         input.tokenPrice = tokenPrice;
 		input.soldAmount = soldAmount;
@@ -462,25 +462,25 @@ public:
         invokeUserProcedure(NOST_CONTRACT_INDEX, 5, input, output, registerId, NOSTROMO_QX_TOKEN_ISSUANCE_FEE);
     }
     void investInProject(const id& investorId, 
-        uint32 indexOfFundaraising,
+        uint32 indexOfFundraising,
         uint64 investmentAmount)
     {
         NOST::investInProject_input input;
         NOST::investInProject_output output;
 
-        input.indexOfFundaraising = indexOfFundaraising;
+        input.indexOfFundraising = indexOfFundraising;
 
         invokeUserProcedure(NOST_CONTRACT_INDEX, 6, input, output, investorId, investmentAmount);
     }
     uint64 claimToken(const id& claimerId,
         uint64 claimAmount,
-        uint32 indexOfFundaraising)
+        uint32 indexOfFundraising)
     {
         NOST::claimToken_input input;
         NOST::claimToken_output output;
 
         input.amount = claimAmount;
-        input.indexOfFundaraising = indexOfFundaraising;
+        input.indexOfFundraising = indexOfFundraising;
 
         invokeUserProcedure(NOST_CONTRACT_INDEX, 7, input, output, claimerId, 0);
         return output.claimedAmount;
@@ -562,12 +562,12 @@ public:
         callFunction(NOST_CONTRACT_INDEX, 6, input, output);
         return output;
     }
-    NOST::getFundarasingByIndex_output getFundarasingByIndex(uint32 indexOfFundaraising) const
+    NOST::getFundarasingByIndex_output getFundarasingByIndex(uint32 indexOfFundraising) const
     {
         NOST::getFundarasingByIndex_input input;
         NOST::getFundarasingByIndex_output output;
 
-        input.indexOfFundarasing = indexOfFundaraising;
+        input.indexOfFundarasing = indexOfFundraising;
         callFunction(NOST_CONTRACT_INDEX, 7, input, output);
         return output;
     }
@@ -589,13 +589,13 @@ public:
         callFunction(NOST_CONTRACT_INDEX, 9, input, output);
         return output;
     }
-    uint64 getMaxClaimAmount(const id& investorId, uint32 indexOfFundaraising) const
+    uint64 getMaxClaimAmount(const id& investorId, uint32 indexOfFundraising) const
     {
         NOST::getMaxClaimAmount_input input;
         NOST::getMaxClaimAmount_output output;
 
         input.investorId = investorId;
-        input.indexOfFundaraising = indexOfFundaraising;
+        input.indexOfFundraising = indexOfFundraising;
         callFunction(NOST_CONTRACT_INDEX, 10, input, output);
         return output.amount;
     }
@@ -653,16 +653,12 @@ TEST(TestContractNostromo, registerAndLogoutAndUpgradeFromTierChecker)
         default:
             break;
         }
-        /*
-            Register Tier
-        */
+        // Register Tier
         totalDepositedQubic += depositeAmount;
         increaseEnergy(user, depositeAmount);
         nostromoTestCaseA.registerInTier(user, tierLevel, depositeAmount);
         nostromoTestCaseA.getState()->registerChecker(user, tierLevel, countOfRegister);
-        /*
-            Upgrade Tier
-        */
+        // Upgrade Tier
         totalDepositedQubic += upgradeDeltaDepositeAmount;
         increaseEnergy(user, upgradeDeltaDepositeAmount);
         nostromoTestCaseA.upgradeTier(user, tierLevel + 1, upgradeDeltaDepositeAmount);
@@ -691,9 +687,7 @@ TEST(TestContractNostromo, registerAndLogoutAndUpgradeFromTierChecker)
         {
             continue;
         }
-        /*
-            Logout From Tier
-        */
+        // Logout From Tier
         nostromoTestCaseA.logoutFromTier(user);
         duplicatedUser[user] = 1;
         nostromoTestCaseA.getState()->logoutFromTierChecker(user);
@@ -710,9 +704,7 @@ TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
 
     auto registers = getRandomUsers(1000, 1000);
 
-    /*
-        Register in each Tiers
-    */
+    // Register in each Tiers
     increaseEnergy(registers[0], NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
     nostromoTestCaseB.registerInTier(registers[0], 1, NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT);
 
@@ -737,35 +729,28 @@ TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
 
     uint64 assetName = assetNameFromString("AAAA");
 
-    /*
-        This creation should be failed because there is no qualified to create the project.
-    */
+    // This creation should be failed because there is no qualified to create the project.
     nostromoTestCaseB.createProject(registers[0], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(0);
     nostromoTestCaseB.getState()->epochRevenueChecker(0);
     EXPECT_EQ(getBalance(registers[0]), NOSTROMO_CREATE_PROJECT_FEE);
 
-    /*
-        This creation should be failed because there is no qualified to create the project.
-    */
+    // This creation should be failed because there is no qualified to create the project.
     assetName = assetNameFromString("BBBB");
     nostromoTestCaseB.createProject(registers[1], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(0);
     nostromoTestCaseB.getState()->epochRevenueChecker(0);
     EXPECT_EQ(getBalance(registers[1]), NOSTROMO_CREATE_PROJECT_FEE);
 
-    /*
-        This creation should be failed because there is no qualified to create the project.
-    */
+    // This creation should be failed because there is no qualified to create the project.
     assetName = assetNameFromString("CCCC");
     nostromoTestCaseB.createProject(registers[2], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(0);
     nostromoTestCaseB.getState()->epochRevenueChecker(0);
     EXPECT_EQ(getBalance(registers[2]), NOSTROMO_CREATE_PROJECT_FEE);
 
-    /*
-        This creation should be succeed because there is a qualified to create the project.
-    */
+
+    //This creation should be succeed because there is a qualified to create the project.
     assetName = assetNameFromString("DDDD");
     nostromoTestCaseB.createProject(registers[3], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(1);
@@ -773,9 +758,7 @@ TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
     nostromoTestCaseB.getState()->createdProjectChecker(0, registers[3], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
     EXPECT_EQ(getBalance(registers[3]), 0);
 
-    /*
-        This creation should be succeed because there is a qualified to create the project.
-    */
+    // This creation should be succeed because there is a qualified to create the project.
     assetName = assetNameFromString("EEEE");
     nostromoTestCaseB.createProject(registers[4], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(2);
@@ -783,10 +766,7 @@ TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
     nostromoTestCaseB.getState()->createdProjectChecker(1, registers[4], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
     EXPECT_EQ(getBalance(registers[4]), 0);
 
-    /*
-        checkTokenCreatability function checker
-    */
-
+    // checkTokenCreatability function checker
     EXPECT_EQ(nostromoTestCaseB.checkTokenCreatability(assetName).result, 1);
     assetName = assetNameFromString("ABCD");
     EXPECT_EQ(nostromoTestCaseB.checkTokenCreatability(assetName).result, 0);
@@ -810,16 +790,12 @@ TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
     nostromoTestCaseB.getState()->voteInProjectChecker(0, 3, 2);
     nostromoTestCaseB.getState()->numberOfVotedProjectAndVotedListChecker(registers[0], 1, votedList);
 
-    /*
-        This vote should be failed.
-    */
+    // This vote should be failed.
     nostromoTestCaseB.voteInProject(registers[0], 0, 0);
     nostromoTestCaseB.getState()->voteInProjectChecker(0, 3, 2);
     nostromoTestCaseB.getState()->numberOfVotedProjectAndVotedListChecker(registers[0], 1, votedList);
 
-    /*
-        This vote should be succeed.
-    */
+    // This vote should be succeed.
     nostromoTestCaseB.voteInProject(registers[0], 1, 0);
     votedList.set(1, 1);
     nostromoTestCaseB.getState()->voteInProjectChecker(1, 0, 1);
@@ -832,11 +808,11 @@ TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
     nostromoTestCaseB.getState()->voteInProjectChecker(1, 4, 1);
 }
 
-TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChecker)
+TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenChecker)
 {
     uint64 epochRevenu_t = 0;
     uint32 numberOfCreatedProject_t = 0;
-    uint32 numberOfFundaraising_t = 0;;
+    uint32 numberOfFundraising_t = 0;;
 
     ContractTestingNostromo nostromoTestCaseC;
 
@@ -854,10 +830,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     uint64 assetName = assetNameFromString("GGGG");
     nostromoTestCaseC.createProject(registers[0], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
 
-    /*
-        getProjectByIndex function Checker
-    */
-
+    // getProjectByIndex function Checker
     NOST::getProjectByIndex_output getProjectByIndex_output = nostromoTestCaseC.getProjectByIndex(0);
 
     EXPECT_EQ(getProjectByIndex_output.project.creator, registers[0]);
@@ -923,9 +896,8 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         default:
             break;
         }
-        /*
-            Register Tier
-        */
+
+        // Register Tier
         totalDepositedQubic += depositeAmount;
         increaseEnergy(user, depositeAmount);
         nostromoTestCaseC.registerInTier(user, tierLevel, depositeAmount);
@@ -933,17 +905,11 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         duplicatedUser[user] = 1;
         countOfRegister++;
 
-        /*
-            getTierLevelByUser function Checker
-        */
-
+        // getTierLevelByUser function Checker
         EXPECT_EQ(nostromoTestCaseC.getTierLevelByUser(user).tierLevel, tierLevel);
     }
 
-    /*
-        Vote in Project
-    */
-
+    // Vote in Project
     utcTime.Year = 2025;
     utcTime.Month = 6;
     utcTime.Day = 14;
@@ -975,18 +941,15 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     }
     nostromoTestCaseC.getState()->voteInProjectChecker(0, Ynumber, Nnumber);
     
-    /*
-        Create the Fundaraising
-    */
-
-    // This fundaraising should not be created because the voting is not finished yet.
+    // Create the Fundraising
+    // This fundraising should not be created because the voting is not finished yet.
     utcTime.Year = 2025;
     utcTime.Month = 6;
     utcTime.Day = 14;
     utcTime.Hour = 0;
     updateQpiTime();
 
-    nostromoTestCaseC.createFundaraising(registers[0], 100, 2000000, 150000000, 0, 
+    nostromoTestCaseC.createFundraising(registers[0], 100, 2000000, 150000000, 0, 
         25, 6, 17, 0,
         25, 6, 25, 0,
         25, 6, 28, 0,
@@ -998,7 +961,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         26, 7, 27, 0,
         20, 10, 12);
         
-    nostromoTestCaseC.getState()->countOfFundaraisingChecker(0);
+    nostromoTestCaseC.getState()->countOfFundraisingChecker(0);
 
     // It should be created.
 
@@ -1008,7 +971,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     utcTime.Hour = 0;
     updateQpiTime();
 
-    nostromoTestCaseC.createFundaraising(registers[0], 100000, 2000000, 150000000000, 0, 
+    nostromoTestCaseC.createFundraising(registers[0], 100000, 2000000, 150000000000, 0, 
         25, 6, 17, 0,
         25, 6, 25, 0,
         25, 6, 28, 0,
@@ -1019,10 +982,10 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         25, 7, 27, 0,
         26, 7, 27, 0,
         20, 10, 12);
-    numberOfFundaraising_t++;
+    numberOfFundraising_t++;
         
-    nostromoTestCaseC.getState()->countOfFundaraisingChecker(1);
-    nostromoTestCaseC.getState()->createFundaraisingChecker(registers[0], 100000, 2000000, 150000000000, 0, 
+    nostromoTestCaseC.getState()->countOfFundraisingChecker(1);
+    nostromoTestCaseC.getState()->createFundraisingChecker(registers[0], 100000, 2000000, 150000000000, 0, 
         25, 6, 17, 0,
         25, 6, 25, 0,
         25, 6, 28, 0,
@@ -1034,10 +997,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         26, 7, 27, 0,
         20, 10, 12, 0);
 
-    /*
-        getFundarasingByIndex function checker
-    */
-
+    // getFundarasingByIndex function checker
     NOST::getFundarasingByIndex_output getFundarasingByIndex_output = nostromoTestCaseC.getFundarasingByIndex(0);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.indexOfProject, 0);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.isCreatedToken, 0);
@@ -1067,9 +1027,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     QUOTTERY::packQuotteryDate(26, 7, 27, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.vestingEndDate, tmpDate);
 
-    /*
-        Phase 1 Investment
-    */
+    // Phase 1 Investment
     utcTime.Year = 2025;
     utcTime.Month = 6;
     utcTime.Day = 17;
@@ -1102,9 +1060,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
 
         if (ct = 4000)
         {
-            /*
-                Phase 2 Investment
-            */
+            // Phase 2 Investment
             utcTime.Year = 2025;
             utcTime.Month = 6;
             utcTime.Day = 29;
@@ -1159,9 +1115,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     nostromoTestCaseC.getState()->totalRaisedFundChecker(0, totalInvestedAmount, assetName);
     EXPECT_EQ(originalSCBalance + totalInvestedAmount - NOSTROMO_QX_TOKEN_ISSUANCE_FEE, getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
 
-    /*
-        Phase 3 Investment
-    */
+    // Phase 3 Investment
     utcTime.Year = 2025;
     utcTime.Month = 7;
     utcTime.Day = 11;
@@ -1186,10 +1140,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
             totalInvestedAmount += amount;
             investedAmountMP[user] += amount;
 
-            /*
-                getNumberOfInvestedProjects function checker
-            */
-
+            // getNumberOfInvestedProjects function checker
             NOST::getNumberOfInvestedProjects_output getNumberOfInvestedProjects_output = nostromoTestCaseC.getNumberOfInvestedProjects(user);
             
             EXPECT_EQ(getNumberOfInvestedProjects_output.numberOfInvestedProjects, 1);
@@ -1200,9 +1151,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     nostromoTestCaseC.getState()->totalRaisedFundChecker(0, totalInvestedAmount, assetName);
     EXPECT_EQ(originalSCBalance + totalInvestedAmount - NOSTROMO_QX_TOKEN_ISSUANCE_FEE, getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
 
-    /*
-        getMaxClaimAmount function checker
-    */
+    // getMaxClaimAmount function checker
     utcTime.Year = 2025;
     utcTime.Month = 7;
     utcTime.Day = 26;
@@ -1260,10 +1209,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         duplicatedUser[user] = 1;
     }
     
-    /*
-        claimToken Checker
-    */
-
+    // claimToken Checker
     std::map <id, uint64> claimedAmountMP;
     for (uint32 i = 1; i <= 12; i++)
     {
@@ -1293,10 +1239,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         }
     }
 
-    /*
-        getInfoUserInvested function checker
-    */
-    
+    // getInfoUserInvested function checker
     duplicatedUser.clear();
     for (const auto& user : registers)
     {
@@ -1308,15 +1251,12 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         duplicatedUser[user] = 1;
 
         NOST::getInfoUserInvested_output getInfoUserInvested_output = nostromoTestCaseC.getInfoUserInvested(user);
-        EXPECT_EQ(getInfoUserInvested_output.listUserInvested.get(0).indexOfFundaraising, 0);
+        EXPECT_EQ(getInfoUserInvested_output.listUserInvested.get(0).indexOfFundraising, 0);
         EXPECT_EQ(getInfoUserInvested_output.listUserInvested.get(0).investedAmount, investedAmountMP[user]);
         EXPECT_EQ(getInfoUserInvested_output.listUserInvested.get(0).claimedAmount, claimedAmountMP[user]);
     }
 
-    /*
-        Checking to remove element after claiming the max amount
-    */
-
+    // Checking to remove element after claiming the max amount
     utcTime.Year = 2026;
     utcTime.Month = 8;
     utcTime.Day = 5;
@@ -1357,10 +1297,8 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         ct++;
         duplicatedUser[user] = 1;
     }
-    /*
-        transferShareManagementRights Checker
-    */
 
+    // transferShareManagementRights Checker
     increaseEnergy(registers[0], 1000000);
 
     Asset asset;
@@ -1369,10 +1307,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     EXPECT_EQ(nostromoTestCaseC.TransferShareManagementRights(registers[0], asset, 10000, QX_CONTRACT_INDEX), 10000);
     EXPECT_EQ(numberOfPossessedShares(asset.assetName, id(NOST_CONTRACT_INDEX, 0, 0, 0), registers[0], registers[0], QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 10000);
 
-    /*
-        EndEpochSucceedFundaraising Checker
-    */
-
+    // EndEpochSucceedFundraising Checker
     utcTime.Year = 2025;
     utcTime.Month = 6;
     utcTime.Day = 20;
@@ -1414,10 +1349,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         nostromoTestCaseC.voteInProject(user, 1, decision);
         duplicatedUser[user] = 1;
 
-        /*
-            getUserVoteStatus function Checker
-        */
-
+        // getUserVoteStatus function Checker
         NOST::getUserVoteStatus_output getUserVoteStatus_output = nostromoTestCaseC.getUserVoteStatus(user);
         EXPECT_EQ(getUserVoteStatus_output.numberOfVotedProjects, 2);
         EXPECT_EQ(getUserVoteStatus_output.projectIndexList.get(0), 0);
@@ -1432,7 +1364,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     updateQpiTime();
     increaseEnergy(registers[0], NOSTROMO_QX_TOKEN_ISSUANCE_FEE);
 
-    nostromoTestCaseC.createFundaraising(registers[0], 100000, 2000000, 150000000000, 1, 
+    nostromoTestCaseC.createFundraising(registers[0], 100000, 2000000, 150000000000, 1, 
         25, 6, 27, 0,
         25, 7, 5, 0,
         25, 7, 8, 0,
@@ -1443,10 +1375,10 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         25, 7, 27, 0,
         26, 7, 27, 0,
         20, 10, 12);
-    numberOfFundaraising_t++;
+    numberOfFundraising_t++;
     
-    nostromoTestCaseC.getState()->countOfFundaraisingChecker(2);
-    nostromoTestCaseC.getState()->createFundaraisingChecker(registers[0], 100000, 2000000, 150000000000, 1, 
+    nostromoTestCaseC.getState()->countOfFundraisingChecker(2);
+    nostromoTestCaseC.getState()->createFundraisingChecker(registers[0], 100000, 2000000, 150000000000, 1, 
         25, 6, 27, 0,
         25, 7, 5, 0,
         25, 7, 8, 0,
@@ -1481,9 +1413,8 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
 
         if (ct = 4000)
         {
-            /*
-                Phase 2 Investment
-            */
+
+            // Phase 2 Investment
             utcTime.Year = 2025;
             utcTime.Month = 7;
             utcTime.Day = 9;
@@ -1533,10 +1464,8 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     nostromoTestCaseC.getState()->totalRaisedFundChecker(1, totalInvestedAmount_2, assetName);
     EXPECT_EQ(originalSCBalance + totalInvestedAmount_2 - NOSTROMO_QX_TOKEN_ISSUANCE_FEE, getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
 
-    /*
-        getStats function Checker
-    */
-    nostromoTestCaseC.getState()->getStatsChecker(epochRevenu_t, totalPoolWeight, numberOfCreatedProject_t, numberOfFundaraising_t, countOfRegister);
+    // getStats function Checker
+    nostromoTestCaseC.getState()->getStatsChecker(epochRevenu_t, totalPoolWeight, numberOfCreatedProject_t, numberOfFundraising_t, countOfRegister);
 
     utcTime.Year = 2025;
     utcTime.Month = 7;
@@ -1547,12 +1476,9 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     uint64 originalCreatorBalance = getBalance(registers[0]);
     nostromoTestCaseC.endEpoch();
     EXPECT_EQ(getBalance(registers[0]) - originalCreatorBalance, totalInvestedAmount - div(totalInvestedAmount * 5, 100ULL) + totalInvestedAmount_2 - div(totalInvestedAmount_2 * 5, 100ULL));
-    nostromoTestCaseC.getState()->endEpochSucceedFundaraisingChecker(registers[0], 1, totalInvestedAmount_2, originalCreatorBalance, assetName);
+    nostromoTestCaseC.getState()->endEpochSucceedFundraisingChecker(registers[0], 1, totalInvestedAmount_2, originalCreatorBalance, assetName);
 
-    /*
-        EndEpochFailedFundaraising Checker
-    */
-
+    // EndEpochFailedFundraising Checker
     utcTime.Year = 2025;
     utcTime.Month = 6;
     utcTime.Day = 20;
@@ -1565,9 +1491,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     numberOfCreatedProject_t++;
     epochRevenu_t += 100000000;
 
-    /*
-        getProjectIndexListByCreator function checker
-    */
+    // getProjectIndexListByCreator function checker
     NOST::getProjectIndexListByCreator_output getProjectIndexListByCreator_output = nostromoTestCaseC.getProjectIndexListByCreator(registers[0]);
     for (uint32 i = 0; i < 128; i++)
     {
@@ -1618,7 +1542,7 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     updateQpiTime();
     increaseEnergy(registers[0], NOSTROMO_QX_TOKEN_ISSUANCE_FEE);
 
-    nostromoTestCaseC.createFundaraising(registers[0], 100000, 2000000, 150000000000, 2, 
+    nostromoTestCaseC.createFundraising(registers[0], 100000, 2000000, 150000000000, 2, 
         25, 6, 27, 0,
         25, 7, 5, 0,
         25, 7, 8, 0,
@@ -1629,10 +1553,10 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
         25, 7, 27, 0,
         26, 7, 27, 0,
         20, 10, 12);
-    numberOfFundaraising_t++;
+    numberOfFundraising_t++;
     
-    nostromoTestCaseC.getState()->countOfFundaraisingChecker(3);
-    nostromoTestCaseC.getState()->createFundaraisingChecker(registers[0], 100000, 2000000, 150000000000, 2, 
+    nostromoTestCaseC.getState()->countOfFundraisingChecker(3);
+    nostromoTestCaseC.getState()->createFundraisingChecker(registers[0], 100000, 2000000, 150000000000, 2, 
         25, 6, 27, 0,
         25, 7, 5, 0,
         25, 7, 8, 0,
@@ -1667,9 +1591,8 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
 
         if (ct = 4000)
         {
-            /*
-                Phase 2 Investment
-            */
+
+            // Phase 2 Investment
             utcTime.Year = 2025;
             utcTime.Month = 7;
             utcTime.Day = 9;
@@ -1764,6 +1687,6 @@ TEST(TestContractNostromo, createFundaraisingAndInvestInProjectAndClaimTokenChec
     nostromoTestCaseC.endEpoch();
 
     EXPECT_EQ(originalSCBalance + totalInvestedAmount_3 - teamFee - (div(epochRevenue, 676ULL) * 676), getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
-    nostromoTestCaseC.getState()->endEpochFailedFundaraisingChecker(2);
+    nostromoTestCaseC.getState()->endEpochFailedFundraisingChecker(2);
     nostromoTestCaseC.getState()->endEpochVoteStatusClearChecker();
 }
