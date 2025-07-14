@@ -180,11 +180,13 @@ static int nContractProcessorIDs = 0;
 static int nSolutionProcessorIDs = 0;
 
 static ScoreFunction<
-    DATA_LENGTH,
-    NUMBER_OF_HIDDEN_NEURONS, 
-    NUMBER_OF_NEIGHBOR_NEURONS,
-    MAX_DURATION,
-    NUMBER_OF_OPTIMIZATION_STEPS,
+    NUMBER_OF_INPUT_NEURONS,
+    NUMBER_OF_OUTPUT_NEURONS,
+    NUMBER_OF_TICKS,
+    NUMBER_OF_NEIGHBORS,
+    POPULATION_THRESHOLD,
+    NUMBER_OF_MUTATIONS,
+    SOLUTION_THRESHOLD_DEFAULT,
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static volatile char solutionsLock = 0;
@@ -1263,7 +1265,7 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
     }
     else
     {
-        copyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(::Entity));
+        copyMem(&respondedEntity.entity, &spectrum[respondedEntity.spectrumIndex], sizeof(EntityRecord));
         ACQUIRE(spectrumLock);
         getSiblings<SPECTRUM_DEPTH>(respondedEntity.spectrumIndex, spectrumDigests, respondedEntity.siblings);
         RELEASE(spectrumLock);
@@ -1720,18 +1722,103 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
-static void checkAndSwitchMiningPhase()
+WeekDay gFullExternalStartTime;
+WeekDay gFullExternalEndTime;
+static bool gSpecialEventFullExternalComputationPeriod = false; // a flag indicates a special event (period) that the network running 100% external computation
+
+
+static bool isFullExternalComputationTime(TimeDate tickDate)
 {
-    const unsigned int r = getTickInMiningPhaseCycle();
-    if (!r)
+    // Get current day of the week
+    WeekDay tickWeekDay;
+    tickWeekDay.hour = tickDate.hour;
+    tickWeekDay.minute = tickDate.minute;
+    tickWeekDay.second = tickDate.second;
+    tickWeekDay.millisecond = tickDate.millisecond;
+    tickWeekDay.dayOfWeek = getDayOfWeek(tickDate.day, tickDate.month, 2000 + tickDate.year);
+
+
+    // Check if the day is in range.
+    if (isWeekDayInRange(tickWeekDay, gFullExternalStartTime, gFullExternalEndTime))
     {
-        setNewMiningSeed();
+        gSpecialEventFullExternalComputationPeriod = true;
+        return true;
     }
-    else
+
+    // When not in range, and the time pass the gFullExternalEndTime. We need to make sure the ending happen
+    // in custom mining period, so that the score of custom mining is recorded.
+    if (gSpecialEventFullExternalComputationPeriod)
     {
-        if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
+        // Check time pass the end time
+        TimeDate endTimeDate = tickDate;
+        endTimeDate.hour = gFullExternalEndTime.hour;
+        endTimeDate.minute = gFullExternalEndTime.minute;
+        endTimeDate.second = gFullExternalEndTime.second;
+
+        if (compareTimeDate(tickDate, endTimeDate) == 1)
         {
-            score->initMiningData(m256i::zero());
+            // Check time is in custom mining phase. If it is still in qubic mining phase
+            // don't stop the event
+            if (getTickInMiningPhaseCycle() <= INTERNAL_COMPUTATIONS_INTERVAL)
+            {
+                return true;
+            }
+        }
+    }
+    
+    // The event only happen once
+    gSpecialEventFullExternalComputationPeriod = false;
+    return false;
+}
+
+static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
+{
+    // Check if current time is for full custom mining period
+    static bool fullExternalTimeBegin = false;
+    bool restartTheMiningPhase = false;
+
+    // Make sure the tick is valid
+    if (tickEpoch == system.epoch)
+    {
+        if (isFullExternalComputationTime(tickDate))
+        {
+            // Trigger time
+            if (!fullExternalTimeBegin)
+            {
+                fullExternalTimeBegin = true;
+
+                // Turn off the qubic mining phase
+                score->initMiningData(m256i::zero());
+            }
+        }
+        else // Not in the full external time, just behavior like normal.
+        {
+            // Switch back to qubic mining phase if neccessary
+            if (fullExternalTimeBegin)
+            {
+                if (getTickInMiningPhaseCycle() <= INTERNAL_COMPUTATIONS_INTERVAL)
+                {
+                    setNewMiningSeed();
+                }
+            }
+            fullExternalTimeBegin = false;
+        }
+    }
+    
+    // Incase of the full custom mining is just end. The setNewMiningSeed() will wait for next period of qubic mining phase
+    if (!fullExternalTimeBegin)
+    {
+        const unsigned int r = getTickInMiningPhaseCycle();
+        if (!r)
+        {
+            setNewMiningSeed();
+        }
+        else
+        {
+            if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
+            {
+                score->initMiningData(m256i::zero());
+            }
         }
     }
 }
@@ -1748,23 +1835,48 @@ static void beginCustomMiningPhase()
     gCustomMiningStats.phaseResetAndEpochAccumulate();
 }
 
-static void checkAndSwitchCustomMiningPhase()
+static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
 {
-    const unsigned int r = getTickInMiningPhaseCycle();
     bool isBeginOfCustomMiningPhase = false;
     char isInCustomMiningPhase = 0;
-    
-    if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+
+    // Check if current time is for full custom mining period
+    static bool fullExternalTimeBegin = false;
+
+    // Make sure the tick is valid
+    if (tickEpoch == system.epoch)
     {
-        isInCustomMiningPhase = 1;
-        if (r == INTERNAL_COMPUTATIONS_INTERVAL)
+        if (isFullExternalComputationTime(tickDate))
         {
-            isBeginOfCustomMiningPhase = true;
+            // Trigger time
+            if (!fullExternalTimeBegin)
+            {
+                fullExternalTimeBegin = true;
+                isBeginOfCustomMiningPhase = true;
+            }
+            isInCustomMiningPhase = 1;
+        }
+        else // Not in the full external time, just behavior like normal.
+        {
+            fullExternalTimeBegin = false;
         }
     }
-    else
+
+    if (!fullExternalTimeBegin)
     {
-        isInCustomMiningPhase = 0;
+        const unsigned int r = getTickInMiningPhaseCycle();
+        if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+        {
+            isInCustomMiningPhase = 1;
+            if (r == INTERNAL_COMPUTATIONS_INTERVAL)
+            {
+                isBeginOfCustomMiningPhase = true;
+            }
+        }
+        else
+        {
+            isInCustomMiningPhase = 0;
+        }
     }
 
     // Variables need to be reset in the beginning of custom mining phase
@@ -1778,6 +1890,28 @@ static void checkAndSwitchCustomMiningPhase()
     gIsInCustomMiningState = isInCustomMiningPhase;
     RELEASE(gIsInCustomMiningStateLock);
 
+}
+
+// a function to check and switch mining phase especially for begin/end epoch event
+// if we are in internal mining phase (no matter beginning or in the middle) => reset mining seed to new spectrum of the new epoch
+// same for external mining phase => reset all counters are needed
+// this function should be called after beginEpoch procedure
+// TODO: merge checkMiningPhaseBeginAndEndEpoch + checkAndSwitchCustomMiningPhase + checkAndSwitchMiningPhase
+static void checkMiningPhaseBeginAndEndEpoch()
+{
+    const unsigned int r = getTickInMiningPhaseCycle();
+    if (r < INTERNAL_COMPUTATIONS_INTERVAL)
+    {
+        setNewMiningSeed();
+    }
+    else
+    {
+        score->initMiningData(m256i::zero());
+        beginCustomMiningPhase();
+        ACQUIRE(gIsInCustomMiningStateLock);
+        gIsInCustomMiningState = 1;
+        RELEASE(gIsInCustomMiningStateLock);
+    }
 }
 
 // Updates the global numberTickTransactions based on the tick data in the tick storage.
@@ -3390,7 +3524,7 @@ static void beginEpoch()
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
 
-    if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > DATA_LENGTH)) { // invalid threshold
+    if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > NUMBER_OF_OUTPUT_NEURONS)) { // invalid threshold
         solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
     }
 
@@ -4977,9 +5111,23 @@ static void tickProcessor(void*)
 
                                 updateNumberOfTickTransactions();
 
-                                checkAndSwitchMiningPhase();
+                                short tickEpoch = 0;
+                                TimeDate currentTickDate;
+                                ts.tickData.acquireLock();
+                                const TickData& td = ts.tickData[currentTickIndex];
+                                currentTickDate.millisecond = td.millisecond;
+                                currentTickDate.second = td.second;
+                                currentTickDate.minute = td.minute;
+                                currentTickDate.hour = td.hour;
+                                currentTickDate.day = td.day;
+                                currentTickDate.month = td.month;
+                                currentTickDate.year = td.year;
+                                tickEpoch = td.epoch == system.epoch ? system.epoch : 0;
+                                ts.tickData.releaseLock();
 
-                                checkAndSwitchCustomMiningPhase();
+                                checkAndSwitchMiningPhase(tickEpoch, currentTickDate);
+
+                                checkAndSwitchCustomMiningPhase(tickEpoch, currentTickDate);
 
                                 if (epochTransitionState == 1)
                                 {
@@ -4999,8 +5147,7 @@ static void tickProcessor(void*)
                                     epochTransitionState = 2;
 
                                     beginEpoch();
-                                    checkAndSwitchMiningPhase();
-                                    checkAndSwitchCustomMiningPhase();
+                                    checkMiningPhaseBeginAndEndEpoch();
 
                                     // Some debug checks that we are ready for the next epoch
                                     ASSERT(system.numberOfSolutions == 0);
@@ -5091,7 +5238,6 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
 {
     logToConsole(L"Loading contract files ...");
-    setText(message, L"Loaded SC: ");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
         if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
@@ -5105,29 +5251,26 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
             long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
+            setText(message, L" -> ");
+            appendText(message, CONTRACT_FILE_NAME);
             if (loadedSize != contractDescriptions[contractIndex].stateSize)
             {
                 if (system.epoch < contractDescriptions[contractIndex].constructionEpoch && contractDescriptions[contractIndex].stateSize >= sizeof(IPO))
                 {
                     setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
-                    appendText(message, L"(");
-                    appendText(message, CONTRACT_FILE_NAME);
-                    appendText(message, L" not loaded but initialized with zeros for IPO) ");
+                    appendText(message, L" not loaded but initialized with zeros for IPO");
                 }
                 else
                 {
+                    appendText(message, L" cannot be read successfully");
+                    logToConsole(message);
                     logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
                     return false;
                 }
             }
-            else
-            {
-                appendText(message, CONTRACT_FILE_NAME);
-                appendText(message, L" ");
-            }
+            logToConsole(message);
         }
     }
-    logToConsole(message);
     return true;
 }
 
@@ -5377,7 +5520,7 @@ static bool initialize()
                     numberOfLeafs >>= 1;
                 }
 
-                setNumber(message, SPECTRUM_CAPACITY * sizeof(::Entity), TRUE);
+                setNumber(message, SPECTRUM_CAPACITY * sizeof(EntityRecord), TRUE);
                 appendText(message, L" bytes of the spectrum data are hashed (");
                 appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
                 appendText(message, L" microseconds).");
@@ -5408,7 +5551,8 @@ static bool initialize()
                 appendText(message, L".");
                 logToConsole(message);
             }
-            loadComputer();
+            if (!loadComputer())
+                return false;
             m256i computerDigest;
             {
                 setText(message, L"Computer digest = ");
@@ -5442,8 +5586,7 @@ static bool initialize()
     }
     else
     {
-        checkAndSwitchMiningPhase();
-        checkAndSwitchCustomMiningPhase();
+        checkMiningPhaseBeginAndEndEpoch();
     }    
     score->loadScoreCache(system.epoch);
 
@@ -5543,6 +5686,10 @@ static bool initialize()
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
+
+    // Convert time parameters for full custom mining time
+    gFullExternalStartTime = convertWeekTimeFromPackedData(FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME);
+    gFullExternalEndTime = convertWeekTimeFromPackedData(FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME);
 
     return true;
 }
@@ -6761,7 +6908,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     unsigned short numberOfSuitablePeers = 0;
                     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                     {
-                        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
+                        if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && !peers[i].isClosing)
                         {
                             if (!peers[i].isFullNode())
                             {

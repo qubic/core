@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 
 # Project definition - Enable C always
-project(PlatformCommon LANGUAGES C)
+project(platform_common LANGUAGES C)
 
 # Use the centralized compiler detection
 # Note: IS_WINDOWS, IS_LINUX, IS_MSVC, IS_CLANG, IS_GCC, and ASM_LANG are already set
@@ -25,7 +25,7 @@ set(ASM_OBJECT_LIBS "") # Store object libraries generated from assembly
 
 if(IS_WINDOWS AND ASM_LANG STREQUAL ASM_MASM)
     # Add MASM files directly if using MSVC
-    add_library(platform_common_asm OBJECT
+    add_library(platform_common_asm STATIC
         edk2_mdepkg/Library/BaseLib/X64/LongJump.asm
         edk2_mdepkg/Library/BaseLib/X64/SetJump.asm
     )
@@ -73,23 +73,25 @@ endif()
 # --- Target Definition ---
 add_library(platform_common STATIC ${C_SOURCES})
 
+# Apply common compiler flags from the centralized detection module
+apply_common_compiler_flags(platform_common)
+
 # Link the assembly object libraries (if any) into the main static library
 if(ASM_OBJECT_LIBS)
-    target_link_libraries(platform_common PRIVATE ${ASM_OBJECT_LIBS})
+    if(IS_WINDOWS)
+        target_link_libraries(platform_common PRIVATE platform_common_asm)
+    else()
+        target_link_libraries(platform_common PRIVATE ${ASM_OBJECT_LIBS})
+    endif()
 endif()
 
 
 # --- Include Directories (Common) ---
 # Get the project root directory by going up two levels from the current directory
 get_filename_component(PROJECT_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-message(STATUS "Project root directory: ${PROJECT_ROOT_DIR}")
 
 target_include_directories(platform_common PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/edk2_mdepkg/Include"
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${PROJECT_ROOT_DIR}"  # Add project root directory to match vcxproj configuration
 )
-
-# --- Common Preprocessor Definitions ---
-# Apply common compiler flags from the centralized detection module
-apply_common_compiler_flags(platform_common)

@@ -284,6 +284,21 @@ namespace QPI
 			}
 			return true;
 		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline Array<T, L>& operator=(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline Array(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
+
+		Array() = default;
 	};
 	
 	// Array convenience definitions
@@ -384,6 +399,9 @@ namespace QPI
 		inline uint64 population() const;
 
 		// Return boolean indicating whether key is contained in the hash map.
+		bool contains(const KeyT& key) const;
+
+		// Return boolean indicating whether key is contained in the hash map.
 		// If key is contained, write the associated value into the provided ValueT&. 
 		bool get(const KeyT& key, ValueT& value) const;
 
@@ -393,11 +411,15 @@ namespace QPI
 		// Return if slot at elementIndex is empty (not occupied by an element). If false, key() is valid.
 		inline bool isEmptySlot(sint64 elementIndex) const;
 
+		// Return index of the next occupied element following the index passed as an argument. Pass NULL_INDEX to get
+		// the first occupied element. Returns NULL_INDEX if there are no more occupied elements.
+		inline sint64 nextElementIndex(sint64 elementIndex) const;
+
 		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
-		inline KeyT key(sint64 elementIndex) const;
+		inline const KeyT& key(sint64 elementIndex) const;
 
 		// Return value at elementIndex.
-		inline ValueT value(sint64 elementIndex) const;
+		inline const ValueT& value(sint64 elementIndex) const;
 
 		// Add element (key, value) to the hash map, return elementIndex of new element.
 		// If key already exists in the hash map, the old value will be overwritten.
@@ -475,6 +497,10 @@ namespace QPI
 
 		// Return if slot at elementIndex is empty (not occupied by an element). If false, key() is valid.
 		inline bool isEmptySlot(sint64 elementIndex) const;
+
+		// Return index of the next occupied element following the index passed as an argument. Pass NULL_INDEX to get
+		// the first occupied element. Returns NULL_INDEX if there are no more occupied elements.
+		inline sint64 nextElementIndex(sint64 elementIndex) const;
 
 		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
 		inline KeyT key(sint64 elementIndex) const;
@@ -971,6 +997,12 @@ namespace QPI
 			// Scalar voting result (currently only for proposalType VariableScalarMean, mean value of all valid votes)
 			sint64 scalarVotingResult;
 		};
+
+		ProposalSummarizedVotingDataV1() = default;
+		ProposalSummarizedVotingDataV1(const ProposalSummarizedVotingDataV1& src)
+		{
+			copyMemory(*this, src);
+		}
 	};
 	static_assert(sizeof(ProposalSummarizedVotingDataV1) == 16 + 8*4, "Unexpected struct size.");
 
@@ -991,6 +1023,9 @@ namespace QPI
 
 			// Propose to set variable to a value. Supported options: 2 <= N <= 5 with ProposalDataV1; N == 0 means scalar voting.
 			static constexpr uint16 Variable = 0x200;
+
+			// Propose to transfer amount to address in a specific epoch. Supported options: 1 with ProposalDataV1.
+			static constexpr uint16 TransferInEpoch = 0x400;
 		};
 
 		// Options yes and no without extra data -> result is histogram of options
@@ -1013,6 +1048,9 @@ namespace QPI
 
 		// Transfer amount to address with four options of amounts and option "no change"
 		static constexpr uint16 TransferFourAmounts = Class::Transfer | 5;
+
+		// Transfer given amount to address in a specific epoch, with options yes/no
+		static constexpr uint16 TransferInEpochYesNo = Class::TransferInEpoch | 2;
 
 		// Set given variable to proposed value with options yes/no
 		static constexpr uint16 VariableYesNo = Class::Variable | 2;
@@ -1053,7 +1091,7 @@ namespace QPI
 		inline static bool isValid(uint16 proposalType);
 	};
 
-	// Proposal data struct for all types of proposals defined in August 2024.
+	// Proposal data struct for all types of proposals defined in August 2024 and revised in June 2025.
 	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting (persisted in contract states).
 	// You have to choose, whether to support scalar votes next to option votes. Scalar votes require 8x more storage in the state.
 	template <bool SupportScalarVotes>
@@ -1080,6 +1118,14 @@ namespace QPI
 				id destination;
 				Array<sint64, 4> amounts;   // N first amounts are the proposed options (non-negative, sorted without duplicates), rest zero
 			} transfer;
+
+			// Used if type class is TransferInEpoch
+			struct TransferInEpoch
+			{
+				id destination;
+				sint64 amount;              // non-negative
+				uint16 targetEpoch;         // not checked by isValid()!
+			} transferInEpoch;
 
 			// Used if type class is Variable and type is not VariableScalarMean
 			struct VariableOptions
@@ -1133,6 +1179,9 @@ namespace QPI
 						   && transfer.amounts.rangeEquals(proposedAmounts, transfer.amounts.capacity(), 0);
 				}
 				break;
+			case ProposalTypes::Class::TransferInEpoch:
+				okay = options == 2 && !isZero(transferInEpoch.destination) && transferInEpoch.amount >= 0;
+				break;
 			case ProposalTypes::Class::Variable:
 				if (options >= 2 && options <= 5)
 				{
@@ -1156,6 +1205,12 @@ namespace QPI
 
 		// Whether to support scalar votes next to option votes.
 		static constexpr bool supportScalarVotes = SupportScalarVotes;
+
+		ProposalDataV1() = default;
+		ProposalDataV1(const ProposalDataV1<SupportScalarVotes>& src)
+		{
+			copyMemory(*this, src);
+		}
 	};
 	static_assert(sizeof(ProposalDataV1<true>) == 256 + 8 + 64, "Unexpected struct size.");
 
@@ -1340,8 +1395,8 @@ namespace QPI
 		// are discarded).
 		// If there is no free slot, one of the oldest proposals from prior epochs is deleted to free a slot.
 		// This may be also used to clear a proposal by setting proposal.epoch = 0.
-		// Return whether proposal has been set.
-		bool setProposal(
+		// Return proposalIndex if proposal has been set, or INVALID_PROPOSAL_INDEX on error.
+		uint16 setProposal(
 			const id& proposer,
 			const ProposalDataType& proposal
 		);

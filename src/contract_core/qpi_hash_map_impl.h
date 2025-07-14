@@ -8,6 +8,7 @@
 #include "../contracts/qpi.h"
 #include "../platform/memory.h"
 #include "../kangaroo_twelve.h"
+#include "../contracts/math_lib.h"
 
 namespace QPI
 {
@@ -39,6 +40,12 @@ namespace QPI
 			flags |= occupationFlags[((elementIndex + 32) & (L - 1)) >> 5] << (2 * _nEncodedFlags - offset);
 		}
 		return flags;
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	bool HashMap<KeyT, ValueT, L, HashFunc>::contains(const KeyT& key) const
+	{
+		return getElementIndex(key) != NULL_INDEX;
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
@@ -80,13 +87,13 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	inline KeyT HashMap<KeyT, ValueT, L, HashFunc>::key(sint64 elementIndex) const
+	inline const KeyT& HashMap<KeyT, ValueT, L, HashFunc>::key(sint64 elementIndex) const
 	{
 		return _elements[elementIndex & (L - 1)].key;
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	inline ValueT HashMap<KeyT, ValueT, L, HashFunc>::value(sint64 elementIndex) const
+	inline const ValueT& HashMap<KeyT, ValueT, L, HashFunc>::value(sint64 elementIndex) const
 	{
 		return _elements[elementIndex & (L - 1)].value;
 	}
@@ -100,9 +107,10 @@ namespace QPI
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	sint64 HashMap<KeyT, ValueT, L, HashFunc>::set(const KeyT& key, const ValueT& value)
 	{
-		if (_population < capacity() && _markRemovalCounter < capacity())
+		if (_population < capacity())
 		{
 			// search in hash map
+			sint64 markedForRemovalIndexForReuse = NULL_INDEX;
 			sint64 index = HashFunc::hash(key) & (L - 1);
 			for (sint64 counter = 0; counter < L; counter += 32)
 			{
@@ -112,7 +120,11 @@ namespace QPI
 					switch (flags & 3ULL)
 					{
 					case 0:
-						// empty entry -> put element and mark as occupied
+						// empty entry -> key isn't in set yet
+						// If we have already seen an entry marked for removal, reuse this slot because it is closer to the hash index
+						if (markedForRemovalIndexForReuse != NULL_INDEX)
+							goto reuse_slot;
+						// ... otherwise put element and mark as occupied
 						_occupationFlags[index >> 5] |= (1ULL << ((index & 31) << 1));
 						_elements[index].key = key;
 						_elements[index].value = value;
@@ -126,13 +138,32 @@ namespace QPI
 							return index;
 						}
 						break;
-					// TODO: fill gaps marked for removal as in HashSet
+					case 2:
+						// marked for removal -> reuse slot (first slot we see) later if we are sure that key isn't in the map
+						if (markedForRemovalIndexForReuse == NULL_INDEX)
+							markedForRemovalIndexForReuse = index;
+						break;
 					}
 					index = (index + 1) & (L - 1);
 				}
 			}
+
+			if (markedForRemovalIndexForReuse != NULL_INDEX)
+			{
+			reuse_slot:
+				// Reuse slot marked for removal: put key here and set flags from 2 to 1.
+				// But don't decrement _markRemovalCounter, because it is used to check if cleanup() is needed.
+				// Without cleanup, we don't get new unoccupied slots and at least lookup of keys that aren't contained in the map
+				// stays slow.
+				index = markedForRemovalIndexForReuse;
+				_occupationFlags[index >> 5] ^= (3ULL << ((index & 31) << 1));
+				_elements[index].key = key;
+				_elements[index].value = value;
+				_population++;
+				return index;
+			}
 		}
-		else if (_population == capacity())
+		else // _population == capacity()
 		{
 			// Check if key exists for value replacement.
 			sint64 index = getElementIndex(key);
@@ -151,6 +182,45 @@ namespace QPI
 		elementIndex &= (L - 1);
 		uint64 flags = _getEncodedOccupationFlags(_occupationFlags, elementIndex);
 		return ((flags & 3ULL) != 1);
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	sint64 HashMap<KeyT, ValueT, L, HashFunc>::nextElementIndex(sint64 elementIndex) const
+	{
+		if (!_population)
+			return NULL_INDEX;
+
+		if (elementIndex < 0)
+			elementIndex = 0;
+		else
+			++elementIndex;
+
+		// search for next occupied element until end of hash map array
+		constexpr uint64 flagsLength = math_lib::max(L >> 5, 1ull);
+		sint64 flagsIdx = elementIndex >> 5;
+		sint64 offset = elementIndex & 31ll;
+		uint64 flags = _occupationFlags[flagsIdx] >> (2 * offset);
+		while (flagsIdx < flagsLength)
+		{
+			for (sint64 i = offset; i < _nEncodedFlags; ++i, flags >>= 2)
+			{
+				if (!flags)
+				{
+					// no occupied entries in current flags
+					break;
+				}
+				if ((flags & 3ULL) == 1)
+				{
+					// found occupied entry
+					return (flagsIdx << 5) + i;
+				}
+			}
+
+			flags = _occupationFlags[++flagsIdx];
+			offset = 0;
+		}
+
+		return NULL_INDEX;
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
@@ -439,6 +509,45 @@ namespace QPI
 		elementIndex &= (L - 1);
 		uint64 flags = _getEncodedOccupationFlags(_occupationFlags, elementIndex);
 		return ((flags & 3ULL) != 1);
+	}
+
+	template <typename KeyT, uint64 L, typename HashFunc>
+	sint64 HashSet<KeyT, L, HashFunc>::nextElementIndex(sint64 elementIndex) const
+	{
+		if (!_population)
+			return NULL_INDEX;
+
+		if (elementIndex < 0)
+			elementIndex = 0;
+		else
+			++elementIndex;
+
+		// search for next occupied element until end of hash map array
+		constexpr uint64 flagsLength = math_lib::max(L >> 5, 1ull);
+		sint64 flagsIdx = elementIndex >> 5;
+		sint64 offset = elementIndex & 31ll;
+		uint64 flags = _occupationFlags[flagsIdx] >> (2 * offset);
+		while (flagsIdx < flagsLength)
+		{
+			for (sint64 i = offset; i < _nEncodedFlags; ++i, flags >>= 2)
+			{
+				if (!flags)
+				{
+					// no occupied entries in current flags
+					break;
+				}
+				if ((flags & 3ULL) == 1)
+				{
+					// found occupied entry
+					return (flagsIdx << 5) + i;
+				}
+			}
+
+			flags = _occupationFlags[++flagsIdx];
+			offset = 0;
+		}
+
+		return NULL_INDEX;
 	}
 
 	template <typename KeyT, uint64 L, typename HashFunc>

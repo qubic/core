@@ -47,7 +47,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 0
+#define START_NETWORK_FROM_SCRATCH 1
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -56,12 +56,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 246
-#define VERSION_C 3
+#define VERSION_B 250
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 164
-#define TICK 26851119
+#define EPOCH 169
+#define TICK 29000000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 #define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"
@@ -75,18 +75,19 @@ static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_revenue.eoe";
 static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache???.???";
 
-#define DATA_LENGTH 256
-#define NUMBER_OF_HIDDEN_NEURONS 3000
-#define NUMBER_OF_NEIGHBOR_NEURONS 3000
-#define MAX_DURATION 9000000
-#define NUMBER_OF_OPTIMIZATION_STEPS 60
-#define NEURON_VALUE_LIMIT 1LL
-#define SOLUTION_THRESHOLD_DEFAULT 137
+static constexpr unsigned long long NUMBER_OF_INPUT_NEURONS = 512;     // K
+static constexpr unsigned long long NUMBER_OF_OUTPUT_NEURONS = 512;    // L
+static constexpr unsigned long long NUMBER_OF_TICKS = 200;               // N
+static constexpr unsigned long long NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
+static constexpr unsigned long long NUMBER_OF_MUTATIONS = 150;
+static constexpr unsigned long long POPULATION_THRESHOLD = NUMBER_OF_INPUT_NEURONS + NUMBER_OF_OUTPUT_NEURONS + NUMBER_OF_MUTATIONS; // P
+static constexpr long long NEURON_VALUE_LIMIT = 1LL;
+static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x000CFFFFU // around 5000 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x00095CBEU // around 7000 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
@@ -98,6 +99,11 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache???
 #define INTERNAL_COMPUTATIONS_INTERVAL 676
 #define EXTERNAL_COMPUTATIONS_INTERVAL (676 + 1)
 static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal computation phase needs to be at least equal NUMBER_OF_COMPUTORS");
+
+// Format is DoW-hh-mm-ss in hex format, total 4bytes, each use 1 bytes
+// DoW: Day of the week 0: Sunday, 1 = Monday ...
+#define FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME 0x060C0000 // Sat 12:00:00
+#define FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME 0x000C0000 // Sun 12:00:00
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE

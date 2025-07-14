@@ -2070,7 +2070,7 @@ public:
         FundPInfo updatedFundProposal;
         MKTPInfo updatedMKTProposal;
         AlloPInfo updatedAlloProposal;
-        QPI::Entity entity;
+        Entity entity;
         AssetPossessionIterator iter;
         Asset QCAPId;
         id possessorPubkey;
