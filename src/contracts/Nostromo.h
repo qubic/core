@@ -296,15 +296,6 @@ protected:
 	uint64 epochRevenue, totalPoolWeight;
 	uint32 numberOfRegister, numberOfCreatedProject, numberOfFundaraising;
 
-	/**
-	* @return Current date from core node system
-	*/
-
-	inline static void getCurrentDate(const QPI::QpiContextFunctionCall& qpi, uint32& res) 
-	{
-        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
-    }
-
 	struct registerInTier_locals
 	{
 		uint64 tierStakedAmount;
