@@ -184,7 +184,6 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE QBAY2
 #include "contracts/Qbay.h"
 
-// new contracts should be added above this line
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -194,6 +193,8 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE_TYPE QSWAP
 #define CONTRACT_STATE2_TYPE QSWAP2
 #include "contracts/Qswap.h"
+
+// new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
 constexpr unsigned short TESTEXA_CONTRACT_INDEX = (CONTRACT_INDEX + 1);

@@ -120,7 +120,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="common_def.cpp" />
-    <ClCompile Include="stdlib_impl.cpp" />
     <ClCompile Include="contract_swap.cpp" />
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="assets.cpp" />
