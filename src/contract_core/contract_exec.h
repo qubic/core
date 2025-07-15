@@ -385,7 +385,7 @@ static void addDebugMessageAboutContractStateLockChange(const CHAR16* functionNa
 // Used to acquire a contract state lock when one contract calls a function of a different contract
 void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int contractIndex) const
 {
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && defined(PRINT_CONTRACT_LOCK_DETAILS)
     addDebugMessageAboutContractStateLockChange(L"__qpiAcquireStateForReading", _currentContractIndex, contractIndex, _entryPoint);
 #endif
 
@@ -470,7 +470,7 @@ void* QPI::QpiContextFunctionCall::__qpiAcquireStateForReading(unsigned int cont
 // Used to release a contract state lock when one contract calls a function of a different contract
 void QPI::QpiContextFunctionCall::__qpiReleaseStateForReading(unsigned int contractIndex) const
 {
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && defined(PRINT_CONTRACT_LOCK_DETAILS)
     addDebugMessageAboutContractStateLockChange(L"__qpiReleaseStateForReading", _currentContractIndex, contractIndex, _entryPoint);
 #endif
 
@@ -508,7 +508,7 @@ void QPI::QpiContextFunctionCall::__qpiReleaseStateForReading(unsigned int contr
 // Used to acquire a contract state lock when one contract calls a procedure of a different contract
 void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int contractIndex) const
 {
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && defined(PRINT_CONTRACT_LOCK_DETAILS)
     addDebugMessageAboutContractStateLockChange(L"__qpiAcquireStateForWriting", _currentContractIndex, contractIndex, _entryPoint);
 #endif
 
@@ -570,7 +570,7 @@ void* QPI::QpiContextProcedureCall::__qpiAcquireStateForWriting(unsigned int con
 // Used to release a contract state lock when one contract calls a procedure of a different contract
 void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int contractIndex) const
 {
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && defined(PRINT_CONTRACT_LOCK_DETAILS)
     addDebugMessageAboutContractStateLockChange(L"__qpiReleaseStateForWriting", _currentContractIndex, contractIndex, _entryPoint);
 #endif
 
@@ -826,7 +826,11 @@ private:
         if (!contractSystemProcedures[_currentContractIndex][systemProcId])
             return;
 
-        // reserve resources for this processor (may block)
+        // reserve stack for this processor (may block), needed even if there are no locals, because procedure may call
+        // functions / procedures / notifications that create locals etc.
+        acquireContractLocalsStack(_stackIndex);
+
+        // acquire state for writing (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
         const unsigned long long startTick = __rdtsc();
@@ -839,8 +843,7 @@ private:
         }
         else
         {
-            // locals required: reserve stack and use stack (should not block because stack 0 is reserved for procedures)
-            acquireContractLocalsStack(_stackIndex);
+            // locals required: use stack (should not block because stack 0 is reserved for procedures)
             char* localsBuffer = contractLocalsStack[_stackIndex].allocate(localsSize);
             if (!localsBuffer)
                 __qpiAbort(ContractErrorAllocLocalsFailed);
@@ -849,16 +852,18 @@ private:
             // call system proc
             contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], input, output, localsBuffer);
 
-            // free data on stack and release stack
+            // free data on stack
             contractLocalsStack[_stackIndex].free();
             ASSERT(contractLocalsStack[_stackIndex].size() == 0);
-            releaseContractLocalsStack(_stackIndex);
         }
         _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
         contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
+
+        // release stack
+        releaseContractLocalsStack(_stackIndex);
     }
 };
 

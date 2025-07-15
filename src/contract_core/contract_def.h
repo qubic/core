@@ -248,6 +248,7 @@ constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 // inaccessible for contracts
 #include "qpi_collection_impl.h"
 #include "qpi_trivial_impl.h"
+#include "qpi_hash_map_impl.h"
 
 #include "platform/global_var.h"
 
@@ -278,7 +279,7 @@ constexpr struct ContractDescription
     {"QX", 66, 10000, sizeof(QX)},
     {"QTRY", 72, 10000, sizeof(QUOTTERY)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
-    {"QUTIL", 99, 10000, sizeof(IPO)},
+    {"QUTIL", 99, 10000, sizeof(QUTIL)},
     {"MLM", 112, 10000, sizeof(IPO)},
     {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
@@ -371,6 +372,7 @@ contractSystemProcedureLocalsSizes[contractIndex][POST_INCOMING_TRANSFER] = cont
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
+static_assert(sizeof(contractName) <= MAX_CONTRACT_STATE_SIZE, "Size of contract state " #contractName " is too large!"); \
 }
 
 

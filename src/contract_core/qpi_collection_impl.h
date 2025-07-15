@@ -530,9 +530,10 @@ namespace QPI
 	template <typename T, uint64 L>
 	sint64 Collection<T, L>::add(const id& pov, T element, sint64 priority)
 	{
-		if (_population < capacity() && _markRemovalCounter < capacity())
+		if (_population < capacity())
 		{
 			// search in pov hash map
+			sint64 markedForRemovalIndexForReuse = NULL_INDEX;
 			sint64 povIndex = pov.u64._0 & (L - 1);
 			for (sint64 counter = 0; counter < L; counter += 32)
 			{
@@ -542,7 +543,11 @@ namespace QPI
 					switch (flags & 3ULL)
 					{
 					case 0:
-						// empty pov entry -> init new priority queue with 1 element
+						// empty hash map entry -> pov isn't in map yet
+						// If we have already seen an entry marked for removal, reuse this slot because it is closer to the hash index
+						if (markedForRemovalIndexForReuse != NULL_INDEX)
+							goto reuse_slot;
+						// ... otherwise mark as occupied and init new priority queue with 1 element
 						_povOccupationFlags[povIndex >> 5] |= (1ULL << ((povIndex & 31) << 1));
 						_povs[povIndex].value = pov;
 						return _addPovElement(povIndex, element, priority);
@@ -553,12 +558,39 @@ namespace QPI
 							return _addPovElement(povIndex, element, priority);
 						}
 						break;
+					case 2:
+						// marked for removal -> reuse slot (first slot we see) later if we are sure that key isn't in the set
+						if (markedForRemovalIndexForReuse == NULL_INDEX)
+							markedForRemovalIndexForReuse = povIndex;
+						break;
 					}
 					povIndex = (povIndex + 1) & (L - 1);
 				}
 			}
+
+			if (markedForRemovalIndexForReuse != NULL_INDEX)
+			{
+			reuse_slot:
+				// Reuse slot marked for removal: put pov key here and set flags from 2 to 1.
+				// But don't decrement _markRemovalCounter, because it is used to check if cleanup() is needed.
+				// Without cleanup, we don't get new unoccupied slots and at least lookup of povs that aren't contained in the set
+				// stays slow.
+				povIndex = markedForRemovalIndexForReuse;
+				_povOccupationFlags[povIndex >> 5] ^= (3ULL << ((povIndex & 31) << 1));
+				_povs[povIndex].value = pov;
+				return _addPovElement(povIndex, element, priority);
+			}
 		}
 		return NULL_INDEX;
+	}
+
+	template <typename T, uint64 L>
+	void Collection<T, L>::cleanupIfNeeded(uint64 removalThresholdPercent)
+	{
+		if (_markRemovalCounter > (removalThresholdPercent * L / 100))
+		{
+			cleanup();
+		}
 	}
 
 	template <typename T, uint64 L>

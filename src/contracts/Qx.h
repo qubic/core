@@ -1092,17 +1092,18 @@ protected:
 
 	INITIALIZE()
 	{
-
 		// No need to initialize _earnedAmount and other variables with 0, whole contract state is zeroed before initialization is invoked
 
 		state._assetIssuanceFee = 1000000000;
+
+		/* Old values before epoch 138 
 		state._transferFee = 1000000;
 		state._tradeFee = 5000000; // 0.5%
+		*/
 
-		/* New values since epoch 138
+		// New values since epoch 138
 		state._transferFee = 100;
 		state._tradeFee = 3000000; // 0.3%
-		*/
 	}
 
 	END_TICK()
@@ -1114,6 +1115,10 @@ protected:
 				state._distributedAmount += div((state._earnedAmount - state._distributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
 			}
 		}
+
+		// Cleanup collections if more than 30% of hash maps are marked for removal
+		state._assetOrders.cleanupIfNeeded(30);
+		state._entityOrders.cleanupIfNeeded(30);
 	}
 
 	PRE_RELEASE_SHARES()

@@ -470,6 +470,33 @@ The callbacks `PRE_RELEASE_SHARES()` and `PRE_ACQUIRE_SHARES()` may also check t
 
 ## Other QPI features
 
+### Container types
+
+The following container types are available in the QPI:
+
+- `Array<T, L>`: Array of `L` elements of type `T` (`L` must be 2^N)
+- `BitArray<L>`: Array of `L` bits encoded in array of `uint64` (`L` must be 2^N, overall size is at least 8 bytes)
+- `Collection<T, L>`: Collection of priority queues of elements with type `T` and total element capacity `L`.
+  Each ID pov (point of view) has an own queue.
+- `HashMap<KeyT, ValueT, L>`: Hash map of up to `L` pairs of key and value (types `KeyT` and `ValueT`).
+  Lookup by key, insert, and remove run in approximately constant time if population is less than 80% of `L`.
+- `HashSet<KeyT, L>`: Hash set of keys of type `KeyT` and total capacity `L`.
+  Lookup by key, insert, and remove run in approximately constant time if population is less than 80% of `L`.
+
+Please note that removing items from `Collection`, `HashMap`, and `HashSet` does not immediately free the hash map slots used for the removed items.
+This may negatively impact the lookup speed, which depends on the maximum population seen since the last cleanup.
+If the container isn't emptied by calling the method `reset()` regularly (such as at the end of each epoch), it is recommended to call `cleanup()` or `cleanupIfNeeded()` at the end of the epoch.
+Alternatively, if you expect a lot of removes during an epoch, you may call `cleanupIfNeeded()` at the end of a user procedure that removes items.
+Cleanup isn't done automatically when removing elements, because, first, it is very expensive compared to the lookup, the add, and remove operations and second, because it invalidates the indices of items, which may be used by the calling function.
+
+For `HashMap` and `HashSet`, the hash function can be individually defined one of the following alternatives:
+1. You may define a specialization of the template class `HashFunction` (see `qpi.h`) for your `KeyT`.
+   The implementation of the 32-byte `id` uses the first 8 bytes as the hash.
+   The default implementation used for other types computes a K12 hash of the key.
+2. Alternatively, you may define an own hash function class for your key type and
+   pass it as the last template parameter of `HashMap` or `HashSet` (following the capacity `L`),
+
+
 ### Calling other user functions and  procedures
 
 TODO: invoking procedures, calling functions, including those of other contracts

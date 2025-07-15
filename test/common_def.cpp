@@ -4,6 +4,7 @@
 #include "contract_testing.h"
 #include "logging_test.h"
 #include "platform/concurrency_impl.h"
+#include "platform/profiling.h"
 
 // Implement non-QPI version of notification trigger function that is defined in qubic.cpp, where it hands over the
 // notification to the contract processor for running the incomming transfer callback.
