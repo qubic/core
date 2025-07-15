@@ -5,6 +5,9 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
+// uint128
+#include "../platform/uint128.h"
+
 // ASSERT can be used to support debugging and speed-up development
 #include "../platform/assert.h"
 
@@ -46,6 +49,7 @@ namespace QPI
 	typedef signed long long sint64;
 	typedef unsigned long long uint64;
 
+	typedef uint128_t uint128;
 	typedef m256i id;
 
 #define NULL_ID id::zero()
@@ -701,7 +705,7 @@ namespace QPI
 	template <typename T>
 	inline static T div(T a, T b)
 	{
-		return b ? (a / b) : 0;
+		return b ? (a / b) : T(0);
 	}
 
 	// Return remainder of dividing a by b, but return 0 if b is 0 (requires modulo % operator)
@@ -1561,6 +1565,11 @@ namespace QPI
 			const Asset& asset,
 			const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
+		) const;
+
+		inline bool isAssetIssued(
+			const m256i& id,
+			unsigned long long assetName
 		) const;
 
 		// Returns -1 if the current tick is empty, returns the number of the transactions in the tick otherwise, including 0.

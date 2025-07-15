@@ -147,6 +147,13 @@ We recommend to synchronize a Linux / Windows / MacOS machine with NTP permanent
 ## License
 The Anti-Military License. See [LICENSE.md](LICENSE.md).
 
+This project is licensed under the Anti-Military License. However, it includes
+some code licensed under the MIT License. The MIT licensed code is used with
+permission and retains its original MIT license.
+
+The MIT licensed code is from the following sources:
+- [uint128_t](https://github.com/calccrypto/uint128_t)
+
 ## Installation and Configuration
 Please refer to https://docs.qubic.org
 
