@@ -119,6 +119,184 @@ namespace QPI
 	template <typename T>
 	inline void setMemory(T& dst, uint8 value);
 
+	struct DateAndTime
+	{
+		// --- Member Variables ---
+		unsigned short millisecond;
+		unsigned char second;
+		unsigned char minute;
+		unsigned char hour;
+		unsigned char day;
+		unsigned char month;
+		unsigned char year;
+
+		// --- Public Member Operators ---
+
+		/**
+		 * @brief Checks if this date is earlier than the 'other' date.
+		 */
+		bool operator<(const DateAndTime& other) const
+		{
+			if (year != other.year) return year < other.year;
+			if (month != other.month) return month < other.month;
+			if (day != other.day) return day < other.day;
+			if (hour != other.hour) return hour < other.hour;
+			if (minute != other.minute) return minute < other.minute;
+			if (second != other.second) return second < other.second;
+			return millisecond < other.millisecond;
+		}
+
+		/**
+		 * @brief Checks if this date is later than the 'other' date.
+		 */
+		bool operator>(const DateAndTime& other) const
+		{
+			return other < *this; // Reuses the operator< on the 'other' object
+		}
+
+		/**
+		 * @brief Checks if this date is identical to the 'other' date.
+		 */
+		bool operator==(const DateAndTime& other) const
+		{
+			return year == other.year &&
+				month == other.month &&
+				day == other.day &&
+				hour == other.hour &&
+				minute == other.minute &&
+				second == other.second &&
+				millisecond == other.millisecond;
+		}
+
+		/**
+		 * @brief Computes the difference between this date and 'other' in milliseconds.
+		 */
+		long long operator-(const DateAndTime& other) const
+		{
+			// A member function can access private members of other instances of the same class.
+			return this->to_milliseconds() - other.to_milliseconds();
+		}
+
+		/**
+		 * @brief Adds a duration in milliseconds to the current date/time.
+		 * @param ms_to_add The number of milliseconds to add. Can be negative.
+		 * @return A new DateAndTime object representing the result.
+		 */
+		DateAndTime operator+(long long ms_to_add) const
+		{
+			long long total_ms = this->to_milliseconds() + ms_to_add;
+
+			DateAndTime result = { 0,0,0,0,0,0,0 };
+
+			// Handle negative total_ms (dates before the epoch) if necessary
+			// For this implementation, we assume resulting dates are >= year 2000
+			if (total_ms < 0) total_ms = 0;
+
+			long long days = total_ms / 86400000LL;
+			long long ms_in_day = total_ms % 86400000LL;
+
+			// Calculate time part
+			result.hour = (unsigned char)(ms_in_day / 3600000LL);
+			ms_in_day %= 3600000LL;
+			result.minute = (unsigned char)(ms_in_day / 60000LL);
+			ms_in_day %= 60000LL;
+			result.second = (unsigned char)(ms_in_day / 1000LL);
+			result.millisecond = (unsigned short)(ms_in_day % 1000LL);
+
+			// Calculate date part from total days since epoch
+			unsigned char current_year = 0;
+			while (true) {
+				long long days_this_year = is_leap(current_year) ? 366 : 365;
+				if (days >= days_this_year) {
+					days -= days_this_year;
+					current_year++;
+				}
+				else {
+					break;
+				}
+			}
+			result.year = current_year;
+
+			unsigned char current_month = 1;
+			const int days_in_month[] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+			while (true) {
+				long long days_this_month = days_in_month[current_month];
+				if (current_month == 2 && is_leap(result.year)) {
+					days_this_month = 29;
+				}
+				if (days >= days_this_month) {
+					days -= days_this_month;
+					current_month++;
+				}
+				else {
+					break;
+				}
+			}
+			ASSERT(days <= 31);
+			result.month = current_month;
+			result.day = (unsigned char)(days) + 1; // days is 0-indexed, day is 1-indexed
+
+			return result;
+		}
+
+		DateAndTime& operator+=(long long ms_to_add)
+		{
+			*this = *this + ms_to_add; // Reuse operator+ and assign the result back to this object
+			return *this;
+		}
+
+		DateAndTime& operator-=(long long ms_to_subtract)
+		{
+			*this = *this + (-ms_to_subtract); // Reuse operator+ with a negative value
+			return *this;
+		}
+
+	private:
+		// --- Private Helper Functions ---
+
+		/**
+		 * @brief A static helper to check if a year (yy format) is a leap year.
+		 * Static means it belongs to the class, not a specific object, and can be called without an instance.
+		 */
+		static bool is_leap(unsigned char yr) {
+			// Assumes 'yr' corresponds to 2000 + yr
+			return (2000 + yr) % 4 == 0;
+		}
+
+		/**
+		 * @brief Helper to convert this specific DateAndTime instance to total milliseconds since Jan 1, 2000.
+		 * This function now implicitly uses the member variables (e.g., `this->year`).
+		 */
+		long long to_milliseconds() const {
+			long long total_days = 0;
+
+			// Add days for full years passed since 2000
+			for (unsigned char y = 0; y < year; ++y) {
+				total_days += is_leap(y) ? 366 : 365;
+			}
+
+			// Add days for full months passed in the current year
+			const int days_in_month[] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+			for (unsigned char m = 1; m < month; ++m) {
+				total_days += days_in_month[m];
+				if (m == 2 && is_leap(year)) {
+					total_days += 1;
+				}
+			}
+
+			// Add days in the current month
+			total_days += day - 1;
+
+			// Convert total days and the time part to milliseconds
+			long long total_ms = total_days * 86400000LL; // 24 * 60 * 60 * 1000
+			total_ms += hour * 3600000LL;     // 60 * 60 * 1000
+			total_ms += minute * 60000LL;       // 60 * 1000
+			total_ms += second * 1000LL;
+			total_ms += millisecond;
+
+			return total_ms;
+		}
+	};
 
 	// Array of L bits encoded in array of uint64 (overall size is at least 8 bytes, L must be 2^N)
 	template <uint64 L>
@@ -1581,6 +1759,9 @@ namespace QPI
 
 		inline uint8 second(
 		) const; // [0..59]
+
+		// return current datetime (year, month, day, hour, minute, second, millisec)
+		inline DateAndTime now() const;
 
 		inline bit signatureValidity(
 			const id& entity,
