@@ -5,6 +5,9 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
+// uint128
+#include "../platform/uint128.h"
+
 // ASSERT can be used to support debugging and speed-up development
 #include "../platform/assert.h"
 
@@ -46,6 +49,7 @@ namespace QPI
 	typedef signed long long sint64;
 	typedef unsigned long long uint64;
 
+	typedef uint128_t uint128;
 	typedef m256i id;
 
 #define NULL_ID id::zero()
@@ -284,6 +288,21 @@ namespace QPI
 			}
 			return true;
 		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline Array<T, L>& operator=(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline Array(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
+
+		Array() = default;
 	};
 	
 	// Array convenience definitions
@@ -401,10 +420,10 @@ namespace QPI
 		inline sint64 nextElementIndex(sint64 elementIndex) const;
 
 		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
-		inline KeyT key(sint64 elementIndex) const;
+		inline const KeyT& key(sint64 elementIndex) const;
 
 		// Return value at elementIndex.
-		inline ValueT value(sint64 elementIndex) const;
+		inline const ValueT& value(sint64 elementIndex) const;
 
 		// Add element (key, value) to the hash map, return elementIndex of new element.
 		// If key already exists in the hash map, the old value will be overwritten.
@@ -686,7 +705,7 @@ namespace QPI
 	template <typename T>
 	inline static T div(T a, T b)
 	{
-		return b ? (a / b) : 0;
+		return b ? (a / b) : T(0);
 	}
 
 	// Return remainder of dividing a by b, but return 0 if b is 0 (requires modulo % operator)
@@ -982,6 +1001,12 @@ namespace QPI
 			// Scalar voting result (currently only for proposalType VariableScalarMean, mean value of all valid votes)
 			sint64 scalarVotingResult;
 		};
+
+		ProposalSummarizedVotingDataV1() = default;
+		ProposalSummarizedVotingDataV1(const ProposalSummarizedVotingDataV1& src)
+		{
+			copyMemory(*this, src);
+		}
 	};
 	static_assert(sizeof(ProposalSummarizedVotingDataV1) == 16 + 8*4, "Unexpected struct size.");
 
@@ -1540,6 +1565,11 @@ namespace QPI
 			const Asset& asset,
 			const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
+		) const;
+
+		inline bool isAssetIssued(
+			const m256i& id,
+			unsigned long long assetName
 		) const;
 
 		// Returns -1 if the current tick is empty, returns the number of the transactions in the tick otherwise, including 0.
