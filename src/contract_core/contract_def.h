@@ -184,8 +184,6 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE QBAY2
 #include "contracts/Qbay.h"
 
-#ifndef NO_QSWAP
-
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -195,8 +193,6 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE_TYPE QSWAP
 #define CONTRACT_STATE2_TYPE QSWAP2
 #include "contracts/Qswap.h"
-
-#endif
 
 // new contracts should be added above this line
 
@@ -293,9 +289,7 @@ constexpr struct ContractDescription
     {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
     {"MSVAULT", 149, 10000, sizeof(MSVAULT)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
     {"QBAY", 154, 10000, sizeof(QBAY)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
-#ifndef NO_QSWAP
     {"QSWAP", 171, 10000, sizeof(QSWAP)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
@@ -397,9 +391,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QVAULT);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(MSVAULT);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBAY);
-#ifndef NO_QSWAP
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSWAP);
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
