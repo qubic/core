@@ -31,6 +31,7 @@ TEST(DateAndTimeTest, Comparison) {
 
     EXPECT_FALSE(base < base);
     EXPECT_FALSE(base > base);
+    EXPECT_TRUE(base == base);
 }
 
 TEST(DateAndTimeTest, Subtraction) {
