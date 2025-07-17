@@ -263,7 +263,6 @@ namespace QPI
 
 		/**
 		 * @brief A static helper to check if a year (yy format) is a leap year.
-		 * Static means it belongs to the class, not a specific object, and can be called without an instance.
 		 */
 		static bool isLeap(unsigned char yr) {
 			// here we only handle the case where yr is in range [00 to 99]
@@ -272,7 +271,6 @@ namespace QPI
 
 		/**
 		 * @brief Helper to convert this specific DateAndTime instance to total milliseconds since Jan 1, 2000.
-		 * This function now implicitly uses the member variables (e.g., `this->year`).
 		 */
 		long long toMilliseconds() const {
 			long long totalDays = 0;
