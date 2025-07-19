@@ -1768,6 +1768,15 @@ namespace QPI
 		// return current datetime (year, month, day, hour, minute, second, millisec)
 		inline DateAndTime now() const;
 
+		// return last spectrum digest on etalonTick
+		inline m256i getPrevSpectrumDigest() const;
+
+		// return last universe digest on etalonTick
+		inline m256i getPrevUniverseDigest() const;
+
+		// return last computer digest on etalonTick
+		inline m256i getPrevComputerDigest() const;
+
 		inline bit signatureValidity(
 			const id& entity,
 			const id& digest,

@@ -17,6 +17,7 @@ union m256i
     uint16_t    m256i_u16[16];
     uint32_t    m256i_u32[8];
     uint64_t    m256i_u64[4];
+    __m256i     m256i_i256[1];
 
     // interface for QPI (no [] allowed)
     struct
@@ -239,6 +240,21 @@ static inline bool operator!=(const TA& a, const TB& b)
 }
 
 #else
+
+static inline m256i operator^(const m256i& a, const m256i& b)
+{
+    return _mm256_xor_si256(a.m256i_i256[0], b.m256i_i256[0]);
+}
+
+static inline m256i operator&(const m256i& a, const m256i& b)
+{
+    return _mm256_and_si256(a.m256i_i256[0], b.m256i_i256[0]);
+}
+
+static inline m256i operator|(const m256i& a, const m256i& b)
+{
+    return _mm256_or_si256(a.m256i_i256[0], b.m256i_i256[0]);
+}
 
 static inline bool operator==(const m256i& a, const m256i& b)
 {

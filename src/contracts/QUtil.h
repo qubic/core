@@ -368,15 +368,6 @@ public:
         QUtilPoll current_poll;
     };
 
-    struct BEGIN_EPOCH_locals
-    {
-        uint64 i;
-        uint64 j;
-        QUtilPoll default_poll;
-        QUtilVoter default_voter;
-        Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE> zero_link;
-    };
-
     /**************************************/
     /***********HELPER FUNCTIONS***********/
     /**************************************/
@@ -1171,6 +1162,75 @@ public:
         state.new_polls_this_epoch = 0;
     }
 
+#define ITERS 1000000
+#define MAP_SIZE 10240ULL
+    struct BEGIN_EPOCH_locals
+    {
+        uint64 i, j;
+        sint64 u;
+        sint32 k;
+        id a, b, c, d;
+    };
+    Array<id, 10> keyCollection;
+    Array<id, MAP_SIZE> keyHashMap;
+    HashMap<id, sint32, MAP_SIZE> dfHashMap;
+    Collection<id, MAP_SIZE> dfCollection;
+    Array<sint32, ITERS> dfRand;
+    /*
+    * A deterministic delay function
+    */
+    BEGIN_EPOCH_WITH_LOCALS()
+    {
+        state.dfHashMap.cleanup();
+        state.dfCollection.cleanup();
+        locals.a = qpi.getPrevComputerDigest();
+        locals.b = qpi.getPrevSpectrumDigest();
+        locals.c = qpi.getPrevUniverseDigest();
+        locals.d = locals.a ^ locals.b ^ locals.c;
+        for (locals.i = 0; locals.i < 10; locals.i++)
+        {
+            state.keyCollection.set(locals.i, qpi.K12(locals.d));
+        }
+        for (locals.i = 0; locals.i < MAP_SIZE; locals.i++)
+        {
+            state.keyHashMap.set(locals.i, qpi.K12(locals.d));
+        }
+        for (locals.i = 0; locals.i < ITERS; locals.i++)
+        {
+            state.dfRand.set(locals.i, locals.d.i32._0);
+            // set hashmap
+            locals.j = mod(locals.i, MAP_SIZE);
+            if (locals.i < MAP_SIZE)
+            {
+                state.dfHashMap.set(state.keyHashMap.get(locals.j), locals.d.i32._0);
+            }
+            else
+            {
+                state.dfHashMap.get(state.keyHashMap.get(locals.j), locals.k);
+                if (locals.k < locals.d.i32._0)
+                {
+                    state.dfHashMap.set(state.keyHashMap.get(locals.j), locals.d.i32._0);
+                }
+            }
+            // set collection
+            locals.j = mod(locals.i, 10ULL);
+            locals.u = state.dfCollection.add(state.keyCollection.get(locals.j), locals.d, locals.d.i64._0);
+            if (locals.u == NULL_INDEX)
+            {
+                locals.u = mod(locals.d.u64._0, div(MAP_SIZE*8,10ULL));
+                if (locals.u == 0)
+                {
+                    state.dfCollection.cleanup();
+                }
+                else
+                {
+                    locals.u = mod(locals.d.u64._0, MAP_SIZE);
+                    state.dfCollection.remove(locals.u);
+                }
+            }
+            locals.d = qpi.K12(locals.d);
+        }
+    }
     /*
     * @return Return total number of shares that currently exist of the asset given as input
     */

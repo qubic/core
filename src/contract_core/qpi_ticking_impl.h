@@ -56,3 +56,18 @@ QPI::DateAndTime QPI::QpiContextFunctionCall::now() const
     result.millisecond = etalonTick.millisecond;
     return result;
 }
+
+m256i QPI::QpiContextFunctionCall::getPrevSpectrumDigest() const
+{
+    return etalonTick.prevSpectrumDigest;
+}
+
+m256i QPI::QpiContextFunctionCall::getPrevUniverseDigest() const
+{
+    return etalonTick.prevUniverseDigest;
+}
+
+m256i QPI::QpiContextFunctionCall::getPrevComputerDigest() const
+{
+    return etalonTick.prevComputerDigest;
+}
