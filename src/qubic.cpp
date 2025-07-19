@@ -68,6 +68,7 @@
 #include "mining/mining.h"
 #include "oracles/oracle_machines.h"
 
+#include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
 
 ////////// Qubic \\\\\\\\\\
@@ -5528,6 +5529,12 @@ static bool initialize()
             return false;
         }
         setMem(score, sizeof(*score), 0);
+
+        if (!allocPoolWithErrorLog(L"score", sizeof(*score_qpi), (void**)&score_qpi, __LINE__))
+        {
+            return false;
+        }
+        setMem(score_qpi, sizeof(*score_qpi), 0);
 
         setMem(solutionThreshold, sizeof(int) * MAX_NUMBER_EPOCH, 0);
         if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags, __LINE__))

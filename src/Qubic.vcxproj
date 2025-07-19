@@ -50,6 +50,7 @@
     <ClInclude Include="contract_core\qpi_asset_impl.h" />
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
     <ClInclude Include="contract_core\qpi_ipo_impl.h" />
+    <ClInclude Include="contract_core\qpi_mining_impl.h" />
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
     <ClInclude Include="contract_core\qpi_hash_map_impl.h" />

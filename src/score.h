@@ -1282,6 +1282,40 @@ struct ScoreFunction
             return score;
         }
 
+        // return last 256 output neuron as bit
+        m256i getLastOutput()
+        {
+            unsigned long long population = bestANN.population;
+            Neuron* neurons = bestANN.neurons;
+            NeuronType* neuronTypes = bestANN.neuronTypes;
+            int count = 0;
+            int byteCount = 0;
+            uint8_t A = 0;
+            m256i result;
+            result = m256i::zero();
+
+            for (unsigned long long i = 0; i < population; i++)
+            {
+                if (neuronTypes[i] == OUTPUT_NEURON_TYPE)
+                {
+                    if (neurons[i])
+                    {
+                        uint8_t v = (neurons[i] > 0);
+                        v = v << (7 - count);
+                        A |= v;
+                        if (++count == 8)
+                        {
+                            result.m256i_u8[byteCount++] = A;
+                            A = 0;
+                            count = 0;
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
     } _computeBuffer[solutionBufferCount];
     m256i currentRandomSeed;
 
@@ -1378,6 +1412,15 @@ struct ScoreFunction
         return _computeBuffer[solutionBufIdx].computeScore(publicKey.m256i_u8, nonce.m256i_u8, poolVec);
     }
 
+    m256i getLastOutput(const unsigned long long processor_Number)
+    {
+        ACQUIRE(solutionEngineLock[processor_Number]);
+
+        m256i result = _computeBuffer[processor_Number].getLastOutput();
+
+        RELEASE(solutionEngineLock[processor_Number]);
+        return result;
+    }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {

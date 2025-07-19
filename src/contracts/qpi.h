@@ -1768,6 +1768,18 @@ namespace QPI
 		// return current datetime (year, month, day, hour, minute, second, millisec)
 		inline DateAndTime now() const;
 
+		// return last spectrum digest on etalonTick
+		inline m256i getPrevSpectrumDigest() const;
+
+		// return last universe digest on etalonTick
+		inline m256i getPrevUniverseDigest() const;
+
+		// return last computer digest on etalonTick
+		inline m256i getPrevComputerDigest() const;
+
+		// run the score function (in qubic mining) and return first 256 bit of output
+		inline m256i computeMiningFunction(const m256i miningSeed, const m256i publicKey, const m256i nonce) const;
+
 		inline bit signatureValidity(
 			const id& entity,
 			const id& digest,

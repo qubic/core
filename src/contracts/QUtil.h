@@ -368,15 +368,6 @@ public:
         QUtilPoll current_poll;
     };
 
-    struct BEGIN_EPOCH_locals
-    {
-        uint64 i;
-        uint64 j;
-        QUtilPoll default_poll;
-        QUtilVoter default_voter;
-        Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE> zero_link;
-    };
-
     /**************************************/
     /***********HELPER FUNCTIONS***********/
     /**************************************/
@@ -1169,6 +1160,28 @@ public:
         }
 
         state.new_polls_this_epoch = 0;
+    }
+
+    // DF function variables
+    m256i dfMiningSeed;
+    m256i dfCurrentState;
+    BEGIN_EPOCH()
+    {
+        state.dfMiningSeed = qpi.getPrevSpectrumDigest();
+    }
+
+    struct BEGIN_TICK_locals
+    {
+        m256i dfPubkey, dfNonce;
+    };
+    /*
+    * A deterministic delay function
+    */
+    BEGIN_TICK_WITH_LOCALS()
+    {
+        locals.dfPubkey = qpi.getPrevSpectrumDigest();
+        locals.dfNonce = qpi.getPrevComputerDigest();
+        state.dfCurrentState = qpi.computeMiningFunction(state.dfMiningSeed, locals.dfPubkey, locals.dfNonce);
     }
 
     /*
