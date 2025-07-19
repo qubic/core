@@ -647,12 +647,12 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                         // Record the task message
                         ACQUIRE(gCustomMiningTaskStorageLock);
                         int taskAddSts = gCustomMiningStorage._taskV2Storage.addData(task);
-                        RELEASE(gCustomMiningTaskStorageLock);
-
                         if (CustomMiningTaskStorage::OK == taskAddSts)
                         {
                             ATOMIC_INC64(gCustomMiningStats.phaseV2.tasks);
+                            gCustomMiningStorage.updateTaskIndex(task->taskIndex);
                         }
+                        RELEASE(gCustomMiningTaskStorageLock);
                     }
                 }
                 else if (messagePayloadSize == sizeof(CustomMiningSolutionV2))
@@ -685,6 +685,10 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 {
                                     gSystemCustomMiningSolutionV2Cache.addEntry(cacheEntry, cacheIndex);
                                     isSolutionGood = true;
+                                }
+                                if (gCustomMiningStorage.isSolutionStale(solution->taskIndex))
+                                {
+                                    isSolutionGood = false;
                                 }
 
                                 if (isSolutionGood)

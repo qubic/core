@@ -1238,6 +1238,10 @@ public:
         {
             allocPoolWithErrorLog(L"CustomMiningStorageProcBuffer", CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE, (void**)&_dataBuffer[i], __LINE__);
         }
+
+        _last3TaskV2Indexes[0] = 0;
+        _last3TaskV2Indexes[1] = 0;
+        _last3TaskV2Indexes[2] = 0;
     }
     void deinit()
     {
@@ -1309,10 +1313,34 @@ public:
         return packedData;
     }
 
+    // update the last 3 indexes, caller is supposed to lock all task arrays before calling
+    // only effective from v2
+    void updateTaskIndex(unsigned long long ti)
+    {
+        if (ti < _last3TaskV2Indexes[0])
+        {
+            // invalid: ti is supposed to be newer than the last index
+            return;
+        }
+        _last3TaskV2Indexes[2] = _last3TaskV2Indexes[1];
+        _last3TaskV2Indexes[1] = _last3TaskV2Indexes[0];
+        _last3TaskV2Indexes[0] = ti;
+    }
+
+    // check if the solution is stale: task index is less than the last 3
+    // only effective from v2
+    bool isSolutionStale(unsigned long long ti)
+    {
+        return ti < _last3TaskV2Indexes[2];
+    }
+
+    unsigned long long _last3TaskV2Indexes[3]; // [0] is max, [2] is min
     CustomMiningTaskStorage _taskStorage[NUMBER_OF_TASK_PARTITIONS];
     CustomMiningTaskV2Storage _taskV2Storage;
     CustomMiningSolutionStorage _solutionStorage[NUMBER_OF_TASK_PARTITIONS];
     CustomMiningSolutionStorage _solutionV2Storage;
+
+
 
     // Buffer can accessed from multiple threads
     unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
