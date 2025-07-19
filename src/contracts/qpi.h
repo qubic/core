@@ -948,6 +948,152 @@ namespace QPI
 	};
 
 	//////////
+	/**
+	 * @brief A template for creating a votable data structure in SC
+	 *
+	 * This structure allows owners of a specific asset (token/shares) to vote on SC's features (eg: fees)
+	 * The voting power of a user is directly proportional to the amount of the asset they hold.
+	 *
+	 * @tparam T The type of the data/proposal being voted on.
+	 * @tparam name A unique identifier (name) for the asset that grants voting rights.
+	 * @tparam issuer The ID of the entity that issued the asset.
+	 * @tparam maxAmountOfAsset The maximum possible supply of the asset.
+	 * @tparam maxVoter The maximum number of unique voters the system can handle.
+	 */
+	template <typename T, uint64 name, id issuer, uint64 maxAmountOfAsset, uint16 maxVoter>
+	struct VotableData
+	{
+	public:
+		struct ValueT
+		{
+			T s;
+			sint64 count;
+		};
+
+		VotableData()
+		{
+			_asset.issuer = issuer;
+			_asset.name = name;
+		}
+
+		/**
+		 * @brief Casts/updates a vote for a given user.
+		 * After casting the vote for user, it will re-update the whole voting table.
+		 * @param voter The ID of the user who is voting.
+		 * @param data The proposal/data the user is voting for.
+		 * @return true if the vote was successfully cast, false otherwise.
+		 */
+		bool vote(const id& voter, const T& data)
+		{
+			// Get the number of shares the voter currently owns for the specific asset.
+			auto nShare = ::numberOfShares(_asset, AssetOwnershipSelect::byOwner(voter), AssetPossessionSelect::byPossessor(voter));
+
+			// If the voter has no shares, they cannot vote.
+			if (!nShare)
+			{
+				return false;
+			}
+
+			// Create a vote record with the proposal and the voter's share count.
+			ValueT vt;
+			vt.s = data;
+			vt.count = nShare;
+
+			// Store the vote in the data map, keyed by the voter's ID.
+			// Note: The original code had a typo `_data.set(id, vt)`. It's assumed to be `voter`.
+			if (!_data.set(voter, vt))
+			{
+				return false;
+			}
+
+			// Update all existing vote counts to reflect any changes in share ownership.
+			_update();
+			return true;
+		}
+
+		/**
+		 * @brief Finalizes the voting process by tallying all votes.
+		 *
+		 * This function calculates the total score for each proposal and determines the winner.
+		 *
+		 * @param[out] t The winning proposal.
+		 * @param[out] score The final score of the winning proposal.
+		 */
+		void finalize(T& t, sint64& score)
+		{
+			// First, ensure all vote counts are synchronized with the latest asset balances.
+			_update();
+
+			// Start iterating through all the cast votes.
+			int first = _data.nextElementIndex(NULL_INDEX);
+			score = -1; // Initialize the winning score.
+
+			// Clear the aggregation buffer before tallying.
+			_buf.reset();
+
+			while (first != NULL_INDEX)
+			{
+				// Get the vote details for the current element.
+				id key = _data.key(first);
+				ValueT vt = _data.value(first);
+
+				sint64 currentScore = 0;
+				_buf.get(vt.s, currentScore);
+				currentScore += vt.count;
+				_buf.set(vt.s, currentScore);
+
+				if (score < currentScore)
+				{
+					score = currentScore;
+					t = vt.s;
+				}
+
+				// Move to the next vote in the map.
+				first = _data.nextElementIndex(first);
+			}
+		}
+
+	private:
+		/**
+		 * @brief Updates the vote counts based on the current asset ownership.
+		 *
+		 * This function iterates through all recorded votes and synchronizes the voter's
+		 * share count. If a voter no longer holds any shares, their vote is removed.
+		 */
+		void _update()
+		{
+			// Start iterating through all the recorded votes.
+			int first = _data.nextElementIndex(NULL_INDEX);
+			while (first != NULL_INDEX)
+			{
+				id key = _data.key(first);
+				ValueT vt = _data.value(first);
+
+				// Re-check the voter's current share balance.
+				auto nShare = numberOfShares(_asset, AssetOwnershipSelect::byOwner(key), AssetPossessionSelect::byPossessor(key));
+
+				if (!nShare)
+				{
+					// If the user no longer has shares, remove their vote.
+					_data.removeByIndex(first);
+				}
+				else if (nShare != vt.count)
+				{
+					// If the user's share balance has changed, update their voting power.
+					vt.count = nShare;
+					_data.set(key, vt);
+				}
+
+				// Move to the next vote.
+				first = _data.nextElementIndex(first);
+			}
+		}
+
+		Asset _asset;
+		HashMap<id, ValueT, maxVoter> _data;
+		HashMap<T, sint64, maxVoter> _buf;
+	};
+	//////////
 	
 	constexpr uint16 INVALID_PROPOSAL_INDEX = 0xffff;
 	constexpr uint32 INVALID_VOTER_INDEX = 0xffffffff;
