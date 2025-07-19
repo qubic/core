@@ -66,6 +66,16 @@ struct CustomMiningTask
     unsigned char seed[32]; // Seed hash for XMR
 };
 
+struct CustomMiningTaskV2 {
+    unsigned long long taskIndex;
+    unsigned char m_template[896];
+    unsigned long long m_extraNonceOffset;
+    unsigned long long m_size;
+    unsigned long long m_target;
+    unsigned long long m_height;
+    unsigned char m_seed[32];
+};
+
 struct CustomMiningSolution
 {
     unsigned long long taskIndex;       // should match the index from task
@@ -73,6 +83,15 @@ struct CustomMiningSolution
     unsigned short lastComputorIndex;   // should match the index from task
     unsigned int nonce;                 // xmrig::JobResult.nonce
     m256i result;                       // xmrig::JobResult.result, 32 bytes
+};
+
+struct CustomMiningSolutionV2 {
+    unsigned long long taskIndex;
+    unsigned long long nonce; // (extraNonce<<32) | nonce
+    unsigned long long reserve0;
+    unsigned long long reserve1;
+    unsigned long long reserve2;
+    m256i result;
 };
 
 #define CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES 848
@@ -600,6 +619,94 @@ private:
     bool _isValid;
 };
 
+class CustomMiningSolutionV2CacheEntry
+{
+public:
+    void reset()
+    {
+        _solution.taskIndex = 0;
+        _isHashed = false;
+        _isVerification = false;
+        _isValid = true;
+    }
+
+    void set(const CustomMiningSolutionV2* pCustomMiningSolution)
+    {
+        reset();
+        _solution = *pCustomMiningSolution;
+    }
+
+    void get(CustomMiningSolutionV2& rCustomMiningSolution)
+    {
+        rCustomMiningSolution = _solution;
+    }
+
+    bool isEmpty() const
+    {
+        return (_solution.taskIndex == 0);
+    }
+    bool isMatched(const CustomMiningSolutionV2CacheEntry& rOther) const
+    {
+        return (_solution.taskIndex == rOther.getTaskIndex()) && (_solution.nonce == rOther.getNonce());
+    }
+    unsigned long long getHashIndex()
+    {
+        // TODO: reserve each computor ID a limited slot.
+        // This will avoid them spawning invalid solutions without verification
+        if (!_isHashed)
+        {
+            copyMem(_buffer, &_solution.taskIndex, sizeof(_solution.taskIndex));
+            copyMem(_buffer + sizeof(_solution.taskIndex), &_solution.nonce, sizeof(_solution.nonce));
+            KangarooTwelve(_buffer, sizeof(_solution.taskIndex) + sizeof(_solution.nonce), &_digest, sizeof(_digest));
+            _isHashed = true;
+        }
+        return _digest;
+    }
+
+    unsigned long long getTaskIndex() const
+    {
+        return _solution.taskIndex;
+    }
+
+    unsigned long long getNonce() const
+    {
+        return _solution.nonce;
+    }
+
+    bool isValid()
+    {
+        return _isValid;
+    }
+
+    bool isVerified()
+    {
+        return _isVerification;
+    }
+
+    void setValid(bool val)
+    {
+        _isValid = val;
+    }
+
+    void setVerified(bool val)
+    {
+        _isVerification = true;
+    }
+
+    void setEmpty()
+    {
+        _solution.taskIndex = 0;
+    }
+
+private:
+    CustomMiningSolutionV2 _solution;
+    unsigned long long _digest;
+    unsigned char _buffer[sizeof(_solution.taskIndex) + sizeof(_solution.nonce)];
+    bool _isHashed;
+    bool _isVerification;
+    bool _isValid;
+};
+
 
 // In charge of storing custom mining
 constexpr unsigned int NUMBER_OF_TASK_PARTITIONS = 4;
@@ -650,6 +757,7 @@ struct CustomMiningStats
 
     // Stats of current custom mining phase
     Counter phase[NUMBER_OF_TASK_PARTITIONS];
+    Counter phaseV2;
 
     // Asume at begining of epoch.
     void epochReset()
@@ -1112,6 +1220,8 @@ struct CustomMiningSolutionStorageEntry
 typedef CustomMiningSortedStorage<CustomMiningTask, CUSTOM_MINING_TASK_STORAGE_COUNT, false> CustomMiningTaskStorage;
 typedef CustomMiningSortedStorage<CustomMiningSolutionStorageEntry, CUSTOM_MINING_SOLUTION_STORAGE_COUNT, true> CustomMiningSolutionStorage;
 
+typedef CustomMiningSortedStorage<CustomMiningTaskV2, CUSTOM_MINING_TASK_STORAGE_COUNT, false> CustomMiningTaskV2Storage;
+
 class CustomMiningStorage
 {
 public:
@@ -1200,7 +1310,9 @@ public:
     }
 
     CustomMiningTaskStorage _taskStorage[NUMBER_OF_TASK_PARTITIONS];
+    CustomMiningTaskV2Storage _taskV2Storage;
     CustomMiningSolutionStorage _solutionStorage[NUMBER_OF_TASK_PARTITIONS];
+    CustomMiningSolutionStorage _solutionV2Storage;
 
     // Buffer can accessed from multiple threads
     unsigned char* _dataBuffer[MAX_NUMBER_OF_PROCESSORS];
@@ -1233,8 +1345,11 @@ static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_
 static CustomMininingCache<CustomMiningSolutionCacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolutionCache[NUMBER_OF_TASK_PARTITIONS];
 #endif
 
+static CustomMininingCache<CustomMiningSolutionV2CacheEntry, MAX_NUMBER_OF_CUSTOM_MINING_SOLUTIONS, 20> gSystemCustomMiningSolutionV2Cache;
+
 static CustomMiningStorage gCustomMiningStorage;
 static CustomMiningStats gCustomMiningStats;
+static CustomMiningStats gCustomMiningV2Stats;
 
 // Get the part ID
 int customMiningGetPartitionID(unsigned short firstComputorIndex, unsigned short lastComputorIndex)
