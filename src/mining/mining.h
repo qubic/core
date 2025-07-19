@@ -768,6 +768,7 @@ struct CustomMiningStats
             phase[i].reset();
         }
 
+        phaseV2.reset();
         ATOMIC_STORE64(maxOverflowShareCount, 0);
         ATOMIC_STORE64(maxCollisionShareCount, 0);
     }
@@ -802,6 +803,7 @@ struct CustomMiningStats
         {
             phase[i].reset();
         }
+        phaseV2.reset();
     }
 
     void appendLog(CHAR16* message)
@@ -832,13 +834,25 @@ struct CustomMiningStats
         appendText(message, L" | Duplicated: ");
         appendNumber(message, customMiningDuplicated, true);
 
+        appendText(message, L"Phase V2:");
+        appendText(message, L" Tasks: ");
+        appendNumber(message, phaseV2.tasks, true);
+        appendText(message, L" | Shares: ");
+        appendNumber(message, phaseV2.shares, true);
+        appendText(message, L" | Valid: ");
+        appendNumber(message, phaseV2.valid, true);
+        appendText(message, L" | InValid: ");
+        appendNumber(message, phaseV2.invalid, true);
+        appendText(message, L" | Duplicated: ");
+        appendNumber(message, phaseV2.duplicated, true);
+
         long long customMiningEpochTasks = customMiningTasks + ATOMIC_LOAD64(lastPhases.tasks);
         long long customMiningEpochShares = customMiningShares + ATOMIC_LOAD64(lastPhases.shares);
         long long customMiningEpochInvalidShares = customMiningInvalidShares + ATOMIC_LOAD64(lastPhases.invalid);
         long long customMiningEpochValidShares = customMiningValidShares + ATOMIC_LOAD64(lastPhases.valid);
         long long customMiningEpochDuplicated = customMiningDuplicated + ATOMIC_LOAD64(lastPhases.duplicated);
 
-        appendText(message, L". Epoch:");
+        appendText(message, L". Epoch (not count v2):");
         appendText(message, L" Tasks: ");
         appendNumber(message, customMiningEpochTasks, false);
         appendText(message, L" | Shares: ");
@@ -1377,7 +1391,6 @@ static CustomMininingCache<CustomMiningSolutionV2CacheEntry, MAX_NUMBER_OF_CUSTO
 
 static CustomMiningStorage gCustomMiningStorage;
 static CustomMiningStats gCustomMiningStats;
-static CustomMiningStats gCustomMiningV2Stats;
 
 // Get the part ID
 int customMiningGetPartitionID(unsigned short firstComputorIndex, unsigned short lastComputorIndex)
