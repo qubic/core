@@ -1246,7 +1246,8 @@ public:
             _taskStorage[i].init();
             _solutionStorage[i].init();
         }
-
+        _taskV2Storage.init();
+        _solutionV2Storage.init();
         // Buffer allocation for each processors. It is limited to 10MB each
         for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
         {
@@ -1264,6 +1265,8 @@ public:
             _taskStorage[i].deinit();
             _solutionStorage[i].deinit();
         }
+        _taskV2Storage.deinit();
+        _solutionV2Storage.deinit();
         for (unsigned int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
         {
             freePool(_dataBuffer[i]);
@@ -1277,6 +1280,7 @@ public:
         {
             _taskStorage[i].reset();
         }
+        _taskV2Storage.reset();
         RELEASE(gCustomMiningTaskStorageLock);
 
         ACQUIRE(gCustomMiningSolutionStorageLock);
@@ -1284,6 +1288,7 @@ public:
         {
             _solutionStorage[i].reset();
         }
+        _solutionV2Storage.reset();
         RELEASE(gCustomMiningSolutionStorageLock);
 
     }
@@ -1443,7 +1448,7 @@ int customMiningInitialize()
     {
         gSystemCustomMiningSolutionCache[i].init();
     }
-
+    gSystemCustomMiningSolutionV2Cache.init();
     customMiningInitTaskPartitions();
 
     return 0;
