@@ -694,7 +694,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 if (isSolutionGood)
                                 {
                                     // Check the computor idx of this solution.
-                                    unsigned short computorID = (solution->nonce >> 32) % 676;
+                                    unsigned short computorID = (solution->nonce >> 32ULL) % 676ULL;
 
                                     ACQUIRE(gCustomMiningSharesCountLock);
                                     gCustomMiningSharesCount[computorID]++;
@@ -1923,6 +1923,7 @@ static void beginCustomMiningPhase()
         gSystemCustomMiningSolutionCache[i].reset();
     }
 
+    gSystemCustomMiningSolutionV2Cache.reset();
     gCustomMiningStorage.reset();
     gCustomMiningStats.phaseResetAndEpochAccumulate();
 }
@@ -3544,6 +3545,7 @@ static void resetCustomMining()
         gSystemCustomMiningSolutionCache[i].reset();
     }
 
+    gSystemCustomMiningSolutionV2Cache.reset();
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
