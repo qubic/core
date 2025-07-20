@@ -508,7 +508,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
             }
 
             // Broadcast message if balance is enough or this message has been signed by a computor
-            if ((hasEnoughBalance || computorIndex(request->sourcePublicKey) >=0 ) && header->isDejavuZero())
+            if ((hasEnoughBalance || computorIndex(request->sourcePublicKey) >=0 || request->sourcePublicKey == dispatcherPublicKey) && header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
             }
