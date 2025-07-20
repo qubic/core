@@ -1080,7 +1080,7 @@ namespace QPI
 			}
 			else if (finalizeMethod == FM_HALF_WIN)
 			{
-				return currentScore > (sum / 2);
+				return currentScore > (maxAmountOfAsset / 2);
 			}
 		}
 
