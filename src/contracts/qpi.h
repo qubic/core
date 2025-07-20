@@ -959,11 +959,18 @@ namespace QPI
 	 * @tparam issuer The ID of the entity that issued the asset.
 	 * @tparam maxAmountOfAsset The maximum possible supply of the asset.
 	 * @tparam maxVoter The maximum number of unique voters the system can handle.
+	 * @tparam finalizeMethod The method to finalize votes and pick winning proposal
 	 */
-	template <typename T, uint64 name, id issuer, uint64 maxAmountOfAsset, uint16 maxVoter>
+	template <typename T, uint64 name, id issuer, uint64 maxAmountOfAsset, uint16 maxVoter, sint32 finalizeMethod>
 	struct VotableData
 	{
+		static_assert(name > 0);
+		static_assert(maxAmountOfAsset > 0);
+		static_assert(maxVoter > 0);
 	public:
+		static constexpr sint32 FM_QUBIC_QUORUM = 0; // more than 2/3 => valid, more than 50% => win
+		static constexpr sint32 FM_MAXIMUM_WIN = 1; // maximum = win
+		static constexpr sint32 FM_HALF_WIN = 2; // more than half = win
 		struct ValueT
 		{
 			T s;
@@ -1016,10 +1023,11 @@ namespace QPI
 		 *
 		 * This function calculates the total score for each proposal and determines the winner.
 		 *
-		 * @param[out] t The winning proposal.
-		 * @param[out] score The final score of the winning proposal.
+		 * @param[out] The proposal that has maximum score.
+		 * @param[out] score of the proposal
+		 * @return depends on vote count method, true if the proposal wins, false otherwise
 		 */
-		void finalize(T& t, sint64& score)
+		bool finalize(T& t, sint64& score)
 		{
 			// First, ensure all vote counts are synchronized with the latest asset balances.
 			_update();
@@ -1027,6 +1035,7 @@ namespace QPI
 			// Start iterating through all the cast votes.
 			int first = _data.nextElementIndex(NULL_INDEX);
 			score = -1; // Initialize the winning score.
+			sint64 sum = 0;
 
 			// Clear the aggregation buffer before tallying.
 			_buf.reset();
@@ -1040,6 +1049,7 @@ namespace QPI
 				sint64 currentScore = 0;
 				_buf.get(vt.s, currentScore);
 				currentScore += vt.count;
+				sum += vt.count;
 				_buf.set(vt.s, currentScore);
 
 				if (score < currentScore)
@@ -1050,6 +1060,27 @@ namespace QPI
 
 				// Move to the next vote in the map.
 				first = _data.nextElementIndex(first);
+			}
+
+			if (finalizeMethod == FM_QUBIC_QUORUM)
+			{
+				sint64 quorum = (maxAmountOfAsset * 2 + 2) / 3;
+				if (sum >= quorum)
+				{
+					if (currentScore > sum / 2)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+			else if (finalizeMethod == FM_MAXIMUM_WIN)
+			{
+				return true;
+			}
+			else if (finalizeMethod == FM_HALF_WIN)
+			{
+				return currentScore > (sum / 2);
 			}
 		}
 
