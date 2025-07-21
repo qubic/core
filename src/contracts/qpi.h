@@ -1067,7 +1067,7 @@ namespace QPI
 				sint64 quorum = (maxAmountOfAsset * 2 + 2) / 3;
 				if (sum >= quorum)
 				{
-					if (currentScore > sum / 2)
+					if (score > sum / 2)
 					{
 						return true;
 					}
@@ -1080,7 +1080,7 @@ namespace QPI
 			}
 			else if (finalizeMethod == FM_HALF_WIN)
 			{
-				return currentScore > (maxAmountOfAsset / 2);
+				return score > (maxAmountOfAsset / 2);
 			}
 		}
 
