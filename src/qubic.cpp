@@ -5336,19 +5336,22 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
+        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 9] = contractIndex / 1000 + L'0';
+        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
+        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
+        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
+        setText(message, L" -> ");
+        appendText(message, CONTRACT_FILE_NAME);
         if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
         {
             setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+            appendText(message, L" not loaded but initialized with zeros for construction");
+            logToConsole(message);
         }
         else
         {
-            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 9] = contractIndex / 1000 + L'0';
-            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
-            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
-            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
             long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
-            setText(message, L" -> ");
-            appendText(message, CONTRACT_FILE_NAME);
+
             if (loadedSize != contractDescriptions[contractIndex].stateSize)
             {
                 if (system.epoch < contractDescriptions[contractIndex].constructionEpoch && contractDescriptions[contractIndex].stateSize >= sizeof(IPO))
