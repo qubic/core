@@ -1,6 +1,6 @@
 #define SINGLE_COMPILE_UNIT
 
-// #define NO_QSWAP
+// #define NO_NOST
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -510,7 +510,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
             }
 
             // Broadcast message if balance is enough or this message has been signed by a computor
-            if ((hasEnoughBalance || computorIndex(request->sourcePublicKey) >=0 ) && header->isDejavuZero())
+            if ((hasEnoughBalance || computorIndex(request->sourcePublicKey) >=0 || request->sourcePublicKey == dispatcherPublicKey) && header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
             }
@@ -633,7 +633,98 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                         }
                     }
                 }
-                
+                else if (messagePayloadSize == sizeof(CustomMiningTaskV2) && request->sourcePublicKey == dispatcherPublicKey)
+                {
+                    unsigned char sharedKeyAndGammingNonce[64];
+                    setMem(sharedKeyAndGammingNonce, 32, 0);
+                    copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                    unsigned char gammingKey[32];
+                    KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
+
+                    // Record the task emitted by dispatcher
+                    if (recordCustomMining && gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_TASK)
+                    {
+                        const CustomMiningTaskV2* task = ((CustomMiningTaskV2*)((unsigned char*)request + sizeof(BroadcastMessage)));
+
+                        // Record the task message
+                        ACQUIRE(gCustomMiningTaskStorageLock);
+                        int taskAddSts = gCustomMiningStorage._taskV2Storage.addData(task);
+                        if (CustomMiningTaskStorage::OK == taskAddSts)
+                        {
+                            ATOMIC_INC64(gCustomMiningStats.phaseV2.tasks);
+                            gCustomMiningStorage.updateTaskIndex(task->taskIndex);
+                        }
+                        RELEASE(gCustomMiningTaskStorageLock);
+                    }
+                }
+                else if (messagePayloadSize == sizeof(CustomMiningSolutionV2))
+                {
+                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+                    {
+                        if (request->sourcePublicKey == broadcastedComputors.computors.publicKeys[i])
+                        {
+                            // Compute the gamming key to get the sub-type of message
+                            unsigned char sharedKeyAndGammingNonce[64];
+                            setMem(sharedKeyAndGammingNonce, 32, 0);
+                            copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
+                            unsigned char gammingKey[32];
+                            KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
+
+                            if (recordCustomMining && gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
+                            {
+                                // Record the solution
+                                bool isSolutionGood = false;
+                                const CustomMiningSolutionV2* solution = ((CustomMiningSolutionV2*)((unsigned char*)request + sizeof(BroadcastMessage)));
+
+                                CustomMiningSolutionV2CacheEntry cacheEntry;
+                                cacheEntry.set(solution);
+
+                                unsigned int cacheIndex = 0;
+                                int sts = gSystemCustomMiningSolutionV2Cache.tryFetching(cacheEntry, cacheIndex);
+
+                                // Check for duplicated solution
+                                if (sts == CUSTOM_MINING_CACHE_MISS)
+                                {
+                                    gSystemCustomMiningSolutionV2Cache.addEntry(cacheEntry, cacheIndex);
+                                    isSolutionGood = true;
+                                }
+                                if (gCustomMiningStorage.isSolutionStale(solution->taskIndex))
+                                {
+                                    isSolutionGood = false;
+                                }
+
+                                if (isSolutionGood)
+                                {
+                                    // Check the computor idx of this solution.
+                                    unsigned short computorID = (solution->nonce >> 32ULL) % 676ULL;
+
+                                    ACQUIRE(gCustomMiningSharesCountLock);
+                                    gCustomMiningSharesCount[computorID]++;
+                                    RELEASE(gCustomMiningSharesCountLock);
+
+                                    CustomMiningSolutionStorageEntry solutionStorageEntry;
+                                    solutionStorageEntry.taskIndex = solution->taskIndex;
+                                    solutionStorageEntry.nonce = solution->nonce;
+                                    solutionStorageEntry.cacheEntryIndex = cacheIndex;
+
+                                    ACQUIRE(gCustomMiningSolutionStorageLock);
+                                    gCustomMiningStorage._solutionV2Storage.addData(&solutionStorageEntry);
+                                    RELEASE(gCustomMiningSolutionStorageLock);
+                                }
+
+                                // Record stats
+                                const unsigned int hitCount = gSystemCustomMiningSolutionV2Cache.hitCount();
+                                const unsigned int missCount = gSystemCustomMiningSolutionV2Cache.missCount();
+                                const unsigned int collision = gSystemCustomMiningSolutionV2Cache.collisionCount();
+
+                                ATOMIC_STORE64(gCustomMiningStats.phaseV2.shares, missCount);
+                                ATOMIC_STORE64(gCustomMiningStats.phaseV2.duplicated, hitCount);
+                                ATOMIC_MAX64(gCustomMiningStats.maxCollisionShareCount, collision);
+                            }
+                            break;
+                        }
+                    }
+                }
             }
             else
             {
@@ -1834,6 +1925,7 @@ static void beginCustomMiningPhase()
         gSystemCustomMiningSolutionCache[i].reset();
     }
 
+    gSystemCustomMiningSolutionV2Cache.reset();
     gCustomMiningStorage.reset();
     gCustomMiningStats.phaseResetAndEpochAccumulate();
 }
@@ -3455,6 +3547,7 @@ static void resetCustomMining()
         gSystemCustomMiningSolutionCache[i].reset();
     }
 
+    gSystemCustomMiningSolutionV2Cache.reset();
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
@@ -5243,18 +5336,22 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
+        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 9] = contractIndex / 1000 + L'0';
+        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
+        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
+        CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
         if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
         {
+            setText(message, L" -> ");
+            appendText(message, CONTRACT_FILE_NAME);
             setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+            appendText(message, L" not loaded but initialized with zeros for construction");
+            logToConsole(message);
         }
         else
         {
-            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 9] = contractIndex / 1000 + L'0';
-            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
-            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
-            CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
             long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
-            setText(message, L" -> ");
+            setText(message, L" -> "); // set the message after loading otherwise `message` will contain potential messages from load()
             appendText(message, CONTRACT_FILE_NAME);
             if (loadedSize != contractDescriptions[contractIndex].stateSize)
             {
