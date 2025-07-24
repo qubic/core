@@ -923,6 +923,14 @@ protected:
 			}
 			locals.tmpFundraising.raisedFunds += qpi.invocationReward();
 		}
+		else
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
 		if (locals.minCap <= locals.tmpFundraising.raisedFunds && locals.tmpFundraising.isCreatedToken == 0)
 		{
 			locals.input.assetName = state.projects.get(locals.tmpFundraising.indexOfProject).tokenName;
