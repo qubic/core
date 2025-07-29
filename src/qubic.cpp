@@ -1864,11 +1864,26 @@ static bool isFullExternalComputationTime(TimeDate tickDate)
     return false;
 }
 
+// Clean up before custom mining phase. Thread-safe function
+static void beginCustomMiningPhase()
+{
+    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
+    {
+        gSystemCustomMiningSolutionCache[i].reset();
+    }
+
+    gSystemCustomMiningSolutionV2Cache.reset();
+    gCustomMiningStorage.reset();
+    gCustomMiningStats.phaseResetAndEpochAccumulate();
+}
+
 static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
 {
     // Check if current time is for full custom mining period
     static bool fullExternalTimeBegin = false;
-    bool restartTheMiningPhase = false;
+
+    bool isBeginOfCustomMiningPhase = false;
+    char isInCustomMiningPhase = 0;
 
     // Make sure the tick is valid
     if (tickEpoch == system.epoch)
@@ -1882,9 +1897,13 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
 
                 // Turn off the qubic mining phase
                 score->initMiningData(m256i::zero());
+
+                // Start the custom mining phase
+                isBeginOfCustomMiningPhase = true;
             }
+            isInCustomMiningPhase = 1;
         }
-        else // Not in the full external time, just behavior like normal.
+        else // Not in the full external time.
         {
             fullExternalTimeBegin = false;
         }
@@ -1905,52 +1924,9 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
                 score->initMiningData(m256i::zero());
             }
         }
-    }
-}
 
-// Clean up before custom mining phase. Thread-safe function
-static void beginCustomMiningPhase()
-{
-    for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
-    {
-        gSystemCustomMiningSolutionCache[i].reset();
-    }
-
-    gSystemCustomMiningSolutionV2Cache.reset();
-    gCustomMiningStorage.reset();
-    gCustomMiningStats.phaseResetAndEpochAccumulate();
-}
-
-static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
-{
-    bool isBeginOfCustomMiningPhase = false;
-    char isInCustomMiningPhase = 0;
-
-    // Check if current time is for full custom mining period
-    static bool fullExternalTimeBegin = false;
-
-    // Make sure the tick is valid
-    if (tickEpoch == system.epoch)
-    {
-        if (isFullExternalComputationTime(tickDate))
-        {
-            // Trigger time
-            if (!fullExternalTimeBegin)
-            {
-                fullExternalTimeBegin = true;
-                isBeginOfCustomMiningPhase = true;
-            }
-            isInCustomMiningPhase = 1;
-        }
-        else // Not in the full external time, just behavior like normal.
-        {
-            fullExternalTimeBegin = false;
-        }
-    }
-
-    if (!fullExternalTimeBegin)
-    {
-        const unsigned int r = getTickInMiningPhaseCycle();
+        // Setting for custom mining phase
+        isInCustomMiningPhase = 0;
         if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
         {
             isInCustomMiningPhase = 1;
@@ -1958,10 +1934,6 @@ static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
             {
                 isBeginOfCustomMiningPhase = true;
             }
-        }
-        else
-        {
-            isInCustomMiningPhase = 0;
         }
     }
 
@@ -1975,7 +1947,6 @@ static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
     ACQUIRE(gIsInCustomMiningStateLock);
     gIsInCustomMiningState = isInCustomMiningPhase;
     RELEASE(gIsInCustomMiningStateLock);
-
 }
 
 // a function to check and switch mining phase especially for begin/end epoch event
@@ -5213,8 +5184,6 @@ static void tickProcessor(void*)
                                 ts.tickData.releaseLock();
 
                                 checkAndSwitchMiningPhase(tickEpoch, currentTickDate);
-
-                                checkAndSwitchCustomMiningPhase(tickEpoch, currentTickDate);
 
                                 if (epochTransitionState == 1)
                                 {
