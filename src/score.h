@@ -340,7 +340,7 @@ static void packNegPosWithPadding(const char* data,
     }
 }
 
-void unpackNegPosBits(const unsigned char* negMask,
+static void unpackNegPosBits(const unsigned char* negMask,
     const unsigned char* posMask,
     unsigned long long dataSize,
     unsigned long long paddedSize,
@@ -1282,7 +1282,7 @@ struct ScoreFunction
             return score;
         }
 
-        // return last 256 output neuron as bit
+        // returns last computed output neurons, only returns 256 non-zero neurons, neuron values are compressed to bit
         m256i getLastOutput()
         {
             unsigned long long population = bestANN.population;

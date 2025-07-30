@@ -106,6 +106,10 @@ private:
     uint64 current_poll_id;
     uint64 new_polls_this_epoch;
 
+    // DF function variables
+    m256i dfMiningSeed;
+    m256i dfCurrentState;
+
     // Get Qubic Balance
     struct get_qubic_balance_input {
         id address;
@@ -1162,9 +1166,6 @@ public:
         state.new_polls_this_epoch = 0;
     }
 
-    // DF function variables
-    m256i dfMiningSeed;
-    m256i dfCurrentState;
     BEGIN_EPOCH()
     {
         state.dfMiningSeed = qpi.getPrevSpectrumDigest();

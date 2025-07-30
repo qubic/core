@@ -1,5 +1,7 @@
 #pragma once
+
 #include "contracts/qpi.h"
+#include "score.h"
 
 static ScoreFunction<
     NUMBER_OF_INPUT_NEURONS,
