@@ -15,17 +15,15 @@ private:
     static constexpr unsigned long long maxNumTicksToSave = MAX_NUMBER_OF_TICKS_PER_EPOCH + TICKS_TO_KEEP_FROM_PRIOR_EPOCH;
     static constexpr unsigned long long maxNumTxsCurrentEpoch = ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK;
     static constexpr unsigned long long maxNumTxsPreviousEpoch = ((unsigned long long)TICKS_TO_KEEP_FROM_PRIOR_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+    static constexpr unsigned long long maxNumTxs = maxNumTxsCurrentEpoch + maxNumTxsPreviousEpoch;
 
     static constexpr unsigned long long tickTransactionsSizeCurrentEpoch = FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS);
     static constexpr unsigned long long tickTransactionsSizePreviousEpoch = (((unsigned long long)TICKS_TO_KEEP_FROM_PRIOR_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS);
     static constexpr unsigned long long tickTransactionsSize = tickTransactionsSizeCurrentEpoch + tickTransactionsSizePreviousEpoch;
 
-    static constexpr unsigned long long tickTransactionOffsetsLengthCurrentEpoch = ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK;
-    static constexpr unsigned long long tickTransactionOffsetsLengthPreviousEpoch = ((unsigned long long)TICKS_TO_KEEP_FROM_PRIOR_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK;
-    static constexpr unsigned long long tickTransactionOffsetsLength = tickTransactionOffsetsLengthCurrentEpoch + tickTransactionOffsetsLengthPreviousEpoch;
-    static constexpr unsigned long long tickTransactionOffsetsSizeCurrentEpoch = tickTransactionOffsetsLengthCurrentEpoch * sizeof(unsigned long long);
-    static constexpr unsigned long long tickTransactionOffsetsSizePreviousEpoch = tickTransactionOffsetsLengthPreviousEpoch * sizeof(unsigned long long);
-    static constexpr unsigned long long tickTransactionOffsetsSize = tickTransactionOffsetsLength * sizeof(unsigned long long);
+    static constexpr unsigned long long tickTransactionOffsetsSizeCurrentEpoch = maxNumTxsCurrentEpoch * sizeof(unsigned long long);
+    static constexpr unsigned long long tickTransactionOffsetsSizePreviousEpoch = maxNumTxsPreviousEpoch * sizeof(unsigned long long);
+    static constexpr unsigned long long tickTransactionOffsetsSize = maxNumTxs * sizeof(unsigned long long);
 
     static constexpr unsigned long long txsDigestsSizeCurrentEpoch = maxNumTxsCurrentEpoch * 32ULL;
     static constexpr unsigned long long txsDigestsSizePreviousEpoch = maxNumTxsPreviousEpoch * 32ULL;
@@ -150,7 +148,7 @@ public:
         nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
 
         oldTickTransactionsPtr = tickTransactionsPtr + tickTransactionsSizeCurrentEpoch;
-        oldTickTransactionOffsetsPtr = tickTransactionOffsetsPtr + tickTransactionOffsetsLengthCurrentEpoch;
+        oldTickTransactionOffsetsPtr = tickTransactionOffsetsPtr + maxNumTxsCurrentEpoch;
         oldTxsDigestsPtr = txsDigestsPtr + maxNumTxsCurrentEpoch;
 
         ASSERT(tickTransactionsLock == 0);
@@ -589,8 +587,8 @@ public:
         ASSERT(oldTxsDigestsPtr != nullptr);
 
         ASSERT(oldTickTransactionsPtr == tickTransactionsPtr + tickTransactionsSizeCurrentEpoch);
-        ASSERT(oldTickTransactionOffsetsPtr == tickTransactionOffsetsPtr + tickTransactionOffsetsLengthCurrentEpoch);
-        ASSERT(oldTxsDigestsPtr == txsDigestsPtr + txsDigestsLengthCurrentEpoch);
+        ASSERT(oldTickTransactionOffsetsPtr == tickTransactionOffsetsPtr + maxNumTxsCurrentEpoch);
+        ASSERT(oldTxsDigestsPtr == txsDigestsPtr + maxNumTxsCurrentEpoch);
 
         ASSERT(nextTickTransactionOffset >= FIRST_TICK_TRANSACTION_OFFSET);
         ASSERT(nextTickTransactionOffset <= tickTransactionsSizeCurrentEpoch);
