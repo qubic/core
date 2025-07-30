@@ -131,6 +131,7 @@ static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(c
 static TickStorage ts;
 static VoteCounter voteCounter;
 static TickData nextTickData;
+static TxsPool txsPool;
 
 static m256i uniqueNextTickTransactionDigests[NUMBER_OF_COMPUTORS];
 static unsigned int uniqueNextTickTransactionDigestCounters[NUMBER_OF_COMPUTORS];

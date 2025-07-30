@@ -79,7 +79,7 @@ public:
         // Return pointer to offset array of transactions by tick index independent of epoch (checking index with ASSERT)
         inline unsigned long long* getByTickIndex(unsigned int tickIndex)
         {
-            ASSERT(tickIndex < tickDataLength);
+            ASSERT(tickIndex < maxNumTicksToSave);
             return tickTransactionOffsetsPtr + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK);
         }
 
@@ -106,9 +106,6 @@ public:
             return getByTickInCurrentEpoch(tick)[transaction];
         }
     } tickTransactionOffsets;
-
-    // Offset of next free space in tick transaction storage
-    unsigned long long nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
 
     // Struct for structured, convenient access via ".tickTransactions"
     static struct TickTransactionsAccess
@@ -186,14 +183,14 @@ public:
         }
     }
 
-    // Acquire lock for returned pointers to transactions or digests.
+    // Acquire lock for returned pointers to transactions, transaction offsets, or digests.
     inline static void acquireLock()
     {
         ACQUIRE(txsDigestsLock);
         ACQUIRE(tickTransactionsLock);
     }
 
-    // Release lock for returned pointers to transactions or digests.
+    // Release lock for returned pointers to transactions, transaction offsets, or digests.
     inline static void releaseLock()
     {
         RELEASE(tickTransactionsLock);
@@ -583,15 +580,17 @@ public:
         ASSERT(oldTickEnd - oldTickBegin <= TICKS_TO_KEEP_FROM_PRIOR_EPOCH);
         ASSERT(oldTickEnd <= tickBegin);
 
-        ASSERT(oldTxsDigestsPtr != nullptr);
-        ASSERT(oldTxsDigestsPtr == txsDigestsPtr + txsDigestsLengthCurrentEpoch);
-
-        // Check transactions storage
-        //------------------------------------------------------------------------------
         ASSERT(tickTransactionsPtr != nullptr);
         ASSERT(tickTransactionOffsetsPtr != nullptr);
+        ASSERT(txsDigestsPtr != nullptr);
+
+        ASSERT(oldTickTransactionsPtr != nullptr);
+        ASSERT(oldTickTransactionOffsetsPtr != nullptr);
+        ASSERT(oldTxsDigestsPtr != nullptr);
+
         ASSERT(oldTickTransactionsPtr == tickTransactionsPtr + tickTransactionsSizeCurrentEpoch);
         ASSERT(oldTickTransactionOffsetsPtr == tickTransactionOffsetsPtr + tickTransactionOffsetsLengthCurrentEpoch);
+        ASSERT(oldTxsDigestsPtr == txsDigestsPtr + txsDigestsLengthCurrentEpoch);
 
         ASSERT(nextTickTransactionOffset >= FIRST_TICK_TRANSACTION_OFFSET);
         ASSERT(nextTickTransactionOffset <= tickTransactionsSizeCurrentEpoch);
@@ -611,7 +610,7 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                     if (!transaction->checkValidity() || transaction->tick != tickId)
                     {
-                        setText(dbgMsgBuf, L"Error in prev. epoch transaction ");
+                        setText(dbgMsgBuf, L"Error in previous epoch transaction ");
                         appendNumber(dbgMsgBuf, transactionIdx, FALSE);
                         appendText(dbgMsgBuf, L" in tick ");
                         appendNumber(dbgMsgBuf, tickId, FALSE);
@@ -627,7 +626,7 @@ public:
                         appendNumber(dbgMsgBuf, transaction->amount, TRUE);
                         addDebugMessage(dbgMsgBuf);
 
-                        addDebugMessage(L"Skipping to check more transactions and ticks");
+                        addDebugMessage(L"Skipping to check current epoch transactions and ticks");
                         goto test_current_epoch;
                     }
 #endif
@@ -654,7 +653,7 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                     if (!transaction->checkValidity() || transaction->tick != tickId)
                     {
-                        setText(dbgMsgBuf, L"Error in cur. epoch transaction ");
+                        setText(dbgMsgBuf, L"Error in current epoch transaction ");
                         appendNumber(dbgMsgBuf, transactionIdx, FALSE);
                         appendText(dbgMsgBuf, L" in tick ");
                         appendNumber(dbgMsgBuf, tickId, FALSE);
@@ -670,8 +669,8 @@ public:
                         appendNumber(dbgMsgBuf, transaction->amount, TRUE);
                         addDebugMessage(dbgMsgBuf);
 
-                        addDebugMessage(L"Skipping to check more transactions and ticks");
-                        goto leave_test;
+                        addDebugMessage(L"Skipping to check digests and number of saved txs");
+                        goto test_digests_and_num_saved;
                     }
 #endif
 
@@ -682,14 +681,11 @@ public:
             }
         }
         ASSERT(lastTransactionEndOffset == nextTickTransactionOffset);
+
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        leave_test:
-        addDebugMessage(L"End ts.transactionsStorage.checkStateConsistencyWithAssert()");
+        test_digests_and_num_saved:
 #endif
-
-        // -----------------------------------------------------------------------------------
-
-        // Check that transaction digests and number of saved txs per tick are consistent with transactionsStorage
+        // Check that transaction digests and number of saved txs per tick are consistent with transactions
         unsigned int begins[2] = { oldTickBegin, tickBegin };
         unsigned int ends[2] = { oldTickEnd, tickEnd };
         typedef unsigned int (*TickToIndexFunction) (unsigned int t);
