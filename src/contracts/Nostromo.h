@@ -572,6 +572,14 @@ protected:
 			}
 			return ;
 		}
+		if (QUOTTERY::checkValidQtryDateTime(locals.firstPhaseStartDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.firstPhaseEndDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.secondPhaseStartDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.secondPhaseEndDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.thirdPhaseStartDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.thirdPhaseEndDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.listingStartDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.cliffEndDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.vestingEndDate) == 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
 
 		if (input.stepOfVesting == 0 || input.stepOfVesting > 12 || input.TGE > 50 || input.threshold > 50 || input.indexOfProject >= state.numberOfCreatedProject)
 		{
@@ -922,6 +930,14 @@ protected:
 				}
 			}
 			locals.tmpFundraising.raisedFunds += qpi.invocationReward();
+		}
+		else
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
 		}
 		if (locals.minCap <= locals.tmpFundraising.raisedFunds && locals.tmpFundraising.isCreatedToken == 0)
 		{
