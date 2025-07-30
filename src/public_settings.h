@@ -23,7 +23,7 @@
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
-#define TARGET_TICK_DURATION 1500
+#define TARGET_TICK_DURATION 3000
 #define TRANSACTION_SPARSENESS 1
 
 // Below are 2 variables that are used for auto-F5 feature:
