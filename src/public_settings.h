@@ -23,7 +23,7 @@
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
-#define TARGET_TICK_DURATION 3000
+#define TARGET_TICK_DURATION 1000
 #define TRANSACTION_SPARSENESS 1
 
 // Below are 2 variables that are used for auto-F5 feature:
@@ -57,7 +57,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 
 #define VERSION_A 1
 #define VERSION_B 253
-#define VERSION_C 0
+#define VERSION_C 1
 
 // Epoch and initial tick for node startup
 #define EPOCH 172
