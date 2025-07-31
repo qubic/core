@@ -343,15 +343,15 @@ public:
     // If no more transactions for this tick, return nullptr.
     static Transaction* get(unsigned int tick, unsigned int index)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"txsPool.get()");
-        CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"tick=");
-        appendNumber(dbgMsgBuf, tick, FALSE);
-        appendText(dbgMsgBuf, L", index=");
-        appendNumber(dbgMsgBuf, index, FALSE);
-        addDebugMessage(dbgMsgBuf);
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"txsPool.get()");
+//        CHAR16 dbgMsgBuf[200];
+//        setText(dbgMsgBuf, L"tick=");
+//        appendNumber(dbgMsgBuf, tick, FALSE);
+//        appendText(dbgMsgBuf, L", index=");
+//        appendNumber(dbgMsgBuf, index, FALSE);
+//        addDebugMessage(dbgMsgBuf);
+//#endif
         unsigned int tickIndex;
         if (tickInCurrentEpochStorage(tick))
         {
@@ -387,15 +387,15 @@ public:
     // If no more transactions for this tick, return nullptr.
     static m256i* getDigest(unsigned int tick, unsigned int index)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"txsPool.getDigest()");
-        CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"tick=");
-        appendNumber(dbgMsgBuf, tick, FALSE);
-        appendText(dbgMsgBuf, L", index=");
-        appendNumber(dbgMsgBuf, index, FALSE);
-        addDebugMessage(dbgMsgBuf);
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"txsPool.getDigest()");
+//        CHAR16 dbgMsgBuf[200];
+//        setText(dbgMsgBuf, L"tick=");
+//        appendNumber(dbgMsgBuf, tick, FALSE);
+//        appendText(dbgMsgBuf, L", index=");
+//        appendNumber(dbgMsgBuf, index, FALSE);
+//        addDebugMessage(dbgMsgBuf);
+//#endif
         unsigned int tickIndex;
         if (tickInCurrentEpochStorage(tick))
         {
