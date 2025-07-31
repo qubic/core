@@ -233,7 +233,9 @@ public:
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End txsPool.getNumberOfTickTxs(), res=");
+        setText(dbgMsgBuf, L"End txsPool.getNumberOfTickTxs() for tick=");
+        appendNumber(dbgMsgBuf, tick, FALSE);
+        appendText(dbgMsgBuf, L" -> res=");
         appendNumber(dbgMsgBuf, res, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
@@ -278,7 +280,9 @@ public:
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End txsPool.getNumberOfPendingTxs(), res=");
+        setText(dbgMsgBuf, L"End txsPool.getNumberOfPendingTxs() for tick=");
+        appendNumber(dbgMsgBuf, tick, FALSE);
+        appendText(dbgMsgBuf, L" -> res=");
         appendNumber(dbgMsgBuf, res, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
