@@ -75,14 +75,14 @@ public:
     static struct TickTransactionOffsetsAccess
     {
         // Return pointer to offset array of transactions by tick index independent of epoch (checking index with ASSERT)
-        inline unsigned long long* getByTickIndex(unsigned int tickIndex)
+        inline static unsigned long long* getByTickIndex(unsigned int tickIndex)
         {
             ASSERT(tickIndex < maxNumTicksToSave);
             return tickTransactionOffsetsPtr + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK);
         }
 
         // Return pointer to offset array of transactions of tick in current epoch by tick (checking tick with ASSERT)
-        inline unsigned long long* getByTickInCurrentEpoch(unsigned int tick)
+        inline static unsigned long long* getByTickInCurrentEpoch(unsigned int tick)
         {
             ASSERT(tickInCurrentEpochStorage(tick));
             const unsigned int tickIndex = tickToIndexCurrentEpoch(tick);
@@ -90,7 +90,7 @@ public:
         }
 
         // Return pointer to offset array of transactions of tick in previous epoch by tick (checking tick with ASSERT)
-        inline unsigned long long* getByTickInPreviousEpoch(unsigned int tick)
+        inline static unsigned long long* getByTickInPreviousEpoch(unsigned int tick)
         {
             ASSERT(tickInPreviousEpochStorage(tick));
             const unsigned int tickIndex = tickToIndexPreviousEpoch(tick);
@@ -98,7 +98,7 @@ public:
         }
 
         // Return reference to offset by tick and transaction in current epoch (checking inputs with ASSERT)
-        inline unsigned long long& operator()(unsigned int tick, unsigned int transaction)
+        inline static unsigned long long& operator()(unsigned int tick, unsigned int transaction)
         {
             ASSERT(transaction < NUMBER_OF_TRANSACTIONS_PER_TICK);
             return getByTickInCurrentEpoch(tick)[transaction];
@@ -119,14 +119,14 @@ public:
         }
 
         // Return pointer to Transaction based on transaction offset independent of epoch (checking offset with ASSERT)
-        inline Transaction* ptr(unsigned long long transactionOffset)
+        inline static Transaction* ptr(unsigned long long transactionOffset)
         {
             ASSERT(transactionOffset < tickTransactionsSize);
             return (Transaction*)(tickTransactionsPtr + transactionOffset);
         }
 
         // Return pointer to Transaction based on transaction offset independent of epoch (checking offset with ASSERT)
-        inline Transaction* operator()(unsigned long long transactionOffset)
+        inline static Transaction* operator()(unsigned long long transactionOffset)
         {
             ASSERT(transactionOffset < tickTransactionsSize);
             return ptr(transactionOffset);
