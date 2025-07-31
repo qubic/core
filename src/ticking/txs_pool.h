@@ -318,6 +318,24 @@ public:
                 numSavedTxsPerTick[tickIndex]++;
                 txAdded = true;
             }
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            else
+            {
+                CHAR16 dbgMsgBuf[300];
+                setText(dbgMsgBuf, L"tx could not be added, already saved ");
+                appendNumber(dbgMsgBuf, numSavedTxsPerTick[tickIndex], FALSE);
+                appendText(dbgMsgBuf, L" txs for tick ");
+                appendNumber(dbgMsgBuf, tx->tick, FALSE);
+                appendText(dbgMsgBuf, L" OR nextTickTransactionOffset (");
+                appendNumber(dbgMsgBuf, nextTickTransactionOffset, FALSE);
+                appendText(dbgMsgBuf, L") + transactionSize (");
+                appendNumber(dbgMsgBuf, transactionSize, FALSE);
+                appendText(dbgMsgBuf, L") > tickTransactionsSizeCurrentEpoch (");
+                appendNumber(dbgMsgBuf, tickTransactionsSizeCurrentEpoch, FALSE);
+                appendText(dbgMsgBuf, L")");
+                addDebugMessage(dbgMsgBuf);
+            }
+#endif
 
             releaseLock();
             RELEASE(numSavedLock);
