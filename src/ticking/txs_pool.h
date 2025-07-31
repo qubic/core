@@ -1,11 +1,13 @@
 #pragma once
 
-#include "kangaroo_twelve.h"
 #include "network_messages/transactions.h"
-#include "platform/memory.h"
+
+#include "platform/memory_util.h"
 #include "platform/concurrency.h"
 #include "platform/console_logging.h"
+
 #include "public_settings.h"
+#include "kangaroo_twelve.h"
 
 // Mempool that saves pending transactions (txs) of all entities.
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
@@ -130,11 +132,10 @@ public:
     // Init at node startup.
     static bool init()
     {
-        if (!allocatePool(tickTransactionsSize, (void**)&tickTransactionsPtr)
-            || !allocatePool(tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr)
-            || !allocatePool(txsDigestsSize, (void**)&txsDigestsPtr))
+        if (!allocPoolWithErrorLog(L"TxsPool::tickTransactionsPtr ", tickTransactionsSize, (void**)&tickTransactionsPtr, __LINE__)
+            || !allocPoolWithErrorLog(L"TxsPool::tickTransactionOffsetsPtr ", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__)
+            || !allocPoolWithErrorLog(L"TxsPool::txsDigestsPtr ", txsDigestsSize, (void**)&txsDigestsPtr, __LINE__))
         {
-            logToConsole(L"Failed to allocate transaction pool memory!");
             return false;
         }
 
