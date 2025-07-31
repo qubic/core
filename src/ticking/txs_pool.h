@@ -98,7 +98,7 @@ public:
         }
 
         // Return reference to offset by tick and transaction in current epoch (checking inputs with ASSERT)
-        inline unsigned long long& operator()(unsigned int tick, unsigned int transaction)
+        inline static unsigned long long& get(unsigned int tick, unsigned int transaction)
         {
             ASSERT(transaction < NUMBER_OF_TRANSACTIONS_PER_TICK);
             return getByTickInCurrentEpoch(tick)[transaction];
@@ -123,13 +123,6 @@ public:
         {
             ASSERT(transactionOffset < tickTransactionsSize);
             return (Transaction*)(tickTransactionsPtr + transactionOffset);
-        }
-
-        // Return pointer to Transaction based on transaction offset independent of epoch (checking offset with ASSERT)
-        inline Transaction* operator()(unsigned long long transactionOffset)
-        {
-            ASSERT(transactionOffset < tickTransactionsSize);
-            return ptr(transactionOffset);
         }
     } tickTransactions;
 
@@ -314,7 +307,7 @@ public:
 
                 KangarooTwelve(tx, transactionSize, &txsDigestsPtr[tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + numSavedTxsPerTick[tickIndex]], 32ULL);
                 transactionOffset = nextTickTransactionOffset;
-                copyMem(tickTransactions(transactionOffset), tx, transactionSize);
+                copyMem(tickTransactions.ptr(transactionOffset), tx, transactionSize);
                 nextTickTransactionOffset += transactionSize;
 
                 numSavedTxsPerTick[tickIndex]++;
