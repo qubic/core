@@ -1864,58 +1864,6 @@ static bool isFullExternalComputationTime(TimeDate tickDate)
     return false;
 }
 
-static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate)
-{
-    // Check if current time is for full custom mining period
-    static bool fullExternalTimeBegin = false;
-    bool restartTheMiningPhase = false;
-
-    // Make sure the tick is valid
-    if (tickEpoch == system.epoch)
-    {
-        if (isFullExternalComputationTime(tickDate))
-        {
-            // Trigger time
-            if (!fullExternalTimeBegin)
-            {
-                fullExternalTimeBegin = true;
-
-                // Turn off the qubic mining phase
-                score->initMiningData(m256i::zero());
-            }
-        }
-        else // Not in the full external time, just behavior like normal.
-        {
-            // Switch back to qubic mining phase if neccessary
-            if (fullExternalTimeBegin)
-            {
-                if (getTickInMiningPhaseCycle() <= INTERNAL_COMPUTATIONS_INTERVAL)
-                {
-                    setNewMiningSeed();
-                }
-            }
-            fullExternalTimeBegin = false;
-        }
-    }
-    
-    // Incase of the full custom mining is just end. The setNewMiningSeed() will wait for next period of qubic mining phase
-    if (!fullExternalTimeBegin)
-    {
-        const unsigned int r = getTickInMiningPhaseCycle();
-        if (!r)
-        {
-            setNewMiningSeed();
-        }
-        else
-        {
-            if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
-            {
-                score->initMiningData(m256i::zero());
-            }
-        }
-    }
-}
-
 // Clean up before custom mining phase. Thread-safe function
 static void beginCustomMiningPhase()
 {
@@ -1929,47 +1877,86 @@ static void beginCustomMiningPhase()
     gCustomMiningStats.phaseResetAndEpochAccumulate();
 }
 
-static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
+// resetPhase: mining seed and beginOfCustomMiningPhase flag are only set once in the current phase, by setting this flag become true, we allow
+// set them if is in the middle of the phase.
+static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool resetPhase)
 {
     bool isBeginOfCustomMiningPhase = false;
     char isInCustomMiningPhase = 0;
 
-    // Check if current time is for full custom mining period
-    static bool fullExternalTimeBegin = false;
-
-    // Make sure the tick is valid
-    if (tickEpoch == system.epoch)
-    {
-        if (isFullExternalComputationTime(tickDate))
-        {
-            // Trigger time
-            if (!fullExternalTimeBegin)
-            {
-                fullExternalTimeBegin = true;
-                isBeginOfCustomMiningPhase = true;
-            }
-            isInCustomMiningPhase = 1;
-        }
-        else // Not in the full external time, just behavior like normal.
-        {
-            fullExternalTimeBegin = false;
-        }
-    }
-
-    if (!fullExternalTimeBegin)
+    // In case of reset phase, 
+    // - for internal mining phase (no matter beginning or in the middle) = > reset mining seed to new spectrum of the new epoch
+    // - for external mining phase => reset all counters are needed
+    if (resetPhase)
     {
         const unsigned int r = getTickInMiningPhaseCycle();
-        if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+        if (r < INTERNAL_COMPUTATIONS_INTERVAL)
         {
-            isInCustomMiningPhase = 1;
-            if (r == INTERNAL_COMPUTATIONS_INTERVAL)
-            {
-                isBeginOfCustomMiningPhase = true;
-            }
+            setNewMiningSeed();
         }
         else
         {
-            isInCustomMiningPhase = 0;
+            score->initMiningData(m256i::zero());
+            isBeginOfCustomMiningPhase = true;
+            isInCustomMiningPhase = 1;
+        }
+    }
+    else
+    {
+        // Check if current time is for full custom mining period
+        static bool isInFullExternalTime = false;
+
+        // Make sure the tick is valid and not in the reset phase state
+        if (tickEpoch == system.epoch)
+        {
+            if (isFullExternalComputationTime(tickDate))
+            {
+                // Trigger time
+                if (!isInFullExternalTime)
+                {
+                    isInFullExternalTime = true;
+
+                    // Turn off the qubic mining phase
+                    score->initMiningData(m256i::zero());
+
+                    // Start the custom mining phase
+                    isBeginOfCustomMiningPhase = true;
+                }
+                isInCustomMiningPhase = 1;
+            }
+            else // Not in the full external time.
+            {
+                isInFullExternalTime = false;
+            }
+        }
+
+        // Incase of the full custom mining is just end. The setNewMiningSeed() will wait for next period of qubic mining phase
+        if (!isInFullExternalTime)
+        {
+            const unsigned int r = getTickInMiningPhaseCycle();
+            if (!r)
+            {
+                setNewMiningSeed();
+            }
+            else
+            {
+                if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
+                {
+                    score->initMiningData(m256i::zero());
+                }
+
+                // Setting for custom mining phase
+                isInCustomMiningPhase = 0;
+                if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+                {
+                    isInCustomMiningPhase = 1;
+                    // Begin of custom mining phase. Turn the flag on so we can reset some state variables
+                    if (r == INTERNAL_COMPUTATIONS_INTERVAL)
+                    {
+                        isBeginOfCustomMiningPhase = true;
+                    }
+                }
+            }
         }
     }
 
@@ -1983,29 +1970,6 @@ static void checkAndSwitchCustomMiningPhase(short tickEpoch, TimeDate tickDate)
     ACQUIRE(gIsInCustomMiningStateLock);
     gIsInCustomMiningState = isInCustomMiningPhase;
     RELEASE(gIsInCustomMiningStateLock);
-
-}
-
-// a function to check and switch mining phase especially for begin/end epoch event
-// if we are in internal mining phase (no matter beginning or in the middle) => reset mining seed to new spectrum of the new epoch
-// same for external mining phase => reset all counters are needed
-// this function should be called after beginEpoch procedure
-// TODO: merge checkMiningPhaseBeginAndEndEpoch + checkAndSwitchCustomMiningPhase + checkAndSwitchMiningPhase
-static void checkMiningPhaseBeginAndEndEpoch()
-{
-    const unsigned int r = getTickInMiningPhaseCycle();
-    if (r < INTERNAL_COMPUTATIONS_INTERVAL)
-    {
-        setNewMiningSeed();
-    }
-    else
-    {
-        score->initMiningData(m256i::zero());
-        beginCustomMiningPhase();
-        ACQUIRE(gIsInCustomMiningStateLock);
-        gIsInCustomMiningState = 1;
-        RELEASE(gIsInCustomMiningStateLock);
-    }
 }
 
 // Updates the global numberTickTransactions based on the tick data in the tick storage.
@@ -5206,24 +5170,7 @@ static void tickProcessor(void*)
 
                                 updateNumberOfTickTransactions();
 
-                                short tickEpoch = 0;
-                                TimeDate currentTickDate;
-                                ts.tickData.acquireLock();
-                                const TickData& td = ts.tickData[currentTickIndex];
-                                currentTickDate.millisecond = td.millisecond;
-                                currentTickDate.second = td.second;
-                                currentTickDate.minute = td.minute;
-                                currentTickDate.hour = td.hour;
-                                currentTickDate.day = td.day;
-                                currentTickDate.month = td.month;
-                                currentTickDate.year = td.year;
-                                tickEpoch = td.epoch == system.epoch ? system.epoch : 0;
-                                ts.tickData.releaseLock();
-
-                                checkAndSwitchMiningPhase(tickEpoch, currentTickDate);
-
-                                checkAndSwitchCustomMiningPhase(tickEpoch, currentTickDate);
-
+                                bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
                                 {
 
@@ -5242,7 +5189,7 @@ static void tickProcessor(void*)
                                     epochTransitionState = 2;
 
                                     beginEpoch();
-                                    checkMiningPhaseBeginAndEndEpoch();
+                                    isBeginEpoch = true;
 
                                     // Some debug checks that we are ready for the next epoch
                                     ASSERT(system.numberOfSolutions == 0);
@@ -5273,6 +5220,22 @@ static void tickProcessor(void*)
                                     epochTransitionState = 0;
                                 }
                                 ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
+
+                                short tickEpoch = 0;
+                                TimeDate currentTickDate;
+                                ts.tickData.acquireLock();
+                                const TickData& td = ts.tickData[currentTickIndex];
+                                currentTickDate.millisecond = td.millisecond;
+                                currentTickDate.second = td.second;
+                                currentTickDate.minute = td.minute;
+                                currentTickDate.hour = td.hour;
+                                currentTickDate.day = td.day;
+                                currentTickDate.month = td.month;
+                                currentTickDate.year = td.year;
+                                tickEpoch = td.epoch == system.epoch ? system.epoch : 0;
+                                ts.tickData.releaseLock();
+
+                                checkAndSwitchMiningPhase(tickEpoch, currentTickDate, isBeginEpoch);
 
                                 gTickNumberOfComputors = 0;
                                 gTickTotalNumberOfComputors = 0;
@@ -5691,7 +5654,10 @@ static bool initialize()
     }
     else
     {
-        checkMiningPhaseBeginAndEndEpoch();
+        short tickEpoch = -1; 
+        TimeDate tickDate;
+        setMem((void*)&tickDate, sizeof(TimeDate), 0);
+        checkAndSwitchMiningPhase(tickEpoch, tickDate, true);
     }    
     score->loadScoreCache(system.epoch);
 
