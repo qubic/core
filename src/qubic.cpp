@@ -1815,13 +1815,27 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
-WeekDay gFullExternalStartTime;
-WeekDay gFullExternalEndTime;
+// Total number of external mining event.
+// Can set to zero to disable event 
+static constexpr int gNumberOfFullExternalMiningEvents = sizeof(gFullExternalComputationTimes) > 0 ? sizeof(gFullExternalComputationTimes) / sizeof(gFullExternalComputationTimes[0]) : 0;
+struct FullExternallEvent
+{
+    WeekDay startTime;
+    WeekDay endTime;
+};
+FullExternallEvent* gFullExternalEventTime = NULL;
 static bool gSpecialEventFullExternalComputationPeriod = false; // a flag indicates a special event (period) that the network running 100% external computation
+static WeekDay currentEventEndTime;
 
 
 static bool isFullExternalComputationTime(TimeDate tickDate)
 {
+    // No event
+    if (gNumberOfFullExternalMiningEvents <= 0)
+    {
+        return false;
+    }
+
     // Get current day of the week
     WeekDay tickWeekDay;
     tickWeekDay.hour = tickDate.hour;
@@ -1830,12 +1844,16 @@ static bool isFullExternalComputationTime(TimeDate tickDate)
     tickWeekDay.millisecond = tickDate.millisecond;
     tickWeekDay.dayOfWeek = getDayOfWeek(tickDate.day, tickDate.month, 2000 + tickDate.year);
 
-
-    // Check if the day is in range.
-    if (isWeekDayInRange(tickWeekDay, gFullExternalStartTime, gFullExternalEndTime))
+    // Check if the day is in range. Expect the time is not overlap.
+    for (int i = 0; i < gNumberOfFullExternalMiningEvents; ++i)
     {
-        gSpecialEventFullExternalComputationPeriod = true;
-        return true;
+        if (isWeekDayInRange(tickWeekDay, gFullExternalEventTime[i].startTime, gFullExternalEventTime[i].endTime))
+        {
+            gSpecialEventFullExternalComputationPeriod = true;
+
+            currentEventEndTime = gFullExternalEventTime[i].endTime;
+            return true;
+        }
     }
 
     // When not in range, and the time pass the gFullExternalEndTime. We need to make sure the ending happen
@@ -1844,9 +1862,9 @@ static bool isFullExternalComputationTime(TimeDate tickDate)
     {
         // Check time pass the end time
         TimeDate endTimeDate = tickDate;
-        endTimeDate.hour = gFullExternalEndTime.hour;
-        endTimeDate.minute = gFullExternalEndTime.minute;
-        endTimeDate.second = gFullExternalEndTime.second;
+        endTimeDate.hour = currentEventEndTime.hour;
+        endTimeDate.minute = currentEventEndTime.minute;
+        endTimeDate.second = currentEventEndTime.second;
 
         if (compareTimeDate(tickDate, endTimeDate) == 1)
         {
@@ -1859,7 +1877,7 @@ static bool isFullExternalComputationTime(TimeDate tickDate)
         }
     }
     
-    // The event only happen once
+    // Event is marked as end
     gSpecialEventFullExternalComputationPeriod = false;
     return false;
 }
@@ -3604,6 +3622,7 @@ static void beginEpoch()
 #endif
 
     logger.reset(system.initialTick);
+
 }
 
 
@@ -5759,8 +5778,19 @@ static bool initialize()
     emptyTickResolver.lastTryClock = 0;
 
     // Convert time parameters for full custom mining time
-    gFullExternalStartTime = convertWeekTimeFromPackedData(FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME);
-    gFullExternalEndTime = convertWeekTimeFromPackedData(FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME);
+    if (gNumberOfFullExternalMiningEvents > 0)
+    {
+        if ((!allocPoolWithErrorLog(L"gFullExternalEventTime", gNumberOfFullExternalMiningEvents * sizeof(FullExternallEvent), (void**)&gFullExternalEventTime, __LINE__)))
+        {
+            logToConsole(L"Can not initialize buffer for full external mining events.");
+            return false;
+        }
+        for (int i = 0; i < gNumberOfFullExternalMiningEvents; i++)
+        {
+            gFullExternalEventTime[i].startTime = convertWeekTimeFromPackedData(gFullExternalComputationTimes[i][0]);
+            gFullExternalEventTime[i].endTime = convertWeekTimeFromPackedData(gFullExternalComputationTimes[i][1]);
+        }
+    }
 
     return true;
 }
