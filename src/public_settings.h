@@ -100,10 +100,15 @@ static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
 #define EXTERNAL_COMPUTATIONS_INTERVAL (676 + 1)
 static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal computation phase needs to be at least equal NUMBER_OF_COMPUTORS");
 
-// Format is DoW-hh-mm-ss in hex format, total 4bytes, each use 1 bytes
+// List of start-end for full external computation times. The event must not be overlap.
+// Format is DoW-hh-mm-ss in hex format, total 4 bytes, each use 1 bytes
 // DoW: Day of the week 0: Sunday, 1 = Monday ...
-#define FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME 0x060C0000 // Sat 12:00:00
-#define FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME 0x000C0000 // Sun 12:00:00
+static unsigned long long gFullExternalComputationTimes[][2] =
+{
+    {0x040C0000ULL, 0x050C0000ULL}, // Thu 12:00:00 - Fri 12:00:00
+    {0x060C0000ULL, 0x000C0000ULL}, // Sat 12:00:00 - Sun 12:00:00
+    {0x010C0000ULL, 0x020C0000ULL}, // Mon 12:00:00 - Tue 12:00:00
+};
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
