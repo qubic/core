@@ -292,6 +292,8 @@ public:
         EthBridgeLogger log;
         uint64 i;
         bit slotFound;
+        uint64 cleanedSlots;  // NUEVA: Contador de slots limpiados
+        BridgeOrder emptyOrder; // NUEVA: Orden vacía para limpiar slots
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(createOrder)
