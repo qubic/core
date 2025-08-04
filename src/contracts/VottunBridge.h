@@ -430,7 +430,7 @@ public:
                             0, // No error
                             locals.newOrder.orderId,
                             input.amount,
-                            locals.cleanedSlots }; // Log number of cleaned slots
+                            0 }; // Terminator (char)
                         LOG_INFO(locals.log);
                         output.status = 0; // Success
                         output.orderId = locals.newOrder.orderId;
