@@ -1483,6 +1483,11 @@ void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 6] = i % 10 + L'0';
         gSystemCustomMiningSolutionCache[i].save(CUSTOM_MINING_CACHE_FILE_NAME, directory);
     }
+
+    CUSTOM_MINING_V2_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
+    CUSTOM_MINING_V2_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
+    CUSTOM_MINING_V2_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
+    gSystemCustomMiningSolutionV2Cache.save(CUSTOM_MINING_V2_CACHE_FILE_NAME, directory);
 }
 
 // Update score cache filename with epoch and try to load file
@@ -1501,6 +1506,12 @@ bool loadCustomMiningCache(int epoch)
         CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 6] = i % 10 + L'0';
         success &= gSystemCustomMiningSolutionCache[i].load(CUSTOM_MINING_CACHE_FILE_NAME);
     }
+
+    CUSTOM_MINING_V2_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
+    CUSTOM_MINING_V2_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
+    CUSTOM_MINING_V2_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_V2_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
+    success &= gSystemCustomMiningSolutionV2Cache.load(CUSTOM_MINING_V2_CACHE_FILE_NAME);
+
     return success;
 }
 #endif
