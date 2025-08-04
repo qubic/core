@@ -445,7 +445,7 @@ public:
                 99, // Custom error code for "no available slots"
                 0,  // No orderId
                 locals.cleanedSlots,  // Number of slots cleaned
-                0 };
+                '\0' }; // Terminator (char)
             LOG_INFO(locals.log);
             output.status = 3; // Error: no available slots
             return;
@@ -1225,7 +1225,7 @@ public:
             0, // No error
             0, // No order ID involved
             locals.depositAmount, // Amount added
-            state.lockedTokens // New total locked tokens
+            0 // Terminator (char)
         };
         LOG_INFO(locals.log);
 
