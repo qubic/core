@@ -1895,16 +1895,17 @@ static void beginCustomMiningPhase()
     gCustomMiningStats.phaseResetAndEpochAccumulate();
 }
 
-// resetPhase: mining seed and beginOfCustomMiningPhase flag are only set once in the current phase, by setting this flag become true, we allow
-// set them if is in the middle of the phase.
+// resetPhase: If true, allows reinitializing mining seed and the custom mining phase flag
+// even when already inside the current phase. These values are normally set only once
+// at the beginning of a phase.
 static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool resetPhase)
 {
     bool isBeginOfCustomMiningPhase = false;
     char isInCustomMiningPhase = 0;
 
-    // In case of reset phase, 
-    // - for internal mining phase (no matter beginning or in the middle) = > reset mining seed to new spectrum of the new epoch
-    // - for external mining phase => reset all counters are needed
+    // When resetting the phase:
+    // - If in the internal mining phase => reset the mining seed for the new epoch
+    // - If in the external (custom) mining phase => reset mining data (counters, etc.)
     if (resetPhase)
     {
         const unsigned int r = getTickInMiningPhaseCycle();
@@ -1921,7 +1922,7 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool r
     }
     else
     {
-        // Check if current time is for full custom mining period
+        // Track whether we’re currently in a full external computation window
         static bool isInFullExternalTime = false;
 
         // Make sure the tick is valid and not in the reset phase state
@@ -1942,8 +1943,9 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool r
                 }
                 isInCustomMiningPhase = 1;
             }
-            else // Not in the full external time.
+            else
             {
+                // Not in the full external phase anymore
                 isInFullExternalTime = false;
             }
         }
@@ -5782,7 +5784,6 @@ static bool initialize()
     {
         if ((!allocPoolWithErrorLog(L"gFullExternalEventTime", gNumberOfFullExternalMiningEvents * sizeof(FullExternallEvent), (void**)&gFullExternalEventTime, __LINE__)))
         {
-            logToConsole(L"Can not initialize buffer for full external mining events.");
             return false;
         }
         for (int i = 0; i < gNumberOfFullExternalMiningEvents; i++)
