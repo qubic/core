@@ -110,16 +110,6 @@ public:
     // Struct for structured, convenient access via ".tickTransactions"
     static struct TickTransactionsAccess
     {
-        void acquireLock()
-        {
-            ACQUIRE(tickTransactionsLock);
-        }
-
-        void releaseLock()
-        {
-            RELEASE(tickTransactionsLock);
-        }
-
         // Return pointer to Transaction based on transaction offset independent of epoch (checking offset with ASSERT)
         inline static Transaction* ptr(unsigned long long transactionOffset)
         {
@@ -301,8 +291,8 @@ public:
             unsigned int tickIndex = tickToIndexCurrentEpoch(tx->tick);
             const unsigned int transactionSize = tx->totalSize();
 
-            ACQUIRE(numSavedLock);
             acquireLock();
+            ACQUIRE(numSavedLock);
 
             if (numSavedTxsPerTick[tickIndex] < NUMBER_OF_TRANSACTIONS_PER_TICK
                 && nextTickTransactionOffset + transactionSize <= tickTransactionsSizeCurrentEpoch)
@@ -337,8 +327,8 @@ public:
             }
 #endif
 
-            releaseLock();
             RELEASE(numSavedLock);
+            releaseLock();
         }
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         if (txAdded)
