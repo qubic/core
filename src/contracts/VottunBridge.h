@@ -305,6 +305,8 @@ public:
         uint64 requiredFeeEth;
         uint64 requiredFeeQubic;
         uint64 totalRequiredFee;
+        uint64 cleanedSlots;  // NUEVA: Contador de slots limpiados
+        BridgeOrder emptyOrder; // NUEVA: Orden vacía para limpiar slots
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(createOrder)
@@ -456,7 +458,7 @@ public:
                 99, // Custom error code for "no available slots"
                 0,  // No orderId
                 locals.cleanedSlots,  // Number of slots cleaned
-                0 };
+                '\0' }; // Terminator (char)
             LOG_INFO(locals.log);
             output.status = 3; // Error: no available slots
             return;
