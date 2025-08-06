@@ -1308,6 +1308,10 @@ struct ScoreFunction
                             result.m256i_u8[byteCount++] = A;
                             A = 0;
                             count = 0;
+                            if (byteCount >= 32)
+                            {
+                                break;
+                            }
                         }
                     }
                 }

@@ -56,12 +56,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 253
-#define VERSION_C 1
+#define VERSION_B 254
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 172
-#define TICK 30655000
+#define EPOCH 173
+#define TICK 30940000
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 #define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"
@@ -74,6 +74,7 @@ static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";
 static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_revenue.eoe";
 static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache???.???";
+static unsigned short CUSTOM_MINING_V2_CACHE_FILE_NAME[] = L"custom_mining_v2_cache.???";
 
 static constexpr unsigned long long NUMBER_OF_INPUT_NEURONS = 512;     // K
 static constexpr unsigned long long NUMBER_OF_OUTPUT_NEURONS = 512;    // L
@@ -100,10 +101,15 @@ static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
 #define EXTERNAL_COMPUTATIONS_INTERVAL (676 + 1)
 static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal computation phase needs to be at least equal NUMBER_OF_COMPUTORS");
 
-// Format is DoW-hh-mm-ss in hex format, total 4bytes, each use 1 bytes
+// List of start-end for full external computation times. The event must not be overlap.
+// Format is DoW-hh-mm-ss in hex format, total 4 bytes, each use 1 bytes
 // DoW: Day of the week 0: Sunday, 1 = Monday ...
-#define FULL_EXTERNAL_COMPUTATIONS_TIME_START_TIME 0x060C0000 // Sat 12:00:00
-#define FULL_EXTERNAL_COMPUTATIONS_TIME_STOP_TIME 0x000C0000 // Sun 12:00:00
+static unsigned long long gFullExternalComputationTimes[][2] =
+{
+    {0x040C0000ULL, 0x050C0000ULL}, // Thu 12:00:00 - Fri 12:00:00
+    {0x060C0000ULL, 0x000C0000ULL}, // Sat 12:00:00 - Sun 12:00:00
+    {0x010C0000ULL, 0x020C0000ULL}, // Mon 12:00:00 - Tue 12:00:00
+};
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
