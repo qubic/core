@@ -204,6 +204,16 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE NOST2
 #include "contracts/Nostromo.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define VOTTUNBRIDGE_CONTRACT_INDEX 15  // CORREGIDO: nombre correcto
+#define CONTRACT_INDEX VOTTUNBRIDGE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE VOTTUNBRIDGE
+#define CONTRACT_STATE2_TYPE VOTTUNBRIDGE2
+#include "contracts/VottunBridge.h"
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -301,6 +311,7 @@ constexpr struct ContractDescription
     {"QBAY", 154, 10000, sizeof(QBAY)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
     {"QSWAP", 171, 10000, sizeof(QSWAP)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
     {"NOST", 172, 10000, sizeof(NOST)}, // proposal in epoch 170, IPO in 171, construction and first use in 172
+    {"VBRIDGE", 190, 10000, sizeof(VOTTUNBRIDGE)},
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
@@ -404,6 +415,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBAY);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSWAP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(NOST);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
