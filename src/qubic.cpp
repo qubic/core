@@ -3047,7 +3047,12 @@ static void processTick(unsigned long long processorNumber)
         // it should never go here
     }
 
-    if (system.tick == system.initialTick)
+    // Ensure to only call INITIALIZE and BEGIN_EPOCH once per epoch:
+    // system.initialTick usually is the first tick of the epoch, except when the network is restarted
+    // from scratch with a new TICK (which shall be indicated by TICK_IS_FIRST_TICK_OF_EPOCH == 0).
+    // However, after seamless epoch transition (system.epoch > EPOCH), system.initialTick is the first
+    // tick of the epoch in any case.
+    if (system.tick == system.initialTick && (TICK_IS_FIRST_TICK_OF_EPOCH || system.epoch > EPOCH))
     {
         PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
