@@ -143,6 +143,7 @@ static volatile char entityPendingTransactionsLock = 0;
 static unsigned char* entityPendingTransactions = NULL;
 static unsigned char* entityPendingTransactionDigests = NULL;
 static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY]; // [SPECTRUM_CAPACITY] must be >= than [NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR]
+static unsigned long long entityPendingTransactionWeight[SPECTRUM_CAPACITY]; // [SPECTRUM_CAPACITY] must be >= than [NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR]
 static volatile char computorPendingTransactionsLock = 0;
 static unsigned char* computorPendingTransactions = NULL;
 static unsigned char* computorPendingTransactionDigests = NULL;
@@ -3016,6 +3017,94 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
     return false;
 }
 
+#define MAX_STATIC_HEAP_SIZE NUMBER_OF_TRANSACTIONS_PER_TICK
+unsigned long long heap_weights[MAX_STATIC_HEAP_SIZE];
+
+typedef struct {
+    unsigned long long weight;
+    unsigned int index;
+} PendingTxData;
+
+// A struct to represent the Min-Heap.
+// It holds the heap's data, its current size, and its maximum capacity.
+typedef struct {
+    PendingTxData* data; // Pointer to a PendingTxData array
+    int size;          // Current number of elements in the heap
+    int capacity;      // Maximum number of elements the heap can hold
+} MinHeap;
+
+PendingTxData heap_data[MAX_STATIC_HEAP_SIZE];
+
+static void swapHeapPendingTxData(PendingTxData* a, PendingTxData* b) {
+    PendingTxData temp = *a;
+    *a = *b;
+    *b = temp;
+}
+static void minHeapSiftDown(MinHeap* heap, int i) {
+    while (1) {
+        int smallest = i;
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+
+        if (left < heap->size && heap->data[left].weight < heap->data[smallest].weight) {
+            smallest = left;
+        }
+        if (right < heap->size && heap->data[right].weight < heap->data[smallest].weight) {
+            smallest = right;
+        }
+
+        if (smallest == i) {
+            break;
+        }
+
+        swapHeapPendingTxData(&heap->data[i], &heap->data[smallest]);
+        i = smallest;
+    }
+}
+static int comparePendingTxData(const void* a, const void* b) {
+    const PendingTxData* t1 = (const PendingTxData*)a;
+    const PendingTxData* t2 = (const PendingTxData*)b;
+    if (t1->weight < t2->weight) return 1;
+    if (t1->weight > t2->weight) return -1;
+    return 0;
+}
+
+static void filterPendingTransaction(unsigned int& numberOfEntityPendingTransactionIndices)
+{
+    int k = customLimitTransaction;
+    if (k > numberOfEntityPendingTransactionIndices) return;
+
+    MinHeap heap;
+    heap.data = heap_data; // Point to the stack-allocated array
+    heap.capacity = k;
+
+    for (int i = 0; i < k; i++) {
+        heap.data[i].weight = entityPendingTransactionWeight[i];
+        heap.data[i].index = entityPendingTransactionIndices[i];
+    }
+    heap.size = k;
+
+    for (int i = (k / 2) - 1; i >= 0; i--) {
+        minHeapSiftDown(&heap, i);
+    }
+
+    for (unsigned int i = k; i < numberOfEntityPendingTransactionIndices; i++) {
+        // If the current element is larger than the smallest in the heap, replace it.
+        if (entityPendingTransactionWeight[i] > heap.data[0].weight) {
+            heap.data[0].weight = entityPendingTransactionWeight[i];
+            heap.data[0].index = entityPendingTransactionIndices[i];
+            minHeapSiftDown(&heap, 0);
+        }
+    }
+
+    for (unsigned int i = 0; i < k; i++) {
+        entityPendingTransactionWeight[i] = heap.data[i].weight;
+        entityPendingTransactionIndices[i] = heap.data[i].index;
+    }
+
+    numberOfEntityPendingTransactionIndices = k;
+}
+
 OPTIMIZE_OFF()
 static void processTick(unsigned long long processorNumber)
 {
@@ -3352,9 +3441,15 @@ static void processTick(unsigned long long processorNumber)
                         const Transaction* tx = ((Transaction*)&entityPendingTransactions[k * MAX_TRANSACTION_SIZE]);
                         if (tx->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
                         {
-                            entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices++] = k;
+                            int index = numberOfEntityPendingTransactionIndices++;
+                            auto _spectrumIndex = spectrumIndex(tx->sourcePublicKey);
+                            auto& e = spectrum[_spectrumIndex];
+                            entityPendingTransactionIndices[index] = k;
+                            entityPendingTransactionWeight[index] = tx->amount*(tx->tick - e.latestOutgoingTransferTick);
                         }
                     }
+
+                    filterPendingTransaction(numberOfEntityPendingTransactionIndices);
 
                     // Randomly select non-computor tx scheduled for the tick until tick is full or all pending tx are included
                     while (j < customLimitTransaction && numberOfEntityPendingTransactionIndices)
