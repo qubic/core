@@ -137,6 +137,7 @@ static unsigned int uniqueNextTickTransactionDigestCounters[NUMBER_OF_COMPUTORS]
 
 static unsigned int resourceTestingDigest = 0;
 
+static unsigned int customLimitTransaction = NUMBER_OF_TRANSACTIONS_PER_TICK; // in case of bad network topo, computors can reduce this number to improve tick quality
 static unsigned int numberOfTransactions = 0;
 static volatile char entityPendingTransactionsLock = 0;
 static unsigned char* entityPendingTransactions = NULL;
@@ -3306,7 +3307,7 @@ static void processTick(unsigned long long processorNumber)
                     }
 
                     // Randomly select computor tx scheduled for the tick until tick is full or all pending tx are included
-                    while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
+                    while (j < customLimitTransaction && numberOfEntityPendingTransactionIndices)
                     {
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
 
@@ -3349,7 +3350,7 @@ static void processTick(unsigned long long processorNumber)
                     }
 
                     // Randomly select non-computor tx scheduled for the tick until tick is full or all pending tx are included
-                    while (j < NUMBER_OF_TRANSACTIONS_PER_TICK && numberOfEntityPendingTransactionIndices)
+                    while (j < customLimitTransaction && numberOfEntityPendingTransactionIndices)
                     {
                         const unsigned int index = random(numberOfEntityPendingTransactionIndices);
 
