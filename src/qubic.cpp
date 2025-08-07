@@ -1797,6 +1797,13 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(peer, sizeof(SpecialCommandSetConsoleLoggingModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
+            case SPECIAL_COMMAND_SET_CUSTOM_LIMIT_TX:
+            {
+                const auto* _request = header->getPayload< SpecialCommandSetCustomLimitTx>();
+                customLimitTransaction = _request->newCustomLimitTransaction;
+                enqueueResponse(peer, sizeof(SpecialCommandSetCustomLimitTx), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+            }
+            break;
             }
         }
     }
@@ -6459,6 +6466,11 @@ static void processKeyPresses()
 
             setText(message, L"resourceTestingDigest = ");
             appendNumber(message, resourceTestingDigest, false);
+            appendText(message, L".");
+            logToConsole(message);
+
+            setText(message, L"customLimitTransaction = ");
+            appendNumber(message, customLimitTransaction, false);
             appendText(message, L".");
             logToConsole(message);
 
