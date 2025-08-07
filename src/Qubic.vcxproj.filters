@@ -243,6 +243,9 @@
     <ClInclude Include="contracts\Qswap.h">
       <Filter>contracts</Filter>
     </ClInclude>
+	<ClInclude Include="VottunBridge.h">
+	  <Filter>contracts</Filter>
+	</ClInclude>
     <ClInclude Include="platform\uint128.h">
       <Filter>platform</Filter>
     </ClInclude>
@@ -272,7 +275,7 @@
     <ClInclude Include="revenue.h" />
     <ClInclude Include="contract_core\qpi_mining_impl.h">
       <Filter>contract_core</Filter>
-    </ClInclude>
+    </ClInclude
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
