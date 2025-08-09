@@ -1211,6 +1211,9 @@ namespace QPI
 			// Propose to set variable to a value. Supported options: 2 <= N <= 5 with ProposalDataV1; N == 0 means scalar voting.
 			static constexpr uint16 Variable = 0x200;
 
+			// Propose to set multiple variables. Supported options: 2 <= N <= 8 with ProposalDataV1
+			static constexpr uint16 MultiVariables = 0x300;
+
 			// Propose to transfer amount to address in a specific epoch. Supported options: 1 with ProposalDataV1.
 			static constexpr uint16 TransferInEpoch = 0x400;
 		};
@@ -1254,6 +1257,16 @@ namespace QPI
 		// Set given variable to value, allowing to vote with scalar value, voting result is mean value
 		static constexpr uint16 VariableScalarMean = Class::Variable | 0;
 
+		// Set multiple variables with options yes/no (data stored by contract) -> result is histogram of options
+		static constexpr uint16 MultiVariablesYesNo = Class::MultiVariables | 2;
+
+		// Set multiple variables with 3 options "no change" / "values A" / "values B" (data stored by contract)
+		// -> result is histogram of options
+		static constexpr uint16 MultiVariablesThreeOptions = Class::MultiVariables | 3;
+
+		// Set multiple variables with 4 options "no change" / "values A" / "values B" / "values C" (data stored by
+		// contract) -> result is histogram of options
+		static constexpr uint16 MultiVariablesFourOptions = Class::MultiVariables | 4;
 
 		// Contruct type from class + number of options (no checking if type is valid)
 		static constexpr uint16 type(uint16 cls, uint16 options)
@@ -1332,6 +1345,12 @@ namespace QPI
 				static constexpr sint64 minSupportedValue = 0x8000000000000001;
 				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
 			} variableScalar;
+
+			// Used if type class is MultiVariables
+			struct MultiVariablesOptions
+			{
+				uint64 dataRefIdx;          // For referencing additional proposal data (interpreted by contract only)
+			} multiVariablesOptions;
 		};
 
 		// Check if content of instance are valid. Epoch is not checked.
@@ -1345,6 +1364,7 @@ namespace QPI
 			switch (cls)
 			{
 			case ProposalTypes::Class::GeneralOptions:
+			case ProposalTypes::Class::MultiVariables:
 				okay = options >= 2 && options <= 8;
 				break;
 			case ProposalTypes::Class::Transfer:
@@ -1433,6 +1453,12 @@ namespace QPI
 				uint64 variable;    // For identifying variable (interpreted by contract only)
 				sint64 value;		// Value of proposed option, rest zero
 			} variableOptions;
+
+			// Used if type class is MultiVariables
+			struct MultiVariablesOptions
+			{
+				uint64 dataRefIdx;  // For referencing additional proposal data (interpreted by contract only)
+			} multiVariablesOptions;
 		};
 
 		// Check if content of instance are valid. Epoch is not checked.
@@ -1446,7 +1472,8 @@ namespace QPI
 			switch (cls)
 			{
 			case ProposalTypes::Class::GeneralOptions:
-				okay = options >= 2 && options <= 3;
+			case ProposalTypes::Class::MultiVariables:
+				okay = options >= 2 && options <= 3; // 3 options can be encoded in the yes/no type of storage as well
 				break;
 			case ProposalTypes::Class::Transfer:
 				okay = (options == 2 && !isZero(transfer.destination) && transfer.amount >= 0);
@@ -1477,7 +1504,8 @@ namespace QPI
 	template <uint16 proposalSlotCount>
 	struct ProposalByAnyoneVotingByComputors;
 
-	template <unsigned int maxShareholders>
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting and setting proposals for contract shareholders only.
+	template <uint16 proposalSlotCount, uint64 contractAssetName>
 	struct ProposalAndVotingByShareholders;
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
@@ -1543,11 +1571,19 @@ namespace QPI
 		// Return proposer ID of given proposal index or NULL_ID if there is no proposal at this index
 		id proposerId(uint16 proposalIndex) const;
 
-		// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote
-		uint32 voterIndex(const id& voterId) const;
+		// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote. If the voter has multiple
+		// votes, this returns the first index. All votes of a voter are stored consecutively.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		uint32 voterIndex(const id& voterId, uint16 proposalIndex = 0) const;
 
 		// Return ID for given voter index or NULL_ID if index is invalid
-		id voterId(uint32 voterIndex) const;
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		id voterId(uint32 voterIndex, uint16 proposalIndex = 0) const;
+
+		// Return count of votes of a voter if the first voter index is passed. Otherwise return the number of votes
+		// including this and the following indices. Returns 0 if an invalid index is passed.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		uint32 voteCount(uint32 voterIndex, uint16 proposalIndex = 0) const;
 
 		// Return next proposal index of proposals of given epoch (default: current epoch)
 		// or -1 if there are not any more such proposals behind the passed index.
