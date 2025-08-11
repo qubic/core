@@ -1,0 +1,23 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: ContractVerify
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  contract_verify_job:
+    runs-on: ubuntu-latest
+    name: Verify smart contract files
+    steps:
+      - name: Contract verify action step
+        id: verify
+        uses: Franziska-Mueller/qubic-contract-verify@v0.2
+        with:
+          filepath: '/github/workspace/src/contracts/MyLastMatch.h'
