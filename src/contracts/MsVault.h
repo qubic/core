@@ -151,6 +151,16 @@ public:
         uint64 result;
     };
 
+    struct getManagedAssetBalance_input
+    {
+        Asset asset;
+        id owner;
+    };
+    struct getManagedAssetBalance_output
+    {
+        sint64 balance;
+    };
+
     // Procedures and functions' structs
     struct registerVault_input
     {
@@ -854,7 +864,7 @@ protected:
             { qpi.invocator(), SELF_INDEX },
             { qpi.invocator(), SELF_INDEX });
 
-        if (locals.userAssetBalance < input.amount || input.amount == 0)
+        if (locals.userAssetBalance < (sint64)input.amount || input.amount == 0)
         {
             // User does not have enough shares, or is trying to deposit zero. Abort.
             return;
@@ -908,8 +918,8 @@ protected:
         qpi.transferShareOwnershipAndPossession(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(), input.amount, SELF);
 
         locals.transferedShares = qpi.numberOfShares(input.asset, { SELF, SELF_INDEX }, { SELF, SELF_INDEX }) - locals.tempShares;
-        
-        if (locals.transferedShares != input.amount)
+
+        if (locals.transferedShares != (sint64)input.amount)
         {
             return;
         }
@@ -1719,6 +1729,16 @@ protected:
         output.status = 1ULL;
     }
 
+    PUBLIC_FUNCTION(getManagedAssetBalance)
+    {
+        // Get management rights balance the owner transferred to MsVault
+        output.balance = qpi.numberOfShares(
+            input.asset,
+            { input.owner, SELF_INDEX },
+            { input.owner, SELF_INDEX }
+        );
+    }
+
     PUBLIC_FUNCTION_WITH_LOCALS(getUniqueFeeVotesRanking)
     {
         output.status = 0ULL;
@@ -1856,6 +1876,7 @@ protected:
         REGISTER_USER_PROCEDURE(resetAssetRelease, 21);
         REGISTER_USER_FUNCTION(getVaultAssetBalances, 22);
         REGISTER_USER_FUNCTION(getAssetReleaseStatus, 23);
+        REGISTER_USER_FUNCTION(getManagedAssetBalance, 24);
     }
 
     PRE_ACQUIRE_SHARES()
