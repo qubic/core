@@ -275,7 +275,7 @@
     <ClInclude Include="revenue.h" />
     <ClInclude Include="contract_core\qpi_mining_impl.h">
       <Filter>contract_core</Filter>
-    </ClInclude
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

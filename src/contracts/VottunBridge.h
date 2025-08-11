@@ -105,7 +105,7 @@ public:
         uint8 status;
     };
 
-    // NEW: Withdraw Fees structures
+    // Withdraw Fees structures
     struct withdrawFees_input
     {
         uint64 amount;
@@ -116,7 +116,7 @@ public:
         uint8 status;
     };
 
-    // NEW: Get Available Fees structures
+    // Get Available Fees structures
     struct getAvailableFees_input
     {
         // No parameters
@@ -178,7 +178,7 @@ public:
         uint64 earnedFees;
         uint32 tradeFeeBillionths;
         uint32 sourceChain;
-        // NEW: Debug info
+        // Debug info
         Array<BridgeOrder, 16> firstOrders; // First 16 orders
         uint64 totalOrdersFound;            // How many non-empty orders exist
         uint64 emptySlots;
@@ -244,7 +244,7 @@ public:
     // Contract State
     Array<BridgeOrder, 1024> orders; // Increased from 256 to 1024
     id admin;                        // Primary admin address
-    id feeRecipient;                 // NEW: Specific wallet to receive fees
+    id feeRecipient;                 // Specific wallet to receive fees
     Array<id, 16> managers;          // Managers list
     uint64 nextOrderId;              // Counter for order IDs
     uint64 lockedTokens;             // Total locked tokens in the contract (balance)
@@ -260,12 +260,7 @@ public:
     typedef id isAdmin_input;
     typedef bit isAdmin_output;
 
-    struct isAdmin_locals
-    {
-        // No locals needed for this simple function
-    };
-
-    PRIVATE_FUNCTION_WITH_LOCALS(isAdmin)
+    PRIVATE_FUNCTION(isAdmin)
     {
         output = (qpi.invocator() == state.admin);
     }
@@ -273,16 +268,11 @@ public:
     typedef id isManager_input;
     typedef bit isManager_output;
 
-    struct isManager_locals
+    PRIVATE_FUNCTION(isManager)
     {
-        uint64 i;
-    };
-
-    PRIVATE_FUNCTION_WITH_LOCALS(isManager)
-    {
-        for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
+        for (uint64 i = 0; i < state.managers.capacity(); ++i)
         {
-            if (state.managers.get(locals.i) == input)
+            if (state.managers.get(i) == input)
             {
                 output = true;
                 return;
@@ -300,13 +290,11 @@ public:
         uint64 i;
         uint64 j;
         bit slotFound;
-        uint64 cleanedSlots;  // NEW: Counter for cleaned slots
-        BridgeOrder emptyOrder; // NEW: Empty order to clean slots
+        uint64 cleanedSlots;  // Counter for cleaned slots
+        BridgeOrder emptyOrder; // Empty order to clean slots
         uint64 requiredFeeEth;
         uint64 requiredFeeQubic;
         uint64 totalRequiredFee;
-        uint64 cleanedSlots;  // NUEVA: Contador de slots limpiados
-        BridgeOrder emptyOrder; // NUEVA: Orden vacía para limpiar slots
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(createOrder)
@@ -326,8 +314,8 @@ public:
         }
 
         // Calculate fees as percentage of amount (0.5% each, 1% total)
-        locals.requiredFeeEth = (input.amount * state._tradeFeeBillionths) / 1000000000ULL;
-        locals.requiredFeeQubic = (input.amount * state._tradeFeeBillionths) / 1000000000ULL;
+        locals.requiredFeeEth = div(input.amount * state._tradeFeeBillionths, 1000000000ULL);
+        locals.requiredFeeQubic = div(input.amount * state._tradeFeeBillionths, 1000000000ULL);
         locals.totalRequiredFee = locals.requiredFeeEth + locals.requiredFeeQubic;
 
         // Verify that the fee paid is sufficient for both fees
