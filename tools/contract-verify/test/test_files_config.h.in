@@ -1,6 +1,0 @@
-#pragma once 
-
-namespace testfiles 
-{
-    static constexpr auto baseDir = "@TEST_FILE_PATH@";
-}
