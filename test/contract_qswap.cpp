@@ -62,39 +62,45 @@ public:
 		return load(filename, sizeof(QSWAP), contractStates[QSWAP_CONTRACT_INDEX]) == sizeof(QSWAP);
 	}
 
-	QSWAP::TeamInfo_output teamInfo(){
+	QSWAP::TeamInfo_output teamInfo()
+    {
         QSWAP::TeamInfo_input input{};
 		QSWAP::TeamInfo_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, TEAM_INFO_IDX, input, output);
 		return output;
 	}
 
-	bool setTeamId(const id& issuer, QSWAP::SetTeamInfo_input input){
+	bool setTeamId(const id& issuer, QSWAP::SetTeamInfo_input input)
+    {
 		QSWAP::CreatePool_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, SET_TEAM_INFO_IDX, input, output, issuer, 0);
 		return output.success;
 	}
 
-	sint64 issueAsset(const id& issuer, QSWAP::IssueAsset_input input){
+	sint64 issueAsset(const id& issuer, QSWAP::IssueAsset_input input)
+    {
 		QSWAP::IssueAsset_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, ISSUE_ASSET_IDX, input, output, issuer, QSWAP_ISSUE_ASSET_FEE);
 		return output.issuedNumberOfShares;
 	}
 
-    sint64 transferAsset(const id& issuer, QSWAP::TransferShareOwnershipAndPossession_input input){
+    sint64 transferAsset(const id& issuer, QSWAP::TransferShareOwnershipAndPossession_input input)
+    {
         QSWAP::TransferShareOwnershipAndPossession_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, TRANSFER_SHARE_OWNERSHIP_AND_POSSESSION_IDX, input, output, issuer, QSWAP_TRANSFER_ASSET_FEE);
         return output.transferredAmount;
     }
 
-	bool createPool(const id& issuer, uint64 assetName){
+	bool createPool(const id& issuer, uint64 assetName)
+    {
 		QSWAP::CreatePool_input input{issuer, assetName};
 		QSWAP::CreatePool_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, CREATE_POOL_IDX, input, output, issuer, QSWAP_CREATE_POOL_FEE);
 		return output.success;
 	}
 
-	QSWAP::GetPoolBasicState_output getPoolBasicState(const id& issuer, uint64 assetName){
+	QSWAP::GetPoolBasicState_output getPoolBasicState(const id& issuer, uint64 assetName)
+    {
 		QSWAP::GetPoolBasicState_input input{issuer, assetName};
 		QSWAP::GetPoolBasicState_output output;
 
@@ -102,7 +108,8 @@ public:
 		return output;
 	}
 
-	QSWAP::AddLiquidity_output addLiquidity(const id& issuer, QSWAP::AddLiquidity_input input, uint64 inputValue){
+	QSWAP::AddLiquidity_output addLiquidity(const id& issuer, QSWAP::AddLiquidity_input input, uint64 inputValue)
+    {
 		QSWAP::AddLiquidity_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -115,7 +122,8 @@ public:
 		return output;
 	}
 
-	QSWAP::RemoveLiquidity_output removeLiquidity(const id& issuer, QSWAP::RemoveLiquidity_input input, uint64 inputValue){
+	QSWAP::RemoveLiquidity_output removeLiquidity(const id& issuer, QSWAP::RemoveLiquidity_input input, uint64 inputValue)
+    {
 		QSWAP::RemoveLiquidity_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -128,13 +136,15 @@ public:
 		return output;
 	}
 
-	QSWAP::GetLiquidityOf_output getLiquidityOf(QSWAP::GetLiquidityOf_input input){
+	QSWAP::GetLiquidityOf_output getLiquidityOf(QSWAP::GetLiquidityOf_input input)
+    {
 		QSWAP::GetLiquidityOf_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, GET_LIQUIDITY_OF_IDX, input, output);
 		return output;
 	}
 
-	QSWAP::SwapExactQuForAsset_output swapExactQuForAsset( const id& issuer, QSWAP::SwapExactQuForAsset_input input, uint64 inputValue) {
+	QSWAP::SwapExactQuForAsset_output swapExactQuForAsset( const id& issuer, QSWAP::SwapExactQuForAsset_input input, uint64 inputValue)
+    {
 		QSWAP::SwapExactQuForAsset_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -148,7 +158,8 @@ public:
 		return output;
 	}
 
-	QSWAP::SwapQuForExactAsset_output swapQuForExactAsset( const id& issuer, QSWAP::SwapQuForExactAsset_input input, uint64 inputValue) {
+	QSWAP::SwapQuForExactAsset_output swapQuForExactAsset( const id& issuer, QSWAP::SwapQuForExactAsset_input input, uint64 inputValue)
+    {
 		QSWAP::SwapQuForExactAsset_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -162,7 +173,8 @@ public:
 		return output;
 	}
 
-	QSWAP::SwapExactAssetForQu_output swapExactAssetForQu(const id& issuer, QSWAP::SwapExactAssetForQu_input input, uint64 inputValue) {
+	QSWAP::SwapExactAssetForQu_output swapExactAssetForQu(const id& issuer, QSWAP::SwapExactAssetForQu_input input, uint64 inputValue) 
+    {
 		QSWAP::SwapExactAssetForQu_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -176,7 +188,8 @@ public:
 		return output;
 	}
 
-	QSWAP::SwapAssetForExactQu_output swapAssetForExactQu(const id& issuer, QSWAP::SwapAssetForExactQu_input input, uint64 inputValue) {
+	QSWAP::SwapAssetForExactQu_output swapAssetForExactQu(const id& issuer, QSWAP::SwapAssetForExactQu_input input, uint64 inputValue) 
+    {
 		QSWAP::SwapAssetForExactQu_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -190,25 +203,29 @@ public:
 		return output;
 	}
 
-    QSWAP::QuoteExactQuInput_output quoteExactQuInput(QSWAP::QuoteExactQuInput_input input) {
+    QSWAP::QuoteExactQuInput_output quoteExactQuInput(QSWAP::QuoteExactQuInput_input input) 
+    {
 		QSWAP::QuoteExactQuInput_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_QU_INPUT_IDX, input, output);
 		return output;
     }
 
-    QSWAP::QuoteExactQuOutput_output quoteExactQuOutput(QSWAP::QuoteExactQuOutput_input input) {
+    QSWAP::QuoteExactQuOutput_output quoteExactQuOutput(QSWAP::QuoteExactQuOutput_input input) 
+    {
 		QSWAP::QuoteExactQuOutput_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_QU_OUTPUT_IDX, input, output);
 		return output;
     }
 
-    QSWAP::QuoteExactAssetInput_output quoteExactAssetInput(QSWAP::QuoteExactAssetInput_input input){
+    QSWAP::QuoteExactAssetInput_output quoteExactAssetInput(QSWAP::QuoteExactAssetInput_input input)
+    {
 		QSWAP::QuoteExactAssetInput_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_ASSET_INPUT_IDX, input, output);
 		return output;
     }
 
-    QSWAP::QuoteExactAssetOutput_output quoteExactAssetOutput(QSWAP::QuoteExactAssetOutput_input input){
+    QSWAP::QuoteExactAssetOutput_output quoteExactAssetOutput(QSWAP::QuoteExactAssetOutput_input input)
+    {
 		QSWAP::QuoteExactAssetOutput_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_ASSET_OUTPUT_IDX, input, output);
 		return output;

@@ -258,7 +258,7 @@ protected:
 	};
 
 	Array<PoolBasicState, QSWAP_MAX_POOL> mPoolBasicStates;
-	Collection<LiquidityInfo, QSWAP_MAX_POOL * QSWAP_MAX_USER_PER_POOL> mLiquiditys;
+	Collection<LiquidityInfo, QSWAP_MAX_POOL * QSWAP_MAX_USER_PER_POOL> mLiquidities;
 
 	inline static sint64 min(sint64 a, sint64 b) 
 	{
@@ -475,16 +475,16 @@ protected:
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		locals.liqElementIndex = state.mLiquiditys.headIndex(locals.poolID, 0);
+		locals.liqElementIndex = state.mLiquidities.headIndex(locals.poolID, 0);
 
 		while (locals.liqElementIndex != NULL_INDEX)
 		{
-			if (state.mLiquiditys.element(locals.liqElementIndex).entity == input.account)
+			if (state.mLiquidities.element(locals.liqElementIndex).entity == input.account)
 			{
-				output.liquidity = state.mLiquiditys.element(locals.liqElementIndex).liquidity;
+				output.liquidity = state.mLiquidities.element(locals.liqElementIndex).liquidity;
 				return;
 			}
-			locals.liqElementIndex = state.mLiquiditys.nextElementIndex(locals.liqElementIndex);
+			locals.liqElementIndex = state.mLiquidities.nextElementIndex(locals.liqElementIndex);
 		}
 	}
 
@@ -1090,11 +1090,11 @@ protected:
 			// permanently lock the first MINIMUM_LIQUIDITY tokens
 			locals.tmpLiquidity.entity = SELF;
 			locals.tmpLiquidity.liquidity = QSWAP_MIN_LIQUIDITY;
-			state.mLiquiditys.add(locals.poolID, locals.tmpLiquidity, 0);
+			state.mLiquidities.add(locals.poolID, locals.tmpLiquidity, 0);
 
 			locals.tmpLiquidity.entity = qpi.invocator();
 			locals.tmpLiquidity.liquidity = locals.increaseLiquidity - QSWAP_MIN_LIQUIDITY;
-			state.mLiquiditys.add(locals.poolID, locals.tmpLiquidity, 0);
+			state.mLiquidities.add(locals.poolID, locals.tmpLiquidity, 0);
 
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
@@ -1135,19 +1135,19 @@ protected:
 			}
 
 			// find user liquidity index
-			locals.userLiquidityElementIndex = state.mLiquiditys.headIndex(locals.poolID, 0);
+			locals.userLiquidityElementIndex = state.mLiquidities.headIndex(locals.poolID, 0);
 			while (locals.userLiquidityElementIndex != NULL_INDEX)
 			{
-				if(state.mLiquiditys.element(locals.userLiquidityElementIndex).entity == qpi.invocator())
+				if(state.mLiquidities.element(locals.userLiquidityElementIndex).entity == qpi.invocator())
 				{
 					break;
 				}
 
-				locals.userLiquidityElementIndex = state.mLiquiditys.nextElementIndex(locals.userLiquidityElementIndex);
+				locals.userLiquidityElementIndex = state.mLiquidities.nextElementIndex(locals.userLiquidityElementIndex);
 			}
 
 			// no more space for new liquidity item
-			if ((locals.userLiquidityElementIndex == NULL_INDEX) && ( state.mLiquiditys.population() == state.mLiquiditys.capacity()))
+			if ((locals.userLiquidityElementIndex == NULL_INDEX) && ( state.mLiquidities.population() == state.mLiquidities.capacity()))
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
@@ -1190,13 +1190,13 @@ protected:
 			{
 				locals.tmpLiquidity.entity = qpi.invocator();
 				locals.tmpLiquidity.liquidity = locals.increaseLiquidity;
-				state.mLiquiditys.add(locals.poolID, locals.tmpLiquidity, 0);
+				state.mLiquidities.add(locals.poolID, locals.tmpLiquidity, 0);
 			}
 			else
 			{
-				locals.tmpLiquidity = state.mLiquiditys.element(locals.userLiquidityElementIndex);
+				locals.tmpLiquidity = state.mLiquidities.element(locals.userLiquidityElementIndex);
 				locals.tmpLiquidity.liquidity += locals.increaseLiquidity;
-				state.mLiquiditys.replace(locals.userLiquidityElementIndex, locals.tmpLiquidity);
+				state.mLiquidities.replace(locals.userLiquidityElementIndex, locals.tmpLiquidity);
 			}
 
 			output.quAmount = locals.quTransferAmount;
@@ -1268,15 +1268,15 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		locals.userLiquidityElementIndex = state.mLiquiditys.headIndex(locals.poolID, 0);
+		locals.userLiquidityElementIndex = state.mLiquidities.headIndex(locals.poolID, 0);
 		while (locals.userLiquidityElementIndex != NULL_INDEX)
 		{
-			if(state.mLiquiditys.element(locals.userLiquidityElementIndex).entity == qpi.invocator())
+			if(state.mLiquidities.element(locals.userLiquidityElementIndex).entity == qpi.invocator())
 			{
 				break;
 			}
 
-			locals.userLiquidityElementIndex = state.mLiquiditys.nextElementIndex(locals.userLiquidityElementIndex);
+			locals.userLiquidityElementIndex = state.mLiquidities.nextElementIndex(locals.userLiquidityElementIndex);
 		}
 
 		if (locals.userLiquidityElementIndex == NULL_INDEX)
@@ -1284,7 +1284,7 @@ protected:
 			return;
 		}
 
-		locals.userLiquidity = state.mLiquiditys.element(locals.userLiquidityElementIndex);
+		locals.userLiquidity = state.mLiquidities.element(locals.userLiquidityElementIndex);
 
 		// not enough liquidity for burning
 		if (locals.userLiquidity.liquidity < input.burnLiquidity )
@@ -1333,11 +1333,11 @@ protected:
 		locals.userLiquidity.liquidity -= input.burnLiquidity;
 		if (locals.userLiquidity.liquidity == 0)
 		{
-			state.mLiquiditys.remove(locals.userLiquidityElementIndex);
+			state.mLiquidities.remove(locals.userLiquidityElementIndex);
 		}
 		else
 		{
-			state.mLiquiditys.replace(locals.userLiquidityElementIndex, locals.userLiquidity);
+			state.mLiquidities.replace(locals.userLiquidityElementIndex, locals.userLiquidity);
 		}
 
 		// modify the pool's liquidity info
