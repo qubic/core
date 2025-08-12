@@ -7,17 +7,20 @@ name: ContractVerify
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: [ "main", "develop", "feature/contract-verify" ]
   pull_request:
-    branches: [ "main", "develop" ]
+    branches: [ "main", "develop", "feature/contract-verify" ]
 
 jobs:
   contract_verify_job:
     runs-on: ubuntu-latest
     name: Verify smart contract files
     steps:
+      # Checkout repo to use files of the repo as input for container action
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Contract verify action step
         id: verify
-        uses: Franziska-Mueller/qubic-contract-verify@v0.2
+        uses: Franziska-Mueller/qubic-contract-verify@v0.2.1-beta
         with:
-          filepath: '/github/workspace/src/contracts/MyLastMatch.h'
+          filepath: 'src/contracts/MyLastMatch.h'
