@@ -1,4 +1,4 @@
-﻿#define NO_UEFI
+#define NO_UEFI
 
 #include <random>
 #include <map>
@@ -15,7 +15,8 @@ static const id TEST_ADMIN = id(100, 0, 0, 0);
 static const id TEST_MANAGER = id(101, 0, 0, 0);
 
 // Test fixture for VottunBridge
-class VottunBridgeTest : public ::testing::Test {
+class VottunBridgeTest : public ::testing::Test
+{
 protected:
     void SetUp() override {
         // Test setup will be minimal due to system constraints
@@ -27,7 +28,8 @@ protected:
 };
 
 // Test 1: Basic constants and configuration
-TEST_F(VottunBridgeTest, BasicConstants) {
+TEST_F(VottunBridgeTest, BasicConstants)
+{
     // Test that basic types and constants work
     const uint32 expectedFeeBillionths = 5000000; // 0.5%
     EXPECT_EQ(expectedFeeBillionths, 5000000);
@@ -39,7 +41,8 @@ TEST_F(VottunBridgeTest, BasicConstants) {
 }
 
 // Test 2: ID operations
-TEST_F(VottunBridgeTest, IdOperations) {
+TEST_F(VottunBridgeTest, IdOperations)
+{
     id testId1(1, 0, 0, 0);
     id testId2(2, 0, 0, 0);
     id nullId = NULL_ID;

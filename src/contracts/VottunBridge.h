@@ -1060,12 +1060,7 @@ public:
         output.status = 0; // Success
     }
 
-    struct getAdminID_locals
-    {
-        // Empty, for consistency
-    };
-    
-    PUBLIC_FUNCTION_WITH_LOCALS(getAdminID)
+    PUBLIC_FUNCTION(getAdminID)
     {
         output.adminId = state.admin;
     }
