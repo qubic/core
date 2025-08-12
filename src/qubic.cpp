@@ -695,7 +695,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 if (isSolutionGood)
                                 {
                                     // Check the computor idx of this solution.
-                                    unsigned short computorID = (solution->nonce >> 32ULL) % 676ULL;
+                                    unsigned short computorID = solution->reserve1 % 676ULL;
 
                                     ACQUIRE(gCustomMiningSharesCountLock);
                                     gCustomMiningSharesCount[computorID]++;
