@@ -7,9 +7,9 @@ name: ContractVerify
 
 on:
   push:
-    branches: [ "main", "develop", "feature/contract-verify" ]
+    branches: [ "main", "develop", "feature/2025-08-13-contract-verify" ]
   pull_request:
-    branches: [ "main", "develop", "feature/contract-verify" ]
+    branches: [ "main", "develop", "feature/2025-08-13-contract-verify" ]
 
 jobs:
   contract_verify_job:
