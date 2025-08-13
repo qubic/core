@@ -8,8 +8,14 @@ name: ContractVerify
 on:
   push:
     branches: [ "main", "develop", "feature/2025-08-13-contract-verify" ]
+    paths:
+      - 'src/contracts/*.h'
+      - '.github/workflows/contract-verify.yml'
   pull_request:
     branches: [ "main", "develop", "feature/2025-08-13-contract-verify" ]
+    paths:
+      - 'src/contracts/*.h'
+      - '.github/workflows/contract-verify.yml'
 
 jobs:
   contract_verify_job:
