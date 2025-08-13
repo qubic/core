@@ -32,6 +32,6 @@ jobs:
           echo "contract-filepaths=$files" >> "$GITHUB_OUTPUT"
       - name: Contract verify action step
         id: verify
-        uses: actions/qubic-contract-verify@v0.3.1-beta
+        uses: Franziska-Mueller/qubic-contract-verify@v0.3.0-beta
         with:
           filepaths: '${{ steps.filepaths.outputs.contract-filepaths }}'
