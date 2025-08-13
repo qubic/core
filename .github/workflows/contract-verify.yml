@@ -20,12 +20,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Find all contract files to verify
+        id: filepaths
         run: |
           files=$(find src/contracts/ -maxdepth 1 -type f -name "*.h" ! -name "*TestExample*" ! -name "*math_lib*" ! -name "*qpi*" -printf "%p\n" | paste -sd, -)
-          echo "$files"
-
-#      - name: Contract verify action step
-#        id: verify
-#        uses: Franziska-Mueller/qubic-contract-verify@v0.3.0-beta
-#        with:
-#          filepaths: 'src/contracts/MyLastMatch.h'
+          echo "contract-filepaths=$files" >> "$GITHUB_OUTPUT"
+      - name: Contract verify action step
+        id: verify
+        uses: Franziska-Mueller/qubic-contract-verify@v0.3.0-beta
+        with:
+          filepaths: '${{ steps.filepaths.outputs.contract-filepaths }}'
