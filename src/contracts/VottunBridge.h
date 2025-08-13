@@ -268,11 +268,16 @@ public:
     typedef id isManager_input;
     typedef bit isManager_output;
 
-    PRIVATE_FUNCTION(isManager)
+    struct isManager_locals
     {
-        for (uint64 i = 0; i < state.managers.capacity(); ++i)
+        uint64 i;
+    };
+
+    PRIVATE_FUNCTION_WITH_LOCALS(isManager)
+    {
+        for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
         {
-            if (state.managers.get(i) == input)
+            if (state.managers.get(locals.i) == input)
             {
                 output = true;
                 return;
