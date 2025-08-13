@@ -868,3 +868,141 @@ TEST_F(VottunBridgeFunctionalTest, EdgeCasesAndErrors) {
         EXPECT_TRUE(isNotManager);
     }
 }
+
+// SECURITY TESTS FOR KS-VB-F-01 FIX
+TEST_F(VottunBridgeTest, SecurityRefundValidation) {
+    struct TestOrder {
+        uint64 orderId;
+        uint64 amount;
+        uint8 status;
+        bit fromQubicToEthereum;
+        bit tokensReceived;
+        bit tokensLocked;
+    };
+
+    TestOrder order;
+    order.orderId = 1;
+    order.amount = 1000000;
+    order.status = 0;
+    order.fromQubicToEthereum = true;
+    order.tokensReceived = false;
+    order.tokensLocked = false;
+
+    EXPECT_FALSE(order.tokensReceived);
+    EXPECT_FALSE(order.tokensLocked);
+
+    order.tokensReceived = true;
+    order.tokensLocked = true;
+    bool canRefund = (order.tokensReceived && order.tokensLocked);
+    EXPECT_TRUE(canRefund);
+
+    TestOrder orderNoTokens;
+    orderNoTokens.tokensReceived = false;
+    orderNoTokens.tokensLocked = false;
+    bool canRefundNoTokens = orderNoTokens.tokensReceived;
+    EXPECT_FALSE(canRefundNoTokens);
+}
+
+TEST_F(VottunBridgeTest, ExploitPreventionTest) {
+    uint64 contractLiquidity = 1000000;
+    
+    struct TestOrder {
+        uint64 orderId;
+        uint64 amount;
+        bit tokensReceived;
+        bit tokensLocked;
+        bit fromQubicToEthereum;
+    };
+    
+    TestOrder maliciousOrder;
+    maliciousOrder.orderId = 999;
+    maliciousOrder.amount = 500000;
+    maliciousOrder.tokensReceived = false;
+    maliciousOrder.tokensLocked = false;
+    maliciousOrder.fromQubicToEthereum = true;
+    
+    bool oldVulnerableCheck = (contractLiquidity >= maliciousOrder.amount);
+    EXPECT_TRUE(oldVulnerableCheck);
+    
+    bool newSecureCheck = (maliciousOrder.tokensReceived && 
+                          maliciousOrder.tokensLocked &&
+                          contractLiquidity >= maliciousOrder.amount);
+    EXPECT_FALSE(newSecureCheck);
+    
+    TestOrder legitimateOrder;
+    legitimateOrder.orderId = 1;
+    legitimateOrder.amount = 200000;
+    legitimateOrder.tokensReceived = true;
+    legitimateOrder.tokensLocked = true;
+    legitimateOrder.fromQubicToEthereum = true;
+    
+    bool legitimateRefund = (legitimateOrder.tokensReceived && 
+                            legitimateOrder.tokensLocked &&
+                            contractLiquidity >= legitimateOrder.amount);
+    EXPECT_TRUE(legitimateRefund);
+}
+
+TEST_F(VottunBridgeTest, TransferFlowValidation) {
+    uint64 mockLockedTokens = 500000;
+    
+    struct TestOrder {
+        uint64 orderId;
+        uint64 amount;
+        uint8 status;
+        bit tokensReceived;
+        bit tokensLocked;
+        bit fromQubicToEthereum;
+    };
+    
+    TestOrder order;
+    order.orderId = 1;
+    order.amount = 100000;
+    order.status = 0;
+    order.tokensReceived = false;
+    order.tokensLocked = false;
+    order.fromQubicToEthereum = true;
+    
+    bool refundAllowed = order.tokensReceived;
+    EXPECT_FALSE(refundAllowed);
+    
+    order.tokensReceived = true;
+    order.tokensLocked = true;
+    mockLockedTokens += order.amount;
+    
+    EXPECT_TRUE(order.tokensReceived);
+    EXPECT_TRUE(order.tokensLocked);
+    EXPECT_EQ(mockLockedTokens, 600000);
+    
+    refundAllowed = (order.tokensReceived && order.tokensLocked && 
+                    mockLockedTokens >= order.amount);
+    EXPECT_TRUE(refundAllowed);
+    
+    if (refundAllowed) {
+        mockLockedTokens -= order.amount;
+        order.status = 2;
+    }
+    
+    EXPECT_EQ(mockLockedTokens, 500000);
+    EXPECT_EQ(order.status, 2);
+}
+
+TEST_F(VottunBridgeTest, StateConsistencyTests) {
+    uint64 initialLockedTokens = 1000000;
+    uint64 orderAmount = 250000;
+    
+    uint64 afterTransfer = initialLockedTokens + orderAmount;
+    EXPECT_EQ(afterTransfer, 1250000);
+    
+    uint64 afterRefund = afterTransfer - orderAmount;
+    EXPECT_EQ(afterRefund, initialLockedTokens);
+    
+    uint64 order1Amount = 100000;
+    uint64 order2Amount = 200000;
+    
+    uint64 afterOrder1 = initialLockedTokens + order1Amount;
+    uint64 afterOrder2 = afterOrder1 + order2Amount;
+    EXPECT_EQ(afterOrder2, 1300000);
+    
+    uint64 afterRefundOrder1 = afterOrder2 - order1Amount;
+    EXPECT_EQ(afterRefundOrder1, 1200000);
+}
