@@ -52,6 +52,8 @@ namespace QPI
 	typedef uint128_t uint128;
 	typedef m256i id;
 
+#define STATIC_ASSERT(condition, identifier) static_assert(condition, #identifier);
+
 #define NULL_ID id::zero()
 	constexpr sint64 NULL_INDEX = -1;
 

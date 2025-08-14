@@ -14,7 +14,7 @@ constexpr unsigned long long QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_ = 10000ULL;
 constexpr unsigned long long QUOTTERY_SHAREHOLDER_FEE_ = 1000; // 10%
 constexpr unsigned long long QUOTTERY_GAME_OPERATOR_FEE_ = 50; // 0.5%
 constexpr unsigned long long QUOTTERY_BURN_FEE_ = 200; // 2%
-
+STATIC_ASSERT(QUOTTERY_BURN_FEE_ > 0, BurningRequiredToOperate);
 constexpr unsigned long long QUOTTERY_TICK_TO_KEEP_AFTER_END = 100ULL;
 
 
@@ -222,6 +222,25 @@ public:
     // bet result:
     Array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultWonOption;
     Array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultOPId;
+
+    // static assert for developing:
+    STATIC_ASSERT(sizeof(mBetID) == (sizeof(uint32) * QUOTTERY_MAX_BET), BetIdArray);
+    STATIC_ASSERT(sizeof(mCreator) == (sizeof(id) * QUOTTERY_MAX_BET), CreatorArray);
+    STATIC_ASSERT(sizeof(mBetDesc) == (sizeof(id) * QUOTTERY_MAX_BET), DescArray);
+    STATIC_ASSERT(sizeof(mOptionDesc) == (sizeof(id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_OPTION), OptionDescArray);
+    STATIC_ASSERT(sizeof(mBetAmountPerSlot) == (sizeof(uint64) * QUOTTERY_MAX_BET), BetAmountPerSlotArray);
+    STATIC_ASSERT(sizeof(mMaxNumberOfBetSlotPerOption) == (sizeof(uint32) * QUOTTERY_MAX_BET), NumberOfBetSlotPerOptionArray);
+    STATIC_ASSERT(sizeof(mOracleProvider) == (sizeof(QPI::id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), OracleProviders);
+    STATIC_ASSERT(sizeof(mOracleFees) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), OracleProvidersFees);
+    STATIC_ASSERT(sizeof(mCurrentBetState) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), BetStates);
+    STATIC_ASSERT(sizeof(mNumberOption) == (sizeof(uint8) * QUOTTERY_MAX_BET), NumberOfOptions);
+    STATIC_ASSERT(sizeof(mOpenDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), OpenDate);
+    STATIC_ASSERT(sizeof(mCloseDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), CloseDate);
+    STATIC_ASSERT(sizeof(mEndDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), EndDate);
+    STATIC_ASSERT(sizeof(mBetResultWonOption) == (QUOTTERY_MAX_BET * 8), WonOptionArray);
+    STATIC_ASSERT(sizeof(mBetResultOPId) == (QUOTTERY_MAX_BET * 8), OpIdArray);
+    STATIC_ASSERT(sizeof(mBettorID) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(id)), BettorArray);
+    STATIC_ASSERT(sizeof(mBettorBetOption) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(uint8)), BetOption);
 
     // other stats
     uint32 mCurrentBetID;
