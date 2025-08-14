@@ -870,8 +870,10 @@ TEST_F(VottunBridgeFunctionalTest, EdgeCasesAndErrors) {
 }
 
 // SECURITY TESTS FOR KS-VB-F-01 FIX
-TEST_F(VottunBridgeTest, SecurityRefundValidation) {
-    struct TestOrder {
+TEST_F(VottunBridgeTest, SecurityRefundValidation)
+{
+    struct TestOrder
+    {
         uint64 orderId;
         uint64 amount;
         uint8 status;
@@ -903,10 +905,12 @@ TEST_F(VottunBridgeTest, SecurityRefundValidation) {
     EXPECT_FALSE(canRefundNoTokens);
 }
 
-TEST_F(VottunBridgeTest, ExploitPreventionTest) {
+TEST_F(VottunBridgeTest, ExploitPreventionTest)
+{
     uint64 contractLiquidity = 1000000;
     
-    struct TestOrder {
+    struct TestOrder
+    {
         uint64 orderId;
         uint64 amount;
         bit tokensReceived;
@@ -942,10 +946,12 @@ TEST_F(VottunBridgeTest, ExploitPreventionTest) {
     EXPECT_TRUE(legitimateRefund);
 }
 
-TEST_F(VottunBridgeTest, TransferFlowValidation) {
+TEST_F(VottunBridgeTest, TransferFlowValidation)
+{
     uint64 mockLockedTokens = 500000;
     
-    struct TestOrder {
+    struct TestOrder
+    {
         uint64 orderId;
         uint64 amount;
         uint8 status;
@@ -977,7 +983,8 @@ TEST_F(VottunBridgeTest, TransferFlowValidation) {
                     mockLockedTokens >= order.amount);
     EXPECT_TRUE(refundAllowed);
     
-    if (refundAllowed) {
+    if (refundAllowed)
+    {
         mockLockedTokens -= order.amount;
         order.status = 2;
     }
@@ -986,7 +993,8 @@ TEST_F(VottunBridgeTest, TransferFlowValidation) {
     EXPECT_EQ(order.status, 2);
 }
 
-TEST_F(VottunBridgeTest, StateConsistencyTests) {
+TEST_F(VottunBridgeTest, StateConsistencyTests)
+{
     uint64 initialLockedTokens = 1000000;
     uint64 orderAmount = 250000;
     
