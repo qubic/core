@@ -245,7 +245,7 @@ public:
 
 public:
     // Contract State
-    Array<BridgeOrder, 1024> orders; // Increased from 256 to 1024
+    Array<BridgeOrder, 1024> orders; 
     id admin;                        // Primary admin address
     id feeRecipient;                 // Specific wallet to receive fees
     Array<id, 16> managers;          // Managers list
