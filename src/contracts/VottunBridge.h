@@ -199,7 +199,7 @@ public:
 
     struct AddressChangeLogger
     {
-        id _newAdminAddress; // New admin address
+        id _newAdminAddress; 
         uint32 _contractIndex;
         uint8 _eventCode; // Event code 'adminchanged'
         sint8 _terminator;
@@ -456,7 +456,7 @@ public:
                 99, // Custom error code for "no available slots"
                 0,  // No orderId
                 locals.cleanedSlots,  // Number of slots cleaned
-                '\0' }; // Terminator (char)
+                0 }; // Terminator
             LOG_INFO(locals.log);
             output.status = 3; // Error: no available slots
             return;
@@ -1120,7 +1120,6 @@ public:
         output.status = 0;
     }
 
-    // NEW: Withdraw Fees function
     struct withdrawFees_locals
     {
         EthBridgeLogger log;
@@ -1376,7 +1375,7 @@ public:
         output.totalLocked = state.lockedTokens;
     }
 
-    // NEW: Get Available Fees function
+
     PUBLIC_FUNCTION(getAvailableFees)
     {
         output.availableFees = state._earnedFees - state._distributedFees;
@@ -1384,7 +1383,7 @@ public:
         output.totalDistributedFees = state._distributedFees;
     }
 
-    // NEW: Enhanced contract info function
+
     struct getContractInfo_locals
     {
         uint64 i;
@@ -1401,7 +1400,7 @@ public:
         output.tradeFeeBillionths = state._tradeFeeBillionths;
         output.sourceChain = state.sourceChain;
 
-        // NEW: Debug - copy first 16 orders
+
         output.totalOrdersFound = 0;
         output.emptySlots = 0;
 
@@ -1474,7 +1473,7 @@ public:
         REGISTER_USER_FUNCTION(getTotalLockedTokens, 6);
         REGISTER_USER_FUNCTION(getOrderByDetails, 7);
         REGISTER_USER_FUNCTION(getContractInfo, 8);
-        REGISTER_USER_FUNCTION(getAvailableFees, 9); // NEW function
+        REGISTER_USER_FUNCTION(getAvailableFees, 9); 
 
         REGISTER_USER_PROCEDURE(createOrder, 1);
         REGISTER_USER_PROCEDURE(setAdmin, 2);
@@ -1483,8 +1482,8 @@ public:
         REGISTER_USER_PROCEDURE(completeOrder, 5);
         REGISTER_USER_PROCEDURE(refundOrder, 6);
         REGISTER_USER_PROCEDURE(transferToContract, 7);
-        REGISTER_USER_PROCEDURE(withdrawFees, 8); // NEW function
-        REGISTER_USER_PROCEDURE(addLiquidity, 9); // NEW function for initial liquidity
+        REGISTER_USER_PROCEDURE(withdrawFees, 8); 
+        REGISTER_USER_PROCEDURE(addLiquidity, 9); 
     }
 
     // Initialize the contract with SECURE ADMIN CONFIGURATION
@@ -1498,7 +1497,7 @@ public:
     {
         state.admin = ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B);
 
-        // NEW: Initialize the wallet that receives fees (REPLACE WITH YOUR WALLET)
+        //Initialize the wallet that receives fees (REPLACE WITH YOUR WALLET)
         // state.feeRecipient = ID(_YOUR, _WALLET, _HERE, _PLACEHOLDER, _UNTIL, _YOU, _PUT, _THE, _REAL, _WALLET, _ADDRESS, _FROM, _VOTTUN, _TO, _RECEIVE, _THE, _BRIDGE, _FEES, _BETWEEN, _QUBIC, _AND, _ETHEREUM, _WITH, _HALF, _PERCENT, _COMMISSION, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V);
 
         // Initialize the orders array. Good practice to zero first.

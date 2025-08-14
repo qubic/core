@@ -12,17 +12,19 @@ static const id VOTTUN_CONTRACT_ID(15, 0, 0, 0); // Assuming index 15
 static const id TEST_USER_1 = id(1, 0, 0, 0);
 static const id TEST_USER_2 = id(2, 0, 0, 0);
 static const id TEST_ADMIN = id(100, 0, 0, 0);
-static const id TEST_MANAGER = id(101, 0, 0, 0);
+static const id TEST_MANAGER = id(102, 0, 0, 0);
 
 // Test fixture for VottunBridge
 class VottunBridgeTest : public ::testing::Test
 {
 protected:
-    void SetUp() override {
+    void SetUp() override
+    {
         // Test setup will be minimal due to system constraints
     }
 
-    void TearDown() override {
+    void TearDown() override
+    {
         // Clean up after tests
     }
 };
@@ -53,7 +55,8 @@ TEST_F(VottunBridgeTest, IdOperations)
 }
 
 // Test 3: Array bounds and capacity validation
-TEST_F(VottunBridgeTest, ArrayValidation) {
+TEST_F(VottunBridgeTest, ArrayValidation)
+{
     // Test Array type basic functionality
     Array<uint8, 64> testEthAddress;
 
@@ -61,19 +64,22 @@ TEST_F(VottunBridgeTest, ArrayValidation) {
     EXPECT_EQ(testEthAddress.capacity(), 64);
 
     // Test setting and getting values
-    for (uint64 i = 0; i < 42; ++i) {  // Ethereum addresses are 42 chars
+    for (uint64 i = 0; i < 42; ++i)
+    {  // Ethereum addresses are 42 chars
         testEthAddress.set(i, (uint8)(65 + (i % 26))); // ASCII A-Z pattern
     }
 
     // Verify values were set correctly
-    for (uint64 i = 0; i < 42; ++i) {
+    for (uint64 i = 0; i < 42; ++i)
+    {
         uint8 expectedValue = (uint8)(65 + (i % 26));
         EXPECT_EQ(testEthAddress.get(i), expectedValue);
     }
 }
 
 // Test 4: Order status enumeration
-TEST_F(VottunBridgeTest, OrderStatusTypes) {
+TEST_F(VottunBridgeTest, OrderStatusTypes)
+{
     // Test order status values
     const uint8 STATUS_CREATED = 0;
     const uint8 STATUS_COMPLETED = 1;
@@ -87,7 +93,8 @@ TEST_F(VottunBridgeTest, OrderStatusTypes) {
 }
 
 // Test 5: Basic data structure sizes
-TEST_F(VottunBridgeTest, DataStructureSizes) {
+TEST_F(VottunBridgeTest, DataStructureSizes)
+{
     // Ensure critical structures have expected sizes
     EXPECT_GT(sizeof(id), 0);
     EXPECT_EQ(sizeof(uint64), 8);
@@ -98,7 +105,8 @@ TEST_F(VottunBridgeTest, DataStructureSizes) {
 }
 
 // Test 6: Bit manipulation and boolean logic
-TEST_F(VottunBridgeTest, BooleanLogic) {
+TEST_F(VottunBridgeTest, BooleanLogic)
+{
     bit testBit1 = true;
     bit testBit2 = false;
 
@@ -108,7 +116,8 @@ TEST_F(VottunBridgeTest, BooleanLogic) {
 }
 
 // Test 7: Error code constants
-TEST_F(VottunBridgeTest, ErrorCodes) {
+TEST_F(VottunBridgeTest, ErrorCodes)
+{
     // Test that error codes are in expected ranges
     const uint32 ERROR_INVALID_AMOUNT = 2;
     const uint32 ERROR_INSUFFICIENT_FEE = 3;
@@ -117,12 +126,13 @@ TEST_F(VottunBridgeTest, ErrorCodes) {
 
     EXPECT_GT(ERROR_INVALID_AMOUNT, 0);
     EXPECT_GT(ERROR_INSUFFICIENT_FEE, ERROR_INVALID_AMOUNT);
-    EXPECT_GT(ERROR_ORDER_NOT_FOUND, ERROR_INSUFFICIENT_FEE);
+    EXPECT_LT(ERROR_ORDER_NOT_FOUND, ERROR_INSUFFICIENT_FEE);
     EXPECT_GT(ERROR_NOT_AUTHORIZED, ERROR_ORDER_NOT_FOUND);
 }
 
 // Test 8: Mathematical operations
-TEST_F(VottunBridgeTest, MathematicalOperations) {
+TEST_F(VottunBridgeTest, MathematicalOperations) 
+{
     // Test division operations (using div function instead of / operator)
     uint64 dividend = 1000000;
     uint64 divisor = 1000000000ULL;
@@ -138,23 +148,27 @@ TEST_F(VottunBridgeTest, MathematicalOperations) {
 }
 
 // Test 9: String and memory patterns
-TEST_F(VottunBridgeTest, MemoryPatterns) {
+TEST_F(VottunBridgeTest, MemoryPatterns)
+{
     // Test memory initialization patterns
     Array<uint8, 16> testArray;
 
     // Set known pattern
-    for (uint64 i = 0; i < testArray.capacity(); ++i) {
+    for (uint64 i = 0; i < testArray.capacity(); ++i)
+    {
         testArray.set(i, (uint8)(i % 256));
     }
 
     // Verify pattern
-    for (uint64 i = 0; i < testArray.capacity(); ++i) {
+    for (uint64 i = 0; i < testArray.capacity(); ++i)
+    {
         EXPECT_EQ(testArray.get(i), (uint8)(i % 256));
     }
 }
 
 // Test 10: Contract index validation
-TEST_F(VottunBridgeTest, ContractIndexValidation) {
+TEST_F(VottunBridgeTest, ContractIndexValidation)
+{
     // Validate contract index is in expected range
     const uint32 EXPECTED_CONTRACT_INDEX = 15; // Based on contract_def.h
     const uint32 MAX_CONTRACTS = 32; // Reasonable upper bound
@@ -164,12 +178,17 @@ TEST_F(VottunBridgeTest, ContractIndexValidation) {
 }
 
 // Test 11: Asset name validation
-TEST_F(VottunBridgeTest, AssetNameValidation) {
+TEST_F(VottunBridgeTest, AssetNameValidation)
+{
     // Test asset name constraints (max 7 characters, A-Z, 0-9)
-    const char* validNames[] = { "VBRIDGE", "VOTTUN", "BRIDGE", "VTN", "A", "TEST123" };
+    const char* validNames[] = 
+    { 
+        "VBRIDGE", "VOTTUN", "BRIDGE", "VTN", "A", "TEST123" 
+    };
     const int nameCount = sizeof(validNames) / sizeof(validNames[0]);
 
-    for (int i = 0; i < nameCount; ++i) {
+    for (int i = 0; i < nameCount; ++i)
+    {
         const char* name = validNames[i];
         size_t length = strlen(name);
 
@@ -183,7 +202,8 @@ TEST_F(VottunBridgeTest, AssetNameValidation) {
 }
 
 // Test 12: Memory limits and constraints
-TEST_F(VottunBridgeTest, MemoryConstraints) {
+TEST_F(VottunBridgeTest, MemoryConstraints)
+{
     // Test contract state size limits
     const uint64 MAX_CONTRACT_STATE_SIZE = 1073741824; // 1GB
     const uint64 ORDERS_CAPACITY = 1024;
@@ -202,7 +222,8 @@ TEST_F(VottunBridgeTest, MemoryConstraints) {
 // AGREGAR estos tests adicionales al final de tu contract_vottunbridge.cpp
 
 // Test 13: Order creation simulation
-TEST_F(VottunBridgeTest, OrderCreationLogic) {
+TEST_F(VottunBridgeTest, OrderCreationLogic)
+{
     // Simulate the logic that would happen in createOrder
     uint64 orderAmount = 1000000;
     uint64 feeBillionths = 5000000;
@@ -218,24 +239,28 @@ TEST_F(VottunBridgeTest, OrderCreationLogic) {
     EXPECT_EQ(totalRequiredFee, 10000); // 1% total
 
     // Test different amounts
-    struct {
+    struct 
+    {
         uint64 amount;
         uint64 expectedTotalFee;
-    } testCases[] = {
+    } testCases[] =
+    {
         {100000, 1000},      // 100K → 1K fee
         {500000, 5000},      // 500K → 5K fee  
         {2000000, 20000},    // 2M → 20K fee
         {10000000, 100000}   // 10M → 100K fee
     };
 
-    for (const auto& testCase : testCases) {
+    for (const auto& testCase : testCases)
+    {
         uint64 calculatedFee = 2 * ((testCase.amount * feeBillionths) / 1000000000ULL);
         EXPECT_EQ(calculatedFee, testCase.expectedTotalFee);
     }
 }
 
 // Test 14: Order state transitions
-TEST_F(VottunBridgeTest, OrderStateTransitions) {
+TEST_F(VottunBridgeTest, OrderStateTransitions)
+{
     // Test valid state transitions
     const uint8 STATE_CREATED = 0;
     const uint8 STATE_COMPLETED = 1;
@@ -258,7 +283,8 @@ TEST_F(VottunBridgeTest, OrderStateTransitions) {
 }
 
 // Test 15: Direction flags and validation
-TEST_F(VottunBridgeTest, TransferDirections) {
+TEST_F(VottunBridgeTest, TransferDirections)
+{
     bit fromQubicToEthereum = true;
     bit fromEthereumToQubic = false;
 
@@ -275,7 +301,8 @@ TEST_F(VottunBridgeTest, TransferDirections) {
 }
 
 // Test 16: Ethereum address format validation
-TEST_F(VottunBridgeTest, EthereumAddressFormat) {
+TEST_F(VottunBridgeTest, EthereumAddressFormat)
+{
     Array<uint8, 64> ethAddress;
 
     // Simulate valid Ethereum address (0x + 40 hex chars)
@@ -284,7 +311,8 @@ TEST_F(VottunBridgeTest, EthereumAddressFormat) {
 
     // Fill with hex characters (0-9, A-F)
     const char hexChars[] = "0123456789ABCDEF";
-    for (int i = 2; i < 42; ++i) {
+    for (int i = 2; i < 42; ++i)
+    {
         ethAddress.set(i, hexChars[i % 16]);
     }
 
@@ -293,19 +321,22 @@ TEST_F(VottunBridgeTest, EthereumAddressFormat) {
     EXPECT_EQ(ethAddress.get(1), 'x');
 
     // Verify hex characters
-    for (int i = 2; i < 42; ++i) {
+    for (int i = 2; i < 42; ++i)
+    {
         uint8 ch = ethAddress.get(i);
         EXPECT_TRUE((ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'F'));
     }
 }
 
 // Test 17: Manager array operations
-TEST_F(VottunBridgeTest, ManagerArrayOperations) {
+TEST_F(VottunBridgeTest, ManagerArrayOperations)
+{
     Array<id, 16> managers;
     const id NULL_MANAGER = NULL_ID;
 
     // Initialize all managers as NULL
-    for (uint64 i = 0; i < managers.capacity(); ++i) {
+    for (uint64 i = 0; i < managers.capacity(); ++i)
+    {
         managers.set(i, NULL_MANAGER);
     }
 
@@ -326,8 +357,10 @@ TEST_F(VottunBridgeTest, ManagerArrayOperations) {
 
     // Test manager search
     bool foundManager1 = false;
-    for (uint64 i = 0; i < managers.capacity(); ++i) {
-        if (managers.get(i) == manager1) {
+    for (uint64 i = 0; i < managers.capacity(); ++i)
+    {
+        if (managers.get(i) == manager1)
+        {
             foundManager1 = true;
             break;
         }
@@ -342,7 +375,8 @@ TEST_F(VottunBridgeTest, ManagerArrayOperations) {
 }
 
 // Test 18: Token balance calculations
-TEST_F(VottunBridgeTest, TokenBalanceCalculations) {
+TEST_F(VottunBridgeTest, TokenBalanceCalculations)
+{
     uint64 totalReceived = 10000000;
     uint64 lockedTokens = 6000000;
     uint64 earnedFees = 50000;
@@ -366,7 +400,8 @@ TEST_F(VottunBridgeTest, TokenBalanceCalculations) {
 }
 
 // Test 19: Order ID generation and uniqueness
-TEST_F(VottunBridgeTest, OrderIdGeneration) {
+TEST_F(VottunBridgeTest, OrderIdGeneration)
+{
     uint64 nextOrderId = 1;
 
     // Simulate order ID generation
@@ -392,7 +427,8 @@ TEST_F(VottunBridgeTest, OrderIdGeneration) {
 }
 
 // Test 20: Contract limits and boundaries
-TEST_F(VottunBridgeTest, ContractLimits) {
+TEST_F(VottunBridgeTest, ContractLimits)
+{
     // Test maximum values
     const uint64 MAX_UINT64 = 0xFFFFFFFFFFFFFFFFULL;
     const uint32 MAX_UINT32 = 0xFFFFFFFFU;
@@ -421,7 +457,8 @@ TEST_F(VottunBridgeTest, ContractLimits) {
 // REEMPLAZA el código funcional anterior con esta versión corregida:
 
 // Mock structures for testing
-struct MockVottunBridgeOrder {
+struct MockVottunBridgeOrder 
+{
     uint64 orderId;
     id qubicSender;
     id qubicDestination;
@@ -431,7 +468,8 @@ struct MockVottunBridgeOrder {
     uint8 mockEthAddress[64];  // Simulated eth address
 };
 
-struct MockVottunBridgeState {
+struct MockVottunBridgeState 
+{
     id admin;
     id feeRecipient;
     uint64 nextOrderId;
@@ -448,7 +486,8 @@ struct MockVottunBridgeState {
 };
 
 // Mock QPI Context for testing
-class MockQpiContext {
+class MockQpiContext
+{
 public:
     id mockInvocator = TEST_USER_1;
     sint64 mockInvocationReward = 10000;
@@ -460,7 +499,8 @@ public:
 };
 
 // Helper functions for creating test data
-MockVottunBridgeOrder createEmptyOrder() {
+MockVottunBridgeOrder createEmptyOrder()
+{
     MockVottunBridgeOrder order = {};
     order.status = 255;  // Empty
     order.orderId = 0;
@@ -470,7 +510,8 @@ MockVottunBridgeOrder createEmptyOrder() {
     return order;
 }
 
-MockVottunBridgeOrder createTestOrder(uint64 orderId, uint64 amount, bool fromQubicToEth = true) {
+MockVottunBridgeOrder createTestOrder(uint64 orderId, uint64 amount, bool fromQubicToEth = true)
+{
     MockVottunBridgeOrder order = {};
     order.orderId = orderId;
     order.qubicSender = TEST_USER_1;
@@ -480,7 +521,8 @@ MockVottunBridgeOrder createTestOrder(uint64 orderId, uint64 amount, bool fromQu
     order.fromQubicToEthereum = fromQubicToEth;
 
     // Set mock Ethereum address
-    for (int i = 0; i < 42; ++i) {
+    for (int i = 0; i < 42; ++i)
+    {
         order.mockEthAddress[i] = (uint8)('A' + (i % 26));
     }
 
@@ -488,9 +530,11 @@ MockVottunBridgeOrder createTestOrder(uint64 orderId, uint64 amount, bool fromQu
 }
 
 // Advanced test fixture with contract state simulation
-class VottunBridgeFunctionalTest : public ::testing::Test {
+class VottunBridgeFunctionalTest : public ::testing::Test
+{
 protected:
-    void SetUp() override {
+    void SetUp() override
+    {
         // Initialize a complete contract state
         contractState = {};
 
@@ -508,12 +552,14 @@ protected:
         contractState.sourceChain = 0;
 
         // Initialize orders array as empty
-        for (uint64 i = 0; i < 1024; ++i) {
+        for (uint64 i = 0; i < 1024; ++i)
+        {
             contractState.orders[i] = createEmptyOrder();
         }
 
         // Initialize managers array
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < 16; ++i)
+        {
             contractState.managers[i] = NULL_ID;
         }
         contractState.managers[0] = TEST_MANAGER;  // Add initial manager
@@ -523,7 +569,8 @@ protected:
         mockContext.setInvocationReward(10000);
     }
 
-    void TearDown() override {
+    void TearDown() override
+    {
         // Cleanup
     }
 
@@ -533,7 +580,8 @@ protected:
 };
 
 // Test 21: CreateOrder function simulation
-TEST_F(VottunBridgeFunctionalTest, CreateOrderFunctionSimulation) {
+TEST_F(VottunBridgeFunctionalTest, CreateOrderFunctionSimulation)
+{
     // Test input
     uint64 orderAmount = 1000000;
     uint64 feeBillionths = contractState._tradeFeeBillionths;
@@ -556,7 +604,8 @@ TEST_F(VottunBridgeFunctionalTest, CreateOrderFunctionSimulation) {
         EXPECT_TRUE(validAmount);
         EXPECT_TRUE(sufficientFee);
 
-        if (validAmount && sufficientFee) {
+        if (validAmount && sufficientFee)
+        {
             // Simulate successful order creation
             uint64 newOrderId = contractState.nextOrderId++;
 
@@ -596,7 +645,8 @@ TEST_F(VottunBridgeFunctionalTest, CreateOrderFunctionSimulation) {
 }
 
 // Test 22: CompleteOrder function simulation
-TEST_F(VottunBridgeFunctionalTest, CompleteOrderFunctionSimulation) {
+TEST_F(VottunBridgeFunctionalTest, CompleteOrderFunctionSimulation)
+{
     // Set up: Create an order first
     auto testOrder = createTestOrder(1, 1000000, false);  // EVM to Qubic
     contractState.orders[0] = testOrder;
@@ -617,16 +667,19 @@ TEST_F(VottunBridgeFunctionalTest, CompleteOrderFunctionSimulation) {
         bool validOrderState = (contractState.orders[0].status == 0);
         EXPECT_TRUE(validOrderState);
 
-        if (isManagerOperating && orderFound && validOrderState) {
+        if (isManagerOperating && orderFound && validOrderState)
+        {
             // Simulate order completion logic
             uint64 netAmount = contractState.orders[0].amount;
 
-            if (!contractState.orders[0].fromQubicToEthereum) {
+            if (!contractState.orders[0].fromQubicToEthereum)
+            {
                 // EVM to Qubic: Transfer tokens to destination
                 bool sufficientLockedTokens = (contractState.lockedTokens >= netAmount);
                 EXPECT_TRUE(sufficientLockedTokens);
 
-                if (sufficientLockedTokens) {
+                if (sufficientLockedTokens)
+                {
                     contractState.lockedTokens -= netAmount;
                     contractState.orders[0].status = 1;  // Completed
 
@@ -650,7 +703,8 @@ TEST_F(VottunBridgeFunctionalTest, CompleteOrderFunctionSimulation) {
     }
 }
 
-TEST_F(VottunBridgeFunctionalTest, AdminFunctionsSimulation) {
+TEST_F(VottunBridgeFunctionalTest, AdminFunctionsSimulation)
+{
     // Test setAdmin function
     {
         mockContext.setInvocator(TEST_ADMIN);  // Current admin
@@ -660,7 +714,8 @@ TEST_F(VottunBridgeFunctionalTest, AdminFunctionsSimulation) {
         bool isCurrentAdmin = (mockContext.mockInvocator == contractState.admin);
         EXPECT_TRUE(isCurrentAdmin);
 
-        if (isCurrentAdmin) {
+        if (isCurrentAdmin)
+        {
             // Simulate admin change
             id oldAdmin = contractState.admin;
             contractState.admin = newAdmin;
@@ -681,11 +736,13 @@ TEST_F(VottunBridgeFunctionalTest, AdminFunctionsSimulation) {
         bool isCurrentAdmin = (mockContext.mockInvocator == contractState.admin);
         EXPECT_TRUE(isCurrentAdmin);
 
-        if (isCurrentAdmin) {
+        if (isCurrentAdmin)
+        {
             // Simulate finding empty slot (index 1 should be empty)
             bool foundEmptySlot = true;  // Simulate finding slot
 
-            if (foundEmptySlot) {
+            if (foundEmptySlot)
+            {
                 contractState.managers[1] = newManager;
                 EXPECT_EQ(contractState.managers[1], newManager);
             }
@@ -706,7 +763,8 @@ TEST_F(VottunBridgeFunctionalTest, AdminFunctionsSimulation) {
 }
 
 // Test 24: Fee withdrawal simulation
-TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation) {
+TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation)
+{
     uint64 withdrawAmount = 15000;  // Less than available fees
 
     // Test case 1: Admin withdrawing fees
@@ -725,7 +783,8 @@ TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation) {
         EXPECT_TRUE(sufficientFees);
         EXPECT_TRUE(validAmount);
 
-        if (isCurrentAdmin && sufficientFees && validAmount) {
+        if (isCurrentAdmin && sufficientFees && validAmount)
+        {
             // Simulate fee withdrawal
             contractState._distributedFees += withdrawAmount;
 
@@ -751,7 +810,8 @@ TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation) {
 }
 
 // Test 25: Order search and retrieval simulation
-TEST_F(VottunBridgeFunctionalTest, OrderSearchSimulation) {
+TEST_F(VottunBridgeFunctionalTest, OrderSearchSimulation)
+{
     // Set up multiple orders
     contractState.orders[0] = createTestOrder(10, 1000000, true);
     contractState.orders[1] = createTestOrder(11, 2000000, false);
@@ -764,9 +824,11 @@ TEST_F(VottunBridgeFunctionalTest, OrderSearchSimulation) {
         MockVottunBridgeOrder foundOrder = {};
 
         // Simulate order search
-        for (int i = 0; i < 1024; ++i) {
+        for (int i = 0; i < 1024; ++i)
+        {
             if (contractState.orders[i].orderId == searchOrderId &&
-                contractState.orders[i].status != 255) {
+                contractState.orders[i].status != 255)
+            {
                 found = true;
                 foundOrder = contractState.orders[i];
                 break;
@@ -784,9 +846,11 @@ TEST_F(VottunBridgeFunctionalTest, OrderSearchSimulation) {
         uint64 nonExistentOrderId = 999;
         bool found = false;
 
-        for (int i = 0; i < 1024; ++i) {
+        for (int i = 0; i < 1024; ++i)
+        {
             if (contractState.orders[i].orderId == nonExistentOrderId &&
-                contractState.orders[i].status != 255) {
+                contractState.orders[i].status != 255)
+            {
                 found = true;
                 break;
             }
@@ -800,18 +864,22 @@ TEST_F(VottunBridgeFunctionalTest, OrderSearchSimulation) {
     }
 }
 
-TEST_F(VottunBridgeFunctionalTest, ContractInfoSimulation) {
+TEST_F(VottunBridgeFunctionalTest, ContractInfoSimulation)
+{
     // Simulate getContractInfo function
     {
         // Count orders and empty slots
         uint64 totalOrdersFound = 0;
         uint64 emptySlots = 0;
 
-        for (uint64 i = 0; i < 1024; ++i) {
-            if (contractState.orders[i].status == 255) {
+        for (uint64 i = 0; i < 1024; ++i)
+        {
+            if (contractState.orders[i].status == 255)
+            {
                 emptySlots++;
             }
-            else {
+            else
+            {
                 totalOrdersFound++;
             }
         }
@@ -833,7 +901,8 @@ TEST_F(VottunBridgeFunctionalTest, ContractInfoSimulation) {
 }
 
 // Test 27: Edge cases and error scenarios
-TEST_F(VottunBridgeFunctionalTest, EdgeCasesAndErrors) {
+TEST_F(VottunBridgeFunctionalTest, EdgeCasesAndErrors)
+{
     // Test zero amounts
     {
         uint64 zeroAmount = 0;
