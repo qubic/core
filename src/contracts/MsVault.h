@@ -804,6 +804,7 @@ protected:
     // [TODO]: Uncomment this to enable live fee update
     PUBLIC_PROCEDURE_WITH_LOCALS(voteFeeChange)
     {
+        return;
     //    locals.ish_in.candidate = qpi.invocator();
     //    isShareHolder(qpi, state, locals.ish_in, locals.ish_out, locals.ish_locals);
     //    if (!locals.ish_out.result)

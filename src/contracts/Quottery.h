@@ -14,14 +14,13 @@ constexpr unsigned long long QUOTTERY_MIN_AMOUNT_PER_BET_SLOT_ = 10000ULL;
 constexpr unsigned long long QUOTTERY_SHAREHOLDER_FEE_ = 1000; // 10%
 constexpr unsigned long long QUOTTERY_GAME_OPERATOR_FEE_ = 50; // 0.5%
 constexpr unsigned long long QUOTTERY_BURN_FEE_ = 200; // 2%
-static_assert(QUOTTERY_BURN_FEE_ > 0, "SC requires burning qu to operate, the burn fee must be higher than 0!");
-
+STATIC_ASSERT(QUOTTERY_BURN_FEE_ > 0, BurningRequiredToOperate);
 constexpr unsigned long long QUOTTERY_TICK_TO_KEEP_AFTER_END = 100ULL;
 
 
 
 
-enum QuotteryLogInfo {
+enum QUOTTERYLogInfo {
     invalidMaxBetSlotPerOption=0,
     invalidOption = 1,
     invalidBetAmount = 2,
@@ -38,12 +37,12 @@ enum QuotteryLogInfo {
     betIsAlreadyFinalized = 13,
     totalError = 14
 };
-struct QuotteryLogger
+struct QUOTTERYLogger
 {
     uint32 _contractIndex;
     uint32 _type; // Assign a random unique (per contract) number to distinguish messages of different types
     // Other data go here
-    char _terminator; // Only data before "_terminator" are logged
+    sint8 _terminator; // Only data before "_terminator" are logged
 };
 
 struct QUOTTERY2
@@ -196,6 +195,7 @@ public:
         uint64 baseId0, baseId1;
         sint32 numberOP, requiredVote, winOption, totalOption, voteCounter, numberOfSlot, currentState;
         uint64 amountPerSlot, totalBetSlot, potAmountTotal, feeChargedAmount, transferredAmount, fee, profitPerBetSlot, nWinBet;
+        QUOTTERYLogger log;
     };
 
     /**************************************/
@@ -223,24 +223,24 @@ public:
     Array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultWonOption;
     Array<sint8, QUOTTERY_MAX_BET* QUOTTERY_MAX_OPTION> mBetResultOPId;
 
-    //static assert for developing:
-    static_assert(sizeof(mBetID) == (sizeof(uint32) * QUOTTERY_MAX_BET), "bet id array");
-    static_assert(sizeof(mCreator) == (sizeof(id) * QUOTTERY_MAX_BET), "creator array");
-    static_assert(sizeof(mBetDesc) == (sizeof(id) * QUOTTERY_MAX_BET), "desc array");
-    static_assert(sizeof(mOptionDesc) == (sizeof(id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_OPTION), "option desc array");
-    static_assert(sizeof(mBetAmountPerSlot) == (sizeof(uint64) * QUOTTERY_MAX_BET), "bet amount per slot array");
-    static_assert(sizeof(mMaxNumberOfBetSlotPerOption) == (sizeof(uint32) * QUOTTERY_MAX_BET), "number of bet slot per option array");
-    static_assert(sizeof(mOracleProvider) == (sizeof(QPI::id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers");
-    static_assert(sizeof(mOracleFees) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "oracle providers fees");
-    static_assert(sizeof(mCurrentBetState) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), "bet states");
-    static_assert(sizeof(mNumberOption) == (sizeof(uint8) * QUOTTERY_MAX_BET), "number of options");
-    static_assert(sizeof(mOpenDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), "open date");
-    static_assert(sizeof(mCloseDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), "close date");
-    static_assert(sizeof(mEndDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), "end date");
-    static_assert(sizeof(mBetResultWonOption) == (QUOTTERY_MAX_BET * 8), "won option array");
-    static_assert(sizeof(mBetResultOPId) == (QUOTTERY_MAX_BET * 8), "op id array");
-    static_assert(sizeof(mBettorID) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(id)), "bettor array");
-    static_assert(sizeof(mBettorBetOption) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(uint8)), "bet option");
+    // static assert for developing:
+    STATIC_ASSERT(sizeof(mBetID) == (sizeof(uint32) * QUOTTERY_MAX_BET), BetIdArray);
+    STATIC_ASSERT(sizeof(mCreator) == (sizeof(id) * QUOTTERY_MAX_BET), CreatorArray);
+    STATIC_ASSERT(sizeof(mBetDesc) == (sizeof(id) * QUOTTERY_MAX_BET), DescArray);
+    STATIC_ASSERT(sizeof(mOptionDesc) == (sizeof(id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_OPTION), OptionDescArray);
+    STATIC_ASSERT(sizeof(mBetAmountPerSlot) == (sizeof(uint64) * QUOTTERY_MAX_BET), BetAmountPerSlotArray);
+    STATIC_ASSERT(sizeof(mMaxNumberOfBetSlotPerOption) == (sizeof(uint32) * QUOTTERY_MAX_BET), NumberOfBetSlotPerOptionArray);
+    STATIC_ASSERT(sizeof(mOracleProvider) == (sizeof(QPI::id) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), OracleProviders);
+    STATIC_ASSERT(sizeof(mOracleFees) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), OracleProvidersFees);
+    STATIC_ASSERT(sizeof(mCurrentBetState) == (sizeof(uint32) * QUOTTERY_MAX_BET * QUOTTERY_MAX_ORACLE_PROVIDER), BetStates);
+    STATIC_ASSERT(sizeof(mNumberOption) == (sizeof(uint8) * QUOTTERY_MAX_BET), NumberOfOptions);
+    STATIC_ASSERT(sizeof(mOpenDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), OpenDate);
+    STATIC_ASSERT(sizeof(mCloseDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), CloseDate);
+    STATIC_ASSERT(sizeof(mEndDate) == (sizeof(uint8) * 4 * QUOTTERY_MAX_BET), EndDate);
+    STATIC_ASSERT(sizeof(mBetResultWonOption) == (QUOTTERY_MAX_BET * 8), WonOptionArray);
+    STATIC_ASSERT(sizeof(mBetResultOPId) == (QUOTTERY_MAX_BET * 8), OpIdArray);
+    STATIC_ASSERT(sizeof(mBettorID) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(id)), BettorArray);
+    STATIC_ASSERT(sizeof(mBettorBetOption) == (QUOTTERY_MAX_BET * QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET * QUOTTERY_MAX_OPTION * sizeof(uint8)), BetOption);
 
     // other stats
     uint32 mCurrentBetID;
@@ -333,13 +333,6 @@ public:
         _hour = qtryGetHour(data); //5bits
         _minute = qtryGetMinute(data); //6bits
         _second = qtryGetSecond(data); //6bits
-    }
-
-    /**
-     * @return Current date from core node system
-     */
-    inline static void getCurrentDate(const QPI::QpiContextProcedureCall& qpi, uint32& res) {
-        packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
     }
 
     inline static void accumulatedDay(sint32 month, uint64& res)
@@ -609,8 +602,8 @@ public:
         }
         else
         {
-            QuotteryLogger log{ 0,QuotteryLogInfo::notEnoughVote,0 };
-            LOG_INFO(log);
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::notEnoughVote,0 };
+            LOG_INFO(locals.log);
         }
     }
     /**************************************/
@@ -849,7 +842,7 @@ public:
         checkAndCleanMemorySlots_input _checkAndCleanMemorySlots_input;
         checkAndCleanMemorySlots_output _checkAndCleanMemorySlots_output;
         checkAndCleanMemorySlots_locals _checkAndCleanMemorySlots_locals;
-        QuotteryLogger log;
+        QUOTTERYLogger log;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(issueBet)
@@ -860,10 +853,10 @@ public:
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        getCurrentDate(qpi, locals.curDate);
+        packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
         if (!checkValidQtryDateTime(input.closeDate) || !checkValidQtryDateTime(input.endDate))
         {
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidDate,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidDate,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -872,28 +865,28 @@ public:
         if (dateCompare(input.closeDate, input.endDate, locals.i0) == 1 ||
             dateCompare(locals.curDate, input.closeDate, locals.i0) == 1)
         {
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidDate,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidDate,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         if (input.amountPerSlot < state.mMinAmountPerBetSlot)
         {
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetAmount,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidBetAmount,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         if (input.numberOfOption > QUOTTERY_MAX_OPTION || input.numberOfOption < 2)
         {
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidOption,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidOption,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         if (input.maxBetSlotPerOption == 0 || input.maxBetSlotPerOption > QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET)
         {
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidMaxBetSlotPerOption,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidMaxBetSlotPerOption,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -907,7 +900,7 @@ public:
         // fee is higher than sent amount, exit
         if (locals.fee > qpi.invocationReward())
         {
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::insufficientFund,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::insufficientFund,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -934,7 +927,7 @@ public:
         //out of bet storage, exit
         if (locals.slotId == -1)
         {
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::outOfStorage,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::outOfStorage,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -974,7 +967,7 @@ public:
         }
         if (locals.numberOP == 0)
         {
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidNumberOfOracleProvider,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidNumberOfOracleProvider,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -1011,7 +1004,7 @@ public:
         sint64 amountPerSlot, fee;
         uint32 availableSlotForBet;
         sint64 slotId;
-        QuotteryLogger log;
+        QUOTTERYLogger log;
     };
     /**
     * Join a bet
@@ -1041,7 +1034,7 @@ public:
         if (locals.slotId == -1)
         {
             // can't find betId
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetId,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidBetId,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -1053,14 +1046,14 @@ public:
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        getCurrentDate(qpi, locals.curDate);
+        packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
         locals.closeDate = state.mCloseDate.get(locals.slotId);
 
         if (dateCompare(locals.curDate, locals.closeDate, locals.i0) > 0)
         {
             // bet is closed for betting
-            QuotteryLogger log{ 0,QuotteryLogInfo::expiredBet,0 };
-            LOG_INFO(log);
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::expiredBet,0 };
+            LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
@@ -1069,7 +1062,7 @@ public:
         if (input.option >= state.mNumberOption.get(locals.slotId))
         {
             // bet is closed for betting
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidOption,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidOption,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -1086,7 +1079,7 @@ public:
         if (locals.numberOfSlot == 0)
         {
             // out of slot
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::outOfSlot,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::outOfSlot,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -1096,7 +1089,7 @@ public:
         if (locals.fee > qpi.invocationReward())
         {
             // not send enough amount
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::insufficientFund,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::insufficientFund,0 };
             LOG_INFO(locals.log);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -1136,7 +1129,7 @@ public:
         uint64 baseId0;
         sint64 slotId, writeId;
         sint8 opId;
-        QuotteryLogger log;
+        QUOTTERYLogger log;
         tryFinalizeBet_locals tfb;
         tryFinalizeBet_input _tryFinalizeBet_input;
         tryFinalizeBet_output _tryFinalizeBet_output;
@@ -1166,7 +1159,7 @@ public:
         if (locals.slotId == -1)
         {
             // can't find betId
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetId,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidBetId,0 };
             LOG_INFO(locals.log);
             return;
         }
@@ -1174,11 +1167,11 @@ public:
         if (state.mIsOccupied.get(locals.slotId) == 0)
         {
             // the bet is over
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::expiredBet,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::expiredBet,0 };
             LOG_INFO(locals.log);
             return;
         }
-        getCurrentDate(qpi, locals.curDate);
+        packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
         locals.endDate = state.mEndDate.get(locals.slotId);
         // endDate is counted as 23:59 of that day
         if (dateCompare(locals.curDate, locals.endDate, locals.i0) <= 0)
@@ -1201,7 +1194,7 @@ public:
             if (locals.opId == -1)
             {
                 // is not oracle provider
-                locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidOPId,0 };
+                locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidOPId,0 };
                 LOG_INFO(locals.log);
                 return;
             }
@@ -1212,7 +1205,7 @@ public:
             if (state.mBetEndTick.get(locals.slotId) != 0)
             {
                 // is already finalized
-                locals.log = QuotteryLogger{ 0,QuotteryLogInfo::betIsAlreadyFinalized,0 };
+                locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::betIsAlreadyFinalized,0 };
                 LOG_INFO(locals.log);
                 return;
             }
@@ -1271,7 +1264,7 @@ public:
         uint64 amountPerSlot;
         uint64 duration, u64_0, u64_1;
         sint64 slotId;
-        QuotteryLogger log;
+        QUOTTERYLogger log;
         cleanMemorySlot_locals cms;
         cleanMemorySlot_input _cleanMemorySlot_input;
         cleanMemorySlot_output _cleanMemorySlot_output;
@@ -1287,7 +1280,7 @@ public:
         // all funds will be returned
         if (qpi.invocator() != state.mGameOperatorId)
         {
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::notGameOperator,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::notGameOperator,0 };
             LOG_INFO(locals.log);
             return;
         }
@@ -1303,7 +1296,7 @@ public:
         if (locals.slotId == -1)
         {
             // can't find betId
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::invalidBetId,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::invalidBetId,0 };
             LOG_INFO(locals.log);
             return;
         }
@@ -1311,11 +1304,11 @@ public:
         if (state.mIsOccupied.get(locals.slotId) == 0)
         {
             // the bet is over
-            locals.log = QuotteryLogger{ 0,QuotteryLogInfo::expiredBet,0 };
+            locals.log = QUOTTERYLogger{ 0,QUOTTERYLogInfo::expiredBet,0 };
             LOG_INFO(locals.log);
             return;
         }
-        getCurrentDate(qpi, locals.curDate);
+        packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
         locals.endDate = state.mEndDate.get(locals.slotId);
 
         // endDate is counted as 23:59 of that day

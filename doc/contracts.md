@@ -92,8 +92,9 @@ In order to develop a contract, follow these steps:
 ## Review and tests
 
 Each contract must be validated with the following steps:
-1. The contract is verified with a special software tool, ensuring that it complies with the formal requirements mentioned above, such as no use of forbidden C++ features.
-   (Currently, this tool has not been implemented yet. Thus, this check needs to be done during the review in point 3.)
+1. The contract is verified with the [Qubic Contract Verification Tool](https://github.com/Franziska-Mueller/qubic-contract-verify), ensuring that it complies with the formal requirements mentioned above, such as no use of forbidden C++ features.
+   In the `qubic/core` repository, the tool is run automatically as GitHub workflow for PRs to the `develop` and `main` branches (as well as for commits in these branches).
+   However, since workflow runs on PRs require maintainer approval, we highly recommend to either build the tool from source or use the GitHub action provided in the tool's repository to analyze your contract header file before opening your PR.   
 2. The features of the contract have to be extensively tested with automated tests implemented within the Qubic Core's GoogleTest framework.
 3. The contract and testing code must be reviewed by at least one of the Qubic Core devs, ensuring it meets high quality standards.
 4. Before integrating the contract in the official Qubic Core release, the features of the contract must be tested in a test network with multiple nodes, showing that the contract works well in practice and that the nodes run stable with the contract.
@@ -627,3 +628,5 @@ The file `proposal.cpp` has a lot of examples showing how to use both functions.
 For example, `getProposalIndices()` shows how to call a contract function requiring input and providing output with `runContractFunction()`.
 An example use case of `makeContractTransaction()` can be found in `gqmpropSetProposal()`.
 The function `castVote()` is a more complex example combining both, calling a contract function and invoking a contract procedure.
+
+

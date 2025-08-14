@@ -19,7 +19,7 @@ struct TESTEXD : public ContractBase
 		locals.balance = locals.entity.incomingAmount - locals.entity.outgoingAmount;
 		if (locals.balance > NUMBER_OF_COMPUTORS)
 		{
-			qpi.distributeDividends(locals.balance / NUMBER_OF_COMPUTORS);
+			qpi.distributeDividends(div<sint64>(locals.balance, NUMBER_OF_COMPUTORS));
 		}
 	}
 

@@ -279,7 +279,9 @@ public:
 	struct GetProposal_output
 	{
 		bit okay;
-		uint8 _padding0[7];
+		Array<uint8, 4> _padding0;
+		Array<uint8, 2> _padding1;
+		Array<uint8, 1> _padding2;
 		id proposerPubicKey;
 		ProposalDataT proposal;
 	};
@@ -410,7 +412,7 @@ public:
 							}
 
 							// Option for changing status quo has been accepted? (option 0 is "no change")
-							if (locals.mostVotedOptionIndex > 0 && locals.mostVotedOptionVotes > QUORUM / 2)
+							if (locals.mostVotedOptionIndex > 0 && locals.mostVotedOptionVotes > div<uint32>(QUORUM, 2U))
 							{
 								// Set in revenueDonation table (cannot be done in END_EPOCH, because this may overwrite entries that
 								// are still needed unchanged for this epoch for the revenue donation which is run after END_EPOCH)
