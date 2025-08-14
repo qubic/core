@@ -886,14 +886,14 @@ namespace QPI
 
 	// Divide a by b, but return 0 if b is 0 (rounding to lower magnitude in case of integers)
 	template <typename T>
-	inline static T div(T a, T b)
+	inline static constexpr T div(T a, T b)
 	{
 		return b ? (a / b) : T(0);
 	}
 
 	// Return remainder of dividing a by b, but return 0 if b is 0 (requires modulo % operator)
 	template <typename T>
-	inline static T mod(T a, T b)
+	inline static constexpr T mod(T a, T b)
 	{
 		return b ? (a % b) : 0;
 	}

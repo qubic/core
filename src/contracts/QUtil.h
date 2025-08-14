@@ -32,28 +32,28 @@ constexpr uint64 QUTIL_MAX_ASSETS_PER_POLL = 16; // Maximum assets per poll
 constexpr sint64 QUTIL_VOTE_FEE = 100LL; // Fee for voting, burnt 100%
 constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
 constexpr uint16 QUTIL_POLL_GITHUB_URL_MAX_SIZE = 256; // Max String Length for Poll's Github URLs
-const uint64 QUTIL_MAX_NEW_POLL = div(QUTIL_MAX_POLL, 4ULL); // Max number of new poll per epoch
+constexpr uint64 QUTIL_MAX_NEW_POLL = div(QUTIL_MAX_POLL, 4ULL); // Max number of new poll per epoch
 
 
 // Voting log types enum
-const uint64 QUTILLogTypePollCreated = 5;                       // Poll created successfully
-const uint64 QUTILLogTypeInsufficientFundsForPoll = 6;          // Insufficient funds for poll creation
-const uint64 QUTILLogTypeInvalidPollType = 7;                   // Invalid poll type
-const uint64 QUTILLogTypeInvalidNumAssetsQubic = 8;             // Invalid number of assets for Qubic poll
-const uint64 QUTILLogTypeInvalidNumAssetsAsset = 9;             // Invalid number of assets for Asset poll
-const uint64 QUTILLogTypeVoteCast = 10;                         // Vote cast successfully
-const uint64 QUTILLogTypeInsufficientFundsForVote = 11;         // Insufficient funds for voting
-const uint64 QUTILLogTypeInvalidPollId = 12;                    // Invalid poll ID
-const uint64 QUTILLogTypePollInactive = 13;                     // Poll is inactive
-const uint64 QUTILLogTypeInsufficientBalance = 14;              // Insufficient voter balance
-const uint64 QUTILLogTypeInvalidOption = 15;                    // Invalid voting option
-const uint64 QUTILLogTypeInvalidPollIdResult = 16;              // Invalid poll ID in GetCurrentResult
-const uint64 QUTILLogTypePollInactiveResult = 17;               // Poll inactive in GetCurrentResult
-const uint64 QUTILLogTypeNoPollsByCreator = 18;                 // No polls found in GetPollsByCreator
-const uint64 QUTILLogTypePollCancelled = 19;                    // Poll cancelled successfully
-const uint64 QUTILLogTypeNotAuthorized = 20;                    // Not authorized to cancel the poll
-const uint64 QUTILLogTypeInsufficientFundsForCancel = 21;       // Not have enough funds for poll calcellation
-const uint64 QUTILLogTypeMaxPollsReached = 22;                  // Max epoch per epoch reached
+constexpr uint64 QUTILLogTypePollCreated = 5;                       // Poll created successfully
+constexpr uint64 QUTILLogTypeInsufficientFundsForPoll = 6;          // Insufficient funds for poll creation
+constexpr uint64 QUTILLogTypeInvalidPollType = 7;                   // Invalid poll type
+constexpr uint64 QUTILLogTypeInvalidNumAssetsQubic = 8;             // Invalid number of assets for Qubic poll
+constexpr uint64 QUTILLogTypeInvalidNumAssetsAsset = 9;             // Invalid number of assets for Asset poll
+constexpr uint64 QUTILLogTypeVoteCast = 10;                         // Vote cast successfully
+constexpr uint64 QUTILLogTypeInsufficientFundsForVote = 11;         // Insufficient funds for voting
+constexpr uint64 QUTILLogTypeInvalidPollId = 12;                    // Invalid poll ID
+constexpr uint64 QUTILLogTypePollInactive = 13;                     // Poll is inactive
+constexpr uint64 QUTILLogTypeInsufficientBalance = 14;              // Insufficient voter balance
+constexpr uint64 QUTILLogTypeInvalidOption = 15;                    // Invalid voting option
+constexpr uint64 QUTILLogTypeInvalidPollIdResult = 16;              // Invalid poll ID in GetCurrentResult
+constexpr uint64 QUTILLogTypePollInactiveResult = 17;               // Poll inactive in GetCurrentResult
+constexpr uint64 QUTILLogTypeNoPollsByCreator = 18;                 // No polls found in GetPollsByCreator
+constexpr uint64 QUTILLogTypePollCancelled = 19;                    // Poll cancelled successfully
+constexpr uint64 QUTILLogTypeNotAuthorized = 20;                    // Not authorized to cancel the poll
+constexpr uint64 QUTILLogTypeInsufficientFundsForCancel = 21;       // Not have enough funds for poll calcellation
+constexpr uint64 QUTILLogTypeMaxPollsReached = 22;                  // Max epoch per epoch reached
 
 struct QUTILLogger
 {
