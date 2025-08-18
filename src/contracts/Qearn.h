@@ -935,7 +935,7 @@ protected:
             locals.start_index = state._epochIndex.get(172).startIndex;
             locals.end_index = state._epochIndex.get(172).endIndex;
 
-            for (locals.t = locals.start_index + 1; locals.t <= locals.end_index; locals.t++)
+            for (locals.t = locals.start_index; locals.t < locals.end_index; locals.t++)
             {
                 locals.totalLockedAmountInEpoch172 += state.locker.get(locals.t)._lockedAmount;
             }
