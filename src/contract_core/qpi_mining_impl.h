@@ -16,6 +16,10 @@ static ScoreFunction<
 
 m256i QPI::QpiContextFunctionCall::computeMiningFunction(const m256i miningSeed, const m256i publicKey, const m256i nonce) const
 {
-    (*score_qpi)(0, publicKey, miningSeed, nonce);
-    return score_qpi->getLastOutput(0);
+    //(*score_qpi)(0, publicKey, miningSeed, nonce);
+    //return score_qpi->getLastOutput(0);
+
+    m256i result;
+    result.setRandomValue();
+    return result;
 }
