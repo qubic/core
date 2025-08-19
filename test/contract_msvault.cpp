@@ -168,6 +168,22 @@ public:
         return output.transferredNumberOfShares;
     }
 
+    sint64 revokeAssetManagementRights(const id& from, const Asset& asset, sint64 numberOfShares)
+    {
+        MSVAULT::revokeAssetManagementRights_input input;
+        input.asset = asset;
+        input.numberOfShares = numberOfShares;
+        MSVAULT::revokeAssetManagementRights_output output;
+        output.transferredNumberOfShares = 0;
+
+        // The fee required by QX is 100. Do this to ensure enough fee.
+        const uint64 fee = 100;
+        increaseEnergy(from, fee);
+
+        invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 25, input, output, from, fee);
+        return output.transferredNumberOfShares;
+    }
+
     void depositAsset(uint64 vaultId, const Asset& asset, uint64 amount, const id& from)
     {
         MSVAULT::depositAsset_input input;
@@ -1035,4 +1051,44 @@ TEST(ContractMsVault, StressTest_MultiUser_MultiAsset)
                                                              { id(MSVAULT_CONTRACT_INDEX, 0, 0, 0), MSVAULT_CONTRACT_INDEX });
     // The total on-chain balance should also be (100 * 2) - 75 = 125
     EXPECT_EQ(scOnChainBalance, (depositAmount * 2) - releaseAmount);
+}
+
+TEST(ContractMsVault, RevokeAssetManagementRights_Success)
+{
+    ContractTestingMsVault msvault;
+
+    const id USER = OWNER1;
+    const Asset asset = { USER, assetNameFromString("REVOKE") };
+    const sint64 initialShares = 10000;
+    const sint64 sharesToManage = 4000;
+    const sint64 sharesToRevoke = 3000;
+
+    // Issue asset and transfer management rights to MsVault
+    increaseEnergy(USER, QX_ISSUE_ASSET_FEE + 1000000 + 100); // Energy for all fees
+    msvault.issueAsset(USER, "REVOKE", initialShares);
+
+    // Verify initial state: all shares managed by QX
+    EXPECT_EQ(numberOfShares(asset, { USER, QX_CONTRACT_INDEX }, { USER, QX_CONTRACT_INDEX }), initialShares);
+    EXPECT_EQ(numberOfShares(asset, { USER, MSVAULT_CONTRACT_INDEX }, { USER, MSVAULT_CONTRACT_INDEX }), 0);
+
+    // User gives MsVault management rights over a portion of their shares
+    msvault.transferShareManagementRights(USER, asset, sharesToManage, MSVAULT_CONTRACT_INDEX);
+
+    // Verify intermediate state: rights are split between QX and MsVault
+    EXPECT_EQ(numberOfShares(asset, { USER, QX_CONTRACT_INDEX }, { USER, QX_CONTRACT_INDEX }), initialShares - sharesToManage);
+    EXPECT_EQ(numberOfShares(asset, { USER, MSVAULT_CONTRACT_INDEX }, { USER, MSVAULT_CONTRACT_INDEX }), sharesToManage);
+
+    // User revokes a portion of the managed rights from MsVault. The helper now handles the fee.
+    sint64 revokedAmount = msvault.revokeAssetManagementRights(USER, asset, sharesToRevoke);
+
+    // Verify the outcome
+    EXPECT_EQ(revokedAmount, sharesToRevoke);
+
+    // The amount managed by MsVault should decrease
+    sint64 finalManagedByMsVault = numberOfShares(asset, { USER, MSVAULT_CONTRACT_INDEX }, { USER, MSVAULT_CONTRACT_INDEX });
+    EXPECT_EQ(finalManagedByMsVault, sharesToManage - sharesToRevoke); // 4000 - 3000 = 1000
+
+    // The amount managed by QX should increase accordingly
+    sint64 finalManagedByQx = numberOfShares(asset, { USER, QX_CONTRACT_INDEX }, { USER, QX_CONTRACT_INDEX });
+    EXPECT_EQ(finalManagedByQx, (initialShares - sharesToManage) + sharesToRevoke); // 6000 + 3000 = 9000
 }

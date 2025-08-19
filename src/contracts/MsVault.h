@@ -14,6 +14,7 @@ constexpr uint64 MSVAULT_RELEASE_RESET_FEE = 1000000ULL;
 constexpr uint64 MSVAULT_HOLDING_FEE = 500000ULL;
 constexpr uint64 MSVAULT_BURN_FEE = 0ULL; // Integer percentage from 1 -> 100
 constexpr uint64 MSVAULT_VOTE_FEE_CHANGE_FEE = 10000000ULL; // Deposit fee for adjusting other fees. Refund if shareholders
+constexpr uint64 MSVAULT_REVOKE_FEE = 100ULL;
 // [TODO]: Turn this assert ON when MSVAULT_BURN_FEE > 0
 //static_assert(MSVAULT_BURN_FEE > 0, "SC requires burning qu to operate, the burn fee must be higher than 0!");
 
@@ -520,6 +521,21 @@ public:
         isValidVaultId_locals iv_locals;
     };
 
+    struct revokeAssetManagementRights_input
+    {
+        Asset asset;
+        sint64 numberOfShares;
+    };
+    struct revokeAssetManagementRights_output
+    {
+        sint64 transferredNumberOfShares;
+    };
+    struct revokeAssetManagementRights_locals
+    {
+        sint64 managedBalance;
+        sint64 result;
+    };
+
     struct releaseAssetTo_input
     {
         uint64 vaultId;
@@ -856,6 +872,70 @@ protected:
 
         locals.vault.qubicBalance += qpi.invocationReward();
         state.vaults.set(input.vaultId, locals.vault);
+    }
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(revokeAssetManagementRights)
+    {
+        // This procedure allows a user to revoke asset management rights from MsVault
+        // and transfer them back to QX, which is the default manager for trading.
+
+        if (qpi.invocationReward() < (sint64)MSVAULT_REVOKE_FEE)
+        {
+            // Refund if any amount was sent, but it was insufficient.
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.transferredNumberOfShares = 0;
+            return;
+        }
+
+        if (qpi.invocationReward() > (sint64)MSVAULT_REVOKE_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - MSVAULT_REVOKE_FEE);
+        }
+
+        // must transfer a positive number of shares.
+        if (input.numberOfShares <= 0)
+        {
+            output.transferredNumberOfShares = 0;
+            return;
+        }
+
+        // Check if MsVault actually manages the specified number of shares for the caller.
+        locals.managedBalance = qpi.numberOfShares(
+            input.asset,
+            { qpi.invocator(), SELF_INDEX },
+            { qpi.invocator(), SELF_INDEX }
+        );
+
+        if (locals.managedBalance < input.numberOfShares)
+        {
+            // The user is trying to revoke more shares than are managed by MsVault.
+            output.transferredNumberOfShares = 0;
+        }
+        else
+        {
+            // The balance check passed. Proceed to release the management rights.
+            locals.result = qpi.releaseShares(
+                input.asset,
+                qpi.invocator(), // owner
+                qpi.invocator(), // possessor
+                input.numberOfShares,
+                QX_CONTRACT_INDEX,
+                QX_CONTRACT_INDEX,
+                MSVAULT_REVOKE_FEE
+            );
+
+            if (locals.result < 0)
+            {
+                output.transferredNumberOfShares = 0;
+            }
+            else
+            {
+                output.transferredNumberOfShares = input.numberOfShares;
+            }
+        }
     }
 
     PUBLIC_PROCEDURE_WITH_LOCALS(depositAsset)
@@ -1877,6 +1957,8 @@ protected:
         REGISTER_USER_FUNCTION(getVaultAssetBalances, 22);
         REGISTER_USER_FUNCTION(getAssetReleaseStatus, 23);
         REGISTER_USER_FUNCTION(getManagedAssetBalance, 24);
+        REGISTER_USER_PROCEDURE(revokeAssetManagementRights, 25);
+
     }
 
     PRE_ACQUIRE_SHARES()
