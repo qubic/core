@@ -939,11 +939,12 @@ protected:
             {
                 locals.totalLockedAmountInEpoch172 += state.locker.get(locals.t)._lockedAmount;
             }
-            locals.INITIALIZE_ROUNDINFO._totalLockedAmount = locals.totalLockedAmountInEpoch172;
-            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = state._currentRoundInfo.get(172)._epochBonusAmount - locals.totalLockedAmountInEpoch172;
-
+            locals.INITIALIZE_ROUNDINFO._totalLockedAmount = 606135884379;
+            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = 100972387548;
             state._initialRoundInfo.set(172, locals.INITIALIZE_ROUNDINFO);
-            state._currentRoundInfo.set(172, locals.INITIALIZE_ROUNDINFO);   
+            locals.INITIALIZE_ROUNDINFO._totalLockedAmount = locals.totalLockedAmountInEpoch172;
+            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = 100972387548;
+            state._currentRoundInfo.set(172, locals.INITIALIZE_ROUNDINFO);
         }
 	}
 
