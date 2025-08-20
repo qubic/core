@@ -13,6 +13,7 @@ static constexpr uint64 TWO_OF_THREE = 2ULL;
 
 static const id DESTINATION = id::randomValue();
 static constexpr uint64 QX_ISSUE_ASSET_FEE = 1000000000ull;
+static constexpr uint64 QX_MANAGEMENT_TRANSFER_FEE = 100ull;
 
 class ContractTestingMsVault : protected ContractTesting
 {
@@ -782,7 +783,7 @@ TEST(ContractMsVault, ReleaseAssetTo_FullApproval)
     Asset assetTest = { OWNER1, assetNameFromString("ASSET") };
 
     // Create a 2-of-3 vault, issue and deposit an asset
-    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + MSVAULT_RELEASE_FEE);
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + MSVAULT_RELEASE_FEE + QX_ISSUE_ASSET_FEE + QX_MANAGEMENT_TRANSFER_FEE);
     increaseEnergy(OWNER2, MSVAULT_RELEASE_FEE);
     msvault.registerVault(TWO_OF_THREE, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
     auto vaults = msvault.getVaults(OWNER1);
@@ -792,9 +793,12 @@ TEST(ContractMsVault, ReleaseAssetTo_FullApproval)
     msvault.transferShareManagementRights(OWNER1, assetTest, 800, MSVAULT_CONTRACT_INDEX);
     msvault.depositAsset(vaultId, assetTest, 800, OWNER1);
 
-    // Check initial balances
-    sint64 destinationBalanceBefore = numberOfPossessedShares(assetTest.assetName, assetTest.issuer, DESTINATION, DESTINATION, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
-    EXPECT_EQ(destinationBalanceBefore, 0LL);
+    // Deposit funds into the vault to cover the upcoming management transfer fee.
+    msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, OWNER1);
+
+    // Check initial balances for the destination
+    EXPECT_EQ(numberOfShares(assetTest, { DESTINATION, QX_CONTRACT_INDEX }, { DESTINATION, QX_CONTRACT_INDEX }), 0LL);
+    EXPECT_EQ(numberOfShares(assetTest, { DESTINATION, MSVAULT_CONTRACT_INDEX }, { DESTINATION, MSVAULT_CONTRACT_INDEX }), 0LL);
     auto vaultAssetBalanceBefore = msvault.getVaultAssetBalances(vaultId).assetBalances.get(0).balance;
     EXPECT_EQ(vaultAssetBalanceBefore, 800ULL);
 
@@ -803,14 +807,15 @@ TEST(ContractMsVault, ReleaseAssetTo_FullApproval)
     msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER2);
 
     // Check final balances
-    sint64 destinationBalanceAfter = numberOfShares(assetTest, AssetOwnershipSelect::byOwner(DESTINATION),
-                                                               AssetPossessionSelect::byPossessor(DESTINATION));
-    EXPECT_EQ(destinationBalanceAfter, 500LL);
+    sint64 destBalanceManagedByQx = numberOfShares(assetTest, { DESTINATION, QX_CONTRACT_INDEX }, { DESTINATION, QX_CONTRACT_INDEX });
+    sint64 destBalanceManagedByMsVault = numberOfShares(assetTest, { DESTINATION, MSVAULT_CONTRACT_INDEX }, { DESTINATION, MSVAULT_CONTRACT_INDEX });
+    EXPECT_EQ(destBalanceManagedByQx, 500LL);
+    EXPECT_EQ(destBalanceManagedByMsVault, 0LL);
 
     auto vaultAssetBalanceAfter = msvault.getVaultAssetBalances(vaultId).assetBalances.get(0).balance;
     EXPECT_EQ(vaultAssetBalanceAfter, 300ULL); // 800 - 500
 
-    // The vault's qubic balance should be 0 after paying the fee
+    // The vault's qubic balance should be 0 after paying the management transfer fee
     auto vaultQubicBalanceAfter = msvault.getBalanceOf(vaultId);
     EXPECT_EQ(vaultQubicBalanceAfter.balance, 0LL);
 
@@ -826,13 +831,16 @@ TEST(ContractMsVault, ReleaseAssetTo_PartialApproval)
     Asset assetTest = { OWNER1, assetNameFromString("ASSET") };
 
     // Setup
-    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + MSVAULT_RELEASE_FEE);
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + MSVAULT_RELEASE_FEE + QX_MANAGEMENT_TRANSFER_FEE);
     msvault.registerVault(TWO_OF_THREE, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
     auto vaults = msvault.getVaults(OWNER1);
     uint64 vaultId = vaults.vaultIds.get(0);
     msvault.issueAsset(OWNER1, "ASSET", 1000000);
     msvault.transferShareManagementRights(OWNER1, assetTest, 800, MSVAULT_CONTRACT_INDEX);
     msvault.depositAsset(vaultId, assetTest, 800, OWNER1);
+
+    // Deposit the fee into the vault so it can process release requests.
+    msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, OWNER1);
 
     // Only one owner approves
     msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER1);
@@ -848,8 +856,8 @@ TEST(ContractMsVault, ReleaseAssetTo_PartialApproval)
     EXPECT_EQ(status.amounts.get(1), 0ULL);
 
     // Balances should be unchanged
-    sint64 destinationBalance = numberOfPossessedShares(assetTest.assetName, assetTest.issuer, DESTINATION, DESTINATION,
-                                                        QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+    sint64 destinationBalance = numberOfShares(assetTest, { DESTINATION, QX_CONTRACT_INDEX },
+                                                          { DESTINATION, QX_CONTRACT_INDEX });
     EXPECT_EQ(destinationBalance, 0LL);
     auto vaultBalance = msvault.getVaultAssetBalances(vaultId).assetBalances.get(0).balance;
     EXPECT_EQ(vaultBalance, 800ULL);
@@ -861,13 +869,15 @@ TEST(ContractMsVault, ResetAssetRelease_Success)
     Asset assetTest = { OWNER1, assetNameFromString("ASSET") };
 
     // Setup
-    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + MSVAULT_RELEASE_RESET_FEE + MSVAULT_RELEASE_FEE);
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + MSVAULT_RELEASE_RESET_FEE + MSVAULT_RELEASE_FEE + QX_MANAGEMENT_TRANSFER_FEE);
     msvault.registerVault(TWO_OF_TWO, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
     auto vaults = msvault.getVaults(OWNER1);
     uint64 vaultId = vaults.vaultIds.get(0);
     msvault.issueAsset(OWNER1, "ASSET", 1000000);
     msvault.transferShareManagementRights(OWNER1, assetTest, 100, MSVAULT_CONTRACT_INDEX);
     msvault.depositAsset(vaultId, assetTest, 100, OWNER1);
+
+    msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, OWNER1);
 
     // Propose and then reset a release
     msvault.releaseAssetTo(vaultId, assetTest, 50, DESTINATION, OWNER1);
@@ -902,7 +912,7 @@ TEST(ContractMsVault, FullLifecycle_BalanceVerification)
     const sint64 sharesToRelease = 1500;
 
     // Issue asset and create a type 2 vault
-    increaseEnergy(USER, MSVAULT_REGISTERING_FEE + QX_ISSUE_ASSET_FEE);
+    increaseEnergy(USER, MSVAULT_REGISTERING_FEE + QX_ISSUE_ASSET_FEE + QX_MANAGEMENT_TRANSFER_FEE);
     increaseEnergy(PARTNER, MSVAULT_RELEASE_FEE);
 
     msvault.issueAsset(USER, "ASSET", initialShares);
@@ -913,6 +923,9 @@ TEST(ContractMsVault, FullLifecycle_BalanceVerification)
     // Verify user has full on-chain balance under QX management
     sint64 userShares_QX = numberOfShares(assetTest, { USER, QX_CONTRACT_INDEX }, { USER, QX_CONTRACT_INDEX });
     EXPECT_EQ(userShares_QX, initialShares);
+
+    // Fund the vault for the future management transfer fee
+    msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, USER);
 
     // User gives MsVault management rights over a portion of their shares
     msvault.transferShareManagementRights(USER, assetTest, sharesToManage, MSVAULT_CONTRACT_INDEX);
@@ -955,9 +968,15 @@ TEST(ContractMsVault, FullLifecycle_BalanceVerification)
     vaultBalances = msvault.getVaultAssetBalances(vaultId);
     EXPECT_EQ(vaultBalances.assetBalances.get(0).balance, sharesToDeposit - sharesToRelease);
 
-    // Destination's on-chain balance should increase
-    sint64 destinationShares = numberOfShares(assetTest, { DESTINATION_ACC, MSVAULT_CONTRACT_INDEX }, { DESTINATION_ACC, MSVAULT_CONTRACT_INDEX });
-    EXPECT_EQ(destinationShares, sharesToRelease);
+    // Vault's internal qubic balance should decrease by the fee
+    EXPECT_EQ(msvault.getBalanceOf(vaultId).balance, 0);
+
+    // Destination's on-chain balance should increase, and it should be managed by QX
+    sint64 destinationSharesManagedByQx = numberOfShares(assetTest, { DESTINATION_ACC, QX_CONTRACT_INDEX }, { DESTINATION_ACC, QX_CONTRACT_INDEX });
+    sint64 destinationSharesManagedByMsVault = numberOfShares(assetTest, { DESTINATION_ACC, MSVAULT_CONTRACT_INDEX }, { DESTINATION_ACC, MSVAULT_CONTRACT_INDEX });
+
+    EXPECT_EQ(destinationSharesManagedByQx, sharesToRelease);
+    EXPECT_EQ(destinationSharesManagedByMsVault, 0);
 }
 
 TEST(ContractMsVault, StressTest_MultiUser_MultiAsset)
@@ -1005,6 +1024,7 @@ TEST(ContractMsVault, StressTest_MultiUser_MultiAsset)
         msvault.depositAsset(targetVaultId, assetToDeposit, depositAmount, owner_of_asset);
     }
 
+    msvault.deposit(targetVaultId, QX_MANAGEMENT_TRANSFER_FEE, users[0]);
     // Check the state of the target vault
     auto vaultBalances = msvault.getVaultAssetBalances(targetVaultId);
     EXPECT_EQ(vaultBalances.status, 1ULL);
@@ -1026,8 +1046,8 @@ TEST(ContractMsVault, StressTest_MultiUser_MultiAsset)
     msvault.releaseAssetTo(targetVaultId, assetToRelease, releaseAmount, releaseDestination, users[2]);
 
     // Check destination on-chain balance
-    sint64 destBalance = numberOfShares(assetToRelease, { releaseDestination, MSVAULT_CONTRACT_INDEX },
-                                                        { releaseDestination, MSVAULT_CONTRACT_INDEX });
+    sint64 destBalance = numberOfShares(assetToRelease, { releaseDestination, QX_CONTRACT_INDEX },
+                                                        { releaseDestination, QX_CONTRACT_INDEX });
     EXPECT_EQ(destBalance, releaseAmount);
 
     // Check vault's internal accounting for the released asset

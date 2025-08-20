@@ -13,7 +13,7 @@ constexpr uint64 MSVAULT_RELEASE_FEE = 100000ULL;
 constexpr uint64 MSVAULT_RELEASE_RESET_FEE = 1000000ULL;
 constexpr uint64 MSVAULT_HOLDING_FEE = 500000ULL;
 constexpr uint64 MSVAULT_BURN_FEE = 0ULL; // Integer percentage from 1 -> 100
-constexpr uint64 MSVAULT_VOTE_FEE_CHANGE_FEE = 10000000ULL; // Deposit fee for adjusting other fees. Refund if shareholders
+constexpr uint64 MSVAULT_VOTE_FEE_CHANGE_FEE = 10000000ULL; // Deposit fee for adjusting other fees, and refund if shareholders
 constexpr uint64 MSVAULT_REVOKE_FEE = 100ULL;
 // [TODO]: Turn this assert ON when MSVAULT_BURN_FEE > 0
 //static_assert(MSVAULT_BURN_FEE > 0, "SC requires burning qu to operate, the burn fee must be higher than 0!");
@@ -79,6 +79,7 @@ public:
         // 9: Max asset types for vault reached
         // 10: Asset release successful
         // 11: Reset asset release successful
+        // 12: Management rights transfer failed after release
         uint32 _type;
         uint64 vaultId;
         id ownerID;
@@ -512,6 +513,7 @@ public:
         uint64 i;
         sint64 userAssetBalance;
         sint64 tempShares;
+        sint64 transferResult;
         sint64 transferedShares;
         QX::TransferShareOwnershipAndPossession_input qx_in;
         QX::TransferShareOwnershipAndPossession_output qx_out;
@@ -567,6 +569,7 @@ public:
         isValidVaultId_locals iv_locals;
         QX::TransferShareOwnershipAndPossession_input qx_in;
         QX::TransferShareOwnershipAndPossession_output qx_out;
+        sint64 releaseResult;
     };
 
     struct resetAssetRelease_input
@@ -642,6 +645,7 @@ public:
         AssetBalance ab;
         QX::TransferShareOwnershipAndPossession_input qx_in;
         QX::TransferShareOwnershipAndPossession_output qx_out;
+        id qxAdress;
     };
 
 protected:
@@ -722,6 +726,11 @@ protected:
             return;
         }
 
+        if (qpi.invocationReward() > (sint64)state.liveRegisteringFee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveRegisteringFee);
+        }
+
         locals.ownerCount = 0;
         for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i = locals.i + 1)
         {
@@ -752,14 +761,9 @@ protected:
             return;
         }
 
-        if (locals.ownerCount > MSVAULT_MAX_OWNERS)
-        {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            return;
-        }
-
         // requiredApprovals must be > 1 and <= numberOfOwners
-        if (input.requiredApprovals <= 1 || input.requiredApprovals > locals.ownerCount) {
+        if (input.requiredApprovals <= 1 || input.requiredApprovals > locals.ownerCount) 
+        {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
@@ -842,11 +846,6 @@ protected:
 
         state.vaults.set((uint64)locals.slotIndex, locals.newVault);
 
-        if (qpi.invocationReward() > (sint64)state.liveRegisteringFee)
-        {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveRegisteringFee);
-        }
-
         state.numberOfActiveVaults++;
 
         state.totalRevenue += state.liveRegisteringFee;
@@ -881,23 +880,20 @@ protected:
 
         if (qpi.invocationReward() < (sint64)MSVAULT_REVOKE_FEE)
         {
-            // Refund if any amount was sent, but it was insufficient.
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.transferredNumberOfShares = 0;
             return;
         }
 
         if (qpi.invocationReward() > (sint64)MSVAULT_REVOKE_FEE)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - MSVAULT_REVOKE_FEE);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)MSVAULT_REVOKE_FEE);
         }
 
         // must transfer a positive number of shares.
         if (input.numberOfShares <= 0)
         {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.transferredNumberOfShares = 0;
             return;
         }
@@ -995,7 +991,12 @@ protected:
         locals.qx_in.numberOfShares = input.amount;
         locals.qx_in.newOwnerAndPossessor = SELF;
 
-        qpi.transferShareOwnershipAndPossession(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(), input.amount, SELF);
+        locals.transferResult = qpi.transferShareOwnershipAndPossession(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(), input.amount, SELF);
+
+        if (locals.transferResult < 0)
+        {
+            return;
+        }
 
         locals.transferedShares = qpi.numberOfShares(input.asset, { SELF, SELF_INDEX }, { SELF, SELF_INDEX }) - locals.tempShares;
 
@@ -1028,12 +1029,13 @@ protected:
     {
         if (qpi.invocationReward() < (sint64)state.liveReleaseFee)
         {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
         if (qpi.invocationReward() > (sint64)state.liveReleaseFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveReleaseFee);
         }
 
         state.totalRevenue += state.liveReleaseFee;
@@ -1052,6 +1054,7 @@ protected:
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1061,6 +1064,7 @@ protected:
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1071,6 +1075,7 @@ protected:
         {
             locals.logger._type = 2;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1078,6 +1083,7 @@ protected:
         {
             locals.logger._type = 3;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1085,6 +1091,7 @@ protected:
         {
             locals.logger._type = 5;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1148,12 +1155,13 @@ protected:
     {
         if (qpi.invocationReward() < (sint64)state.liveReleaseFee)
         {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
         if (qpi.invocationReward() > (sint64)state.liveReleaseFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveReleaseFee);
         }
 
         state.totalRevenue += state.liveReleaseFee;
@@ -1172,6 +1180,7 @@ protected:
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1181,6 +1190,7 @@ protected:
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1191,6 +1201,15 @@ protected:
         {
             locals.logger._type = 2;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        if (locals.vault.qubicBalance < MSVAULT_REVOKE_FEE)
+        {
+            locals.logger._type = 5;
+            LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1198,6 +1217,7 @@ protected:
         {
             locals.logger._type = 3;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1216,6 +1236,7 @@ protected:
         {
             locals.logger._type = 8;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1223,6 +1244,7 @@ protected:
         {
             locals.logger._type = 5;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1275,6 +1297,30 @@ protected:
                     locals.ab.balance -= input.amount;
                     locals.vault.assetBalances.set(locals.assetIndex, locals.ab);
 
+                    // Release management rights from MsVault to QX for the recipient
+                    locals.releaseResult = qpi.releaseShares(
+                        input.asset,
+                        input.destination, // new owner
+                        input.destination, // new possessor
+                        input.amount,
+                        QX_CONTRACT_INDEX,
+                        QX_CONTRACT_INDEX,
+                        MSVAULT_REVOKE_FEE
+                    );
+
+                    if (locals.releaseResult >= 0)
+                    {
+                        // Deduct the fee from the vault's balance upon success
+                        locals.vault.qubicBalance -= MSVAULT_REVOKE_FEE;
+                        locals.logger._type = 10; // Asset release successful
+                    }
+                    else
+                    {
+                        // Log an error if management rights transfer fails
+                        locals.logger._type = 12; // Management rights transfer failed
+                    }
+                    LOG_INFO(locals.logger);
+
                     // Reset all asset release requests
                     for (locals.i = 0; locals.i < MSVAULT_MAX_OWNERS; locals.i++)
                     {
@@ -1312,11 +1358,12 @@ protected:
     {
         if (qpi.invocationReward() < (sint64)state.liveReleaseResetFee)
         {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         if (qpi.invocationReward() > (sint64)state.liveReleaseResetFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseResetFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveReleaseResetFee);
         }
 
         state.totalRevenue += state.liveReleaseResetFee;
@@ -1335,6 +1382,7 @@ protected:
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1344,6 +1392,7 @@ protected:
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1354,6 +1403,7 @@ protected:
         {
             locals.logger._type = 2;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1375,11 +1425,12 @@ protected:
     {
         if (qpi.invocationReward() < (sint64)state.liveReleaseResetFee)
         {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         if (qpi.invocationReward() > (sint64)state.liveReleaseResetFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.liveReleaseResetFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveReleaseResetFee);
         }
 
         state.totalRevenue += state.liveReleaseResetFee;
@@ -1398,6 +1449,7 @@ protected:
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1407,6 +1459,7 @@ protected:
         {
             locals.logger._type = 1;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1417,6 +1470,7 @@ protected:
         {
             locals.logger._type = 2;
             LOG_INFO(locals.logger);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1439,6 +1493,7 @@ protected:
     {
         if (qpi.invocationReward() < (sint64)MSVAULT_VOTE_FEE_CHANGE_FEE)
         {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1848,7 +1903,7 @@ protected:
 
     END_EPOCH_WITH_LOCALS()
     {
-        id QX_ADDRESS = id(1, 0, 0, 0);
+        locals.qxAdress = id(1, 0, 0, 0);
         for (locals.i = 0ULL; locals.i < MSVAULT_MAX_VAULTS; locals.i++)
         {
             locals.v = state.vaults.get(locals.i);
@@ -1877,7 +1932,7 @@ protected:
                             locals.qx_in.assetName = locals.ab.asset.assetName;
                             locals.qx_in.issuer = locals.ab.asset.issuer;
                             locals.qx_in.numberOfShares = locals.ab.balance;
-                            locals.qx_in.newOwnerAndPossessor = QX_ADDRESS;
+                            locals.qx_in.newOwnerAndPossessor = locals.qxAdress;
 
                             INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareOwnershipAndPossession, locals.qx_in, locals.qx_out, 0);
                         }
