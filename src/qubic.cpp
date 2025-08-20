@@ -139,13 +139,7 @@ static unsigned int uniqueNextTickTransactionDigestCounters[NUMBER_OF_COMPUTORS]
 static unsigned int resourceTestingDigest = 0;
 
 static unsigned int numberOfTransactions = 0;
-//static volatile char entityPendingTransactionsLock = 0;
-//static unsigned char* entityPendingTransactions = NULL;
-//static unsigned char* entityPendingTransactionDigests = NULL;
-//static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY]; // [SPECTRUM_CAPACITY] must be >= than [NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR]
-//static volatile char computorPendingTransactionsLock = 0;
-//static unsigned char* computorPendingTransactions = NULL;
-//static unsigned char* computorPendingTransactionDigests = NULL;
+
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
 
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
@@ -4346,6 +4340,8 @@ static void prepareNextTickTransactions()
 
     if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
     {
+        // Checks if any of the missing transactions is available in the pending transaction pool and remove unknownTransaction flag if found
+
         unsigned int numTickTxs = txsPool.getNumberOfTickTxs(nextTick);
         for (unsigned int i = 0; i < numTickTxs; ++i)
         {
