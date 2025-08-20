@@ -20,6 +20,6 @@ m256i QPI::QpiContextFunctionCall::computeMiningFunction(const m256i miningSeed,
     //return score_qpi->getLastOutput(0);
 
     m256i result;
-    result.setRandomValue();
+    result = m256i::zero();
     return result;
 }
