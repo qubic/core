@@ -6964,7 +6964,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             {
                                 // randomly select verified public peers
                                 const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isHandshaked /*&& publicPeers[publicPeerIndex].isFullnode*/)
+                                // share the peer if it's not our private IPs and is handshaked
+                                if (publicPeers[publicPeerIndex].isHandshaked && !(isPrivateIp(publicPeers[publicPeerIndex].address.u8)))
                                 {
                                     request->peers[j] = publicPeers[publicPeerIndex].address;
                                 }
