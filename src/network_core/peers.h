@@ -464,11 +464,6 @@ static void forgetPublicPeer(const IPv4Address& address)
         return;
     }
 
-    if (isPrivateIp(address.u8))
-    {
-        return;
-    }
-
     ACQUIRE(publicPeersLock);
 
     for (unsigned int i = 0; numberOfPublicPeers > NUMBER_OF_PUBLIC_PEERS_TO_KEEP && i < numberOfPublicPeers; i++)
