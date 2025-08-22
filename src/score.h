@@ -24,9 +24,6 @@ static unsigned long long top_of_stack;
 
 ////////// Scoring algorithm \\\\\\\\\\
 
-#define NOT_CALCULATED -127 //not yet calculated
-#define NULL_INDEX -2
-
 constexpr unsigned char INPUT_NEURON_TYPE = 0;
 constexpr unsigned char OUTPUT_NEURON_TYPE = 1;
 constexpr unsigned char EVOLUTION_NEURON_TYPE = 2;
