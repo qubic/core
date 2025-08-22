@@ -8,6 +8,10 @@ To run a qubic node, you need the following spec:
 
 - 16GB RAM.
 
+## Node State
+
+- 676 seeds in `broadcastedComputorSeeds` each has 1M Qubic.
+
 ## Ticking
 
 Press **F12** to switch to **MAIN** mode to make the network start ticking (processing transactions).
@@ -47,3 +51,4 @@ static const unsigned char knownPublicPeers[][4] = {
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
+
