@@ -8,8 +8,10 @@
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
 // random seed is now obtained from spectrumDigests
 
-#define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 12
+#define TESTNET
+
+#define MAX_NUMBER_OF_PROCESSORS 6
+#define NUMBER_OF_SOLUTION_PROCESSORS 2
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
@@ -23,11 +25,11 @@
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
-#define TARGET_TICK_DURATION 1000
-#define TRANSACTION_SPARSENESS 1
+#define TARGET_TICK_DURATION 7000
+#define TRANSACTION_SPARSENESS 4
 
 // Below are 2 variables that are used for auto-F5 feature:
-#define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
+#define AUTO_FORCE_NEXT_TICK_THRESHOLD 20ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
                                             // to prevent bad actor causing misalignment.
                                             // depends on actual tick time of the network, operators should set this number randomly in this range [12, 26]
                                             // eg: If AUTO_FORCE_NEXT_TICK_THRESHOLD is 8 and TARGET_TICK_DURATION is 2, then the system will start "auto F5 procedure" after 16 seconds after receveing 451+ votes
@@ -89,12 +91,13 @@ static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x00095CBEU // around 7000 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x07FFFFFFU  // around 32 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
-#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
+#define TESTNET_EPOCH_DURATION 3000
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH TESTNET_EPOCH_DURATION + 1
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 

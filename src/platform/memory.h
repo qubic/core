@@ -4,13 +4,41 @@
 
 // Defined in test/stdlib_impl.cpp
 
-void setMem(void* buffer, unsigned long long size, unsigned char value);
+void setMem(void* buffer, unsigned long long size, unsigned char value)
+{
+    memset(buffer, value, size);
+}
 
-void copyMem(void* destination, const void* source, unsigned long long length);
+void copyMem(void* destination, const void* source, unsigned long long length)
+{
+    memcpy(destination, source, length);
+}
 
-bool allocatePool(unsigned long long size, void** buffer);
+bool allocatePool(unsigned long long size, void** buffer)
+{
+    void* ptr = malloc(size);
+    if (ptr)
+    {
+        *buffer = ptr;
+        return true;
+    }
+    return false;
+}
 
-void freePool(void* buffer);
+void freePool(void* buffer)
+{
+    free(buffer);
+}
+
+inline void closeEvent(EFI_EVENT Event)
+{
+    bs->CloseEvent(Event);
+}
+
+inline EFI_STATUS createEvent(unsigned int Type, EFI_TPL NotifyTpl, void* NotifyFunction, void* NotifyContext, EFI_EVENT* Event)
+{
+    return bs->CreateEvent(Type, NotifyTpl, NotifyFunction, NotifyContext, Event);
+}
 
 #else
 

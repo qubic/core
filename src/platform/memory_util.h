@@ -12,6 +12,7 @@
 
 static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long size, void** buffer, const int LINE) 
 {
+    static unsigned long long totalMemoryUsed = 0;
     *buffer = malloc(size);
     if (*buffer == nullptr)
     {
@@ -22,6 +23,15 @@ static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long 
     // Zero out allocated memory
     setMem(*buffer, size, 0);
 
+    //totalMemoryUsed += size;
+    //setText(message, L"Memory allocated ");
+    //appendNumber(message, size / 1048576, TRUE);
+    //appendText(message, L" MiB for ");
+    //appendText(message, name);
+    //appendText(message, L"| Total memory used: ");
+    //appendNumber(message, totalMemoryUsed / 1048576, TRUE);
+    //appendText(message, L" MiB.");
+    //logToConsole(message);
     return true;
 }
 

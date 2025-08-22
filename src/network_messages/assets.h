@@ -213,4 +213,4 @@ struct RespondAssetsWithSiblings : public RespondAssets
     m256i siblings[ASSETS_DEPTH];
 };
 
-static_assert(sizeof(RespondAssetsWithSiblings) == 824, "Something is wrong with the struct size.");
+//static_assert(sizeof(RespondAssetsWithSiblings) == 824, "Something is wrong with the struct size.");

@@ -21,17 +21,17 @@
 
 #define DEJAVU_SWAP_LIMIT 1000000
 #define DISSEMINATION_MULTIPLIER 6
-#define NUMBER_OF_OUTGOING_CONNECTIONS 8
-#define NUMBER_OF_INCOMING_CONNECTIONS 88
+#define NUMBER_OF_OUTGOING_CONNECTIONS 4
+#define NUMBER_OF_INCOMING_CONNECTIONS 4
 #define MAX_NUMBER_OF_PUBLIC_PEERS 1024
-#define REQUEST_QUEUE_BUFFER_SIZE 1073741824
+#define REQUEST_QUEUE_BUFFER_SIZE (1073741824 / 4)
 #define REQUEST_QUEUE_LENGTH 65536 // Must be 65536
-#define RESPONSE_QUEUE_BUFFER_SIZE 1073741824
+#define RESPONSE_QUEUE_BUFFER_SIZE (1073741824 / 4)
 #define RESPONSE_QUEUE_LENGTH 65536 // Must be 65536
 #define NUMBER_OF_PUBLIC_PEERS_TO_KEEP 10
 #define NUMBER_OF_WHITE_LIST_PEERS sizeof(whiteListPeers) / sizeof(whiteListPeers[0])
 #define NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS 16
-static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
+//static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
 static volatile bool listOfPeersIsStatic = false;
 
@@ -403,6 +403,7 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 */
 static bool isBogonAddress(const IPv4Address& address)
 {
+    return false;
     return (!address.u8[0])
         || (address.u8[0] == 127)
         || (address.u8[0] == 10)

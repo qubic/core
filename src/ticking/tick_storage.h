@@ -443,6 +443,7 @@ public:
     static bool init()
     {
         // TODO: allocate everything with one continuous buffer
+		constexpr auto total = tickDataSize + ticksSize + tickTransactionsSize + tickTransactionOffsetsSize + (tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry));
         if (!allocPoolWithErrorLog(L"tickDataPtr ", tickDataSize, (void**)&tickDataPtr, __LINE__)
             || !allocPoolWithErrorLog(L"tickPtr", ticksSize, (void**)&ticksPtr, __LINE__)
             || !allocPoolWithErrorLog(L"tickTransactionPtr", tickTransactionsSize, (void**)&tickTransactionsPtr, __LINE__)

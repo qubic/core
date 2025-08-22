@@ -1,4 +1,13 @@
+#include <iostream>
+#include <map>
+#include <vector>
+#include <thread>
+#include <lib/platform_efi/uefi_globals.h>
+
+#define NO_UEFI
 #define SINGLE_COMPILE_UNIT
+#define private public
+#define system qsystem
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -71,6 +80,10 @@
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
 
+#include "extensions/overload.h"
+#undef system
+#define system qsystem
+
 ////////// Qubic \\\\\\\\\\
 
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
@@ -81,7 +94,7 @@
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
-#define PORT 21841
+#define PORT 31841
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
@@ -303,7 +316,7 @@ static struct {
     unsigned long long lastCheck;
 } autoResendTickVotes;
 
-static void logToConsole(const CHAR16* message)
+void logToConsole(const CHAR16* message)
 {
     if (consoleLoggingLevel == 0)
     {
@@ -3561,11 +3574,36 @@ static void beginEpoch()
 
     numberOfOwnComputorIndices = 0;
 
-    broadcastedComputors.computors.epoch = 0;
+    broadcastedComputors.computors.epoch = system.epoch;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        broadcastedComputors.computors.publicKeys[i].setRandomValue();
+        m256i publicKey;
+        m256i privateKey;
+        m256i subseed;
+        getSubseed(broadcastedComputorSeeds[i], subseed.m256i_u8);
+        getPrivateKey(subseed.m256i_u8, privateKey.m256i_u8);
+        getPublicKey(privateKey.m256i_u8, publicKey.m256i_u8);
+        broadcastedComputors.computors.publicKeys[i] = publicKey;
     }
+
+    ACQUIRE(minerScoreArrayLock);
+    numberOfOwnComputorIndices = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        minerPublicKeys[i] = broadcastedComputors.computors.publicKeys[i];
+
+        for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+        {
+            if (broadcastedComputors.computors.publicKeys[i] == computorPublicKeys[j])
+            {
+                ownComputorIndices[numberOfOwnComputorIndices] = i;
+                ownComputorIndicesMapping[numberOfOwnComputorIndices++] = j;
+
+                break;
+            }
+        }
+    }
+    RELEASE(minerScoreArrayLock);
     setMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
 
 #ifndef NDEBUG
@@ -5133,8 +5171,7 @@ static void tickProcessor(void*)
                             if (tickDataSuits)
                             {
                                 const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
-                                if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
-                                    || dayIndex > 738570 + system.epoch * 7)
+                                if (system.tick - system.initialTick >= TESTNET_EPOCH_DURATION)
                                 {
                                     // start seamless epoch transition
                                     epochTransitionState = 1;
@@ -5601,6 +5638,13 @@ static bool initialize()
             etalonTick.year = system.initialYear;
 
             loadSpectrum();
+
+            // Give 676 computors money
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                increaseEnergy(computorPublicKeys[i], 1'000'000);
+            }
+
             {
                 const unsigned long long beginningTick = __rdtsc();
 
@@ -5641,7 +5685,7 @@ static bool initialize()
                 logToConsole(message);
             }
             logToConsole(L"Loading universe file ...");
-            if (!loadUniverse())
+            if (!loadUniverse() && false)
                 return false;
             m256i universeDigest;
             {
@@ -5653,7 +5697,7 @@ static bool initialize()
                 appendText(message, L".");
                 logToConsole(message);
             }
-            if (!loadComputer())
+            if (!loadComputer() && false)
                 return false;
             m256i computerDigest;
             {
@@ -5695,7 +5739,7 @@ static bool initialize()
     }    
     score->loadScoreCache(system.epoch);
 
-    loadCustomMiningCache(system.epoch);
+    //loadCustomMiningCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
     if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
@@ -6031,7 +6075,7 @@ static void logInfo()
     }
     else
     {
-        const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
+      /*  const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
         for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
         {
             appendText(message, alphabet[ownComputorIndices[i] / 26]);
@@ -6044,7 +6088,8 @@ static void logInfo()
             {
                 appendText(message, L".");
             }
-        }
+        }*/
+        appendNumber(message, numberOfOwnComputorIndices, TRUE);
     }
     logToConsole(message);
 
@@ -7009,7 +7054,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     saveSystem();
                     score->saveScoreCache(system.epoch);
-                    saveCustomMiningCache(system.epoch);
+                    //saveCustomMiningCache(system.epoch);
                 }
 #endif
                 tryResendTickVotes();
@@ -7328,7 +7373,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             saveSystem();
             score->saveScoreCache(system.epoch);
-            saveCustomMiningCache(system.epoch);
+            //saveCustomMiningCache(system.epoch);
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
 #endif
@@ -7355,4 +7400,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     }
 
     return EFI_SUCCESS;
+}
+
+int main() {
+    Overload::initializeUefi();
+    return efi_main(ih, st);
 }
