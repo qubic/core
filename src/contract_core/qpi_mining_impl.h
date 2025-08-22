@@ -6,7 +6,7 @@
 static ScoreFunction<
     NUMBER_OF_INPUT_NEURONS,
     NUMBER_OF_OUTPUT_NEURONS,
-    NUMBER_OF_TICKS*2,
+    NUMBER_OF_TICKS*4,
     NUMBER_OF_NEIGHBORS,
     POPULATION_THRESHOLD,
     NUMBER_OF_MUTATIONS,
@@ -16,15 +16,15 @@ static ScoreFunction<
 
 m256i QPI::QpiContextFunctionCall::computeMiningFunction(const m256i miningSeed, const m256i publicKey, const m256i nonce) const
 {
-    //(*score_qpi)(0, publicKey, miningSeed, nonce);
-    //return score_qpi->getLastOutput(0);
+    (*score_qpi)(0, publicKey, miningSeed, nonce);
+    return score_qpi->getLastOutput(0);
 
-    m256i result;
+    //m256i result;
 
-    // Simple sleep. No processing
-    sleepMilliseconds(3000);
+    //// Simple sleep. No processing
+    //sleepMilliseconds(3000);
 
 
-    result = m256i::zero();
-    return result;
+    //result = m256i::zero();
+    //return result;
 }
