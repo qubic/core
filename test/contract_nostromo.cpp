@@ -7,6 +7,8 @@
 
 static std::mt19937_64 rand64;
 
+const id TEAM_ADDRESS = ID(_G, _E, _H, _N, _R, _F, _U, _O, _I, _I, _C, _S, _B, _C, _S, _R, _F, _M, _N, _J, _T, _C, _J, _K, _C, _J, _H, _A, _T, _Z, _X, _A, _X, _Y, _O, _F, _W, _X, _U, _F, _L, _C, _K, _F, _P, _B, _W, _X, _Q, _A, _C, _B, _S, _Z, _F, _F);
+
 static unsigned long long random(unsigned long long minValue, unsigned long long maxValue)
 {
     if(minValue > maxValue) 
@@ -239,22 +241,14 @@ public:
     {
         EXPECT_EQ(fundaraisings.get(indexOfFundraising).raisedFunds, 0);
     }
-    void endEpochVoteStatusClearChecker()
+    void endEpochVoteStatusClearChecker(std::vector<id> registers)
     {
-        id userId;
-        uint64 tierLevel;
-        uint64 idx = users.nextElementIndex(NULL_INDEX);
         uint32 numberOfProject;
         Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> votedList;
-		while (idx != NULL_INDEX)
+		for (const auto& user : registers)
 		{
-			userId = users.key(idx);
-			tierLevel = users.value(idx);
-
-            EXPECT_EQ(voteStatus.get(userId, votedList), 0);
-            EXPECT_EQ(numberOfVotedProject.get(userId, numberOfProject), 0);
-
-			idx = users.nextElementIndex(idx);
+            EXPECT_EQ(voteStatus.get(user, votedList), 0);
+            EXPECT_EQ(numberOfVotedProject.get(user, numberOfProject), 0);
 		}
     }
     void getStatsChecker(uint64 epochRevenu_t, uint64 totalPoolWeight_t, uint32 numberOfCreatedProject_t, uint32 numberOfFundraising_t, uint32 numberOfRegister_t)
@@ -323,7 +317,8 @@ public:
 		uint32 endYear,
 		uint32 endMonth,
 		uint32 endDay,
-		uint32 endHour)
+		uint32 endHour,
+        uint64 projectCreationFee)
     {
         NOST::createProject_input input;
         NOST::createProject_output output;
@@ -339,7 +334,7 @@ public:
 		input.endDay = endDay;
 		input.endHour = endHour;
 
-        invokeUserProcedure(NOST_CONTRACT_INDEX, 3, input, output, registerId, NOSTROMO_CREATE_PROJECT_FEE);
+        invokeUserProcedure(NOST_CONTRACT_INDEX, 3, input, output, registerId, projectCreationFee);
     }
     void voteInProject(const id& registerId,
         uint32 indexOfProject,
@@ -599,11 +594,40 @@ public:
         callFunction(NOST_CONTRACT_INDEX, 10, input, output);
         return output.amount;
     }
+    void changeFee(const id& admin, 
+        uint64 projectCreationFee,
+        uint8 faceHuggerFee,
+        uint8 chestBurstFee,
+        uint8 dogFee,
+        uint8 xenomorphFee,
+        uint8 warriorFee)
+    {
+        NOST::changeFee_input input;
+        NOST::changeFee_output output;
+
+        input.projectCreationFee = projectCreationFee;
+        input.faceHuggerFee = faceHuggerFee;
+        input.chestBurstFee = chestBurstFee;
+        input.dogFee = dogFee;
+        input.xenomorphFee = xenomorphFee;
+        input.warriorFee = warriorFee;
+
+        invokeUserProcedure(NOST_CONTRACT_INDEX, 10, input, output, admin, 0);
+    }
 };
 
 TEST(TestContractNostromo, registerAndLogoutAndUpgradeFromTierChecker)
 {
     ContractTestingNostromo nostromoTestCaseA;
+
+    uint64 projectCreationFee = 100000000;  
+    uint8 faceHuggerFee = 1;
+    uint8 chestBurstFee = 2;
+    uint8 dogFee = 3;
+    uint8 xenomorphFee = 4;
+    uint8 warriorFee = 5;
+    increaseEnergy(TEAM_ADDRESS, projectCreationFee);
+    nostromoTestCaseA.changeFee(TEAM_ADDRESS, projectCreationFee, faceHuggerFee, chestBurstFee, dogFee, xenomorphFee, warriorFee);
 
     std::map<id, bool> duplicatedUser;
     auto registers = getRandomUsers(10000, 10000);
@@ -624,30 +648,30 @@ TEST(TestContractNostromo, registerAndLogoutAndUpgradeFromTierChecker)
         case 1:
             depositeAmount = NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
             upgradeDeltaDepositeAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
-            totalLogoutFeeAmount += NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT * NOSTROMO_TIER_CHESTBURST_UNSTAKE_FEE / 100;
+            totalLogoutFeeAmount += NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT * chestBurstFee / 100;
             totalPoolWeight += NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
             break;
         case 2:
             depositeAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
             upgradeDeltaDepositeAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
-            totalLogoutFeeAmount += NOSTROMO_TIER_DOG_STAKE_AMOUNT * NOSTROMO_TIER_DOG_UNSTAKE_FEE / 100;
+            totalLogoutFeeAmount += NOSTROMO_TIER_DOG_STAKE_AMOUNT * dogFee / 100;
             totalPoolWeight += NOSTROMO_TIER_DOG_POOL_WEIGHT;
             break;
         case 3:
             depositeAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT;
             upgradeDeltaDepositeAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT;
-            totalLogoutFeeAmount += NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT * NOSTROMO_TIER_XENOMORPH_UNSTAKE_FEE / 100;
+            totalLogoutFeeAmount += NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT * xenomorphFee / 100;
             totalPoolWeight += NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
             break;
         case 4:
             depositeAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
             upgradeDeltaDepositeAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
-            totalLogoutFeeAmount += NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE / 100;
+            totalLogoutFeeAmount += NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * warriorFee / 100;
             totalPoolWeight += NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
             break;
         case 5:
             depositeAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT;
-            totalLogoutFeeAmount += NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE / 100;
+            totalLogoutFeeAmount += NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * warriorFee / 100;
             totalPoolWeight += NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
             break;
         default:
@@ -702,22 +726,31 @@ TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
 {
     ContractTestingNostromo nostromoTestCaseB;
 
+    uint64 projectCreationFee = 100000000;
+    uint8 faceHuggerFee = 1;
+    uint8 chestBurstFee = 2;
+    uint8 dogFee = 3;
+    uint8 xenomorphFee = 4;
+    uint8 warriorFee = 5;
+    increaseEnergy(TEAM_ADDRESS, projectCreationFee);
+    nostromoTestCaseB.changeFee(TEAM_ADDRESS, projectCreationFee, faceHuggerFee, chestBurstFee, dogFee, xenomorphFee, warriorFee);
+
     auto registers = getRandomUsers(1000, 1000);
 
     // Register in each Tiers
-    increaseEnergy(registers[0], NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    increaseEnergy(registers[0], NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT + projectCreationFee);
     nostromoTestCaseB.registerInTier(registers[0], 1, NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT);
 
-    increaseEnergy(registers[1], NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    increaseEnergy(registers[1], NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT + projectCreationFee);
     nostromoTestCaseB.registerInTier(registers[1], 2, NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT);
     
-    increaseEnergy(registers[2], NOSTROMO_TIER_DOG_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    increaseEnergy(registers[2], NOSTROMO_TIER_DOG_STAKE_AMOUNT + projectCreationFee);
     nostromoTestCaseB.registerInTier(registers[2], 3, NOSTROMO_TIER_DOG_STAKE_AMOUNT);
     
-    increaseEnergy(registers[3], NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    increaseEnergy(registers[3], NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT + projectCreationFee);
     nostromoTestCaseB.registerInTier(registers[3], 4, NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT);
     
-    increaseEnergy(registers[4], NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE);
+    increaseEnergy(registers[4], NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT + projectCreationFee);
     nostromoTestCaseB.registerInTier(registers[4], 5, NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT);
     
     setMemory(utcTime, 0);
@@ -730,39 +763,39 @@ TEST(TestContractNostromo, createProjectAndVoteInProjectChecker)
     uint64 assetName = assetNameFromString("AAAA");
 
     // This creation should be failed because there is no qualified to create the project.
-    nostromoTestCaseB.createProject(registers[0], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromoTestCaseB.createProject(registers[0], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0, projectCreationFee);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(0);
     nostromoTestCaseB.getState()->epochRevenueChecker(0);
-    EXPECT_EQ(getBalance(registers[0]), NOSTROMO_CREATE_PROJECT_FEE);
+    EXPECT_EQ(getBalance(registers[0]), projectCreationFee);
 
     // This creation should be failed because there is no qualified to create the project.
     assetName = assetNameFromString("BBBB");
-    nostromoTestCaseB.createProject(registers[1], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromoTestCaseB.createProject(registers[1], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0, projectCreationFee);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(0);
     nostromoTestCaseB.getState()->epochRevenueChecker(0);
-    EXPECT_EQ(getBalance(registers[1]), NOSTROMO_CREATE_PROJECT_FEE);
+    EXPECT_EQ(getBalance(registers[1]), projectCreationFee);
 
     // This creation should be failed because there is no qualified to create the project.
     assetName = assetNameFromString("CCCC");
-    nostromoTestCaseB.createProject(registers[2], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromoTestCaseB.createProject(registers[2], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0, projectCreationFee);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(0);
     nostromoTestCaseB.getState()->epochRevenueChecker(0);
-    EXPECT_EQ(getBalance(registers[2]), NOSTROMO_CREATE_PROJECT_FEE);
+    EXPECT_EQ(getBalance(registers[2]), projectCreationFee);
 
 
     //This creation should be succeed because there is a qualified to create the project.
     assetName = assetNameFromString("DDDD");
-    nostromoTestCaseB.createProject(registers[3], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromoTestCaseB.createProject(registers[3], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0, projectCreationFee);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(1);
-    nostromoTestCaseB.getState()->epochRevenueChecker(NOSTROMO_CREATE_PROJECT_FEE);
+    nostromoTestCaseB.getState()->epochRevenueChecker(projectCreationFee);
     nostromoTestCaseB.getState()->createdProjectChecker(0, registers[3], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
     EXPECT_EQ(getBalance(registers[3]), 0);
 
     // This creation should be succeed because there is a qualified to create the project.
     assetName = assetNameFromString("EEEE");
-    nostromoTestCaseB.createProject(registers[4], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromoTestCaseB.createProject(registers[4], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0, projectCreationFee);
     nostromoTestCaseB.getState()->numberOfCreatedProjectChecker(2);
-    nostromoTestCaseB.getState()->epochRevenueChecker(NOSTROMO_CREATE_PROJECT_FEE * 2);
+    nostromoTestCaseB.getState()->epochRevenueChecker(projectCreationFee * 2);
     nostromoTestCaseB.getState()->createdProjectChecker(1, registers[4], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
     EXPECT_EQ(getBalance(registers[4]), 0);
 
@@ -816,6 +849,15 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
 
     ContractTestingNostromo nostromoTestCaseC;
 
+    uint64 projectCreationFee = 100000000;
+    uint8 faceHuggerFee = 1;
+    uint8 chestBurstFee = 2;
+    uint8 dogFee = 3;
+    uint8 xenomorphFee = 4;
+    uint8 warriorFee = 5;
+    increaseEnergy(TEAM_ADDRESS, projectCreationFee);
+    nostromoTestCaseC.changeFee(TEAM_ADDRESS, projectCreationFee, faceHuggerFee, chestBurstFee, dogFee, xenomorphFee, warriorFee);
+
     auto registers = getRandomUsers(10000, 10000);
 
     setMemory(utcTime, 0);
@@ -825,10 +867,10 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
     utcTime.Hour = 0;
     updateQpiTime();
 
-    increaseEnergy(registers[0], NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT + NOSTROMO_CREATE_PROJECT_FEE + NOSTROMO_QX_TOKEN_ISSUANCE_FEE);
+    increaseEnergy(registers[0], NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT + projectCreationFee + NOSTROMO_QX_TOKEN_ISSUANCE_FEE);
     nostromoTestCaseC.registerInTier(registers[0], 5, NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT);
     uint64 assetName = assetNameFromString("GGGG");
-    nostromoTestCaseC.createProject(registers[0], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0);
+    nostromoTestCaseC.createProject(registers[0], assetName, 21000000, 25, 6, 13, 0, 25, 6, 15, 0, projectCreationFee);
 
     // getProjectByIndex function Checker
     NOST::getProjectByIndex_output getProjectByIndex_output = nostromoTestCaseC.getProjectByIndex(0);
@@ -1042,8 +1084,8 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
 
     uint64 totalInvestedAmount = 0;
     duplicatedUser.clear();
-    uint32 ct = 0;
-    uint32 overDeposit = 1000;      // it should be ignored
+    uint32 ct = 1000;
+    uint32 overDeposit = 0;      // it should be ignored
     uint64 originalSCBalance = getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0));
 
     std::map <id, uint64> investedAmountMP;
@@ -1058,7 +1100,7 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
         increaseEnergy(user, 180000000000);
         uint8 tierLevel = nostromoTestCaseC.getState()->getTierLevel(user);
 
-        if (ct = 4000)
+        if (ct == 4000)
         {
             // Phase 2 Investment
             utcTime.Year = 2025;
@@ -1314,9 +1356,9 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
     utcTime.Hour = 0;
     updateQpiTime();
 
-    increaseEnergy(registers[0], NOSTROMO_CREATE_PROJECT_FEE);
+    increaseEnergy(registers[0], projectCreationFee);
     assetName = assetNameFromString("AAAA");
-    nostromoTestCaseC.createProject(registers[0], assetName, 21000000, 25, 6, 22, 0, 25, 6, 25, 0);
+    nostromoTestCaseC.createProject(registers[0], assetName, 21000000, 25, 6, 22, 0, 25, 6, 25, 0, projectCreationFee);
     numberOfCreatedProject_t++;
     epochRevenu_t += 100000000;
 
@@ -1411,7 +1453,7 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
         increaseEnergy(user, 180000000000);
         uint8 tierLevel = nostromoTestCaseC.getState()->getTierLevel(user);
 
-        if (ct = 4000)
+        if (ct == 4000)
         {
 
             // Phase 2 Investment
@@ -1485,9 +1527,9 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
     utcTime.Hour = 0;
     updateQpiTime();
 
-    increaseEnergy(registers[0], NOSTROMO_CREATE_PROJECT_FEE);
+    increaseEnergy(registers[0], projectCreationFee);
     assetName = assetNameFromString("BBBB");
-    nostromoTestCaseC.createProject(registers[0], assetName, 21000000, 25, 6, 22, 0, 25, 6, 25, 0);
+    nostromoTestCaseC.createProject(registers[0], assetName, 21000000, 25, 6, 22, 0, 25, 6, 25, 0, projectCreationFee);
     numberOfCreatedProject_t++;
     epochRevenu_t += 100000000;
 
@@ -1589,7 +1631,7 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
         increaseEnergy(user, 180000000000);
         uint8 tierLevel = nostromoTestCaseC.getState()->getTierLevel(user);
 
-        if (ct = 4000)
+        if (ct == 4000)
         {
 
             // Phase 2 Investment
@@ -1688,5 +1730,5 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
 
     EXPECT_EQ(originalSCBalance + totalInvestedAmount_3 - teamFee - (div(epochRevenue, 676ULL) * 676), getBalance(id(NOST_CONTRACT_INDEX, 0, 0, 0)));
     nostromoTestCaseC.getState()->endEpochFailedFundraisingChecker(2);
-    nostromoTestCaseC.getState()->endEpochVoteStatusClearChecker();
+    nostromoTestCaseC.getState()->endEpochVoteStatusClearChecker(registers);
 }
