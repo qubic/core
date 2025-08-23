@@ -54,6 +54,7 @@ static const unsigned char knownPublicPeers[][4] = {
 
 - Default `PORT` is **31841**, you can change it in `qubic.cpp`
 - An epoch will have `TESTNET_EPOCH_DURATION` (**3000**) ticks by default, you can change it in `public_settings.h`
+- You can deploy your own RPC server of local devnet [how to](https://qubic-sc-docs.pages.dev/rpc/setup-rpc)
 
 ## Supporting Platform
 
@@ -63,4 +64,5 @@ static const unsigned char knownPublicPeers[][4] = {
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
+
 
