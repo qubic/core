@@ -58,14 +58,35 @@ struct Overload {
     inline static std::map<unsigned long long, EventData> eventDataMap;
 
     // Directly call the setup function without using custom stack.
-    static void startThread(EFI_AP_PROCEDURE procedure, void* data, unsigned long long ProcessorNumber, EFI_EVENT WaitEvent) {
-        std::thread thread([procedure, data]() {
+    static void startThread(EFI_AP_PROCEDURE procedure, void* data, unsigned long long ProcessorNumber, EFI_EVENT WaitEvent, unsigned long long TimeoutInMicroseconds) {
+		bool isThreadFinished = false;
+        std::thread thread([&isThreadFinished, procedure, data]() {
             CustomStack* me = reinterpret_cast<CustomStack*>(data);
             me->setupFuncToCall(me->setupDataToPass);
+            isThreadFinished = true;
             });
         HANDLE hThread = (HANDLE)thread.native_handle();
         SetThreadAffinityMask(hThread, 1ULL << ProcessorNumber);
-        thread.join();
+
+        if (TimeoutInMicroseconds > 0) {
+            thread.detach();
+        }
+        else {
+			thread.join(); // Wait for the thread to finish if no timeout is specified
+			isThreadFinished = true; // Mark the thread as finished
+        }
+
+        if (TimeoutInMicroseconds > 0) {
+            while (!isThreadFinished && TimeoutInMicroseconds > 0) {
+                // Sleep for a short duration to avoid busy waiting
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+                TimeoutInMicroseconds -= 100;
+            }
+
+            if (!isThreadFinished) {
+                TerminateThread(hThread, 0); // Forcefully terminate the thread if it doesn't finish
+            }
+        }
 
         // call the event call back
         if (WaitEvent) {
@@ -271,7 +292,7 @@ struct Overload {
     // Use custom stack in std:thread will break the runtime because it expectes the OS-provided stack
     // so we can bypass the custom stack because stack size in window/linux already is large enough
     static EFI_STATUS StartupThisAP(IN void* This, IN EFI_AP_PROCEDURE Procedure, IN unsigned long long ProcessorNumber, IN EFI_EVENT WaitEvent OPTIONAL, IN unsigned long long TimeoutInMicroseconds, IN void* ProcedureArgument OPTIONAL, OUT BOOLEAN* Finished OPTIONAL) {
-        std::thread thread(startThread, Procedure, ProcedureArgument, ProcessorNumber, WaitEvent);
+        std::thread thread(startThread, Procedure, ProcedureArgument, ProcessorNumber, WaitEvent, TimeoutInMicroseconds);
         thread.detach();
         return EFI_SUCCESS;
     }
