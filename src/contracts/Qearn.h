@@ -899,9 +899,9 @@ protected:
         uint32 t;
         bit status;
         uint64 pre_epoch_balance;
-        uint64 current_balance, totalLockedAmountInEpoch172;
+        uint64 current_balance;
         Entity entity;
-        uint32 locked_epoch, start_index, end_index;
+        uint32 locked_epoch;
     };
 
     BEGIN_EPOCH_WITH_LOCALS()
@@ -929,23 +929,6 @@ protected:
 
         state._initialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
         state._currentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
-
-        if (qpi.epoch() == 175)
-        {
-            locals.start_index = state._epochIndex.get(172).startIndex;
-            locals.end_index = state._epochIndex.get(172).endIndex;
-
-            for (locals.t = locals.start_index; locals.t < locals.end_index; locals.t++)
-            {
-                locals.totalLockedAmountInEpoch172 += state.locker.get(locals.t)._lockedAmount;
-            }
-            locals.INITIALIZE_ROUNDINFO._totalLockedAmount = 606135884379;
-            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = 100972387548;
-            state._initialRoundInfo.set(172, locals.INITIALIZE_ROUNDINFO);
-            locals.INITIALIZE_ROUNDINFO._totalLockedAmount = locals.totalLockedAmountInEpoch172;
-            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = 100972387548;
-            state._currentRoundInfo.set(172, locals.INITIALIZE_ROUNDINFO);
-        }
 	}
 
     struct END_EPOCH_locals 
