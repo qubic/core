@@ -3,13 +3,19 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: EFIBuild
+name: QubicCoreLite
 
 on:
   push:
     branches: [ "main", "develop" ]
   pull_request:
     branches: [ "main", "develop" ]
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: "Build configuration"
+        required: true
+        default: "Release"
 
 env:
   # Path to the solution file relative to the root of the project.
