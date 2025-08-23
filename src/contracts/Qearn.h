@@ -899,9 +899,9 @@ protected:
         uint32 t;
         bit status;
         uint64 pre_epoch_balance;
-        uint64 current_balance, totalLockedAmountInEpoch172;
+        uint64 current_balance;
         Entity entity;
-        uint32 locked_epoch, start_index, end_index;
+        uint32 locked_epoch;
     };
 
     BEGIN_EPOCH_WITH_LOCALS()
