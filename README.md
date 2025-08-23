@@ -2,6 +2,13 @@
 
 The lite version of Qubic Core that can run directly on the OS without a UEFI environment.
 
+## Build
+
+> Lite Executable <br>
+> [![Build](https://github.com/hackerby888/qubic-core-lite/actions/workflows/efi-build-develop.yml/badge.svg?branch=main)](https://github.com/hackerby888/qubic-core-lite/actions/workflows/efi-build-develop.yml)
+> <br>
+> The executable is located in `QubicLiteBuildOutput.zip/x64/Release/Qubic.exe`
+
 ## Prerequisites
 
 To run a qubic node, you need the following spec:
@@ -56,3 +63,4 @@ static const unsigned char knownPublicPeers[][4] = {
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
+
