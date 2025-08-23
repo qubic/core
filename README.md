@@ -29,11 +29,9 @@ In `private_settings.h`, split the 676 seeds in `broadcastedComputorSeeds` into 
 ```c++
 static unsigned char computorSeeds[][55 + 1] = {
 };
-
 ```
 
 > **Warning**
->
 > Do not change the `broadcastedComputorSeeds`.
 
 After that add your node's ip addresses to `knownPublicPeers`
@@ -45,6 +43,11 @@ static const unsigned char knownPublicPeers[][4] = {
 };
 ```
 
+## Tips
+
+- Default `PORT` is **31841**, you can change it in `qubic.cpp`
+- An epoch will have `TESTNET_EPOCH_DURATION` (**3000**) ticks by default, you can change it in `public_settings.h`
+
 ## Supporting Platform
 
 - [x] Windows
@@ -53,5 +56,3 @@ static const unsigned char knownPublicPeers[][4] = {
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
-
-
