@@ -54,5 +54,5 @@ jobs:
       with:
         name: QubicLiteBuildOutput
         path: |
-          **/bin/${{ env.BUILD_CONFIGURATION }}/
-          **/obj/${{ env.BUILD_CONFIGURATION }}/
+          **/x64/${{ env.BUILD_CONFIGURATION }}/
+          **/x64/${{ env.BUILD_CONFIGURATION }}/
