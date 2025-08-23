@@ -12,20 +12,7 @@ GLOBAL_VAR_DECL EFI_TIME utcTime;
 #ifdef NO_UEFI
 
 // Defined in test/stdlib_impl.cpp
-void updateTime()
-{
-    std::time_t t = std::time(nullptr);
-    std::tm* tm = std::gmtime(&t);
-    utcTime.Year = tm->tm_year + 1900;
-    utcTime.Month = tm->tm_mon + 1;
-    utcTime.Day = tm->tm_mday;
-    utcTime.Hour = tm->tm_hour;
-    utcTime.Minute = tm->tm_min;
-    utcTime.Second = tm->tm_sec;
-    utcTime.Nanosecond = 0;
-    utcTime.TimeZone = 0;
-    utcTime.Daylight = 0;
-}
+void updateTime();
 
 #else
 
