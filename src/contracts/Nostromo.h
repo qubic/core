@@ -13,13 +13,6 @@ constexpr uint32 NOSTROMO_TIER_DOG_POOL_WEIGHT = 750;
 constexpr uint32 NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT = 3050;
 constexpr uint32 NOSTROMO_TIER_WARRIOR_POOL_WEIGHT = 13750;
 
-constexpr uint32 NOSTROMO_TIER_FACEHUGGER_UNSTAKE_FEE = 5;
-constexpr uint32 NOSTROMO_TIER_CHESTBURST_UNSTAKE_FEE = 4;
-constexpr uint32 NOSTROMO_TIER_DOG_UNSTAKE_FEE = 3;
-constexpr uint32 NOSTROMO_TIER_XENOMORPH_UNSTAKE_FEE = 2;
-constexpr uint32 NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE = 1;
-constexpr uint32 NOSTROMO_CREATE_PROJECT_FEE = 100000000;
-
 constexpr uint32 NOSTROMO_MAX_USER = 262144;
 constexpr uint32 NOSTROMO_MAX_NUMBER_PROJECT = 262144;
 constexpr uint32 NOSTROMO_MAX_NUMBER_TOKEN = 262144;
@@ -236,6 +229,20 @@ public:
 		uint32 numberOfInvestedProjects;
 	};
 
+	struct changeFee_input
+	{
+		uint64 projectCreationFee;
+		uint8 faceHuggerFee;
+		uint8 chestBurstFee;
+		uint8 dogFee;
+		uint8 xenomorphFee;
+		uint8 warriorFee;
+	};
+
+	struct changeFee_output
+	{
+	};
+
 protected:
 	HashMap<id, uint8, NOSTROMO_MAX_USER> users;
 	HashMap<id, Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST>, NOSTROMO_MAX_USER> voteStatus;
@@ -293,8 +300,9 @@ protected:
 
 	id teamAddress;
 	sint64 transferRightsFee;
-	uint64 epochRevenue, totalPoolWeight;
+	uint64 epochRevenue, totalPoolWeight, projectCreationFee;
 	uint32 numberOfRegister, numberOfCreatedProject, numberOfFundraising;
+	uint8 faceHuggerFee, chestBurstFee, dogFee, xenomorphFee, warriorFee;
 
 	struct registerInTier_locals
 	{
@@ -384,31 +392,31 @@ protected:
 		switch (locals.tierLevel)
 		{
 		case 1:
-			locals.earnedAmount = div(NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT * NOSTROMO_TIER_FACEHUGGER_UNSTAKE_FEE, 100ULL);
+			locals.earnedAmount = div(NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT * state.faceHuggerFee, 100ULL);
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT - locals.earnedAmount);
 			state.epochRevenue += locals.earnedAmount;
 			state.totalPoolWeight -= NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT;
 			break;
 		case 2:
-			locals.earnedAmount = div(NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT * NOSTROMO_TIER_CHESTBURST_UNSTAKE_FEE, 100ULL);
+			locals.earnedAmount = div(NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT * state.chestBurstFee, 100ULL);
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - locals.earnedAmount);
 			state.epochRevenue += locals.earnedAmount;
 			state.totalPoolWeight -= NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
 			break;
 		case 3:
-			locals.earnedAmount = div(NOSTROMO_TIER_DOG_STAKE_AMOUNT * NOSTROMO_TIER_DOG_UNSTAKE_FEE, 100ULL);
+			locals.earnedAmount = div(NOSTROMO_TIER_DOG_STAKE_AMOUNT * state.dogFee, 100ULL);
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_DOG_STAKE_AMOUNT - locals.earnedAmount);
 			state.epochRevenue += locals.earnedAmount;
 			state.totalPoolWeight -= NOSTROMO_TIER_DOG_POOL_WEIGHT;
 			break;
 		case 4:
-			locals.earnedAmount = div(NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT * NOSTROMO_TIER_XENOMORPH_UNSTAKE_FEE, 100ULL);
+			locals.earnedAmount = div(NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT * state.xenomorphFee, 100ULL);
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - locals.earnedAmount);
 			state.epochRevenue += locals.earnedAmount;
 			state.totalPoolWeight -= NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
 			break;
 		case 5:
-			locals.earnedAmount = div(NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE, 100ULL);
+			locals.earnedAmount = div(NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * state.warriorFee, 100ULL);
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - locals.earnedAmount);
 			state.epochRevenue += locals.earnedAmount;
 			state.totalPoolWeight -= NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
@@ -457,7 +465,7 @@ protected:
 
 		if (state.users.get(qpi.invocator(), locals.tierLevel) && (locals.tierLevel == 4 || locals.tierLevel == 5))
 		{
-			if (qpi.invocationReward() < NOSTROMO_CREATE_PROJECT_FEE)
+			if (qpi.invocationReward() < (sint64)state.projectCreationFee)
 			{
 				if (qpi.invocationReward() > 0)
 				{
@@ -466,11 +474,11 @@ protected:
 				output.indexOfProject = NOSTROMO_MAX_NUMBER_PROJECT;
 				return ;
 			}
-			if (qpi.invocationReward() > NOSTROMO_CREATE_PROJECT_FEE)
+			if (qpi.invocationReward() > (sint64)state.projectCreationFee)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - NOSTROMO_CREATE_PROJECT_FEE);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.projectCreationFee);
 			}
-			state.epochRevenue += NOSTROMO_CREATE_PROJECT_FEE;
+			state.epochRevenue += state.projectCreationFee;
 			
 			locals.newProject.creator = qpi.invocator();
 			locals.newProject.tokenName = input.tokenName;
@@ -1341,6 +1349,24 @@ public:
 		}
 	}
 
+	PUBLIC_PROCEDURE(changeFee)
+	{
+		if (qpi.invocator() != state.teamAddress)
+		{
+			return ;
+		}
+		if (input.faceHuggerFee == 0 || input.chestBurstFee == 0 || input.dogFee == 0 || input.xenomorphFee == 0 || input.warriorFee == 0 || input.projectCreationFee == 0)
+		{
+			return ;
+		}
+		state.projectCreationFee = input.projectCreationFee;
+		state.faceHuggerFee = input.faceHuggerFee;
+		state.chestBurstFee = input.chestBurstFee;
+		state.dogFee = input.dogFee;
+		state.xenomorphFee = input.xenomorphFee;
+		state.warriorFee = input.warriorFee;
+	}
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(getStats, 1);
@@ -1363,6 +1389,7 @@ public:
 		REGISTER_USER_PROCEDURE(claimToken, 7);
 		REGISTER_USER_PROCEDURE(upgradeTier, 8);
 		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 9);
+		REGISTER_USER_PROCEDURE(changeFee, 10);
 	}
 
 	INITIALIZE()
