@@ -149,10 +149,7 @@ private:
         {
             if (cachePageId[i] == requested_page_id)
             {
-#ifdef NO_UEFI
-#else
                 lastAccessedTimestamp[i] = now_ms();
-#endif
                 return i;
             }
         }
@@ -175,7 +172,7 @@ private:
         cache_page_id = getMostOutdatedCachePage();
 #ifdef NO_UEFI
         auto sz = load(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
-        lastAccessedTimestamp[cache_page_id] = 0;
+        lastAccessedTimestamp[cache_page_id] = now_ms();
 #else
 #if !defined(NDEBUG)
         {
@@ -283,11 +280,7 @@ public:
 
         if (pageDir != NULL)
         {
-#ifdef NO_UEFI
-            addEpochToFileName(pageDir, 12, 0);
-#else
             addEpochToFileName(pageDir, 12, max(EPOCH, int(system.epoch)));
-#endif
             if (asyncCreateDir(pageDir) != 0)
             {
 #if !defined(NDEBUG)

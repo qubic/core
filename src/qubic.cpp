@@ -4,6 +4,7 @@
 #include <thread>
 #include <lib/platform_efi/uefi_globals.h>
 
+#define REAL_NODE
 #define NO_UEFI
 #define SINGLE_COMPILE_UNIT
 #define private public

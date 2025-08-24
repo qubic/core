@@ -52,6 +52,11 @@ void updateTime() {
     utcTime.Daylight = 0;
 }
 
+unsigned long long now_ms()
+{
+    return ms(unsigned char(utcTime.Year % 100), utcTime.Month, utcTime.Day, utcTime.Hour, utcTime.Minute, utcTime.Second, utcTime.Nanosecond / 1000000);
+}
+
 void setMem(void* buffer, unsigned long long size, unsigned char value)
 {
     memset(buffer, value, size);
