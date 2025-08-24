@@ -116,6 +116,7 @@
     <ClInclude Include="platform\time.h" />
     <ClInclude Include="ticking\ticking.h" />
     <ClInclude Include="ticking\tick_storage.h" />
+    <ClInclude Include="ticking\txs_pool.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>
