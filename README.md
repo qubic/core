@@ -19,7 +19,7 @@ To run a qubic node, you need the following spec:
 
 ## Node State
 
-- 676 seeds in `broadcastedComputorSeeds` each has 1M Qubic.
+- 676 seeds in `broadcastedComputorSeeds` each has 10B Qubic.
 
 ## Ticking
 
@@ -64,5 +64,6 @@ static const unsigned char knownPublicPeers[][4] = {
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
+
 
 
