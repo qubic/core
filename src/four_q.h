@@ -646,6 +646,10 @@ static void multiply(const unsigned long long* a, const unsigned long long* b, u
 {
     unsigned long long u, v, uv, tmp;
 
+    // The intended operation is: _addcarry_u64(0, _umul128(a[0], b[1], &uv), u, &c[1]) + uv.
+    // However, MSVC (VC2022 17.14 specifically) does not strictly preserve left-to-right evaluation order.
+    // A temporary variable is introduced to ensure that 'uv' is _umul128 before addition.
+    // The same behavior are applied for all following code
     c[0] = _umul128(a[0], b[0], &u);
     tmp = _umul128(a[0], b[1], &uv);
     u = _addcarry_u64(0, tmp, u, &c[1]) + uv;
