@@ -4,6 +4,7 @@
 #include <thread>
 #include <lib/platform_efi/uefi_globals.h>
 
+#define TESTNET
 #define REAL_NODE
 #define NO_UEFI
 #define SINGLE_COMPILE_UNIT
@@ -95,7 +96,11 @@
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
+#ifdef TESTNET
 #define PORT 31841
+#else
+#define PORT 21841
+#endif
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
@@ -3574,7 +3579,7 @@ static void beginEpoch()
     // This version doesn't support migration from contract IPO to contract operation!
 
     numberOfOwnComputorIndices = 0;
-
+#ifdef TESTNET
     broadcastedComputors.computors.epoch = system.epoch;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
@@ -3605,6 +3610,13 @@ static void beginEpoch()
         }
     }
     RELEASE(minerScoreArrayLock);
+#else
+    broadcastedComputors.computors.epoch = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        broadcastedComputors.computors.publicKeys[i].setRandomValue();
+    }
+#endif
     setMem(&broadcastedComputors.computors.signature, sizeof(broadcastedComputors.computors.signature), 0);
 
 #ifndef NDEBUG
@@ -5172,7 +5184,12 @@ static void tickProcessor(void*)
                             if (tickDataSuits)
                             {
                                 const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
+#ifdef TESTNET
                                 if (system.tick - system.initialTick >= TESTNET_EPOCH_DURATION)
+#else
+                                if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
+                                    || dayIndex > 738570 + system.epoch * 7)
+#endif
                                 {
                                     // start seamless epoch transition
                                     epochTransitionState = 1;
@@ -5640,11 +5657,17 @@ static bool initialize()
 
             loadSpectrum();
 
+#ifdef TESTNET
             // Give 676 computors money
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
                 increaseEnergy(broadcastedComputors.computors.publicKeys[i], 10'000'000'000);
             }
+            
+            constexpr bool canObmitLoadNodeState = true;
+#else
+            constexpr bool canObmitLoadNodeState = false;
+#endif
 
             {
                 const unsigned long long beginningTick = __rdtsc();
@@ -5686,7 +5709,7 @@ static bool initialize()
                 logToConsole(message);
             }
             logToConsole(L"Loading universe file ...");
-            if (!loadUniverse() && false)
+            if (!loadUniverse() && (!canObmitLoadNodeState))
                 return false;
             m256i universeDigest;
             {
@@ -5698,7 +5721,7 @@ static bool initialize()
                 appendText(message, L".");
                 logToConsole(message);
             }
-            if (!loadComputer() && false)
+            if (!loadComputer() && (!canObmitLoadNodeState))
                 return false;
             m256i computerDigest;
             {

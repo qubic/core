@@ -8,10 +8,13 @@
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
 // random seed is now obtained from spectrumDigests
 
-#define TESTNET
-
+#ifdef TESTNET
 #define MAX_NUMBER_OF_PROCESSORS 6
 #define NUMBER_OF_SOLUTION_PROCESSORS 2
+#else
+#define MAX_NUMBER_OF_PROCESSORS 32
+#define NUMBER_OF_SOLUTION_PROCESSORS 12
+#endif
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
@@ -25,15 +28,24 @@
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
+#ifdef TESTNET
 #define TARGET_TICK_DURATION 7000
 #define TRANSACTION_SPARSENESS 4
+#else
+#define TARGET_TICK_DURATION 1000
+#define TRANSACTION_SPARSENESS 1
+#endif
 
+#ifdef TESTNET
 // Below are 2 variables that are used for auto-F5 feature:
-#define AUTO_FORCE_NEXT_TICK_THRESHOLD 20ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
-                                            // to prevent bad actor causing misalignment.
-                                            // depends on actual tick time of the network, operators should set this number randomly in this range [12, 26]
-                                            // eg: If AUTO_FORCE_NEXT_TICK_THRESHOLD is 8 and TARGET_TICK_DURATION is 2, then the system will start "auto F5 procedure" after 16 seconds after receveing 451+ votes
-
+// Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
+// to prevent bad actor causing misalignment.
+// depends on actual tick time of the network, operators should set this number randomly in this range [12, 26]
+// eg: If AUTO_FORCE_NEXT_TICK_THRESHOLD is 8 and TARGET_TICK_DURATION is 2, then the system will start "auto F5 procedure" after 16 seconds after receveing 451+ votes
+#define AUTO_FORCE_NEXT_TICK_THRESHOLD 20ULL 
+#else
+#define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
+#endif
 #define PROBABILITY_TO_FORCE_EMPTY_TICK 800 // after (AUTO_FORCE_NEXT_TICK_THRESHOLD x TARGET_TICK_DURATION) seconds, the node will start casting F5 randomly every second with this probability
                                             // to prevent bad actor causing misalignment, operators should set this number in this range [700, 900] (aka [7%, 9%])
 
@@ -91,13 +103,21 @@ static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
+#ifdef TESTNET
 #define TARGET_TICK_VOTE_SIGNATURE 0x07FFFFFFU  // around 32 signing operations per ID
+#else
+#define TARGET_TICK_VOTE_SIGNATURE 0x00095CBEU // around 7000 signing operations per ID
+#endif
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
+#ifdef TESTNET
 #define TESTNET_EPOCH_DURATION 3000
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH TESTNET_EPOCH_DURATION + 2
+#else
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
+#endif
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
