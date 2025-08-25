@@ -194,7 +194,7 @@ protected:
                     locals.only = state._participants.get(0);
                     qpi.burn(QDRAW_TICKET_PRICE);
                     qpi.transfer(locals.only, QDRAW_TICKET_PRICE);
-                    qpi.transfer(state._owner, state._pot - QDRAW_TICKET_PRICE * 2);
+                    qpi.transfer(state._owner, state._pot - QDRAW_TICKET_PRICE - QDRAW_TICKET_PRICE);
                     state._lastWinner = locals.only;
                     state._lastWinAmount = QDRAW_TICKET_PRICE;
                 } 
