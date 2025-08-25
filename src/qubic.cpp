@@ -6138,6 +6138,8 @@ static void logInfo()
     }
     appendText(message, L" mcs | Total Qx execution time = ");
     appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
+    appendText(message, L" mcs | Total QUtil execution time = ");
+    appendNumber(message, contractTotalExecutionTicks[QUTIL_CONTRACT_INDEX] * 1000 / frequency, TRUE);
     appendText(message, L" ms | Solution process time = ");
     appendNumber(message, solutionTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms | Spectrum reorg time = ");
