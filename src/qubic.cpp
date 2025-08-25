@@ -5643,7 +5643,7 @@ static bool initialize()
             // Give 676 computors money
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
-                increaseEnergy(broadcastedComputors.computors.publicKeys[i], 1'000'000);
+                increaseEnergy(broadcastedComputors.computors.publicKeys[i], 10'000'000'000);
             }
 
             {
@@ -7407,3 +7407,4 @@ int main() {
     Overload::initializeUefi();
     return efi_main(ih, st);
 }
+
