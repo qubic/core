@@ -38,7 +38,7 @@ public:
         callSystemProcedure(MSVAULT_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
-    void registerVault(uint64 requiredApprovals, id vaultName, const std::vector<id>& owners, uint64 fee)
+    MSVAULT::registerVault_output registerVault(uint64 requiredApprovals, id vaultName, const std::vector<id>& owners, uint64 fee)
     {
         MSVAULT::registerVault_input input;
         for (uint64 i = 0; i < MSVAULT_MAX_OWNERS; i++)
@@ -49,18 +49,20 @@ public:
         input.vaultName = vaultName;
         MSVAULT::registerVault_output regOut;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 1, input, regOut, owners[0], fee);
+        return regOut;
     }
 
-    void deposit(uint64 vaultId, uint64 amount, const id& from)
+    MSVAULT::deposit_output deposit(uint64 vaultId, uint64 amount, const id& from)
     {
         MSVAULT::deposit_input input;
         input.vaultId = vaultId;
         increaseEnergy(from, amount);
         MSVAULT::deposit_output depOut;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 2, input, depOut, from, amount);
+        return depOut;
     }
 
-    void releaseTo(uint64 vaultId, uint64 amount, const id& destination, const id& owner, uint64 fee = MSVAULT_RELEASE_FEE)
+    MSVAULT::releaseTo_output releaseTo(uint64 vaultId, uint64 amount, const id& destination, const id& owner, uint64 fee = MSVAULT_RELEASE_FEE)
     {
         MSVAULT::releaseTo_input input;
         input.vaultId = vaultId;
@@ -70,9 +72,10 @@ public:
         increaseEnergy(owner, fee);
         MSVAULT::releaseTo_output relOut;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 3, input, relOut, owner, fee);
+        return relOut;
     }
 
-    void resetRelease(uint64 vaultId, const id& owner, uint64 fee = MSVAULT_RELEASE_RESET_FEE)
+    MSVAULT::resetRelease_output resetRelease(uint64 vaultId, const id& owner, uint64 fee = MSVAULT_RELEASE_RESET_FEE)
     {
         MSVAULT::resetRelease_input input;
         input.vaultId = vaultId;
@@ -80,6 +83,7 @@ public:
         increaseEnergy(owner, fee);
         MSVAULT::resetRelease_output rstOut;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 4, input, rstOut, owner, fee);
+        return rstOut;
     }
 
     MSVAULT::getVaultName_output getVaultName(uint64 vaultId) const
@@ -169,23 +173,24 @@ public:
         return output.transferredNumberOfShares;
     }
 
-    sint64 revokeAssetManagementRights(const id& from, const Asset& asset, sint64 numberOfShares)
+    MSVAULT::revokeAssetManagementRights_output revokeAssetManagementRights(const id& from, const Asset& asset, sint64 numberOfShares)
     {
         MSVAULT::revokeAssetManagementRights_input input;
         input.asset = asset;
         input.numberOfShares = numberOfShares;
         MSVAULT::revokeAssetManagementRights_output output;
         output.transferredNumberOfShares = 0;
+        output.status = 0;
 
         // The fee required by QX is 100. Do this to ensure enough fee.
         const uint64 fee = 100;
         increaseEnergy(from, fee);
 
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 25, input, output, from, fee);
-        return output.transferredNumberOfShares;
+        return output;
     }
 
-    void depositAsset(uint64 vaultId, const Asset& asset, uint64 amount, const id& from)
+    MSVAULT::depositAsset_output depositAsset(uint64 vaultId, const Asset& asset, uint64 amount, const id& from)
     {
         MSVAULT::depositAsset_input input;
         input.vaultId = vaultId;
@@ -193,9 +198,10 @@ public:
         input.amount = amount;
         MSVAULT::depositAsset_output output;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 19, input, output, from, 0);
+        return output;
     }
 
-    void releaseAssetTo(uint64 vaultId, const Asset& asset, uint64 amount, const id& destination, const id& owner, uint64 fee = MSVAULT_RELEASE_FEE)
+    MSVAULT::releaseAssetTo_output releaseAssetTo(uint64 vaultId, const Asset& asset, uint64 amount, const id& destination, const id& owner, uint64 fee = MSVAULT_RELEASE_FEE)
     {
         MSVAULT::releaseAssetTo_input input;
         input.vaultId = vaultId;
@@ -206,9 +212,10 @@ public:
         increaseEnergy(owner, fee);
         MSVAULT::releaseAssetTo_output output;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 20, input, output, owner, fee);
+        return output;
     }
 
-    void resetAssetRelease(uint64 vaultId, const id& owner, uint64 fee = MSVAULT_RELEASE_RESET_FEE)
+    MSVAULT::resetAssetRelease_output resetAssetRelease(uint64 vaultId, const id& owner, uint64 fee = MSVAULT_RELEASE_RESET_FEE)
     {
         MSVAULT::resetAssetRelease_input input;
         input.vaultId = vaultId;
@@ -216,6 +223,7 @@ public:
         increaseEnergy(owner, fee);
         MSVAULT::resetAssetRelease_output output;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 21, input, output, owner, fee);
+        return output;
     }
 
     MSVAULT::getVaultAssetBalances_output getVaultAssetBalances(uint64 vaultId) const
@@ -241,6 +249,7 @@ public:
     }
 };
 
+
 TEST(ContractMsVault, RegisterVault_InsufficientFee)
 {
     ContractTestingMsVault msVault;
@@ -249,8 +258,10 @@ TEST(ContractMsVault, RegisterVault_InsufficientFee)
     auto vaultsO1Before = msVault.getVaults(OWNER1);
 
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
+
     // Attempt with insufficient fee
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, 5000ULL);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, 5000ULL);
+    EXPECT_EQ(regOut.status, 2ULL); // FAILURE_INSUFFICIENT_FEE
 
     // No new vault should be created
     auto vaultsO1After = msVault.getVaults(OWNER1);
@@ -263,8 +274,10 @@ TEST(ContractMsVault, RegisterVault_OneOwner)
     ContractTestingMsVault msVault;
     auto vaultsO1Before = msVault.getVaults(OWNER1);
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
+
     // Only one owner => should fail
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 5ULL); // FAILURE_INVALID_PARAMS
 
     // Should fail, no new vault
     auto vaultsO1After = msVault.getVaults(OWNER1);
@@ -278,7 +291,8 @@ TEST(ContractMsVault, RegisterVault_Success)
     auto vaultsO1Before = msVault.getVaults(OWNER1);
 
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL); // SUCCESS
 
     auto vaultsO1After = msVault.getVaults(OWNER1);
     EXPECT_EQ(static_cast<unsigned int>(vaultsO1After.numberOfVaults),
@@ -307,7 +321,8 @@ TEST(ContractMsVault, GetVaultName)
     auto vaultsO1Before = msVault.getVaults(OWNER1);
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
 
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
 
     auto vaultsO1After = msVault.getVaults(OWNER1);
     EXPECT_EQ(static_cast<unsigned int>(vaultsO1After.numberOfVaults),
@@ -326,7 +341,8 @@ TEST(ContractMsVault, Deposit_InvalidVault)
     ContractTestingMsVault msVault;
     // deposit to a non-existent vault
     auto beforeBalance = msVault.getBalanceOf(999ULL);
-    msVault.deposit(999ULL, 5000ULL, OWNER1);
+    auto depOut = msVault.deposit(999ULL, 5000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 3ULL); // FAILURE_INVALID_VAULT
     // no change in balance
     auto afterBalance = msVault.getBalanceOf(999ULL);
     EXPECT_EQ(afterBalance.balance, beforeBalance.balance);
@@ -339,13 +355,15 @@ TEST(ContractMsVault, Deposit_Success)
     auto vaultsO1Before = msVault.getVaults(OWNER1);
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
 
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
 
     auto vaultsO1After = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1After.vaultIds.get(vaultsO1Before.numberOfVaults);
 
     auto balBefore = msVault.getBalanceOf(vaultId);
-    msVault.deposit(vaultId, 10000ULL, OWNER1);
+    auto depOut = msVault.deposit(vaultId, 10000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
     auto balAfter = msVault.getBalanceOf(vaultId);
     EXPECT_EQ(balAfter.balance, balBefore.balance + 10000ULL);
 }
@@ -355,16 +373,19 @@ TEST(ContractMsVault, ReleaseTo_NonOwner)
     ContractTestingMsVault msVault;
 
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultId, 10000ULL, OWNER1);
+    auto depOut = msVault.deposit(vaultId, 10000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
     auto releaseStatusBefore = msVault.getReleaseStatus(vaultId);
 
     // Non-owner attempt release
-    msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER3);
+    auto relOut = msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER3);
+    EXPECT_EQ(relOut.status, 4ULL); // FAILURE_NOT_AUTHORIZED
     auto releaseStatusAfter = msVault.getReleaseStatus(vaultId);
 
     // No approvals should be set
@@ -378,21 +399,25 @@ TEST(ContractMsVault, ReleaseTo_InvalidParams)
 
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
     // 2 out of 2 owners
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultId, 10000ULL, OWNER1);
+    auto depOut = msVault.deposit(vaultId, 10000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
 
     auto releaseStatusBefore = msVault.getReleaseStatus(vaultId);
     // amount=0
-    msVault.releaseTo(vaultId, 0ULL, OWNER2, OWNER1);
+    auto relOut1 = msVault.releaseTo(vaultId, 0ULL, OWNER2, OWNER1);
+    EXPECT_EQ(relOut1.status, 5ULL); // FAILURE_INVALID_PARAMS
     auto releaseStatusAfter1 = msVault.getReleaseStatus(vaultId);
     EXPECT_EQ(releaseStatusAfter1.amounts.get(0), releaseStatusBefore.amounts.get(0));
 
     // destination NULL_ID
-    msVault.releaseTo(vaultId, 5000ULL, NULL_ID, OWNER1);
+    auto relOut2 = msVault.releaseTo(vaultId, 5000ULL, NULL_ID, OWNER1);
+    EXPECT_EQ(relOut2.status, 5ULL); // FAILURE_INVALID_PARAMS
     auto releaseStatusAfter2 = msVault.getReleaseStatus(vaultId);
     EXPECT_EQ(releaseStatusAfter2.amounts.get(0), releaseStatusBefore.amounts.get(0));
 }
@@ -405,13 +430,16 @@ TEST(ContractMsVault, ReleaseTo_PartialApproval)
     increaseEnergy(OWNER3, 100000000ULL);
 
     // 2 out of 3 owners
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultId, 15000ULL, OWNER1);
-    msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER1);
+    auto depOut = msVault.deposit(vaultId, 15000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
+    auto relOut = msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER1);
+    EXPECT_EQ(relOut.status, 9ULL); // PENDING_APPROVAL
 
     auto status = msVault.getReleaseStatus(vaultId);
     // Partial approval means just first owner sets the request
@@ -428,18 +456,22 @@ TEST(ContractMsVault, ReleaseTo_FullApproval)
     increaseEnergy(OWNER3, 100000000ULL);
 
     // 2 out of 3
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultId, 10000ULL, OWNER1);
+    auto depOut = msVault.deposit(vaultId, 10000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
 
     // OWNER1 requests 5000 Qubics to OWNER3
-    msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER1);
+    auto relOut1 = msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER1);
+    EXPECT_EQ(relOut1.status, 9ULL); // PENDING_APPROVAL
     // Not approved yet
 
-    msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER2); // second approval
+    auto relOut2 = msVault.releaseTo(vaultId, 5000ULL, OWNER3, OWNER2); // second approval
+    EXPECT_EQ(relOut2.status, 1ULL); // SUCCESS
 
     // After full approval, amount should be released
     auto bal = msVault.getBalanceOf(vaultId);
@@ -455,16 +487,19 @@ TEST(ContractMsVault, ReleaseTo_InsufficientBalance)
     increaseEnergy(OWNER3, 100000000ULL);
 
     // 2 out of 2
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultId, 10000ULL, OWNER1);
+    auto depOut = msVault.deposit(vaultId, 10000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
 
     auto balBefore = msVault.getBalanceOf(vaultId);
     // Attempt to release more than balance
-    msVault.releaseTo(vaultId, 20000ULL, OWNER3, OWNER1);
+    auto relOut = msVault.releaseTo(vaultId, 20000ULL, OWNER3, OWNER1);
+    EXPECT_EQ(relOut.status, 6ULL); // FAILURE_INSUFFICIENT_BALANCE
 
     // Should fail, balance no change
     auto balAfter = msVault.getBalanceOf(vaultId);
@@ -480,17 +515,21 @@ TEST(ContractMsVault, ResetRelease_NonOwner)
     increaseEnergy(OWNER3, 100000000ULL);
 
     // 2 out of 2
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultId, 5000ULL, OWNER1);
+    auto depOut = msVault.deposit(vaultId, 5000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
 
-    msVault.releaseTo(vaultId, 2000ULL, OWNER2, OWNER1);
+    auto relOut = msVault.releaseTo(vaultId, 2000ULL, OWNER2, OWNER1);
+    EXPECT_EQ(relOut.status, 9ULL); // PENDING_APPROVAL
 
     auto statusBefore = msVault.getReleaseStatus(vaultId);
-    msVault.resetRelease(vaultId, OWNER3); // Non owner tries to reset
+    auto rstOut = msVault.resetRelease(vaultId, OWNER3); // Non owner tries to reset
+    EXPECT_EQ(rstOut.status, 4ULL); // FAILURE_NOT_AUTHORIZED
     auto statusAfter = msVault.getReleaseStatus(vaultId);
 
     // No change in release requests
@@ -506,17 +545,22 @@ TEST(ContractMsVault, ResetRelease_Success)
     increaseEnergy(OWNER2, 100000000ULL);
     increaseEnergy(OWNER3, 100000000ULL);
 
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultId, 5000ULL, OWNER1);
+    auto depOut = msVault.deposit(vaultId, 5000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
 
     // OWNER2 requests a releaseTo
-    msVault.releaseTo(vaultId, 2000ULL, OWNER1, OWNER2);
+    auto relOut = msVault.releaseTo(vaultId, 2000ULL, OWNER1, OWNER2);
+    EXPECT_EQ(relOut.status, 9ULL);
+
     // Now reset by OWNER2
-    msVault.resetRelease(vaultId, OWNER2);
+    auto rstOut = msVault.resetRelease(vaultId, OWNER2);
+    EXPECT_EQ(rstOut.status, 1ULL);
 
     auto status = msVault.getReleaseStatus(vaultId);
     // All cleared
@@ -537,8 +581,10 @@ TEST(ContractMsVault, GetVaults_Multiple)
 
     auto vaultsForOwner2Before = msVault.getVaults(OWNER2);
 
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    auto regOut1 = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut1.status, 1ULL);
+    auto regOut2 = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut2.status, 1ULL);
 
     auto vaultsForOwner2After = msVault.getVaults(OWNER2);
     EXPECT_GE(static_cast<unsigned int>(vaultsForOwner2After.numberOfVaults),
@@ -559,7 +605,8 @@ TEST(ContractMsVault, GetRevenue)
     increaseEnergy(OWNER2, 100000000000ULL);
     increaseEnergy(OWNER3, 100000ULL);
 
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut1 = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut1.status, 1ULL);
 
     msVault.endEpoch();
 
@@ -575,12 +622,14 @@ TEST(ContractMsVault, GetRevenue)
     increaseEnergy(OWNER2, 100000000ULL);
     increaseEnergy(OWNER3, 100000000ULL);
 
-    msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut2 = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut2.status, 1ULL);
 
     auto vaultsO1 = msVault.getVaults(OWNER1);
     uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
 
-    msVault.deposit(vaultId, 500000000ULL, OWNER1);
+    auto depOut = msVault.deposit(vaultId, 500000000ULL, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
 
     msVault.endEpoch();
 
@@ -624,7 +673,9 @@ TEST(ContractMsVault, ManagementRightsVsDirectDeposit)
                                         { USER_WITHOUT_RIGHTS, QX_CONTRACT_INDEX }), initialDistribution);
 
     // Create a simple vault owned by USER_WITH_RIGHTS
-    msvault.registerVault(2, TEST_VAULT_NAME, { USER_WITH_RIGHTS, OWNER1 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msvault.registerVault(2, TEST_VAULT_NAME, { USER_WITH_RIGHTS, OWNER1 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
+
     auto vaults = msvault.getVaults(USER_WITH_RIGHTS);
     uint64 vaultId = vaults.vaultIds.get(0);
 
@@ -641,7 +692,8 @@ TEST(ContractMsVault, ManagementRightsVsDirectDeposit)
     // This user now makes multiple deposits
     const sint64 deposit1_U1 = 1000;
     const sint64 deposit2_U1 = 2500;
-    msvault.depositAsset(vaultId, assetTest, deposit1_U1, USER_WITH_RIGHTS);
+    auto depAssetOut1 = msvault.depositAsset(vaultId, assetTest, deposit1_U1, USER_WITH_RIGHTS);
+    EXPECT_EQ(depAssetOut1.status, 1ULL);
 
     // Verify balances after first deposit
     sint64 sc_onchain_balance = numberOfShares(assetTest, { id(MSVAULT_CONTRACT_INDEX, 0, 0, 0), MSVAULT_CONTRACT_INDEX },
@@ -651,7 +703,8 @@ TEST(ContractMsVault, ManagementRightsVsDirectDeposit)
                                                             { USER_WITH_RIGHTS, MSVAULT_CONTRACT_INDEX });
     EXPECT_EQ(user_managed_balance, sharesToManage1 - deposit1_U1);
 
-    msvault.depositAsset(vaultId, assetTest, deposit2_U1, USER_WITH_RIGHTS);
+    auto depAssetOut2 = msvault.depositAsset(vaultId, assetTest, deposit2_U1, USER_WITH_RIGHTS);
+    EXPECT_EQ(depAssetOut2.status, 1ULL);
 
     // verify balances after second deposit
     sc_onchain_balance = numberOfShares(assetTest, { id(MSVAULT_CONTRACT_INDEX, 0, 0, 0), MSVAULT_CONTRACT_INDEX },
@@ -667,7 +720,8 @@ TEST(ContractMsVault, ManagementRightsVsDirectDeposit)
                                                             { USER_WITHOUT_RIGHTS, QX_CONTRACT_INDEX });
 
     // This user attempts to deposit directly
-    msvault.depositAsset(vaultId, assetTest, 500, USER_WITHOUT_RIGHTS);
+    auto depAssetOut3 = msvault.depositAsset(vaultId, assetTest, 500, USER_WITHOUT_RIGHTS);
+    EXPECT_EQ(depAssetOut3.status, 6ULL); // FAILURE_INSUFFICIENT_BALANCE
 
     // Verify that no shares were transferred
     sint64 sc_balance_after_direct_attempt = numberOfShares(assetTest, { id(MSVAULT_CONTRACT_INDEX, 0, 0, 0), MSVAULT_CONTRACT_INDEX },
@@ -691,7 +745,8 @@ TEST(ContractMsVault, ManagementRightsVsDirectDeposit)
                                         { USER_WITHOUT_RIGHTS, MSVAULT_CONTRACT_INDEX }), sharesToManage2);
 
     const sint64 deposit1_U2 = 4000;
-    msvault.depositAsset(vaultId, assetTest, deposit1_U2, USER_WITHOUT_RIGHTS);
+    auto depAssetOut4 = msvault.depositAsset(vaultId, assetTest, deposit1_U2, USER_WITHOUT_RIGHTS);
+    EXPECT_EQ(depAssetOut4.status, 1ULL);
 
     // check the total balance in the smart contract
     sint64 final_sc_balance = numberOfShares(assetTest, { id(MSVAULT_CONTRACT_INDEX, 0, 0, 0), MSVAULT_CONTRACT_INDEX },
@@ -712,7 +767,8 @@ TEST(ContractMsVault, DepositAsset_Success)
 
     // Create a vault and issue an asset to OWNER1
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + QX_ISSUE_ASSET_FEE);
-    msvault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msvault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
     auto vaults = msvault.getVaults(OWNER1);
     uint64 vaultId = vaults.vaultIds.get(0);
 
@@ -723,7 +779,8 @@ TEST(ContractMsVault, DepositAsset_Success)
     auto transfered = msvault.transferShareManagementRights(OWNER1, assetTest, 5000, MSVAULT_CONTRACT_INDEX);
 
     // Deposit the asset into the vault
-    msvault.depositAsset(vaultId, assetTest, 500, OWNER1);
+    auto depAssetOut = msvault.depositAsset(vaultId, assetTest, 500, OWNER1);
+    EXPECT_EQ(depAssetOut.status, 1ULL);
 
     // Check the vault's asset balance
     auto assetBalances = msvault.getVaultAssetBalances(vaultId);
@@ -748,7 +805,8 @@ TEST(ContractMsVault, DepositAsset_MaxTypes)
 
     // Create a vault
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + QX_ISSUE_ASSET_FEE * (MSVAULT_MAX_ASSET_TYPES + 1)); // Extra energy for fees
-    msvault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msvault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
     auto vaults = msvault.getVaults(OWNER1);
     uint64 vaultId = vaults.vaultIds.get(0);
 
@@ -759,7 +817,8 @@ TEST(ContractMsVault, DepositAsset_MaxTypes)
         Asset currentAsset = { OWNER1, assetNameFromString(assetName.c_str()) };
         msvault.issueAsset(OWNER1, assetName, 1000000);
         msvault.transferShareManagementRights(OWNER1, currentAsset, 100000, MSVAULT_CONTRACT_INDEX);
-        msvault.depositAsset(vaultId, currentAsset, 1000, OWNER1);
+        auto depAssetOut = msvault.depositAsset(vaultId, currentAsset, 1000, OWNER1);
+        EXPECT_EQ(depAssetOut.status, 1ULL);
     }
 
     // Check if max asset types reached
@@ -770,7 +829,8 @@ TEST(ContractMsVault, DepositAsset_MaxTypes)
     Asset extraAsset = { OWNER1, assetNameFromString("ASSETE") };
     msvault.issueAsset(OWNER1, "ASSETE", 100000);
     msvault.transferShareManagementRights(OWNER1, extraAsset, 100000, MSVAULT_CONTRACT_INDEX);
-    msvault.depositAsset(vaultId, extraAsset, 1000, OWNER1);
+    auto depAssetOut = msvault.depositAsset(vaultId, extraAsset, 1000, OWNER1);
+    EXPECT_EQ(depAssetOut.status, 7ULL); // FAILURE_LIMIT_REACHED
 
     // The number of asset types should not have increased
     auto balancesAfter = msvault.getVaultAssetBalances(vaultId);
@@ -785,16 +845,19 @@ TEST(ContractMsVault, ReleaseAssetTo_FullApproval)
     // Create a 2-of-3 vault, issue and deposit an asset
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + MSVAULT_RELEASE_FEE + QX_ISSUE_ASSET_FEE + QX_MANAGEMENT_TRANSFER_FEE);
     increaseEnergy(OWNER2, MSVAULT_RELEASE_FEE);
-    msvault.registerVault(TWO_OF_THREE, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msvault.registerVault(TWO_OF_THREE, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
     auto vaults = msvault.getVaults(OWNER1);
     uint64 vaultId = vaults.vaultIds.get(0);
 
     msvault.issueAsset(OWNER1, "ASSET", 1000000);
     msvault.transferShareManagementRights(OWNER1, assetTest, 800, MSVAULT_CONTRACT_INDEX);
-    msvault.depositAsset(vaultId, assetTest, 800, OWNER1);
+    auto depAssetOut = msvault.depositAsset(vaultId, assetTest, 800, OWNER1);
+    EXPECT_EQ(depAssetOut.status, 1ULL);
 
     // Deposit funds into the vault to cover the upcoming management transfer fee.
-    msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, OWNER1);
+    auto depOut = msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
 
     // Check initial balances for the destination
     EXPECT_EQ(numberOfShares(assetTest, { DESTINATION, QX_CONTRACT_INDEX }, { DESTINATION, QX_CONTRACT_INDEX }), 0LL);
@@ -803,8 +866,10 @@ TEST(ContractMsVault, ReleaseAssetTo_FullApproval)
     EXPECT_EQ(vaultAssetBalanceBefore, 800ULL);
 
     // Owners approve the release
-    msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER1);
-    msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER2);
+    auto relAssetOut1 = msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER1);
+    EXPECT_EQ(relAssetOut1.status, 9ULL);
+    auto relAssetOut2 = msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER2);
+    EXPECT_EQ(relAssetOut2.status, 1ULL);
 
     // Check final balances
     sint64 destBalanceManagedByQx = numberOfShares(assetTest, { DESTINATION, QX_CONTRACT_INDEX }, { DESTINATION, QX_CONTRACT_INDEX });
@@ -832,18 +897,23 @@ TEST(ContractMsVault, ReleaseAssetTo_PartialApproval)
 
     // Setup
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + MSVAULT_RELEASE_FEE + QX_MANAGEMENT_TRANSFER_FEE);
-    msvault.registerVault(TWO_OF_THREE, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msvault.registerVault(TWO_OF_THREE, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
+
     auto vaults = msvault.getVaults(OWNER1);
     uint64 vaultId = vaults.vaultIds.get(0);
     msvault.issueAsset(OWNER1, "ASSET", 1000000);
     msvault.transferShareManagementRights(OWNER1, assetTest, 800, MSVAULT_CONTRACT_INDEX);
-    msvault.depositAsset(vaultId, assetTest, 800, OWNER1);
+    auto depAssetOut = msvault.depositAsset(vaultId, assetTest, 800, OWNER1);
+    EXPECT_EQ(depAssetOut.status, 1ULL);
 
     // Deposit the fee into the vault so it can process release requests.
-    msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, OWNER1);
+    auto depOut = msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
 
     // Only one owner approves
-    msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER1);
+    auto relAssetOut = msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER1);
+    EXPECT_EQ(relAssetOut.status, 9ULL); // PENDING_APPROVAL
 
     // Check release status is pending
     auto status = msvault.getAssetReleaseStatus(vaultId);
@@ -870,24 +940,29 @@ TEST(ContractMsVault, ResetAssetRelease_Success)
 
     // Setup
     increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE + MSVAULT_RELEASE_RESET_FEE + MSVAULT_RELEASE_FEE + QX_MANAGEMENT_TRANSFER_FEE);
-    msvault.registerVault(TWO_OF_TWO, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msvault.registerVault(TWO_OF_TWO, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
     auto vaults = msvault.getVaults(OWNER1);
     uint64 vaultId = vaults.vaultIds.get(0);
     msvault.issueAsset(OWNER1, "ASSET", 1000000);
     msvault.transferShareManagementRights(OWNER1, assetTest, 100, MSVAULT_CONTRACT_INDEX);
-    msvault.depositAsset(vaultId, assetTest, 100, OWNER1);
+    auto depAssetOut = msvault.depositAsset(vaultId, assetTest, 100, OWNER1);
+    EXPECT_EQ(depAssetOut.status, 1ULL);
 
-    msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, OWNER1);
+    auto depOut = msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, OWNER1);
+    EXPECT_EQ(depOut.status, 1ULL);
 
     // Propose and then reset a release
-    msvault.releaseAssetTo(vaultId, assetTest, 50, DESTINATION, OWNER1);
+    auto relAssetOut = msvault.releaseAssetTo(vaultId, assetTest, 50, DESTINATION, OWNER1);
+    EXPECT_EQ(relAssetOut.status, 9ULL);
 
     // Check status is pending before reset
     auto statusBefore = msvault.getAssetReleaseStatus(vaultId);
     EXPECT_EQ(statusBefore.amounts.get(0), 50ULL);
 
     // Reset the release
-    msvault.resetAssetRelease(vaultId, OWNER1);
+    auto rstAssetOut = msvault.resetAssetRelease(vaultId, OWNER1);
+    EXPECT_EQ(rstAssetOut.status, 1ULL);
 
     // Status should be cleared for that owner
     auto statusAfter = msvault.getAssetReleaseStatus(vaultId);
@@ -916,7 +991,9 @@ TEST(ContractMsVault, FullLifecycle_BalanceVerification)
     increaseEnergy(PARTNER, MSVAULT_RELEASE_FEE);
 
     msvault.issueAsset(USER, "ASSET", initialShares);
-    msvault.registerVault(TWO_OF_TWO, TEST_VAULT_NAME, { USER, PARTNER }, MSVAULT_REGISTERING_FEE);
+    auto regOut = msvault.registerVault(TWO_OF_TWO, TEST_VAULT_NAME, { USER, PARTNER }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
+
     auto vaults = msvault.getVaults(USER);
     uint64 vaultId = vaults.vaultIds.get(0);
 
@@ -925,7 +1002,8 @@ TEST(ContractMsVault, FullLifecycle_BalanceVerification)
     EXPECT_EQ(userShares_QX, initialShares);
 
     // Fund the vault for the future management transfer fee
-    msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, USER);
+    auto depOut = msvault.deposit(vaultId, QX_MANAGEMENT_TRANSFER_FEE, USER);
+    EXPECT_EQ(depOut.status, 1ULL);
 
     // User gives MsVault management rights over a portion of their shares
     msvault.transferShareManagementRights(USER, assetTest, sharesToManage, MSVAULT_CONTRACT_INDEX);
@@ -937,7 +1015,8 @@ TEST(ContractMsVault, FullLifecycle_BalanceVerification)
     EXPECT_EQ(userShares_QX, initialShares - sharesToManage);
 
     // User deposits the MsVault-managed shares into the vault
-    msvault.depositAsset(vaultId, assetTest, sharesToDeposit, USER);
+    auto depAssetOut = msvault.depositAsset(vaultId, assetTest, sharesToDeposit, USER);
+    EXPECT_EQ(depAssetOut.status, 1ULL);
 
     // User's on-chain balance of MsVault-managed shares should decrease
     userShares_MSVAULT_Managed = numberOfShares(assetTest, { USER, MSVAULT_CONTRACT_INDEX }, { USER, MSVAULT_CONTRACT_INDEX });
@@ -956,8 +1035,10 @@ TEST(ContractMsVault, FullLifecycle_BalanceVerification)
     EXPECT_EQ(vaultBalances.assetBalances.get(0).balance, sharesToDeposit);
 
     // Both owners approve a release to the destination
-    msvault.releaseAssetTo(vaultId, assetTest, sharesToRelease, DESTINATION_ACC, USER);
-    msvault.releaseAssetTo(vaultId, assetTest, sharesToRelease, DESTINATION_ACC, PARTNER);
+    auto relAssetOut1 = msvault.releaseAssetTo(vaultId, assetTest, sharesToRelease, DESTINATION_ACC, USER);
+    EXPECT_EQ(relAssetOut1.status, 9ULL);
+    auto relAssetOut2 = msvault.releaseAssetTo(vaultId, assetTest, sharesToRelease, DESTINATION_ACC, PARTNER);
+    EXPECT_EQ(relAssetOut2.status, 1ULL);
 
     // MsVault contract's on-chain balance should decrease
     scShares_onchain = numberOfShares(assetTest, { id(MSVAULT_CONTRACT_INDEX, 0, 0, 0), MSVAULT_CONTRACT_INDEX },
@@ -1006,9 +1087,9 @@ TEST(ContractMsVault, StressTest_MultiUser_MultiAsset)
     }
 
     // Create 3 vaults with different sets of 4 owners each
-    msvault.registerVault(3, id::randomValue(), { users[0], users[1], users[2], users[3] }, MSVAULT_REGISTERING_FEE);
-    msvault.registerVault(2, id::randomValue(), { users[4], users[5], users[6], users[7] }, MSVAULT_REGISTERING_FEE);
-    msvault.registerVault(4, id::randomValue(), { users[8], users[9], users[10], users[11] }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(msvault.registerVault(3, id::randomValue(), { users[0], users[1], users[2], users[3] }, MSVAULT_REGISTERING_FEE).status, 1ULL);
+    EXPECT_EQ(msvault.registerVault(2, id::randomValue(), { users[4], users[5], users[6], users[7] }, MSVAULT_REGISTERING_FEE).status, 1ULL);
+    EXPECT_EQ(msvault.registerVault(4, id::randomValue(), { users[8], users[9], users[10], users[11] }, MSVAULT_REGISTERING_FEE).status, 1ULL);
 
     // Each of the 8 assets is deposited twice by its owner
     uint64 targetVaultId = 0;
@@ -1021,10 +1102,13 @@ TEST(ContractMsVault, StressTest_MultiUser_MultiAsset)
         id owner_of_asset = users[assetIndex];
 
         msvault.transferShareManagementRights(owner_of_asset, assetToDeposit, depositAmount, MSVAULT_CONTRACT_INDEX);
-        msvault.depositAsset(targetVaultId, assetToDeposit, depositAmount, owner_of_asset);
+        auto depAssetOut = msvault.depositAsset(targetVaultId, assetToDeposit, depositAmount, owner_of_asset);
+        EXPECT_EQ(depAssetOut.status, 1ULL);
     }
 
-    msvault.deposit(targetVaultId, QX_MANAGEMENT_TRANSFER_FEE, users[0]);
+    auto depOut = msvault.deposit(targetVaultId, QX_MANAGEMENT_TRANSFER_FEE, users[0]);
+    EXPECT_EQ(depOut.status, 1ULL);
+
     // Check the state of the target vault
     auto vaultBalances = msvault.getVaultAssetBalances(targetVaultId);
     EXPECT_EQ(vaultBalances.status, 1ULL);
@@ -1041,13 +1125,13 @@ TEST(ContractMsVault, StressTest_MultiUser_MultiAsset)
     const sint64 releaseAmount = 75;
 
     // A 3-of-4 vault, so we need 3 approvals
-    msvault.releaseAssetTo(targetVaultId, assetToRelease, releaseAmount, releaseDestination, users[0]);
-    msvault.releaseAssetTo(targetVaultId, assetToRelease, releaseAmount, releaseDestination, users[1]);
-    msvault.releaseAssetTo(targetVaultId, assetToRelease, releaseAmount, releaseDestination, users[2]);
+    EXPECT_EQ(msvault.releaseAssetTo(targetVaultId, assetToRelease, releaseAmount, releaseDestination, users[0]).status, 9ULL);
+    EXPECT_EQ(msvault.releaseAssetTo(targetVaultId, assetToRelease, releaseAmount, releaseDestination, users[1]).status, 9ULL);
+    EXPECT_EQ(msvault.releaseAssetTo(targetVaultId, assetToRelease, releaseAmount, releaseDestination, users[2]).status, 1ULL);
 
     // Check destination on-chain balance
     sint64 destBalance = numberOfShares(assetToRelease, { releaseDestination, QX_CONTRACT_INDEX },
-                                                        { releaseDestination, QX_CONTRACT_INDEX });
+        { releaseDestination, QX_CONTRACT_INDEX });
     EXPECT_EQ(destBalance, releaseAmount);
 
     // Check vault's internal accounting for the released asset
@@ -1099,10 +1183,11 @@ TEST(ContractMsVault, RevokeAssetManagementRights_Success)
     EXPECT_EQ(numberOfShares(asset, { USER, MSVAULT_CONTRACT_INDEX }, { USER, MSVAULT_CONTRACT_INDEX }), sharesToManage);
 
     // User revokes a portion of the managed rights from MsVault. The helper now handles the fee.
-    sint64 revokedAmount = msvault.revokeAssetManagementRights(USER, asset, sharesToRevoke);
+    auto revokeOut = msvault.revokeAssetManagementRights(USER, asset, sharesToRevoke);
 
     // Verify the outcome
-    EXPECT_EQ(revokedAmount, sharesToRevoke);
+    EXPECT_EQ(revokeOut.status, 1ULL);
+    EXPECT_EQ(revokeOut.transferredNumberOfShares, sharesToRevoke);
 
     // The amount managed by MsVault should decrease
     sint64 finalManagedByMsVault = numberOfShares(asset, { USER, MSVAULT_CONTRACT_INDEX }, { USER, MSVAULT_CONTRACT_INDEX });
