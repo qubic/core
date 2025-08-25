@@ -13,3 +13,8 @@ x64/
 .DS_Store
 .clang-format
 tmp
+
+# Build directories and temporary files
+out/build/
+**/Testing/Temporary/
+**/_deps/googletest-src
