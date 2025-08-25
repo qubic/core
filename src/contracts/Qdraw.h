@@ -30,7 +30,7 @@ public:
         uint8  lastDrawHour;
         uint8  currentHour;
         uint8  nextDrawHour;
-};
+    };
 
 
     struct getParticipants_input
@@ -53,13 +53,15 @@ protected:
     sint64 _lastWinAmount;
     id _owner;
 
-    struct buyTicket_locals {
+    struct buyTicket_locals
+    {
         uint64 available;
         sint64 totalCost;
         uint64 i;
     };
 
-    struct getParticipants_locals {
+    struct getParticipants_locals
+    {
         uint64 uniqueCount;
         uint64 i;
         uint64 j;
@@ -78,9 +80,16 @@ protected:
 
     inline static bool isMonopoly(const Array<id, QDRAW_MAX_PARTICIPANTS>& arr, uint64 count, uint64 loopIndex) 
     {
-        if (count != QDRAW_MAX_PARTICIPANTS) return false;
-        for (loopIndex = 1; loopIndex < count; ++loopIndex) {
-            if (arr.get(loopIndex) != arr.get(0)) return false;
+        if (count != QDRAW_MAX_PARTICIPANTS) 
+        {
+            return false;
+        }
+        for (loopIndex = 1; loopIndex < count; ++loopIndex)
+        {
+            if (arr.get(loopIndex) != arr.get(0))
+            {
+                return false;
+            }
         }
         return true;
     }
@@ -91,26 +100,30 @@ protected:
         if (QDRAW_MAX_PARTICIPANTS == state._participantCount || input.ticketCount == 0 || input.ticketCount > locals.available)
         {
             if (qpi.invocationReward() > 0)
+            {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
             return;
         }
-
         locals.totalCost = (sint64)input.ticketCount * (sint64)QDRAW_TICKET_PRICE;
         if (qpi.invocationReward() < locals.totalCost)
         {
             if (qpi.invocationReward() > 0)
+            {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
             return;
         }
-
         for (locals.i = 0; locals.i < input.ticketCount; ++locals.i)
+        {
             state._participants.set(state._participantCount + locals.i, qpi.invocator());
-
-            state._participantCount += input.ticketCount;
-            state._pot += locals.totalCost;
-
+        }
+        state._participantCount += input.ticketCount;
+        state._pot += locals.totalCost;
         if (qpi.invocationReward() > locals.totalCost)
+        {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.totalCost);
+        }
     }
 
     PUBLIC_FUNCTION(getInfo)
@@ -171,30 +184,33 @@ protected:
     BEGIN_TICK_WITH_LOCALS()
     {
         locals.currentHour = qpi.hour();
-        if (locals.currentHour != state._lastDrawHour) {
+        if (locals.currentHour != state._lastDrawHour)
+        {
             state._lastDrawHour = locals.currentHour;    
-
             if (state._participantCount > 0)
             {
-                if (isMonopoly(state._participants, state._participantCount, locals.loopIndex)) {
+                if (isMonopoly(state._participants, state._participantCount, locals.loopIndex))
+                {
                     locals.only = state._participants.get(0);
+                    qpi.burn(QDRAW_TICKET_PRICE);
                     qpi.transfer(locals.only, QDRAW_TICKET_PRICE);
-                    qpi.transfer(state._owner, state._pot - QDRAW_TICKET_PRICE);
+                    qpi.transfer(state._owner, state._pot - QDRAW_TICKET_PRICE * 2);
                     state._lastWinner = locals.only;
                     state._lastWinAmount = QDRAW_TICKET_PRICE;
-                } else {
+                } 
+                else 
+                {
                     locals.rand = qpi.K12(qpi.getPrevSpectrumDigest());
                     locals.winner = state._participants.get(mod(locals.rand.u64._0, state._participantCount));
                     qpi.transfer(locals.winner, state._pot);
                     state._lastWinner = locals.winner;
                     state._lastWinAmount = state._pot;
                 }
-
                 state._participantCount = 0;
                 state._pot = 0;
-                
             }
         }
     }
 };
+
 
