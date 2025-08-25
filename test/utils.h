@@ -9,7 +9,7 @@
 namespace test_utils
 {
 
-std::string byteToHex(const unsigned char* byteArray, size_t sizeInByte)
+static std::string byteToHex(const unsigned char* byteArray, size_t sizeInByte)
 {
     std::ostringstream oss;
     for (size_t i = 0; i < sizeInByte; ++i)
@@ -19,7 +19,7 @@ std::string byteToHex(const unsigned char* byteArray, size_t sizeInByte)
     return oss.str();
 
 }
-m256i hexToByte(const std::string& hex, const int sizeInByte)
+static m256i hexTo32Bytes(const std::string& hex, const int sizeInByte)
 {
     if (hex.length() != sizeInByte * 2) {
         throw std::invalid_argument("Hex string length does not match the expected size");
@@ -34,8 +34,21 @@ m256i hexToByte(const std::string& hex, const int sizeInByte)
     return byteArray;
 }
 
+static void hexToByte(const std::string& hex, const int sizeInByte, unsigned char* out)
+{
+    if (hex.length() != sizeInByte * 2)
+    {
+        throw std::invalid_argument("Hex string length does not match the expected size");
+    }
+
+    for (size_t i = 0; i < sizeInByte; ++i)
+    {
+        out[i] = std::stoi(hex.substr(i * 2, 2), nullptr, 16);
+    }
+}
+
 // Function to read and parse the CSV file
-std::vector<std::vector<std::string>> readCSV(const std::string& filename)
+static std::vector<std::vector<std::string>> readCSV(const std::string& filename)
 {
     std::vector<std::vector<std::string>> data;
     std::ifstream file(filename);
@@ -61,7 +74,7 @@ std::vector<std::vector<std::string>> readCSV(const std::string& filename)
     return data;
 }
 
-m256i convertFromString(std::string& rStr)
+static m256i convertFromString(std::string& rStr)
 {
     m256i value;
     std::stringstream ss(rStr);
@@ -74,7 +87,7 @@ m256i convertFromString(std::string& rStr)
     return value;
 }
 
-std::vector<unsigned long long> convertULLFromString(std::string& rStr)
+static std::vector<unsigned long long> convertULLFromString(std::string& rStr)
 {
     std::vector<unsigned long long> values;
     std::stringstream ss(rStr);

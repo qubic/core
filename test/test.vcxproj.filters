@@ -36,6 +36,7 @@
     <ClCompile Include="contract_gqmprop.cpp" />
     <ClCompile Include="qpi_date_time.cpp" />
     <ClCompile Include="uint128.cpp" />
+    <ClCompile Include="fourq.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
