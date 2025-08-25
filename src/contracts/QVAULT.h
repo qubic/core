@@ -1,144 +1,224 @@
 using namespace QPI;
 
-constexpr uint64 QVAULT_QCAP_ASSETNAME = 1346454353;
-constexpr uint64 QVAULT_QVAULT_ASSETNAME = 92686824592977;
-constexpr uint64 QVAULT_PROPOSAL_FEE = 10000000;
-constexpr uint64 QVAULT_IPO_PARTICIPATION_MIN_FUND = 1000000000;
-constexpr uint32 QVAULT_QCAP_MAX_SUPPLY = 21000000;
-constexpr uint32 QVAULT_MAX_NUMBER_OF_PROPOSAL = 65536;
-constexpr uint32 QVAULT_2025MAX_QCAP_SALE_AMOUNT = 10714286;
-constexpr uint32 QVAULT_2026MAX_QCAP_SALE_AMOUNT = 15571429;
-constexpr uint32 QVAULT_2027MAX_QCAP_SALE_AMOUNT = 18000000;
+// QVAULT Contract Constants
+// Asset identifiers for QCAP and QVAULT tokens
+constexpr uint64 QVAULT_QCAP_ASSETNAME = 1346454353;        // QCAP token asset name
+constexpr uint64 QVAULT_QVAULT_ASSETNAME = 92686824592977;  // QVAULT token asset name
 
-constexpr sint32 QVAULT_SUCCESS = 0;
-constexpr sint32 QVAULT_INSUFFICIENT_QCAP = 1;
-constexpr sint32 QVAULT_NOT_ENOUGH_STAKE = 2;
-constexpr sint32 QVAULT_NOT_STAKER = 3;
+// Financial and operational constants
+constexpr uint64 QVAULT_PROPOSAL_FEE = 10000000;            // Fee required to submit proposals (in qubic)
+constexpr uint64 QVAULT_IPO_PARTICIPATION_MIN_FUND = 1000000000; // Minimum fund required for IPO participation
+constexpr uint32 QVAULT_QCAP_MAX_SUPPLY = 21000000;         // Maximum total supply of QCAP tokens
+constexpr uint32 QVAULT_MAX_NUMBER_OF_PROPOSAL = 65536;     // Maximum number of proposals allowed
 
+// Yearly QCAP sale limits
+constexpr uint32 QVAULT_2025MAX_QCAP_SALE_AMOUNT = 10714286; // Maximum QCAP sales for 2025
+constexpr uint32 QVAULT_2026MAX_QCAP_SALE_AMOUNT = 15571429; // Maximum QCAP sales for 2026
+constexpr uint32 QVAULT_2027MAX_QCAP_SALE_AMOUNT = 18000000; // Maximum QCAP sales for 2027
+
+// Return code constants
+constexpr sint32 QVAULT_SUCCESS = 0;                        // Operation completed successfully
+constexpr sint32 QVAULT_INSUFFICIENT_QCAP = 1;              // User doesn't have enough QCAP tokens
+constexpr sint32 QVAULT_NOT_ENOUGH_STAKE = 2;               // User doesn't have enough staked tokens
+constexpr sint32 QVAULT_NOT_STAKER = 3;                     // User is not a staker
+
+/**
+ * QVAULT Log Information Enum
+ * Defines various status codes and error conditions for QVAULT operations
+ */
 enum QVAULTLogInfo {
-    QvaultSuccess = 0,
-    QvaultInsufficientFund = 1,
-    QvaultNotTransferredShare = 2,
-    QvaultEndedProposal = 3,
-    QvaultNotStaked = 4,
-    QvaultNoVotingPower = 5,
-    QvaultOverflowSaleAmount = 6,
-    QvaultNotInTime = 7,
-    QvaultNotFair = 8,
-    QvaultInsufficientQcap = 9,
-    QvaultFailed = 10,
-    QvaultInsufficientShare = 11,
-    QvaultErrorTransferAsset = 12,
-    QvaultInsufficientVotingPower = 13,
-    QvaultInputError = 14,
-    QvaultOverflowProposal = 15, 
-    QvaultAlreadyVotedId = 19,
-    QvaultOverflowVotes = 20,
-    QvaultSameDecision = 21,
+    QvaultSuccess = 0,                    // Operation completed successfully
+    QvaultInsufficientFund = 1,           // Insufficient funds for operation
+    QvaultNotTransferredShare = 2,        // Share transfer failed
+    QvaultEndedProposal = 3,              // Proposal voting period has ended
+    QvaultNotStaked = 4,                  // User has no staked tokens
+    QvaultNoVotingPower = 5,              // User has no voting power
+    QvaultOverflowSaleAmount = 6,         // QCAP sale amount exceeds yearly limit
+    QvaultNotInTime = 7,                  // Operation attempted outside allowed timeframe
+    QvaultNotFair = 8,                    // Allocation proposal percentages don't sum to 1000
+    QvaultInsufficientQcap = 9,           // Insufficient QCAP tokens
+    QvaultFailed = 10,                    // Operation failed
+    QvaultInsufficientShare = 11,         // Insufficient shares for operation
+    QvaultErrorTransferAsset = 12,        // Asset transfer error occurred
+    QvaultInsufficientVotingPower = 13,   // User doesn't have minimum voting power (10000)
+    QvaultInputError = 14,                // Invalid input parameters
+    QvaultOverflowProposal = 15,          // Proposal ID exceeds maximum allowed
+    QvaultAlreadyVotedId = 19,            // User has already voted on this proposal
+    QvaultOverflowVotes = 20,             // Maximum number of votes per user exceeded
+    QvaultSameDecision = 21,              // User is voting with same decision as before
 };
 
+/**
+ * QVAULT2 - Placeholder struct for future use
+ */
 struct QVAULT2
 {
 };
 
+/**
+ * QVAULT Contract
+ * Main contract for managing QCAP token staking, voting, and governance
+ * Inherits from ContractBase to provide basic contract functionality
+ */
 struct QVAULT : public ContractBase
 {
 
 public:
 
+    /**
+     * Input structure for getData function
+     * No input parameters required - returns all contract state data
+     */
     struct getData_input
     {
     };
 
+    /**
+     * Output structure for getData function
+     * Contains comprehensive contract state information including:
+     * - Administrative data (admin address, fees)
+     * - Financial data (funds, revenue, market cap)
+     * - Staking data (staked amounts, voting power)
+     * - Proposal counts for each type
+     * - Configuration parameters (percentages, limits)
+     */
     struct getData_output
     {
-        id adminAddress;
-        uint64 totalVotingPower;
-        uint64 proposalCreateFund;
-        uint64 reinvestingFund;
-        uint64 totalEpochRevenue;
-        uint64 fundForBurn;
-        uint64 totalStakedQcapAmount;
-        uint64 qcapMarketCap;
-        uint64 raisedFundByQcap;
-        uint64 lastRoundPriceOfQcap;
-        uint64 revenueByQearn;
-        uint32 qcapSoldAmount;
-        uint32 shareholderDividend;
-        uint32 QCAPHolderPermille;
-        uint32 reinvestingPermille;
-        uint32 devPermille;
-        uint32 burnPermille;
-        uint32 qcapBurnPermille;
-        uint32 numberOfStaker;
-        uint32 numberOfVotingPower;
-        uint32 numberOfGP;
-        uint32 numberOfQCP;
-        uint32 numberOfIPOP;
-        uint32 numberOfQEarnP;
-        uint32 numberOfFundP;
-        uint32 numberOfMKTP;
-        uint32 numberOfAlloP;
-        uint32 transferRightsFee;
-        uint32 minQuorumRq;
-        uint32 maxQuorumRq;
-        uint32 totalQcapBurntAmount;
-        uint32 circulatingSupply;
-        uint32 quorumPercent;
+        id adminAddress;                    // Contract administrator address
+        uint64 totalVotingPower;           // Total voting power across all stakers
+        uint64 proposalCreateFund;          // Fund accumulated from proposal fees
+        uint64 reinvestingFund;            // Fund available for reinvestment
+        uint64 totalEpochRevenue;          // Total revenue for current epoch
+        uint64 fundForBurn;                // Fund allocated for token burning
+        uint64 totalStakedQcapAmount;      // Total amount of QCAP tokens staked
+        uint64 qcapMarketCap;              // Current QCAP market capitalization
+        uint64 raisedFundByQcap;           // Total funds raised from QCAP sales
+        uint64 lastRoundPriceOfQcap;       // QCAP price from last fundraising round
+        uint64 revenueByQearn;             // Revenue generated from QEarn operations
+        uint32 qcapSoldAmount;             // Total QCAP tokens sold to date
+        uint32 shareholderDividend;        // Dividend percentage for shareholders (per mille)
+        uint32 QCAPHolderPermille;         // Revenue allocation for QCAP holders (per mille)
+        uint32 reinvestingPermille;        // Revenue allocation for reinvestment (per mille)
+        uint32 devPermille;                // Revenue allocation for development (per mille)
+        uint32 burnPermille;               // Revenue allocation for burning (per mille)
+        uint32 qcapBurnPermille;           // Revenue allocation for QCAP burning (per mille)
+        uint32 numberOfStaker;             // Number of active stakers
+        uint32 numberOfVotingPower;        // Number of users with voting power
+        uint32 numberOfGP;                 // Number of General Proposals
+        uint32 numberOfQCP;                // Number of Quorum Change Proposals
+        uint32 numberOfIPOP;               // Number of IPO Participation Proposals
+        uint32 numberOfQEarnP;             // Number of QEarn Participation Proposals
+        uint32 numberOfFundP;              // Number of Fundraising Proposals
+        uint32 numberOfMKTP;               // Number of Marketplace Proposals
+        uint32 numberOfAlloP;              // Number of Allocation Proposals
+        uint32 transferRightsFee;          // Fee for transferring share management rights
+        uint32 minQuorumRq;                // Minimum quorum requirement (330)
+        uint32 maxQuorumRq;                // Maximum quorum requirement (670)
+        uint32 totalQcapBurntAmount;       // Total QCAP tokens burned to date
+        uint32 circulatingSupply;          // Current circulating supply of QCAP
+        uint32 quorumPercent;              // Current quorum percentage for proposals
     };
 
+    /**
+     * Input structure for stake function
+     * @param amount Number of QCAP tokens to stake
+     */
     struct stake_input
     {
         uint32 amount;
     };
 
+    /**
+     * Output structure for stake function
+     * @param returnCode Status code indicating success or failure
+     */
     struct stake_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for unStake function
+     * @param amount Number of QCAP tokens to unstake
+     */
     struct unStake_input
     {
         uint32 amount;
     };
 
+    /**
+     * Output structure for unStake function
+     * @param returnCode Status code indicating success or failure
+     */
     struct unStake_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for submitGP (General Proposal) function
+     * @param url URL containing proposal details (max 256 bytes)
+     */
     struct submitGP_input
     {
         Array<uint8, 256> url;
     };
 
+    /**
+     * Output structure for submitGP function
+     * @param returnCode Status code indicating success or failure
+     */
     struct submitGP_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for submitQCP (Quorum Change Proposal) function
+     * @param newQuorumPercent New quorum percentage to set (330-670)
+     * @param url URL containing proposal details (max 256 bytes)
+     */
     struct submitQCP_input
     {
         uint32 newQuorumPercent;
         Array<uint8, 256> url;
     };
 
+    /**
+     * Output structure for submitQCP function
+     * @param returnCode Status code indicating success or failure
+     */
     struct submitQCP_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for submitIPOP (IPO Participation Proposal) function
+     * @param ipoContractIndex Index of the IPO contract to participate in
+     * @param url URL containing proposal details (max 256 bytes)
+     */
     struct submitIPOP_input
     {
         uint32 ipoContractIndex;
         Array<uint8, 256> url;
     };
 
+    /**
+     * Output structure for submitIPOP function
+     * @param returnCode Status code indicating success or failure
+     */
     struct submitIPOP_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for submitQEarnP (QEarn Participation Proposal) function
+     * @param amountPerEpoch Amount to invest per epoch
+     * @param numberOfEpoch Number of epochs to participate (max 52)
+     * @param url URL containing proposal details (max 256 bytes)
+     */
     struct submitQEarnP_input
     {
         uint64 amountPerEpoch;
@@ -146,11 +226,21 @@ public:
         Array<uint8, 256> url;
     };
 
+    /**
+     * Output structure for submitQEarnP function
+     * @param returnCode Status code indicating success or failure
+     */
     struct submitQEarnP_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for submitFundP (Fundraising Proposal) function
+     * @param priceOfOneQcap Price per QCAP token in qubic
+     * @param amountOfQcap Amount of QCAP tokens to sell
+     * @param url URL containing proposal details (max 256 bytes)
+     */
     struct submitFundP_input
     {
         uint64 priceOfOneQcap;
@@ -158,11 +248,24 @@ public:
         Array<uint8, 256> url;
     };
 
+    /**
+     * Output structure for submitFundP function
+     * @param returnCode Status code indicating success or failure
+     */
     struct submitFundP_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for submitMKTP (Marketplace Proposal) function
+     * @param amountOfQubic Amount of qubic to spend
+     * @param shareName Name/identifier of the share to purchase
+     * @param amountOfQcap Amount of QCAP tokens to offer
+     * @param indexOfShare Index of the share in the marketplace
+     * @param amountOfShare Amount of shares to purchase
+     * @param url URL containing proposal details (max 256 bytes)
+     */
     struct submitMKTP_input
     {
         uint64 amountOfQubic;
@@ -173,11 +276,24 @@ public:
         Array<uint8, 256> url;
     };
 
+    /**
+     * Output structure for submitMKTP function
+     * @param returnCode Status code indicating success or failure
+     */
     struct submitMKTP_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for submitAlloP (Allocation Proposal) function
+     * @param reinvested Percentage for reinvestment (per mille)
+     * @param team Percentage for team development (per mille)
+     * @param burn Percentage for burning (per mille)
+     * @param distribute Percentage for distribution (per mille)
+     * @param url URL containing proposal details (max 256 bytes)
+     * Note: All percentages must sum to 970 (per mille)
+     */
     struct submitAlloP_input
     {
         uint32 reinvested;
@@ -187,11 +303,22 @@ public:
         Array<uint8, 256> url;
     };
 
+    /**
+     * Output structure for submitAlloP function
+     * @param returnCode Status code indicating success or failure
+     */
     struct submitAlloP_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for voteInProposal function
+     * @param priceOfIPO IPO price for IPO participation proposals
+     * @param proposalType Type of proposal (1=GP, 2=QCP, 3=IPOP, 4=QEarnP, 5=FundP, 6=MKTP, 7=AlloP)
+     * @param proposalId ID of the proposal to vote on
+     * @param yes Voting decision (1=yes, 0=no)
+     */
     struct voteInProposal_input
     {
         uint64 priceOfIPO;
@@ -200,27 +327,51 @@ public:
         bit yes;
     };
 
+    /**
+     * Output structure for voteInProposal function
+     * @param returnCode Status code indicating success or failure
+     */
     struct voteInProposal_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for buyQcap function
+     * @param amount Number of QCAP tokens to purchase
+     */
     struct buyQcap_input
     {
         uint32 amount;
     };
 
+    /**
+     * Output structure for buyQcap function
+     * @param returnCode Status code indicating success or failure
+     */
     struct buyQcap_output
     {
         uint32 returnCode;
     };
 
+    /**
+     * Input structure for TransferShareManagementRights function
+     * @param asset Asset information (name and issuer)
+     * @param numberOfShares Number of shares to transfer management rights for
+     * @param newManagingContractIndex Index of the new managing contract
+     */
     struct TransferShareManagementRights_input
 	{
 		Asset asset;
 		sint64 numberOfShares;
 		uint32 newManagingContractIndex;
 	};
+
+    /**
+     * Output structure for TransferShareManagementRights function
+     * @param transferredNumberOfShares Number of shares successfully transferred
+     * @param returnCode Status code indicating success or failure
+     */
 	struct TransferShareManagementRights_output
 	{
 		sint64 transferredNumberOfShares;
@@ -229,182 +380,270 @@ public:
 
 protected:
 
+    /**
+     * Staking information structure
+     * Tracks individual staker addresses and their staked amounts
+     */
     struct stakingInfo
     {
-        id stakerAddress;
-        uint32 amount;
+        id stakerAddress;    // Address of the staker
+        uint32 amount;       // Amount of QCAP tokens staked
     };
 
-    Array<stakingInfo, 1048576> staker;
-    Array<stakingInfo, 1048576> votingPower;
+    // Storage arrays for staking and voting power data
+    Array<stakingInfo, 1048576> staker;      // Array of all stakers (max 1M stakers)
+    Array<stakingInfo, 1048576> votingPower; // Array of users with voting power
 
-    struct GPInfo                   // General proposal
+    /**
+     * General Proposal (GP) information structure
+     * Stores details about general governance proposals
+     */
+    struct GPInfo
     {
-        id proposer;
-        uint32 currentTotalVotingPower;
-        uint32 numberOfYes;
-        uint32 numberOfNo;
-        uint32 proposedEpoch;
-        uint32 currentQuorumPercent;
-        Array<uint8, 256> url;
-        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum.
+        id proposer;                    // Address of the proposal creator
+        uint32 currentTotalVotingPower; // Total voting power when proposal was created
+        uint32 numberOfYes;             // Number of yes votes received
+        uint32 numberOfNo;              // Number of no votes received
+        uint32 proposedEpoch;           // Epoch when proposal was created
+        uint32 currentQuorumPercent;    // Quorum percentage when proposal was created
+        Array<uint8, 256> url;          // URL containing proposal details
+        uint8 result;                   // Proposal result: 0=passed, 1=rejected, 2=insufficient quorum
     };
 
+    // Storage array for general proposals
     Array<GPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> GP;
 
-    struct QCPInfo                   // Quorum change proposal
+    /**
+     * Quorum Change Proposal (QCP) information structure
+     * Stores details about proposals to change the voting quorum percentage
+     */
+    struct QCPInfo
     {
-        id proposer;
-        uint32 currentTotalVotingPower;
-        uint32 numberOfYes;
-        uint32 numberOfNo;
-        uint32 proposedEpoch;
-        uint32 currentQuorumPercent;
-        uint32 newQuorumPercent;
-        Array<uint8, 256> url;
-        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum.
+        id proposer;                    // Address of the proposal creator
+        uint32 currentTotalVotingPower; // Total voting power when proposal was created
+        uint32 numberOfYes;             // Number of yes votes received
+        uint32 numberOfNo;              // Number of no votes received
+        uint32 proposedEpoch;           // Epoch when proposal was created
+        uint32 currentQuorumPercent;    // Current quorum percentage
+        uint32 newQuorumPercent;        // Proposed new quorum percentage
+        Array<uint8, 256> url;          // URL containing proposal details
+        uint8 result;                   // Proposal result: 0=passed, 1=rejected, 2=insufficient quorum
     };
 
+    // Storage array for quorum change proposals
     Array<QCPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> QCP;
 
-    struct IPOPInfo         // IPO participation
+    /**
+     * IPO Participation Proposal (IPOP) information structure
+     * Stores details about proposals to participate in IPO contracts
+     */
+    struct IPOPInfo
     {
-        id proposer;
-        uint64 totalWeight;
-        uint64 assignedFund;
-        uint32 currentTotalVotingPower;
-        uint32 numberOfYes;
-        uint32 numberOfNo;
-        uint32 proposedEpoch;
-        uint32 ipoContractIndex;
-        uint32 currentQuorumPercent;
-        Array<uint8, 256> url;
-        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum. 3 is the insufficient invest funds.
+        id proposer;                    // Address of the proposal creator
+        uint64 totalWeight;             // Total weighted voting power for IPO participation
+        uint64 assignedFund;            // Amount of funds assigned for IPO participation
+        uint32 currentTotalVotingPower; // Total voting power when proposal was created
+        uint32 numberOfYes;             // Number of yes votes received
+        uint32 numberOfNo;              // Number of no votes received
+        uint32 proposedEpoch;           // Epoch when proposal was created
+        uint32 ipoContractIndex;        // Index of the IPO contract to participate in
+        uint32 currentQuorumPercent;    // Current quorum percentage
+        Array<uint8, 256> url;          // URL containing proposal details
+        uint8 result;                   // Proposal result: 0=passed, 1=rejected, 2=insufficient quorum, 3=insufficient funds
     };
 
+    // Storage array for IPO participation proposals
     Array<IPOPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> IPOP;
 
-    struct QEarnPInfo       // Qearn participation proposal
+    /**
+     * QEarn Participation Proposal (QEarnP) information structure
+     * Stores details about proposals to participate in QEarn contracts
+     */
+    struct QEarnPInfo
     {
-        id proposer;
-        uint64 amountOfInvestPerEpoch;
-        uint64 assignedFundPerEpoch;
-        uint32 currentTotalVotingPower;
-        uint32 numberOfYes;
-        uint32 numberOfNo;
-        uint32 proposedEpoch;
-        uint32 currentQuorumPercent;
-        Array<uint8, 256> url;
-        uint8 numberOfEpoch;
-        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum. 3 is the insufficient funds.
+        id proposer;                    // Address of the proposal creator
+        uint64 amountOfInvestPerEpoch; // Amount to invest per epoch
+        uint64 assignedFundPerEpoch;    // Amount of funds assigned per epoch
+        uint32 currentTotalVotingPower; // Total voting power when proposal was created
+        uint32 numberOfYes;             // Number of yes votes received
+        uint32 numberOfNo;              // Number of no votes received
+        uint32 proposedEpoch;           // Epoch when proposal was created
+        uint32 currentQuorumPercent;    // Current quorum percentage
+        Array<uint8, 256> url;          // URL containing proposal details
+        uint8 numberOfEpoch;            // Number of epochs to participate
+        uint8 result;                   // Proposal result: 0=passed, 1=rejected, 2=insufficient quorum, 3=insufficient funds
     };
 
+    // Storage array for QEarn participation proposals
     Array<QEarnPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> QEarnP;
 
-    struct FundPInfo            // Fundraising proposal
+    /**
+     * Fundraising Proposal (FundP) information structure
+     * Stores details about proposals to sell QCAP tokens for fundraising
+     */
+    struct FundPInfo
     {
-        id proposer;
-        uint64 pricePerOneQcap;
-        uint32 currentTotalVotingPower;
-        uint32 numberOfYes;
-        uint32 numberOfNo;
-        uint32 amountOfQcap;
-        uint32 restSaleAmount;
-        uint32 proposedEpoch;
-        uint32 currentQuorumPercent;
-        Array<uint8, 256> url;
-        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum.
+        id proposer;                    // Address of the proposal creator
+        uint64 pricePerOneQcap;         // Price per QCAP token in qubic
+        uint32 currentTotalVotingPower; // Total voting power when proposal was created
+        uint32 numberOfYes;             // Number of yes votes received
+        uint32 numberOfNo;              // Number of no votes received
+        uint32 amountOfQcap;            // Total amount of QCAP tokens to sell
+        uint32 restSaleAmount;          // Remaining amount of QCAP tokens available for sale
+        uint32 proposedEpoch;           // Epoch when proposal was created
+        uint32 currentQuorumPercent;    // Current quorum percentage
+        Array<uint8, 256> url;          // URL containing proposal details
+        uint8 result;                   // Proposal result: 0=passed, 1=rejected, 2=insufficient quorum
     };
 
+    // Storage array for fundraising proposals
     Array<FundPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> FundP;
 
-    struct MKTPInfo                 //  Marketplace proposal
+    /**
+     * Marketplace Proposal (MKTP) information structure
+     * Stores details about proposals to purchase shares from the marketplace
+     */
+    struct MKTPInfo
     {
-        id proposer;
-        uint64 amountOfQubic;
-        uint64 shareName;
-        uint32 currentTotalVotingPower;
-        uint32 numberOfYes;
-        uint32 numberOfNo;
-        uint32 amountOfQcap;
-        uint32 currentQuorumPercent;
-        uint32 proposedEpoch;
-        uint32 shareIndex;
-        uint32 amountOfShare;
-        Array<uint8, 256> url;
-        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum. 3 is the insufficient funds. 4 is the insufficient Qcap.
+        id proposer;                    // Address of the proposal creator
+        uint64 amountOfQubic;           // Amount of qubic to spend on shares
+        uint64 shareName;               // Name/identifier of the share to purchase
+        uint32 currentTotalVotingPower; // Total voting power when proposal was created
+        uint32 numberOfYes;             // Number of yes votes received
+        uint32 numberOfNo;              // Number of no votes received
+        uint32 amountOfQcap;            // Amount of QCAP tokens to offer
+        uint32 currentQuorumPercent;    // Current quorum percentage
+        uint32 proposedEpoch;           // Epoch when proposal was created
+        uint32 shareIndex;              // Index of the share in the marketplace
+        uint32 amountOfShare;           // Amount of shares to purchase
+        Array<uint8, 256> url;          // URL containing proposal details
+        uint8 result;                   // Proposal result: 0=passed, 1=rejected, 2=insufficient quorum, 3=insufficient funds, 4=insufficient QCAP
     };
 
+    // Storage array for marketplace proposals
     Array<MKTPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> MKTP;
 
-    /*
-        % Allocation Proposal Information
-    */
-    
+    /**
+     * Allocation Proposal (AlloP) information structure
+     * Stores details about proposals to change revenue allocation percentages
+     * All percentages are in per mille (parts per thousand)
+     */
     struct AlloPInfo
     {
-        id proposer;
-        uint32 currentTotalVotingPower;
-        uint32 numberOfYes;
-        uint32 numberOfNo;
-        uint32 proposedEpoch;
-        uint32 currentQuorumPercent;
-        uint32 reinvested;
-        uint32 distributed;
-        uint32 team;
-        uint32 burnQcap;
-        Array<uint8, 256> url;
-        uint8 result;  // 0 is the passed proposal, 1 is the rejected proposal. 2 is the insufficient quorum.
+        id proposer;                    // Address of the proposal creator
+        uint32 currentTotalVotingPower; // Total voting power when proposal was created
+        uint32 numberOfYes;             // Number of yes votes received
+        uint32 numberOfNo;              // Number of no votes received
+        uint32 proposedEpoch;           // Epoch when proposal was created
+        uint32 currentQuorumPercent;    // Current quorum percentage
+        uint32 reinvested;              // Percentage for reinvestment (per mille)
+        uint32 distributed;             // Percentage for distribution (per mille)
+        uint32 team;                    // Percentage for team development (per mille)
+        uint32 burnQcap;                // Percentage for QCAP burning (per mille)
+        Array<uint8, 256> url;          // URL containing proposal details
+        uint8 result;                   // Proposal result: 0=passed, 1=rejected, 2=insufficient quorum
     };
 
+    // Storage array for allocation proposals
     Array<AlloPInfo, QVAULT_MAX_NUMBER_OF_PROPOSAL> AlloP;
 
-    id QCAP_ISSUER;
-    id adminAddress;
+    // Contract configuration and administration
+    id QCAP_ISSUER;                    // Address that can issue QCAP tokens
+    id adminAddress;                    // Contract administrator address
+
+    /**
+     * Vote status information structure
+     * Tracks individual user votes on proposals
+     */
     struct voteStatusInfo
     {
-        uint32 proposalId;
-        uint8 proposalType;
-        bit decision;
+        uint32 proposalId;              // ID of the proposal voted on
+        uint8 proposalType;             // Type of proposal (1-7)
+        bit decision;                   // Voting decision (1=yes, 0=no)
     };
-    HashMap<id, Array<voteStatusInfo, 16>, 1048576> vote;
-    HashMap<id, uint8, 1048576> countOfVote;
 
-    uint64 proposalCreateFund, reinvestingFund, totalEpochRevenue, fundForBurn, totalHistoryRevenue, rasiedFundByQcap, lastRoundPriceOfQcap, revenueByQearn;
-    Array<uint64, 65536> revenueInQcapPerEpoch;
-    Array<uint64, 65536> revenueForOneQcapPerEpoch;
-    Array<uint64, 65536> revenueForOneQvaultPerEpoch;
-    Array<uint64, 65536> revenueForReinvestPerEpoch;
-    Array<uint64, 1024> revenuePerShare;
-    Array<uint32, 65536> burntQcapAmPerEpoch;
-    uint32 totalVotingPower, totalStakedQcapAmount, qcapSoldAmount;
-    uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille, burnPermille, qcapBurnPermille, totalQcapBurntAmount;
-    uint32 numberOfStaker, numberOfVotingPower;
-    uint32 numberOfGP;
-    uint32 numberOfQCP;
-    uint32 numberOfIPOP;
-    uint32 numberOfQEarnP;
-    uint32 numberOfFundP;
-    uint32 numberOfMKTP;
-    uint32 numberOfAlloP;
-    uint32 transferRightsFee;
-    uint32 quorumPercent;
+    // Storage for user voting history and vote counts
+    HashMap<id, Array<voteStatusInfo, 16>, 1048576> vote;        // User voting history (max 16 votes per user)
+    HashMap<id, uint8, 1048576> countOfVote;                      // Count of votes per user
+
+    // Financial state variables
+    uint64 proposalCreateFund;          // Fund accumulated from proposal fees
+    uint64 reinvestingFund;             // Fund available for reinvestment
+    uint64 totalEpochRevenue;           // Total revenue for current epoch
+    uint64 fundForBurn;                 // Fund allocated for token burning
+    uint64 totalHistoryRevenue;         // Total historical revenue
+    uint64 rasiedFundByQcap;            // Total funds raised from QCAP sales
+    uint64 lastRoundPriceOfQcap;        // QCAP price from last fundraising round
+    uint64 revenueByQearn;              // Revenue generated from QEarn operations
+
+    // Per-epoch revenue tracking arrays
+    Array<uint64, 65536> revenueInQcapPerEpoch;        // Revenue in QCAP per epoch
+    Array<uint64, 65536> revenueForOneQcapPerEpoch;    // Revenue per QCAP token per epoch
+    Array<uint64, 65536> revenueForOneQvaultPerEpoch;  // Revenue per QVAULT share per epoch
+    Array<uint64, 65536> revenueForReinvestPerEpoch;   // Revenue for reinvestment per epoch
+    Array<uint64, 1024> revenuePerShare;               // Revenue per share per epoch
+    Array<uint32, 65536> burntQcapAmPerEpoch;          // QCAP amount burned per epoch
+
+    // Staking and voting state
+    uint32 totalVotingPower;            // Total voting power across all stakers
+    uint32 totalStakedQcapAmount;       // Total amount of QCAP tokens staked
+    uint32 qcapSoldAmount;              // Total QCAP tokens sold to date
+
+    // Revenue allocation percentages (per mille)
+    uint32 shareholderDividend;         // Dividend percentage for shareholders
+    uint32 QCAPHolderPermille;          // Revenue allocation for QCAP holders
+    uint32 reinvestingPermille;         // Revenue allocation for reinvestment
+    uint32 devPermille;                 // Revenue allocation for development
+    uint32 burnPermille;                // Revenue allocation for burning
+    uint32 qcapBurnPermille;            // Revenue allocation for QCAP burning
+    uint32 totalQcapBurntAmount;        // Total QCAP tokens burned to date
+
+    // Counters for stakers and voting power
+    uint32 numberOfStaker;              // Number of active stakers
+    uint32 numberOfVotingPower;         // Number of users with voting power
+
+    // Proposal counters for each type
+    uint32 numberOfGP;                  // Number of General Proposals
+    uint32 numberOfQCP;                 // Number of Quorum Change Proposals
+    uint32 numberOfIPOP;                // Number of IPO Participation Proposals
+    uint32 numberOfQEarnP;              // Number of QEarn Participation Proposals
+    uint32 numberOfFundP;               // Number of Fundraising Proposals
+    uint32 numberOfMKTP;                // Number of Marketplace Proposals
+    uint32 numberOfAlloP;               // Number of Allocation Proposals
+
+    // Configuration parameters
+    uint32 transferRightsFee;           // Fee for transferring share management rights
+    uint32 quorumPercent;               // Current quorum percentage for proposals
     
     /**
-	* @return Current date from core node system
-	*/
-
+     * Gets the current date from the core node system
+     * Packs year, month, day, hour, minute, and second into a single uint32 value
+     * 
+     * @param qpi QPI context for accessing system time
+     * @param res Output parameter to store the packed date
+     */
 	inline static void getCurrentDate(const QPI::QpiContextFunctionCall& qpi, uint32& res) 
 	{
         QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
     }
 
+    /**
+     * Local variables for getData function
+     */
     struct getData_locals
     {
-        Asset qcapAsset;
-        sint32 _t;
+        Asset qcapAsset;                // QCAP asset information
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Retrieves comprehensive contract state data
+     * Returns all important contract information including financial data,
+     * staking statistics, proposal counts, and configuration parameters
+     * 
+     * @param input No input parameters required
+     * @param output Comprehensive contract state data
+     */
     PUBLIC_FUNCTION_WITH_LOCALS(getData)
     {
         output.adminAddress = state.adminAddress;
@@ -453,12 +692,22 @@ protected:
         output.revenueByQearn = state.revenueByQearn;
     }
 
+    /**
+     * Local variables for stake function
+     */
     struct stake_locals
     {
-        stakingInfo user;
-        sint32 _t;
+        stakingInfo user;               // User staking information
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Stakes QCAP tokens to earn voting power and revenue
+     * Transfers QCAP tokens from user to contract and updates staking records
+     * 
+     * @param input Amount of QCAP tokens to stake
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(stake)
     {
         if (input.amount > (uint32)qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX))
@@ -494,12 +743,22 @@ protected:
         output.returnCode = QVAULT_SUCCESS;
     }
 
+    /**
+     * Local variables for unStake function
+     */
     struct unStake_locals
     {
-        stakingInfo user;
-        sint32 _t;
+        stakingInfo user;               // User staking information
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Unstakes QCAP tokens, reducing voting power
+     * Transfers QCAP tokens back to user and updates staking records
+     * 
+     * @param input Amount of QCAP tokens to unstake
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(unStake)
     {
         for (locals._t = 0 ; locals._t < (sint32)state.numberOfStaker; locals._t++)
@@ -532,13 +791,24 @@ protected:
         output.returnCode = QVAULT_NOT_STAKER;
     }
 
+    /**
+     * Local variables for submitGP function
+     */
     struct submitGP_locals
     {
-        Asset qvaultShare;
-        GPInfo newProposal;
-        sint32 _t;
+        Asset qvaultShare;              // QVAULT share asset information
+        GPInfo newProposal;             // New general proposal to create
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Submits a General Proposal (GP) for governance voting
+     * Requires minimum voting power (10000) or QVAULT shares
+     * Charges proposal fee and creates new proposal record
+     * 
+     * @param input URL containing proposal details
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(submitGP)
     {
         for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
@@ -605,13 +875,24 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
+    /**
+     * Local variables for submitQCP function
+     */
     struct submitQCP_locals
     {
-        Asset qvaultShare;
-        QCPInfo newProposal;
-        sint32 _t;
+        Asset qvaultShare;              // QVAULT share asset information
+        QCPInfo newProposal;            // New quorum change proposal to create
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Submits a Quorum Change Proposal (QCP) to modify voting quorum percentage
+     * Requires minimum voting power (10000) or QVAULT shares
+     * Charges proposal fee and creates new proposal record
+     * 
+     * @param input New quorum percentage and URL containing proposal details
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(submitQCP)
     {
         for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
@@ -680,13 +961,25 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
+    /**
+     * Local variables for submitIPOP function
+     */
     struct submitIPOP_locals
     {
-        Asset qvaultShare;
-        IPOPInfo newProposal;
-        sint32 _t;
+        Asset qvaultShare;              // QVAULT share asset information
+        IPOPInfo newProposal;           // New IPO participation proposal to create
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Submits an IPO Participation Proposal (IPOP) to participate in IPO contracts
+     * Requires minimum voting power (10000) or QVAULT shares
+     * Requires sufficient reinvesting fund (minimum 1B qubic)
+     * Charges proposal fee and creates new proposal record
+     * 
+     * @param input IPO contract index and URL containing proposal details
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(submitIPOP)
     {
         if (state.reinvestingFund < QVAULT_IPO_PARTICIPATION_MIN_FUND)
@@ -766,13 +1059,26 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
+    /**
+     * Local variables for submitQEarnP function
+     */
     struct submitQEarnP_locals
     {
-        Asset qvaultShare;
-        QEarnPInfo newProposal;
-        sint32 _t;
+        Asset qvaultShare;              // QVAULT share asset information
+        QEarnPInfo newProposal;         // New QEarn participation proposal to create
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Submits a QEarn Participation Proposal (QEarnP) to invest in QEarn contracts
+     * Requires minimum voting power (10000) or QVAULT shares
+     * Maximum participation period is 52 epochs
+     * Requires sufficient reinvesting fund for the investment amount
+     * Charges proposal fee and creates new proposal record
+     * 
+     * @param input Investment amount per epoch, number of epochs, and URL containing proposal details
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(submitQEarnP)
     {
         if (input.numberOfEpoch > 52)
@@ -861,20 +1167,32 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
+    /**
+     * Local variables for submitFundP function
+     */
     struct submitFundP_locals
     {
-        Asset qvaultShare;
-        FundPInfo newProposal;
-        sint32 _t;
-        uint32 curDate;
-        uint8 year;
-        uint8 month;
-        uint8 day;
-        uint8 hour;
-        uint8 minute;
-        uint8 second;
+        Asset qvaultShare;              // QVAULT share asset information
+        FundPInfo newProposal;          // New fundraising proposal to create
+        sint32 _t;                      // Loop counter variable
+        uint32 curDate;                 // Current date (packed)
+        uint8 year;                     // Current year
+        uint8 month;                    // Current month
+        uint8 day;                      // Current day
+        uint8 hour;                     // Current hour
+        uint8 minute;                   // Current minute
+        uint8 second;                   // Current second
     };
 
+    /**
+     * Submits a Fundraising Proposal (FundP) to sell QCAP tokens
+     * Requires minimum voting power (10000) or QVAULT shares
+     * Validates yearly QCAP sale limits (2025-2027)
+     * Charges proposal fee and creates new proposal record
+     * 
+     * @param input Price per QCAP, amount to sell, and URL containing proposal details
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(submitFundP)
     {
         for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
@@ -984,13 +1302,25 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
+    /**
+     * Local variables for submitMKTP function
+     */
     struct submitMKTP_locals
     {
-        Asset qvaultShare;
-        MKTPInfo newProposal;
-        sint32 _t;
+        Asset qvaultShare;              // QVAULT share asset information
+        MKTPInfo newProposal;           // New marketplace proposal to create
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Submits a Marketplace Proposal (MKTP) to purchase shares from marketplace
+     * Requires proposal fee payment
+     * Transfers shares from user to contract as collateral
+     * Creates new proposal record for voting
+     * 
+     * @param input Qubic amount, share details, QCAP amount, and URL containing proposal details
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(submitMKTP)
     {
         if (qpi.invocationReward() < QVAULT_PROPOSAL_FEE)
@@ -1039,20 +1369,33 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
+    /**
+     * Local variables for submitAlloP function
+     */
     struct submitAlloP_locals
     {
-        Asset qvaultShare;
-        AlloPInfo newProposal;
-        sint32 _t;
-        uint32 curDate;
-        uint8 year;
-        uint8 month;
-        uint8 day;
-        uint8 hour;
-        uint8 minute;
-        uint8 second;
+        Asset qvaultShare;              // QVAULT share asset information
+        AlloPInfo newProposal;          // New allocation proposal to create
+        sint32 _t;                      // Loop counter variable
+        uint32 curDate;                 // Current date (packed)
+        uint8 year;                     // Current year
+        uint8 month;                    // Current month
+        uint8 day;                      // Current day
+        uint8 hour;                     // Current hour
+        uint8 minute;                   // Current minute
+        uint8 second;                   // Current second
     };
 
+    /**
+     * Submits an Allocation Proposal (AlloP) to change revenue allocation percentages
+     * Requires minimum voting power (10000) or QVAULT shares
+     * Validates allocation percentages sum to 970 (per mille)
+     * Enforces time-based restrictions (burning after 2029, team allocation before 2026)
+     * Charges proposal fee and creates new proposal record
+     * 
+     * @param input Allocation percentages and URL containing proposal details
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(submitAlloP)
     {
         for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
@@ -1155,24 +1498,36 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultSuccess;
     }
 
+    /**
+     * Local variables for voteInProposal function
+     */
     struct voteInProposal_locals
     {
-        GPInfo updatedGProposal;
-        QCPInfo updatedQCProposal;
-        IPOPInfo updatedIPOProposal;
-        QEarnPInfo updatedQEarnProposal;
-        FundPInfo updatedFundProposal;
-        MKTPInfo updatedMKTProposal;
-        AlloPInfo updatedAlloProposal;
-        Array<voteStatusInfo, 16> newVoteList;
-        voteStatusInfo newVote;
-        sint32 numberOfYes;
-        sint32 numberOfNo;
-        sint32 _t, _r;
-        uint8 countOfVote;
-        bit statusOfProposal;
+        GPInfo updatedGProposal;                    // Updated general proposal
+        QCPInfo updatedQCProposal;                  // Updated quorum change proposal
+        IPOPInfo updatedIPOProposal;                // Updated IPO participation proposal
+        QEarnPInfo updatedQEarnProposal;            // Updated QEarn participation proposal
+        FundPInfo updatedFundProposal;              // Updated fundraising proposal
+        MKTPInfo updatedMKTProposal;                // Updated marketplace proposal
+        AlloPInfo updatedAlloProposal;              // Updated allocation proposal
+        Array<voteStatusInfo, 16> newVoteList;      // Updated vote list for user
+        voteStatusInfo newVote;                     // New vote to add
+        sint32 numberOfYes;                         // Number of yes votes to add
+        sint32 numberOfNo;                          // Number of no votes to add
+        sint32 _t, _r;                              // Loop counter variables
+        uint8 countOfVote;                          // Current vote count for user
+        bit statusOfProposal;                       // Whether proposal is still active
     };
 
+    /**
+     * Votes on active proposals of various types
+     * Supports 7 different proposal types with different voting logic
+     * Updates proposal vote counts and user voting history
+     * Prevents duplicate votes and enforces voting rules
+     * 
+     * @param input Proposal type, ID, voting decision, and IPO price (if applicable)
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(voteInProposal)
     {
         if (input.proposalId > QVAULT_MAX_NUMBER_OF_PROPOSAL)
@@ -1340,21 +1695,33 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
     }
 
+    /**
+     * Local variables for buyQcap function
+     */
     struct buyQcap_locals
     {
-        QX::TransferShareManagementRights_input transferShareManagementRights_input;
-		QX::TransferShareManagementRights_output transferShareManagementRights_output;
-        FundPInfo updatedFundProposal;
-        sint32 _t;
-        uint32 curDate;
-        uint8 year;
-        uint8 month;
-        uint8 day;
-        uint8 hour;
-        uint8 minute;
-        uint8 second;
+        QX::TransferShareManagementRights_input transferShareManagementRights_input;    // Input for QX contract call
+        QX::TransferShareManagementRights_output transferShareManagementRights_output;  // Output from QX contract call
+        FundPInfo updatedFundProposal;                                                  // Updated fundraising proposal
+        sint32 _t;                                                                      // Loop counter variable
+        uint32 curDate;                                                                 // Current date (packed)
+        uint8 year;                                                                     // Current year
+        uint8 month;                                                                    // Current month
+        uint8 day;                                                                      // Current day
+        uint8 hour;                                                                     // Current hour
+        uint8 minute;                                                                   // Current minute
+        uint8 second;                                                                   // Current second
     };
 
+    /**
+     * Purchases QCAP tokens from active fundraising proposals
+     * Validates yearly QCAP sale limits (2025-2027)
+     * Finds best available price from passed fundraising proposals
+     * Transfers QCAP tokens to buyer and updates proposal sale amounts
+     * 
+     * @param input Amount of QCAP tokens to purchase
+     * @param output Status code indicating success or failure
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(buyQcap)
     {
         getCurrentDate(qpi, locals.curDate);
@@ -1434,6 +1801,15 @@ protected:
         output.returnCode = QVAULTLogInfo::QvaultFailed;
     }
 
+    /**
+     * Transfers share management rights to another contract
+     * Requires payment of transfer rights fee
+     * Releases shares from current contract to new managing contract
+     * Used for QCAP token transfers and other asset management
+     * 
+     * @param input Asset information, number of shares, and new managing contract index
+     * @param output Number of shares transferred and status code
+     */
 	PUBLIC_PROCEDURE(TransferShareManagementRights)
     {
 		if (qpi.invocationReward() < state.transferRightsFee)
@@ -1483,22 +1859,41 @@ protected:
     }
 
 public:
+    /**
+     * Input structure for getStakedAmountAndVotingPower function
+     * @param address User address to query staking information for
+     */
     struct getStakedAmountAndVotingPower_input
     {
         id address;
     };
 
+    /**
+     * Output structure for getStakedAmountAndVotingPower function
+     * @param stakedAmount Amount of QCAP tokens staked by the user
+     * @param votingPower Voting power of the user
+     */
     struct getStakedAmountAndVotingPower_output
     {
         uint32 stakedAmount;
         uint32 votingPower;
     };
 
+    /**
+     * Local variables for getStakedAmountAndVotingPower function
+     */
     struct getStakedAmountAndVotingPower_locals
     {
-        sint32 _t;
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Retrieves staking information for a specific user address
+     * Returns both staked amount and voting power
+     * 
+     * @param input User address to query
+     * @param output Staked amount and voting power for the user
+     */
     PUBLIC_FUNCTION_WITH_LOCALS(getStakedAmountAndVotingPower)
     {
         for (locals._t = 0; locals._t < (sint64)state.numberOfStaker; locals._t++)
@@ -1519,132 +1914,247 @@ public:
         }
     }
 
+    /**
+     * Input structure for getGP function
+     * @param proposalId ID of the general proposal to retrieve
+     */
     struct getGP_input
     {
         uint32 proposalId;
     };
 
+    /**
+     * Output structure for getGP function
+     * @param proposal General proposal information
+     */
     struct getGP_output
     {
         GPInfo proposal;
     };
 
+    /**
+     * Retrieves information about a specific General Proposal (GP)
+     * 
+     * @param input Proposal ID to query
+     * @param output General proposal information
+     */
     PUBLIC_FUNCTION(getGP)
     {
         output.proposal = state.GP.get(input.proposalId);
     }
 
+    /**
+     * Input structure for getQCP function
+     * @param proposalId ID of the quorum change proposal to retrieve
+     */
     struct getQCP_input
     {
         uint32 proposalId;
     };
 
+    /**
+     * Output structure for getQCP function
+     * @param proposal Quorum change proposal information
+     */
     struct getQCP_output
     {
         QCPInfo proposal;
     };
 
+    /**
+     * Retrieves information about a specific Quorum Change Proposal (QCP)
+     * 
+     * @param input Proposal ID to query
+     * @param output Quorum change proposal information
+     */
     PUBLIC_FUNCTION(getQCP)
     {
         output.proposal = state.QCP.get(input.proposalId);
     }
 
+    /**
+     * Input structure for getIPOP function
+     * @param proposalId ID of the IPO participation proposal to retrieve
+     */
     struct getIPOP_input
     {
         uint32 proposalId;
     };
 
+    /**
+     * Output structure for getIPOP function
+     * @param proposal IPO participation proposal information
+     */
     struct getIPOP_output
     {
         IPOPInfo proposal;
     };
 
+    /**
+     * Retrieves information about a specific IPO Participation Proposal (IPOP)
+     * 
+     * @param input Proposal ID to query
+     * @param output IPO participation proposal information
+     */
     PUBLIC_FUNCTION(getIPOP)
     {
         output.proposal = state.IPOP.get(input.proposalId);
     }
 
+    /**
+     * Input structure for getQEarnP function
+     * @param proposalId ID of the QEarn participation proposal to retrieve
+     */
     struct getQEarnP_input
     {
         uint32 proposalId;
     };
 
+    /**
+     * Output structure for getQEarnP function
+     * @param proposal QEarn participation proposal information
+     */
     struct getQEarnP_output
     {
         QEarnPInfo proposal;
     };
 
+    /**
+     * Retrieves information about a specific QEarn Participation Proposal (QEarnP)
+     * 
+     * @param input Proposal ID to query
+     * @param output QEarn participation proposal information
+     */
     PUBLIC_FUNCTION(getQEarnP)
     {
         output.proposal = state.QEarnP.get(input.proposalId);
     }
 
+    /**
+     * Input structure for getFundP function
+     * @param proposalId ID of the fundraising proposal to retrieve
+     */
     struct getFundP_input
     {
         uint32 proposalId;
     };
 
+    /**
+     * Output structure for getFundP function
+     * @param proposal Fundraising proposal information
+     */
     struct getFundP_output
     {
         FundPInfo proposal;
     };
 
+    /**
+     * Retrieves information about a specific Fundraising Proposal (FundP)
+     * 
+     * @param input Proposal ID to query
+     * @param output Fundraising proposal information
+     */
     PUBLIC_FUNCTION(getFundP)
     {
         output.proposal = state.FundP.get(input.proposalId);
     }
 
+    /**
+     * Input structure for getMKTP function
+     * @param proposalId ID of the marketplace proposal to retrieve
+     */
     struct getMKTP_input
     {
         uint32 proposalId;
     };
 
+    /**
+     * Output structure for getMKTP function
+     * @param proposal Marketplace proposal information
+     */
     struct getMKTP_output
     {
         MKTPInfo proposal;
     };
 
+    /**
+     * Retrieves information about a specific Marketplace Proposal (MKTP)
+     * 
+     * @param input Proposal ID to query
+     * @param output Marketplace proposal information
+     */
     PUBLIC_FUNCTION(getMKTP)
     {
         output.proposal = state.MKTP.get(input.proposalId);
     }
 
+    /**
+     * Input structure for getAlloP function
+     * @param proposalId ID of the allocation proposal to retrieve
+     */
     struct getAlloP_input
     {
         uint32 proposalId;
     };
 
+    /**
+     * Output structure for getAlloP function
+     * @param proposal Allocation proposal information
+     */
     struct getAlloP_output
     {
         AlloPInfo proposal;
     };
 
+    /**
+     * Retrieves information about a specific Allocation Proposal (AlloP)
+     * 
+     * @param input Proposal ID to query
+     * @param output Allocation proposal information
+     */
     PUBLIC_FUNCTION(getAlloP)
     {
         output.proposal = state.AlloP.get(input.proposalId);
     }
 
-    /*
-        Getting the identities having the voting power
-    */
-
+    /**
+     * Input structure for getIdentitiesHvVtPw function
+     * @param offset Starting index for pagination
+     * @param count Number of identities to retrieve (max 256)
+     */
     struct getIdentitiesHvVtPw_input
     {
         uint32 offset;
         uint32 count;
     };
 
+    /**
+     * Output structure for getIdentitiesHvVtPw function
+     * @param idList Array of user addresses with voting power
+     * @param amountList Array of voting power amounts corresponding to each address
+     */
     struct getIdentitiesHvVtPw_output
     {
         Array<id, 256> idList;
         Array<uint32, 256> amountList;
     };
 
+    /**
+     * Local variables for getIdentitiesHvVtPw function
+     */
     struct getIdentitiesHvVtPw_locals
     {
-        sint32 _t, _r;
+        sint32 _t, _r;                  // Loop counter variables
     };
 
+    /**
+     * Retrieves a paginated list of identities that have voting power
+     * Returns both addresses and their corresponding voting power amounts
+     * Useful for governance and analytics purposes
+     * 
+     * @param input Offset and count for pagination
+     * @param output Arrays of addresses and voting power amounts
+     */
     PUBLIC_FUNCTION_WITH_LOCALS(getIdentitiesHvVtPw)
     {
         if(input.count > 256)
@@ -1662,22 +2172,40 @@ public:
         }
     }
 
+    /**
+     * Input structure for ppCreationPower function
+     * @param address User address to check proposal creation power for
+     */
     struct ppCreationPower_input
     {
         id address;
     };
 
+    /**
+     * Output structure for ppCreationPower function
+     * @param status 0 = no proposal creation power, 1 = has proposal creation power
+     */
     struct ppCreationPower_output
     {
-        bit status;         // 0 means that there is no the proposal creation power, 1 means that there is.
+        bit status;
     };
 
+    /**
+     * Local variables for ppCreationPower function
+     */
     struct ppCreationPower_locals
     {
-        Asset qvaultShare;
-        sint32 _t;
+        Asset qvaultShare;              // QVAULT share asset information
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Checks if a user has the power to create proposals
+     * User must have either minimum voting power (10000) or QVAULT shares
+     * 
+     * @param input User address to check
+     * @param output Status indicating whether user can create proposals
+     */
     PUBLIC_FUNCTION_WITH_LOCALS(ppCreationPower)
     {
         for (locals._t = 0; locals._t < (sint32)state.numberOfVotingPower; locals._t++)
@@ -1708,22 +2236,40 @@ public:
         }
     }
 
+    /**
+     * Input structure for getQcapBurntAmountInLastEpoches function
+     * @param numberOfLastEpoches Number of recent epochs to check (max 100)
+     */
     struct getQcapBurntAmountInLastEpoches_input
     {
         uint32 numberOfLastEpoches;
     };
 
+    /**
+     * Output structure for getQcapBurntAmountInLastEpoches function
+     * @param burntAmount Total amount of QCAP tokens burned in the specified epochs
+     */
     struct getQcapBurntAmountInLastEpoches_output
     {
         uint32 burntAmount;
     };
 
-
+    /**
+     * Local variables for getQcapBurntAmountInLastEpoches function
+     */
     struct getQcapBurntAmountInLastEpoches_locals
     {
-        sint32 _t;
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Calculates the total amount of QCAP tokens burned in recent epochs
+     * Useful for tracking token deflation and economic metrics
+     * Maximum lookback period is 100 epochs
+     * 
+     * @param input Number of recent epochs to check
+     * @param output Total amount of QCAP tokens burned
+     */
     PUBLIC_FUNCTION_WITH_LOCALS(getQcapBurntAmountInLastEpoches)
     {
         if (input.numberOfLastEpoches > 100)
@@ -1736,16 +2282,32 @@ public:
         }
     }
 
+    /**
+     * Input structure for getAmountToBeSoldPerYear function
+     * @param year Year to check available QCAP sales for
+     */
     struct getAmountToBeSoldPerYear_input
     {
         uint32 year;
     };
 
+    /**
+     * Output structure for getAmountToBeSoldPerYear function
+     * @param amount Amount of QCAP tokens available for sale in the specified year
+     */
     struct getAmountToBeSoldPerYear_output
     {
         uint32 amount;
     };
 
+    /**
+     * Calculates the amount of QCAP tokens available for sale in a specific year
+     * Takes into account yearly limits and already sold amounts
+     * Returns 0 for years before 2025
+     * 
+     * @param input Year to check
+     * @param output Available QCAP amount for sale
+     */
     PUBLIC_FUNCTION(getAmountToBeSoldPerYear)
     {
         if (input.year < 2025)
@@ -1770,26 +2332,52 @@ public:
         }
     }
 
+    /**
+     * Input structure for getTotalRevenueInQcap function
+     * No input parameters required
+     */
     struct getTotalRevenueInQcap_input
     {
 
     };
 
+    /**
+     * Output structure for getTotalRevenueInQcap function
+     * @param revenue Total historical revenue in QCAP
+     */
     struct getTotalRevenueInQcap_output
     {
         uint64 revenue;
     };
 
+    /**
+     * Retrieves the total historical revenue accumulated by the contract
+     * Represents the sum of all revenue across all epochs
+     * 
+     * @param input No input parameters
+     * @param output Total historical revenue amount
+     */
     PUBLIC_FUNCTION(getTotalRevenueInQcap)
     {
         output.revenue = state.totalHistoryRevenue;
     }
 
+    /**
+     * Input structure for getRevenueInQcapPerEpoch function
+     * @param epoch Epoch number to retrieve revenue data for
+     */
     struct getRevenueInQcapPerEpoch_input
     {
         uint32 epoch;
     };
 
+    /**
+     * Output structure for getRevenueInQcapPerEpoch function
+     * @param epochTotalRevenue Total revenue for the specified epoch
+     * @param epochOneQcapRevenue Revenue per QCAP token for the epoch
+     * @param epochOneQvaultRevenue Revenue per QVAULT share for the epoch
+     * @param epochReinvestAmount Amount allocated for reinvestment in the epoch
+     */
     struct getRevenueInQcapPerEpoch_output
     {
         uint64 epochTotalRevenue;
@@ -1798,6 +2386,14 @@ public:
         uint64 epochReinvestAmount;
     };
 
+    /**
+     * Retrieves detailed revenue information for a specific epoch
+     * Includes total revenue, per-token revenue, and reinvestment amounts
+     * Useful for historical analysis and user reward calculations
+     * 
+     * @param input Epoch number to query
+     * @param output Detailed revenue breakdown for the epoch
+     */
     PUBLIC_FUNCTION(getRevenueInQcapPerEpoch)
     {
         output.epochTotalRevenue = state.revenueInQcapPerEpoch.get(input.epoch);
@@ -1806,55 +2402,105 @@ public:
         output.epochReinvestAmount = state.revenueForReinvestPerEpoch.get(input.epoch);
     }
 
+    /**
+     * Input structure for getRevenuePerShare function
+     * @param contractIndex Index of the contract to get revenue for
+     */
     struct getRevenuePerShare_input
     {
         uint32 contractIndex;
     };
 
+    /**
+     * Output structure for getRevenuePerShare function
+     * @param revenue Revenue amount for the specified contract
+     */
     struct getRevenuePerShare_output
     {
         uint64 revenue;
     };
 
+    /**
+     * Retrieves the revenue amount for a specific contract index
+     * Used for tracking revenue distribution across different contracts
+     * 
+     * @param input Contract index to query
+     * @param output Revenue amount for the contract
+     */
     PUBLIC_FUNCTION(getRevenuePerShare)
     {
         output.revenue = state.revenuePerShare.get(input.contractIndex);
     }
 
+    /**
+     * Input structure for getAmountOfShareQvaultHold function
+     * @param assetInfo Asset information (name and issuer) to check
+     */
     struct getAmountOfShareQvaultHold_input
     {
         Asset assetInfo;
     };
 
+    /**
+     * Output structure for getAmountOfShareQvaultHold function
+     * @param amount Amount of shares held by QVAULT contract
+     */
     struct getAmountOfShareQvaultHold_output
     {
         uint32 amount;
     };
 
+    /**
+     * Retrieves the amount of a specific asset held by the QVAULT contract
+     * Useful for checking contract's asset holdings and portfolio composition
+     * 
+     * @param input Asset information to query
+     * @param output Amount of shares held by the contract
+     */
     PUBLIC_FUNCTION(getAmountOfShareQvaultHold)
     {
         output.amount = (uint32)qpi.numberOfShares(input.assetInfo, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF));    
     }
 
+    /**
+     * Input structure for getNumberOfHolderAndAvgAm function
+     * No input parameters required
+     */
     struct getNumberOfHolderAndAvgAm_input
     {
 
     };
 
+    /**
+     * Output structure for getNumberOfHolderAndAvgAm function
+     * @param numberOfQcapHolder Number of unique QCAP token holders
+     * @param avgAmount Average QCAP amount per holder
+     */
     struct getNumberOfHolderAndAvgAm_output
     {
         uint32 numberOfQcapHolder;
         uint32 avgAmount;
     };
 
+    /**
+     * Local variables for getNumberOfHolderAndAvgAm function
+     */
     struct getNumberOfHolderAndAvgAm_locals
     {
-        AssetPossessionIterator iter;
-        Asset QCAPId;
-        uint32 count;
-        uint32 numberOfDuplicatedPossesor;
+        AssetPossessionIterator iter;   // Iterator for asset possession
+        Asset QCAPId;                   // QCAP asset identifier
+        uint32 count;                   // Counter for holders
+        uint32 numberOfDuplicatedPossesor; // Counter for duplicate possessors
     };
 
+    /**
+     * Calculates the number of unique QCAP token holders and average amount per holder
+     * Accounts for duplicate possessors across different contracts
+     * Useful for token distribution analysis and economic metrics
+     * 
+     * @param input No input parameters
+     * @param output Number of holders and average amount per holder
+     */
     PUBLIC_FUNCTION_WITH_LOCALS(getNumberOfHolderAndAvgAm)
     {
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
@@ -1882,21 +2528,40 @@ public:
         output.avgAmount = (uint32)div(qpi.numberOfShares(locals.QCAPId) - qpi.numberOfShares(locals.QCAPId, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount * 1ULL, output.numberOfQcapHolder * 1ULL);
     }
 
+    /**
+     * Input structure for getAmountForQearnInUpcomingEpoch function
+     * @param epoch Future epoch to check QEarn funding for
+     */
     struct getAmountForQearnInUpcomingEpoch_input
     {
         uint32 epoch;
     };
 
+    /**
+     * Output structure for getAmountForQearnInUpcomingEpoch function
+     * @param amount Total amount allocated for QEarn in the specified epoch
+     */
     struct getAmountForQearnInUpcomingEpoch_output
     {
         uint64 amount;
     };
 
+    /**
+     * Local variables for getAmountForQearnInUpcomingEpoch function
+     */
     struct getAmountForQearnInUpcomingEpoch_locals
     {
-        sint32 _t;
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Calculates the total amount allocated for QEarn participation in a future epoch
+     * Only considers passed QEarn proposals that are still active
+     * Returns 0 for past or current epochs
+     * 
+     * @param input Future epoch number to check
+     * @param output Total QEarn funding amount for the epoch
+     */
     PUBLIC_FUNCTION_WITH_LOCALS(getAmountForQearnInUpcomingEpoch)
     {
         if (input.epoch <= qpi.epoch())
@@ -1964,20 +2629,28 @@ public:
 
     }
 
+    /**
+     * Local variables for BEGIN_EPOCH function
+     */
     struct BEGIN_EPOCH_locals
     {
-        QEARN::lock_input lock_input;
-        QEARN::lock_output lock_output;
-        QX::AssetAskOrders_input assetAskOrders_input;
-        QX::AssetAskOrders_output assetAskOrders_output;
-        QX::AddToBidOrder_input addToBidOrder_input;
-        QX::AddToBidOrder_output addToBidOrder_output;
-        QX::TransferShareManagementRights_input transferShareManagementRights_input;
-		QX::TransferShareManagementRights_output transferShareManagementRights_output;
-        uint32 purchasedQcap;
-        sint32 _t;
+        QEARN::lock_input lock_input;                                           // Input for QEARN lock function
+        QEARN::lock_output lock_output;                                         // Output from QEARN lock function
+        QX::AssetAskOrders_input assetAskOrders_input;                          // Input for QX asset ask orders
+        QX::AssetAskOrders_output assetAskOrders_output;                        // Output from QX asset ask orders
+        QX::AddToBidOrder_input addToBidOrder_input;                            // Input for QX add to bid order
+        QX::AddToBidOrder_output addToBidOrder_output;                          // Output from QX add to bid order
+        QX::TransferShareManagementRights_input transferShareManagementRights_input;    // Input for QX transfer rights
+        QX::TransferShareManagementRights_output transferShareManagementRights_output;  // Output from QX transfer rights
+        uint32 purchasedQcap;                                                   // Amount of QCAP purchased for burning
+        sint32 _t;                                                              // Loop counter variable
     };
 
+    /**
+     * Executes at the beginning of each epoch
+     * Handles QEarn fund locking, quorum changes, allocation updates, and QCAP burning
+     * Processes passed proposals and updates contract state accordingly
+     */
     BEGIN_EPOCH_WITH_LOCALS()
     {
         for (locals._t = 0 ; locals._t < (sint32)state.numberOfQEarnP; locals._t++)
@@ -2059,41 +2732,49 @@ public:
         qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, locals.purchasedQcap, NULL_ID);
     }
 
+    /**
+     * Local variables for END_EPOCH function
+     */
     struct END_EPOCH_locals 
     {
-        QX::TransferShareManagementRights_input transferShareManagementRights_input;
-		QX::TransferShareManagementRights_output transferShareManagementRights_output;
-        GPInfo updatedGProposal;
-        QCPInfo updatedQCProposal;
-        IPOPInfo updatedIPOProposal;
-        QEarnPInfo updatedQEarnProposal;
-        FundPInfo updatedFundProposal;
-        MKTPInfo updatedMKTProposal;
-        AlloPInfo updatedAlloProposal;
-        Entity entity;
-        AssetPossessionIterator iter;
-        Asset QCAPId;
-        id possessorPubkey;
-        uint64 paymentForShareholders;
-        uint64 paymentForQCAPHolders;
-        uint64 paymentForReinvest;
-        uint64 paymentForDevelopment;
-        uint64 amountOfBurn;
-        uint64 circulatedSupply;
-        uint64 requiredFund;
-        uint64 tmpAmount;
-        uint64 paymentForQcapBurn;
-        uint32 numberOfVote;
-        sint32 _t, _r;
-        uint32 curDate;
-        uint8 year;
-        uint8 month;
-        uint8 day;
-        uint8 hour;
-        uint8 minute;
-        uint8 second;
+        QX::TransferShareManagementRights_input transferShareManagementRights_input;    // Input for QX transfer rights
+        QX::TransferShareManagementRights_output transferShareManagementRights_output;  // Output from QX transfer rights
+        GPInfo updatedGProposal;                    // Updated general proposal
+        QCPInfo updatedQCProposal;                  // Updated quorum change proposal
+        IPOPInfo updatedIPOProposal;                // Updated IPO participation proposal
+        QEarnPInfo updatedQEarnProposal;            // Updated QEarn participation proposal
+        FundPInfo updatedFundProposal;              // Updated fundraising proposal
+        MKTPInfo updatedMKTProposal;                // Updated marketplace proposal
+        AlloPInfo updatedAlloProposal;              // Updated allocation proposal
+        Entity entity;                               // Entity information
+        AssetPossessionIterator iter;                // Iterator for asset possession
+        Asset QCAPId;                                // QCAP asset identifier
+        id possessorPubkey;                          // Possessor public key
+        uint64 paymentForShareholders;               // Payment amount for shareholders
+        uint64 paymentForQCAPHolders;                // Payment amount for QCAP holders
+        uint64 paymentForReinvest;                   // Payment amount for reinvestment
+        uint64 paymentForDevelopment;                // Payment amount for development
+        uint64 amountOfBurn;                         // Amount to burn
+        uint64 circulatedSupply;                     // Circulating supply of QCAP
+        uint64 requiredFund;                         // Required fund amount
+        uint64 tmpAmount;                            // Temporary amount variable
+        uint64 paymentForQcapBurn;                   // Payment amount for QCAP burning
+        uint32 numberOfVote;                         // Number of votes
+        sint32 _t, _r;                               // Loop counter variables
+        uint32 curDate;                              // Current date (packed)
+        uint8 year;                                  // Current year
+        uint8 month;                                 // Current month
+        uint8 day;                                   // Current day
+        uint8 hour;                                  // Current hour
+        uint8 minute;                                // Current minute
+        uint8 second;                                // Current second
     };
 
+    /**
+     * Executes at the end of each epoch
+     * Distributes revenue to stakeholders, processes proposal results, and updates voting power
+     * Handles all proposal voting outcomes and state updates
+     */
     END_EPOCH_WITH_LOCALS()
     {
         locals.paymentForShareholders = div(state.totalEpochRevenue * state.shareholderDividend, 1000ULL);
@@ -2540,15 +3221,23 @@ public:
 
     }
 
+    /**
+     * Local variables for POST_INCOMING_TRANSFER function
+     */
     struct POST_INCOMING_TRANSFER_locals
     {
-        AssetPossessionIterator iter;
-        Asset QCAPId;
-        id possessorPubkey;
-        uint64 lockedFund;
-        sint32 _t;
+        AssetPossessionIterator iter;   // Iterator for asset possession
+        Asset QCAPId;                   // QCAP asset identifier
+        id possessorPubkey;             // Possessor public key
+        uint64 lockedFund;              // Amount of locked funds
+        sint32 _t;                      // Loop counter variable
     };
 
+    /**
+     * Handles incoming transfers to the contract
+     * Processes different transfer types (standard, QPI, IPO refunds, dividends)
+     * Updates revenue tracking and fund allocations accordingly
+     */
     POST_INCOMING_TRANSFER_WITH_LOCALS()
     {
         switch (input.type)
@@ -2600,6 +3289,11 @@ public:
         }
     }
 
+    /**
+     * Pre-acquire shares hook function
+     * Always allows share transfers to the contract
+     * Used for controlling share acquisition behavior
+     */
     PRE_ACQUIRE_SHARES()
     {
 		output.allowTransfer = true;
