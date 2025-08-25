@@ -85,4 +85,11 @@ struct SpecialCommandSetConsoleLoggingModeRequestAndResponse
     unsigned char padding[7];
 };
 
+#define SPECIAL_COMMAND_SET_CUSTOM_LIMIT_TX 18ULL // change customLimitTransaction
+struct SpecialCommandSetCustomLimitTx
+{
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned int newCustomLimitTransaction;
+    unsigned char padding[4];
+};
 #pragma pack(pop)
