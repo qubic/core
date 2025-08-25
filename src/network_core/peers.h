@@ -182,6 +182,23 @@ static bool isWhiteListPeer(unsigned char address[4])
 }
 */
 
+static bool isPrivateIp(const unsigned char address[4])
+{
+    int total = min(int(sizeof(knownPublicPeers)/sizeof(knownPublicPeers[0])), NUMBER_OF_PRIVATE_IP);
+    for (int i = 0; i < total; i++)
+    {
+        const auto& privateIp = knownPublicPeers[i];
+        if (address[0] == privateIp[0]
+            && address[1] == privateIp[1]
+            && address[2] == privateIp[2]
+            && address[3] == privateIp[3])
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void closePeer(Peer* peer)
 {
     PROFILE_SCOPE();
