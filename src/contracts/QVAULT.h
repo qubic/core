@@ -603,18 +603,6 @@ protected:
     // Configuration parameters
     uint32 transferRightsFee;           // Fee for transferring share management rights
     uint32 quorumPercent;               // Current quorum percentage for proposals
-    
-    /**
-     * Gets the current date from the core node system
-     * Packs year, month, day, hour, minute, and second into a single uint32 value
-     * 
-     * @param qpi QPI context for accessing system time
-     * @param res Output parameter to store the packed date
-     */
-	inline static void getCurrentDate(const QPI::QpiContextFunctionCall& qpi, uint32& res) 
-	{
-        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
-    }
 
     /**
      * Local variables for getData function
@@ -1217,7 +1205,7 @@ protected:
             return ;
         }
 
-        getCurrentDate(qpi, locals.curDate);
+        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
         QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year == 25 && state.qcapSoldAmount + input.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
         {
@@ -1420,7 +1408,7 @@ protected:
             return ;
         }
 
-        getCurrentDate(qpi, locals.curDate);
+        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
         QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year < 29 && input.burn != 0)
         {
@@ -1713,7 +1701,7 @@ protected:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(buyQcap)
     {
-        getCurrentDate(qpi, locals.curDate);
+        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
         QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year == 25 && state.qcapSoldAmount + input.amount > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
         {
@@ -3043,7 +3031,7 @@ public:
                 {
                     locals.updatedFundProposal.result = 0;
 
-                    getCurrentDate(qpi, locals.curDate);
+                    QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
                     QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
                     if (locals.year == 25 && state.qcapSoldAmount + locals.updatedFundProposal.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
                     {
@@ -3093,7 +3081,7 @@ public:
                 {
                     locals.updatedMKTProposal.result = 0;
 
-                    getCurrentDate(qpi, locals.curDate);
+                    QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
                     QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
                     if (locals.year == 25 && state.qcapSoldAmount + locals.updatedMKTProposal.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
                     {
