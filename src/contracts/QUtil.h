@@ -1169,6 +1169,7 @@ public:
     BEGIN_EPOCH()
     {
         state.dfMiningSeed = qpi.getPrevSpectrumDigest();
+        qpi.initMiningSeed(state.dfMiningSeed);
     }
 
     struct BEGIN_TICK_locals
