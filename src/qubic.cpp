@@ -172,6 +172,7 @@ static unsigned int resourceTestingDigest = 0;
 static unsigned int numberOfTransactions = 0;
 static volatile char entityPendingTransactionsLock = 0;
 static unsigned char* entityPendingTransactions = NULL;
+static unsigned int entityPendingTransactionsTick[SPECTRUM_CAPACITY]; // used to store tick of transactions in entityPendingTransactions
 static unsigned char* entityPendingTransactionDigests = NULL;
 static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY]; // [SPECTRUM_CAPACITY] must be >= than [NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR]
 static volatile char computorPendingTransactionsLock = 0;
@@ -1135,6 +1136,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                     if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
                         && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                     {
+						entityPendingTransactionsTick[spectrumIndex] = request->tick;
                         copyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
                         KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
                     }
@@ -3380,8 +3382,8 @@ static void processTick(unsigned long long processorNumber)
                     numberOfEntityPendingTransactionIndices = 0;
                     for (unsigned int k = 0; k < SPECTRUM_CAPACITY; k++)
                     {
-                        const Transaction* tx = ((Transaction*)&entityPendingTransactions[k * MAX_TRANSACTION_SIZE]);
-                        if (tx->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        //const Transaction* tx = ((Transaction*)&entityPendingTransactions[k * MAX_TRANSACTION_SIZE]);
+                        if (entityPendingTransactionsTick[k] == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
                         {
                             entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices++] = k;
                         }
@@ -3644,7 +3646,8 @@ static void beginEpoch()
     }
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
-        ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
+        //((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
+		entityPendingTransactionsTick[i] = 0;
     }
 
     setMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
@@ -4541,9 +4544,9 @@ static void prepareNextTickTransactions()
         // Checks if any of the missing transactions is available in the entityPendingTransaction and remove unknownTransaction flag if found
         for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
         {
-            Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
-            if (pendingTransaction->tick == nextTick)
+            if (entityPendingTransactionsTick[i] == nextTick)
             {
+                Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
                 ACQUIRE(entityPendingTransactionsLock);
 
                 ASSERT(pendingTransaction->checkValidity());
@@ -5549,8 +5552,10 @@ static bool initialize()
     {
         if (!ts.init())
             return false;
-        if (!allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE,(void**)&entityPendingTransactions, __LINE__) ||
-            !allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * 32ULL,(void**)&entityPendingTransactionDigests , __LINE__))
+
+        setMem(entityPendingTransactionsTick, sizeof(entityPendingTransactionsTick), 0);
+        if (!allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE,(void**)&entityPendingTransactions, __LINE__, true, true) ||
+            !allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * 32ULL,(void**)&entityPendingTransactionDigests , __LINE__, true, true))
         {
             return false;
         }
@@ -6135,7 +6140,7 @@ static void logInfo()
     }
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
-        if (((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick > system.tick)
+        if (entityPendingTransactionsTick[i] > system.tick)
         {
             numberOfPendingTransactions++;
         }
