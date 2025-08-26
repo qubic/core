@@ -4,7 +4,7 @@
 #include <thread>
 #include <lib/platform_efi/uefi_globals.h>
 
-#define TESTNET
+//#define TESTNET
 #define REAL_NODE
 #define NO_UEFI
 #define SINGLE_COMPILE_UNIT
@@ -5557,7 +5557,6 @@ static bool initialize()
         {
             return false;
         }
-        
 
         setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
 
