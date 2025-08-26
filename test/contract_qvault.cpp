@@ -482,7 +482,7 @@ public:
         QVAULT::submitGP_input input;
         QVAULT::submitGP_output output;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 3, input, output, address, 10000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 3, input, output, address, QVAULT_PROPOSAL_FEE);
 
         return output.returnCode;
     }
@@ -494,7 +494,7 @@ public:
 
         input.newQuorumPercent = newQuorumPercent;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 4, input, output, address, 10000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 4, input, output, address, QVAULT_PROPOSAL_FEE);
 
         return output.returnCode;
     }
@@ -506,7 +506,7 @@ public:
 
         input.ipoContractIndex = ipoContractIndex;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 5, input, output, address, 10000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 5, input, output, address, QVAULT_PROPOSAL_FEE);
 
         return output.returnCode;
     }
@@ -519,7 +519,7 @@ public:
         input.amountPerEpoch = amountPerEpoch;
         input.numberOfEpoch = numberOfEpoch;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 6, input, output, address, 10000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 6, input, output, address, QVAULT_PROPOSAL_FEE);
 
         return output.returnCode;
     }
@@ -532,7 +532,7 @@ public:
         input.amountOfQcap = amountOfQcap;
         input.priceOfOneQcap = priceOfOneQcap;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 7, input, output, address, 10000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 7, input, output, address, QVAULT_PROPOSAL_FEE);
 
         return output.returnCode;
     }
@@ -548,7 +548,7 @@ public:
         input.indexOfShare = indexOfShare;
         input.shareName = shareName;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 8, input, output, address, 10000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 8, input, output, address, QVAULT_PROPOSAL_FEE);
 
         return output.returnCode;
     }
@@ -563,7 +563,7 @@ public:
         input.burn = burn ;
         input.distribute = distribute;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 9, input, output, address, 10000000);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 9, input, output, address, QVAULT_PROPOSAL_FEE);
 
         return output.returnCode;
     }
@@ -709,25 +709,25 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     QvaultV2.endEpoch();
     system.epoch++;
 
-    increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitGP(stakers[0]), QVAULTLogInfo::QvaultSuccess);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 10000000);
-    QvaultV2.getState()->submitGPChecker(0, stakers[0]);
+        increaseEnergy(stakers[0], QVAULT_PROPOSAL_FEE);
+        EXPECT_EQ(QvaultV2.submitGP(stakers[0]), QVAULT_SUCCESS);
+        EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE);
+        QvaultV2.getState()->submitGPChecker(0, stakers[0]);
 
-    increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitQCP(stakers[0], 500), QVAULTLogInfo::QvaultSuccess);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 20000000);
-    QvaultV2.getState()->submitQCPChecker(0, stakers[0], 500);
+        increaseEnergy(stakers[0], QVAULT_PROPOSAL_FEE);
+        EXPECT_EQ(QvaultV2.submitQCP(stakers[0], 500), QVAULT_SUCCESS);
+        EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 2);
+        QvaultV2.getState()->submitQCPChecker(0, stakers[0], 500);
 
-    increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitIPOP(stakers[0], 15), QVAULTLogInfo::QvaultInsufficientFund);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 20000000);
-    // QvaultV2.getState()->submitIPOPChecker(0, stakers[0], 15);
+        increaseEnergy(stakers[0], QVAULT_PROPOSAL_FEE);
+        EXPECT_EQ(QvaultV2.submitIPOP(stakers[0], 15), QVAULT_INSUFFICIENT_FUND);
+        EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 2);
+        // QvaultV2.getState()->submitIPOPChecker(0, stakers[0], 15);
 
-    increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitQEarnP(stakers[0], 1000000000, 10), QVAULTLogInfo::QvaultInsufficientFund);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 20000000);
-    // QvaultV2.getState()->submitQEarnPChecker(0, stakers[0], 1000000000, 10);
+        increaseEnergy(stakers[0], QVAULT_PROPOSAL_FEE);
+        EXPECT_EQ(QvaultV2.submitQEarnP(stakers[0], 1000000000, 10), QVAULT_INSUFFICIENT_FUND);
+        EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 2);
+        // QvaultV2.getState()->submitQEarnPChecker(0, stakers[0], 1000000000, 10);
 
     updateTime();
     updateQpiTime();
@@ -740,10 +740,10 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     updateQpiTime();
 
     increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT, 100000), QVAULTLogInfo::QvaultOverflowSaleAmount);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 20000000);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT - 1652235, 100000), QVAULTLogInfo::QvaultSuccess);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 30000000);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT, 100000), QVAULT_OVERFLOW_SALE_AMOUNT);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 2);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT - 1652235, 100000), QVAULT_SUCCESS);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 3);
     QvaultV2.getState()->submitFundPChecker(0, stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT - 1652235, 100000);
 
     setMemory(utcTime, 0);
@@ -754,10 +754,10 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     updateQpiTime();
 
     increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT, 100000), QVAULTLogInfo::QvaultOverflowSaleAmount);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 30000000);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT - 1652235, 100000), QVAULTLogInfo::QvaultSuccess);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 40000000);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT, 100000), QVAULT_OVERFLOW_SALE_AMOUNT);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 3);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT - 1652235, 100000), QVAULT_SUCCESS);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 4);
     QvaultV2.getState()->submitFundPChecker(1, stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT - 1652235, 100000);
 
     setMemory(utcTime, 0);
@@ -768,10 +768,10 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     updateQpiTime();
 
     increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT, 100000), QVAULTLogInfo::QvaultOverflowSaleAmount);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 40000000);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT - 1652235, 100000), QVAULTLogInfo::QvaultSuccess);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 50000000);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT, 100000), QVAULT_OVERFLOW_SALE_AMOUNT);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 4);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT - 1652235, 100000), QVAULT_SUCCESS);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 5);
     QvaultV2.getState()->submitFundPChecker(2, stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT - 1652235, 100000);
 
     setMemory(utcTime, 0);
@@ -782,20 +782,20 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     updateQpiTime();
 
     increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_QCAP_MAX_SUPPLY, 100000), QVAULTLogInfo::QvaultOverflowSaleAmount);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 50000000);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_QCAP_MAX_SUPPLY - 1652235, 100000), QVAULTLogInfo::QvaultSuccess);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 60000000);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_QCAP_MAX_SUPPLY, 100000), QVAULT_OVERFLOW_SALE_AMOUNT);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 5);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_QCAP_MAX_SUPPLY - 1652235, 100000), QVAULT_SUCCESS);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 6);
     QvaultV2.getState()->submitFundPChecker(3, stakers[0], QVAULT_QCAP_MAX_SUPPLY - 1652235, 100000);
 
     increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitMKTP(stakers[0], 10000, 1000000000, assetNameFromString("QX"), 1, 5), QVAULTLogInfo::QvaultNotTransferredShare);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 60000000);
+    EXPECT_EQ(QvaultV2.submitMKTP(stakers[0], 10000, 1000000000, assetNameFromString("QX"), 1, 5), QVAULT_NOT_TRANSFERRED_SHARE);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 6);
     // QvaultV2.getState()->submitMKTPChecker(0, stakers[0], 10000, 1000000000, assetNameFromString("QX"), 1, 5);
 
     increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 20, 100, 400), QVAULTLogInfo::QvaultNotInTime);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 60000000);
+    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 20, 100, 400), QVAULT_NOT_IN_TIME);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 6);
 
     setMemory(utcTime, 0);
     utcTime.Year = 2029;
@@ -804,8 +804,8 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     utcTime.Hour = 0;
     updateQpiTime();
 
-    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 20, 100, 400), QVAULTLogInfo::QvaultNotInTime);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 60000000);
+    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 20, 100, 400), QVAULT_NOT_IN_TIME);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 6);
 
     setMemory(utcTime, 0);
     utcTime.Year = 2029;
@@ -814,20 +814,20 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     utcTime.Hour = 0;
     updateQpiTime();
 
-    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 0, 120, 400), QVAULTLogInfo::QvaultSuccess);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 70000000);
+    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 0, 120, 400), QVAULT_SUCCESS);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 7);
     QvaultV2.getState()->submitAlloPChecker(0, stakers[0], 450, 0, 120, 400);
 
-    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 1, 0, 1), QVAULTLogInfo::QvaultSuccess);
+    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 1, 0, 1), QVAULT_SUCCESS);
     QvaultV2.getState()->voteInProposalChecker(0, 1, 10000, 0);
 
-    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 2, 0, 1), QVAULTLogInfo::QvaultSuccess);
+    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 2, 0, 1), QVAULT_SUCCESS);
     QvaultV2.getState()->voteInProposalChecker(0, 2, 10000, 0);
 
-    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 5, 0, 1), QVAULTLogInfo::QvaultSuccess);
+    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 5, 0, 1), QVAULT_SUCCESS);
     QvaultV2.getState()->voteInProposalChecker(0, 5, 10000, 0);
 
-    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 7, 0, 1), QVAULTLogInfo::QvaultSuccess);
+    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 7, 0, 1), QVAULT_SUCCESS);
     QvaultV2.getState()->voteInProposalChecker(0, 7, 10000, 0);
 
     Asset qcapShare;
@@ -845,7 +845,7 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     issueContractShares(QVAULT_CONTRACT_INDEX, qvaultSharesHolers);
 
     increaseEnergy(stakers[1], 10000000);
-    EXPECT_EQ(QvaultV2.submitGP(stakers[1]), QVAULTLogInfo::QvaultSuccess);
+    EXPECT_EQ(QvaultV2.submitGP(stakers[1]), QVAULT_SUCCESS);
     QvaultV2.getState()->submitGPChecker(1, stakers[1]);
     
     for (uint32 t = 0 ; t < 100; t++)

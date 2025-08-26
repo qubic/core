@@ -21,32 +21,21 @@ constexpr sint32 QVAULT_SUCCESS = 0;                        // Operation complet
 constexpr sint32 QVAULT_INSUFFICIENT_QCAP = 1;              // User doesn't have enough QCAP tokens
 constexpr sint32 QVAULT_NOT_ENOUGH_STAKE = 2;               // User doesn't have enough staked tokens
 constexpr sint32 QVAULT_NOT_STAKER = 3;                     // User is not a staker
-
-/**
- * QVAULT Log Information Enum
- * Defines various status codes and error conditions for QVAULT operations
- */
-enum QVAULTLogInfo {
-    QvaultSuccess = 0,                    // Operation completed successfully
-    QvaultInsufficientFund = 1,           // Insufficient funds for operation
-    QvaultNotTransferredShare = 2,        // Share transfer failed
-    QvaultEndedProposal = 3,              // Proposal voting period has ended
-    QvaultNotStaked = 4,                  // User has no staked tokens
-    QvaultNoVotingPower = 5,              // User has no voting power
-    QvaultOverflowSaleAmount = 6,         // QCAP sale amount exceeds yearly limit
-    QvaultNotInTime = 7,                  // Operation attempted outside allowed timeframe
-    QvaultNotFair = 8,                    // Allocation proposal percentages don't sum to 1000
-    QvaultInsufficientQcap = 9,           // Insufficient QCAP tokens
-    QvaultFailed = 10,                    // Operation failed
-    QvaultInsufficientShare = 11,         // Insufficient shares for operation
-    QvaultErrorTransferAsset = 12,        // Asset transfer error occurred
-    QvaultInsufficientVotingPower = 13,   // User doesn't have minimum voting power (10000)
-    QvaultInputError = 14,                // Invalid input parameters
-    QvaultOverflowProposal = 15,          // Proposal ID exceeds maximum allowed
-    QvaultAlreadyVotedId = 19,            // User has already voted on this proposal
-    QvaultOverflowVotes = 20,             // Maximum number of votes per user exceeded
-    QvaultSameDecision = 21,              // User is voting with same decision as before
-};
+constexpr sint32 QVAULT_INSUFFICIENT_FUND = 4;              // Insufficient funds for operation
+constexpr sint32 QVAULT_NOT_TRANSFERRED_SHARE = 5;           // Share transfer failed
+constexpr sint32 QVAULT_NOT_IN_TIME = 6;                     // Operation attempted outside allowed timeframe
+constexpr sint32 QVAULT_NOT_FAIR = 7;                        // Allocation proposal percentages don't sum to 1000
+constexpr sint32 QVAULT_OVERFLOW_SALE_AMOUNT = 8;            // QCAP sale amount exceeds yearly limit
+constexpr sint32 QVAULT_OVERFLOW_PROPOSAL = 9;               // Proposal ID exceeds maximum allowed
+constexpr sint32 QVAULT_OVERFLOW_VOTES = 10;                  // Maximum number of votes per user exceeded
+constexpr sint32 QVAULT_SAME_DECISION = 11;                   // User is voting with same decision as before
+constexpr sint32 QVAULT_ENDED_PROPOSAL = 12;                  // Proposal voting period has ended
+constexpr sint32 QVAULT_NO_VOTING_POWER = 13;                 // User has no voting power
+constexpr sint32 QVAULT_FAILED = 14;                          // Operation failed
+constexpr sint32 QVAULT_INSUFFICIENT_SHARE = 15;              // Insufficient shares for operation
+constexpr sint32 QVAULT_ERROR_TRANSFER_ASSET = 16;            // Asset transfer error occurred
+constexpr sint32 QVAULT_INSUFFICIENT_VOTING_POWER = 17;        // User doesn't have minimum voting power (10000)
+constexpr sint32 QVAULT_INPUT_ERROR = 18;                      // Invalid input parameters
 
 /**
  * QVAULT2 - Placeholder struct for future use
@@ -134,7 +123,7 @@ public:
      */
     struct stake_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -152,7 +141,7 @@ public:
      */
     struct unStake_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -170,7 +159,7 @@ public:
      */
     struct submitGP_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -190,7 +179,7 @@ public:
      */
     struct submitQCP_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -210,7 +199,7 @@ public:
      */
     struct submitIPOP_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -232,7 +221,7 @@ public:
      */
     struct submitQEarnP_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -254,7 +243,7 @@ public:
      */
     struct submitFundP_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -282,7 +271,7 @@ public:
      */
     struct submitMKTP_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -309,7 +298,7 @@ public:
      */
     struct submitAlloP_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -333,7 +322,7 @@ public:
      */
     struct voteInProposal_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -351,7 +340,7 @@ public:
      */
     struct buyQcap_output
     {
-        uint32 returnCode;
+        sint32 returnCode;
     };
 
     /**
@@ -375,7 +364,7 @@ public:
 	struct TransferShareManagementRights_output
 	{
 		sint64 transferredNumberOfShares;
-		uint32 returnCode;
+		sint32 returnCode;
 	};
 
 protected:
@@ -821,7 +810,7 @@ protected:
                 }
                 else 
                 {
-                    output.returnCode = QVAULTLogInfo::QvaultInsufficientVotingPower;
+                    output.returnCode = QVAULT_INSUFFICIENT_VOTING_POWER;
                     if (qpi.invocationReward() > 0)
                     {
                         qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -840,7 +829,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
+            output.returnCode = QVAULT_NO_VOTING_POWER;
             return ;
         }
         
@@ -850,7 +839,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
             return ;
         }
         if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
@@ -872,7 +861,7 @@ protected:
         locals.newProposal.result = 4;
 
         state.GP.set(state.numberOfGP++, locals.newProposal);
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
+        output.returnCode = QVAULT_SUCCESS;
     }
 
     /**
@@ -905,7 +894,7 @@ protected:
                 }
                 else 
                 {
-                    output.returnCode = QVAULTLogInfo::QvaultInsufficientVotingPower;
+                    output.returnCode = QVAULT_INSUFFICIENT_VOTING_POWER;
                     if (qpi.invocationReward() > 0)
                     {
                         qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -924,7 +913,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
+            output.returnCode = QVAULT_NO_VOTING_POWER;
             return ;
         }
 
@@ -934,7 +923,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
             return ;
         }
         if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
@@ -958,7 +947,7 @@ protected:
         locals.newProposal.newQuorumPercent = input.newQuorumPercent;
 
         state.QCP.set(state.numberOfQCP++, locals.newProposal);
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
+        output.returnCode = QVAULT_SUCCESS;
     }
 
     /**
@@ -988,7 +977,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
             return ;
         }
         for (locals._t = 0 ; locals._t < (sint64)state.numberOfVotingPower; locals._t++)
@@ -1001,7 +990,7 @@ protected:
                 }
                 else 
                 {
-                    output.returnCode = QVAULTLogInfo::QvaultInsufficientVotingPower;
+                    output.returnCode = QVAULT_INSUFFICIENT_VOTING_POWER;
                     if (qpi.invocationReward() > 0)
                     {
                         qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1020,7 +1009,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
+            output.returnCode = QVAULT_NO_VOTING_POWER;
             return ;
         }
 
@@ -1030,7 +1019,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
             return ;
         }
         if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
@@ -1056,7 +1045,7 @@ protected:
         locals.newProposal.totalWeight = 0;
 
         state.IPOP.set(state.numberOfIPOP++, locals.newProposal);
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
+        output.returnCode = QVAULT_SUCCESS;
     }
 
     /**
@@ -1083,7 +1072,7 @@ protected:
     {
         if (input.numberOfEpoch > 52)
         {
-            output.returnCode = QVAULTLogInfo::QvaultInputError;
+            output.returnCode = QVAULT_INPUT_ERROR;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1092,7 +1081,7 @@ protected:
         }
         if (input.amountPerEpoch * input.numberOfEpoch > state.reinvestingFund)
         {
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1109,7 +1098,7 @@ protected:
                 }
                 else 
                 {
-                    output.returnCode = QVAULTLogInfo::QvaultInsufficientVotingPower;
+                    output.returnCode = QVAULT_INSUFFICIENT_VOTING_POWER;
                     if (qpi.invocationReward() > 0)
                     {
                         qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1128,7 +1117,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
+            output.returnCode = QVAULT_NO_VOTING_POWER;
             return ;
         }
 
@@ -1138,7 +1127,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
             return ;
         }
         if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
@@ -1164,7 +1153,7 @@ protected:
         }
 
         state.QEarnP.set(state.numberOfQEarnP++, locals.newProposal);
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
+        output.returnCode = QVAULT_SUCCESS;
     }
 
     /**
@@ -1205,7 +1194,7 @@ protected:
                 }
                 else 
                 {
-                    output.returnCode = QVAULTLogInfo::QvaultInsufficientVotingPower;
+                    output.returnCode = QVAULT_INSUFFICIENT_VOTING_POWER;
                     if (qpi.invocationReward() > 0)
                     {
                         qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1224,7 +1213,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
+            output.returnCode = QVAULT_NO_VOTING_POWER;
             return ;
         }
 
@@ -1232,7 +1221,7 @@ protected:
         QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year == 25 && state.qcapSoldAmount + input.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowSaleAmount;
+            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1241,7 +1230,7 @@ protected:
         }
         else if (locals.year == 26 && state.qcapSoldAmount + input.amountOfQcap > QVAULT_2026MAX_QCAP_SALE_AMOUNT)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowSaleAmount;
+            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1250,7 +1239,7 @@ protected:
         }
         else if (locals.year == 27 && state.qcapSoldAmount + input.amountOfQcap > QVAULT_2027MAX_QCAP_SALE_AMOUNT)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowSaleAmount;
+            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1259,7 +1248,7 @@ protected:
         }
         else if (state.qcapSoldAmount + input.amountOfQcap > QVAULT_QCAP_MAX_SUPPLY)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowSaleAmount;
+            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1273,7 +1262,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
             return ;
         }
         if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
@@ -1299,7 +1288,7 @@ protected:
         locals.newProposal.pricePerOneQcap = input.priceOfOneQcap;
 
         state.FundP.set(state.numberOfFundP++, locals.newProposal);
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
+        output.returnCode = QVAULT_SUCCESS;
     }
 
     /**
@@ -1329,7 +1318,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
             return ;
         }
         if (qpi.transferShareOwnershipAndPossession(input.shareName, NULL_ID, qpi.invocator(), qpi.invocator(), input.amountOfShare, SELF) < 0)
@@ -1338,7 +1327,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultNotTransferredShare;
+            output.returnCode = QVAULT_NOT_TRANSFERRED_SHARE;
             return ;
         }
         if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
@@ -1366,7 +1355,7 @@ protected:
         locals.newProposal.shareName = input.shareName;
 
         state.MKTP.set(state.numberOfMKTP++, locals.newProposal);
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
+        output.returnCode = QVAULT_SUCCESS;
     }
 
     /**
@@ -1408,7 +1397,7 @@ protected:
                 }
                 else 
                 {
-                    output.returnCode = QVAULTLogInfo::QvaultInsufficientVotingPower;
+                    output.returnCode = QVAULT_INSUFFICIENT_VOTING_POWER;
                     if (qpi.invocationReward() > 0)
                     {
                         qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1427,7 +1416,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
+            output.returnCode = QVAULT_NO_VOTING_POWER;
             return ;
         }
 
@@ -1435,7 +1424,7 @@ protected:
         QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year < 29 && input.burn != 0)
         {
-            output.returnCode = QVAULTLogInfo::QvaultNotInTime;
+            output.returnCode = QVAULT_NOT_IN_TIME;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1444,7 +1433,7 @@ protected:
         }
         if (locals.year >= 26 && input.team != 0)
         {
-            output.returnCode = QVAULTLogInfo::QvaultNotInTime;
+            output.returnCode = QVAULT_NOT_IN_TIME;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1454,7 +1443,7 @@ protected:
 
         if (input.burn + input.distribute + input.reinvested + input.team != 970)
         {
-            output.returnCode = QVAULTLogInfo::QvaultNotFair;
+            output.returnCode = QVAULT_NOT_FAIR;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1468,7 +1457,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
             return ;
         }
         if (qpi.invocationReward() > QVAULT_PROPOSAL_FEE)
@@ -1495,7 +1484,7 @@ protected:
         locals.newProposal.team = input.team;
 
         state.AlloP.set(state.numberOfAlloP++, locals.newProposal);
-        output.returnCode = QVAULTLogInfo::QvaultSuccess;
+        output.returnCode = QVAULT_SUCCESS;
     }
 
     /**
@@ -1532,7 +1521,7 @@ protected:
     {
         if (input.proposalId > QVAULT_MAX_NUMBER_OF_PROPOSAL)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowProposal;
+            output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
             return ;
         }
         if (state.countOfVote.get(qpi.invocator(), locals.countOfVote))
@@ -1548,12 +1537,12 @@ protected:
         }
         if (locals.countOfVote == 16 && locals._r == locals.countOfVote)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowVotes;
+            output.returnCode = QVAULT_OVERFLOW_VOTES;
             return ;
         }
         if (locals._r < locals.countOfVote && locals.newVoteList.get(locals._r).decision == input.yes)
         {
-            output.returnCode = QVAULTLogInfo::QvaultSameDecision;
+            output.returnCode = QVAULT_SAME_DECISION;
             return ;
         }
         
@@ -1593,7 +1582,7 @@ protected:
 
         if (locals.statusOfProposal == 0)
         {
-            output.returnCode = QVAULTLogInfo::QvaultEndedProposal;
+            output.returnCode = QVAULT_ENDED_PROPOSAL;
             return ;
         }
 
@@ -1686,13 +1675,13 @@ protected:
                         state.countOfVote.set(qpi.invocator(), 1);
                     }
                     state.vote.set(qpi.invocator(), locals.newVoteList);
-                    output.returnCode = QVAULTLogInfo::QvaultSuccess;
+                    output.returnCode = QVAULT_SUCCESS;
                     return ;
                 }
             }
         }
 
-        output.returnCode = QVAULTLogInfo::QvaultNoVotingPower;
+        output.returnCode = QVAULT_NO_VOTING_POWER;
     }
 
     /**
@@ -1728,7 +1717,7 @@ protected:
         QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year == 25 && state.qcapSoldAmount + input.amount > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowSaleAmount;
+            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1737,7 +1726,7 @@ protected:
         }
         else if (locals.year == 26 && state.qcapSoldAmount + input.amount > QVAULT_2026MAX_QCAP_SALE_AMOUNT)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowSaleAmount;
+            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1746,7 +1735,7 @@ protected:
         }
         else if (locals.year == 27 && state.qcapSoldAmount + input.amount > QVAULT_2027MAX_QCAP_SALE_AMOUNT)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowSaleAmount;
+            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1755,7 +1744,7 @@ protected:
         }
         else if (state.qcapSoldAmount + input.amount > QVAULT_QCAP_MAX_SUPPLY)
         {
-            output.returnCode = QVAULTLogInfo::QvaultOverflowSaleAmount;
+            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
             if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1790,7 +1779,7 @@ protected:
                     state.FundP.set(locals._t, locals.updatedFundProposal);
 
                     state.reinvestingFund += state.FundP.get(locals._t).pricePerOneQcap * input.amount;
-                    output.returnCode = QVAULTLogInfo::QvaultSuccess;
+                    output.returnCode = QVAULT_SUCCESS;
                     return ;
                 }
             }
@@ -1798,7 +1787,7 @@ protected:
 
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
-        output.returnCode = QVAULTLogInfo::QvaultFailed;
+        output.returnCode = QVAULT_FAILED;
     }
 
     /**
@@ -1814,7 +1803,7 @@ protected:
     {
 		if (qpi.invocationReward() < state.transferRightsFee)
 		{
-			output.returnCode = QVAULTLogInfo::QvaultInsufficientFund;
+			output.returnCode = QVAULT_INSUFFICIENT_FUND;
 			return ;
 		}
 
@@ -1827,7 +1816,7 @@ protected:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = QVAULTLogInfo::QvaultInsufficientShare;
+			output.returnCode = QVAULT_INSUFFICIENT_SHARE;
 		}
 		else
 		{
@@ -1841,7 +1830,7 @@ protected:
 					qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				}
 
-				output.returnCode = QVAULTLogInfo::QvaultErrorTransferAsset;
+				output.returnCode = QVAULT_ERROR_TRANSFER_ASSET;
 			}
 			else
 			{
@@ -1853,7 +1842,7 @@ protected:
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.transferRightsFee);
 				}
 
-				output.returnCode = QVAULTLogInfo::QvaultSuccess;
+				output.returnCode = QVAULT_SUCCESS;
 			}
 		}
     }
