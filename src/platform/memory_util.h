@@ -10,10 +10,23 @@
 #include <cstdbool>
 #include <cstdio>
 
-static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long size, void** buffer, const int LINE) 
+inline void* qVirtualAlloc(const unsigned long long size, bool commitMem);
+inline void* qVirtualCommit(void* address, const unsigned long long size);
+inline bool qVirtualDecommit(void* address, const unsigned long long size);
+
+// useVirtualMem indicates whether to use VirtualAlloc or malloc
+// commitMem indicates whether to commit memory when using VirtualAlloc
+// NOTE: commitMem only used if host machine have enough RAM+Pagefile, otherwise VirtualAlloc will fail
+static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long size, void** buffer, const int LINE, bool useVirtualMem = false, bool commitMem = false)
 {
     static unsigned long long totalMemoryUsed = 0;
-    *buffer = malloc(size);
+    if (useVirtualMem) {
+		*buffer = qVirtualAlloc(size, commitMem);
+    }
+    else {
+        *buffer = malloc(size);
+    }
+
     if (*buffer == nullptr)
     {
         printf("Memory allocation failed for %ls on line %u\n", name, LINE);
@@ -21,7 +34,8 @@ static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long 
     }
 
     // Zero out allocated memory
-    setMem(*buffer, size, 0);
+    if(!useVirtualMem)
+     setMem(*buffer, size, 0);
 
     //totalMemoryUsed += size;
     //setText(message, L"Memory allocated ");
@@ -37,7 +51,7 @@ static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long 
 
 #else
 
-static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long size, void** buffer, const int LINE)
+static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long size, void** buffer, const int LINE, bool needZerOut = true)
     {
     EFI_STATUS status;
     CHAR16 message[512];
@@ -69,7 +83,7 @@ static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long s
             }
 #endif
     // Zero out allocated memory
-    if (*buffer != nullptr) {
+    if (*buffer != nullptr && needZerOut) {
         setMem(*buffer, size, 0);
     }
     return true;
