@@ -448,7 +448,7 @@ public:
             || !allocPoolWithErrorLog(L"tickPtr", ticksSize, (void**)&ticksPtr, __LINE__, true)
             || !allocPoolWithErrorLog(L"tickTransactionPtr", tickTransactionsSize, (void**)&tickTransactionsPtr, __LINE__, true)
             || !allocPoolWithErrorLog(L"tickTransactionOffset", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__)
-            || !allocPoolWithErrorLog(L"tickTransactionsDigestPtr", tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), (void**)&tickTransactionsDigestPtr, __LINE__))
+            || !allocPoolWithErrorLog(L"tickTransactionsDigestPtr", tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), (void**)&tickTransactionsDigestPtr, __LINE__, true, true))
         {
             return false;
         }
@@ -468,7 +468,7 @@ public:
         oldTickBegin = 0;
         oldTickEnd = 0;
 
-        setMem((void*)tickTransactionsDigestPtr, tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), 0);
+        //setMem((void*)tickTransactionsDigestPtr, tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), 0);
 
         return true;
     }
@@ -601,7 +601,7 @@ public:
             oldTickEnd = 0;
         }
         // Transaction digest look up need to reset at the begining of epoch for pointing to valid current epoch transaction
-        setMem((void*)tickTransactionsDigestPtr, tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), 0);
+		qVirtualDecommit(tickTransactionsDigestPtr, tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry));
 
         tickBegin = newInitialTick;
         tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
