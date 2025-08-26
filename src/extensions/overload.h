@@ -86,6 +86,18 @@ std::vector<unsigned char> readInput() {
 }
 #endif
 
+inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
+	return VirtualAlloc(NULL, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE);
+}
+
+inline void* qVirtualCommit(void* address, const unsigned long long size) {
+	return VirtualAlloc(address, (SIZE_T)size, MEM_COMMIT, PAGE_READWRITE);
+}
+
+inline bool qVirtualDecommit(void* address, const unsigned long long size) {
+	return VirtualFree(address, (SIZE_T)size, MEM_DECOMMIT);
+}
+
 void updateTime() {
     std::time_t t = std::time(nullptr);
     std::tm* tm = std::gmtime(&t);

@@ -444,9 +444,9 @@ public:
     {
         // TODO: allocate everything with one continuous buffer
 		constexpr auto total = tickDataSize + ticksSize + tickTransactionsSize + tickTransactionOffsetsSize + (tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry));
-        if (!allocPoolWithErrorLog(L"tickDataPtr ", tickDataSize, (void**)&tickDataPtr, __LINE__)
-            || !allocPoolWithErrorLog(L"tickPtr", ticksSize, (void**)&ticksPtr, __LINE__)
-            || !allocPoolWithErrorLog(L"tickTransactionPtr", tickTransactionsSize, (void**)&tickTransactionsPtr, __LINE__)
+        if (!allocPoolWithErrorLog(L"tickDataPtr ", tickDataSize, (void**)&tickDataPtr, __LINE__, true)
+            || !allocPoolWithErrorLog(L"tickPtr", ticksSize, (void**)&ticksPtr, __LINE__, true)
+            || !allocPoolWithErrorLog(L"tickTransactionPtr", tickTransactionsSize, (void**)&tickTransactionsPtr, __LINE__, true)
             || !allocPoolWithErrorLog(L"tickTransactionOffset", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__)
             || !allocPoolWithErrorLog(L"tickTransactionsDigestPtr", tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), (void**)&tickTransactionsDigestPtr, __LINE__))
         {
@@ -585,18 +585,18 @@ public:
             }
 
             // reset data storage of new epoch
-            setMem(tickDataPtr, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(TickData), 0);
-            setMem(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick), 0);
+			qVirtualDecommit(tickDataPtr, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(TickData));
+			qVirtualDecommit(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick));
+			qVirtualDecommit(tickTransactionsPtr, tickTransactionsSizeCurrentEpoch);
             setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSizeCurrentEpoch, 0);
-            setMem(tickTransactionsPtr, tickTransactionsSizeCurrentEpoch, 0);
         }
         else
         {
             // node startup with no data of prior epoch
-            setMem(tickDataPtr, tickDataSize, 0);
-            setMem(ticksPtr, ticksSize, 0);
+			//qVirtualDecommit(tickDataPtr, tickDataSize);
+			//qVirtualDecommit(ticksPtr, ticksSize);
+			//qVirtualDecommit(tickTransactionsPtr, tickTransactionsSize);
             setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSize, 0);
-            setMem(tickTransactionsPtr, tickTransactionsSize, 0);
             oldTickBegin = 0;
             oldTickEnd = 0;
         }
@@ -806,6 +806,7 @@ public:
             else
                 return nullptr;
 
+			qVirtualCommit(tickDataPtr + index, sizeof(TickData));
             TickData* td = tickDataPtr + index;
             // td->epoch == 0: not yet received or temporarily disabled
             // td->epoch == INVALIDATED_TICK_DATA: invalidated by this node
@@ -834,6 +835,7 @@ public:
         inline TickData& operator[](unsigned int index)
         {
             ASSERT(index < tickDataLength);
+			qVirtualCommit(tickDataPtr + (index), sizeof(TickData));
             return tickDataPtr[index];
         }
 
@@ -841,6 +843,7 @@ public:
         inline const TickData& operator[](unsigned int index) const
         {
             ASSERT(index < tickDataLength);
+			qVirtualCommit(tickDataPtr + (index), sizeof(TickData));
             return tickDataPtr[index];
         }
     } tickData;
@@ -864,6 +867,7 @@ public:
         inline static Tick* getByTickIndex(unsigned int tickIndex)
         {
             ASSERT(tickIndex < tickDataLength);
+			qVirtualCommit(ticksPtr + tickIndex * NUMBER_OF_COMPUTORS, NUMBER_OF_COMPUTORS * sizeof(Tick));
             return ticksPtr + tickIndex * NUMBER_OF_COMPUTORS;
         }
 
@@ -871,6 +875,7 @@ public:
         inline static Tick* getByTickInCurrentEpoch(unsigned int tick)
         {
             ASSERT(tickInCurrentEpochStorage(tick));
+			qVirtualCommit(ticksPtr + tickToIndexCurrentEpoch(tick) * NUMBER_OF_COMPUTORS, NUMBER_OF_COMPUTORS * sizeof(Tick));
             return ticksPtr + tickToIndexCurrentEpoch(tick) * NUMBER_OF_COMPUTORS;
         }
 
@@ -878,6 +883,7 @@ public:
         inline static Tick* getByTickInPreviousEpoch(unsigned int tick)
         {
             ASSERT(tickInPreviousEpochStorage(tick));
+			qVirtualCommit(ticksPtr + tickToIndexPreviousEpoch(tick) * NUMBER_OF_COMPUTORS, NUMBER_OF_COMPUTORS * sizeof(Tick));
             return ticksPtr + tickToIndexPreviousEpoch(tick) * NUMBER_OF_COMPUTORS;
         }
 
@@ -885,6 +891,7 @@ public:
         inline Tick& operator[](unsigned int offset)
         {
             ASSERT(offset < ticksLength);
+			qVirtualCommit(ticksPtr + offset, sizeof(Tick));
             return ticksPtr[offset];
         }
 
@@ -892,6 +899,7 @@ public:
         inline const Tick& operator[](unsigned int offset) const
         {
             ASSERT(offset < ticksLength);
+			qVirtualCommit(ticksPtr + offset, sizeof(Tick));
             return ticksPtr[offset];
         }
     } ticks;
@@ -953,6 +961,7 @@ public:
         inline static Transaction* ptr(unsigned long long transactionOffset)
         {
             ASSERT(transactionOffset < tickTransactionsSize);
+			qVirtualCommit(tickTransactionsPtr + transactionOffset, MAX_TRANSACTION_SIZE);
             return (Transaction*)(tickTransactionsPtr + transactionOffset);
         }
 
