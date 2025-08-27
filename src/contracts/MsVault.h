@@ -884,6 +884,18 @@ protected:
     {
         output.status = 0; // FAILURE_GENERAL
 
+        if (qpi.invocationReward() < state.liveDepositFee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            return;
+        }
+
+        if (qpi.invocationReward() > state.liveDepositFee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
@@ -980,6 +992,18 @@ protected:
     {
         output.status = 0; // GENEREAL_FAILURE
 
+        if (qpi.invocationReward() < state.liveDepositFee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            return;
+        }
+
+        if (qpi.invocationReward() > state.liveDepositFee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
         locals.userAssetBalance = qpi.numberOfShares(input.asset,
             { qpi.invocator(), SELF_INDEX },
             { qpi.invocator(), SELF_INDEX });
@@ -988,6 +1012,7 @@ protected:
         {
             // User does not have enough shares, or is trying to deposit zero. Abort.
             output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -997,6 +1022,7 @@ protected:
         if (!locals.iv_out.result)
         {
             output.status = 3; // FAILURE_INVALID_VAULT
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return; // invalid vault id
         }
 
@@ -1004,6 +1030,7 @@ protected:
         if (!locals.vault.isActive)
         {
             output.status = 3; // FAILURE_INVALID_VAULT
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return; // vault is not active
         }
 
@@ -1024,6 +1051,7 @@ protected:
         {
             // no more new asset
             output.status = 7; // FAILURE_LIMIT_REACHED
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1044,6 +1072,7 @@ protected:
         if (locals.transferResult < 0)
         {
             output.status = 8; // FAILURE_TRANSFER_FAILED
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1052,6 +1081,7 @@ protected:
         if (locals.transferedShares != (sint64)input.amount)
         {
             output.status = 8; // FAILURE_TRANSFER_FAILED
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
