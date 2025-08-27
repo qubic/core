@@ -6944,7 +6944,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         // prepare and send ExchangePublicPeers message
                         ExchangePublicPeers* request = (ExchangePublicPeers*)&peers[i].dataToTransmit[sizeof(RequestResponseHeader)];
                         bool noVerifiedPublicPeers = true;
-                        for (unsigned int k = 0; k < numberOfPublicPeers; k++)
+                        // Only check non-private peers for handshake status
+                        for (unsigned int k = NUMBER_OF_PRIVATE_IP; k < numberOfPublicPeers; k++)
                         {
                             if (publicPeers[k].isHandshaked /*&& publicPeers[k].isFullnode*/)
                             {
