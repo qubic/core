@@ -25,10 +25,10 @@ public:
     // Input and Output Structs
     struct createOrder_input
     {
-        Array<uint8, 64> ethAddress;
-        uint64 amount;
-        bit fromQubicToEthereum;
         id qubicDestination; // Destination address on Qubic (for EVM to Qubic orders)
+        uint64 amount;
+        Array<uint8, 64> ethAddress;
+        bit fromQubicToEthereum;
     };
 
     struct createOrder_output
