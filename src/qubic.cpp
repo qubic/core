@@ -7031,15 +7031,24 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             }
                             else
                             {
-                                // randomly select verified public peers
-                                const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isHandshaked /*&& publicPeers[publicPeerIndex].isFullnode*/)
+                                if (NUMBER_OF_PRIVATE_IP < numberOfPublicPeers)
                                 {
-                                    request->peers[j] = publicPeers[publicPeerIndex].address;
+                                    // randomly select verified public peers and discard private IPs
+                                    // first NUMBER_OF_PRIVATE_IP ips are same on both array publicPeers and knownPublicPeers
+                                    const unsigned int publicPeerIndex = NUMBER_OF_PRIVATE_IP + random(numberOfPublicPeers - NUMBER_OF_PRIVATE_IP);
+                                    // share the peer if it's not our private IPs and is handshaked
+                                    if (publicPeers[publicPeerIndex].isHandshaked)
+                                    {
+                                        request->peers[j] = publicPeers[publicPeerIndex].address;
+                                    }
+                                    else
+                                    {
+                                        j--;
+                                    }
                                 }
                                 else
                                 {
-                                    j--;
+                                    request->peers[j].u32 = 0;
                                 }
                             }
                         }

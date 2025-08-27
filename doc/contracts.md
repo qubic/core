@@ -632,3 +632,6 @@ The file `proposal.cpp` has a lot of examples showing how to use both functions.
 For example, `getProposalIndices()` shows how to call a contract function requiring input and providing output with `runContractFunction()`.
 An example use case of `makeContractTransaction()` can be found in `gqmpropSetProposal()`.
 The function `castVote()` is a more complex example combining both, calling a contract function and invoking a contract procedure.
+
+
+

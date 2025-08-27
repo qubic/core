@@ -32,30 +32,30 @@ constexpr uint64 QUTIL_MAX_ASSETS_PER_POLL = 16; // Maximum assets per poll
 constexpr sint64 QUTIL_VOTE_FEE = 100LL; // Fee for voting, burnt 100%
 constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation to prevent spam
 constexpr uint16 QUTIL_POLL_GITHUB_URL_MAX_SIZE = 256; // Max String Length for Poll's Github URLs
-constexpr uint64 QUTIL_MAX_NEW_POLL = QUTIL_MAX_POLL / 4; // Max number of new poll per epoch
+constexpr uint64 QUTIL_MAX_NEW_POLL = div(QUTIL_MAX_POLL, 4ULL); // Max number of new poll per epoch
 
 
 // Voting log types enum
-const uint64 QutilLogTypePollCreated = 5;                       // Poll created successfully
-const uint64 QutilLogTypeInsufficientFundsForPoll = 6;          // Insufficient funds for poll creation
-const uint64 QutilLogTypeInvalidPollType = 7;                   // Invalid poll type
-const uint64 QutilLogTypeInvalidNumAssetsQubic = 8;             // Invalid number of assets for Qubic poll
-const uint64 QutilLogTypeInvalidNumAssetsAsset = 9;             // Invalid number of assets for Asset poll
-const uint64 QutilLogTypeVoteCast = 10;                         // Vote cast successfully
-const uint64 QutilLogTypeInsufficientFundsForVote = 11;         // Insufficient funds for voting
-const uint64 QutilLogTypeInvalidPollId = 12;                    // Invalid poll ID
-const uint64 QutilLogTypePollInactive = 13;                     // Poll is inactive
-const uint64 QutilLogTypeInsufficientBalance = 14;              // Insufficient voter balance
-const uint64 QutilLogTypeInvalidOption = 15;                    // Invalid voting option
-const uint64 QutilLogTypeInvalidPollIdResult = 16;              // Invalid poll ID in GetCurrentResult
-const uint64 QutilLogTypePollInactiveResult = 17;               // Poll inactive in GetCurrentResult
-const uint64 QutilLogTypeNoPollsByCreator = 18;                 // No polls found in GetPollsByCreator
-const uint64 QutilLogTypePollCancelled = 19;                    // Poll cancelled successfully
-const uint64 QutilLogTypeNotAuthorized = 20;                    // Not authorized to cancel the poll
-const uint64 QutilLogTypeInsufficientFundsForCancel = 21;       // Not have enough funds for poll calcellation
-const uint64 QutilLogTypeMaxPollsReached = 22;                  // Max epoch per epoch reached
+constexpr uint64 QUTILLogTypePollCreated = 5;                       // Poll created successfully
+constexpr uint64 QUTILLogTypeInsufficientFundsForPoll = 6;          // Insufficient funds for poll creation
+constexpr uint64 QUTILLogTypeInvalidPollType = 7;                   // Invalid poll type
+constexpr uint64 QUTILLogTypeInvalidNumAssetsQubic = 8;             // Invalid number of assets for Qubic poll
+constexpr uint64 QUTILLogTypeInvalidNumAssetsAsset = 9;             // Invalid number of assets for Asset poll
+constexpr uint64 QUTILLogTypeVoteCast = 10;                         // Vote cast successfully
+constexpr uint64 QUTILLogTypeInsufficientFundsForVote = 11;         // Insufficient funds for voting
+constexpr uint64 QUTILLogTypeInvalidPollId = 12;                    // Invalid poll ID
+constexpr uint64 QUTILLogTypePollInactive = 13;                     // Poll is inactive
+constexpr uint64 QUTILLogTypeInsufficientBalance = 14;              // Insufficient voter balance
+constexpr uint64 QUTILLogTypeInvalidOption = 15;                    // Invalid voting option
+constexpr uint64 QUTILLogTypeInvalidPollIdResult = 16;              // Invalid poll ID in GetCurrentResult
+constexpr uint64 QUTILLogTypePollInactiveResult = 17;               // Poll inactive in GetCurrentResult
+constexpr uint64 QUTILLogTypeNoPollsByCreator = 18;                 // No polls found in GetPollsByCreator
+constexpr uint64 QUTILLogTypePollCancelled = 19;                    // Poll cancelled successfully
+constexpr uint64 QUTILLogTypeNotAuthorized = 20;                    // Not authorized to cancel the poll
+constexpr uint64 QUTILLogTypeInsufficientFundsForCancel = 21;       // Not have enough funds for poll calcellation
+constexpr uint64 QUTILLogTypeMaxPollsReached = 22;                  // Max epoch per epoch reached
 
-struct QUtilLogger
+struct QUTILLogger
 {
     uint32 contractId; // to distinguish bw SCs
     uint32 padding;
@@ -64,11 +64,11 @@ struct QUtilLogger
     sint64 amt;
     uint32 logtype;
     // Other data go here
-    char _terminator; // Only data before "_terminator" are logged
+    sint8 _terminator; // Only data before "_terminator" are logged
 };
 
 // poll and voter structs
-struct QUtilPoll {
+struct QUTILPoll {
     id poll_name;
     uint64 poll_type; // QUTIL_POLL_TYPE_QUBIC or QUTIL_POLL_TYPE_ASSET
     uint64 min_amount; // Minimum Qubic/asset amount for eligibility
@@ -78,7 +78,7 @@ struct QUtilPoll {
     uint64 num_assets; // Number of assets in allowed assets
 };
 
-struct QUtilVoter {
+struct QUTILVoter {
     id address;
     uint64 amount;
     uint64 chosen_option; // Limited to 0-63 by vote procedure
@@ -98,8 +98,8 @@ private:
     sint64 total;
 
     // Voting state
-    Array<QUtilPoll, QUTIL_MAX_POLL> polls;
-    Array<QUtilVoter, QUTIL_TOTAL_VOTERS> voters; // 1d array for all voters
+    Array<QUTILPoll, QUTIL_MAX_POLL> polls;
+    Array<QUTILVoter, QUTIL_TOTAL_VOTERS> voters; // 1d array for all voters
     Array<uint64, QUTIL_MAX_POLL> poll_ids;
     Array<uint64, QUTIL_MAX_POLL> voter_counts; // tracks number of voters per poll
     Array<Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE>, QUTIL_MAX_POLL> poll_links; // github links for polls
@@ -132,7 +132,7 @@ private:
     struct get_asset_balance_locals {
     };
 
-    // Get QUtilVoter Balance Helper
+    // Get QUTILVoter Balance Helper
     struct get_voter_balance_input {
         uint64 poll_idx;
         id address;
@@ -154,7 +154,7 @@ private:
         get_asset_balance_locals gab_locals;
     };
 
-    // Swap QUtilVoter to the end of the array helper
+    // Swap QUTILVoter to the end of the array helper
     struct swap_voter_to_end_input {
         uint64 poll_idx;
         uint64 i;
@@ -165,7 +165,7 @@ private:
     struct swap_voter_to_end_locals {
         uint64 voter_index_i;
         uint64 voter_index_end;
-        QUtilVoter temp_voter;
+        QUTILVoter temp_voter;
     };
 
 public:
@@ -185,7 +185,7 @@ public:
     };
     struct SendToManyV1_locals
     {
-        QUtilLogger logger;
+        QUTILLogger logger;
     };
 
     struct GetSendToManyV1Fee_input
@@ -213,7 +213,7 @@ public:
         id currentId;
         sint64 t;
         uint64 useNext;
-        QUtilLogger logger;
+        QUTILLogger logger;
     };
 
     struct BurnQubic_input
@@ -244,10 +244,10 @@ public:
     struct CreatePoll_locals
     {
         uint64 idx;
-        QUtilPoll new_poll;
-        QUtilVoter default_voter;
+        QUTILPoll new_poll;
+        QUTILVoter default_voter;
         uint64 i;
-        QUtilLogger logger;
+        QUTILLogger logger;
     };
 
     struct Vote_input
@@ -275,11 +275,11 @@ public:
         swap_voter_to_end_locals sve_locals;
         uint64 i;
         uint64 voter_index;
-        QUtilVoter temp_voter;
+        QUTILVoter temp_voter;
         uint64 real_vote;
         uint64 end_idx;
         uint64 max_balance;
-        QUtilLogger logger;
+        QUTILLogger logger;
     };
 
     struct CancelPoll_input
@@ -295,8 +295,8 @@ public:
     struct CancelPoll_locals
     {
         uint64 idx;
-        QUtilPoll current_poll;
-        QUtilLogger logger;
+        QUTILPoll current_poll;
+        QUTILLogger logger;
     };
 
     struct GetCurrentResult_input
@@ -314,10 +314,10 @@ public:
         uint64 idx;
         uint64 poll_type;
         uint64 effective_amount;
-        QUtilVoter voter;
+        QUTILVoter voter;
         uint64 i;
         uint64 voter_index;
-        QUtilLogger logger;
+        QUTILLogger logger;
     };
 
     struct GetPollsByCreator_input
@@ -332,7 +332,7 @@ public:
     struct GetPollsByCreator_locals
     {
         uint64 idx;
-        QUtilLogger logger;
+        QUTILLogger logger;
     };
 
     struct GetCurrentPollId_input
@@ -357,19 +357,19 @@ public:
 
     struct GetPollInfo_output {
         uint64 found; // 1 if exists, 0 ig not
-        QUtilPoll poll_info;
+        QUTILPoll poll_info;
         Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE> poll_link;
     };
 
     struct GetPollInfo_locals {
         uint64 idx;
-        QUtilPoll default_poll;  // default values if not found
+        QUTILPoll default_poll;  // default values if not found
     };
 
     struct END_EPOCH_locals
     {
         uint64 i;
-        QUtilPoll current_poll;
+        QUTILPoll current_poll;
     };
 
     /**************************************/
@@ -427,7 +427,7 @@ public:
         state.voters.set(locals.voter_index_end, locals.temp_voter);
     }
 
-    // Calculate QUtilVoter Index
+    // Calculate QUTILVoter Index
     inline static uint64 calculate_voter_index(uint64 poll_idx, uint64 voter_idx)
     {
         return poll_idx * QUTIL_MAX_VOTERS_PER_POLL + voter_idx;
@@ -435,30 +435,30 @@ public:
 
     static inline bit check_github_prefix(const Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE>& github_link)
     {
-        return github_link.get(0) == 'h' &&
-            github_link.get(1) == 't' &&
-            github_link.get(2) == 't' &&
-            github_link.get(3) == 'p' &&
-            github_link.get(4) == 's' &&
-            github_link.get(5) == ':' &&
-            github_link.get(6) == '/' &&
-            github_link.get(7) == '/' &&
-            github_link.get(8) == 'g' &&
-            github_link.get(9) == 'i' &&
-            github_link.get(10) == 't' &&
-            github_link.get(11) == 'h' &&
-            github_link.get(12) == 'u' &&
-            github_link.get(13) == 'b' &&
-            github_link.get(14) == '.' &&
-            github_link.get(15) == 'c' &&
-            github_link.get(16) == 'o' &&
-            github_link.get(17) == 'm' &&
-            github_link.get(18) == '/' &&
-            github_link.get(19) == 'q' &&
-            github_link.get(20) == 'u' &&
-            github_link.get(21) == 'b' &&
-            github_link.get(22) == 'i' &&
-            github_link.get(23) == 'c';
+        return github_link.get(0) == 104 && // 'h'
+            github_link.get(1) == 116 && // 't'
+            github_link.get(2) == 116 && // 't'
+            github_link.get(3) == 112 && // 'p'
+            github_link.get(4) == 115 && // 's'
+            github_link.get(5) == 58 && // ':'
+            github_link.get(6) == 47 && // '/'
+            github_link.get(7) == 47 && // '/'
+            github_link.get(8) == 103 && // 'g'
+            github_link.get(9) == 105 && // 'i'
+            github_link.get(10) == 116 && // 't'
+            github_link.get(11) == 104 && // 'h'
+            github_link.get(12) == 117 && // 'u'
+            github_link.get(13) == 98 && // 'b'
+            github_link.get(14) == 46 && // '.'
+            github_link.get(15) == 99 && // 'c'
+            github_link.get(16) == 111 && // 'o'
+            github_link.get(17) == 109 && // 'm'
+            github_link.get(18) == 47 && // '/'
+            github_link.get(19) == 113 && // 'q'
+            github_link.get(20) == 117 && // 'u'
+            github_link.get(21) == 98 && // 'b'
+            github_link.get(22) == 105 && // 'i'
+            github_link.get(23) == 99; // 'c'
     }
 
     /**************************************/
@@ -480,13 +480,13 @@ public:
     */
     PUBLIC_PROCEDURE_WITH_LOCALS(SendToManyV1)
     {
-        locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_TRIGGERED };
+        locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_TRIGGERED };
         LOG_INFO(locals.logger);
         state.total = input.amt0 + input.amt1 + input.amt2 + input.amt3 + input.amt4 + input.amt5 + input.amt6 + input.amt7 + input.amt8 + input.amt9 + input.amt10 + input.amt11 + input.amt12 + input.amt13 + input.amt14 + input.amt15 + input.amt16 + input.amt17 + input.amt18 + input.amt19 + input.amt20 + input.amt21 + input.amt22 + input.amt23 + input.amt24 + QUTIL_STM1_INVOCATION_FEE;
         // invalid amount (<0), return fund and exit
         if ((input.amt0 < 0) || (input.amt1 < 0) || (input.amt2 < 0) || (input.amt3 < 0) || (input.amt4 < 0) || (input.amt5 < 0) || (input.amt6 < 0) || (input.amt7 < 0) || (input.amt8 < 0) || (input.amt9 < 0) || (input.amt10 < 0) || (input.amt11 < 0) || (input.amt12 < 0) || (input.amt13 < 0) || (input.amt14 < 0) || (input.amt15 < 0) || (input.amt16 < 0) || (input.amt17 < 0) || (input.amt18 < 0) || (input.amt19 < 0) || (input.amt20 < 0) || (input.amt21 < 0) || (input.amt22 < 0) || (input.amt23 < 0) || (input.amt24 < 0))
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
             output.returnCode = QUTIL_STM1_INVALID_AMOUNT_NUMBER;
             LOG_INFO(locals.logger);
             if (qpi.invocationReward() > 0)
@@ -497,7 +497,7 @@ public:
         // insufficient or too many qubic transferred, return fund and exit (we don't want to return change)
         if (qpi.invocationReward() != state.total)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_WRONG_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_WRONG_FUND };
             LOG_INFO(locals.logger);
             output.returnCode = QUTIL_STM1_WRONG_FUND;
             if (qpi.invocationReward() > 0)
@@ -509,155 +509,155 @@ public:
 
         if (input.dst0 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst0, input.amt0, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst0, input.amt0, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst0, input.amt0);
         }
         if (input.dst1 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst1, input.amt1, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst1, input.amt1, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst1, input.amt1);
         }
         if (input.dst2 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst2, input.amt2, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst2, input.amt2, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst2, input.amt2);
         }
         if (input.dst3 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst3, input.amt3, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst3, input.amt3, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst3, input.amt3);
         }
         if (input.dst4 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst4, input.amt4, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst4, input.amt4, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst4, input.amt4);
         }
         if (input.dst5 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst5, input.amt5, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst5, input.amt5, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst5, input.amt5);
         }
         if (input.dst6 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst6, input.amt6, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst6, input.amt6, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst6, input.amt6);
         }
         if (input.dst7 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst7, input.amt7, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst7, input.amt7, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst7, input.amt7);
         }
         if (input.dst8 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst8, input.amt8, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst8, input.amt8, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst8, input.amt8);
         }
         if (input.dst9 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst9, input.amt9, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst9, input.amt9, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst9, input.amt9);
         }
         if (input.dst10 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst10, input.amt10, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst10, input.amt10, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst10, input.amt10);
         }
         if (input.dst11 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst11, input.amt11, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst11, input.amt11, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst11, input.amt11);
         }
         if (input.dst12 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst12, input.amt12, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst12, input.amt12, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst12, input.amt12);
         }
         if (input.dst13 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst13, input.amt13, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst13, input.amt13, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst13, input.amt13);
         }
         if (input.dst14 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst14, input.amt14, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst14, input.amt14, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst14, input.amt14);
         }
         if (input.dst15 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst15, input.amt15, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst15, input.amt15, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst15, input.amt15);
         }
         if (input.dst16 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst16, input.amt16, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst16, input.amt16, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst16, input.amt16);
         }
         if (input.dst17 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst17, input.amt17, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst17, input.amt17, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst17, input.amt17);
         }
         if (input.dst18 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst18, input.amt18, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst18, input.amt18, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst18, input.amt18);
         }
         if (input.dst19 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst19, input.amt19, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst19, input.amt19, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst19, input.amt19);
         }
         if (input.dst20 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst20, input.amt20, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst20, input.amt20, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst20, input.amt20);
         }
         if (input.dst21 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst21, input.amt21, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst21, input.amt21, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst21, input.amt21);
         }
         if (input.dst22 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst22, input.amt22, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst22, input.amt22, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst22, input.amt22);
         }
         if (input.dst23 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst23, input.amt23, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst23, input.amt23, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst23, input.amt23);
         }
         if (input.dst24 != NULL_ID)
         {
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), input.dst24, input.amt24, QUTIL_STM1_SEND_FUND };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), input.dst24, input.amt24, QUTIL_STM1_SEND_FUND };
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst24, input.amt24);
         }
-        locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, state.total, QUTIL_STM1_SUCCESS };
+        locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, state.total, QUTIL_STM1_SUCCESS };
         LOG_INFO(locals.logger);
         output.returnCode = QUTIL_STM1_SUCCESS;
         qpi.burn(QUTIL_STM1_INVOCATION_FEE);
@@ -672,7 +672,7 @@ public:
     */
     PUBLIC_PROCEDURE_WITH_LOCALS(SendToManyBenchmark)
     {
-        locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_TRIGGERED };
+        locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_TRIGGERED };
         LOG_INFO(locals.logger);
         output.total = 0;
 
@@ -683,7 +683,7 @@ public:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
             LOG_INFO(locals.logger);
             output.returnCode = QUTIL_STM1_INVALID_AMOUNT_NUMBER;
             return;
@@ -696,7 +696,7 @@ public:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
+            locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
             LOG_INFO(locals.logger);
             output.returnCode = QUTIL_STM1_INVALID_AMOUNT_NUMBER;
             return;
@@ -711,7 +711,7 @@ public:
                 locals.currentId = qpi.nextId(locals.currentId);
             else
                 locals.currentId = qpi.prevId(locals.currentId);
-            if (locals.currentId == m256i::zero())
+            if (locals.currentId == id::zero())
             {
                 locals.currentId = qpi.invocator();
                 locals.useNext = 1 - locals.useNext;
@@ -732,7 +732,7 @@ public:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - output.total);
         }
 
-        locals.logger = QUtilLogger{ 0,  0, qpi.invocator(), SELF, output.total, QUTIL_STM1_SUCCESS };
+        locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, output.total, QUTIL_STM1_SUCCESS };
         LOG_INFO(locals.logger);
     }
 
@@ -777,7 +777,7 @@ public:
         // max new poll exceeded
         if (state.new_polls_this_epoch >= QUTIL_MAX_NEW_POLL)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeMaxPollsReached };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeMaxPollsReached };
             LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -786,7 +786,7 @@ public:
         // insufficient fund
         if (qpi.invocationReward() < QUTIL_POLL_CREATION_FEE)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QutilLogTypeInsufficientFundsForPoll };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QUTILLogTypeInsufficientFundsForPoll };
             LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -795,7 +795,7 @@ public:
         // invalid poll type
         if (input.poll_type != QUTIL_POLL_TYPE_QUBIC && input.poll_type != QUTIL_POLL_TYPE_ASSET)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollType };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidPollType };
             LOG_INFO(locals.logger);
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -804,7 +804,7 @@ public:
         // invalid number of assets in Qubic poll
         if (input.poll_type == QUTIL_POLL_TYPE_QUBIC && input.num_assets != 0)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidNumAssetsQubic };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidNumAssetsQubic };
             LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -813,7 +813,7 @@ public:
         // invalid number of assets in Asset poll
         if (input.poll_type == QUTIL_POLL_TYPE_ASSET && (input.num_assets == 0 || input.num_assets > QUTIL_MAX_ASSETS_PER_POLL))
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidNumAssetsAsset };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidNumAssetsAsset };
             LOG_INFO(locals.logger);
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -821,7 +821,7 @@ public:
 
         if (!check_github_prefix(input.github_link))
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollType }; // reusing existing log type for invalid GitHub link
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidPollType }; // reusing existing log type for invalid GitHub link
             LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -857,7 +857,7 @@ public:
 
         state.new_polls_this_epoch++;
 
-        locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_POLL_CREATION_FEE, QutilLogTypePollCreated };
+        locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_POLL_CREATION_FEE, QUTILLogTypePollCreated };
         LOG_INFO(locals.logger);
     }
 
@@ -869,7 +869,7 @@ public:
         output.success = false;
         if (qpi.invocationReward() < QUTIL_VOTE_FEE)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QutilLogTypeInsufficientFundsForVote };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QUTILLogTypeInsufficientFundsForVote };
             LOG_INFO(locals.logger);
             return;
         }
@@ -880,13 +880,13 @@ public:
 
         if (state.poll_ids.get(locals.idx) != input.poll_id)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollId };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidPollId };
             LOG_INFO(locals.logger);
             return;
         }
         if (state.polls.get(locals.idx).is_active == 0)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypePollInactive };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypePollInactive };
             LOG_INFO(locals.logger);
             return;
         }
@@ -900,13 +900,13 @@ public:
 
         if (locals.max_balance < state.polls.get(locals.idx).min_amount || locals.max_balance < input.amount)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInsufficientBalance };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInsufficientBalance };
             LOG_INFO(locals.logger);
             return;
         }
         if (input.chosen_option >= QUTIL_MAX_OPTIONS)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidOption };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidOption };
             LOG_INFO(locals.logger);
             return;
         }
@@ -918,14 +918,14 @@ public:
             if (state.voters.get(locals.voter_index).address == input.address)
             {
                 // Update existing voter
-                state.voters.set(locals.voter_index, QUtilVoter{ input.address, input.amount, input.chosen_option });
+                state.voters.set(locals.voter_index, QUTILVoter{ input.address, input.amount, input.chosen_option });
                 output.success = true;
                 break;
             }
             else if (state.voters.get(locals.voter_index).address == NULL_ID)
             {
                 // Add new voter in empty slot
-                state.voters.set(locals.voter_index, QUtilVoter{ input.address, input.amount, input.chosen_option });
+                state.voters.set(locals.voter_index, QUTILVoter{ input.address, input.amount, input.chosen_option });
                 state.voter_counts.set(locals.idx, state.voter_counts.get(locals.idx) + 1);
                 output.success = true;
                 break;
@@ -980,7 +980,7 @@ public:
                 if (locals.max_balance < state.polls.get(locals.idx).min_amount)
                 {
                     // Mark as invalid by setting address to NULL_ID
-                    state.voters.set(locals.voter_index, QUtilVoter{ NULL_ID, 0, 0 });
+                    state.voters.set(locals.voter_index, QUTILVoter{ NULL_ID, 0, 0 });
                     // Swap with the last valid voter
                     while (locals.end_idx > locals.i && state.voters.get(calculate_voter_index(locals.idx, locals.end_idx)).address == NULL_ID)
                     {
@@ -1011,7 +1011,7 @@ public:
 
         if (output.success)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_VOTE_FEE, QutilLogTypeVoteCast };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, QUTIL_VOTE_FEE, QUTILLogTypeVoteCast };
             LOG_INFO(locals.logger);
         }
     }
@@ -1020,7 +1020,7 @@ public:
     {
         if (qpi.invocationReward() < QUTIL_POLL_CREATION_FEE)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QutilLogTypeInsufficientFundsForCancel };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QUTILLogTypeInsufficientFundsForCancel };
             LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.success = false;
@@ -1031,7 +1031,7 @@ public:
 
         if (state.poll_ids.get(locals.idx) != input.poll_id)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollId };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidPollId };
             LOG_INFO(locals.logger);
             output.success = false;
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1042,7 +1042,7 @@ public:
 
         if (locals.current_poll.creator != qpi.invocator())
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeNotAuthorized };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeNotAuthorized };
             LOG_INFO(locals.logger);
             output.success = false;
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1051,7 +1051,7 @@ public:
 
         if (locals.current_poll.is_active == 0)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypePollInactive };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypePollInactive };
             LOG_INFO(locals.logger);
             output.success = false;
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1061,7 +1061,7 @@ public:
         locals.current_poll.is_active = 0;
         state.polls.set(locals.idx, locals.current_poll);
 
-        locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypePollCancelled };
+        locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypePollCancelled };
         LOG_INFO(locals.logger);
         output.success = true;
 
@@ -1077,7 +1077,7 @@ public:
         locals.idx = mod(input.poll_id, QUTIL_MAX_POLL);
         if (state.poll_ids.get(locals.idx) != input.poll_id)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeInvalidPollIdResult };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidPollIdResult };
             LOG_INFO(locals.logger);
             return;
         }
@@ -1110,7 +1110,7 @@ public:
         }
         if (output.count == 0)
         {
-            locals.logger = QUtilLogger{ 0, 0, qpi.invocator(), SELF, 0, QutilLogTypeNoPollsByCreator };
+            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeNoPollsByCreator };
             LOG_INFO(locals.logger);
         }
     }
@@ -1169,6 +1169,7 @@ public:
     BEGIN_EPOCH()
     {
         state.dfMiningSeed = qpi.getPrevSpectrumDigest();
+        qpi.initMiningSeed(state.dfMiningSeed);
     }
 
     struct BEGIN_TICK_locals

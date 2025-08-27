@@ -52,6 +52,8 @@ namespace QPI
 	typedef uint128_t uint128;
 	typedef m256i id;
 
+#define STATIC_ASSERT(condition, identifier) static_assert(condition, #identifier);
+
 #define NULL_ID id::zero()
 	constexpr sint64 NULL_INDEX = -1;
 
@@ -886,14 +888,14 @@ namespace QPI
 
 	// Divide a by b, but return 0 if b is 0 (rounding to lower magnitude in case of integers)
 	template <typename T>
-	inline static T div(T a, T b)
+	inline static constexpr T div(T a, T b)
 	{
 		return b ? (a / b) : T(0);
 	}
 
 	// Return remainder of dividing a by b, but return 0 if b is 0 (requires modulo % operator)
 	template <typename T>
-	inline static T mod(T a, T b)
+	inline static constexpr T mod(T a, T b)
 	{
 		return b ? (a % b) : 0;
 	}
@@ -1779,6 +1781,9 @@ namespace QPI
 
 		// run the score function (in qubic mining) and return first 256 bit of output
 		inline m256i computeMiningFunction(const m256i miningSeed, const m256i publicKey, const m256i nonce) const;
+
+		// init mining seed for the score function (in qubic mining)
+		inline void initMiningSeed(const m256i miningSeed) const;
 
 		inline bit signatureValidity(
 			const id& entity,

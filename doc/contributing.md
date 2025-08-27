@@ -191,6 +191,8 @@ The code formatting rules are enforced using `clang-format`, ideally setup as a 
 They are based on the "Microsoft" style with some custom modifications.
 Currently, the style guidelines are designed to improve consistency while minimizing the number of changes needed in the existing codebase.
 
+#### Naming
+
 The following naming rules are not strictly enforced, but should be followed at least in new code:
 
 - **Preprocessor symbols** must be defined `ALL_CAPS`.
@@ -220,6 +222,21 @@ The following naming rules are not strictly enforced, but should be followed at 
     - Constants with more limited scope should be named `likeVariables`.
 
 - **Functions** are named following the same pattern as variables. They usually start with a verb. Examples: `getComputerDigest()`, `processExchangePublicPeers()`, `initContractExec()`.
+
+#### Curly Braces Style
+
+Every opening curly brace should be on a new line. This applies to conditional blocks, loops, functions, classes, structs, etc. For example:
+
+```
+if (cond)
+{
+   // do something
+}
+else
+{
+   // do something else
+}
+```
 
 
 
@@ -373,3 +390,4 @@ Even when bound by serializing instructions, the system environment at the time 
 [AMD64 Architecture Programmer's Manual, Volumes 1-5, 13.2.4 Time-Stamp Counter](https://www.amd.com/content/dam/amd/en/documents/processor-tech-docs/programmer-references/40332.pdf)
 
 Another rich source: [Intel® 64 and IA-32 Architectures Software Developer's Manual Combined Volumes: 1, 2A, 2B, 2C, 2D, 3A, 3B, 3C, 3D, and 4](https://cdrdv2.intel.com/v1/dl/getContent/671200)
+
