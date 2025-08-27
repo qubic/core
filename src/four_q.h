@@ -644,27 +644,49 @@ static void table_lookup_fixed_base(point_precomp_t P, unsigned int digit, unsig
 
 static void multiply(const unsigned long long* a, const unsigned long long* b, unsigned long long* c)
 {
-    unsigned long long u, v, uv;
+    unsigned long long u, v, uv, tmp;
 
+    // The intended operation is: _addcarry_u64(0, _umul128(a[0], b[1], &uv), u, &c[1]) + uv.
+    // However, MSVC (VC2022 17.14 specifically) does not strictly preserve left-to-right evaluation order.
+    // A temporary variable is introduced to ensure that 'uv' is _umul128 before addition.
+    // The same behavior are applied for all following code
     c[0] = _umul128(a[0], b[0], &u);
-    u = _addcarry_u64(0, _umul128(a[0], b[1], &uv), u, &c[1]) + uv;
-    u = _addcarry_u64(0, _umul128(a[0], b[2], &uv), u, &c[2]) + uv;
-    c[4] = _addcarry_u64(0, _umul128(a[0], b[3], &uv), u, &c[3]) + uv;
+    tmp = _umul128(a[0], b[1], &uv);
+    u = _addcarry_u64(0, tmp, u, &c[1]) + uv;
+    tmp = _umul128(a[0], b[2], &uv);
+    u = _addcarry_u64(0, tmp, u, &c[2]) + uv;
+    tmp = _umul128(a[0], b[3], &uv);
+    c[4] = _addcarry_u64(0, tmp, u, &c[3]) + uv;
 
-    u = _addcarry_u64(0, c[1], _umul128(a[1], b[0], &uv), &c[1]) + uv;
-    u = _addcarry_u64(0, _umul128(a[1], b[1], &uv), u, &v) + uv;
-    u = _addcarry_u64(_addcarry_u64(0, c[2], v, &c[2]), _umul128(a[1], b[2], &uv), u, &v) + uv;
-    c[5] = _addcarry_u64(_addcarry_u64(0, c[3], v, &c[3]), _umul128(a[1], b[3], &uv), u, &v) + uv + _addcarry_u64(0, c[4], v, &c[4]);
+    tmp = _umul128(a[1], b[0], &uv);
+    u = _addcarry_u64(0, c[1], tmp, &c[1]) + uv;
+    tmp = _umul128(a[1], b[1], &uv);
+    u = _addcarry_u64(0, tmp, u, &v) + uv;
+    tmp = _umul128(a[1], b[2], &uv);
+    u = _addcarry_u64(_addcarry_u64(0, c[2], v, &c[2]), tmp, u, &v) + uv;
+    tmp = _umul128(a[1], b[3], &uv);
+    tmp = _addcarry_u64(_addcarry_u64(0, c[3], v, &c[3]), tmp, u, &v);
+    c[5] = tmp + uv + _addcarry_u64(0, c[4], v, &c[4]);
 
-    u = _addcarry_u64(0, c[2], _umul128(a[2], b[0], &uv), &c[2]) + uv;
-    u = _addcarry_u64(0, _umul128(a[2], b[1], &uv), u, &v) + uv;
-    u = _addcarry_u64(_addcarry_u64(0, c[3], v, &c[3]), _umul128(a[2], b[2], &uv), u, &v) + uv;
-    c[6] = _addcarry_u64(_addcarry_u64(0, c[4], v, &c[4]), _umul128(a[2], b[3], &uv), u, &v) + uv + _addcarry_u64(0, c[5], v, &c[5]);
+    tmp = _umul128(a[2], b[0], &uv);
+    u = _addcarry_u64(0, c[2], tmp, &c[2]) + uv;
+    tmp = _umul128(a[2], b[1], &uv);
+    u = _addcarry_u64(0, tmp, u, &v) + uv;
+    tmp = _umul128(a[2], b[2], &uv);
+    u = _addcarry_u64(_addcarry_u64(0, c[3], v, &c[3]), tmp, u, &v) + uv;
+    tmp = _umul128(a[2], b[3], &uv);
+    tmp = _addcarry_u64(_addcarry_u64(0, c[4], v, &c[4]), tmp, u, &v);
+    c[6] = tmp + uv + _addcarry_u64(0, c[5], v, &c[5]);
 
-    u = _addcarry_u64(0, c[3], _umul128(a[3], b[0], &uv), &c[3]) + uv;
-    u = _addcarry_u64(0, _umul128(a[3], b[1], &uv), u, &v) + uv;
-    u = _addcarry_u64(_addcarry_u64(0, c[4], v, &c[4]), _umul128(a[3], b[2], &uv), u, &v) + uv;
-    c[7] = _addcarry_u64(_addcarry_u64(0, c[5], v, &c[5]), _umul128(a[3], b[3], &uv), u, &v) + uv + _addcarry_u64(0, c[6], v, &c[6]);
+    tmp = _umul128(a[3], b[0], &uv);
+    u = _addcarry_u64(0, c[3], tmp, &c[3]) + uv;
+    tmp = _umul128(a[3], b[1], &uv);
+    u = _addcarry_u64(0, tmp, u, &v) + uv;
+    tmp = _umul128(a[3], b[2], &uv);
+    u = _addcarry_u64(_addcarry_u64(0, c[4], v, &c[4]), tmp, u, &v) + uv;
+    tmp = _umul128(a[3], b[3], &uv);
+    tmp = _addcarry_u64(_addcarry_u64(0, c[5], v, &c[5]), tmp, u, &v);
+    c[7] = tmp + uv + _addcarry_u64(0, c[6], v, &c[6]);
 }
 
 static void Montgomery_multiply_mod_order(const unsigned long long* ma, const unsigned long long* mb, unsigned long long* mc)
@@ -683,16 +705,21 @@ static void Montgomery_multiply_mod_order(const unsigned long long* ma, const un
         multiply(ma, mb, P); // P = ma * mb
     }
 
-    unsigned long long u, v, uv;
+    unsigned long long u, v, uv, tmp;
     Q[0] = _umul128(P[0], MONTGOMERY_SMALL_R_PRIME_0, &u);
-    u = _addcarry_u64(0, _umul128(P[0], MONTGOMERY_SMALL_R_PRIME_1, &uv), u, &Q[1]) + uv;
-    u = _addcarry_u64(0, _umul128(P[0], MONTGOMERY_SMALL_R_PRIME_2, &uv), u, &Q[2]) + uv;
+    tmp = _umul128(P[0], MONTGOMERY_SMALL_R_PRIME_1, &uv);
+    u = _addcarry_u64(0, tmp, u, &Q[1]) + uv;
+    tmp = _umul128(P[0], MONTGOMERY_SMALL_R_PRIME_2, &uv);
+    u = _addcarry_u64(0, tmp, u, &Q[2]) + uv;
     _addcarry_u64(0, P[0] * MONTGOMERY_SMALL_R_PRIME_3, u, &Q[3]);
-    u = _addcarry_u64(0, Q[1], _umul128(P[1], MONTGOMERY_SMALL_R_PRIME_0, &uv), &Q[1]) + uv;
-    u = _addcarry_u64(0, _umul128(P[1], MONTGOMERY_SMALL_R_PRIME_1, &uv), u, &v) + uv;
+    tmp = _umul128(P[1], MONTGOMERY_SMALL_R_PRIME_0, &uv);
+    u = _addcarry_u64(0, Q[1], tmp, &Q[1]) + uv;
+    tmp = _umul128(P[1], MONTGOMERY_SMALL_R_PRIME_1, &uv);
+    u = _addcarry_u64(0, tmp, u, &v) + uv;
     _addcarry_u64(_addcarry_u64(0, Q[2], v, &Q[2]), P[1] * MONTGOMERY_SMALL_R_PRIME_2, u, &v);
     _addcarry_u64(0, Q[3], v, &Q[3]);
-    u = _addcarry_u64(0, Q[2], _umul128(P[2], MONTGOMERY_SMALL_R_PRIME_0, &uv), &Q[2]) + uv;
+    tmp = _umul128(P[2], MONTGOMERY_SMALL_R_PRIME_0, &uv);
+    u = _addcarry_u64(0, Q[2], tmp, &Q[2]) + uv;
     _addcarry_u64(0, P[2] * MONTGOMERY_SMALL_R_PRIME_1, u, &v);
     _addcarry_u64(0, Q[3], v, &Q[3]);
     _addcarry_u64(0, Q[3], P[3] * MONTGOMERY_SMALL_R_PRIME_0, &Q[3]);

@@ -1,0 +1,37 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: ContractVerify
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+    paths:
+      - 'src/contracts/*.h'
+      - '.github/workflows/contract-verify.yml'
+  pull_request:
+    branches: [ "main", "develop" ]
+    paths:
+      - 'src/contracts/*.h'
+      - '.github/workflows/contract-verify.yml'
+
+jobs:
+  contract_verify_job:
+    runs-on: ubuntu-latest
+    name: Verify smart contract files
+    steps:
+      # Checkout repo to use files of the repo as input for container action
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Find all contract files to verify
+        id: filepaths
+        run: |
+          files=$(find src/contracts/ -maxdepth 1 -type f -name "*.h" ! -name "*TestExample*" ! -name "*math_lib*" ! -name "*qpi*" -printf "%p\n" | paste -sd, -)
+          echo "contract-filepaths=$files" >> "$GITHUB_OUTPUT"
+      - name: Contract verify action step
+        id: verify
+        uses: Franziska-Mueller/qubic-contract-verify@v0.3.3-beta
+        with:
+          filepaths: '${{ steps.filepaths.outputs.contract-filepaths }}'

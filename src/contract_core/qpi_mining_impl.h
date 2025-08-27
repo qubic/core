@@ -19,3 +19,8 @@ m256i QPI::QpiContextFunctionCall::computeMiningFunction(const m256i miningSeed,
     (*score_qpi)(0, publicKey, miningSeed, nonce);
     return score_qpi->getLastOutput(0);
 }
+
+void QPI::QpiContextFunctionCall::initMiningSeed(const m256i miningSeed) const
+{
+    score_qpi->initMiningData(miningSeed);
+}
