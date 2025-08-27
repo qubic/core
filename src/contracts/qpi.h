@@ -1782,9 +1782,6 @@ namespace QPI
 		// run the score function (in qubic mining) and return first 256 bit of output
 		inline m256i computeMiningFunction(const m256i miningSeed, const m256i publicKey, const m256i nonce) const;
 
-		// init mining seed for the score function (in qubic mining)
-		inline void initMiningSeed(const m256i miningSeed) const;
-
 		inline bit signatureValidity(
 			const id& entity,
 			const id& digest,
