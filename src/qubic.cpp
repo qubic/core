@@ -695,7 +695,15 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 if (isSolutionGood)
                                 {
                                     // Check the computor idx of this solution.
-                                    unsigned short computorID = (solution->nonce >> 32ULL) % 676ULL;
+                                    unsigned short computorID = 0;
+                                    if (solution->reserve0 == 0)
+                                    {
+                                        computorID = (solution->nonce >> 32ULL) % 676ULL;
+                                    }
+                                    else
+                                    {
+                                        computorID = solution->reserve1 % 676ULL;
+                                    }
 
                                     ACQUIRE(gCustomMiningSharesCountLock);
                                     gCustomMiningSharesCount[computorID]++;
@@ -3047,7 +3055,12 @@ static void processTick(unsigned long long processorNumber)
         // it should never go here
     }
 
-    if (system.tick == system.initialTick)
+    // Ensure to only call INITIALIZE and BEGIN_EPOCH once per epoch:
+    // system.initialTick usually is the first tick of the epoch, except when the network is restarted
+    // from scratch with a new TICK (which shall be indicated by TICK_IS_FIRST_TICK_OF_EPOCH == 0).
+    // However, after seamless epoch transition (system.epoch > EPOCH), system.initialTick is the first
+    // tick of the epoch in any case.
+    if (system.tick == system.initialTick && (TICK_IS_FIRST_TICK_OF_EPOCH || system.epoch > EPOCH))
     {
         PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
@@ -6949,15 +6962,24 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             }
                             else
                             {
-                                // randomly select verified public peers
-                                const unsigned int publicPeerIndex = random(numberOfPublicPeers);
-                                if (publicPeers[publicPeerIndex].isHandshaked /*&& publicPeers[publicPeerIndex].isFullnode*/)
+                                if (NUMBER_OF_PRIVATE_IP < numberOfPublicPeers)
                                 {
-                                    request->peers[j] = publicPeers[publicPeerIndex].address;
+                                    // randomly select verified public peers and discard private IPs
+                                    // first NUMBER_OF_PRIVATE_IP ips are same on both array publicPeers and knownPublicPeers
+                                    const unsigned int publicPeerIndex = NUMBER_OF_PRIVATE_IP + random(numberOfPublicPeers - NUMBER_OF_PRIVATE_IP);
+                                    // share the peer if it's not our private IPs and is handshaked
+                                    if (publicPeers[publicPeerIndex].isHandshaked)
+                                    {
+                                        request->peers[j] = publicPeers[publicPeerIndex].address;
+                                    }
+                                    else
+                                    {
+                                        j--;
+                                    }
                                 }
                                 else
                                 {
-                                    j--;
+                                    request->peers[j].u32 = 0;
                                 }
                             }
                         }

@@ -4,9 +4,6 @@
 
 #define ENABLE_PROFILING 0
 
-// needed for scoring task queue
-#define NUMBER_OF_TRANSACTIONS_PER_TICK 1024
-
 // current optimized implementation
 #include "../src/score.h"
 
@@ -232,9 +229,9 @@ void runCommonTests()
     {
         if (i < numberOfSamplesReadFromFile)
         {
-            miningSeeds[i] = hexToByte(sampleString[i][0], 32);
-            publicKeys[i] = hexToByte(sampleString[i][1], 32);
-            nonces[i] = hexToByte(sampleString[i][2], 32);
+            miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
+            publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
+            nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
         }
         else // Samples from files are not enough, randomly generate more
         {
@@ -430,9 +427,9 @@ TEST(TestQubicScoreFunction, TestDeterministic)
     // Reading the input samples
     for (unsigned long long i = 0; i < numberOfSamples; ++i)
     {
-        miningSeeds[i] = hexToByte(sampleString[i][0], 32);
-        publicKeys[i] = hexToByte(sampleString[i][1], 32);
-        nonces[i] = hexToByte(sampleString[i][2], 32);
+        miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
+        publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
+        nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
     }
 
     auto pScore = std::make_unique<ScoreFunction<

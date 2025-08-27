@@ -29,6 +29,10 @@ class ContractTesting : public LoggingTest
 public:
     ContractTesting()
     {
+
+#ifdef __AVX512F__
+        initAVX512FourQConstants();
+#endif
         initCommonBuffers();
         initContractExec();
         initSpecialEntities();
