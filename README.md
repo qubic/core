@@ -56,6 +56,11 @@ static const unsigned char knownPublicPeers[][4] = {
 - An epoch will have `TESTNET_EPOCH_DURATION` (**3000**) ticks by default, you can change it in `public_settings.h`
 - You can deploy your own RPC server of local devnet [how to](https://qubic-sc-docs.pages.dev/rpc/setup-rpc)
 
+## FAQs
+
+- **My node stop ticking after restart, why?**
+Delete the **system** file at your current working folder, it may make your node start with wrong state.
+
 ## Supporting Platform
 
 - [x] Windows
@@ -64,6 +69,7 @@ static const unsigned char knownPublicPeers[][4] = {
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
+
 
 
 
