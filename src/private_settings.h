@@ -1366,7 +1366,7 @@ static unsigned char broadcastedComputorSeeds[][55 + 1] = {
 
 // number of private ips for computor's internal services
 // these are the first N ip in knownPublicPeers, these IPs will never be shared or deleted
-#define NUMBER_OF_PRIVATE_IP 2
+#define NUMBER_OF_PRIVATE_IP 0
 // Enter static IPs of peers (ideally at least 4 including your own IP) to disseminate them to other peers.
 // You can find current peer IPs at https://app.qubic.li/network/live
 static const unsigned char knownPublicPeers[][4] = {
