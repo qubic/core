@@ -447,7 +447,7 @@ public:
         if (!allocPoolWithErrorLog(L"tickDataPtr ", tickDataSize, (void**)&tickDataPtr, __LINE__, true)
             || !allocPoolWithErrorLog(L"tickPtr", ticksSize, (void**)&ticksPtr, __LINE__, true)
             || !allocPoolWithErrorLog(L"tickTransactionPtr", tickTransactionsSize, (void**)&tickTransactionsPtr, __LINE__, true)
-            || !allocPoolWithErrorLog(L"tickTransactionOffset", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__)
+            || !allocPoolWithErrorLog(L"tickTransactionOffset", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__, true, true)
             || !allocPoolWithErrorLog(L"tickTransactionsDigestPtr", tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), (void**)&tickTransactionsDigestPtr, __LINE__, true, true))
         {
             return false;
@@ -588,7 +588,7 @@ public:
 			qVirtualDecommit(tickDataPtr, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(TickData));
 			qVirtualDecommit(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick));
 			qVirtualDecommit(tickTransactionsPtr, tickTransactionsSizeCurrentEpoch);
-            setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSizeCurrentEpoch, 0);
+			qVirtualDecommit(tickTransactionOffsetsPtr, tickTransactionOffsetsSizeCurrentEpoch);
         }
         else
         {
@@ -596,7 +596,7 @@ public:
 			//qVirtualDecommit(tickDataPtr, tickDataSize);
 			//qVirtualDecommit(ticksPtr, ticksSize);
 			//qVirtualDecommit(tickTransactionsPtr, tickTransactionsSize);
-            setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSize, 0);
+            //setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSize, 0);
             oldTickBegin = 0;
             oldTickEnd = 0;
         }
