@@ -1183,9 +1183,7 @@ public:
     {
         locals.dfPubkey = qpi.getPrevSpectrumDigest();
         locals.dfNonce = qpi.getPrevComputerDigest();
-#ifndef TESTNET
         state.dfCurrentState = qpi.computeMiningFunction(state.dfMiningSeed, locals.dfPubkey, locals.dfNonce);
-#endif
     }
 
     /*
