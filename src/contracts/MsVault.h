@@ -80,18 +80,17 @@ public:
     struct MSVaultLogger
     {
         uint32 _contractIndex;
-        // 1: Invalid vault ID or vault inactive
-        // 2: Caller not an owner
-        // 3: Invalid parameters (e.g., amount=0, destination=NULL_ID)
-        // 4: Release successful
-        // 5: Insufficient balance
-        // 6: Release not fully approved
-        // 7: Reset release requests successful
-        // 8: Asset not found in vault
-        // 9: Max asset types for vault reached
-        // 10: Asset release successful
-        // 11: Reset asset release successful
-        // 12: Management rights transfer failed after release
+        // _type corresponds to Procedure Status Codes
+        // 0: GENEREAL_FAILURE
+        // 1: SUCCESS
+        // 2: FAILURE_INSUFFICIENT_FEE
+        // 3: FAILURE_INVALID_VAULT
+        // 4: FAILURE_NOT_AUTHORIZED
+        // 5: FAILURE_INVALID_PARAMS
+        // 6: FAILURE_INSUFFICIENT_BALANCE
+        // 7: FAILURE_LIMIT_REACHED
+        // 8: FAILURE_TRANSFER_FAILED
+        // 9: PENDING_APPROVAL
         uint32 _type;
         uint64 vaultId;
         id ownerID;
@@ -188,6 +187,7 @@ public:
     };
     struct registerVault_locals
     {
+        MSVaultLogger logger;
         uint64 ownerCount;
         uint64 i;
         sint64 ii;
@@ -217,6 +217,7 @@ public:
     };
     struct deposit_locals
     {
+        MSVaultLogger logger;
         Vault vault;
         isValidVaultId_input iv_in;
         isValidVaultId_output iv_out;
@@ -305,6 +306,7 @@ public:
     };
     struct voteFeeChange_locals
     {
+        MSVaultLogger logger;
         uint64 i;
         uint64 sumVote;
         bit needNewRecord;
@@ -525,6 +527,7 @@ public:
     };
     struct depositAsset_locals
     {
+        MSVaultLogger logger;
         Vault vault;
         AssetBalance ab;
         sint64 assetIndex;
@@ -553,6 +556,7 @@ public:
     };
     struct revokeAssetManagementRights_locals
     {
+        MSVaultLogger logger;
         sint64 managedBalance;
         sint64 result;
     };
@@ -743,10 +747,16 @@ protected:
     {
         output.status = 0;
 
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.vaultId = -1; // Not yet created
+
         if (qpi.invocationReward() < (sint64)state.liveRegisteringFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -783,6 +793,8 @@ protected:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 5; // FAILURE_INVALID_PARAMS
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -791,6 +803,8 @@ protected:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 5; // FAILURE_INVALID_PARAMS
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -817,6 +831,8 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
                 output.status = 7; // FAILURE_LIMIT_REACHED
+                locals.logger._type = output.status;
+                LOG_INFO(locals.logger);
                 return;
             }
         }
@@ -837,6 +853,8 @@ protected:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 7; // FAILURE_LIMIT_REACHED
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -878,20 +896,29 @@ protected:
 
         state.totalRevenue += state.liveRegisteringFee;
         output.status = 1; // SUCCESS
+        locals.logger.vaultId = locals.slotIndex;
+        locals.logger._type = output.status;
+        LOG_INFO(locals.logger);
     }
 
     PUBLIC_PROCEDURE_WITH_LOCALS(deposit)
     {
         output.status = 0; // FAILURE_GENERAL
 
-        if (qpi.invocationReward() < state.liveDepositFee)
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.vaultId = input.vaultId;
+
+        if (qpi.invocationReward() < (sint64)state.liveDepositFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
-        if (qpi.invocationReward() > state.liveDepositFee)
+        if (qpi.invocationReward() > (sint64)state.liveDepositFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
@@ -903,6 +930,8 @@ protected:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -911,12 +940,16 @@ protected:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
-        locals.vault.qubicBalance += qpi.invocationReward();
+        locals.vault.qubicBalance += (uint64)qpi.invocationReward();
         state.vaults.set(input.vaultId, locals.vault);
         output.status = 1; // SUCCESS
+        locals.logger._type = output.status;
+        LOG_INFO(locals.logger);
     }
 
     PUBLIC_PROCEDURE_WITH_LOCALS(revokeAssetManagementRights)
@@ -927,11 +960,17 @@ protected:
         output.status = 0; // FAILURE_GENERAL
         output.transferredNumberOfShares = 0;
 
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.amount = input.numberOfShares;
+
         if (qpi.invocationReward() < (sint64)MSVAULT_REVOKE_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.transferredNumberOfShares = 0;
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -946,6 +985,8 @@ protected:
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.transferredNumberOfShares = 0;
             output.status = 5; // FAILURE_INVALID_PARAMS
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -961,6 +1002,8 @@ protected:
             // The user is trying to revoke more shares than are managed by MsVault.
             output.transferredNumberOfShares = 0;
             output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
         }
         else
         {
@@ -985,6 +1028,8 @@ protected:
                 output.transferredNumberOfShares = input.numberOfShares;
                 output.status = 1; // SUCCESS
             }
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
         }
     }
 
@@ -992,14 +1037,21 @@ protected:
     {
         output.status = 0; // GENEREAL_FAILURE
 
-        if (qpi.invocationReward() < state.liveDepositFee)
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.vaultId = input.vaultId;
+        locals.logger.amount = input.amount;
+
+        if (qpi.invocationReward() < (sint64)state.liveDepositFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
-        if (qpi.invocationReward() > state.liveDepositFee)
+        if (qpi.invocationReward() > (sint64)state.liveDepositFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
@@ -1013,6 +1065,8 @@ protected:
             // User does not have enough shares, or is trying to deposit zero. Abort.
             output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1023,6 +1077,8 @@ protected:
         {
             output.status = 3; // FAILURE_INVALID_VAULT
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return; // invalid vault id
         }
 
@@ -1031,6 +1087,8 @@ protected:
         {
             output.status = 3; // FAILURE_INVALID_VAULT
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return; // vault is not active
         }
 
@@ -1052,6 +1110,8 @@ protected:
             // no more new asset
             output.status = 7; // FAILURE_LIMIT_REACHED
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1073,6 +1133,8 @@ protected:
         {
             output.status = 8; // FAILURE_TRANSFER_FAILED
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1082,6 +1144,8 @@ protected:
         {
             output.status = 8; // FAILURE_TRANSFER_FAILED
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1104,16 +1168,26 @@ protected:
 
         state.vaults.set(input.vaultId, locals.vault);
         output.status = 1; // SUCCESS
+        locals.logger._type = output.status;
+        LOG_INFO(locals.logger);
     }
 
     PUBLIC_PROCEDURE_WITH_LOCALS(releaseTo)
     {
         output.status = 0; // GENEREAL_FAILURE
 
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger.vaultId = input.vaultId;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.amount = input.amount;
+        locals.logger.destination = input.destination;
+
         if (qpi.invocationReward() < (sint64)state.liveReleaseFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1124,22 +1198,15 @@ protected:
 
         state.totalRevenue += state.liveReleaseFee;
 
-        locals.logger._contractIndex = CONTRACT_INDEX;
-        locals.logger._type = 0;
-        locals.logger.vaultId = input.vaultId;
-        locals.logger.ownerID = qpi.invocator();
-        locals.logger.amount = input.amount;
-        locals.logger.destination = input.destination;
-
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
         if (!locals.iv_out.result)
         {
-            locals.logger._type = 1;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1147,10 +1214,10 @@ protected:
 
         if (!locals.vault.isActive)
         {
-            locals.logger._type = 1;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1159,28 +1226,28 @@ protected:
         isOwnerOfVault(qpi, state, locals.io_in, locals.io_out, locals.io_locals);
         if (!locals.io_out.result)
         {
-            locals.logger._type = 2;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 4; // FAILURE_NOT_AUTHORIZED
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
         if (input.amount == 0 || input.destination == NULL_ID)
         {
-            locals.logger._type = 3;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 5; // FAILURE_INVALID_PARAMS
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
         if (locals.vault.qubicBalance < input.amount)
         {
-            locals.logger._type = 5;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1223,23 +1290,23 @@ protected:
 
                 state.vaults.set(input.vaultId, locals.vault);
 
-                locals.logger._type = 4;
-                LOG_INFO(locals.logger);
                 output.status = 1; // SUCCESS
+                locals.logger._type = output.status;
+                LOG_INFO(locals.logger);
             }
             else
             {
-                locals.logger._type = 5;
-                LOG_INFO(locals.logger);
                 output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
+                locals.logger._type = output.status;
+                LOG_INFO(locals.logger);
             }
         }
         else
         {
             state.vaults.set(input.vaultId, locals.vault);
-            locals.logger._type = 6;
-            LOG_INFO(locals.logger);
             output.status = 9; // PENDING_APPROVAL
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
         }
     }
 
@@ -1247,10 +1314,18 @@ protected:
     {
         output.status = 0; // GENEREAL_FAILURE
 
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger.vaultId = input.vaultId;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.amount = input.amount;
+        locals.logger.destination = input.destination;
+
         if (qpi.invocationReward() < (sint64)state.liveReleaseFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1261,22 +1336,15 @@ protected:
 
         state.totalRevenue += state.liveReleaseFee;
 
-        locals.logger._contractIndex = CONTRACT_INDEX;
-        locals.logger._type = 0;
-        locals.logger.vaultId = input.vaultId;
-        locals.logger.ownerID = qpi.invocator();
-        locals.logger.amount = input.amount;
-        locals.logger.destination = input.destination;
-
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
         if (!locals.iv_out.result)
         {
-            locals.logger._type = 1;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1284,10 +1352,10 @@ protected:
 
         if (!locals.vault.isActive)
         {
-            locals.logger._type = 1;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1296,28 +1364,28 @@ protected:
         isOwnerOfVault(qpi, state, locals.io_in, locals.io_out, locals.io_locals);
         if (!locals.io_out.result)
         {
-            locals.logger._type = 2;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 4; // FAILURE_NOT_AUTHORIZED
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
         if (locals.vault.qubicBalance < MSVAULT_REVOKE_FEE)
         {
-            locals.logger._type = 5;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
         if (input.amount == 0 || input.destination == NULL_ID)
         {
-            locals.logger._type = 3;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 5; // FAILURE_INVALID_PARAMS
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1334,19 +1402,19 @@ protected:
         }
         if (locals.assetIndex == -1)
         {
-            locals.logger._type = 8;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 5; // FAILURE_INVALID_PARAMS
+            locals.logger._type = output.status; // Asset not found
+            LOG_INFO(locals.logger);
             return;
         }
 
         if (locals.vault.assetBalances.get(locals.assetIndex).balance < input.amount)
         {
-            locals.logger._type = 5;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1414,15 +1482,14 @@ protected:
                     {
                         // Deduct the fee from the vault's balance upon success
                         locals.vault.qubicBalance -= MSVAULT_REVOKE_FEE;
-                        locals.logger._type = 10; // Asset release successful
                         output.status = 1; // SUCCESS
                     }
                     else
                     {
                         // Log an error if management rights transfer fails
-                        locals.logger._type = 12; // Management rights transfer failed
                         output.status = 8; // FAILURE_TRANSFER_FAILED
                     }
+                    locals.logger._type = output.status;
                     LOG_INFO(locals.logger);
 
                     // Reset all asset release requests
@@ -1432,32 +1499,29 @@ protected:
                         locals.vault.releaseAssetAmounts.set(locals.i, 0);
                         locals.vault.releaseAssetDestinations.set(locals.i, NULL_ID);
                     }
-
-                    locals.logger._type = 10;
-                    LOG_INFO(locals.logger);
                 }
                 else
                 {
-                    locals.logger._type = 5;
-                    LOG_INFO(locals.logger);
                     output.status = 8; // FAILURE_TRANSFER_FAILED
+                    locals.logger._type = output.status;
+                    LOG_INFO(locals.logger);
                 }
                 state.vaults.set(input.vaultId, locals.vault);
             }
             else
             {
-                locals.logger._type = 5;
-                LOG_INFO(locals.logger);
                 output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
                 state.vaults.set(input.vaultId, locals.vault);
+                locals.logger._type = output.status;
+                LOG_INFO(locals.logger);
             }
         }
         else
         {
             state.vaults.set(input.vaultId, locals.vault);
-            locals.logger._type = 6;
-            LOG_INFO(locals.logger);
             output.status = 9; // PENDING_APPROVAL
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
         }
     }
 
@@ -1465,10 +1529,18 @@ protected:
     {
         output.status = 0; // GENEREAL_FAILURE
 
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger.vaultId = input.vaultId;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.amount = 0;
+        locals.logger.destination = NULL_ID;
+
         if (qpi.invocationReward() < (sint64)state.liveReleaseResetFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
         if (qpi.invocationReward() > (sint64)state.liveReleaseResetFee)
@@ -1478,22 +1550,15 @@ protected:
 
         state.totalRevenue += state.liveReleaseResetFee;
 
-        locals.logger._contractIndex = CONTRACT_INDEX;
-        locals.logger._type = 0;
-        locals.logger.vaultId = input.vaultId;
-        locals.logger.ownerID = qpi.invocator();
-        locals.logger.amount = 0;
-        locals.logger.destination = NULL_ID;
-
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
         if (!locals.iv_out.result)
         {
-            locals.logger._type = 1;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1501,10 +1566,10 @@ protected:
 
         if (!locals.vault.isActive)
         {
-            locals.logger._type = 1;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1513,10 +1578,10 @@ protected:
         isOwnerOfVault(qpi, state, locals.io_in, locals.io_out, locals.io_locals);
         if (!locals.io_out.result)
         {
-            locals.logger._type = 2;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 4; // FAILURE_NOT_AUTHORIZED
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1530,19 +1595,27 @@ protected:
 
         state.vaults.set(input.vaultId, locals.vault);
 
-        locals.logger._type = 7;
-        LOG_INFO(locals.logger);
         output.status = 1; // SUCCESS
+        locals.logger._type = output.status;
+        LOG_INFO(locals.logger);
     }
 
     PUBLIC_PROCEDURE_WITH_LOCALS(resetAssetRelease)
     {
         output.status = 0; // GENEREAL_FAILURE
 
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger.vaultId = input.vaultId;
+        locals.logger.ownerID = qpi.invocator();
+        locals.logger.amount = 0;
+        locals.logger.destination = NULL_ID;
+
         if (qpi.invocationReward() < (sint64)state.liveReleaseResetFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
         if (qpi.invocationReward() > (sint64)state.liveReleaseResetFee)
@@ -1552,22 +1625,15 @@ protected:
 
         state.totalRevenue += state.liveReleaseResetFee;
 
-        locals.logger._contractIndex = CONTRACT_INDEX;
-        locals.logger._type = 0;
-        locals.logger.vaultId = input.vaultId;
-        locals.logger.ownerID = qpi.invocator();
-        locals.logger.amount = 0;
-        locals.logger.destination = NULL_ID;
-
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
 
         if (!locals.iv_out.result)
         {
-            locals.logger._type = 1;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1575,10 +1641,10 @@ protected:
 
         if (!locals.vault.isActive)
         {
-            locals.logger._type = 1;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 3; // FAILURE_INVALID_VAULT
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1587,10 +1653,10 @@ protected:
         isOwnerOfVault(qpi, state, locals.io_in, locals.io_out, locals.io_locals);
         if (!locals.io_out.result)
         {
-            locals.logger._type = 2;
-            LOG_INFO(locals.logger);
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 4; // FAILURE_NOT_AUTHORIZED
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1605,19 +1671,24 @@ protected:
 
         state.vaults.set(input.vaultId, locals.vault);
 
-        locals.logger._type = 11;
-        LOG_INFO(locals.logger);
         output.status = 1; // SUCCESS
+        locals.logger._type = output.status;
+        LOG_INFO(locals.logger);
     }
 
     PUBLIC_PROCEDURE_WITH_LOCALS(voteFeeChange)
     {
         output.status = 0; // GENEREAL_FAILURE
 
+        locals.logger._contractIndex = CONTRACT_INDEX;
+        locals.logger.ownerID = qpi.invocator();
+
         if (qpi.invocationReward() < (sint64)MSVAULT_VOTE_FEE_CHANGE_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
 
@@ -1626,6 +1697,8 @@ protected:
         if (!locals.ish_out.result)
         {
             output.status = 4; // FAILURE_NOT_AUTHORIZED
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
     
@@ -1668,6 +1741,8 @@ protected:
         if (locals.sumVote < QUORUM)
         {
             output.status = 1; // SUCCESS
+            locals.logger._type = output.status;
+            LOG_INFO(locals.logger);
             return;
         }
     
@@ -1728,10 +1803,14 @@ protected:
                 state.feeVotesAddrCount = 0;
                 state.uniqueFeeVotesCount = 0;
                 output.status = 1; // SUCCESS
+                locals.logger._type = output.status;
+                LOG_INFO(locals.logger);
                 return;
             }
         }
         output.status = 1; // SUCCESS
+        locals.logger._type = output.status;
+        LOG_INFO(locals.logger);
     }
 
     PUBLIC_FUNCTION_WITH_LOCALS(getVaults)
