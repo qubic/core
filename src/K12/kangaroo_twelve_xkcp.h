@@ -744,7 +744,11 @@ namespace K12xkcp
 
     /* ---------------------------------------------------------------- */
 
+#if defined(_MSC_VER)
 #define ROL64(a, offset) _rotl64(a, offset)
+#else
+#define ROL64(a, offset) ((((unsigned long long)a) << offset) ^ (((unsigned long long)a) >> (64 - offset)))
+#endif
 
     /* ---------------------------------------------------------------- */
 

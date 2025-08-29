@@ -1299,41 +1299,50 @@ namespace QPI
 		uint32 tick;
 
 		// Proposal payload data (for all except types with class GeneralProposal)
+
+		struct Transfer
+		{
+			id destination;
+			Array<sint64, 4> amounts;   // N first amounts are the proposed options (non-negative, sorted without duplicates), rest zero
+		};
+
+		struct TransferInEpoch
+		{
+			id destination;
+			sint64 amount;              // non-negative
+			uint16 targetEpoch;         // not checked by isValid()!
+		};
+
+		struct VariableOptions
+		{
+			uint64 variable;            // For identifying variable (interpreted by contract only)
+			Array<sint64, 4> values;    // N first amounts are proposed options sorted without duplicates, rest zero
+		};
+
+		struct VariableScalar
+		{
+			uint64 variable;            // For identifying variable (interpreted by contract only)
+			sint64 minValue;            // Minimum value allowed in proposedValue and votes, must be > NO_VOTE_VALUE
+			sint64 maxValue;            // Maximum value allowed in proposedValue and votes, must be >= minValue
+			sint64 proposedValue;       // Needs to be in range between minValue and maxValue
+
+			sint64 minSupportedValue = 0x8000000000000001;
+			sint64 maxSupportedValue = 0x7fffffffffffffff;
+		};
+
 		union
 		{
 			// Used if type class is Transfer
-			struct Transfer
-			{
-				id destination;
-				Array<sint64, 4> amounts;   // N first amounts are the proposed options (non-negative, sorted without duplicates), rest zero
-			} transfer;
+			Transfer transfer;
 
 			// Used if type class is TransferInEpoch
-			struct TransferInEpoch
-			{
-				id destination;
-				sint64 amount;              // non-negative
-				uint16 targetEpoch;         // not checked by isValid()!
-			} transferInEpoch;
+			TransferInEpoch transferInEpoch;
 
 			// Used if type class is Variable and type is not VariableScalarMean
-			struct VariableOptions
-			{
-				uint64 variable;            // For identifying variable (interpreted by contract only)
-				Array<sint64, 4> values;    // N first amounts are proposed options sorted without duplicates, rest zero
-			} variableOptions;
+			VariableOptions variableOptions;
 
 			// Used if type is VariableScalarMean
-			struct VariableScalar
-			{
-				uint64 variable;            // For identifying variable (interpreted by contract only)
-				sint64 minValue;            // Minimum value allowed in proposedValue and votes, must be > NO_VOTE_VALUE
-				sint64 maxValue;            // Maximum value allowed in proposedValue and votes, must be >= minValue
-				sint64 proposedValue;       // Needs to be in range between minValue and maxValue
-
-				static constexpr sint64 minSupportedValue = 0x8000000000000001;
-				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
-			} variableScalar;
+			VariableScalar variableScalar;
 		};
 
 		// Check if content of instance are valid. Epoch is not checked.
@@ -1419,22 +1428,26 @@ namespace QPI
 		// Tick when proposal has been set. Output only, overwritten in setProposal().
 		uint32 tick;
 
+		struct Transfer
+		{
+			id destination;
+			sint64 amount;		// Amount of proposed option (non-negative)
+		}; 
+
+		struct VariableOptions
+		{
+			uint64 variable;    // For identifying variable (interpreted by contract only)
+			sint64 value;		// Value of proposed option, rest zero
+		};
+
 		// Proposal payload data (for all except types with class GeneralProposal)
 		union
 		{
 			// Used if type class is Transfer
-			struct Transfer
-			{
-				id destination;
-				sint64 amount;		// Amount of proposed option (non-negative)
-			} transfer;
+			Transfer transfer;
 
 			// Used if type class is Variable and type is not VariableScalarMean
-			struct VariableOptions
-			{
-				uint64 variable;    // For identifying variable (interpreted by contract only)
-				sint64 value;		// Value of proposed option, rest zero
-			} variableOptions;
+			VariableOptions variableOptions;
 		};
 
 		// Check if content of instance are valid. Epoch is not checked.

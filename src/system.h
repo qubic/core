@@ -7,7 +7,9 @@
 
 #define MAX_NUMBER_OF_SOLUTIONS 65536 // Must be 2^N
 
-
+#ifdef __linux__
+#define system qsystem
+#endif
 
 struct System
 {

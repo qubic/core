@@ -33,7 +33,31 @@ static constexpr int ASYNC_FILE_IO_MAX_QUEUE_ITEMS = (1ULL << ASYNC_FILE_IO_MAX_
 static EFI_FILE_PROTOCOL* root = NULL;
 class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
+
+#ifndef _MSC_VER
+bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *mode) {
+    if (!file) return EINVAL;
+
+    std::setlocale(LC_ALL, "");
+
+    // Convert filename
+    std::string fileNameUtf8 = wchar_to_string(fileName);
+
+    // Convert mode
+    std::string modeUtf8 = wchar_to_string(mode);
+
+    // Try to open
+    FILE* f = std::fopen(fileNameUtf8.c_str(), modeUtf8.c_str());
+
+    if (!f) return errno;
+        *file = f;
+
+    return 0;
+}
+#endif
+
 static void addDebugMessage(const CHAR16* msg);
+
 static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
@@ -235,12 +259,22 @@ static long long load(const CHAR16* fileName, unsigned long long totalSize, unsi
     FILE* file = nullptr;
     if (_wfopen_s(&file, fileName, L"rb") != 0 || !file)
     {
+#ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
+#else
+        print_wstr(L"Error while opening file ");
+        print_wstr(fileName);
+        print_wstr(L"!\n");
+#endif
         return -1;
     }
     if (fread(buffer, 1, totalSize, file) != totalSize)
     {
+#ifdef _MSC_VER
         wprintf(L"Error reading %llu bytes from %s!\n", totalSize, fileName);
+#else
+        print_wstr(L"Error reading ");
+#endif
         return -1;
     }
     fclose(file);
@@ -319,12 +353,22 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
     FILE* file = nullptr;
     if (_wfopen_s(&file, fileName, L"wb") != 0 || !file)
     {
+#ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
+#else
+        print_wstr(L"Error while opening file ");
+        print_wstr(fileName);
+        print_wstr(L"!\n");
+#endif
         return -1;
     }
     if (fwrite(buffer, 1, totalSize, file) != totalSize)
     {
+#ifdef _MSC_VER
         wprintf(L"Error writting %llu bytes from %s!\n", totalSize, fileName);
+#else
+        print_wstr(L"Error");
+#endif
         return -1;
     }
     fclose(file);
@@ -1284,12 +1328,21 @@ static int flushAsyncFileIOBuffer(int numberOfItemsPerQueue = 0)
 OPTIMIZE_ON()
 
 // add epoch number as an extension to a filename
+#ifdef __linux__
+static void addEpochToFileName(wchar_t* filename, int nameSize, short epoch)
+{
+    filename[nameSize - 4] = epoch / 100 + L'0';
+    filename[nameSize - 3] = (epoch % 100) / 10 + L'0';
+    filename[nameSize - 2] = epoch % 10 + L'0';
+}
+#else
 static void addEpochToFileName(unsigned short* filename, int nameSize, short epoch)
 {
     filename[nameSize - 4] = epoch / 100 + L'0';
     filename[nameSize - 3] = (epoch % 100) / 10 + L'0';
     filename[nameSize - 2] = epoch % 10 + L'0';
 }
+#endif
 
 // note: remember to plus 1 for end of string symbol if you going to use this returned value for addEpochToFileName
 static unsigned int getTextSize(CHAR16* text, int maximumSize)

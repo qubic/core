@@ -7,6 +7,7 @@
 #include "platform/m256.h"
 
 #include "kangaroo_twelve.h"
+#include "platform/console_logging.h"
 
 
 ////////// FourQ \\\\\\\\\\
@@ -42,7 +43,7 @@
 #define C4 0x6BC57DEF56CE8877
 
 #ifdef __AVX512F__
-static __m256i B1, B2, B3, B4, C;
+static m256i B1, B2, B3, B4, C;
 
 static void initAVX512FourQConstants()
 {
@@ -91,6 +92,53 @@ typedef struct
     f2elm_t t2;
 } point_precomp;
 typedef point_precomp point_precomp_t[1];
+
+
+#ifndef _MSC_VER
+static uint64_t _umul128(uint64_t a, uint64_t b, long long unsigned int *hi)
+{
+    union { unsigned __int128 v; uint64_t sv[2]; } var;
+    var.v = a;
+    var.v *= b;
+    if (hi) *hi = var.sv[1];
+    return var.sv[0];
+}
+
+
+static uint64_t __shiftleft128 (uint64_t  LowPart, uint64_t HighPart, uint8_t Shift)
+{
+#if __aarch64__
+    __uint128_t a = (((__uint128_t)(HighPart)) << 64) | LowPart;
+    a = a << Shift;
+    return (a>>64) & 0xFFFFFFFFFFFFFFFFULL;
+#else
+    uint64_t ret;
+    __asm__ ("shld {%[Shift],%[LowPart],%[HighPart]|%[HighPart], %[LowPart], %[Shift]}"
+            : [ret] "=r" (ret)
+    : [LowPart] "r" (LowPart), [HighPart] "0" (HighPart), [Shift] "Jc" (Shift)
+    : "cc");
+    return ret;
+#endif
+}
+
+static uint64_t __shiftright128 (uint64_t  LowPart, uint64_t HighPart, uint8_t Shift)
+{
+#if __aarch64__
+    __uint128_t a = (((__uint128_t)(HighPart)) << 64) | LowPart;
+    a = a >> Shift;
+    return a & 0xFFFFFFFFFFFFFFFFULL;
+#else
+    uint64_t ret;
+    __asm__ ("shrd {%[Shift],%[HighPart],%[LowPart]|%[LowPart], %[HighPart], %[Shift]}"
+            : [ret] "=r" (ret)
+    : [LowPart] "0" (LowPart), [HighPart] "r" (HighPart), [Shift] "Jc" (Shift)
+    : "cc");
+
+    return ret;
+#endif
+}
+
+#endif
 
 static const unsigned long long PARAMETER_d[4] = { 0x0000000000000142, 0x00000000000000E4, 0xB3821488F1FC0C8D, 0x5E472F846657E0FC };
 static const unsigned long long curve_order[4] = { CURVE_ORDER_0, CURVE_ORDER_1, CURVE_ORDER_2, CURVE_ORDER_3 };
@@ -627,8 +675,8 @@ static void table_lookup_fixed_base(point_precomp_t P, unsigned int digit, unsig
 { // Table lookup to extract a point represented as (x+y,y-x,2t) corresponding to extended twisted Edwards coordinates (X:Y:Z:T) with Z=1
     if (sign)
     {
-        *((__m256i*)P->xy) = *((__m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->yx);
-        *((__m256i*)P->yx) = *((__m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->xy);
+        *((m256i*)P->xy) = *((m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->yx);
+        *((m256i*)P->yx) = *((m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->xy);
         P->t2[0][0] = ~(((point_precomp_t*)FIXED_BASE_TABLE)[digit])->t2[0][0];
         P->t2[0][1] = 0x7FFFFFFFFFFFFFFF - (((point_precomp_t*)FIXED_BASE_TABLE)[digit])->t2[0][1];
         P->t2[1][0] = ~(((point_precomp_t*)FIXED_BASE_TABLE)[digit])->t2[1][0];
@@ -636,9 +684,9 @@ static void table_lookup_fixed_base(point_precomp_t P, unsigned int digit, unsig
     }
     else
     {
-        *((__m256i*)P->xy) = *((__m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->xy);
-        *((__m256i*)P->yx) = *((__m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->yx);
-        *((__m256i*)P->t2) = *((__m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->t2);
+        *((m256i*)P->xy) = *((m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->xy);
+        *((m256i*)P->yx) = *((m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->yx);
+        *((m256i*)P->t2) = *((m256i*)((point_precomp_t*)FIXED_BASE_TABLE)[digit]->t2);
     }
 }
 
@@ -697,8 +745,8 @@ static void Montgomery_multiply_mod_order(const unsigned long long* ma, const un
 
     if (mb[0] == 1 && !mb[1] && !mb[2] && !mb[3])
     {
-        *((__m256i*) & P[0]) = *((__m256i*)ma);
-        *((__m256i*) & P[4]) = _mm256_setzero_si256();
+        *((m256i*) & P[0]) = *((m256i*)ma);
+        *((m256i*) & P[4]) = _mm256_setzero_si256();
     }
     else
     {
@@ -772,14 +820,14 @@ static void R1_to_R3(point_extproj_t P, point_extproj_precomp_t Q)
     fp2add1271(P->x, P->y, Q->xy);         // XQ = (X1+Y1) 
     fp2sub1271(P->y, P->x, Q->yx);         // YQ = (Y1-X1) 
     fp2mul1271(P->ta, P->tb, Q->t2);       // TQ = T1
-    *((__m256i*) & Q->z2) = *((__m256i*) & P->z);              // ZQ = Z1 
+    *((m256i*) & Q->z2) = *((m256i*) & P->z);              // ZQ = Z1 
 }
 
 static void R2_to_R4(point_extproj_precomp_t P, point_extproj_t Q)
 { // Conversion from representation (X+Y,Y-X,2Z,2dT) to (2X,2Y,2Z,2dT) 
     fp2sub1271(P->xy, P->yx, Q->x);        // XQ = 2*X1
     fp2add1271(P->xy, P->yx, Q->y);        // YQ = 2*Y1
-    *((__m256i*) & Q->z) = *((__m256i*) & P->z2);              // ZQ = 2*Z1
+    *((m256i*) & Q->z) = *((m256i*) & P->z2);              // ZQ = 2*Z1
 }
 
 static void eccdouble(point_extproj_t P)
@@ -827,10 +875,10 @@ static void eccadd(point_extproj_precomp_t Q, point_extproj_t P)
 
 static void point_setup(point_t P, point_extproj_t Q)
 { // Point conversion to representation (X,Y,Z,Ta,Tb)
-    *((__m256i*) & Q->x) = *((__m256i*) & P->x);
-    *((__m256i*) & Q->y) = *((__m256i*) & P->y);
-    *((__m256i*) & Q->ta) = *((__m256i*) & Q->x);  // Ta = X1
-    *((__m256i*) & Q->tb) = *((__m256i*) & Q->y);  // Tb = Y1
+    *((m256i*) & Q->x) = *((m256i*) & P->x);
+    *((m256i*) & Q->y) = *((m256i*) & P->y);
+    *((m256i*) & Q->ta) = *((m256i*) & Q->x);  // Ta = X1
+    *((m256i*) & Q->tb) = *((m256i*) & Q->y);  // Tb = Y1
     Q->z[0][0] = 1; Q->z[0][1] = 0; Q->z[1][0] = 0; Q->z[1][1] = 0; // Z1 = 1
 }
 
@@ -938,8 +986,8 @@ static void ecc_mul_fixed(unsigned long long* k, point_t Q)
     fp2div1271(R->x);                                               // XQ = x1
     fp2div1271(R->y);                                               // YQ = y1 
     R->z[0][0] = 1; R->z[0][1] = 0; R->z[1][0] = 0; R->z[1][1] = 0; // ZQ = 1
-    *((__m256i*) & R->ta) = *((__m256i*) & R->x);     // TaQ = x1
-    *((__m256i*) & R->tb) = *((__m256i*) & R->y);     // TbQ = y1
+    *((m256i*) & R->ta) = *((m256i*) & R->x);     // TaQ = x1
+    *((m256i*) & R->tb) = *((m256i*) & R->y);     // TbQ = y1
 
     table_lookup_fixed_base(S, 48 + (((((digits[239] << 1) + digits[189]) << 1) + digits[139]) << 1) + digits[89], digits[39]);
     eccmadd(S, R);
@@ -1183,18 +1231,18 @@ static void ecc_phi(point_extproj_t P)
 
 static void eccneg_extproj_precomp(point_extproj_precomp_t P, point_extproj_precomp_t Q)
 { // Point negation
-    *((__m256i*) & Q->t2) = *((__m256i*) & P->t2);
-    *((__m256i*) & Q->yx) = *((__m256i*) & P->xy);
-    *((__m256i*) & Q->xy) = *((__m256i*) & P->yx);
-    *((__m256i*) & Q->z2) = *((__m256i*) & P->z2);
+    *((m256i*) & Q->t2) = *((m256i*) & P->t2);
+    *((m256i*) & Q->yx) = *((m256i*) & P->xy);
+    *((m256i*) & Q->xy) = *((m256i*) & P->yx);
+    *((m256i*) & Q->z2) = *((m256i*) & P->z2);
     fp2neg1271(Q->t2);
 }
 
 static void eccneg_precomp(point_precomp_t P, point_precomp_t Q)
 { // Point negation
-    *((__m256i*) & Q->t2) = *((__m256i*) & P->t2);
-    *((__m256i*) & Q->yx) = *((__m256i*) & P->xy);
-    *((__m256i*) & Q->xy) = *((__m256i*) & P->yx);
+    *((m256i*) & Q->t2) = *((m256i*) & P->t2);
+    *((m256i*) & Q->yx) = *((m256i*) & P->xy);
+    *((m256i*) & Q->xy) = *((m256i*) & P->yx);
     fp2neg1271(Q->t2);
 }
 
@@ -1232,10 +1280,10 @@ static void decompose(unsigned long long* k, unsigned long long* scalars)
     const unsigned long long a4 = mul_truncate(k, (unsigned long long*)ell4);
 
 #ifdef __AVX512F__
-    * ((__m256i*)scalars) = _mm256_add_epi64(_mm256_add_epi64(_mm256_add_epi64(_mm256_add_epi64(_mm256_mullo_epi64(_mm256_set1_epi64x(a1), B1), _mm256_mullo_epi64(_mm256_set1_epi64x(a2), B2)), _mm256_mullo_epi64(_mm256_set1_epi64x(a3), B3)), _mm256_mullo_epi64(_mm256_set1_epi64x(a4), B4)), C);
+    * ((m256i*)scalars) = _mm256_add_epi64(_mm256_add_epi64(_mm256_add_epi64(_mm256_add_epi64(_mm256_mullo_epi64(_mm256_set1_epi64x(a1), B1), _mm256_mullo_epi64(_mm256_set1_epi64x(a2), B2)), _mm256_mullo_epi64(_mm256_set1_epi64x(a3), B3)), _mm256_mullo_epi64(_mm256_set1_epi64x(a4), B4)), C);
     if (!((scalars[0] += k[0]) & 1))
     {
-        *((__m256i*)scalars) = _mm256_sub_epi64(*((__m256i*)scalars), B4);
+        *((m256i*)scalars) = _mm256_sub_epi64(*((m256i*)scalars), B4);
     }
 #else
     scalars[0] = a1 * B11 + a2 * B21 + a3 * B31 + a4 * B41 + C1 + k[0];
@@ -1334,23 +1382,23 @@ static bool ecc_mul_double(unsigned long long* k, unsigned long long* l, point_t
     }
 
     // Computing endomorphisms over point Q
-    *((__m256i*) & Q2->x) = *((__m256i*) & Q1->x);
-    *((__m256i*) & Q2->y) = *((__m256i*) & Q1->y);
-    *((__m256i*) & Q2->z) = *((__m256i*) & Q1->z);
-    *((__m256i*) & Q2->ta) = *((__m256i*) & Q1->ta);
-    *((__m256i*) & Q2->tb) = *((__m256i*) & Q1->tb);
+    *((m256i*) & Q2->x) = *((m256i*) & Q1->x);
+    *((m256i*) & Q2->y) = *((m256i*) & Q1->y);
+    *((m256i*) & Q2->z) = *((m256i*) & Q1->z);
+    *((m256i*) & Q2->ta) = *((m256i*) & Q1->ta);
+    *((m256i*) & Q2->tb) = *((m256i*) & Q1->tb);
     ecc_phi(Q2);
-    *((__m256i*) & Q3->x) = *((__m256i*) & Q1->x);
-    *((__m256i*) & Q3->y) = *((__m256i*) & Q1->y);
-    *((__m256i*) & Q3->z) = *((__m256i*) & Q1->z);
-    *((__m256i*) & Q3->ta) = *((__m256i*) & Q1->ta);
-    *((__m256i*) & Q3->tb) = *((__m256i*) & Q1->tb);
+    *((m256i*) & Q3->x) = *((m256i*) & Q1->x);
+    *((m256i*) & Q3->y) = *((m256i*) & Q1->y);
+    *((m256i*) & Q3->z) = *((m256i*) & Q1->z);
+    *((m256i*) & Q3->ta) = *((m256i*) & Q1->ta);
+    *((m256i*) & Q3->tb) = *((m256i*) & Q1->tb);
     ecc_psi(Q3);
-    *((__m256i*) & Q4->x) = *((__m256i*) & Q2->x);
-    *((__m256i*) & Q4->y) = *((__m256i*) & Q2->y);
-    *((__m256i*) & Q4->z) = *((__m256i*) & Q2->z);
-    *((__m256i*) & Q4->ta) = *((__m256i*) & Q2->ta);
-    *((__m256i*) & Q4->tb) = *((__m256i*) & Q2->tb);
+    *((m256i*) & Q4->x) = *((m256i*) & Q2->x);
+    *((m256i*) & Q4->y) = *((m256i*) & Q2->y);
+    *((m256i*) & Q4->z) = *((m256i*) & Q2->z);
+    *((m256i*) & Q4->ta) = *((m256i*) & Q2->ta);
+    *((m256i*) & Q4->tb) = *((m256i*) & Q2->tb);
     ecc_psi(Q4);
 
     decompose((unsigned long long*)k, k_scalars);                   // Scalar decomposition
@@ -1468,11 +1516,11 @@ static void ecc_precomp(point_extproj_t P, point_extproj_precomp_t* T)
     point_extproj_t PP;
 
     // Generating Q = phi(P) = (XQ+YQ,YQ-XQ,ZQ,TQ)
-    *((__m256i*) & PP->x) = *((__m256i*) & P->x);
-    *((__m256i*) & PP->y) = *((__m256i*) & P->y);
-    *((__m256i*) & PP->z) = *((__m256i*) & P->z);
-    *((__m256i*) & PP->ta) = *((__m256i*) & P->ta);
-    *((__m256i*) & PP->tb) = *((__m256i*) & P->tb);
+    *((m256i*) & PP->x) = *((m256i*) & P->x);
+    *((m256i*) & PP->y) = *((m256i*) & P->y);
+    *((m256i*) & PP->z) = *((m256i*) & P->z);
+    *((m256i*) & PP->ta) = *((m256i*) & P->ta);
+    *((m256i*) & PP->tb) = *((m256i*) & P->tb);
     ecc_phi(PP);
     R1_to_R3(PP, Q);                       // Converting from (X,Y,Z,Ta,Tb) to (X+Y,Y-X,Z,T) 
 
@@ -1561,10 +1609,10 @@ static bool ecc_mul(point_t P, unsigned long long* k, point_t Q)
     ecc_precomp(R, Table[1]);                                 // Precomputation
     for (unsigned int i = 0; i < 8; i++)
     {
-        *((__m256i*)Table[0][i]->xy) = *((__m256i*)Table[1][i]->yx);
-        *((__m256i*)Table[0][i]->yx) = *((__m256i*)Table[1][i]->xy);
-        *((__m256i*)Table[0][i]->t2) = *((__m256i*)Table[1][i]->t2);
-        *((__m256i*)Table[0][i]->z2) = *((__m256i*)Table[1][i]->z2);
+        *((m256i*)Table[0][i]->xy) = *((m256i*)Table[1][i]->yx);
+        *((m256i*)Table[0][i]->yx) = *((m256i*)Table[1][i]->xy);
+        *((m256i*)Table[0][i]->t2) = *((m256i*)Table[1][i]->t2);
+        *((m256i*)Table[0][i]->z2) = *((m256i*)Table[1][i]->z2);
         fp2neg1271(Table[0][i]->t2);
     }
     R2_to_R4(Table[1][scalars[1] + (scalars[2] << 1) + (scalars[3] << 2)], R);
@@ -1584,7 +1632,7 @@ static void encode(point_t P, unsigned char* Pencoded)
     const unsigned long long temp1 = (P->x[1][1] & 0x4000000000000000) << 1;
     const unsigned long long temp2 = (P->x[0][1] & 0x4000000000000000) << 1;
 
-    *((__m256i*)Pencoded) = *((__m256i*)P->y);
+    *((m256i*)Pencoded) = *((m256i*)P->y);
     if (!P->x[0][0] && !P->x[0][1])
     {
         ((unsigned long long*)Pencoded)[3] |= temp1;
@@ -1602,7 +1650,7 @@ static bool decode(const unsigned char* Pencoded, point_t P)
     point_extproj_t R;
     unsigned int i;
 
-    *((__m256i*)P->y) = *((__m256i*)Pencoded);      // Decoding y-coordinate and sign
+    *((m256i*)P->y) = *((m256i*)Pencoded);      // Decoding y-coordinate and sign
     P->y[1][1] &= 0x7FFFFFFFFFFFFFFF;
 
     fp2sqr1271(P->y, u);
@@ -1712,7 +1760,7 @@ static void getPublicKey(const unsigned char* privateKey, unsigned char* publicK
   // Output: 32-byte publicKey
     point_t P;
 
-    ecc_mul_fixed((unsigned long long*)privateKey, P); // Compute public key                                       
+    ecc_mul_fixed((unsigned long long*)privateKey, P); // Compute public key
     encode(P, publicKey);                              // Encode public key
 }
 
@@ -1732,7 +1780,7 @@ static bool getPublicKeyFromIdentity(const unsigned char* identity, unsigned cha
             *((unsigned long long*) & publicKeyBuffer[i << 3]) = *((unsigned long long*) & publicKeyBuffer[i << 3]) * 26 + (identity[i * 14 + j] - 'A');
         }
     }
-    *((__m256i*)publicKey) = *((__m256i*)publicKeyBuffer);
+    *((m256i*)publicKey) = *((m256i*)publicKeyBuffer);
 
     return true;
 }
@@ -1765,7 +1813,7 @@ static bool getSharedKey(const unsigned char* privateKey, const unsigned char* p
         return false;
     }
 
-    *((__m256i*)sharedKey) = *((__m256i*)A->y);
+    *((m256i*)sharedKey) = *((m256i*)A->y);
 
     return true;
 }
@@ -1806,15 +1854,15 @@ static void sign(const unsigned char* subseed, const unsigned char* publicKey, c
     // NOTE: the nonce consists 2 parts: hash from subseed and message digest
     // This nonce is supposed to be random to avoid key leakage.
     // We need entropy from seed here because the message digest maybe the same (from different addresses) in some scenarios
-    *((__m256i*)(temp + 32)) = *((__m256i*)(k + 32));
-    *((__m256i*)(temp + 64)) = *((__m256i*)messageDigest);
+    *((m256i*)(temp + 32)) = *((m256i*)(k + 32));
+    *((m256i*)(temp + 64)) = *((m256i*)messageDigest);
 
     KangarooTwelve(temp + 32, 32 + 32, (unsigned char*)r, 64);
 
     ecc_mul_fixed(r, R);
     encode(R, signature); // Encode lowest 32 bytes of signature
-    *((__m256i*)temp) = *((__m256i*)signature);
-    *((__m256i*)(temp + 32)) = *((__m256i*)publicKey);
+    *((m256i*)temp) = *((m256i*)signature);
+    *((m256i*)(temp + 32)) = *((m256i*)publicKey);
 
     KangarooTwelve(temp, 32 + 64, h, 64);
     Montgomery_multiply_mod_order(r, Montgomery_Rprime, r);
@@ -1847,15 +1895,15 @@ static void signWithRandomK(const unsigned char* subseed, const unsigned char* p
     }
     // NOTE: the nonce consists 2 parts: random K and message digest
     // This nonce is supposed to be random to avoid key leakage.
-    *((__m256i*)(temp + 32)) = *((__m256i*)(k + 32));
-    *((__m256i*)(temp + 64)) = *((__m256i*)messageDigest);
+    *((m256i*)(temp + 32)) = *((m256i*)(k + 32));
+    *((m256i*)(temp + 64)) = *((m256i*)messageDigest);
 
     KangarooTwelve(temp + 32, 32 + 32, (unsigned char*)r, 64);
 
     ecc_mul_fixed(r, R);
     encode(R, signature); // Encode lowest 32 bytes of signature
-    *((__m256i*)temp) = *((__m256i*)signature);
-    *((__m256i*)(temp + 32)) = *((__m256i*)publicKey);
+    *((m256i*)temp) = *((m256i*)signature);
+    *((m256i*)(temp + 32)) = *((m256i*)publicKey);
 
     KangarooTwelve(temp, 32 + 64, h, 64);
     Montgomery_multiply_mod_order(r, Montgomery_Rprime, r);
@@ -1890,9 +1938,9 @@ static bool verify(const unsigned char* publicKey, const unsigned char* messageD
         return false;
     }
 
-    *((__m256i*)temp) = *((__m256i*)signature);
-    *((__m256i*)(temp + 32)) = *((__m256i*)publicKey);
-    *((__m256i*)(temp + 64)) = *((__m256i*)messageDigest);
+    *((m256i*)temp) = *((m256i*)signature);
+    *((m256i*)(temp + 32)) = *((m256i*)publicKey);
+    *((m256i*)(temp + 64)) = *((m256i*)messageDigest);
 
     KangarooTwelve(temp, 32 + 64, h, 64);
 
@@ -1902,5 +1950,5 @@ static bool verify(const unsigned char* publicKey, const unsigned char* messageD
     }
 
     encode(A, (unsigned char*)A);
-    return *((__m256i*)A) == *((__m256i*)signature);
+    return *(const m256i*)A == *(const m256i*)signature;
 }

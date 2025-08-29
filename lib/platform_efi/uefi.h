@@ -96,7 +96,11 @@
 #define TPL_NOTIFY 16
 
 typedef unsigned char BOOLEAN;
+#ifndef _MSC_VER
+typedef wchar_t CHAR16;
+#else
 typedef unsigned short CHAR16;
+#endif
 typedef void* EFI_EVENT;
 typedef void* EFI_HANDLE;
 typedef unsigned long long EFI_PHYSICAL_ADDRESS;

@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <lib/platform_common/processor.h>
 #include <lib/platform_efi/uefi_globals.h>
 

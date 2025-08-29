@@ -5,7 +5,9 @@
 // TSC of different processors may be out of sync.
 
 #pragma once
-
+#ifndef _MSC_VER
+#include <cpuid.h>
+#endif
 #include <lib/platform_common/qintrin.h>
 
 #include "global_var.h"
@@ -20,7 +22,11 @@ GLOBAL_VAR_DECL unsigned long long frequency GLOBAL_VAR_INIT(0);
 static void initTimeStampCounter()
 {
     int cpuInfo[4];
+    #ifdef _MSC_VER
     __cpuid(cpuInfo, 0x15);
+    #else
+    __get_cpuid(0x15, (unsigned int*)&cpuInfo[0], (unsigned int*)&cpuInfo[1], (unsigned int*)&cpuInfo[2], (unsigned int*)&cpuInfo[3]);
+    #endif
     if (cpuInfo[2] == 0 || cpuInfo[1] == 0 || cpuInfo[0] == 0)
     {
         logToConsole(L"Theoretical TSC frequency = n/a.");

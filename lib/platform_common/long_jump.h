@@ -48,7 +48,7 @@ extern "C"
       @retval 0 Indicates a return from SetJump().
 
     **/
-    unsigned long long _cdecl SetJump(LongJumpBuffer* JumpBuffer);
+    unsigned long long SetJump(LongJumpBuffer* JumpBuffer);
 
 
     /**
@@ -67,6 +67,6 @@ extern "C"
                           restored and must be non-zero.
 
     **/
-    void _cdecl LongJump(LongJumpBuffer* JumpBuffer, unsigned long long Value);
+    void LongJump(LongJumpBuffer* JumpBuffer, unsigned long long Value);
 
 }

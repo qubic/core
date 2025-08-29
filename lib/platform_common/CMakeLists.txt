@@ -47,8 +47,6 @@ elseif(IS_LINUX_CLANG AND ASM_LANG STREQUAL ASM_NASM)
         COMMENT "Preprocessing/Assembling (NASM) ${NASM_SRC_LJ}"
         VERBATIM
     )
-    add_library(LongJumpNasmObject OBJECT ${NASM_OBJ_LJ})
-    set_target_properties(LongJumpNasmObject PROPERTIES LINKER_LANGUAGE C)
     list(APPEND ASM_OBJECT_LIBS LongJumpNasmObject)
 
     # --- NASM File 2: SetJump ---
@@ -64,14 +62,12 @@ elseif(IS_LINUX_CLANG AND ASM_LANG STREQUAL ASM_NASM)
         COMMENT "Preprocessing/Assembling (NASM) ${NASM_SRC_SJ}"
         VERBATIM
     )
-    add_library(SetJumpNasmObject OBJECT ${NASM_OBJ_SJ})
-    set_target_properties(SetJumpNasmObject PROPERTIES LINKER_LANGUAGE C)
     list(APPEND ASM_OBJECT_LIBS SetJumpNasmObject)
 
 endif()
 
 # --- Target Definition ---
-add_library(platform_common STATIC ${C_SOURCES})
+add_library(platform_common STATIC ${C_SOURCES} ${CMAKE_CURRENT_BINARY_DIR}/LongJump.nasm.o ${CMAKE_CURRENT_BINARY_DIR}/SetJump.nasm.o)
 
 # Apply common compiler flags from the centralized detection module
 apply_common_compiler_flags(platform_common)
@@ -81,7 +77,7 @@ if(ASM_OBJECT_LIBS)
     if(IS_WINDOWS)
         target_link_libraries(platform_common PRIVATE platform_common_asm)
     else()
-        target_link_libraries(platform_common PRIVATE ${ASM_OBJECT_LIBS})
+        # For Linux, link the object files directly
     endif()
 endif()
 
