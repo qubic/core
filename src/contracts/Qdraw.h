@@ -1,7 +1,7 @@
 using namespace QPI;
 
 constexpr sint64 QDRAW_TICKET_PRICE = 1000000LL;
-constexpr uint64 QDRAW_MAX_PARTICIPANTS = 1024;
+constexpr uint64 QDRAW_MAX_PARTICIPANTS = 1024 * X_MULTIPLIER;
 
 struct QDRAW2
 {
