@@ -519,6 +519,9 @@ struct Overload {
         const auto& fragment = Token->Packet.TxData->FragmentTable[0];
         int totalSentBytes = 0;
         while (totalSentBytes != fragment.FragmentLength) {
+#ifdef _MSC_VER
+#define MSG_NOSIGNAL 0
+#endif
             int sentBytes = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_NOSIGNAL);
             if (sentBytes == 0) {
                 // connection closed
@@ -551,6 +554,7 @@ struct Overload {
                         return EFI_ABORTED;
                     }
                     continue; // retry send
+                }
 #else
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                 {
@@ -610,10 +614,9 @@ struct Overload {
         while (true)
         {
 #ifdef _MSC_VER
-            int bytes = recv(tcpData->socket, buffer, sizeof(buffer), 0);
-#else
-            int bytes = recv(tcpData->socket, buffer, sizeof(buffer), MSG_DONTWAIT);
+#define MSG_DONTWAIT 0
 #endif
+            int bytes = recv(tcpData->socket, buffer, sizeof(buffer), MSG_DONTWAIT);
             if (bytes > 0)
             {
                 memcpy((char *)Token->Packet.RxData->FragmentTable[0].FragmentBuffer + totalReceivedBytes, buffer, bytes);
