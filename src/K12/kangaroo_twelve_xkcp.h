@@ -432,8 +432,8 @@ static void KangarooTwelve(const unsigned char* input, unsigned int inputByteLen
 static void random(const unsigned char* publicKey, const unsigned char* nonce, unsigned char* output, unsigned long long outputSize)
 {
     unsigned char state[200];
-    *((__m256i*)&state[0]) = *((__m256i*)publicKey);
-    *((__m256i*)&state[32]) = *((__m256i*)nonce);
+    *((m256i*)&state[0]) = *((m256i*)publicKey);
+    *((m256i*)&state[32]) = *((m256i*)nonce);
     setMem(&state[64], sizeof(state) - 64, 0);
 
     for (unsigned long long i = 0; i < outputSize / sizeof(state); i++)
@@ -744,7 +744,11 @@ namespace K12xkcp
 
     /* ---------------------------------------------------------------- */
 
+#if defined(_MSC_VER)
 #define ROL64(a, offset) _rotl64(a, offset)
+#else
+#define ROL64(a, offset) ((((unsigned long long)a) << offset) ^ (((unsigned long long)a) >> (64 - offset)))
+#endif
 
     /* ---------------------------------------------------------------- */
 

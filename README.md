@@ -4,10 +4,22 @@ The lite version of Qubic Core that can run directly on the OS without a UEFI en
 
 ## Build
 
+### PreBuild Binary
+
+Pre-build binary can be found here
 > Lite Executable <br>
 > [![Build](https://github.com/hackerby888/qubic-core-lite/actions/workflows/efi-build-develop.yml/badge.svg?branch=main)](https://github.com/hackerby888/qubic-core-lite/actions/workflows/efi-build-develop.yml)
 > <br>
 > The executable is located in `QubicLiteBuildOutput.zip/x64/Release/Qubic.exe`
+
+### Windows
+
+- Open .sln file in project root folder in Visual Studio
+- Change build config to Release -> Right click at Qubic project -> Build
+
+### Linux
+
+Detailed instruction can be found here: [Linux Build Tutorial](./README_CLANG.md)
 
 ## Prerequisites
 
@@ -64,11 +76,13 @@ Delete the **system** file at your current working folder, it may make your node
 ## Supporting Platform
 
 - [x] Windows
-- [ ] Linux (Soon...)
+- [x] Linux
 
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
+
+
 
 
 

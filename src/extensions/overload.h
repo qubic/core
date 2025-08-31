@@ -8,6 +8,14 @@
 #elif defined(__linux__)
 #include <sched.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <termios.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #endif
 
 #define CreateEvent CreateEvent
@@ -38,6 +46,45 @@ uint32_t getCurrentCpuIndex() {
 #endif
 }
 
+#ifndef _MSC_VER
+
+#define SOCKET int
+#define INVALID_SOCKET -1
+#define SOCKET_ERROR -1
+#define closesocket close
+
+void setNonBlockingInput(bool enable) {
+    static termios oldt;
+    termios newt;
+
+    if (enable) {
+        // Save old settings
+        tcgetattr(STDIN_FILENO, &oldt);
+        newt = oldt;
+
+        // Disable canonical mode and echo
+        newt.c_lflag &= ~(ICANON | ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+        // Set stdin non-blocking
+        fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
+    } else {
+        // Restore old settings
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        fcntl(STDIN_FILENO, F_SETFL, 0);
+    }
+}
+
+std::vector<unsigned char> readInput() {
+    std::vector<unsigned char> buffer;
+    unsigned char c;
+    while (read(STDIN_FILENO, &c, 1) == 1) {
+        buffer.push_back(c);
+    }
+    return buffer;
+}
+#endif
+
 void updateTime() {
     std::time_t t = std::time(nullptr);
     std::tm* tm = std::gmtime(&t);
@@ -54,7 +101,7 @@ void updateTime() {
 
 unsigned long long now_ms()
 {
-    return ms(unsigned char(utcTime.Year % 100), utcTime.Month, utcTime.Day, utcTime.Hour, utcTime.Minute, utcTime.Second, utcTime.Nanosecond / 1000000);
+    return ms((unsigned char)utcTime.Year % 100, utcTime.Month, utcTime.Day, utcTime.Hour, utcTime.Minute, utcTime.Second, utcTime.Nanosecond / 1000000);
 }
 
 void setMem(void* buffer, unsigned long long size, unsigned char value)
@@ -115,13 +162,35 @@ struct Overload {
     // Directly call the setup function without using custom stack.
     static void startThread(EFI_AP_PROCEDURE procedure, void* data, unsigned long long ProcessorNumber, EFI_EVENT WaitEvent, unsigned long long TimeoutInMicroseconds) {
 		bool isThreadFinished = false;
-        std::thread thread([&isThreadFinished, procedure, data]() {
+        std::thread thread([&isThreadFinished, procedure, data, ProcessorNumber]() {
+            while (true) {
+                unsigned long long currentProcessorNumber;
+                WhoAmI(NULL, &currentProcessorNumber);
+                if (currentProcessorNumber == ProcessorNumber) {
+                    break;
+                } else {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+            }
             CustomStack* me = reinterpret_cast<CustomStack*>(data);
             me->setupFuncToCall(me->setupDataToPass);
             isThreadFinished = true;
             });
+
+        #ifdef _MSC_VER
         HANDLE hThread = (HANDLE)thread.native_handle();
         SetThreadAffinityMask(hThread, 1ULL << ProcessorNumber);
+        #else
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(ProcessorNumber, &cpuset);
+        int rc = pthread_setaffinity_np(thread.native_handle(),
+                                    sizeof(cpu_set_t),
+                                    &cpuset);
+        if (rc != 0) {
+            logToConsole(L"Error calling pthread_setaffinity_np");
+        }
+        #endif
 
         if (TimeoutInMicroseconds > 0) {
             thread.detach();
@@ -139,7 +208,11 @@ struct Overload {
             }
 
             if (!isThreadFinished) {
+                #ifdef _MSC_VER
                 TerminateThread(hThread, 0); // Forcefully terminate the thread if it doesn't finish
+                #else
+                pthread_cancel(thread.native_handle());
+                #endif
             }
         }
 
@@ -288,6 +361,7 @@ struct Overload {
     }
 
     static EFI_STATUS ReadKeyStroke(IN void* This, OUT EFI_INPUT_KEY* Key) {
+#ifdef _MSC_VER
         if (_kbhit()) {               // check if key was pressed
             int ch = _getch();        // now it's safe to read
             if (ch == 27) {
@@ -320,6 +394,44 @@ struct Overload {
 
             return EFI_SUCCESS;
         }
+#else
+        static std::map<std::vector<unsigned char>, std::string> keyMap = {
+            {{27,79,80}, "F1"}, {{27,79,81}, "F2"},
+            {{27,79,82}, "F3"}, {{27,79,83}, "F4"},
+            {{27,91,49,53,126}, "F5"}, {{27,91,49,55,126}, "F6"},
+            {{27,91,49,56,126}, "F7"}, {{27,91,49,57,126}, "F8"},
+            {{27,91,50,48,126}, "F9"}, {{27,91,50,49,126}, "F10"},
+            {{27,91,50,51,126}, "F11"}, {{27,91,50,52,126}, "F12"}
+        };
+
+        std::vector<unsigned char> input = readInput();
+        if (!input.empty()) {
+            // Try to match against known sequences
+            if (keyMap.count(input)) {
+                // Map f2->f12 to EFI_INPUT_KEY
+                std::string keyName = keyMap[input];
+
+                if (keyName == "F2")  Key->ScanCode = 0x0C;
+                else if (keyName == "F3")  Key->ScanCode = 0x0D;
+                else if (keyName == "F4")  Key->ScanCode = 0x0E;
+                else if (keyName == "F5")  Key->ScanCode = 0x0F;
+                else if (keyName == "F6")  Key->ScanCode = 0x10;
+                else if (keyName == "F7")  Key->ScanCode = 0x11;
+                else if (keyName == "F8")  Key->ScanCode = 0x12;
+                else if (keyName == "F9")  Key->ScanCode = 0x13;
+                else if (keyName == "F10") Key->ScanCode = 0x14;
+                else if (keyName == "F11") Key->ScanCode = 0x15;
+                else if (keyName == "F12") Key->ScanCode = 0x16;
+            } else {
+                // map 'p' to fake pause key
+                if (input.size() == 1 && input[0] == 'p') {
+                    Key->ScanCode = 0x48;
+                }
+            }
+
+            return EFI_SUCCESS;
+        }
+#endif
 
         return EFI_NOT_READY;
     }
@@ -516,11 +628,13 @@ struct Overload {
 
         // Global set up for accepting new connections
         if ((unsigned long long)This == (unsigned long long)peerTcp4Protocol) {
+            #ifdef _MSC_VER
             WSADATA wsaData;
             if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
                 logToConsole(L"WSAStartup failed!!");
                 return EFI_ABORTED;
             }
+            #endif
 
             SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
             if (sock == INVALID_SOCKET) {
@@ -574,7 +688,11 @@ struct Overload {
             addr.sin_family = AF_INET;
             addr.sin_port = htons(tcpData->configData.AccessPoint.StationPort);
             addr.sin_addr.s_addr = INADDR_ANY;
+            #ifdef _MSC_VER
             int addrlen = sizeof(addr);
+            #else
+            socklen_t addrlen = sizeof(addr);
+            #endif
             SOCKET clientSocket = accept(tcpData->socket, (sockaddr*)&addr, &addrlen);
             if (clientSocket == INVALID_SOCKET) {
                 logToConsole(L"Obtained tcpData failed");
@@ -614,7 +732,11 @@ struct Overload {
         sockaddr_in serverAddr{};
         serverAddr.sin_family = AF_INET;
         serverAddr.sin_port = htons(tcpData->configData.AccessPoint.RemotePort);
+        #ifdef _MSC_VER
         serverAddr.sin_addr.S_un.S_addr = *((unsigned long*)tcpData->configData.AccessPoint.RemoteAddress.Addr);
+        #else
+        serverAddr.sin_addr.s_addr = *((unsigned long*)tcpData->configData.AccessPoint.RemoteAddress.Addr);
+        #endif
 
         // connect in a thread
         std::thread connectThread([tcpData, serverAddr, ConnectionToken]() {
@@ -631,6 +753,20 @@ struct Overload {
     }
 
     static void initializeUefi() {
+        #ifndef _MSC_VER
+        setNonBlockingInput(true);
+
+        // Pin the main thread to CPU 0 to make sure main thread cpu id wont change during process
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(0, &cpuset);
+        pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+        #else
+        // Pin the main thread to CPU 0 to make sure main thread cpu id wont change during process
+        HANDLE hThread = GetCurrentThread();
+        SetThreadAffinityMask(hThread, 1ULL << 0);
+        #endif
+
         ih = new EFI_HANDLE;
         st = new EFI_SYSTEM_TABLE;
         st->BootServices = new EFI_BOOT_SERVICES;

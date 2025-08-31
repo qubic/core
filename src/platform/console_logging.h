@@ -18,7 +18,11 @@ static CHAR16 message[16384], timestampedMessage[16384];
 // Output to console on no-UEFI platform
 static inline void outputStringToConsole(const CHAR16* str)
 {
+    #ifdef _MSC_VER
     wprintf(L"%ls", str);
+    #else
+    print_wstr(str);
+    #endif
 }
 
 // Log message to console (with line break) on non-UEFI platform
@@ -26,7 +30,11 @@ static void logToConsole(const CHAR16* message)
 {
     if (consoleLoggingLevel == 0)
         return;
+#ifdef _MSC_VER
     wprintf(L"%ls\n", message);
+#else
+    print_wstr(message);
+#endif
 }
 
 #else
@@ -78,6 +86,19 @@ static void appendText(CHAR16* dst, const CHAR16* src)
 }
 
 static void appendText(CHAR16* dst, const char* src)
+{
+    unsigned short dstIndex = 0;
+    while (dst[dstIndex] != 0)
+    {
+        dstIndex++;
+    }
+    unsigned short srcIndex = 0;
+    while ((dst[dstIndex++] = src[srcIndex++]) != 0)
+    {
+    }
+}
+
+static void appendText(CHAR16* dst, wchar_t* src)
 {
     unsigned short dstIndex = 0;
     while (dst[dstIndex] != 0)

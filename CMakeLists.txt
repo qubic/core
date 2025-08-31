@@ -12,7 +12,7 @@ include(CompilerSetup)
 # Build options
 option(BUILD_TESTS "Build the test suite" ON)
 option(BUILD_BENCHMARK "Build the EFI benchmark application" OFF)
-option(BUILD_EFI "Build the EFI application" ON)
+option(BUILD_BINARY "Build the EFI application" ON)
 option(USE_SANITIZER "Build test with sanitizer support (clang only)" ON)
 
 if(IS_WINDOWS)
@@ -25,7 +25,7 @@ endif()
 # Always include platform_common as it's needed for both application and tests
 add_subdirectory(lib/platform_common)
 
-if(BUILD_EFI OR BUILD_BENCHMARK)
+if(BUILD_BINARY OR BUILD_BENCHMARK)
     add_subdirectory(lib/platform_efi)
 endif()
 
@@ -37,7 +37,7 @@ if(BUILD_TESTS)
 
     # If we're not building the application, we still need src for tests
     # but don't make it a default target
-    if(NOT BUILD_EFI)
+    if(NOT BUILD_BINARY)
         add_subdirectory(src EXCLUDE_FROM_ALL)
     endif()
 
@@ -45,7 +45,7 @@ if(BUILD_TESTS)
 endif()
 
 # Build the application if requested
-if(BUILD_EFI)
+if(BUILD_BINARY)
     message(STATUS "--- EFI Core application ---")
     add_subdirectory(src)
 endif()

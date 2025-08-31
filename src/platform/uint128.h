@@ -21,6 +21,11 @@
 
 #pragma once
 
+#ifndef _MSC_VER
+#define __int64 long long
+#define __int8 char
+#endif
+
 class uint128_t{
 public:
 	unsigned __int64 low;

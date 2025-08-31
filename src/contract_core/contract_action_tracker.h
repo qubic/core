@@ -12,14 +12,16 @@ struct ContractAction
 
     unsigned char type;
 
-    union
+    struct QuTransfer
     {
-        struct QuTransfer
-        {
             m256i sourcePublicKey;
             m256i destinationPublicKey;
             long long amount;
-        } quTransfer;
+    }; 
+
+    union
+    {
+        QuTransfer quTransfer;
     };
 };
 

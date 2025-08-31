@@ -961,13 +961,13 @@ struct ScoreFunction
             // Save the neuron value for comparison
             copyMem(previousNeuronValue, neurons, population * sizeof(Neuron));
 
-            const __m512i vPop = _mm512_set1_epi64(population);
-            const __m512i vPitch = _mm512_set1_epi64(static_cast<long long>(incommingSynapsesPitch));
-            const __m512i vStrideL = _mm512_set1_epi64(incommingSynapsesPitch - 1);
-            const __m512i vStrideR = _mm512_set1_epi64(incommingSynapsesPitch + 1);
-            const __m512i vNeighbor = _mm512_set1_epi64(static_cast<long long>(numberOfNeighbors));
+            // const __m512i vPop = _mm512_set1_epi64(population);
+            // const __m512i vPitch = _mm512_set1_epi64(static_cast<long long>(incommingSynapsesPitch));
+            // const __m512i vStrideL = _mm512_set1_epi64(incommingSynapsesPitch - 1);
+            // const __m512i vStrideR = _mm512_set1_epi64(incommingSynapsesPitch + 1);
+            // const __m512i vNeighbor = _mm512_set1_epi64(static_cast<long long>(numberOfNeighbors));
 
-            const __m512i lane01234567 = _mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0);   // constant
+            // const __m512i lane01234567 = _mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0);   // constant
             long long test[8] = { 0 };
             {
                 // Compute the incomming synapse of each neurons
