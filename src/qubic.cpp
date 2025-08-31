@@ -6832,11 +6832,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         unsigned long long numberOfAllProcessors, numberOfEnabledProcessors;
         mpServicesProtocol->GetNumberOfProcessors(mpServicesProtocol, &numberOfAllProcessors, &numberOfEnabledProcessors);
         mpServicesProtocol->WhoAmI(mpServicesProtocol, &mainThreadProcessorID); // get the proc Id of main thread (for later use)
-        std::cout << "Main thread is running on processor #" << mainThreadProcessorID << std::endl;
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        CPU_SET(mainThreadProcessorID, &cpuset);
-        pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
         registerAsynFileIO(mpServicesProtocol);
         
         // Initialize resource management
