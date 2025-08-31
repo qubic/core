@@ -761,7 +761,12 @@ struct Overload {
         CPU_ZERO(&cpuset);
         CPU_SET(0, &cpuset);
         pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+        #else
+        // Pin the main thread to CPU 0 to make sure main thread cpu id wont change during process
+        HANDLE hThread = GetCurrentThread();
+        SetThreadAffinityMask(hThread, 1ULL << 0);
         #endif
+
         ih = new EFI_HANDLE;
         st = new EFI_SYSTEM_TABLE;
         st->BootServices = new EFI_BOOT_SERVICES;
