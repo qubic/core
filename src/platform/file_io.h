@@ -262,9 +262,7 @@ static long long load(const CHAR16* fileName, unsigned long long totalSize, unsi
 #ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
 #else
-        print_wstr(L"Error while opening file ");
-        print_wstr(fileName);
-        print_wstr(L"!\n");
+        print_wstr(L"Error opening file %s!\n", wchar_to_string((fileName)).c_str());
 #endif
         return -1;
     }
@@ -273,7 +271,7 @@ static long long load(const CHAR16* fileName, unsigned long long totalSize, unsi
 #ifdef _MSC_VER
         wprintf(L"Error reading %llu bytes from %s!\n", totalSize, fileName);
 #else
-        print_wstr(L"Error reading ");
+        print_wstr(L"Error reading %llu bytes from %s!\n", totalSize, wchar_to_string((fileName)).c_str());
 #endif
         return -1;
     }
@@ -356,9 +354,7 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
 #ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
 #else
-        print_wstr(L"Error while opening file ");
-        print_wstr(fileName);
-        print_wstr(L"!\n");
+        print_wstr(L"Error opening file %s!\n", wchar_to_string((fileName)).c_str());
 #endif
         return -1;
     }
@@ -367,7 +363,7 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
 #ifdef _MSC_VER
         wprintf(L"Error writting %llu bytes from %s!\n", totalSize, fileName);
 #else
-        print_wstr(L"Error");
+        print_wstr(L"Error writting %llu bytes from %s!\n", totalSize, wchar_to_string((fileName)).c_str());
 #endif
         return -1;
     }

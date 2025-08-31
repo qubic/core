@@ -9,13 +9,27 @@
 #define _InterlockedAnd64(target, val) __atomic_fetch_and(target, val, __ATOMIC_SEQ_CST)
 #define _InterlockedExchange64(target, val) __atomic_exchange_n(target, val, __ATOMIC_SEQ_CST)
 long long _InterlockedCompareExchange64(volatile long long *target, long long exchange, long long comparand) {
-    return __atomic_compare_exchange_n(target, &comparand, exchange, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    if (__atomic_compare_exchange_n(target, &comparand, exchange, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+        return comparand;
+    } else {
+        return __atomic_load_n(target, __ATOMIC_SEQ_CST);
+    }
 }
+// NOTE: there is no 100% equivalent of _InterlockedCompareExchange8 on Clang/Gcc, RELEASE may change the target value while we are in the exchange process, so return *target is not safe
+// Solution: we know that the *target is either 0 or 1 for our lock usage, so we can return 1 if the exchange fails (so the lock is held by someone else)
 char _InterlockedCompareExchange8(volatile char *target, char exchange, char comparand) {
-    return __atomic_compare_exchange_n(target, &comparand, exchange, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    if (__atomic_compare_exchange_n(target, &comparand, exchange, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+        return comparand;
+    } else {
+        return 1;
+    }
 }
 long _InterlockedCompareExchange(volatile long *target, long exchange, long comparand) {
-    return __atomic_compare_exchange_n(target, &comparand, exchange, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    if (__atomic_compare_exchange_n(target, &comparand, exchange, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+        return comparand;
+    } else {
+        return __atomic_load_n(target, __ATOMIC_SEQ_CST);
+    }
 }
 #define _InterlockedExchangeAdd64(target, val) __atomic_fetch_add(target, val, __ATOMIC_SEQ_CST)
 #define _interlockedadd64 _InterlockedExchangeAdd64
@@ -62,7 +76,11 @@ public:
 #define TRY_ACQUIRE(lock) (_InterlockedCompareExchange8(&lock, 1, 0) == 0)
 
 // Release lock
+#ifdef _MSC_VER
 #define RELEASE(lock) lock = 0
+#else
+#define RELEASE(lock) __atomic_store_n(&lock, 0, __ATOMIC_SEQ_CST)
+#endif
 
 
 #ifdef NDEBUG

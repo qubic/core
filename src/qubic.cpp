@@ -5504,7 +5504,6 @@ static bool saveRevenueComponents(CHAR16* directory)
 
 static bool initialize()
 {
-    logToConsole(L"Start initialization...");
     enableAVX();
 
 #if defined (__AVX512F__) && !GENERIC_K12
@@ -5514,7 +5513,6 @@ static bool initialize()
     initAVX512FourQConstants();
 #endif
 
-    logToConsole(L"Start init initial special entiities");
     if (!initSpecialEntities())
         return false;
 
@@ -5544,10 +5542,9 @@ static bool initialize()
     requestedTickTransactions.header.setType(REQUEST_TICK_TRANSACTIONS);
     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
-    logToConsole(L"INIT basics done");
     if (!initFilesystem())
         return false;
-    logToConsole(L"INIT file system done");
+
     EFI_STATUS status;
     {
         if (!ts.init())

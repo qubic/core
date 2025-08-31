@@ -53,34 +53,35 @@ uint32_t getCurrentCpuIndex() {
 #define SOCKET_ERROR -1
 #define closesocket close
 
-static void set_conio_terminal_mode(void) {
-    struct termios new_termios;
-    tcgetattr(STDIN_FILENO, &new_termios);
+void setNonBlockingInput(bool enable) {
+    static termios oldt;
+    termios newt;
 
-    new_termios.c_lflag &= ~(ICANON | ECHO); // disable canonical mode and echo
-    tcsetattr(STDIN_FILENO, TCSANOW, &new_termios);
+    if (enable) {
+        // Save old settings
+        tcgetattr(STDIN_FILENO, &oldt);
+        newt = oldt;
 
-    fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); // make stdin non-blocking
+        // Disable canonical mode and echo
+        newt.c_lflag &= ~(ICANON | ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+        // Set stdin non-blocking
+        fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
+    } else {
+        // Restore old settings
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        fcntl(STDIN_FILENO, F_SETFL, 0);
+    }
 }
 
-// check if key pressed (replacement for _kbhit)
-static int _kbhit(void) {
-    unsigned char ch;
-    int nread = read(STDIN_FILENO, &ch, 1);
-    if (nread == 1) {
-        ungetc(ch, stdin); // put it back for later
-        return 1;
+std::vector<unsigned char> readInput() {
+    std::vector<unsigned char> buffer;
+    unsigned char c;
+    while (read(STDIN_FILENO, &c, 1) == 1) {
+        buffer.push_back(c);
     }
-    return 0;
-}
-
-// get character without waiting (replacement for _getch)
-static int _getch(void) {
-    unsigned char ch;
-    if (read(STDIN_FILENO, &ch, 1) == 1) {
-        return ch;
-    }
-    return -1;
+    return buffer;
 }
 #endif
 
@@ -161,7 +162,16 @@ struct Overload {
     // Directly call the setup function without using custom stack.
     static void startThread(EFI_AP_PROCEDURE procedure, void* data, unsigned long long ProcessorNumber, EFI_EVENT WaitEvent, unsigned long long TimeoutInMicroseconds) {
 		bool isThreadFinished = false;
-        std::thread thread([&isThreadFinished, procedure, data]() {
+        std::thread thread([&isThreadFinished, procedure, data, ProcessorNumber]() {
+            while (true) {
+                unsigned long long currentProcessorNumber;
+                WhoAmI(NULL, &currentProcessorNumber);
+                if (currentProcessorNumber == ProcessorNumber) {
+                    break;
+                } else {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+            }
             CustomStack* me = reinterpret_cast<CustomStack*>(data);
             me->setupFuncToCall(me->setupDataToPass);
             isThreadFinished = true;
@@ -351,6 +361,7 @@ struct Overload {
     }
 
     static EFI_STATUS ReadKeyStroke(IN void* This, OUT EFI_INPUT_KEY* Key) {
+#ifdef _MSC_VER
         if (_kbhit()) {               // check if key was pressed
             int ch = _getch();        // now it's safe to read
             if (ch == 27) {
@@ -383,6 +394,44 @@ struct Overload {
 
             return EFI_SUCCESS;
         }
+#else
+        static std::map<std::vector<unsigned char>, std::string> keyMap = {
+            {{27,79,80}, "F1"}, {{27,79,81}, "F2"},
+            {{27,79,82}, "F3"}, {{27,79,83}, "F4"},
+            {{27,91,49,53,126}, "F5"}, {{27,91,49,55,126}, "F6"},
+            {{27,91,49,56,126}, "F7"}, {{27,91,49,57,126}, "F8"},
+            {{27,91,50,48,126}, "F9"}, {{27,91,50,49,126}, "F10"},
+            {{27,91,50,51,126}, "F11"}, {{27,91,50,52,126}, "F12"}
+        };
+
+        std::vector<unsigned char> input = readInput();
+        if (!input.empty()) {
+            // Try to match against known sequences
+            if (keyMap.count(input)) {
+                // Map f2->f12 to EFI_INPUT_KEY
+                std::string keyName = keyMap[input];
+
+                if (keyName == "F2")  Key->ScanCode = 0x0C;
+                else if (keyName == "F3")  Key->ScanCode = 0x0D;
+                else if (keyName == "F4")  Key->ScanCode = 0x0E;
+                else if (keyName == "F5")  Key->ScanCode = 0x0F;
+                else if (keyName == "F6")  Key->ScanCode = 0x10;
+                else if (keyName == "F7")  Key->ScanCode = 0x11;
+                else if (keyName == "F8")  Key->ScanCode = 0x12;
+                else if (keyName == "F9")  Key->ScanCode = 0x13;
+                else if (keyName == "F10") Key->ScanCode = 0x14;
+                else if (keyName == "F11") Key->ScanCode = 0x15;
+                else if (keyName == "F12") Key->ScanCode = 0x16;
+            } else {
+                // map 'p' to fake pause key
+                if (input.size() == 1 && input[0] == 'p') {
+                    Key->ScanCode = 0x48;
+                }
+            }
+
+            return EFI_SUCCESS;
+        }
+#endif
 
         return EFI_NOT_READY;
     }
@@ -705,9 +754,13 @@ struct Overload {
 
     static void initializeUefi() {
         #ifndef _MSC_VER
-        set_conio_terminal_mode();
+        setNonBlockingInput(true);
 
-
+        // Pin the main thread to CPU 0 to make sure main thread cpu id wont change during process
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(0, &cpuset);
+        pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
         #endif
         ih = new EFI_HANDLE;
         st = new EFI_SYSTEM_TABLE;
