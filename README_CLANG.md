@@ -12,9 +12,9 @@ Potentially it also works with lower versions but isn't tested yet.
 ## Compiler Installation Commands
 
 ```
-sudo apt update
-sudo apt upgrade
-sudo apt install build-essential clang cmake nasm
+sudo apt update && upgrade
+sudo apt install -y build-essential clang cmake nasm
+sudo apt install -y libc++-dev libc++abi-dev
 ```
 
 ## Compilation
