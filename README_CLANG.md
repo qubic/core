@@ -1,6 +1,4 @@
-# qubic clang port
-The Qubic Core is currently ported to be compiled with clang. As this requires a lot of changes the port is develop along the main development work and continuously integrated. However this also implies that the compilation of the core code with clang is not resulting in a working node at the moment. Hence it shall now be used in production!
-
+# Qubic Lite Core Linux Build
 
 ## Prerequisites
 To be able to compile the core code with clang the following prerequisites have to be meet:
@@ -38,7 +36,7 @@ For a example compilation execute the following commands:
 
     ```bash
     # In your build directory
-    cmake .. -D CMAKE_C_COMPILER=clang -D CMAKE_CXX_COMPILER=clang++ -D BUILD_TESTS:BOOL=ON -D BUILD_EFI:BOOL=OFF -D CMAKE_BUILD_TYPE=Debug -D ENABLE_AVX512=ON
+    cmake .. -D CMAKE_C_COMPILER=clang -D CMAKE_CXX_COMPILER=clang++ -D BUILD_TESTS:BOOL=OFF -D BUILD_BINARY:BOOL=ON -D CMAKE_BUILD_TYPE=Release -D ENABLE_AVX512=OFF
     ```
 
     There are a few option to set during configuration:
@@ -47,7 +45,7 @@ For a example compilation execute the following commands:
     * **Values:** `ON`, `OFF`
     * **Meaning:** `ON` builds the test suite, `OFF` skips building tests.
 
-* **`-D BUILD_EFI=<ON|OFF>`**
+* **`-D BUILD_BINARY=<ON|OFF>`**
     * **Values:** `ON`, `OFF`
     * **Meaning:** `ON` builds the EFI file, `OFF` skips building EFI file. Currently this build is not working.
 
