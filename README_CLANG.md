@@ -9,6 +9,14 @@ To be able to compile the core code with clang the following prerequisites have 
 
 Potentially it also works with lower versions but isn't tested yet.
 
+## Compiler Installation Commands
+
+```
+sudo apt update
+sudo apt upgrade
+sudo apt install build-essential clang cmake nasm
+```
+
 ## Compilation
 Currently compilation with cmake and clang is only supported on Linux systems. Window and OSX might work but is not properly tested.
 For a example compilation execute the following commands:
@@ -77,11 +85,12 @@ For a example compilation execute the following commands:
     # Or if using Ninja (often the default if installed), it usually uses all cores by default
     ```
 
+The output binary will be located at `build/src`
 
 ## State
-At the moment the basic build scripts are setup and tests will be ported piece by piece.
 
-Current state of the working tests:
+The core binary are finished but for building test are still pending
+
 | Test Module        | Source File             | Status      |
 | :----------------- | :---------------------- | :---------- |
 | Assets             | `assets.cpp`            | Pending     |
