@@ -17,7 +17,6 @@
 #define REAL_NODE
 #define NO_UEFI
 #define SINGLE_COMPILE_UNIT
-#define private public
 #ifdef _WIN32
 #define system qsystem
 #endif
@@ -2057,11 +2056,11 @@ static void updateNumberOfTickTransactions()
 // Probably, this was caused by a bug in the optimizer, because disabling the optimizer solved the
 // problem.
 OPTIMIZE_OFF()
-static void requestProcessor(void* ProcedureArgument)
+static void requestProcessor(void* ProcedureArgument, unsigned long long processorNumber)
 {
     enableAVX();
 
-    const unsigned long long processorNumber = getRunningProcessorID();
+    //const unsigned long long processorNumber = getRunningProcessorID();
 
     Processor* processor = (Processor*)ProcedureArgument;
     RequestResponseHeader* header = (RequestResponseHeader*)processor->buffer;
@@ -2338,13 +2337,13 @@ static void requestProcessor(void* ProcedureArgument)
 }
 OPTIMIZE_ON()
 
-static void contractProcessor(void*)
+static void contractProcessor(void*, unsigned long long processorNumber)
 {
     enableAVX();
 
     PROFILE_SCOPE();
 
-    const unsigned long long processorNumber = getRunningProcessorID();
+    //const unsigned long long processorNumber = getRunningProcessorID();
 
     unsigned int executedContractIndex;
     switch (contractProcessorPhase)
@@ -4899,10 +4898,11 @@ static bool isTickTimeOut()
 // Probably, this was caused by a bug in the optimizer, because disabling the optimizer solved the
 // problem.
 OPTIMIZE_OFF()
-static void tickProcessor(void*)
+static void tickProcessor(void*, unsigned long long processorNumber)
 {
     enableAVX();
-    const unsigned long long processorNumber = getRunningProcessorID();
+
+    //const unsigned long long processorNumber = getRunningProcessorID();
 
 #if !START_NETWORK_FROM_SCRATCH
     // only init first tick if it doesn't load all node states from file

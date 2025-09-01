@@ -4,7 +4,8 @@
 #include "debugging.h"
 
 typedef unsigned int CustomStackSizeType;
-typedef EFI_AP_PROCEDURE CustomStackProcessorFunc;
+typedef void(__cdecl* EFI_AP_PROCEDURE_EXTENDED) (IN void* ProcedureArgument, IN unsigned long long ProcessorNumber);
+typedef EFI_AP_PROCEDURE_EXTENDED CustomStackProcessorFunc;
 
 // Function call stack with custom size that can be used for running a function on it. Memory is allocated with allocPoolWithErrorLog().
 class CustomStack
@@ -73,7 +74,7 @@ public:
     // Run function using custom stack allocated with alloc(), function is set with setup()
     static void runFunction(void* data);
 
-private:
+public:
     char* stackTop;
     char* stackBottom;
     CustomStackProcessorFunc setupFuncToCall;

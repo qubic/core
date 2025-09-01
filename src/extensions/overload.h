@@ -164,7 +164,7 @@ struct Overload {
     static void startThread(EFI_AP_PROCEDURE procedure, void* data, unsigned long long ProcessorNumber, EFI_EVENT WaitEvent, unsigned long long TimeoutInMicroseconds) {
 		bool isThreadFinished = false;
         std::thread thread([&isThreadFinished, procedure, data, ProcessorNumber]() {
-            while (true) {
+           /* while (true) {
                 unsigned long long currentProcessorNumber;
                 WhoAmI(NULL, &currentProcessorNumber);
                 if (currentProcessorNumber == ProcessorNumber) {
@@ -172,17 +172,17 @@ struct Overload {
                 } else {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
-            }
+            }*/
             CustomStack* me = reinterpret_cast<CustomStack*>(data);
-            me->setupFuncToCall(me->setupDataToPass);
+            me->setupFuncToCall(me->setupDataToPass, ProcessorNumber);
             isThreadFinished = true;
             });
 
         #ifdef _MSC_VER
         HANDLE hThread = (HANDLE)thread.native_handle();
-        SetThreadAffinityMask(hThread, 1ULL << ProcessorNumber);
+        //SetThreadAffinityMask(hThread, 1ULL << ProcessorNumber);
         #else
-        cpu_set_t cpuset;
+      /*  cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         CPU_SET(ProcessorNumber, &cpuset);
         int rc = pthread_setaffinity_np(thread.native_handle(),
@@ -190,7 +190,7 @@ struct Overload {
                                     &cpuset);
         if (rc != 0) {
             logToConsole(L"Error calling pthread_setaffinity_np");
-        }
+        }*/
         #endif
 
         if (TimeoutInMicroseconds > 0) {
@@ -840,8 +840,8 @@ struct Overload {
         pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
         #else
         // Pin the main thread to CPU 0 to make sure main thread cpu id wont change during process
-        HANDLE hThread = GetCurrentThread();
-        SetThreadAffinityMask(hThread, 1ULL << 0);
+        //HANDLE hThread = GetCurrentThread();
+        //SetThreadAffinityMask(hThread, 1ULL << 0);
         #endif
 
         ih = new EFI_HANDLE;
