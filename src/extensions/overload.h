@@ -16,6 +16,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <poll.h>
 #endif
 
 #define CreateEvent CreateEvent
@@ -515,27 +516,67 @@ struct Overload {
             return EFI_UNSUPPORTED;
         }
 
-        // Send data in thread to make sure send does not block the thread and send all bytes
-        std::thread sendThread([tcpData, Token]() {
-            const auto& fragment = Token->Packet.TxData->FragmentTable[0];
-            int totalSentBytes = 0;
-            while (totalSentBytes != fragment.FragmentLength) {
-                int sentBytes = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, 0);
-                if (sentBytes == SOCKET_ERROR) {
-                    Token->CompletionToken.Status = EFI_ABORTED;
-                    return;
-                }
+        const auto& fragment = Token->Packet.TxData->FragmentTable[0];
+        int totalSentBytes = 0;
+        while (totalSentBytes != fragment.FragmentLength) {
+            int sentBytes = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_NOSIGNAL);
+            if (sentBytes == 0) {
+                // connection closed
+                Token->CompletionToken.Status = EFI_ABORTED;
+                return EFI_ABORTED;
+            } else if (sentBytes == SOCKET_ERROR)
+            {
+#ifdef _MSC_VER
+                int err = WSAGetLastError();
+                if (err == WSAEWOULDBLOCK) {
+                    // wait until socket is writable
+                    fd_set wfds;
+                    FD_ZERO(&wfds);
+                    FD_SET(tcpData->socket, &wfds);
 
+                    int timeout_ms = -1; // no timeout
+
+                    TIMEVAL tv;
+                    TIMEVAL* ptv = nullptr;
+                    if (timeout_ms >= 0) {
+                        tv.tv_sec = timeout_ms / 1000;
+                        tv.tv_usec = (timeout_ms % 1000) * 1000;
+                        ptv = &tv;
+                    }
+
+                    int ret = select(0, nullptr, &wfds, nullptr, ptv);
+                    if (ret <= 0) {
+                        // timeout or error
+                        Token->CompletionToken.Status = EFI_ABORTED;
+                        return EFI_ABORTED;
+                    }
+                    continue; // retry send
+#else
+                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                {
+                    pollfd pfd;
+                    pfd.fd = tcpData->socket;
+                    pfd.events = POLLOUT;
+                    int ret = poll(&pfd, 1, -1);
+                    if (ret <= 0) {
+                        // timeout or error
+                        Token->CompletionToken.Status = EFI_ABORTED;
+                        return EFI_ABORTED;
+                    }
+                    continue; // retry
+                } else
+                {
+                    Token->CompletionToken.Status = EFI_ABORTED;
+                    return EFI_ABORTED;
+                }
+#endif
+            } else
+            {
                 totalSentBytes += sentBytes;
             }
+        }
 
-            Token->CompletionToken.Status = EFI_SUCCESS;
-            /*  setText(message, L"Sent ");
-              appendNumber(message, totalSentBytes, TRUE);
-              appendText(message, L" bytes");
-              logToConsole(message);*/
-            });
-        sendThread.detach();
+        Token->CompletionToken.Status = EFI_SUCCESS;
 
         return EFI_SUCCESS;
     }
@@ -556,27 +597,60 @@ struct Overload {
             return EFI_ABORTED;
         }
 
-        // receive data in a thread to avoid blocking the main thread
-        std::thread receiveThread([tcpData, Token]() {
-            char buffer[1024];
-            memset(buffer, 0, sizeof(buffer));
+        char buffer[8 * 1024];
+        int totalReceivedBytes = 0;
+        memset(buffer, 0, sizeof(buffer));
+        Token->Packet.RxData->DataLength = 0;
 
+#ifdef _MSC_VER
+        u_long mode = 1;
+        ioctlsocket(tcpData->socket, FIONBIO, &mode);
+#endif
+
+        while (true)
+        {
+#ifdef _MSC_VER
             int bytes = recv(tcpData->socket, buffer, sizeof(buffer), 0);
-
-            if (bytes > 0) {
-                memcpy(Token->Packet.RxData->FragmentTable[0].FragmentBuffer, buffer, bytes);
-                Token->Packet.RxData->DataLength = bytes;
-                Token->CompletionToken.Status = EFI_SUCCESS;
-                /*  setText(message, L"Received ");
-                  appendNumber(message, bytes, TRUE);
-                  appendText(message, L" bytes");
-                  logToConsole(message);*/
-            }
-            else {
+#else
+            int bytes = recv(tcpData->socket, buffer, sizeof(buffer), MSG_DONTWAIT);
+#endif
+            if (bytes > 0)
+            {
+                memcpy((char *)Token->Packet.RxData->FragmentTable[0].FragmentBuffer + totalReceivedBytes, buffer, bytes);
+                totalReceivedBytes += bytes;
+                Token->Packet.RxData->DataLength += bytes;
+            } else if (bytes == SOCKET_ERROR)
+            {
+#ifdef _MSC_VER
+                int err = WSAGetLastError();
+                if (err == WSAEWOULDBLOCK) {
+                    // nothing left to read right now
+                    Token->CompletionToken.Status = EFI_SUCCESS;
+                    break;
+                } else {
+                    // real error
+                    Token->CompletionToken.Status = EFI_ABORTED;
+                    return EFI_ABORTED;
+                }
+#else
+                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                {
+                    // nothing left to read right now
+                    Token->CompletionToken.Status = EFI_SUCCESS;
+                    break;
+                } else
+                {
+                    Token->CompletionToken.Status = EFI_ABORTED;
+                    return EFI_ABORTED;
+                }
+#endif
+            } else if (bytes == 0)
+            {
+                // connection closed, mark status as error to reconnect in main thread
                 Token->CompletionToken.Status = EFI_ABORTED;
+                return EFI_ABORTED;
             }
-            });
-        receiveThread.detach();
+        }
 
         return EFI_SUCCESS;
     }
