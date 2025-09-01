@@ -4,7 +4,7 @@ The lite version of Qubic Core that can run directly on the OS without a UEFI en
 
 ## Build
 
-### PreBuild Binary
+### Pre-build Binary
 
 Pre-build binary can be found here
 > Lite Executable <br>
@@ -81,9 +81,3 @@ Delete the **system** file at your current working folder, it may make your node
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
-
-
-
-
-
-
