@@ -180,9 +180,9 @@ struct Overload {
 
         #ifdef _MSC_VER
         HANDLE hThread = (HANDLE)thread.native_handle();
-        //SetThreadAffinityMask(hThread, 1ULL << ProcessorNumber);
+        SetThreadAffinityMask(hThread, 1ULL << ProcessorNumber);
         #else
-      /*  cpu_set_t cpuset;
+        cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         CPU_SET(ProcessorNumber, &cpuset);
         int rc = pthread_setaffinity_np(thread.native_handle(),
@@ -190,7 +190,7 @@ struct Overload {
                                     &cpuset);
         if (rc != 0) {
             logToConsole(L"Error calling pthread_setaffinity_np");
-        }*/
+        }
         #endif
 
         if (TimeoutInMicroseconds > 0) {
@@ -699,10 +699,6 @@ struct Overload {
         data.isGlobal = *((unsigned int*)TcpConfigData->AccessPoint.RemoteAddress.Addr) == 0;
         data.socket = INVALID_SOCKET;
 
-        setText(message, L"Configure ");
-        appendIPv4Address(message, *(IPv4Address*)TcpConfigData->AccessPoint.RemoteAddress.Addr);
-        logToConsole(message);
-
         // Global set up for accepting new connections
         if ((unsigned long long)This == (unsigned long long)peerTcp4Protocol) {
             #ifdef _MSC_VER
@@ -840,8 +836,8 @@ struct Overload {
         pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
         #else
         // Pin the main thread to CPU 0 to make sure main thread cpu id wont change during process
-        //HANDLE hThread = GetCurrentThread();
-        //SetThreadAffinityMask(hThread, 1ULL << 0);
+        HANDLE hThread = GetCurrentThread();
+        SetThreadAffinityMask(hThread, 1ULL << 0);
         #endif
 
         ih = new EFI_HANDLE;
