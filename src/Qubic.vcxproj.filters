@@ -243,6 +243,9 @@
     <ClInclude Include="contracts\Qswap.h">
       <Filter>contracts</Filter>
     </ClInclude>
+	<ClInclude Include="VottunBridge.h">
+	  <Filter>contracts</Filter>
+	</ClInclude>
     <ClInclude Include="platform\uint128.h">
       <Filter>platform</Filter>
     </ClInclude>
