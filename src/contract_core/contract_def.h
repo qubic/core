@@ -316,7 +316,7 @@ constexpr struct ContractDescription
     {"QSWAP", 171, 10000, sizeof(QSWAP)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
     {"NOST", 172, 10000, sizeof(NOST)}, // proposal in epoch 170, IPO in 171, construction and first use in 172
 #ifndef NO_VBRIDGE
-    {"VBRIDGE", 190, 10000, sizeof(VOTTUNBRIDGE)},
+    {"VBRIDGE", 178, 10000, sizeof(VOTTUNBRIDGE)}, // proposal in epoch 176, IPO in 177, construction and first use in 178
 #endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
