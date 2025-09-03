@@ -1206,7 +1206,7 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
     if (tickEpoch != 0)
     {
         unsigned short tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
-        unsigned short numberOfTickTransactions;
+        unsigned int numberOfTickTransactions;
         for (numberOfTickTransactions = 0; numberOfTickTransactions < NUMBER_OF_TRANSACTIONS_PER_TICK; numberOfTickTransactions++)
         {
             tickTransactionIndices[numberOfTickTransactions] = numberOfTickTransactions;
