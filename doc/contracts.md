@@ -68,7 +68,8 @@ In order to develop a contract, follow these steps:
     - Design and implement the interfaces of your contract (the user procedures and user functions along with its inputs and outputs).
       The QPI available for implementing the contract is defined in `src/contracts/qpi.h`.
     - Implement the system procedures needed and remove all the system procedures that are not needed by your contract.
-    - Add the short form contract name as a prefix to all global constants (if any).
+    - Follow the general [qubic style guidelines](https://github.com/qubic/core/blob/main/doc/contributing.md#style-guidelines) when writing your code.
+    - Add the short form contract name as a prefix to all global constants, structs and classes (if any).
     - Make sure your code is efficient. Execution time will cost fees in the future.
       Think about the data structures you use, for example if you can use a hash map instead of an array with linear search.
       Check if you can optimize code in loops and especially in nested loops.
@@ -92,8 +93,9 @@ In order to develop a contract, follow these steps:
 ## Review and tests
 
 Each contract must be validated with the following steps:
-1. The contract is verified with a special software tool, ensuring that it complies with the formal requirements mentioned above, such as no use of forbidden C++ features.
-   (Currently, this tool has not been implemented yet. Thus, this check needs to be done during the review in point 3.)
+1. The contract is verified with the [Qubic Contract Verification Tool](https://github.com/Franziska-Mueller/qubic-contract-verify), ensuring that it complies with the formal requirements mentioned above, such as no use of [forbidden C++ features](#restrictions-of-c-language-features).
+   In the `qubic/core` repository, the tool is run automatically as GitHub workflow for PRs to the `develop` and `main` branches (as well as for commits in these branches).
+   However, since workflow runs on PRs require maintainer approval, we highly recommend to either build the tool from source or use the GitHub action provided in the tool's repository to analyze your contract header file before opening your PR.   
 2. The features of the contract have to be extensively tested with automated tests implemented within the Qubic Core's GoogleTest framework.
 3. The contract and testing code must be reviewed by at least one of the Qubic Core devs, ensuring it meets high quality standards.
 4. Before integrating the contract in the official Qubic Core release, the features of the contract must be tested in a test network with multiple nodes, showing that the contract works well in practice and that the nodes run stable with the contract.
@@ -547,8 +549,8 @@ In consequence, the procedure is executed but with `qpi.invocationReward() == 0`
 
 ## Restrictions of C++ Language Features
 
-It is prohibited to locally instantiating objects or variables on the function call stack.
-Instead, use the function and procedure definition macros with the postfix `_WITH_LOCALS` (see above).
+It is prohibited to locally instantiate objects or variables on the function call stack. This includes loop index variables `for (int i = 0; ...)`.
+Instead, use the function and procedure definition macros with the postfix `_WITH_LOCALS` (see above).  
 In procedures you alternatively may store temporary variables permanently as members of the state.
 
 Defining, casting, and dereferencing pointers is forbidden.
@@ -566,22 +568,25 @@ The division operator `/` and the modulo operator `%` are prohibited to prevent 
 Use `div()` and `mod()` instead, which return zero in case of division by zero.
 
 Strings `"` and chars `'` are forbidden, because they can be used to jump to random memory fragments.
+If you want to use `static_assert` you can do so via the `STATIC_ASSERT` macro defined in `qpi.h` which does not require a string literal.
 
-Variadic arguments are prohibited (character combination `...`).
+Variadic arguments, template parameter packs, and function parameter packs are prohibited (character combination `...`).
 
 Double underscores `__` must not be used in a contract, because these are reserved for internal functions and compiler macros that are prohibited to be used directly.
 For similar reasons, `QpiContext` and `const_cast` are prohibited too.
 
 The scope resolution operator `::` is also prohibited, except for structs, enums, and namespaces defined in contracts and `qpi.h`.
 
-The keywords `typedef` and `union` are prohibited to make the code easier to read and prevent tricking code audits.
+The keyword `union` is prohibited to make the code easier to read and prevent tricking code audits.
+Similarly, the keywords `typedef` and `using` are only allowed in local scope, e.g. inside structs or functions.
+The only exception is `using namespace QPI` which can be used at global scope.
 
 Global variables are not permitted.
-Global constants must begin with the name of the contract state struct.
+Global constants, structs and classes must begin with the name of the contract state struct.
 
 There is a limit for recursion and depth of nested contract function / procedure calls (the limit is 10 at the moment).
 
-The input and output structs of contract user procedures and functions may only use integer and boolean types (such as `uint64`, `sint8`, `bit`) as well as `id`, `Array`, and `BitArray`.
+The input and output structs of contract user procedures and functions may only use integer and boolean types (such as `uint64`, `sint8`, `bit`) as well as `id`, `Array`, and `BitArray`, and struct types containing only allowed types.
 Complex types that may have an inconsistent internal state, such as `Collection`, are forbidden in the public interface of a contract.
 
 
@@ -627,3 +632,6 @@ The file `proposal.cpp` has a lot of examples showing how to use both functions.
 For example, `getProposalIndices()` shows how to call a contract function requiring input and providing output with `runContractFunction()`.
 An example use case of `makeContractTransaction()` can be found in `gqmpropSetProposal()`.
 The function `castVote()` is a more complex example combining both, calling a contract function and invoking a contract procedure.
+
+
+

@@ -227,7 +227,7 @@ public:
             assetInfo.assetName = assetName;
             assetInfo.issuer = id(NOST_CONTRACT_INDEX, 0, 0, 0);
             EXPECT_EQ(numberOfShares(assetInfo), projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).supplyOfToken);
-            EXPECT_EQ(numberOfPossessedShares(assetName, id(NOST_CONTRACT_INDEX, 0, 0, 0), projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).creator, projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).creator, 13, 13), projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).supplyOfToken - fundaraisings.get(indexOfFundraising).soldAmount);
+            EXPECT_EQ(numberOfPossessedShares(assetName, id(NOST_CONTRACT_INDEX, 0, 0, 0), projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).creator, projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).creator, NOST_CONTRACT_INDEX, NOST_CONTRACT_INDEX), projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).supplyOfToken - fundaraisings.get(indexOfFundraising).soldAmount);
         }
     }
     void endEpochSucceedFundraisingChecker(id creator, uint32 indexOfFundraising, uint64 totalInvestedFund, uint64 originalCreatorBalance, uint64 assetName)

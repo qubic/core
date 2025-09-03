@@ -19,6 +19,7 @@
 #include "contract_core/qpi_system_impl.h"
 #include "contract_core/qpi_ticking_impl.h"
 #include "contract_core/qpi_ipo_impl.h"
+#include "contract_core/qpi_mining_impl.h"
 
 #include "test_util.h"
 
@@ -28,6 +29,10 @@ class ContractTesting : public LoggingTest
 public:
     ContractTesting()
     {
+
+#ifdef __AVX512F__
+        initAVX512FourQConstants();
+#endif
         initCommonBuffers();
         initContractExec();
         initSpecialEntities();
