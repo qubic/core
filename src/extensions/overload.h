@@ -475,6 +475,15 @@ struct Overload {
     }
 
     static EFI_STATUS DestroyChild(IN void* This, IN EFI_HANDLE ChildHandle) {
+		// remove tcp4Protocol data from handle
+		if (tcpDataMap.contains(*(unsigned long long*)ChildHandle)) {
+			TcpData& tcpData = tcpDataMap[*(unsigned long long*)ChildHandle];
+			if (tcpData.socket != INVALID_SOCKET) {
+				closesocket(tcpData.socket);
+				tcpData.socket = INVALID_SOCKET;
+			}
+			tcpDataMap.erase(*(unsigned long long*)ChildHandle);
+		}
         freePool(ChildHandle);
         return EFI_SUCCESS;
     }
@@ -518,59 +527,64 @@ struct Overload {
 
         const auto& fragment = Token->Packet.TxData->FragmentTable[0];
         int totalSentBytes = 0;
-        while (totalSentBytes != fragment.FragmentLength) {
+        while (totalSentBytes < fragment.FragmentLength) {
 #ifdef _MSC_VER
 #define MSG_NOSIGNAL 0
+#define MSG_DONTWAIT 0
 #endif
-            int sentBytes = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_NOSIGNAL);
+            int sentBytes = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_NOSIGNAL | MSG_DONTWAIT);
             if (sentBytes == 0) {
                 // connection closed
-                Token->CompletionToken.Status = EFI_ABORTED;
+                Token->CompletionToken.Status = -1;
                 return EFI_ABORTED;
             } else if (sentBytes == SOCKET_ERROR)
             {
 #ifdef _MSC_VER
                 int err = WSAGetLastError();
                 if (err == WSAEWOULDBLOCK) {
-                    // wait until socket is writable
-                    fd_set wfds;
-                    FD_ZERO(&wfds);
-                    FD_SET(tcpData->socket, &wfds);
-
-                    int timeout_ms = -1; // no timeout
-
-                    TIMEVAL tv;
-                    TIMEVAL* ptv = nullptr;
-                    if (timeout_ms >= 0) {
-                        tv.tv_sec = timeout_ms / 1000;
-                        tv.tv_usec = (timeout_ms % 1000) * 1000;
-                        ptv = &tv;
-                    }
-
-                    int ret = select(0, nullptr, &wfds, nullptr, ptv);
-                    if (ret <= 0) {
-                        // timeout or error
-                        Token->CompletionToken.Status = EFI_ABORTED;
-                        return EFI_ABORTED;
-                    }
+                    // // wait until socket is writable
+                    // fd_set wfds;
+                    // FD_ZERO(&wfds);
+                    // FD_SET(tcpData->socket, &wfds);
+                    //
+                    // int timeout_ms = 500; // no timeout
+                    //
+                    // TIMEVAL tv;
+                    // TIMEVAL* ptv = nullptr;
+                    // if (timeout_ms >= 0) {
+                    //     tv.tv_sec = timeout_ms / 1000;
+                    //     tv.tv_usec = (timeout_ms % 1000) * 1000;
+                    //     ptv = &tv;
+                    // }
+                    //
+                    // int ret = select(0, nullptr, &wfds, nullptr, ptv);
+                    // if (ret <= 0) {
+                    //     // timeout or error
+                    //     Token->CompletionToken.Status = -1;
+                    //     return EFI_ABORTED;
+                    // }
                     continue; // retry send
-                }
+				}
+				else {
+					Token->CompletionToken.Status = -1;
+					return EFI_ABORTED;
+				}
 #else
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                 {
-                    pollfd pfd;
-                    pfd.fd = tcpData->socket;
-                    pfd.events = POLLOUT;
-                    int ret = poll(&pfd, 1, -1);
-                    if (ret <= 0) {
-                        // timeout or error
-                        Token->CompletionToken.Status = EFI_ABORTED;
-                        return EFI_ABORTED;
-                    }
+                    // pollfd pfd;
+                    // pfd.fd = tcpData->socket;
+                    // pfd.events = POLLOUT;
+                    // int ret = poll(&pfd, 1, -1);
+                    // if (ret <= 0) {
+                    //     // timeout or error
+                    //     Token->CompletionToken.Status = -1;
+                    //     return EFI_ABORTED;
+                    // }
                     continue; // retry
                 } else
                 {
-                    Token->CompletionToken.Status = EFI_ABORTED;
+                    Token->CompletionToken.Status = -1;
                     return EFI_ABORTED;
                 }
 #endif
@@ -606,11 +620,6 @@ struct Overload {
         memset(buffer, 0, sizeof(buffer));
         Token->Packet.RxData->DataLength = 0;
 
-#ifdef _MSC_VER
-        u_long mode = 1;
-        ioctlsocket(tcpData->socket, FIONBIO, &mode);
-#endif
-
         while (true)
         {
 #ifdef _MSC_VER
@@ -632,7 +641,7 @@ struct Overload {
                     break;
                 } else {
                     // real error
-                    Token->CompletionToken.Status = EFI_ABORTED;
+                    Token->CompletionToken.Status = -1;
                     return EFI_ABORTED;
                 }
 #else
@@ -643,18 +652,19 @@ struct Overload {
                     break;
                 } else
                 {
-                    Token->CompletionToken.Status = EFI_ABORTED;
+                    Token->CompletionToken.Status = -1;
                     return EFI_ABORTED;
                 }
 #endif
             } else if (bytes == 0)
             {
                 // connection closed, mark status as error to reconnect in main thread
-                Token->CompletionToken.Status = EFI_ABORTED;
-                return EFI_ABORTED;
+                Token->CompletionToken.Status = -1;
+                return EFI_CONNECTION_FIN;
             }
         }
 
+        Token->CompletionToken.Status = EFI_SUCCESS;
         return EFI_SUCCESS;
     }
 
@@ -670,7 +680,18 @@ struct Overload {
         }
 
         if (Tcp4State) {
-            *Tcp4State = Tcp4StateEstablished;
+			if (tcpDataMap.contains((unsigned long long)This)) {
+				TcpData& tcpData = tcpDataMap[(unsigned long long)This];
+				if (tcpData.socket == INVALID_SOCKET) {
+					*Tcp4State = Tcp4StateClosed;
+				}
+				else {
+					*Tcp4State = Tcp4StateEstablished;
+				}
+			}
+			else {
+				*Tcp4State = Tcp4StateClosed;
+			}
         }
 
         if (Tcp4ConfigData) {
@@ -690,6 +711,7 @@ struct Overload {
     }
 
     static EFI_STATUS Configure(IN void* This, IN EFI_TCP4_CONFIG_DATA* TcpConfigData OPTIONAL) {
+        static bool isGlobalSocketInitialized = false;
         if (!TcpConfigData) {
             return EFI_SUCCESS;
         }
@@ -700,7 +722,7 @@ struct Overload {
         data.socket = INVALID_SOCKET;
 
         // Global set up for accepting new connections
-        if ((unsigned long long)This == (unsigned long long)peerTcp4Protocol) {
+        if ((unsigned long long)This == (unsigned long long)peerTcp4Protocol && !isGlobalSocketInitialized) {
             #ifdef _MSC_VER
             WSADATA wsaData;
             if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -736,6 +758,7 @@ struct Overload {
 
             logToConsole(L"Socket binded");
             data.socket = sock;
+			isGlobalSocketInitialized = true;
         }
 
         unsigned long long key = (unsigned long long)This;
@@ -772,6 +795,11 @@ struct Overload {
                 ListenToken->CompletionToken.Status = EFI_ABORTED;
                 return;
             }
+
+#ifdef _MSC_VER
+            u_long mode = 1;
+            ioctlsocket(clientSocket, FIONBIO, &mode);
+#endif
 
             CreateChild(NULL, &ListenToken->NewChildHandle);
             // At this point we dont know the tcp4Protocol for this peer (tcp4Protocol will be inititialzed in peerConnectionNewlyEstablished())
@@ -811,6 +839,11 @@ struct Overload {
         serverAddr.sin_addr.s_addr = *((unsigned long*)tcpData->configData.AccessPoint.RemoteAddress.Addr);
         #endif
 
+#ifdef _MSC_VER
+        u_long mode = 1;
+        ioctlsocket(tcpData->socket, FIONBIO, &mode);
+#endif
+
         // connect in a thread
         std::thread connectThread([tcpData, serverAddr, ConnectionToken]() {
             if (connect(tcpData->socket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
@@ -836,8 +869,9 @@ struct Overload {
         pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
         #else
         // Pin the main thread to CPU 0 to make sure main thread cpu id wont change during process
-        HANDLE hThread = GetCurrentThread();
-        SetThreadAffinityMask(hThread, 1ULL << 0);
+		// NOTE: In MSVC Release Mode, so the scheduler often just keeps the main thread on one CPU core (the best core), dont need to set affinity because it will slow down the main thread performance
+        //HANDLE hThread = GetCurrentThread();
+        //SetThreadAffinityMask(hThread, 1ULL << 0);
         #endif
 
         ih = new EFI_HANDLE;
