@@ -222,6 +222,7 @@ public:
         isValidVaultId_input iv_in;
         isValidVaultId_output iv_out;
         isValidVaultId_locals iv_locals;
+        uint64 amountToDeposit;
     };
 
     struct releaseTo_input
@@ -918,9 +919,19 @@ protected:
             return;
         }
 
-        if (qpi.invocationReward() > (sint64)state.liveDepositFee)
+        // calculate the actual amount to deposit into the vault
+        locals.amountToDeposit = qpi.invocationReward() - state.liveDepositFee;
+
+        // make sure the deposit amount is greater than zero
+        if (locals.amountToDeposit == 0)
         {
+            // The user only send the exact fee amount, with nothing left to deposit
+            // this is an invalid operation, so we refund everything
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.status = 5; // FAILURE_INVALID_PARAMS
+            locals.logger._type = (uint32)output.status;
+            LOG_INFO(locals.logger);
+            return;
         }
 
         locals.iv_in.vaultId = input.vaultId;
@@ -945,7 +956,12 @@ protected:
             return;
         }
 
-        locals.vault.qubicBalance += (uint64)qpi.invocationReward();
+        // add the collected fee to the total revenue
+        state.totalRevenue += state.liveDepositFee;
+
+        // add the remaining amount to the specified vault's balance
+        locals.vault.qubicBalance += locals.amountToDeposit;
+
         state.vaults.set(input.vaultId, locals.vault);
         output.status = 1; // SUCCESS
         locals.logger._type = (uint32)output.status;
@@ -1053,7 +1069,7 @@ protected:
 
         if (qpi.invocationReward() > (sint64)state.liveDepositFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveDepositFee);
         }
 
         locals.userAssetBalance = qpi.numberOfShares(input.asset,
@@ -1062,9 +1078,9 @@ protected:
 
         if (locals.userAssetBalance < (sint64)input.amount || input.amount == 0)
         {
-            // User does not have enough shares, or is trying to deposit zero. Abort.
+            // User does not have enough shares, or is trying to deposit zero. Abort and refund the fee.
             output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.transfer(qpi.invocator(), state.liveDepositFee);
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return;
@@ -1076,7 +1092,7 @@ protected:
         if (!locals.iv_out.result)
         {
             output.status = 3; // FAILURE_INVALID_VAULT
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.transfer(qpi.invocator(), state.liveDepositFee);
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return; // invalid vault id
@@ -1086,7 +1102,7 @@ protected:
         if (!locals.vault.isActive)
         {
             output.status = 3; // FAILURE_INVALID_VAULT
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.transfer(qpi.invocator(), state.liveDepositFee);
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return; // vault is not active
@@ -1109,13 +1125,15 @@ protected:
         {
             // no more new asset
             output.status = 7; // FAILURE_LIMIT_REACHED
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.transfer(qpi.invocator(), state.liveDepositFee);
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return;
         }
 
         // All checks passed, now perform the transfer of ownership.
+        state.totalRevenue += state.liveDepositFee;
+
         locals.tempShares = qpi.numberOfShares(
             input.asset,
             { SELF, SELF_INDEX },
@@ -1132,7 +1150,6 @@ protected:
         if (locals.transferResult < 0)
         {
             output.status = 8; // FAILURE_TRANSFER_FAILED
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return;
@@ -1143,7 +1160,6 @@ protected:
         if (locals.transferedShares != (sint64)input.amount)
         {
             output.status = 8; // FAILURE_TRANSFER_FAILED
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return;

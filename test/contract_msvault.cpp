@@ -594,54 +594,113 @@ TEST(ContractMsVault, GetVaults_Multiple)
 TEST(ContractMsVault, GetRevenue)
 {
     ContractTestingMsVault msVault;
-    msVault.beginEpoch();
+    const Asset assetTest = { OWNER1, assetNameFromString("TESTREV") };
 
-    auto revenueOutput = msVault.getRevenueInfo();
-    EXPECT_EQ(revenueOutput.totalRevenue, 0U);
-    EXPECT_EQ(revenueOutput.totalDistributedToShareholders, 0U);
-    EXPECT_EQ(revenueOutput.numberOfActiveVaults, 0U);
+    increaseEnergy(OWNER1, 1000000000ULL);
+    increaseEnergy(OWNER2, 1000000000ULL);
 
-    increaseEnergy(OWNER1, 100000000ULL);
-    increaseEnergy(OWNER2, 100000000000ULL);
-    increaseEnergy(OWNER3, 100000ULL);
+    uint64 expectedRevenue = 0;
+    auto revenueInfo = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueInfo.totalRevenue, expectedRevenue);
+    EXPECT_EQ(revenueInfo.numberOfActiveVaults, 0U);
 
-    auto regOut1 = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
-    EXPECT_EQ(regOut1.status, 1ULL);
+    // Register a vault, generating the first fee
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    EXPECT_EQ(regOut.status, 1ULL);
+    expectedRevenue += MSVAULT_REGISTERING_FEE;
 
-    msVault.endEpoch();
+    auto vaults = msVault.getVaults(OWNER1);
+    uint64 vaultId = vaults.vaultIds.get(0);
 
-    msVault.beginEpoch();
-
-    revenueOutput = msVault.getRevenueInfo();
-    // first vault is destroyed after paying dividends
-    EXPECT_EQ(revenueOutput.totalRevenue, MSVAULT_REGISTERING_FEE);
-    EXPECT_EQ(revenueOutput.totalDistributedToShareholders, ((int)MSVAULT_REGISTERING_FEE / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS);
-    EXPECT_EQ(revenueOutput.numberOfActiveVaults, 0U);
-
-    increaseEnergy(OWNER1, 100000000ULL);
-    increaseEnergy(OWNER2, 100000000ULL);
-    increaseEnergy(OWNER3, 100000000ULL);
-
-    auto regOut2 = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
-    EXPECT_EQ(regOut2.status, 1ULL);
-
-    auto vaultsO1 = msVault.getVaults(OWNER1);
-    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
-
-    auto depOut = msVault.deposit(vaultId, 500000000ULL, OWNER1);
+    // Deposit QUs to ensure the vault can pay holding fees
+    const uint64 depositAmount = 10000000; // 10M QUs
+    auto depOut = msVault.deposit(vaultId, depositAmount, OWNER1);
     EXPECT_EQ(depOut.status, 1ULL);
+    // expectedRevenue += state.liveDepositFee; // Fee is currently 0
+
+    // Generate Qubic-based fees
+    auto relOut = msVault.releaseTo(vaultId, 1000ULL, DESTINATION, OWNER1);
+    EXPECT_EQ(relOut.status, 9ULL); // Pending approval
+    expectedRevenue += MSVAULT_RELEASE_FEE;
+    auto rstOut = msVault.resetRelease(vaultId, OWNER1);
+    EXPECT_EQ(rstOut.status, 1ULL);
+    expectedRevenue += MSVAULT_RELEASE_RESET_FEE;
+
+    // Generate Asset-based fees
+    msVault.issueAsset(OWNER1, "TESTREV", 10000);
+    msVault.transferShareManagementRights(OWNER1, assetTest, 5000, MSVAULT_CONTRACT_INDEX);
+    auto depAssetOut = msVault.depositAsset(vaultId, assetTest, 1000, OWNER1);
+    EXPECT_EQ(depAssetOut.status, 1ULL);
+    // expectedRevenue += state.liveDepositFee; // Fee is currently 0
+    auto relAssetOut = msVault.releaseAssetTo(vaultId, assetTest, 50, DESTINATION, OWNER2);
+    EXPECT_EQ(relAssetOut.status, 9ULL); // Pending approval
+    expectedRevenue += MSVAULT_RELEASE_FEE;
+    auto rstAssetOut = msVault.resetAssetRelease(vaultId, OWNER2);
+    EXPECT_EQ(rstAssetOut.status, 1ULL);
+    expectedRevenue += MSVAULT_RELEASE_RESET_FEE;
+
+    // Verify revenue before the first epoch ends
+    revenueInfo = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueInfo.totalRevenue, expectedRevenue);
 
     msVault.endEpoch();
-
     msVault.beginEpoch();
 
-    revenueOutput = msVault.getRevenueInfo();
+    // Holding fee from the active vault is collected
+    expectedRevenue += MSVAULT_HOLDING_FEE;
 
-    auto total_revenue = MSVAULT_REGISTERING_FEE * 2 + MSVAULT_HOLDING_FEE;
-    EXPECT_EQ(revenueOutput.totalRevenue, total_revenue);
-    EXPECT_EQ(revenueOutput.totalDistributedToShareholders, ((int)(total_revenue) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS);
-    EXPECT_EQ(revenueOutput.numberOfActiveVaults, 1U);
+    revenueInfo = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueInfo.numberOfActiveVaults, 1U);
+    EXPECT_EQ(revenueInfo.totalRevenue, expectedRevenue);
 
+    // Verify dividends were distributed correctly based on the total revenue so far
+    uint64 expectedDistribution = (expectedRevenue / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS;
+    EXPECT_EQ(revenueInfo.totalDistributedToShareholders, expectedDistribution);
+
+    // Make more revenue generation actions in the new epoch
+    auto relOut2 = msVault.releaseTo(vaultId, 2000ULL, DESTINATION, OWNER2);
+    EXPECT_EQ(relOut2.status, 9ULL);
+    expectedRevenue += MSVAULT_RELEASE_FEE;
+
+    auto rstOut2 = msVault.resetRelease(vaultId, OWNER2);
+    EXPECT_EQ(rstOut2.status, 1ULL);
+    expectedRevenue += MSVAULT_RELEASE_RESET_FEE;
+
+    // Revoke some of the previously granted management rights.
+    // This one has a fee, but it is paid to QX, not kept by MsVault.
+    // Therefore, expectedRevenue should NOT be incremented.
+    auto revokeOut = msVault.revokeAssetManagementRights(OWNER1, assetTest, 2000);
+    EXPECT_EQ(revokeOut.status, 1ULL);
+
+    // End the second epoch
+    msVault.endEpoch();
+    msVault.beginEpoch();
+
+    // Another holding fee is collected
+    expectedRevenue += MSVAULT_HOLDING_FEE;
+
+    revenueInfo = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueInfo.numberOfActiveVaults, 1U);
+    EXPECT_EQ(revenueInfo.totalRevenue, expectedRevenue);
+
+    // Verify the new cumulative dividend distribution
+    expectedDistribution = (expectedRevenue / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS;
+    EXPECT_EQ(revenueInfo.totalDistributedToShareholders, expectedDistribution);
+
+    // No new transactions in this epoch
+    msVault.endEpoch();
+    msVault.beginEpoch();
+
+    // A third holding fee is collected
+    expectedRevenue += MSVAULT_HOLDING_FEE;
+
+    revenueInfo = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueInfo.numberOfActiveVaults, 1U);
+    EXPECT_EQ(revenueInfo.totalRevenue, expectedRevenue);
+
+    // Verify the final cumulative dividend distribution
+    expectedDistribution = (expectedRevenue / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS;
+    EXPECT_EQ(revenueInfo.totalDistributedToShareholders, expectedDistribution);
 }
 
 TEST(ContractMsVault, ManagementRightsVsDirectDeposit)
