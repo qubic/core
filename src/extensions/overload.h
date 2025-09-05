@@ -17,9 +17,13 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <sys/mman.h>
+#include <cstddef>
+
 #endif
 
 #define CreateEvent CreateEvent
+#include "platform/console_logging.h"
 
 void __writecr4_1(unsigned int) {
 
@@ -86,6 +90,7 @@ std::vector<unsigned char> readInput() {
 }
 #endif
 
+#ifdef _MSC_VER
 inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
 	return VirtualAlloc(NULL, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE);
 }
@@ -97,6 +102,35 @@ inline void* qVirtualCommit(void* address, const unsigned long long size) {
 inline bool qVirtualDecommit(void* address, const unsigned long long size) {
 	return VirtualFree(address, (SIZE_T)size, MEM_DECOMMIT);
 }
+#else
+inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
+    int prot = commitMem ? (PROT_READ | PROT_WRITE) : PROT_NONE;
+    void* addr = mmap(nullptr, size, prot, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (addr != MAP_FAILED) return addr;
+
+    logToConsole(L"CRITIAL: mmap failed in qVirtualAlloc");
+    return nullptr;
+}
+
+inline void* qVirtualCommit(void* address, const unsigned long long size) {
+    static long ps = sysconf(_SC_PAGESIZE);
+    uintptr_t start = (uintptr_t)address & ~(ps - 1);
+    uintptr_t end   = (uintptr_t)address + size;
+    size_t aligned_len = end - start;
+    aligned_len = (aligned_len + ps - 1) & ~(ps - 1);
+    if (mprotect((void*)start, aligned_len, PROT_READ | PROT_WRITE) == 0)
+    {
+        return address;
+    }
+
+    logToConsole(L"CRITIAL: mprotect failed in qVirtualCommit");
+    return nullptr;
+}
+
+inline bool qVirtualDecommit(void* address, const unsigned long long size) {
+    return mprotect(address, size, PROT_NONE) == 0;
+}
+#endif
 
 void updateTime() {
     std::time_t t = std::time(nullptr);

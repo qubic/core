@@ -821,6 +821,7 @@ public:
         inline static TickData& getByTickInCurrentEpoch(unsigned int tick)
         {
             ASSERT(tickInCurrentEpochStorage(tick));
+            qVirtualCommit(tickDataPtr + tickToIndexCurrentEpoch(tick), sizeof(TickData));
             return tickDataPtr[tickToIndexCurrentEpoch(tick)];
         }
 
