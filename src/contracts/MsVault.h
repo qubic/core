@@ -654,6 +654,7 @@ public:
     };
     struct getVaultAssetBalances_locals
     {
+        uint64 i;
         Vault vault;
         isValidVaultId_input iv_in;
         isValidVaultId_output iv_out;
@@ -1941,9 +1942,9 @@ protected:
             return; // output.status = false
         }
         output.numberOfAssetTypes = locals.vault.numberOfAssetTypes;
-        for (uint64 i = 0; i < locals.vault.numberOfAssetTypes; i++)
+        for (locals.i = 0; locals.i < locals.vault.numberOfAssetTypes; locals.i++)
         {
-            output.assetBalances.set(i, locals.vault.assetBalances.get(i));
+            output.assetBalances.set(locals.i, locals.vault.assetBalances.get(locals.i));
         }
         output.status = 1ULL;
     }
