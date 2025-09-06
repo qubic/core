@@ -59,6 +59,7 @@
     <ClInclude Include="contract_core\stack_buffer.h" />
     <ClInclude Include="contract_core\qpi_proposal_voting.h" />
     <ClInclude Include="extensions\overload.h" />
+    <ClInclude Include="extensions\cxxopts.h" />
     <ClInclude Include="files\files.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="logging\net_msg_impl.h" />

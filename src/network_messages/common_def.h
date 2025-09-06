@@ -62,6 +62,17 @@ typedef union IPv4Address
 {
     uint8_t     u8[4];
     uint32_t    u32;
+
+    void fromString(std::string str) {
+        size_t pos = 0;
+        for (int i = 0; i < 4; i++) {
+            size_t nextPos = str.find('.', pos);
+            std::string byteStr = (nextPos == std::string::npos) ? str.substr(pos) : str.substr(pos, nextPos - pos);
+            u8[i] = static_cast<uint8_t>(std::stoi(byteStr));
+            if (nextPos == std::string::npos) break;
+            pos = nextPos + 1;
+        }
+    }
 } IPv4Address;
 
 static_assert(sizeof(IPv4Address) == 4, "Unexpected size!");

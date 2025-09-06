@@ -2,6 +2,7 @@
 #include <map>
 #include <vector>
 #include <thread>
+#include <string>
 #include <lib/platform_efi/uefi_globals.h>
 #ifdef __linux__
 #include <string.h>
@@ -92,6 +93,7 @@
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
 
+#include "extensions/cxxopts.h"
 #include "extensions/overload.h"
 
 #ifdef _WIN32
@@ -131,7 +133,8 @@ struct Processor : public CustomStack
 };
 
 
-
+// Dynamic peers that can be added using command line
+std::vector<IPv4Address> knownPublicPeersDynamic;
 
 static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
@@ -5837,6 +5840,18 @@ static bool initialize()
             publicPeers[numberOfPublicPeers - 1].isFullnode = true;
         }
     }
+
+    for (unsigned int i = 0; i < knownPublicPeersDynamic.size() && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; i++)
+    {
+        const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(&knownPublicPeersDynamic[i]);
+        addPublicPeer(peer_ip);
+        if (numberOfPublicPeers > 0)
+        {
+            publicPeers[numberOfPublicPeers - 1].isHandshaked = true;
+            publicPeers[numberOfPublicPeers - 1].isFullnode = true;
+        }
+    }
+
     if (numberOfPublicPeers < 4)
     {
         setText(message, L"WARNING: Only ");
@@ -6849,7 +6864,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             solutionProcessorFlags[i] = false;
         }
 
-        for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS; i++)
+        for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS_DYNAMIC; i++)
         {
             EFI_PROCESSOR_INFORMATION processorInformation;
             mpServicesProtocol->GetProcessorInfo(mpServicesProtocol, i, &processorInformation);
@@ -6897,10 +6912,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     debugLogOnlyMainProcessorRunning = false;
                     #endif
 
-                    if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
+                    if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC]
                         && !solutionProcessorFlags[i])
                     {
-                        solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS] = true;
+                        solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC] = true;
                         solutionProcessorFlags[i] = true;
                         solutionProcessorIDs[nSolutionProcessorIDs++] = i;
                     }
@@ -7443,7 +7458,79 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     return EFI_SUCCESS;
 }
 
-int main() {
+namespace Color {
+    constexpr auto reset = "\033[0m";
+    constexpr auto red = "\033[31m";
+    constexpr auto green = "\033[32m";
+    constexpr auto yellow = "\033[33m";
+    constexpr auto blue = "\033[34m";
+    constexpr auto magenta = "\033[35m";
+    constexpr auto cyan = "\033[36m";
+    constexpr auto bold = "\033[1m";
+}
+
+void processArgs(int argc, const char* argv[]) {
+#ifdef TESTNET
+    std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "TESNET" << std::endl;
+#else
+	std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "MAINNET" << std::endl;
+#endif
+
+    cxxopts::Options options("Qubic Core Lite", "The lite version of Qubic Core that can run directly on the OS without a UEFI environment.");
+    options.add_options()
+        ("p,peers", "Public peers", cxxopts::value<std::string>())
+        ("m,mode", "Core mode", cxxopts::value<std::string>())
+        ("t,threads", "Total Threads will be used by the core", cxxopts::value<int>())
+        ("st,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
+        ("v,verify-state", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
+    auto result = options.parse(argc, argv);
+
+    if (result.count("peers")) {
+        std::string peersStr = result["peers"].as<std::string>();
+        std::vector<std::string> peerList;
+        std::stringstream ss(peersStr);
+        std::string peer;
+        while (std::getline(ss, peer, ',')) {
+            peerList.push_back(peer);
+        }
+
+        for (size_t i = 0; i < peerList.size(); i++) {
+            IPv4Address address;
+            address.fromString(peerList[i]);
+            knownPublicPeersDynamic.push_back(address);
+        }
+    }
+
+    if (result.count("threads")) {
+        MAX_NUMBER_OF_PROCESSORS_DYNAMIC = result["threads"].as<int>();
+    }
+
+    if (result.count("solution-threads")) {
+        NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC = result["solution-threads"].as<int>();
+    }
+
+    if (result.count("mode")) {
+        std::vector<std::string> validModes = {"mainnet", "testnet"};
+        std::string modeStr = result["mode"].as<std::string>();
+        if (std::find(validModes.begin(), validModes.end(), modeStr) != validModes.end()) {
+            if (modeStr == "mainnet") {
+            } else if (modeStr == "testnet") {
+            }
+        } else {
+            std::cerr << "Invalid mode: " << modeStr << std::endl;
+            std::cerr << "Valid modes are: ";
+            for (const auto& m : validModes) {
+                std::cerr << m << " ";
+            }
+            std::cerr << std::endl;
+            exit(1);
+        }
+    }
+}
+
+int main(int argc, const char* argv[]) {
+	processArgs(argc, argv);
+
     Overload::initializeUefi();
     return efi_main(ih, st);
 }
