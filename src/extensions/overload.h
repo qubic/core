@@ -896,7 +896,8 @@ struct Overload {
                 ConnectionToken->CompletionToken.Status = EFI_ABORTED;
             }
             else {
-                ConnectionToken->CompletionToken.Status = EFI_SUCCESS;
+				// Must be 0 on success
+                ConnectionToken->CompletionToken.Status = 0;
             }
             });
         connectThread.detach();
