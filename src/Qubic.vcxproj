@@ -23,6 +23,7 @@
     <ClInclude Include="assets\net_msg_impl.h" />
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
+    <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\Qswap.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />

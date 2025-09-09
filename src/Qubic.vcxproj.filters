@@ -273,6 +273,9 @@
     <ClInclude Include="contract_core\qpi_mining_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Qdraw.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
