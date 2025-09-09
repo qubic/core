@@ -178,7 +178,7 @@ protected:
         state._lastWinAmount = 0;
         state._lastWinner = NULL_ID;
         state._lastDrawHour = qpi.hour();
-        state._owner = ID(_Q, _D, _R, _A, _W, _U, _R, _A, _L, _C, _L, _P, _P, _E, _Q, _O, _G, _Q, _C, _U, _J, _N, _F, _B, _B, _B, _A, _A, _F, _X, _W, _Y, _Y, _M, _M, _C, _U, _C, _U, _K, _T, _C, _R, _Q, _B, _S, _M, _Z, _U, _D, _M, _V, _X, _P, _N,_F, _Y, _X, _U, _M);
+        state._owner = ID(_Q, _D, _R, _A, _W, _U, _R, _A, _L, _C, _L, _P, _P, _E, _Q, _O, _G, _Q, _C, _U, _J, _N, _F, _B, _B, _B, _A, _A, _F, _X, _W, _Y, _Y, _M, _M, _C, _U, _C, _U, _K, _T, _C, _R, _Q, _B, _S, _M, _Z, _U, _D, _M, _V, _X, _P, _N, _F);
     }
 
     BEGIN_TICK_WITH_LOCALS()
