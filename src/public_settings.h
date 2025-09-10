@@ -16,6 +16,9 @@
 #define NUMBER_OF_SOLUTION_PROCESSORS 12
 #endif
 
+inline auto MAX_NUMBER_OF_PROCESSORS_DYNAMIC = MAX_NUMBER_OF_PROCESSORS;
+inline auto NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC = NUMBER_OF_SOLUTION_PROCESSORS;
+
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
 // is MAX_NUMBER_OF_PROCESSORS - 1.
