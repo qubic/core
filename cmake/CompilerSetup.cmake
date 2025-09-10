@@ -163,7 +163,16 @@ elseif(IS_CLANG OR IS_GCC)
     set(COMMON_LINK_FLAGS "" CACHE INTERNAL "Common linker flags" FORCE)
     
     # Clang/GCC-specific EFI flags
-    set(EFI_C_FLAGS "-ffreestanding -mno-red-zone -fno-stack-protector -fno-strict-aliasing -fno-builtin" CACHE INTERNAL "EFI-specific C compiler flags" FORCE)
+    # -ffreestanding                    # Indicates that the standard library may not exist and program startup may not necessarily be at main()
+    # -mno-red-zone                     # Disable red zone optimization (x86-64 specific) - UEFI interrupts can corrupt the red zone
+    # -fno-stack-protector              # Disable stack canaries/guards as UEFI runtime doesn't support the required runtime functions
+    # -fno-strict-aliasing              # Allow less strict pointer aliasing rules for compatibility with UEFI interfaces
+    # -fno-builtin                      # Don't recognize built-in functions that don't begin with __builtin_ prefix
+    # -Xclang -fno-wchar                # Pass flag to clang frontend - do not treat wchar_t as a built-in type but as typedef
+    # SHELL:-Xclang -fwchar-type=short  # Use shell expansion to pass flag to clang - set wchar_t typedef to short (16-bit) SHELL needed to avoid deduplication
+    # -fno-rtti                         # Disable Run-Time Type Information - UEFI doesn't support C++ RTTI mechanisms
+    # -fno-exceptions                   # Disable C++ exception handling - UEFI runtime doesn't support exception unwinding
+    set(EFI_C_FLAGS "-ffreestanding -mno-red-zone -fno-stack-protector -fno-strict-aliasing -fno-builtin -Xclang -fno-wchar SHELL:-Xclang -fwchar-type=short" CACHE INTERNAL "EFI-specific C compiler flags" FORCE)
     set(EFI_CXX_FLAGS "${EFI_C_FLAGS} -fno-rtti -fno-exceptions" CACHE INTERNAL "EFI-specific C++ compiler flags" FORCE)
     
     # Clang/GCC-specific OS flags
