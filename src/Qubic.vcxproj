@@ -23,6 +23,7 @@
     <ClInclude Include="assets\net_msg_impl.h" />
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
+    <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\Qswap.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
@@ -39,7 +40,6 @@
     <ClInclude Include="contracts\QVAULT.h" />
     <ClInclude Include="contracts\QBAY.h" />
     <ClInclude Include="contracts\Nostromo.h" />
-	  <ClInclude Include="contracts\VottunBridge.h" />  
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />
