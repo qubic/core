@@ -55,37 +55,47 @@ namespace QPI
 #define STATIC_ASSERT(condition, identifier) static_assert(condition, #identifier);
 
 #define NULL_ID id::zero()
+
 	constexpr sint64 NULL_INDEX = -1;
 
 	constexpr sint64 INVALID_AMOUNT = 0x8000000000000000;
 
-#define _A 0
-#define _B 1
-#define _C 2
-#define _D 3
-#define _E 4
-#define _F 5
-#define _G 6
-#define _H 7
-#define _I 8
-#define _J 9
-#define _K 10
-#define _L 11
-#define _M 12
-#define _N 13
-#define _O 14
-#define _P 15
-#define _Q 16
-#define _R 17
-#define _S 18
-#define _T 19
-#define _U 20
-#define _V 21
-#define _W 22
-#define _X 23
-#define _Y 24
-#define _Z 25
-#define ID(_00, _01, _02, _03, _04, _05, _06, _07, _08, _09, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, _31, _32, _33, _34, _35, _36, _37, _38, _39, _40, _41, _42, _43, _44, _45, _46, _47, _48, _49, _50, _51, _52, _53, _54, _55) _mm256_set_epi64x(((((((((((((((uint64)_55) * 26 + _54) * 26 + _53) * 26 + _52) * 26 + _51) * 26 + _50) * 26 + _49) * 26 + _48) * 26 + _47) * 26 + _46) * 26 + _45) * 26 + _44) * 26 + _43) * 26 + _42, ((((((((((((((uint64)_41) * 26 + _40) * 26 + _39) * 26 + _38) * 26 + _37) * 26 + _36) * 26 + _35) * 26 + _34) * 26 + _33) * 26 + _32) * 26 + _31) * 26 + _30) * 26 + _29) * 26 + _28, ((((((((((((((uint64)_27) * 26 + _26) * 26 + _25) * 26 + _24) * 26 + _23) * 26 + _22) * 26 + _21) * 26 + _20) * 26 + _19) * 26 + _18) * 26 + _17) * 26 + _16) * 26 + _15) * 26 + _14, ((((((((((((((uint64)_13) * 26 + _12) * 26 + _11) * 26 + _10) * 26 + _09) * 26 + _08) * 26 + _07) * 26 + _06) * 26 + _05) * 26 + _04) * 26 + _03) * 26 + _02) * 26 + _01) * 26 + _00)
+	constexpr long long _A = 0;
+	constexpr long long _B = 1;
+	constexpr long long _C = 2;
+	constexpr long long _D = 3;
+	constexpr long long _E = 4;
+	constexpr long long _F = 5;
+	constexpr long long _G = 6;
+	constexpr long long _H = 7;
+	constexpr long long _I = 8;
+	constexpr long long _J = 9;
+	constexpr long long _K = 10;
+	constexpr long long _L = 11;
+	constexpr long long _M = 12;
+	constexpr long long _N = 13;
+	constexpr long long _O = 14;
+	constexpr long long _P = 15;
+	constexpr long long _Q = 16;
+	constexpr long long _R = 17;
+	constexpr long long _S = 18;
+	constexpr long long _T = 19;
+	constexpr long long _U = 20;
+	constexpr long long _V = 21;
+	constexpr long long _W = 22;
+	constexpr long long _X = 23;
+	constexpr long long _Y = 24;
+	constexpr long long _Z = 25;
+
+	inline id ID(long long _00, long long _01, long long _02, long long _03, long long _04, long long _05, long long _06, long long _07, long long _08, long long _09,
+		long long _10, long long _11, long long _12, long long _13, long long _14, long long _15, long long _16, long long _17, long long _18, long long _19,
+		long long _20, long long _21, long long _22, long long _23, long long _24, long long _25, long long _26, long long _27, long long _28, long long _29,
+		long long _30, long long _31, long long _32, long long _33, long long _34, long long _35, long long _36, long long _37, long long _38, long long _39,
+		long long _40, long long _41, long long _42, long long _43, long long _44, long long _45, long long _46, long long _47, long long _48, long long _49,
+		long long _50, long long _51, long long _52, long long _53, long long _54, long long _55)
+	{ 
+		return _mm256_set_epi64x(((((((((((((((uint64)_55) * 26 + _54) * 26 + _53) * 26 + _52) * 26 + _51) * 26 + _50) * 26 + _49) * 26 + _48) * 26 + _47) * 26 + _46) * 26 + _45) * 26 + _44) * 26 + _43) * 26 + _42, ((((((((((((((uint64)_41) * 26 + _40) * 26 + _39) * 26 + _38) * 26 + _37) * 26 + _36) * 26 + _35) * 26 + _34) * 26 + _33) * 26 + _32) * 26 + _31) * 26 + _30) * 26 + _29) * 26 + _28, ((((((((((((((uint64)_27) * 26 + _26) * 26 + _25) * 26 + _24) * 26 + _23) * 26 + _22) * 26 + _21) * 26 + _20) * 26 + _19) * 26 + _18) * 26 + _17) * 26 + _16) * 26 + _15) * 26 + _14, ((((((((((((((uint64)_13) * 26 + _12) * 26 + _11) * 26 + _10) * 26 + _09) * 26 + _08) * 26 + _07) * 26 + _06) * 26 + _05) * 26 + _04) * 26 + _03) * 26 + _02) * 26 + _01) * 26 + _00); 
+	}
 
 #define NUMBER_OF_COMPUTORS 676
 #define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
