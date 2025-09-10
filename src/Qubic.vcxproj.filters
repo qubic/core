@@ -274,6 +274,9 @@
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="extensions\overload.h" />
+    <ClInclude Include="contracts\VottunBridge.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

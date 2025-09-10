@@ -21,6 +21,8 @@
 #define system qsystem
 #endif
 
+// #define NO_VBRIDGE
+
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"

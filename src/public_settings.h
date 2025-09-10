@@ -32,7 +32,7 @@
 #define TARGET_TICK_DURATION 7000
 #define TRANSACTION_SPARSENESS 4
 #else
-#define TARGET_TICK_DURATION 3000
+#define TARGET_TICK_DURATION 1000
 #define TRANSACTION_SPARSENESS 1
 #endif
 
@@ -42,7 +42,7 @@
 // to prevent bad actor causing misalignment.
 // depends on actual tick time of the network, operators should set this number randomly in this range [12, 26]
 // eg: If AUTO_FORCE_NEXT_TICK_THRESHOLD is 8 and TARGET_TICK_DURATION is 2, then the system will start "auto F5 procedure" after 16 seconds after receveing 451+ votes
-#define AUTO_FORCE_NEXT_TICK_THRESHOLD 20ULL 
+#define AUTO_FORCE_NEXT_TICK_THRESHOLD 20ULL
 #else
 #define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
 #endif
@@ -70,12 +70,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 257
+#define VERSION_B 258
 #define VERSION_C 1
 
 // Epoch and initial tick for node startup
-#define EPOCH 176
-#define TICK 31910000
+#define EPOCH 177
+#define TICK 32116000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"

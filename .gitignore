@@ -14,3 +14,8 @@ x64/
 .clang-format
 tmp
 build/
+
+# Build directories and temporary files
+out/build/
+**/Testing/Temporary/
+**/_deps/googletest-src
