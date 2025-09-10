@@ -20,7 +20,7 @@
 #define SPECTRUM_CAPACITY (1ULL << SPECTRUM_DEPTH) // Must be 2^N
 
 #ifdef TESTNET
-#define ASSETS_DEPTH 10 // Is derived from ASSETS_CAPACITY (=N)
+#define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
 #else
 #define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
 #endif

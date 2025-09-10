@@ -17,9 +17,13 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <sys/mman.h>
+#include <cstddef>
+
 #endif
 
 #define CreateEvent CreateEvent
+#include "platform/console_logging.h"
 
 void __writecr4_1(unsigned int) {
 
@@ -84,6 +88,64 @@ std::vector<unsigned char> readInput() {
     }
     return buffer;
 }
+#endif
+
+inline std::map<unsigned long long, bool> commitMemMap;
+
+#ifdef _MSC_VER
+inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
+    void *addr = VirtualAlloc(NULL, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE);
+    if (addr != nullptr)
+    {
+        commitMemMap[(unsigned long long)addr] = commitMem;
+        return addr;
+    }
+    logToConsole(L"CRITIAL: VirtualAlloc failed in qVirtualAlloc");
+    return nullptr;
+}
+
+inline void* qVirtualCommit(void* address, const unsigned long long size) {
+	return VirtualAlloc(address, (SIZE_T)size, MEM_COMMIT, PAGE_READWRITE);
+}
+
+inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
+    VirtualFree(address, (SIZE_T)size, MEM_DECOMMIT);
+    bool commitMem = commitMemMap[(unsigned long long)address];
+    return VirtualAlloc(address, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE) != nullptr;
+}
+#else
+inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
+    int prot = commitMem ? (PROT_READ | PROT_WRITE) : PROT_NONE;
+    void* addr = mmap(nullptr, size, prot, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (addr != MAP_FAILED)
+    {
+        commitMemMap[(unsigned long long)addr] = commitMem;
+        return addr;
+    }
+
+    logToConsole(L"CRITIAL: mmap failed in qVirtualAlloc");
+    return nullptr;
+}
+
+inline void* qVirtualCommit(void* address, const unsigned long long size) {
+    static long ps = sysconf(_SC_PAGESIZE);
+    uintptr_t start = (uintptr_t)address & ~(ps - 1);
+    uintptr_t end   = (uintptr_t)address + size;
+    size_t aligned_len = end - start;
+    aligned_len = (aligned_len + ps - 1) & ~(ps - 1);
+    if (mprotect((void*)start, aligned_len, PROT_READ | PROT_WRITE) == 0)
+    {
+        return address;
+    }
+
+    logToConsole(L"CRITIAL: mprotect failed in qVirtualCommit");
+    return nullptr;
+}
+
+inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
+    return madvise(address, size, MADV_DONTNEED) == 0;
+}
+
 #endif
 
 void updateTime() {
@@ -850,7 +912,8 @@ struct Overload {
                 ConnectionToken->CompletionToken.Status = EFI_ABORTED;
             }
             else {
-                ConnectionToken->CompletionToken.Status = EFI_SUCCESS;
+				// Must be 0 on success
+                ConnectionToken->CompletionToken.Status = 0;
             }
             });
         connectThread.detach();
