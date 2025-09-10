@@ -100,26 +100,26 @@ namespace QPI
 #define NUMBER_OF_COMPUTORS 676
 #define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
 
-#define JANUARY 1
-#define FEBRUARY 2
-#define MARCH 3
-#define APRIL 4
-#define MAY 5
-#define JUNE 6
-#define JULY 7
-#define AUGUST 8
-#define SEPTEMBER 9
-#define OCTOBER 10
-#define NOVEMBER 11
-#define DECEMBER 12
+    constexpr int JANUARY = 1;
+    constexpr int FEBRUARY = 2;
+    constexpr int MARCH = 3;
+    constexpr int APRIL = 4;
+    constexpr int MAY = 5;
+    constexpr int JUNE = 6;
+    constexpr int JULY = 7;
+    constexpr int AUGUST = 8;
+    constexpr int SEPTEMBER = 9;
+    constexpr int OCTOBER = 10;
+    constexpr int NOVEMBER = 11;
+    constexpr int DECEMBER = 12;
 
-#define WEDNESDAY 0
-#define THURSDAY 1
-#define FRIDAY 2
-#define SATURDAY 3
-#define SUNDAY 4
-#define MONDAY 5
-#define TUESDAY 6
+    constexpr int WEDNESDAY = 0;
+    constexpr int THURSDAY = 1;
+    constexpr int FRIDAY = 2;
+    constexpr int SATURDAY = 3;
+    constexpr int SUNDAY = 4;
+    constexpr int MONDAY = 5;
+    constexpr int TUESDAY = 6;
 
 	constexpr unsigned long long X_MULTIPLIER = 1ULL;
 
