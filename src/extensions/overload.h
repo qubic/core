@@ -90,23 +90,38 @@ std::vector<unsigned char> readInput() {
 }
 #endif
 
+inline std::map<unsigned long long, bool> commitMemMap;
+
 #ifdef _MSC_VER
 inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
-	return VirtualAlloc(NULL, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE);
+    void *addr = VirtualAlloc(NULL, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE);
+    if (addr != nullptr)
+    {
+        commitMemMap[(unsigned long long)addr] = commitMem;
+        return addr;
+    }
+    logToConsole(L"CRITIAL: VirtualAlloc failed in qVirtualAlloc");
+    return nullptr;
 }
 
 inline void* qVirtualCommit(void* address, const unsigned long long size) {
 	return VirtualAlloc(address, (SIZE_T)size, MEM_COMMIT, PAGE_READWRITE);
 }
 
-inline bool qVirtualDecommit(void* address, const unsigned long long size) {
-	return VirtualFree(address, (SIZE_T)size, MEM_DECOMMIT);
+inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
+    VirtualFree(address, (SIZE_T)size, MEM_DECOMMIT);
+    bool commitMem = commitMemMap[(unsigned long long)address];
+    return VirtualAlloc(address, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE) != nullptr;
 }
 #else
 inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
     int prot = commitMem ? (PROT_READ | PROT_WRITE) : PROT_NONE;
     void* addr = mmap(nullptr, size, prot, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (addr != MAP_FAILED) return addr;
+    if (addr != MAP_FAILED)
+    {
+        commitMemMap[(unsigned long long)addr] = commitMem;
+        return addr;
+    }
 
     logToConsole(L"CRITIAL: mmap failed in qVirtualAlloc");
     return nullptr;
@@ -127,9 +142,10 @@ inline void* qVirtualCommit(void* address, const unsigned long long size) {
     return nullptr;
 }
 
-inline bool qVirtualDecommit(void* address, const unsigned long long size) {
-    return mprotect(address, size, PROT_NONE) == 0;
+inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
+    return madvise(address, size, MADV_DONTNEED) == 0;
 }
+
 #endif
 
 void updateTime() {

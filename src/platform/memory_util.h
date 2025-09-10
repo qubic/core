@@ -12,7 +12,7 @@
 
 inline void* qVirtualAlloc(const unsigned long long size, bool commitMem);
 inline void* qVirtualCommit(void* address, const unsigned long long size);
-inline bool qVirtualDecommit(void* address, const unsigned long long size);
+inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size);
 
 // useVirtualMem indicates whether to use VirtualAlloc or malloc
 // commitMem indicates whether to commit memory when using VirtualAlloc
@@ -42,16 +42,16 @@ static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long 
         totalVirtualMemoryUsed += size;
     }
     totalMemoryUsed += size;
-    setText(message, L"Memory allocated ");
-    appendNumber(message, size / 1048576, TRUE);
-    appendText(message, L" MiB for ");
-    appendText(message, name);
-    appendText(message, L"| Total memory used: ");
-    appendNumber(message, totalMemoryUsed / 1048576, TRUE);
-    appendText(message, L" | ");
-    appendNumber(message, totalVirtualMemoryUsed / 1048576, TRUE);
-    appendText(message, L" MiB.");
-    logToConsole(message);
+    // setText(message, L"Memory allocated ");
+    // appendNumber(message, size / 1048576, TRUE);
+    // appendText(message, L" MiB for ");
+    // appendText(message, name);
+    // appendText(message, L"| Total memory used: ");
+    // appendNumber(message, totalMemoryUsed / 1048576, TRUE);
+    // appendText(message, L" | ");
+    // appendNumber(message, totalVirtualMemoryUsed / 1048576, TRUE);
+    // appendText(message, L" MiB.");
+    // logToConsole(message);
     return true;
 }
 

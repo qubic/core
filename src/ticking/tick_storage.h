@@ -585,10 +585,10 @@ public:
             }
 
             // reset data storage of new epoch
-			qVirtualDecommit(tickDataPtr, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(TickData));
-			qVirtualDecommit(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick));
-			qVirtualDecommit(tickTransactionsPtr, tickTransactionsSizeCurrentEpoch);
-			qVirtualDecommit(tickTransactionOffsetsPtr, tickTransactionOffsetsSizeCurrentEpoch);
+			qVirtualFreeAndRecommit(tickDataPtr, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(TickData));
+			qVirtualFreeAndRecommit(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick));
+			qVirtualFreeAndRecommit(tickTransactionsPtr, tickTransactionsSizeCurrentEpoch);
+			qVirtualFreeAndRecommit(tickTransactionOffsetsPtr, tickTransactionOffsetsSizeCurrentEpoch);
         }
         else
         {
@@ -601,7 +601,7 @@ public:
             oldTickEnd = 0;
         }
         // Transaction digest look up need to reset at the begining of epoch for pointing to valid current epoch transaction
-		qVirtualDecommit(tickTransactionsDigestPtr, tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry));
+		qVirtualFreeAndRecommit(tickTransactionsDigestPtr, tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry));
 
         tickBegin = newInitialTick;
         tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
