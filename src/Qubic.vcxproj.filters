@@ -275,6 +275,7 @@
     </ClInclude>
     <ClInclude Include="extensions\overload.h" />
     <ClInclude Include="contracts\VottunBridge.h">
+    <ClInclude Include="contracts\Qdraw.h">
       <Filter>contracts</Filter>
     </ClInclude>
   </ItemGroup>

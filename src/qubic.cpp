@@ -21,7 +21,7 @@
 #define system qsystem
 #endif
 
-// #define NO_VBRIDGE
+// #define NO_QDRAW
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -1275,15 +1275,15 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
 
     if (tickEpoch != 0)
     {
-        unsigned short tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
-        unsigned short numberOfTickTransactions;
+        unsigned int tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
+        unsigned int numberOfTickTransactions;
         for (numberOfTickTransactions = 0; numberOfTickTransactions < NUMBER_OF_TRANSACTIONS_PER_TICK; numberOfTickTransactions++)
         {
             tickTransactionIndices[numberOfTickTransactions] = numberOfTickTransactions;
         }
         while (numberOfTickTransactions)
         {
-            const unsigned short index = random(numberOfTickTransactions);
+            const unsigned int index = random(numberOfTickTransactions);
 
             if (!(request->transactionFlags[tickTransactionIndices[index] >> 3] & (1 << (tickTransactionIndices[index] & 7))))
             {
