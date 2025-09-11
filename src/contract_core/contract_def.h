@@ -1,5 +1,5 @@
 #pragma once
-
+#include "network_messages/common_def.h"
 #include "platform/m256.h"
 
 ////////// Smart contracts \\\\\\\\\\

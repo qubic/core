@@ -66,6 +66,16 @@ struct QUTILLogger
     // Other data go here
     sint8 _terminator; // Only data before "_terminator" are logged
 };
+struct QUTILDFLogger
+{
+    uint32 contractId; // to distinguish bw SCs
+    uint32 padding;
+    id dfNonce;
+    id dfPubkey;
+    id dfMiningSeed;
+    id result;
+    sint8 _terminator; // Only data before "_terminator" are logged
+};
 
 // poll and voter structs
 struct QUTILPoll {
@@ -1174,6 +1184,7 @@ public:
     struct BEGIN_TICK_locals
     {
         m256i dfPubkey, dfNonce;
+        QUTILDFLogger logger;
     };
     /*
     * A deterministic delay function
@@ -1183,6 +1194,9 @@ public:
         locals.dfPubkey = qpi.getPrevSpectrumDigest();
         locals.dfNonce = qpi.getPrevComputerDigest();
         state.dfCurrentState = qpi.computeMiningFunction(state.dfMiningSeed, locals.dfPubkey, locals.dfNonce);
+        
+        locals.logger = QUTILDFLogger{ 0, 0, locals.dfNonce, locals.dfPubkey, state.dfMiningSeed, state.dfCurrentState};
+        LOG_INFO(locals.logger);
     }
 
     /*

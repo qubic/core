@@ -533,8 +533,8 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (input.price <= 0
-			|| input.numberOfShares <= 0)
+		if (input.price <= 0 || input.price >= MAX_AMOUNT
+			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT)
 		{
 			output.addedNumberOfShares = 0;
 		}
@@ -694,9 +694,9 @@ protected:
 
 	PUBLIC_PROCEDURE(AddToBidOrder)
 	{
-		if (input.price <= 0
-			|| input.numberOfShares <= 0
-			|| qpi.invocationReward() < input.price * input.numberOfShares)
+		if (input.price <= 0  || input.price >= MAX_AMOUNT
+			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
+			|| qpi.invocationReward() < smul(input.price, input.numberOfShares))
 		{
 			output.addedNumberOfShares = 0;
 
@@ -707,9 +707,9 @@ protected:
 		}
 		else
 		{
-			if (qpi.invocationReward() > input.price * input.numberOfShares)
+			if (qpi.invocationReward() > smul(input.price, input.numberOfShares))
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.price * input.numberOfShares);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - smul(input.price, input.numberOfShares));
 			}
 
 			output.addedNumberOfShares = input.numberOfShares;
@@ -869,8 +869,8 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (input.price <= 0
-			|| input.numberOfShares <= 0)
+		if (input.price <= 0 || input.price >= MAX_AMOUNT
+			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT)
 		{
 			output.removedNumberOfShares = 0;
 		}
@@ -956,8 +956,8 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (input.price <= 0
-			|| input.numberOfShares <= 0)
+		if (input.price <= 0 || input.price >= MAX_AMOUNT
+			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT)
 		{
 			output.removedNumberOfShares = 0;
 		}
