@@ -923,6 +923,21 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
         && request->tick.second <= 59
         && request->tick.millisecond <= 999)
     {
+        // Ignore incorrect votes for specific tick
+        if (request->tick.tick == 32454208)
+        {
+            m256i saltedData[2];
+            m256i saltedDigest;
+            m256i expectedComputorDigest;
+            saltedData[0] = broadcastedComputors.computors.publicKeys[request->tick.computorIndex];
+            getPublicKeyFromIdentity((unsigned char*)"LVUYVTDYAQPPEBNIYQLVIXVAFKSCKPQMVDVGKPWLHAEWQYIQERAURSZFVZII", expectedComputorDigest.m256i_u8);
+            saltedData[1] = expectedComputorDigest;
+            KangarooTwelve64To32(saltedData, &saltedDigest);
+            if (saltedDigest != request->tick.saltedComputerDigest)
+            {
+                return; 
+            }
+        }
         unsigned char digest[32];
         request->tick.computorIndex ^= BroadcastTick::type;
         KangarooTwelve(&request->tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
