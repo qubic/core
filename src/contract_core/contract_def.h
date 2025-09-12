@@ -208,11 +208,11 @@ struct __FunctionOrProcedureBeginEndGuard
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define LTJ_CONTRACT_INDEX 15
-#define CONTRACT_INDEX LTJ_CONTRACT_INDEX
-#define CONTRACT_STATE_TYPE LTJ
-#define CONTRACT_STATE2_TYPE LTJ2
-#include "contracts/LastTickJackpot.h"
+#define RL_CONTRACT_INDEX 15
+#define CONTRACT_INDEX RL_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE RL
+#define CONTRACT_STATE2_TYPE RL2
+#include "contracts/RandomLottery.h"
 
 // new contracts should be added above this line
 
@@ -311,7 +311,7 @@ constexpr struct ContractDescription
     {"QBAY", 154, 10000, sizeof(QBAY)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
     {"QSWAP", 171, 10000, sizeof(QSWAP)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
     {"NOST", 172, 10000, sizeof(NOST)}, // proposal in epoch 170, IPO in 171, construction and first use in 172
-    {"NOST", 180, 10000, sizeof(LTJ)}, // proposal in epoch 178, IPO in 179, construction and first use in 180
+    {"RL", 185, 10000, sizeof(RL)}, // proposal in epoch 183, IPO in 184, construction and first use in 180
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
@@ -415,7 +415,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBAY);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSWAP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(NOST);
-    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(LTJ);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RL);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
