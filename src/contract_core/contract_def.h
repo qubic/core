@@ -216,6 +216,16 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE QDRAW2
 #include "contracts/Qdraw.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QRAFFLE_CONTRACT_INDEX 16
+#define CONTRACT_INDEX QRAFFLE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QRAFFLE
+#define CONTRACT_STATE2_TYPE QRAFFLE2
+#include "contracts/Qraffle.h"
+
 #endif
 
 // new contracts should be added above this line
@@ -318,6 +328,7 @@ constexpr struct ContractDescription
 #ifndef NO_QDRAW
     {"QDRAW", 179, 10000, sizeof(QDRAW)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
 #endif
+    {"QRAFFLE", 181, 10000, sizeof(QRAFFLE)}, // proposal in epoch 179, IPO in 180, construction and first use in 181
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
@@ -423,6 +434,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(NOST);
 #ifndef NO_QDRAW
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDRAW);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRAFFLE);
 #endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
