@@ -66,6 +66,9 @@ struct QUTILLogger
     // Other data go here
     sint8 _terminator; // Only data before "_terminator" are logged
 };
+
+// Deactivate logger for delay function
+#if 0
 struct QUTILDFLogger
 {
     uint32 contractId; // to distinguish bw SCs
@@ -76,6 +79,7 @@ struct QUTILDFLogger
     id result;
     sint8 _terminator; // Only data before "_terminator" are logged
 };
+#endif
 
 // poll and voter structs
 struct QUTILPoll {
