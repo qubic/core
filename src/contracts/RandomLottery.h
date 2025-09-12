@@ -143,11 +143,10 @@ public:
         state.teamBP = 0;
         state.distributionBP = 2;
         state.winnerBP = 2;
-        state.amountBP = state.teamBP + state.distributionBP + state.winnerBP;
 
         // Fee
         state.teamFeePercent = 10 - state.teamBP;
-        state.distributionFeePercent = 20 - state.distributionBP - state.distributionBP;
+        state.distributionFeePercent = 20 - state.distributionBP;
         state.winnerFeePercent = 100 - state.teamFeePercent - state.distributionFeePercent - state.winnerBP;
 
         // Ticket
@@ -179,10 +178,10 @@ public:
 
             if (locals.getWinnerOutput.winnerAddress != id::zero()) {
                 // Calculate fees
-                locals.teamFee = div<uint64>(locals.revenue * state.teamFeePercent, 100ULL);
-                locals.distributionFee = div<uint64>(locals.revenue * state.distributionFeePercent, 100ULL);
+                locals.teamFee = locals.revenue * state.teamFeePercent;
+                locals.distributionFee = locals.revenue * state.distributionFeePercent;
                 locals.winnerAmount = locals.revenue - locals.teamFee - locals.distributionFee;
-                locals.burnedAmount = div<uint64>(locals.revenue * state.winnerBP, 100ULL);
+                locals.burnedAmount = locals.revenue - locals.teamFee - locals.distributionFee - locals.winnerAmount;
 
                 // Transfer to team
                 if (locals.teamFee > 0) {
@@ -222,15 +221,16 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetPlayers) {
         locals.arrayIndex = 0;
+        output.numberOfPlayers = state.players.population();
 
-        for (sint32 i = 0; i < state.players.capacity(); ++i) {
+        if (output.numberOfPlayers == 0) {
+            return;
+        }
+
+        for (sint64 i = 0; i < state.players.capacity(); ++i) {
             if (!state.players.isEmptySlot(i)) {
                 output.players.set(locals.arrayIndex++, state.players.key(i));
             }
-        }
-
-        if (locals.arrayIndex > 0 || output.players.get(locals.arrayIndex) != id::zero()) {
-            output.numberOfPlayers = locals.arrayIndex + 1;
         }
     }
 
@@ -329,7 +329,6 @@ protected:
     uint8 teamBP = 0;
     uint8 distributionBP = 0;
     uint8 winnerBP = 0;
-    uint8 amountBP = 0;
 
     // Ticket price
     uint64 ticketPrice = 0;
