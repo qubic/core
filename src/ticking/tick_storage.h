@@ -440,6 +440,26 @@ public:
     }
 #endif
     // Init at node startup
+    static unsigned long long getTickDataSize()
+    {
+        return tickDataSize;
+    }
+
+    static unsigned long long getTicksSize()
+    {
+        return ticksSize;
+    }
+
+    static unsigned long long getTickTransactionOffsetSize()
+    {
+        return tickTransactionOffsetsSize;
+    }
+
+    static unsigned long long getTickTransactionsDigestPtrSize()
+    {
+        return tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry);
+    }
+
     static bool init()
     {
         // TODO: allocate everything with one continuous buffer

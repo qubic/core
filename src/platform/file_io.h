@@ -4,6 +4,7 @@
 #include "platform/assert.h"
 #ifdef NO_UEFI
 #include <cstdio>
+#include <filesystem>
 #endif
 #include <lib/platform_common/processor.h>
 #include <lib/platform_common/compiler_optimization.h>
@@ -35,7 +36,7 @@ class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
 
 #ifndef _MSC_VER
-bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *mode) {
+bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, const CHAR16 *mode) {
     if (!file) return EINVAL;
 
     std::setlocale(LC_ALL, "");
@@ -43,11 +44,15 @@ bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *mode) {
     // Convert filename
     std::string fileNameUtf8 = wchar_to_string(fileName);
 
+    // Convert directory if provided
+    std::string directoryUtf8 = directory ? wchar_to_string(directory) : "";
+
     // Convert mode
     std::string modeUtf8 = wchar_to_string(mode);
 
     // Try to open
-    FILE* f = std::fopen(fileNameUtf8.c_str(), modeUtf8.c_str());
+    std::string fullPath = directoryUtf8.empty() ? fileNameUtf8 : (directoryUtf8 + "/" + fileNameUtf8);
+    FILE* f = std::fopen(fullPath.c_str(), modeUtf8.c_str());
 
     if (!f) return errno;
         *file = f;
@@ -110,8 +115,9 @@ static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
 static bool checkDir(const CHAR16* dirName)
 {
 #ifdef NO_UEFI
-    logToConsole(L"NO_UEFI implementation of checkDir() is missing! No directory checked!");
-    return false;
+    ASSERT(isMainProcessor());
+    std::string dirNameStr = wchar_to_string(dirName);
+    return std::filesystem::exists(dirNameStr) && std::filesystem::is_directory(dirNameStr);
 #else
     ASSERT(isMainProcessor());
     EFI_FILE_PROTOCOL* file;
@@ -130,8 +136,15 @@ static bool checkDir(const CHAR16* dirName)
 static bool createDir(const CHAR16* dirName)
 {
 #ifdef NO_UEFI
-    logToConsole(L"NO_UEFI implementation of createDir() is missing! No directory created!");
-    return false;
+    ASSERT(isMainProcessor());
+    std::string dirNameStr = wchar_to_string(dirName);
+    if (checkDir(dirName))
+    {
+        return true;
+    }
+
+    // Create a directory
+    return std::filesystem::create_directory(dirNameStr);
 #else
     ASSERT(isMainProcessor());
     EFI_STATUS status;
@@ -162,8 +175,18 @@ static bool createDir(const CHAR16* dirName)
 static bool removeFile(CHAR16* directory, CHAR16* fileName)
 {
 #ifdef NO_UEFI
-    logToConsole(L"NO_UEFI implementation of removeFile() is missing! No directory checked!");
-    return false;
+    ASSERT(isMainProcessor());
+    std::string dirNameStr = wchar_to_string(directory);
+    std::string fileNameStr = wchar_to_string(fileName);
+    std::filesystem::path filePath;
+    filePath = dirNameStr + "/" + fileNameStr;
+
+    if (!std::filesystem::exists(filePath))
+    {
+        return true;
+    }
+
+    return std::filesystem::remove(filePath);
 #else
     ASSERT(isMainProcessor());
     long long fileSz = getFileSize(fileName, directory);
@@ -251,13 +274,12 @@ static bool removeFile(CHAR16* directory, CHAR16* fileName)
 static long long load(const CHAR16* fileName, unsigned long long totalSize, unsigned char* buffer, const CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
-    if (directory)
-    {
-        logToConsole(L"Argument directory not implemented for NO_UEFI load()! Pass full path as fileName!");
-        return -1;
-    }
     FILE* file = nullptr;
-    if (_wfopen_s(&file, fileName, L"rb") != 0 || !file)
+    if (directory != NULL)
+    {
+        createDir(directory);
+    }
+    if (_wfopen_s(&file, fileName, directory, L"rb") != 0 || !file)
     {
 #ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
@@ -343,13 +365,12 @@ static long long load(const CHAR16* fileName, unsigned long long totalSize, unsi
 static long long save(const CHAR16* fileName, unsigned long long totalSize, const unsigned char* buffer, const CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
-    if (directory)
-    {
-        logToConsole(L"Argument directory not implemented for NO_UEFI save()! Pass full path as fileName!");
-        return -1;
-    }
     FILE* file = nullptr;
-    if (_wfopen_s(&file, fileName, L"wb") != 0 || !file)
+    if (directory != NULL)
+    {
+        createDir(directory);
+    }
+    if (_wfopen_s(&file, fileName, directory, L"wb") != 0 || !file)
     {
 #ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
@@ -781,6 +802,8 @@ public:
     bool init(EFI_MP_SERVICES_PROTOCOL* pMPServices, unsigned long long totalWriteSize)
     {
 #ifdef NO_UEFI
+        mpFileSystemMPServices = pMPServices;
+        mBSProcID = mainThreadProcessorID;
 #else
         mpFileSystemMPServices = pMPServices;
 
@@ -852,7 +875,7 @@ public:
 
     bool isMainThread()
     {
-#ifdef NO_UEFI
+#if defined(NO_UEFI) && !defined(REAL_NODE)
         return false;
 #else
         unsigned long long processorNumber;

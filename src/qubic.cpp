@@ -8,7 +8,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <byteswap.h>
-#include <stdatomic.h>
 #include <codecvt>
 #include <locale>
 #include "extensions/utils.h"
@@ -1250,6 +1249,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 {
     RequestTickData* request = header->getPayload<RequestTickData>();
+    // SWAP: we need atomic here to avoid flush the page while another thread is writing to it
     TickData* td = ts.tickData.getByTickIfNotEmpty(request->requestedTickData.tick);
     if (td)
     {
@@ -7475,11 +7475,78 @@ namespace Color {
     constexpr auto bold = "\033[1m";
 }
 
+unsigned long long getTotalRam()
+{
+    unsigned long long totalRam = 0;
+    unsigned long long totalRamMayBeUsed = 0;
+
+    // tickTransactionsDigestPtr can be / 100
+    // tickTransactionOffset can be / 100
+    // tickTransactionsDigestPtr + tickTransactionOffset ~ 300 MB in current mainnet state (already safe number,
+    // didnt take account of MAX_NUMBER_OF_TICKS_PER_EPOCH only around 75% used)
+
+    // tickTransactionsSize can be / 100 ~ 6.7gb (already safe number, didn't take account of MAX_NUMBER_OF_TICKS_PER_EPOCH only around 75% used)
+
+    // tickDataPtr can be reduced by 25%
+    // tickPtr can be reduced by 25%
+
+    // computorPendingTransactions buffer
+    totalRam += NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE;
+    totalRam += NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL;
+
+    // spectrum & spectrumDigests
+    totalRam += spectrumSizeInBytes;
+    totalRam += spectrumDigestsSizeInByte;
+
+    // reorgBuffer
+    totalRam += reorgBufferSize;
+
+    // assets & assetDigets & assetChangeFlags
+    totalRam += ASSETS_CAPACITY * sizeof(AssetRecord);
+    totalRam += assetDigestsSizeInBytes;
+    totalRam += ASSETS_CAPACITY / 8;
+
+    // ContractActionTracker
+    totalRam += CONTRACT_ACTION_TRACKER_SIZE * sizeof(ContractAction);
+
+    // score
+    totalRam += sizeof(*score) + sizeof(*score_qpi);
+
+    // dejavu0 & dejavu1
+    totalRam += 536870912*2;
+
+    // requestQueueBuffer & responseQueueBuffer
+    totalRam += REQUEST_QUEUE_BUFFER_SIZE;
+    totalRam += RESPONSE_QUEUE_BUFFER_SIZE;
+
+    // receiveBuffer & FragmentBuffer & dataToTransmit for each peers
+    totalRam += (NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS) * (BUFFER_SIZE * 3);
+
+    // contractStates
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+    {
+        unsigned long long size = contractDescriptions[contractIndex].stateSize;
+        totalRam += size;
+    }
+
+    // processor buffers
+    totalRam += MAX_NUMBER_OF_PROCESSORS_DYNAMIC * (BUFFER_SIZE + STACK_SIZE);
+
+    // CustomMiningStorageProcBuffer
+    totalRam += CUSTOM_MINING_STORAGE_PROCESSOR_MAX_STORAGE * MAX_NUMBER_OF_PROCESSORS_DYNAMIC;
+
+    // gFullExternalEventTime
+    totalRam += gNumberOfFullExternalMiningEvents * sizeof(FullExternallEvent);
+
+    return totalRam;
+}
+
 void processArgs(int argc, const char* argv[]) {
 #ifdef TESTNET
     std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "TESNET" << std::endl;
 #else
 	std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "MAINNET" << std::endl;
+    std::cout << Color::green << "[INFO] " << Color::reset << "Total RAM required: " << getTotalRam() / (1024 * 1024 * 1024) << " GB" << std::endl;
 #endif
 
     cxxopts::Options options("Qubic Core Lite", "The lite version of Qubic Core that can run directly on the OS without a UEFI environment.");

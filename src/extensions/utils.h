@@ -4,6 +4,11 @@
 #ifndef _MSC_VER
 #include <stdarg.h>
 std::string wchar_to_string(const wchar_t* wstr) {
+    if (!wstr)
+    {
+        return std::string();
+    }
+
     std::u16string u16str;
     for (size_t i = 0; wstr[i]; i++) {
         uint16_t c = static_cast<uint16_t>(wstr[i]); // truncate to 16-bit

@@ -65,7 +65,7 @@ private:
     {
         CHAR16 pageName[64];
         generatePageName(pageName, currentPageId);
-#ifdef NO_UEFI
+#if defined(NO_UEFI) && !defined(REAL_NODE)
         auto sz = save(pageName, pageSize, (unsigned char*)currentPage, pageDir);
 #else
         auto sz = asyncSave(pageName, pageSize, (unsigned char*)currentPage, pageDir, true);
@@ -170,7 +170,7 @@ private:
         CHAR16 pageName[64];
         generatePageName(pageName, pageId);
         cache_page_id = getMostOutdatedCachePage();
-#ifdef NO_UEFI
+#if defined(NO_UEFI) && !defined(REAL_NODE)
         auto sz = load(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
         lastAccessedTimestamp[cache_page_id] = now_ms();
 #else
@@ -477,6 +477,32 @@ public:
             return result;
         }
         result = cache[cache_page_idx][index % pageCapacity];
+        RELEASE(memLock);
+        return result;
+    }
+
+    // NOTE: if getPtr is used, all other operations need to be SEQUENCE even they are reading operations (get, getMany)
+    // because reading operations may flush the page T* live into disk and change cache page state
+    T* getPtr(unsigned long long index)
+    {
+        T* result = nullptr;
+        ACQUIRE(memLock);
+        if (index >= currentId) // out of bound
+        {
+            RELEASE(memLock);
+            return result;
+        }
+        unsigned long long requested_page_id = index / pageCapacity;
+        int cache_page_idx = loadPageToCache(requested_page_id);
+        if (cache_page_idx == -1)
+        {
+#if !defined(NDEBUG)
+            addDebugMessage(L"Invalid cache page index, return zeroes array");
+#endif
+            RELEASE(memLock);
+            return result;
+        }
+        result = &cache[cache_page_idx][index % pageCapacity];
         RELEASE(memLock);
         return result;
     }
