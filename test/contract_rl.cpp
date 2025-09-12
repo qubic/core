@@ -5,6 +5,7 @@
 constexpr uint16 PROCEDURE_INDEX_SET_TICKET_PRICE = 2;
 constexpr uint16 FUNCTION_INDEX_GET_FEES = 1;
 constexpr uint16 FUNCTION_INDEX_GET_PLAYERS = 2;
+constexpr uint16 FUNCTION_INDEX_GET_WINNERS = 3;
 
 class RLChecker : public RL {
 public:
@@ -20,13 +21,6 @@ public:
         EXPECT_EQ(fees.winnerFeePercent, winnerFeePercent);
     }
 
-    void RandomlyAddPlayers(unsigned int maxNewPlayers) {
-        unsigned int newPlayers = mod<uint64>(maxNewPlayers, players.capacity());
-        for (unsigned int i = 0; i < newPlayers; ++i) {
-            players.add(id::randomValue());
-        }
-    }
-
     void Check_Players(const GetPlayers_output &output) {
         EXPECT_EQ(output.returnCode, (uint8) EReturnCode::SUCCESS);
         EXPECT_EQ(output.players.capacity(), players.capacity());
@@ -37,6 +31,38 @@ public:
             if (!players.isEmptySlot(i)) {
                 EXPECT_EQ(output.players.get(playerArrayIndex++), players.key(i));
             }
+        }
+    }
+
+    void Check_Winners(const GetWinners_output &output) {
+        EXPECT_EQ(output.returnCode, (uint8) EReturnCode::SUCCESS);
+        EXPECT_EQ(output.winners.capacity(), winners.capacity());
+        EXPECT_EQ(output.numberOfWinners, winnersInfoNextEmptyIndex);
+
+        for (uint64 i = 0; i < output.numberOfWinners; ++i) {
+            EXPECT_EQ(output.winners.get(i), winners.get(i));
+        }
+    }
+
+    void RandomlyAddPlayers(unsigned int maxNewPlayers) {
+        unsigned int newPlayers = mod<uint64>(maxNewPlayers, players.capacity());
+        for (unsigned int i = 0; i < newPlayers; ++i) {
+            players.add(id::randomValue());
+        }
+    }
+
+    void RandomlyAddWinners(unsigned int maxNewWinners) {
+        unsigned int newWinners = mod<uint64>(maxNewWinners, winners.capacity());
+
+        winnersInfoNextEmptyIndex = 0;
+        WinnerInfo wi;
+
+        for (unsigned int i = 0; i < newWinners; ++i) {
+            wi.epoch = 1;
+            wi.tick = 1;
+            wi.revenue = 1000000;
+            wi.winnerAddress = id::randomValue();
+            winners.set(winnersInfoNextEmptyIndex++, wi);
         }
     }
 };
@@ -77,6 +103,14 @@ public:
         callFunction(RL_CONTRACT_INDEX, FUNCTION_INDEX_GET_PLAYERS, input, output);
         return output;
     }
+
+    RL::GetWinners_output GetWinners() {
+        RL::GetWinners_input input;
+        RL::GetWinners_output output;
+
+        callFunction(RL_CONTRACT_INDEX, FUNCTION_INDEX_GET_WINNERS, input, output);
+        return output;
+    }
 };
 
 TEST(ContractRandomLottery, SetTicketPrice) {
@@ -114,4 +148,12 @@ TEST(ContractRandomLottery, GetPlayers) {
     ctl.getState()->RandomlyAddPlayers(maxPlayersToAdd);
     output = ctl.GetPlayers();
     ctl.getState()->Check_Players(output);
+}
+
+TEST(ContractRandomLottery, GetWinners) {
+    ContractTestingRL ctl;
+
+    ctl.getState()->RandomlyAddWinners(10);
+    RL::GetWinners_output winnersOutput = ctl.GetWinners();
+    ctl.getState()->Check_Winners(winnersOutput);
 }

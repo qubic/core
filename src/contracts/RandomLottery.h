@@ -76,11 +76,20 @@ public:
         uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
     };
 
-    struct WinnersInfo {
+    struct WinnerInfo {
         id winnerAddress = id::zero();
         uint64 revenue = 0;
         uint16 epoch = 0;
         uint32 tick = 0;
+
+        bool operator==(const WinnerInfo &other) const {
+            return winnerAddress == other.winnerAddress && revenue == other.revenue && epoch == other.epoch &&
+                   tick == other.tick;
+        }
+
+        bool operator!=(const WinnerInfo &other) const {
+            return !(*this == other);
+        }
     };
 
     struct FillWinnersInfo_input {
@@ -92,7 +101,7 @@ public:
     };
 
     struct FillWinnersInfo_locals {
-        WinnersInfo winnerInfo = {};
+        WinnerInfo winnerInfo = {};
     };
 
     struct GetWinner_input {
@@ -111,8 +120,8 @@ public:
     };
 
     struct GetWinners_output {
-        Array<WinnersInfo, MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
-        uint16 numberOfWinners = 0;
+        Array<WinnerInfo, MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
+        uint64 numberOfWinners = 0;
         uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
     };
 
@@ -246,7 +255,7 @@ public:
 
     PUBLIC_FUNCTION(GetWinners) {
         output.winners = state.winners;
-        output.numberOfWinners = state.winnersInfoIndex;
+        output.numberOfWinners = state.winnersInfoNextEmptyIndex;
     }
 
     PUBLIC_PROCEDURE(BuyTicket) {
@@ -303,7 +312,7 @@ protected:
         }
 
         if (MAX_NUMBER_OF_WINNERS_IN_HISTORY >= state.winners.capacity() - 1) {
-            state.winnersInfoIndex = 0;
+            state.winnersInfoNextEmptyIndex = 0;
         }
 
         locals.winnerInfo.winnerAddress = input.winnerAddress;
@@ -311,7 +320,7 @@ protected:
         locals.winnerInfo.epoch = qpi.epoch();
         locals.winnerInfo.tick = qpi.tick();
 
-        state.winners.set(state.winnersInfoIndex++, locals.winnerInfo);
+        state.winners.set(state.winnersInfoNextEmptyIndex++, locals.winnerInfo);
     }
 
     PRIVATE_FUNCTION_WITH_LOCALS(GetWinner) {
@@ -350,8 +359,8 @@ protected:
 
     HashSet<id, MAX_NUMBER_OF_PLAYERS> players = {};
 
-    Array<WinnersInfo, MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners = {};
-    uint64 winnersInfoIndex = 0;
+    Array<WinnerInfo, MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners = {};
+    uint64 winnersInfoNextEmptyIndex = 0;
 
     EState currentState = EState::LOCKED;
 };
