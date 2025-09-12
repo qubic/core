@@ -12,7 +12,7 @@ QPI::sint64 QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex
         return -1;
     }
 
-    if (system.epoch >= contractDescriptions[IPOContractIndex].constructionEpoch)  // IPO is finished.
+    if (system.epoch != (contractDescriptions[IPOContractIndex].constructionEpoch - 1))  // IPO has not started yet or is finished.
     {
         return -1;
     }
@@ -30,7 +30,7 @@ QPI::sint64 QPI::QpiContextProcedureCall::bidInIPO(unsigned int IPOContractIndex
 // Returns the ID of the entity who has made this IPO bid or NULL_ID if the ipoContractIndex or ipoBidIndex are invalid.
 QPI::id QPI::QpiContextFunctionCall::ipoBidId(QPI::uint32 ipoContractIndex, QPI::uint32 ipoBidIndex) const
 {
-    if (ipoContractIndex >= contractCount || system.epoch >= contractDescriptions[ipoContractIndex].constructionEpoch || ipoBidIndex >= NUMBER_OF_COMPUTORS)
+    if (ipoContractIndex >= contractCount || system.epoch != (contractDescriptions[ipoContractIndex].constructionEpoch - 1) || ipoBidIndex >= NUMBER_OF_COMPUTORS)
     {
         return NULL_ID;
     }
@@ -51,7 +51,7 @@ QPI::sint64 QPI::QpiContextFunctionCall::ipoBidPrice(QPI::uint32 ipoContractInde
         return -1;
     }
 
-    if (system.epoch >= contractDescriptions[ipoContractIndex].constructionEpoch)
+    if (system.epoch != (contractDescriptions[ipoContractIndex].constructionEpoch - 1))
     {
         return -2;
     }
