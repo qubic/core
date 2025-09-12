@@ -805,7 +805,7 @@ struct Overload {
             // At this point we dont know the tcp4Protocol for this peer (tcp4Protocol will be inititialzed in peerConnectionNewlyEstablished())
             // so we map the clientSocket to the handle to process it later in peerConnectionNewlyEstablished()
             incomingSocketMap[(unsigned long long)ListenToken->NewChildHandle] = clientSocket;
-            ListenToken->CompletionToken.Status = 0;
+            ListenToken->CompletionToken.Status = EFI_SUCCESS;
             });
         acceptThread.detach();
         return EFI_SUCCESS;
@@ -845,7 +845,7 @@ struct Overload {
                 ConnectionToken->CompletionToken.Status = EFI_ABORTED;
             }
             else {
-                ConnectionToken->CompletionToken.Status = 0;
+                ConnectionToken->CompletionToken.Status = EFI_SUCCESS;
 #ifdef _MSC_VER
                 u_long mode = 1;
                 ioctlsocket(tcpData->socket, FIONBIO, &mode);
