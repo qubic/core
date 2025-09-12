@@ -5,6 +5,9 @@
 // m256i is used for the id data type
 #include "../platform/m256.h"
 
+// uint128
+#include "../platform/uint128.h"
+
 // ASSERT can be used to support debugging and speed-up development
 #include "../platform/assert.h"
 
@@ -46,64 +49,77 @@ namespace QPI
 	typedef signed long long sint64;
 	typedef unsigned long long uint64;
 
+	typedef uint128_t uint128;
 	typedef m256i id;
 
+#define STATIC_ASSERT(condition, identifier) static_assert(condition, #identifier);
+
 #define NULL_ID id::zero()
+
 	constexpr sint64 NULL_INDEX = -1;
 
 	constexpr sint64 INVALID_AMOUNT = 0x8000000000000000;
 
-#define _A 0
-#define _B 1
-#define _C 2
-#define _D 3
-#define _E 4
-#define _F 5
-#define _G 6
-#define _H 7
-#define _I 8
-#define _J 9
-#define _K 10
-#define _L 11
-#define _M 12
-#define _N 13
-#define _O 14
-#define _P 15
-#define _Q 16
-#define _R 17
-#define _S 18
-#define _T 19
-#define _U 20
-#define _V 21
-#define _W 22
-#define _X 23
-#define _Y 24
-#define _Z 25
-#define ID(_00, _01, _02, _03, _04, _05, _06, _07, _08, _09, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, _31, _32, _33, _34, _35, _36, _37, _38, _39, _40, _41, _42, _43, _44, _45, _46, _47, _48, _49, _50, _51, _52, _53, _54, _55) _mm256_set_epi64x(((((((((((((((uint64)_55) * 26 + _54) * 26 + _53) * 26 + _52) * 26 + _51) * 26 + _50) * 26 + _49) * 26 + _48) * 26 + _47) * 26 + _46) * 26 + _45) * 26 + _44) * 26 + _43) * 26 + _42, ((((((((((((((uint64)_41) * 26 + _40) * 26 + _39) * 26 + _38) * 26 + _37) * 26 + _36) * 26 + _35) * 26 + _34) * 26 + _33) * 26 + _32) * 26 + _31) * 26 + _30) * 26 + _29) * 26 + _28, ((((((((((((((uint64)_27) * 26 + _26) * 26 + _25) * 26 + _24) * 26 + _23) * 26 + _22) * 26 + _21) * 26 + _20) * 26 + _19) * 26 + _18) * 26 + _17) * 26 + _16) * 26 + _15) * 26 + _14, ((((((((((((((uint64)_13) * 26 + _12) * 26 + _11) * 26 + _10) * 26 + _09) * 26 + _08) * 26 + _07) * 26 + _06) * 26 + _05) * 26 + _04) * 26 + _03) * 26 + _02) * 26 + _01) * 26 + _00)
+	constexpr long long _A = 0;
+	constexpr long long _B = 1;
+	constexpr long long _C = 2;
+	constexpr long long _D = 3;
+	constexpr long long _E = 4;
+	constexpr long long _F = 5;
+	constexpr long long _G = 6;
+	constexpr long long _H = 7;
+	constexpr long long _I = 8;
+	constexpr long long _J = 9;
+	constexpr long long _K = 10;
+	constexpr long long _L = 11;
+	constexpr long long _M = 12;
+	constexpr long long _N = 13;
+	constexpr long long _O = 14;
+	constexpr long long _P = 15;
+	constexpr long long _Q = 16;
+	constexpr long long _R = 17;
+	constexpr long long _S = 18;
+	constexpr long long _T = 19;
+	constexpr long long _U = 20;
+	constexpr long long _V = 21;
+	constexpr long long _W = 22;
+	constexpr long long _X = 23;
+	constexpr long long _Y = 24;
+	constexpr long long _Z = 25;
+
+	inline id ID(long long _00, long long _01, long long _02, long long _03, long long _04, long long _05, long long _06, long long _07, long long _08, long long _09,
+		long long _10, long long _11, long long _12, long long _13, long long _14, long long _15, long long _16, long long _17, long long _18, long long _19,
+		long long _20, long long _21, long long _22, long long _23, long long _24, long long _25, long long _26, long long _27, long long _28, long long _29,
+		long long _30, long long _31, long long _32, long long _33, long long _34, long long _35, long long _36, long long _37, long long _38, long long _39,
+		long long _40, long long _41, long long _42, long long _43, long long _44, long long _45, long long _46, long long _47, long long _48, long long _49,
+		long long _50, long long _51, long long _52, long long _53, long long _54, long long _55)
+	{ 
+		return _mm256_set_epi64x(((((((((((((((uint64)_55) * 26 + _54) * 26 + _53) * 26 + _52) * 26 + _51) * 26 + _50) * 26 + _49) * 26 + _48) * 26 + _47) * 26 + _46) * 26 + _45) * 26 + _44) * 26 + _43) * 26 + _42, ((((((((((((((uint64)_41) * 26 + _40) * 26 + _39) * 26 + _38) * 26 + _37) * 26 + _36) * 26 + _35) * 26 + _34) * 26 + _33) * 26 + _32) * 26 + _31) * 26 + _30) * 26 + _29) * 26 + _28, ((((((((((((((uint64)_27) * 26 + _26) * 26 + _25) * 26 + _24) * 26 + _23) * 26 + _22) * 26 + _21) * 26 + _20) * 26 + _19) * 26 + _18) * 26 + _17) * 26 + _16) * 26 + _15) * 26 + _14, ((((((((((((((uint64)_13) * 26 + _12) * 26 + _11) * 26 + _10) * 26 + _09) * 26 + _08) * 26 + _07) * 26 + _06) * 26 + _05) * 26 + _04) * 26 + _03) * 26 + _02) * 26 + _01) * 26 + _00); 
+	}
 
 #define NUMBER_OF_COMPUTORS 676
 #define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
 
-#define JANUARY 1
-#define FEBRUARY 2
-#define MARCH 3
-#define APRIL 4
-#define MAY 5
-#define JUNE 6
-#define JULY 7
-#define AUGUST 8
-#define SEPTEMBER 9
-#define OCTOBER 10
-#define NOVEMBER 11
-#define DECEMBER 12
+    constexpr int JANUARY = 1;
+    constexpr int FEBRUARY = 2;
+    constexpr int MARCH = 3;
+    constexpr int APRIL = 4;
+    constexpr int MAY = 5;
+    constexpr int JUNE = 6;
+    constexpr int JULY = 7;
+    constexpr int AUGUST = 8;
+    constexpr int SEPTEMBER = 9;
+    constexpr int OCTOBER = 10;
+    constexpr int NOVEMBER = 11;
+    constexpr int DECEMBER = 12;
 
-#define WEDNESDAY 0
-#define THURSDAY 1
-#define FRIDAY 2
-#define SATURDAY 3
-#define SUNDAY 4
-#define MONDAY 5
-#define TUESDAY 6
+    constexpr int WEDNESDAY = 0;
+    constexpr int THURSDAY = 1;
+    constexpr int FRIDAY = 2;
+    constexpr int SATURDAY = 3;
+    constexpr int SUNDAY = 4;
+    constexpr int MONDAY = 5;
+    constexpr int TUESDAY = 6;
 
 	constexpr unsigned long long X_MULTIPLIER = 1ULL;
 
@@ -115,6 +131,189 @@ namespace QPI
 	template <typename T>
 	inline void setMemory(T& dst, uint8 value);
 
+	struct DateAndTime
+	{
+		// --- Member Variables ---
+		unsigned short millisecond;
+		unsigned char second;
+		unsigned char minute;
+		unsigned char hour;
+		unsigned char day;
+		unsigned char month;
+		unsigned char year;
+
+		// --- Public Member Operators ---
+
+		/**
+		 * @brief Checks if this date is earlier than the 'other' date.
+		 */
+		bool operator<(const DateAndTime& other) const
+		{
+			if (year != other.year) return year < other.year;
+			if (month != other.month) return month < other.month;
+			if (day != other.day) return day < other.day;
+			if (hour != other.hour) return hour < other.hour;
+			if (minute != other.minute) return minute < other.minute;
+			if (second != other.second) return second < other.second;
+			return millisecond < other.millisecond;
+		}
+
+		/**
+		 * @brief Checks if this date is later than the 'other' date.
+		 */
+		bool operator>(const DateAndTime& other) const
+		{
+			return other < *this; // Reuses the operator< on the 'other' object
+		}
+
+		/**
+		 * @brief Checks if this date is identical to the 'other' date.
+		 */
+		bool operator==(const DateAndTime& other) const
+		{
+			return year == other.year &&
+				month == other.month &&
+				day == other.day &&
+				hour == other.hour &&
+				minute == other.minute &&
+				second == other.second &&
+				millisecond == other.millisecond;
+		}
+
+		/**
+		 * @brief Computes the difference between this date and 'other' in milliseconds.
+		 */
+		long long operator-(const DateAndTime& other) const
+		{
+			// A member function can access private members of other instances of the same class.
+			return this->toMilliseconds() - other.toMilliseconds();
+		}
+
+		/**
+		 * @brief Adds a duration in milliseconds to the current date/time.
+		 * @param msToAdd The number of milliseconds to add. Can be negative.
+		 * @return A new DateAndTime object representing the result.
+		 */
+		DateAndTime operator+(long long msToAdd) const
+		{
+			long long totalMs = this->toMilliseconds() + msToAdd;
+
+			DateAndTime result = { 0,0,0,0,0,0,0 };
+
+			// Handle negative totalMs (dates before the epoch) if necessary
+			// For this implementation, we assume resulting dates are >= year 2000
+			if (totalMs < 0) totalMs = 0;
+
+			long long days = totalMs / 86400000LL;
+			long long msInDay = totalMs % 86400000LL;
+
+			// Calculate time part
+			result.hour = (unsigned char)(msInDay / 3600000LL);
+			msInDay %= 3600000LL;
+			result.minute = (unsigned char)(msInDay / 60000LL);
+			msInDay %= 60000LL;
+			result.second = (unsigned char)(msInDay / 1000LL);
+			result.millisecond = (unsigned short)(msInDay % 1000LL);
+
+			// Calculate date part from total days since epoch
+			unsigned char currentYear = 0;
+			while (true)
+			{
+				long long daysThisYear = isLeap(currentYear) ? 366 : 365;
+				if (days >= daysThisYear)
+				{
+					days -= daysThisYear;
+					currentYear++;
+				}
+				else
+				{
+					break;
+				}
+			}
+			result.year = currentYear;
+
+			unsigned char currentMonth = 1;
+			const int daysInMonth[] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+			while (true)
+			{
+				long long daysThisMonth = daysInMonth[currentMonth];
+				if (currentMonth == 2 && isLeap(result.year))
+				{
+					daysThisMonth = 29;
+				}
+				if (days >= daysThisMonth)
+				{
+					days -= daysThisMonth;
+					currentMonth++;
+				}
+				else
+				{
+					break;
+				}
+			}
+			ASSERT(days <= 31);
+			result.month = currentMonth;
+			result.day = (unsigned char)(days) + 1; // days is 0-indexed, day is 1-indexed
+
+			return result;
+		}
+
+		DateAndTime& operator+=(long long msToAdd)
+		{
+			*this = *this + msToAdd; // Reuse operator+ and assign the result back to this object
+			return *this;
+		}
+
+		DateAndTime& operator-=(long long msToSubtract)
+		{
+			*this = *this + (-msToSubtract); // Reuse operator+ with a negative value
+			return *this;
+		}
+
+	private:
+		// --- Private Helper Functions ---
+
+		/**
+		 * @brief A static helper to check if a year (yy format) is a leap year.
+		 */
+		static bool isLeap(unsigned char yr) {
+			// here we only handle the case where yr is in range [00 to 99]
+			return (2000 + yr) % 4 == 0;
+		}
+
+		/**
+		 * @brief Helper to convert this specific DateAndTime instance to total milliseconds since Jan 1, 2000.
+		 */
+		long long toMilliseconds() const {
+			long long totalDays = 0;
+
+			// Add days for full years passed since 2000
+			for (unsigned char y = 0; y < year; ++y) {
+				totalDays += isLeap(y) ? 366 : 365;
+			}
+
+			// Add days for full months passed in the current year
+			const int daysInMonth[] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+			for (unsigned char m = 1; m < month; ++m) {
+				totalDays += daysInMonth[m];
+				if (m == 2 && isLeap(year)) {
+					totalDays += 1;
+				}
+			}
+
+			// Add days in the current month
+			totalDays += day - 1;
+
+			// Convert total days and the time part to milliseconds
+			long long totalMs = totalDays * 86400000LL; // 24 * 60 * 60 * 1000
+			totalMs += hour * 3600000LL;     // 60 * 60 * 1000
+			totalMs += minute * 60000LL;       // 60 * 1000
+			totalMs += second * 1000LL;
+			totalMs += millisecond;
+
+			return totalMs;
+		}
+	};
 
 	// Array of L bits encoded in array of uint64 (overall size is at least 8 bytes, L must be 2^N)
 	template <uint64 L>
@@ -284,6 +483,21 @@ namespace QPI
 			}
 			return true;
 		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline Array<T, L>& operator=(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline Array(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
+
+		Array() = default;
 	};
 	
 	// Array convenience definitions
@@ -401,10 +615,10 @@ namespace QPI
 		inline sint64 nextElementIndex(sint64 elementIndex) const;
 
 		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
-		inline KeyT key(sint64 elementIndex) const;
+		inline const KeyT& key(sint64 elementIndex) const;
 
 		// Return value at elementIndex.
-		inline ValueT value(sint64 elementIndex) const;
+		inline const ValueT& value(sint64 elementIndex) const;
 
 		// Add element (key, value) to the hash map, return elementIndex of new element.
 		// If key already exists in the hash map, the old value will be overwritten.
@@ -681,17 +895,67 @@ namespace QPI
 	};
 
 	//////////
+	// safety multiplying a and b and then clamp
+	
+	inline static sint64 smul(sint64 a, sint64 b)
+	{
+		sint64 hi, lo;
+		lo = _mul128(a, b, &hi);
+		if (hi != (lo >> 63))
+		{
+			return ((a > 0) == (b > 0)) ? INT64_MAX : INT64_MIN;
+		}
+		return lo;
+	}
+
+	inline static uint64 smul(uint64 a, uint64 b)
+	{
+		uint64 hi, lo;
+		lo = _umul128(a, b, &hi);
+		if (hi != 0)
+		{
+			return UINT64_MAX;
+		}
+		return lo;
+	}
+
+	inline static sint32 smul(sint32 a, sint32 b)
+	{
+		sint64 r = (sint64)(a) * (sint64)(b);
+		if (r < INT32_MIN)
+		{
+			return INT32_MIN;
+		}
+		else if (r > INT32_MAX)
+		{
+			return INT32_MAX;
+		}
+		else
+		{
+			return (sint32)r;
+		}
+	}
+
+	inline static uint32 smul(uint32 a, uint32 b)
+	{
+		uint64 r = (uint64)(a) * (uint64)(b);
+		if (r > UINT32_MAX)
+		{
+			return UINT32_MAX;
+		}
+		return (uint32)r;
+	}
 
 	// Divide a by b, but return 0 if b is 0 (rounding to lower magnitude in case of integers)
 	template <typename T>
-	inline static T div(T a, T b)
+	inline static constexpr T div(T a, T b)
 	{
-		return b ? (a / b) : 0;
+		return b ? (a / b) : T(0);
 	}
 
 	// Return remainder of dividing a by b, but return 0 if b is 0 (requires modulo % operator)
 	template <typename T>
-	inline static T mod(T a, T b)
+	inline static constexpr T mod(T a, T b)
 	{
 		return b ? (a % b) : 0;
 	}
@@ -982,6 +1246,12 @@ namespace QPI
 			// Scalar voting result (currently only for proposalType VariableScalarMean, mean value of all valid votes)
 			sint64 scalarVotingResult;
 		};
+
+		ProposalSummarizedVotingDataV1() = default;
+		ProposalSummarizedVotingDataV1(const ProposalSummarizedVotingDataV1& src)
+		{
+			copyMemory(*this, src);
+		}
 	};
 	static_assert(sizeof(ProposalSummarizedVotingDataV1) == 16 + 8*4, "Unexpected struct size.");
 
@@ -1578,6 +1848,11 @@ namespace QPI
 			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
 		) const;
 
+		inline bool isAssetIssued(
+			const m256i& id,
+			unsigned long long assetName
+		) const;
+
 		// Returns -1 if the current tick is empty, returns the number of the transactions in the tick otherwise, including 0.
 		inline sint32 numberOfTickTransactions(
 		) const;
@@ -1587,6 +1862,21 @@ namespace QPI
 
 		inline uint8 second(
 		) const; // [0..59]
+
+		// return current datetime (year, month, day, hour, minute, second, millisec)
+		inline DateAndTime now() const;
+
+		// return last spectrum digest on etalonTick
+		inline m256i getPrevSpectrumDigest() const;
+
+		// return last universe digest on etalonTick
+		inline m256i getPrevUniverseDigest() const;
+
+		// return last computer digest on etalonTick
+		inline m256i getPrevComputerDigest() const;
+
+		// run the score function (in qubic mining) and return first 256 bit of output
+		inline m256i computeMiningFunction(const m256i miningSeed, const m256i publicKey, const m256i nonce) const;
 
 		inline bit signatureValidity(
 			const id& entity,

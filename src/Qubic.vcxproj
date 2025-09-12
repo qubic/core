@@ -23,6 +23,8 @@
     <ClInclude Include="assets\net_msg_impl.h" />
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
+    <ClInclude Include="contracts\Qdraw.h" />
+    <ClInclude Include="contracts\Qswap.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
@@ -37,6 +39,7 @@
     <ClInclude Include="contracts\Qearn.h" />
     <ClInclude Include="contracts\QVAULT.h" />
     <ClInclude Include="contracts\QBAY.h" />
+    <ClInclude Include="contracts\Nostromo.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />
@@ -48,6 +51,7 @@
     <ClInclude Include="contract_core\qpi_asset_impl.h" />
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
     <ClInclude Include="contract_core\qpi_ipo_impl.h" />
+    <ClInclude Include="contract_core\qpi_mining_impl.h" />
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
     <ClInclude Include="contract_core\qpi_hash_map_impl.h" />
@@ -94,6 +98,7 @@
     <ClInclude Include="platform\random.h" />
     <ClInclude Include="platform\read_write_lock.h" />
     <ClInclude Include="platform\stack_size_tracker.h" />
+    <ClInclude Include="platform\uint128.h" />
     <ClInclude Include="platform\time_stamp_counter.h" />
     <ClInclude Include="platform\global_var.h" />
     <ClInclude Include="platform\virtual_memory.h" />

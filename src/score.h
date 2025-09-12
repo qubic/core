@@ -24,9 +24,6 @@ static unsigned long long top_of_stack;
 
 ////////// Scoring algorithm \\\\\\\\\\
 
-#define NOT_CALCULATED -127 //not yet calculated
-#define NULL_INDEX -2
-
 constexpr unsigned char INPUT_NEURON_TYPE = 0;
 constexpr unsigned char OUTPUT_NEURON_TYPE = 1;
 constexpr unsigned char EVOLUTION_NEURON_TYPE = 2;
@@ -37,8 +34,23 @@ static_assert(false, "Either AVX2 or AVX512 is required.");
 
 #if defined (__AVX512F__)
     static constexpr int BATCH_SIZE = 64;
+    static constexpr int BATCH_SIZE_X8 = BATCH_SIZE * 8;
+    static inline int popcnt512(__m512i v)
+    {
+        __m512i pc = _mm512_popcnt_epi64(v);
+        return (int)_mm512_reduce_add_epi64(pc);
+    }
 #elif defined(__AVX2__)
     static constexpr int BATCH_SIZE = 32;
+    static constexpr int BATCH_SIZE_X8 = BATCH_SIZE * 8;
+    static inline unsigned popcnt256(__m256i v)
+    {
+        return  popcnt64(_mm256_extract_epi64(v, 0)) +
+            popcnt64(_mm256_extract_epi64(v, 1)) +
+            popcnt64(_mm256_extract_epi64(v, 2)) +
+            popcnt64(_mm256_extract_epi64(v, 3));
+    }
+
 #endif
 
 constexpr unsigned long long POOL_VEC_SIZE = (((1ULL << 32) + 64)) >> 3; // 2^32+64 bits ~ 512MB
@@ -128,6 +140,264 @@ static void extract64Bits(unsigned long long number, char* output)
     }
 }
 
+static void packNegPos(const char* data,
+    unsigned long long dataSize,
+    unsigned char* negMask,
+    unsigned char* posMask)
+{
+    for (unsigned long long i = 0; i < dataSize; ++i)
+    {
+        negMask[i] = (data[i] == -1);
+        posMask[i] = (data[i] == 1);
+    }
+}
+
+static void unpackNegPos(
+    const unsigned char* negMask,
+    const unsigned char* posMask,
+    const unsigned long long dataSize,
+    char* data)
+{
+    for (unsigned long long i = 0; i < dataSize; ++i)
+    {
+        data[i] = 0;
+        if (negMask[i])
+        {
+            data[i] = -1;
+            continue;
+        }
+        if (posMask[i])
+        {
+            data[i] = 1;
+            continue;
+        }
+    }
+}
+
+static char convertMaskValue(unsigned char pos, unsigned char neg)
+{
+    /*
+    value = +1  if  pos=1 , neg=0
+    value = -1  if  pos=0 , neg=1
+    value =  0  otherwise
+    */
+    return (char)(pos - neg);
+}
+
+static void setBitValue(unsigned char* data, unsigned long long bitIdx, unsigned char bitValue)
+{
+    // (data[bitIdx >> 3] & ~(1u << (bitIdx & 7u))). Set the bit at data[bitIdx >> 3] byte become zeros
+    // then set it with the bit value
+    data[bitIdx >> 3] = (data[bitIdx >> 3] & ~(1u << (bitIdx & 7u))) |
+        (bitValue << (bitIdx & 7u));
+}
+
+static unsigned char getBitValue(const unsigned char* data, unsigned  long long  bitIdx)
+{
+    // data[bitIdx >> 3]: get the byte idx
+    // (bitIdx & 7u) get the bit index in byte
+    // (data[bitIdx >> 3] >> (bitIdx & 7u)) move the required bits to the end
+    return ((data[bitIdx >> 3] >> (bitIdx & 7u)) & 1u);
+}
+
+static char getValueFromBit(const unsigned char* negMask, const unsigned char* posMask, unsigned  long long  bitIdx)
+{
+    unsigned long long idx = bitIdx;            /* bit index */
+    unsigned char negBit = (negMask[idx >> 3] >> (idx & 7)) & 1u;
+    unsigned char posBit = (posMask[idx >> 3] >> (idx & 7)) & 1u;
+    return convertMaskValue(posBit, negBit);
+}
+
+template<unsigned long long paddedSizeInBits>
+static void paddingDatabits(
+    unsigned char* data,
+    unsigned long long dataSizeInBits)
+{
+    const unsigned long long head = paddedSizeInBits;
+    const unsigned long long tail = dataSizeInBits - paddedSizeInBits;
+
+    for (unsigned r = 0; r < paddedSizeInBits; ++r)
+    {
+        unsigned long long src1 = tail + r + paddedSizeInBits;
+        unsigned long long dst1 = (unsigned long long)r;
+
+        unsigned char bit;
+
+        // Copy the end to the head
+        bit = getBitValue(data, src1);
+        setBitValue(data, dst1, bit);
+
+        // copy the head to the end
+        unsigned long long src2 = head + r;
+        unsigned long long dst2 = tail + 2 * paddedSizeInBits + r;
+        bit = getBitValue(data, src2);
+        setBitValue(data, dst2, bit);
+    }
+}
+
+static void orShiftedMask64(unsigned long long* dst, unsigned int idx, unsigned int shift, unsigned long long mask)
+{
+    if (shift == 0)
+    {
+        dst[idx] |= mask;
+    }
+    else
+    {
+        dst[idx] |= mask << shift;
+        dst[idx + 1] |= mask >> (64 - shift);
+    }
+}
+
+static void orShiftedMask32(unsigned int* dst, unsigned int idx, unsigned int shift, unsigned int mask)
+{
+    if (shift == 0)
+    {
+        dst[idx] |= mask;
+    }
+    else
+    {
+        dst[idx] |= mask << shift;
+        dst[idx + 1] |= mask >> (32 - shift);
+    }
+}
+
+static void packNegPosWithPadding(const char* data,
+    unsigned long long dataSizeInBits,
+    unsigned long long paddedSizeInBits,
+    unsigned char* negMask,
+    unsigned char* posMask)
+{
+    const unsigned long long totalBits = dataSizeInBits + 2ULL * paddedSizeInBits;
+    const unsigned long long totalBytes = (totalBits + 8 - 1) >> 3;
+    setMem(negMask, totalBytes, 0);
+    setMem(posMask, totalBytes, 0);
+
+#if defined (__AVX512F__)
+    auto* neg64 = reinterpret_cast<unsigned long long*>(negMask);
+    auto* pos64 = reinterpret_cast<unsigned long long*>(posMask);
+    const __m512i vMinus1 = _mm512_set1_epi8(-1);
+    const __m512i vPlus1 = _mm512_set1_epi8(+1);
+    unsigned long long k = 0;
+    for (; k + BATCH_SIZE < dataSizeInBits; k += BATCH_SIZE)
+    {
+        __m512i v = _mm512_loadu_si512(reinterpret_cast<const void*>(data + k));
+        __mmask64 mNeg = _mm512_cmpeq_epi8_mask(v, vMinus1);
+        __mmask64 mPos = _mm512_cmpeq_epi8_mask(v, vPlus1);
+
+        // Start to fill data from the offset
+        unsigned long long bitPos = paddedSizeInBits + k;
+        unsigned int wordIdx = static_cast<unsigned int>(bitPos >> 6);  // /64 
+        unsigned int offset = static_cast<unsigned int>(bitPos & 63);  // %64 
+        orShiftedMask64(neg64, wordIdx, offset, static_cast<unsigned long long>(mNeg));
+        orShiftedMask64(pos64, wordIdx, offset, static_cast<unsigned long long>(mPos));
+    }
+#else
+    auto* neg32 = reinterpret_cast<unsigned int*>(negMask);
+    auto* pos32 = reinterpret_cast<unsigned int*>(posMask);
+    const __m256i vMinus1 = _mm256_set1_epi8(-1);
+    const __m256i vPlus1 = _mm256_set1_epi8(+1);
+    unsigned long long k = 0;
+    for (; k + BATCH_SIZE < dataSizeInBits; k += BATCH_SIZE)
+    {
+        __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data + k));
+
+        // Compare for -1 and +1
+        __m256i isNeg = _mm256_cmpeq_epi8(v, vMinus1);
+        __m256i isPos = _mm256_cmpeq_epi8(v, vPlus1);
+
+        unsigned int mNeg = static_cast<unsigned int>(_mm256_movemask_epi8(isNeg));
+        unsigned int mPos = static_cast<unsigned int>(_mm256_movemask_epi8(isPos));
+
+        // Start to fill data from the offset
+        unsigned long long bitPos = paddedSizeInBits + k;
+        unsigned int wordIdx = static_cast<unsigned int>(bitPos >> 5);     // / 32
+        unsigned int offset = static_cast<unsigned int>(bitPos & 31);     // % 32
+
+        orShiftedMask32(neg32, wordIdx, offset, static_cast<unsigned int>(mNeg));
+        orShiftedMask32(pos32, wordIdx, offset, static_cast<unsigned int>(mPos));
+
+    }
+#endif
+    // Process the remained data
+    for (; k < dataSizeInBits; ++k)
+    {
+        char v = data[k];
+        if (v == 0) continue;                        /* nothing to set */
+
+        unsigned long long bitPos = paddedSizeInBits + k; /* logical bit index */
+        unsigned long long byteIdx = bitPos >> 3;          /* byte containing it */
+        unsigned shift = bitPos & 7U;          /* bit %8 */
+
+        unsigned char mask = (unsigned char)(1U << shift);
+
+        if (v == -1)
+            negMask[byteIdx] |= mask;
+        else /* v == +1 */
+            posMask[byteIdx] |= mask;
+    }
+}
+
+static void unpackNegPosBits(const unsigned char* negMask,
+    const unsigned char* posMask,
+    unsigned long long dataSize,
+    unsigned long long paddedSize,
+    char* out)
+{
+    const unsigned long long startBit = paddedSize;   /* first real */
+    for (unsigned long long i = 0; i < dataSize; ++i)
+    {
+        unsigned long long idx = startBit + i;            /* bit index */
+        unsigned char negBit = (negMask[idx >> 3] >> (idx & 7)) & 1u;
+        unsigned char posBit = (posMask[idx >> 3] >> (idx & 7)) & 1u;
+        out[i] = convertMaskValue(posBit, negBit);
+    }
+}
+
+// Load 256/512 values start from a bit index into a m512 or m256 register
+#if defined (__AVX512F__)
+static inline __m512i load512Bits(const unsigned char* array, unsigned long long bitLocation)
+{
+    const unsigned long long byteIndex = bitLocation >> 3;   // /8
+    const unsigned int bitOffset = (unsigned)(bitLocation & 7ULL);  // %8
+
+    __m512i v0 = _mm512_loadu_si512((const void*)(array + byteIndex));
+    if (bitOffset == 0)
+        return v0;
+
+    __m512i v1 = _mm512_loadu_si512((const void*)(array + byteIndex + 1));
+    __m512i right = _mm512_srli_epi64(v0, bitOffset);       // low part
+    __m512i left = _mm512_slli_epi64(v1, 8u - bitOffset);  // carry bits
+
+    return _mm512_or_si512(right, left);
+}
+#else
+static inline __m256i load256Bits(const unsigned char* array, unsigned long long bitLocation)
+{
+    const unsigned long long byteIndex = bitLocation >> 3;
+    const int bitOffset = (int)(bitLocation & 7ULL);
+
+    // Load a 256-bit (32-byte) vector starting at the byte index.
+    const __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(array + byteIndex));
+
+    if (bitOffset == 0)
+    {
+        return v;
+    }
+
+    // Perform the right shift within each 64-bit lane.
+    const __m256i right_shifted = _mm256_srli_epi64(v, bitOffset);
+
+    //  Left-shift the +1 byte vector to align the carry bits.
+    const __m256i v_shifted_by_one_byte = _mm256_loadu_si256(
+        reinterpret_cast<const __m256i*>(array + byteIndex + 1)
+    );
+    const __m256i left_shifted_carry = _mm256_slli_epi64(v_shifted_by_one_byte, 8 - bitOffset);
+
+    // Combine the two parts with a bitwise OR to get the final result.
+    return _mm256_or_si256(right_shifted, left_shifted_carry);
+
+}
+#endif
 
 template <
     unsigned long long numberOfInputNeurons, // K
@@ -146,7 +416,9 @@ struct ScoreFunction
     static constexpr unsigned long long maxNumberOfSynapses = populationThreshold * numberOfNeighbors;
     static constexpr unsigned long long initNumberOfSynapses = numberOfNeurons * numberOfNeighbors;
     static constexpr long long radius = (long long)numberOfNeighbors / 2;
-    static constexpr long long paddingNeuronsCount = maxNumberOfNeurons + numberOfNeighbors;
+    static constexpr long long paddingNeuronsCount = (maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE;
+    static constexpr unsigned long long incommingSynapsesPitch = ((numberOfNeighbors + 1) + BATCH_SIZE_X8 - 1) / BATCH_SIZE_X8 * BATCH_SIZE_X8;
+    static constexpr unsigned long long incommingSynapseBatchSize = incommingSynapsesPitch >> 3;
 
     static_assert(numberOfInputNeurons % 64 == 0, "numberOfInputNeurons must be divided by 64");
     static_assert(numberOfOutputNeurons % 64 == 0, "numberOfOutputNeurons must be divided by 64");
@@ -156,6 +428,7 @@ struct ScoreFunction
     static_assert(populationThreshold > numberOfNeurons, "populationThreshold must be greater than numberOfNeurons");
     static_assert(numberOfNeurons > numberOfNeighbors, "Number of neurons must be greater than the number of neighbors");
     static_assert(numberOfNeighbors < ((1ULL << 63) - 1), "numberOfNeighbors must be in long long range");
+    static_assert(BATCH_SIZE_X8 % 8 == 0, "BATCH_SIZE must be be divided by 8");
 
     // Intermediate data
     struct InitValue
@@ -201,8 +474,6 @@ struct ScoreFunction
             {
                 // Padding start and end of neuron array
                 neurons = paddingNeurons + radius;
-                copyMem(paddingNeurons, neurons + population - radius, radius * sizeof(Neuron));
-                copyMem(paddingNeurons + radius + population, neurons, radius * sizeof(Neuron));
             }
 
             void copyDataTo(ANN& rOther)
@@ -210,15 +481,25 @@ struct ScoreFunction
                 copyMem(rOther.neurons, neurons, population * sizeof(Neuron));
                 copyMem(rOther.neuronTypes, neuronTypes, population * sizeof(NeuronType));
                 copyMem(rOther.synapses, synapses, maxNumberOfSynapses * sizeof(Synapse));
-
                 rOther.population = population;
             }
 
             Neuron* neurons;
             // Padding start and end of neurons so that we can reduce the condition checking
-            Neuron paddingNeurons[maxNumberOfNeurons + numberOfNeighbors];
-            NeuronType neuronTypes[maxNumberOfNeurons];
+            Neuron paddingNeurons[(maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE];
+            NeuronType neuronTypes[(maxNumberOfNeurons + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE];
             Synapse synapses[maxNumberOfSynapses];
+
+            // Encoded data
+            unsigned char neuronPlus1s[(maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE + BATCH_SIZE_X8];
+            unsigned char neuronMinus1s[(maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE + BATCH_SIZE_X8];
+
+            unsigned char nextNeuronPlus1s[(maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE + BATCH_SIZE_X8];
+            unsigned char nextneuronMinus1s[(maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE + BATCH_SIZE_X8];
+
+            unsigned char synapsePlus1s[incommingSynapsesPitch * populationThreshold];
+            unsigned char synapseMinus1s[incommingSynapsesPitch * populationThreshold];
+
 
             unsigned long long population;
         };
@@ -241,8 +522,13 @@ struct ScoreFunction
         unsigned long long removalNeuronsCount;
 
         // Contain incomming synapse of neurons. The center one will be zeros
-        Synapse incommingSynapses[maxNumberOfSynapses + maxNumberOfNeurons];
+        Synapse incommingSynapses[maxNumberOfNeurons * incommingSynapsesPitch];
 
+        // Padding to fix bytes for each row
+        Synapse paddingIncommingSynapses[populationThreshold * incommingSynapsesPitch];
+
+        unsigned char nextNeuronPlus1s[(maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE];
+        unsigned char nextNeuronMinus1s[(maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE];
 
         void mutate(unsigned long long mutateStep)
         {
@@ -298,17 +584,14 @@ struct ScoreFunction
             const long long population = (long long)currentANN.population;
             long long nnIndex = neuronIdx + value;
 
-            if (nnIndex >= population)
-            {
-                nnIndex -= population;
-            }
-            else if (nnIndex < 0)
-            {
-                nnIndex += population;
-            }
+            // Get the signed bit and decide if we should increase population
+            nnIndex += (population & (nnIndex >> 63));
+
+            // Subtract population if idx >= population
+            long long over = nnIndex - population;
+            nnIndex -= (population & ~(over >> 63));
             return (unsigned long long)nnIndex;
         }
-
 
         // Remove a neuron and all synapses relate to it
         void removeNeuron(unsigned long long neuronIdx)
@@ -591,71 +874,81 @@ struct ScoreFunction
 
             // Prepare the padding regions
             currentANN.prepareData();
+            // Test copy padding
+            unsigned char* pPaddingNeuronMinus = currentANN.neuronMinus1s;
+            unsigned char* pPaddingNeuronPlus = currentANN.neuronPlus1s;
 
-            // Memset value of current one
-            setMem(neuronValueBuffer, sizeof(neuronValueBuffer), 0);
-            Neuron* pPaddingNeurons = currentANN.paddingNeurons;
-            Synapse* synapses = incommingSynapses;
-            Neuron* neurons = currentANN.neurons;
 
-            for (unsigned long long n = 0; n < population; ++n, pPaddingNeurons++, synapses += (numberOfNeighbors + 1))
-            {
-                int neuronValue = 0;
-                long long m = 0;
+            unsigned char* pPaddingSynapseMinus = currentANN.synapseMinus1s;
+            unsigned char* pPaddingSynapsePlus = currentANN.synapsePlus1s;
+
+            paddingDatabits<radius>(pPaddingNeuronMinus, population);
+            paddingDatabits<radius>(pPaddingNeuronPlus, population);
+
 #if defined (__AVX512F__)
-                const __m512i zeros512 = _mm512_setzero_si512();
-                for (; m + BATCH_SIZE <= numberOfNeighbors; m += BATCH_SIZE)
-                {
-                    const __m512i neurons512 = _mm512_loadu_si512((const __m512i*)(pPaddingNeurons + m));
-                    const __m512i synapses512 = _mm512_loadu_si512((const __m512i*)(synapses + m));
-
-                    __mmask64 nonZerosMask = _mm512_cmpneq_epi8_mask(synapses512, zeros512) & _mm512_cmpneq_epi8_mask(neurons512, zeros512);
-                    __mmask64 negMask = nonZerosMask & _mm512_cmpgt_epi8_mask(zeros512, _mm512_xor_si512(synapses512, neurons512));
-                    __mmask64 posMask = nonZerosMask & ~negMask;
-
-                    neuronValue += popcnt64(posMask);
-                    neuronValue -= popcnt64(negMask);
-                }
-
-#elif defined(__AVX2__)
-                const __m256i zeros256 = _mm256_setzero_si256();
-                const __m256i allOnes256 = _mm256_set1_epi8(-1);
-                unsigned int negMask = 0;
-                unsigned int posMask = 0;
-                for (; m + BATCH_SIZE <= numberOfNeighbors; m += BATCH_SIZE)
-                {
-                    const __m256i neurons256 = _mm256_loadu_si256((const __m256i*)(pPaddingNeurons + m));
-                    const __m256i synapses256 = _mm256_loadu_si256((const __m256i*)(synapses + m));
-
-                    __m256i nonZeros256 = _mm256_andnot_si256(_mm256_or_si256(_mm256_cmpeq_epi8(neurons256, zeros256), _mm256_cmpeq_epi8(synapses256, zeros256)), allOnes256);
-                    __m256i neg256 = _mm256_cmpgt_epi8(zeros256, _mm256_and_si256(_mm256_xor_si256(synapses256, neurons256), nonZeros256));
-                    __m256i pos256 = _mm256_andnot_si256(neg256, nonZeros256);
-
-                    int tmp = _mm256_movemask_epi8(neg256);
-                    negMask = *((unsigned int*) &tmp);
-
-                    tmp = _mm256_movemask_epi8(pos256);
-                    posMask = *((unsigned int*) &tmp);
-                    
-                    neuronValue -= popcnt32(negMask);
-                    neuronValue += popcnt32(posMask);
-                }
-
+            const unsigned long long chunks = incommingSynapsesPitch >> 9;        /* bits/512         */
+#else
+            const unsigned long long chunks = incommingSynapsesPitch >> 8;        /* bits/256         */
 #endif
-
-                for (; m <= numberOfNeighbors; ++m)
+            for (unsigned long long n = 0; n < population; ++n, pPaddingSynapsePlus += incommingSynapseBatchSize, pPaddingSynapseMinus += incommingSynapseBatchSize)
+            {
+                char neuronValue = 0;
+                int score = 0;
+                int synapseBlkIdx = 0; // blk index of synapse
+                int neuronBlkIdx = 0;
+                for (unsigned blk = 0; blk < chunks; ++blk, synapseBlkIdx += BATCH_SIZE, neuronBlkIdx +=BATCH_SIZE_X8)
                 {
-                    const Synapse synapseWeight = synapses[m];
-                    const Neuron nVal = pPaddingNeurons[m];
+#if defined (__AVX512F__)
+                    const __m512i synapsePlus = _mm512_loadu_si512((const void*)(pPaddingSynapsePlus + synapseBlkIdx));
+                    const __m512i synapseMinus = _mm512_loadu_si512((const void*)(pPaddingSynapseMinus + synapseBlkIdx));
 
-                    // Weight-sum
-                    neuronValue += synapseWeight * nVal;
+                    __m512i neuronPlus = load512Bits(pPaddingNeuronPlus, n + neuronBlkIdx);
+                    __m512i neuronMinus = load512Bits(pPaddingNeuronMinus, n + neuronBlkIdx);
+
+                    //__m512i plus = _mm512_or_si512(_mm512_and_si512(neuronPlus, synapsePlus),
+                    //    _mm512_and_si512(neuronMinus, synapseMinus));
+
+                    //__m512i minus = _mm512_or_si512(_mm512_and_si512(neuronPlus, synapseMinus),
+                    //    _mm512_and_si512(neuronMinus, synapsePlus));
+
+                    const __m512i plus = _mm512_ternarylogic_epi64(neuronPlus, synapsePlus, _mm512_and_si512(neuronMinus, synapseMinus), 234);
+                    const __m512i minus = _mm512_ternarylogic_epi64(neuronPlus, synapseMinus, _mm512_and_si512(neuronMinus, synapsePlus), 234);
+
+                    const __m512i plusPopulation = _mm512_popcnt_epi64(plus);
+                    const __m512i minusPopulation = _mm512_popcnt_epi64(minus);
+                    score += (int)_mm512_reduce_add_epi64(_mm512_sub_epi64(plusPopulation, minusPopulation));
+
+#else
+                    // Process 256bits at once, neigbor shilf 64 bytes = 256 bits
+                    const __m256i synapsePlus = _mm256_loadu_si256((const __m256i*)(pPaddingSynapsePlus + synapseBlkIdx));
+                    const __m256i synapseMinus = _mm256_loadu_si256((const __m256i*)(pPaddingSynapseMinus + synapseBlkIdx));
+
+                    __m256i neuronPlus = load256Bits(pPaddingNeuronPlus, n + neuronBlkIdx);
+                    __m256i neuronMinus = load256Bits(pPaddingNeuronMinus, n + neuronBlkIdx);
+
+                    // Compare the negative and possitive parts
+                    __m256i plus = _mm256_or_si256(_mm256_and_si256(neuronPlus, synapsePlus),
+                        _mm256_and_si256(neuronMinus, synapseMinus));
+                    __m256i minus = _mm256_or_si256(_mm256_and_si256(neuronPlus, synapseMinus),
+                        _mm256_and_si256(neuronMinus, synapsePlus));
+
+                    score += popcnt256(plus) - popcnt256(minus);
+#endif
                 }
 
-                neuronValueBuffer[n] = (Neuron)clampNeuron(neuronValue);
-            }
+                neuronValue = (score > 0) - (score < 0);
+                neuronValueBuffer[n] = neuronValue;
 
-            copyMem(neurons, neuronValueBuffer, population * sizeof(Neuron));
+                // Update the neuron positive and negative
+                unsigned char nNextNeg = neuronValue < 0 ? 1 : 0;
+                unsigned char nNextPos = neuronValue > 0 ? 1 : 0;
+                setBitValue(currentANN.nextneuronMinus1s, n + radius, nNextNeg);
+                setBitValue(currentANN.nextNeuronPlus1s, n + radius, nNextPos);
+
+            }
+            copyMem(currentANN.neurons, neuronValueBuffer, population * sizeof(Neuron));
+            copyMem(currentANN.neuronMinus1s, currentANN.nextneuronMinus1s, sizeof(currentANN.neuronMinus1s));
+            copyMem(currentANN.neuronPlus1s, currentANN.nextNeuronPlus1s, sizeof(currentANN.neuronPlus1s));
         }
 
         void runTickSimulation()
@@ -666,68 +959,91 @@ struct ScoreFunction
             NeuronType* neuronTypes = currentANN.neuronTypes;
 
             // Save the neuron value for comparison
-            for (unsigned long long i = 0; i < population; ++i)
+            copyMem(previousNeuronValue, neurons, population * sizeof(Neuron));
+
+            const __m512i vPop = _mm512_set1_epi64(population);
+            const __m512i vPitch = _mm512_set1_epi64(static_cast<long long>(incommingSynapsesPitch));
+            const __m512i vStrideL = _mm512_set1_epi64(incommingSynapsesPitch - 1);
+            const __m512i vStrideR = _mm512_set1_epi64(incommingSynapsesPitch + 1);
+            const __m512i vNeighbor = _mm512_set1_epi64(static_cast<long long>(numberOfNeighbors));
+
+            const __m512i lane01234567 = _mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0);   // constant
+            long long test[8] = { 0 };
             {
-                // Backup the neuron value
-                previousNeuronValue[i] = neurons[i];
-            }
-
-            // Compute the incomming synapse of each neurons
-           
-            for (unsigned long long n = 0; n < population; ++n)
-            {
-               const Synapse* kSynapses = getSynapses(n);
-               // Scan through all neighbor neurons and sum all connected neurons.
-               // The synapses are arranged as neuronIndex * numberOfNeighbors
-               for (long long m = 0; m < radius; m++)
-               {
-                   Synapse synapseWeight = kSynapses[m];
-                   unsigned long long nnIndex =  clampNeuronIndex(n + m, -(long long)numberOfNeighbors / 2);
-                   incommingSynapses[nnIndex * (numberOfNeighbors + 1) + (numberOfNeighbors - m)] = synapseWeight; // need to pad 1
-               }
-
-               incommingSynapses[n * (numberOfNeighbors + 1) + radius] = 0;
-
-               for (long long m = radius; m < numberOfNeighbors; m++)
-               {
-                   Synapse synapseWeight = kSynapses[m];
-                   unsigned long long nnIndex = clampNeuronIndex(n + m + 1, -(long long)numberOfNeighbors / 2);
-                   incommingSynapses[nnIndex * (numberOfNeighbors + 1) + (numberOfNeighbors - m - 1)] = synapseWeight;
-               }
-            }
-
-            for (unsigned long long tick = 0; tick < numberOfTicks; ++tick)
-            {
-                processTick();
-                // Check exit conditions:
-                // - N ticks have passed (already in for loop)
-                // - All neuron values are unchanged
-                // - All output neurons have non-zero values
-                bool shouldExit = true;
-                bool allNeuronsUnchanged = true;
-                bool allOutputNeuronsIsNonZeros = true;
+                // Compute the incomming synapse of each neurons
+                setMem(paddingIncommingSynapses, sizeof(paddingIncommingSynapses), 0);
                 for (unsigned long long n = 0; n < population; ++n)
                 {
-                    // Neuron unchanged check
-                    if (previousNeuronValue[n] != neurons[n])
+                    const Synapse* kSynapses = getSynapses(n);
+                    // Scan through all neighbor neurons and sum all connected neurons.
+                    // The synapses are arranged as neuronIndex * numberOfNeighbors
+                    for (long long m = 0; m < radius; m++)
                     {
-                        allNeuronsUnchanged = false;
+                        Synapse synapseWeight = kSynapses[m];
+                        unsigned long long nnIndex = clampNeuronIndex(n + m, -radius);
+                        paddingIncommingSynapses[nnIndex * incommingSynapsesPitch + (numberOfNeighbors - m)] = synapseWeight;
                     }
 
-                    // Ouput neuron value check
-                    if (neuronTypes[n] == OUTPUT_NEURON_TYPE && neurons[n] == 0)
+                    //paddingIncommingSynapses[n * incommingSynapsesPitch + radius] = 0;
+
+                    for (long long m = radius; m < numberOfNeighbors; m++)
                     {
-                        allOutputNeuronsIsNonZeros = false;
+                        Synapse synapseWeight = kSynapses[m];
+                        unsigned long long nnIndex = clampNeuronIndex(n + m + 1, -radius);
+                        paddingIncommingSynapses[nnIndex * incommingSynapsesPitch + (numberOfNeighbors - m - 1)] = synapseWeight;
                     }
                 }
+            }
 
-                if (allOutputNeuronsIsNonZeros || allNeuronsUnchanged)
+            // Prepare masks
+            {
+                packNegPosWithPadding(currentANN.neurons,
+                    population,
+                    radius,
+                    currentANN.neuronMinus1s,
+                    currentANN.neuronPlus1s);
+
+                packNegPosWithPadding(paddingIncommingSynapses,
+                    incommingSynapsesPitch * population,
+                    0,
+                    currentANN.synapseMinus1s,
+                    currentANN.synapsePlus1s);
+            }
+
+            {
+                for (unsigned long long tick = 0; tick < numberOfTicks; ++tick)
                 {
-                    break;
-                }
+                    processTick();
+                    // Check exit conditions:
+                    // - N ticks have passed (already in for loop)
+                    // - All neuron values are unchanged
+                    // - All output neurons have non-zero values
+                    bool shouldExit = true;
+                    bool allNeuronsUnchanged = true;
+                    bool allOutputNeuronsIsNonZeros = true;
+                    for (unsigned long long n = 0; n < population; ++n)
+                    {
+                        // Neuron unchanged check
+                        if (previousNeuronValue[n] != neurons[n])
+                        {
+                            allNeuronsUnchanged = false;
+                        }
 
-                // Copy the neuron value
-                copyMem(previousNeuronValue, neurons, population * sizeof(Neuron));
+                        // Ouput neuron value check
+                        if (neuronTypes[n] == OUTPUT_NEURON_TYPE && neurons[n] == 0)
+                        {
+                            allOutputNeuronsIsNonZeros = false;
+                        }
+                    }
+
+                    if (allOutputNeuronsIsNonZeros || allNeuronsUnchanged)
+                    {
+                        break;
+                    }
+
+                    // Copy the neuron value
+                    copyMem(previousNeuronValue, neurons, population * sizeof(Neuron));
+                }
             }
         }
 
@@ -963,6 +1279,44 @@ struct ScoreFunction
             return score;
         }
 
+        // returns last computed output neurons, only returns 256 non-zero neurons, neuron values are compressed to bit
+        m256i getLastOutput()
+        {
+            unsigned long long population = bestANN.population;
+            Neuron* neurons = bestANN.neurons;
+            NeuronType* neuronTypes = bestANN.neuronTypes;
+            int count = 0;
+            int byteCount = 0;
+            uint8_t A = 0;
+            m256i result;
+            result = m256i::zero();
+
+            for (unsigned long long i = 0; i < population; i++)
+            {
+                if (neuronTypes[i] == OUTPUT_NEURON_TYPE)
+                {
+                    if (neurons[i])
+                    {
+                        uint8_t v = (neurons[i] > 0);
+                        v = v << (7 - count);
+                        A |= v;
+                        if (++count == 8)
+                        {
+                            result.m256i_u8[byteCount++] = A;
+                            A = 0;
+                            count = 0;
+                            if (byteCount >= 32)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
     } _computeBuffer[solutionBufferCount];
     m256i currentRandomSeed;
 
@@ -1000,6 +1354,8 @@ struct ScoreFunction
     bool initMemory()
     {
         random2PoolLock = 0;
+
+        // Make sure all padding data is set as zeros
         setMem(_computeBuffer, sizeof(_computeBuffer), 0);
 
         for (int i = 0; i < solutionBufferCount; i++)
@@ -1057,6 +1413,15 @@ struct ScoreFunction
         return _computeBuffer[solutionBufIdx].computeScore(publicKey.m256i_u8, nonce.m256i_u8, poolVec);
     }
 
+    m256i getLastOutput(const unsigned long long processor_Number)
+    {
+        ACQUIRE(solutionEngineLock[processor_Number]);
+
+        m256i result = _computeBuffer[processor_Number].getLastOutput();
+
+        RELEASE(solutionEngineLock[processor_Number]);
+        return result;
+    }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {

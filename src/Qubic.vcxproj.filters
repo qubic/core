@@ -120,6 +120,9 @@
     <ClInclude Include="contracts\QBAY.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Nostromo.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
@@ -237,6 +240,12 @@
     <ClInclude Include="network_messages\logging.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Qswap.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\uint128.h">
+      <Filter>platform</Filter>
+    </ClInclude>
     <ClInclude Include="K12/kangaroo_twelve_xkcp.h" />
     <ClInclude Include="contracts\TestExampleC.h">
       <Filter>contracts</Filter>
@@ -261,6 +270,12 @@
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="revenue.h" />
+    <ClInclude Include="contract_core\qpi_mining_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\Qdraw.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

@@ -87,13 +87,13 @@ namespace QPI
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	inline KeyT HashMap<KeyT, ValueT, L, HashFunc>::key(sint64 elementIndex) const
+	inline const KeyT& HashMap<KeyT, ValueT, L, HashFunc>::key(sint64 elementIndex) const
 	{
 		return _elements[elementIndex & (L - 1)].key;
 	}
 
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
-	inline ValueT HashMap<KeyT, ValueT, L, HashFunc>::value(sint64 elementIndex) const
+	inline const ValueT& HashMap<KeyT, ValueT, L, HashFunc>::value(sint64 elementIndex) const
 	{
 		return _elements[elementIndex & (L - 1)].value;
 	}

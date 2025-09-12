@@ -499,19 +499,22 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
             ASSERT(iter.possessionIndex() < ASSETS_CAPACITY);
 
             const auto& possession = assets[iter.possessionIndex()].varStruct.possession;
-            const long long dividend = amountPerShare * possession.numberOfShares;
 
-            increaseEnergy(possession.publicKey, dividend);
+            if (possession.numberOfShares)
+            {
+                const long long dividend = amountPerShare * possession.numberOfShares;
+                increaseEnergy(possession.publicKey, dividend);
 
-            if (!contractActionTracker.addQuTransfer(_currentContractId, possession.publicKey, dividend))
-                __qpiAbort(ContractErrorTooManyActions);
+                if (!contractActionTracker.addQuTransfer(_currentContractId, possession.publicKey, dividend))
+                    __qpiAbort(ContractErrorTooManyActions);
 
-            __qpiNotifyPostIncomingTransfer(_currentContractId, possession.publicKey, dividend, TransferType::qpiDistributeDividends);
+                __qpiNotifyPostIncomingTransfer(_currentContractId, possession.publicKey, dividend, TransferType::qpiDistributeDividends);
 
-            const QuTransfer quTransfer = { _currentContractId, possession.publicKey, dividend };
-            logger.logQuTransfer(quTransfer);
+                const QuTransfer quTransfer = { _currentContractId, possession.publicKey, dividend };
+                logger.logQuTransfer(quTransfer);
 
-            totalShareCounter += possession.numberOfShares;
+                totalShareCounter += possession.numberOfShares;
+            }
 
             iter.next();
         }
@@ -787,4 +790,10 @@ iteration:
             goto iteration;
         }
     }
+}
+
+bool QPI::QpiContextFunctionCall::isAssetIssued(const m256i& issuer, unsigned long long assetName) const
+{
+    bool res = ::issuanceIndex(issuer, assetName) != NO_ASSET_INDEX;
+    return res;
 }

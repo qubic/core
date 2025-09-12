@@ -4,9 +4,6 @@
 
 #define ENABLE_PROFILING 0
 
-// needed for scoring task queue
-#define NUMBER_OF_TRANSACTIONS_PER_TICK 1024
-
 // current optimized implementation
 #include "../src/score.h"
 
@@ -196,10 +193,31 @@ void runCommonTests()
     ASSERT_FALSE(scoresString.empty());
 
     // Convert the raw string and do the data verification
-    unsigned long long numberOfSamples = sampleString.size();
+    unsigned long long numberOfSamplesReadFromFile = sampleString.size();
+    unsigned long long numberOfSamples = numberOfSamplesReadFromFile;
     if (COMMON_TEST_NUMBER_OF_SAMPLES > 0)
     {
+        std::cout << "Request testing with " << COMMON_TEST_NUMBER_OF_SAMPLES << " samples." << std::endl;
+
         numberOfSamples = std::min(COMMON_TEST_NUMBER_OF_SAMPLES, numberOfSamples);
+        if (COMMON_TEST_NUMBER_OF_SAMPLES <= numberOfSamples)
+        {
+            numberOfSamples = COMMON_TEST_NUMBER_OF_SAMPLES;
+        }
+        else // Request number of samples greater than existed. Only valid for reference score validation only
+        {
+            if (gCompareReference)
+            {
+                numberOfSamples = COMMON_TEST_NUMBER_OF_SAMPLES;
+                std::cout << "Refenrece comparison mode: " << numberOfSamples << " samples are read from file for comparision." 
+                    << "Remained are generated randomly."
+                    << std::endl;
+            }
+            else
+            {
+                std::cout << "Only " << numberOfSamples << " samples can be read from file for comparison" << std::endl;
+            }
+        }
     }
 
     std::vector<m256i> miningSeeds(numberOfSamples);
@@ -209,9 +227,30 @@ void runCommonTests()
     // Reading the input samples
     for (unsigned long long i = 0; i < numberOfSamples; ++i)
     {
-        miningSeeds[i] = hexToByte(sampleString[i][0], 32);
-        publicKeys[i] = hexToByte(sampleString[i][1], 32);
-        nonces[i] = hexToByte(sampleString[i][2], 32);
+        if (i < numberOfSamplesReadFromFile)
+        {
+            miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
+            publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
+            nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
+        }
+        else // Samples from files are not enough, randomly generate more
+        {
+            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[0]);
+            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[8]);
+            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[16]);
+            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[24]);
+
+            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[0]);
+            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[8]);
+            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[16]);
+            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[24]);
+
+            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[0]);
+            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[8]);
+            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[16]);
+            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[24]);
+
+        }
     }
 
     // Reading the header of score and verification
@@ -314,7 +353,17 @@ void runCommonTests()
         samples.push_back(i);
     }
 
-    std::cout << "Processing " << samples.size() << " samples ..." << std::endl;
+    std::string compTerm = " and compare with groundtruths from file.";
+    if (gCompareReference)
+    {
+        compTerm = " and compare with reference code.";
+    }
+    if (ENABLE_PROFILING)
+    {
+        compTerm = "for profiling, without comparing any result (set test case FAILED as default)";
+    }
+
+    std::cout << "Processing " << samples.size() << " samples " << compTerm << "..." << std::endl;
 #pragma omp parallel for num_threads(numberOfThreads)
     for (int i = 0; i < samples.size(); ++i)
     {
@@ -378,9 +427,9 @@ TEST(TestQubicScoreFunction, TestDeterministic)
     // Reading the input samples
     for (unsigned long long i = 0; i < numberOfSamples; ++i)
     {
-        miningSeeds[i] = hexToByte(sampleString[i][0], 32);
-        publicKeys[i] = hexToByte(sampleString[i][1], 32);
-        nonces[i] = hexToByte(sampleString[i][2], 32);
+        miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
+        publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
+        nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
     }
 
     auto pScore = std::make_unique<ScoreFunction<

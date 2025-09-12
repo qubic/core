@@ -417,8 +417,8 @@ iteration:
             logPM.possessionPublicKey = possessionPublicKey;
             logPM.ownershipPublicKey = ownershipPublicKey;
             logPM.issuerPublicKey = assets[issuanceIndex].varStruct.issuance.publicKey;
-            logOM.sourceContractIndex = assets[sourcePossessionIndex].varStruct.ownership.managingContractIndex;
-            logOM.destinationContractIndex = destinationPossessionManagingContractIndex;
+            logPM.sourceContractIndex = assets[sourcePossessionIndex].varStruct.ownership.managingContractIndex;
+            logPM.destinationContractIndex = destinationPossessionManagingContractIndex;
             logPM.numberOfShares = numberOfShares;
             *((unsigned long long*) & logPM.assetName) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name);  // possible with 7 byte array, because it is followed by memory reserved for terminator byte
             logger.logAssetPossessionManagingContractChange(logPM);
