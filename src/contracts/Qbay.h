@@ -55,7 +55,7 @@ struct QBAYLogger
 {
     uint32 _contractIndex;
     uint32 _type; // Assign a random unique (per contract) number to distinguish messages of different types
-	sint8 _terminator; // Only data before "_terminator" are logged
+    char _terminator; // Only data before "_terminator" are logged
 };
 
 struct QBAY2
@@ -491,6 +491,134 @@ protected:
 		
 	Array<InfoOfNFT, QBAY_MAX_NUMBER_NFT> NFTs;
 
+	/**
+	* @return Current date from core node system
+	*/
+
+	/**
+	 * Compare 2 date in uint32 format
+	 * @return -1 lesser(ealier) A<B, 0 equal A=B, 1 greater(later) A>B
+	 */
+	inline static sint32 dateCompare(uint32& A, uint32& B, sint32& i)
+	{
+		if (A == B) return 0;
+		if (A < B) return -1;
+		return 1;
+	}
+
+	/**
+	 * @return pack qtry datetime data from year, month, day, hour, minute, second to a uint32
+	 * year is counted from 24 (2024)
+	 */
+	inline static void packQuotteryDate(uint32 _year, uint32 _month, uint32 _day, uint32 _hour, uint32 _minute, uint32 _second, uint32& res)
+	{
+		res = ((_year - 24) << 26) | (_month << 22) | (_day << 17) | (_hour << 12) | (_minute << 6) | (_second);
+	}
+
+	inline static uint32 qtryGetYear(uint32 data)
+	{
+		return ((data >> 26) + 24);
+	}
+	inline static uint32 qtryGetMonth(uint32 data)
+	{
+		return ((data >> 22) & 0b1111);
+	}
+	inline static uint32 qtryGetDay(uint32 data)
+	{
+		return ((data >> 17) & 0b11111);
+	}
+	inline static uint32 qtryGetHour(uint32 data)
+	{
+		return ((data >> 12) & 0b11111);
+	}
+	inline static uint32 qtryGetMinute(uint32 data)
+	{
+		return ((data >> 6) & 0b111111);
+	}
+	inline static uint32 qtryGetSecond(uint32 data)
+	{
+		return (data & 0b111111);
+	}
+	/*
+	* @return unpack qtry datetime from uin32 to year, month, day, hour, minute, secon
+	*/
+	inline static void unpackQuotteryDate(uint8& _year, uint8& _month, uint8& _day, uint8& _hour, uint8& _minute, uint8& _second, uint32 data)
+	{
+		_year = qtryGetYear(data); // 6 bits
+		_month = qtryGetMonth(data); //4bits
+		_day = qtryGetDay(data); //5bits
+		_hour = qtryGetHour(data); //5bits
+		_minute = qtryGetMinute(data); //6bits
+		_second = qtryGetSecond(data); //6bits
+	}
+
+	inline static void accumulatedDay(sint32 month, uint64& res)
+	{
+		switch (month)
+		{
+		case 1: res = 0; break;
+		case 2: res = 31; break;
+		case 3: res = 59; break;
+		case 4: res = 90; break;
+		case 5: res = 120; break;
+		case 6: res = 151; break;
+		case 7: res = 181; break;
+		case 8: res = 212; break;
+		case 9: res = 243; break;
+		case 10:res = 273; break;
+		case 11:res = 304; break;
+		case 12:res = 334; break;
+		}
+	}
+	/**
+	 * @return difference in number of second, A must be smaller than or equal B to have valid value
+	 */
+	inline static void diffDateInSecond(uint32& A, uint32& B, sint32& i, uint64& dayA, uint64& dayB, uint64& res)
+	{
+		if (dateCompare(A, B, i) >= 0)
+		{
+			res = 0;
+			return;
+		}
+		accumulatedDay(qtryGetMonth(A), dayA);
+		dayA += qtryGetDay(A);
+		accumulatedDay(qtryGetMonth(B), dayB);
+		dayB += (qtryGetYear(B) - qtryGetYear(A)) * 365ULL + qtryGetDay(B);
+
+		// handling leap-year: only store last 2 digits of year here, don't care about mod 100 & mod 400 case
+		for (i = qtryGetYear(A); (uint32)(i) < qtryGetYear(B); i++)
+		{
+			if (mod(i, 4) == 0)
+			{
+				dayB++;
+			}
+		}
+		if (mod(sint32(qtryGetYear(A)), 4) == 0 && (qtryGetMonth(A) > 2)) dayA++;
+		if (mod(sint32(qtryGetYear(B)), 4) == 0 && (qtryGetMonth(B) > 2)) dayB++;
+		res = (dayB - dayA) * 3600ULL * 24;
+		res += (qtryGetHour(B) * 3600 + qtryGetMinute(B) * 60 + qtryGetSecond(B));
+		res -= (qtryGetHour(A) * 3600 + qtryGetMinute(A) * 60 + qtryGetSecond(A));
+	}
+
+	inline static bool checkValidQtryDateTime(uint32& A)
+	{
+		if (qtryGetMonth(A) > 12) return false;
+		if (qtryGetDay(A) > 31) return false;
+		if ((qtryGetDay(A) == 31) &&
+			(qtryGetMonth(A) != 1) && (qtryGetMonth(A) != 3) && (qtryGetMonth(A) != 5) &&
+			(qtryGetMonth(A) != 7) && (qtryGetMonth(A) != 8) && (qtryGetMonth(A) != 10) && (qtryGetMonth(A) != 12)) return false;
+		if ((qtryGetDay(A) == 30) && (qtryGetMonth(A) == 2)) return false;
+		if ((qtryGetDay(A) == 29) && (qtryGetMonth(A) == 2) && (mod(qtryGetYear(A), 4u) != 0)) return false;
+		if (qtryGetHour(A) >= 24) return false;
+		if (qtryGetMinute(A) >= 60) return false;
+		if (qtryGetSecond(A) >= 60) return false;
+		return true;
+	}
+
+	inline static void getCurrentDate(const QPI::QpiContextFunctionCall& qpi, uint32& res) 
+	{
+        packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
+    }
 
 	struct settingCFBAndQubicPrice_locals
 	{
@@ -958,7 +1086,7 @@ protected:
 			return;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1025,7 +1153,7 @@ protected:
 			return ;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1101,7 +1229,7 @@ protected:
 			return ;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1239,7 +1367,7 @@ protected:
 			return ;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1314,7 +1442,7 @@ protected:
 			return ;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.possessedNFT).endTimeOfAuction || locals.curDate <= state.NFTs.get(input.anotherNFT).endTimeOfAuction)
 		{
@@ -1403,7 +1531,7 @@ protected:
 			return ;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.possessedNFT).endTimeOfAuction || locals.curDate <= state.NFTs.get(input.anotherNFT).endTimeOfAuction)
 		{
@@ -1469,7 +1597,7 @@ protected:
 			return;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1621,7 +1749,7 @@ protected:
 			return;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1720,7 +1848,7 @@ protected:
 			return;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1804,10 +1932,10 @@ protected:
 			return;
 		}
 
-		QUOTTERY::packQuotteryDate(input.startYear, input.startMonth, input.startDay, input.startHour, 0, 0, locals.startDate);
-		QUOTTERY::packQuotteryDate(input.endYear, input.endMonth, input.endDay, input.endHour, 0, 0, locals.endDate);
+		packQuotteryDate(input.startYear, input.startMonth, input.startDay, input.startHour, 0, 0, locals.startDate);
+		packQuotteryDate(input.endYear, input.endMonth, input.endDay, input.endHour, 0, 0, locals.endDate);
 
-		if(input.NFTId >= QBAY_MAX_NUMBER_NFT || QUOTTERY::checkValidQtryDateTime(locals.startDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.endDate) == 0)
+		if(input.NFTId >= QBAY_MAX_NUMBER_NFT || checkValidQtryDateTime(locals.startDate) == 0 || checkValidQtryDateTime(locals.endDate) == 0)
 		{
 			output.returnCode = QBAYLogInfo::invalidInput;
 			locals.log = QBAYLogger{ QBAY_CONTRACT_INDEX, QBAYLogInfo::invalidInput, 0 };
@@ -1816,7 +1944,7 @@ protected:
 			return;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.startDate <= locals.curDate || locals.endDate <= locals.startDate)
 		{
@@ -1915,7 +2043,7 @@ protected:
 			return ;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		if(locals.curDate < state.NFTs.get(input.NFTId).startTimeOfAuction || locals.curDate > state.NFTs.get(input.NFTId).endTimeOfAuction)
 		{
@@ -2191,7 +2319,7 @@ protected:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getNumberOfNFTForUser)
 	{
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		output.numberOfNFT = 0;
 
@@ -2213,7 +2341,7 @@ protected:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getInfoOfNFTUserPossessed)
 	{
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 
 		locals.cnt = 0;
 
@@ -2239,8 +2367,8 @@ protected:
 					output.paymentMethodOfAsk = state.NFTs.get(locals._t).paymentMethodOfAsk;
 					output.statusOfExchange = state.NFTs.get(locals._t).statusOfExchange;
 					output.paymentMethodOfAuction = state.NFTs.get(locals._t).paymentMethodOfAuction;
-					QUOTTERY::unpackQuotteryDate(output.yearAuctionStarted, output.monthAuctionStarted, output.dayAuctionStarted, output.hourAuctionStarted, output.minuteAuctionStarted, output.secondAuctionStarted, state.NFTs.get(locals._t).startTimeOfAuction);
-					QUOTTERY::unpackQuotteryDate(output.yearAuctionEnded, output.monthAuctionEnded, output.dayAuctionEnded, output.hourAuctionEnded, output.minuteAuctionEnded, output.secondAuctionEnded, state.NFTs.get(locals._t).endTimeOfAuction);
+					unpackQuotteryDate(output.yearAuctionStarted, output.monthAuctionStarted, output.dayAuctionStarted, output.hourAuctionStarted, output.minuteAuctionStarted, output.secondAuctionStarted, state.NFTs.get(locals._t).startTimeOfAuction);
+					unpackQuotteryDate(output.yearAuctionEnded, output.monthAuctionEnded, output.dayAuctionEnded, output.hourAuctionEnded, output.minuteAuctionEnded, output.secondAuctionEnded, state.NFTs.get(locals._t).endTimeOfAuction);
 
 					for(locals._r = 0 ; locals._r < 64; locals._r++)
 					{
@@ -2340,7 +2468,7 @@ protected:
 			return ;
 		}
 
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		getCurrentDate(qpi, locals.curDate);
 		locals.cnt = 0;
 		locals._r = 0;
 
@@ -2386,8 +2514,8 @@ protected:
 		output.paymentMethodOfAsk = state.NFTs.get(input.NFTId).paymentMethodOfAsk;
 		output.statusOfExchange = state.NFTs.get(input.NFTId).statusOfExchange;
 		output.paymentMethodOfAuction = state.NFTs.get(input.NFTId).paymentMethodOfAuction;
-		QUOTTERY::unpackQuotteryDate(output.yearAuctionStarted, output.monthAuctionStarted, output.dayAuctionStarted, output.hourAuctionStarted, output.minuteAuctionStarted, output.secondAuctionStarted, state.NFTs.get(input.NFTId).startTimeOfAuction);
-		QUOTTERY::unpackQuotteryDate(output.yearAuctionEnded, output.monthAuctionEnded, output.dayAuctionEnded, output.hourAuctionEnded, output.minuteAuctionEnded, output.secondAuctionEnded, state.NFTs.get(input.NFTId).endTimeOfAuction);
+		unpackQuotteryDate(output.yearAuctionStarted, output.monthAuctionStarted, output.dayAuctionStarted, output.hourAuctionStarted, output.minuteAuctionStarted, output.secondAuctionStarted, state.NFTs.get(input.NFTId).startTimeOfAuction);
+		unpackQuotteryDate(output.yearAuctionEnded, output.monthAuctionEnded, output.dayAuctionEnded, output.hourAuctionEnded, output.minuteAuctionEnded, output.secondAuctionEnded, state.NFTs.get(input.NFTId).endTimeOfAuction);
 		
 		for(locals._r = 0 ; locals._r < 64; locals._r++)
 		{
