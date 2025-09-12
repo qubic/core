@@ -1181,6 +1181,8 @@ public:
         state.dfMiningSeed = qpi.getPrevSpectrumDigest();
     }
 
+    // Deactivate delay function
+    #if 0
     struct BEGIN_TICK_locals
     {
         m256i dfPubkey, dfNonce;
@@ -1194,10 +1196,11 @@ public:
         locals.dfPubkey = qpi.getPrevSpectrumDigest();
         locals.dfNonce = qpi.getPrevComputerDigest();
         state.dfCurrentState = qpi.computeMiningFunction(state.dfMiningSeed, locals.dfPubkey, locals.dfNonce);
-        
+
         locals.logger = QUTILDFLogger{ 0, 0, locals.dfNonce, locals.dfPubkey, state.dfMiningSeed, state.dfCurrentState};
         LOG_INFO(locals.logger);
     }
+    #endif
 
     /*
     * @return Return total number of shares that currently exist of the asset given as input
