@@ -107,6 +107,15 @@ public:
         uint64 randomIndex = 0;
     };
 
+    struct GetWinners_input {
+    };
+
+    struct GetWinners_output {
+        Array<WinnersInfo, MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
+        uint16 numberOfWinners = 0;
+        uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+    };
+
     struct END_EPOCH_locals {
         GetWinner_input getWinnerInput = {};
         GetWinner_output getWinnerOutput = {};
@@ -130,6 +139,7 @@ public:
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES() {
         REGISTER_USER_FUNCTION(GetFees, 1);
         REGISTER_USER_FUNCTION(GetPlayers, 2);
+        REGISTER_USER_FUNCTION(GetWinners, 3);
         REGISTER_USER_PROCEDURE(BuyTicket, 1);
         REGISTER_USER_PROCEDURE(SetTicketPrice, 2);
     }
@@ -232,6 +242,11 @@ public:
                 output.players.set(locals.arrayIndex++, state.players.key(i));
             }
         }
+    }
+
+    PUBLIC_FUNCTION(GetWinners) {
+        output.winners = state.winners;
+        output.numberOfWinners = state.winnersInfoIndex;
     }
 
     PUBLIC_PROCEDURE(BuyTicket) {
