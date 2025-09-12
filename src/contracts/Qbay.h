@@ -492,10 +492,6 @@ protected:
 	Array<InfoOfNFT, QBAY_MAX_NUMBER_NFT> NFTs;
 
 	/**
-	* @return Current date from core node system
-	*/
-
-	/**
 	 * Compare 2 date in uint32 format
 	 * @return -1 lesser(ealier) A<B, 0 equal A=B, 1 greater(later) A>B
 	 */
@@ -614,6 +610,10 @@ protected:
 		if (qtryGetSecond(A) >= 60) return false;
 		return true;
 	}
+
+	/**
+	* @return Current date from core node system
+	*/
 
 	inline static void getCurrentDate(const QPI::QpiContextFunctionCall& qpi, uint32& res) 
 	{

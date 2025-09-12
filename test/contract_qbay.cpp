@@ -214,8 +214,8 @@ public:
     void createAuctionChecker(uint32 NFTId, uint64 price, bit gt_statusOfAuction, bit gt_paymentMethodOfAuction, id gt_creatorOfAuction, uint32 startYear, uint32 startMonth, uint32 startDay, uint32 startHour, uint32 endYear, uint32 endMonth, uint32 endDay, uint32 endHour)
     {
         uint32 startTime, endTime;
-        QUOTTERY::packQuotteryDate(startYear, startMonth, startDay, startHour, 0, 0, startTime);
-        QUOTTERY::packQuotteryDate(endYear, endMonth, endDay, endHour, 0, 0, endTime);
+        QBAY::packQuotteryDate(startYear, startMonth, startDay, startHour, 0, 0, startTime);
+        QBAY::packQuotteryDate(endYear, endMonth, endDay, endHour, 0, 0, endTime);
         EXPECT_EQ(NFTs.get(NFTId).startTimeOfAuction, startTime);
         EXPECT_EQ(NFTs.get(NFTId).endTimeOfAuction, endTime);
         EXPECT_EQ(NFTs.get(NFTId).currentPriceOfAuction, price);

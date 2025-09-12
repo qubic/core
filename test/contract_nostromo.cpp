@@ -59,8 +59,8 @@ public:
     void createdProjectChecker(uint32 indexOfProject, id creator, uint64 assetName, uint32 supply, uint32 startYear, uint32 startMonth, uint32 startDay, uint32 startHour, uint32 endYear, uint32 endMonth, uint32 endDay, uint32 endHour)
     {
         uint32 startDate, endDate;
-        QUOTTERY::packQuotteryDate(startYear, startMonth, startDay, startHour, 0, 0, startDate);
-        QUOTTERY::packQuotteryDate(endYear, endMonth, endDay, endHour, 0, 0, endDate);
+        NOST::packQuotteryDate(startYear, startMonth, startDay, startHour, 0, 0, startDate);
+        NOST::packQuotteryDate(endYear, endMonth, endDay, endHour, 0, 0, endDate);
         
         EXPECT_EQ(tokens.contains(assetName), 1);
         EXPECT_EQ(projects.get(indexOfProject).creator, creator);
@@ -157,15 +157,15 @@ public:
         uint32 indexOfFundraising)
     {
         uint32 firstPhaseStartDate_t, secondPhaseStartDate_t, thirdPhaseStartDate_t, firstPhaseEndDate_t, secondPhaseEndDate_t, thirdPhaseEndDate_t, listingStartDate_t, cliffEndDate_t, vestingEndDate_t;
-        QUOTTERY::packQuotteryDate(firstPhaseStartYear, firstPhaseStartMonth, firstPhaseStartDay, firstPhaseStartHour, 0, 0, firstPhaseStartDate_t);
-		QUOTTERY::packQuotteryDate(secondPhaseStartYear, secondPhaseStartMonth, secondPhaseStartDay, secondPhaseStartHour, 0, 0, secondPhaseStartDate_t);
-		QUOTTERY::packQuotteryDate(thirdPhaseStartYear, thirdPhaseStartMonth, thirdPhaseStartDay, thirdPhaseStartHour, 0, 0, thirdPhaseStartDate_t);
-		QUOTTERY::packQuotteryDate(firstPhaseEndYear, firstPhaseEndMonth, firstPhaseEndDay, firstPhaseEndHour, 0, 0, firstPhaseEndDate_t);
-		QUOTTERY::packQuotteryDate(secondPhaseEndYear, secondPhaseEndMonth, secondPhaseEndDay, secondPhaseEndHour, 0, 0, secondPhaseEndDate_t);
-		QUOTTERY::packQuotteryDate(thirdPhaseEndYear, thirdPhaseEndMonth, thirdPhaseEndDay, thirdPhaseEndHour, 0, 0, thirdPhaseEndDate_t);
-		QUOTTERY::packQuotteryDate(listingStartYear, listingStartMonth, listingStartDay, listingStartHour, 0, 0, listingStartDate_t);
-		QUOTTERY::packQuotteryDate(cliffEndYear, cliffEndMonth, cliffEndDay, cliffEndHour, 0, 0, cliffEndDate_t);
-		QUOTTERY::packQuotteryDate(vestingEndYear, vestingEndMonth, vestingEndDay, vestingEndHour, 0, 0, vestingEndDate_t);
+        NOST::packQuotteryDate(firstPhaseStartYear, firstPhaseStartMonth, firstPhaseStartDay, firstPhaseStartHour, 0, 0, firstPhaseStartDate_t);
+		NOST::packQuotteryDate(secondPhaseStartYear, secondPhaseStartMonth, secondPhaseStartDay, secondPhaseStartHour, 0, 0, secondPhaseStartDate_t);
+		NOST::packQuotteryDate(thirdPhaseStartYear, thirdPhaseStartMonth, thirdPhaseStartDay, thirdPhaseStartHour, 0, 0, thirdPhaseStartDate_t);
+		NOST::packQuotteryDate(firstPhaseEndYear, firstPhaseEndMonth, firstPhaseEndDay, firstPhaseEndHour, 0, 0, firstPhaseEndDate_t);
+		NOST::packQuotteryDate(secondPhaseEndYear, secondPhaseEndMonth, secondPhaseEndDay, secondPhaseEndHour, 0, 0, secondPhaseEndDate_t);
+		NOST::packQuotteryDate(thirdPhaseEndYear, thirdPhaseEndMonth, thirdPhaseEndDay, thirdPhaseEndHour, 0, 0, thirdPhaseEndDate_t);
+		NOST::packQuotteryDate(listingStartYear, listingStartMonth, listingStartDay, listingStartHour, 0, 0, listingStartDate_t);
+		NOST::packQuotteryDate(cliffEndYear, cliffEndMonth, cliffEndDay, cliffEndHour, 0, 0, cliffEndDate_t);
+		NOST::packQuotteryDate(vestingEndYear, vestingEndMonth, vestingEndDay, vestingEndHour, 0, 0, vestingEndDate_t);
 
         EXPECT_EQ(registerId, projects.get(fundaraisings.get(indexOfFundraising).indexOfProject).creator);
         EXPECT_EQ(tokenPrice, fundaraisings.get(indexOfFundraising).tokenPrice);
@@ -835,12 +835,12 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
 
     EXPECT_EQ(getProjectByIndex_output.project.creator, registers[0]);
     uint32 tmpDate;
-    QUOTTERY::packQuotteryDate(25, 6, 15, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 6, 15, 0, 0, 0, tmpDate);
     EXPECT_EQ(getProjectByIndex_output.project.endDate , tmpDate);
     EXPECT_EQ(getProjectByIndex_output.project.isCreatedFundarasing , 0);
     EXPECT_EQ(getProjectByIndex_output.project.numberOfNo, 0);
     EXPECT_EQ(getProjectByIndex_output.project.numberOfYes, 0);
-    QUOTTERY::packQuotteryDate(25, 6, 13, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 6, 13, 0, 0, 0, tmpDate);
     EXPECT_EQ(getProjectByIndex_output.project.startDate, tmpDate);
     EXPECT_EQ(getProjectByIndex_output.project.supplyOfToken, 21000000);
     EXPECT_EQ(getProjectByIndex_output.project.tokenName, assetName);
@@ -1008,23 +1008,23 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.TGE, 10);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.threshold, 20);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.tokenPrice, 100000);
-    QUOTTERY::packQuotteryDate(25, 6, 17, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 6, 17, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.firstPhaseStartDate, tmpDate);
-    QUOTTERY::packQuotteryDate(25, 6, 25, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 6, 25, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.firstPhaseEndDate, tmpDate);
-    QUOTTERY::packQuotteryDate(25, 6, 28, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 6, 28, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.secondPhaseStartDate, tmpDate);
-    QUOTTERY::packQuotteryDate(25, 7, 1, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 7, 1, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.secondPhaseEndDate, tmpDate);
-    QUOTTERY::packQuotteryDate(25, 7, 10, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 7, 10, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.thirdPhaseStartDate, tmpDate);
-    QUOTTERY::packQuotteryDate(25, 7, 15, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 7, 15, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.thirdPhaseEndDate, tmpDate);
-    QUOTTERY::packQuotteryDate(25, 7, 25, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 7, 25, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.listingStartDate, tmpDate);
-    QUOTTERY::packQuotteryDate(25, 7, 27, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(25, 7, 27, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.cliffEndDate, tmpDate);
-    QUOTTERY::packQuotteryDate(26, 7, 27, 0, 0, 0, tmpDate);
+    NOST::packQuotteryDate(26, 7, 27, 0, 0, 0, tmpDate);
     EXPECT_EQ(getFundarasingByIndex_output.fundarasing.vestingEndDate, tmpDate);
 
     // Phase 1 Investment
