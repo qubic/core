@@ -2,6 +2,7 @@
 #include <map>
 #include <vector>
 #include <thread>
+#include <string>
 #include <lib/platform_efi/uefi_globals.h>
 #ifdef __linux__
 #include <string.h>
@@ -13,7 +14,7 @@
 #include "extensions/utils.h"
 #endif
 
-#define TESTNET
+//#define TESTNET
 #define REAL_NODE
 #define NO_UEFI
 #define SINGLE_COMPILE_UNIT
@@ -94,6 +95,7 @@
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
 
+#include "extensions/cxxopts.h"
 #include "extensions/overload.h"
 
 #ifdef _WIN32
@@ -133,7 +135,8 @@ struct Processor : public CustomStack
 };
 
 
-
+// Dynamic peers that can be added using command line
+std::vector<IPv4Address> knownPublicPeersDynamic;
 
 static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
@@ -174,6 +177,7 @@ static unsigned int resourceTestingDigest = 0;
 static unsigned int numberOfTransactions = 0;
 static volatile char entityPendingTransactionsLock = 0;
 static unsigned char* entityPendingTransactions = NULL;
+static unsigned int entityPendingTransactionsTick[SPECTRUM_CAPACITY]; // used to store tick of transactions in entityPendingTransactions
 static unsigned char* entityPendingTransactionDigests = NULL;
 static unsigned int entityPendingTransactionIndices[SPECTRUM_CAPACITY]; // [SPECTRUM_CAPACITY] must be >= than [NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR]
 static volatile char computorPendingTransactionsLock = 0;
@@ -1137,6 +1141,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                     if (((Transaction*)&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE])->tick < request->tick
                         && request->tick < system.initialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
                     {
+						entityPendingTransactionsTick[spectrumIndex] = request->tick;
                         copyMem(&entityPendingTransactions[spectrumIndex * MAX_TRANSACTION_SIZE], request, transactionSize);
                         KangarooTwelve(request, transactionSize, &entityPendingTransactionDigests[spectrumIndex * 32ULL], 32);
                     }
@@ -3382,8 +3387,8 @@ static void processTick(unsigned long long processorNumber)
                     numberOfEntityPendingTransactionIndices = 0;
                     for (unsigned int k = 0; k < SPECTRUM_CAPACITY; k++)
                     {
-                        const Transaction* tx = ((Transaction*)&entityPendingTransactions[k * MAX_TRANSACTION_SIZE]);
-                        if (tx->tick == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
+                        //const Transaction* tx = ((Transaction*)&entityPendingTransactions[k * MAX_TRANSACTION_SIZE]);
+                        if (entityPendingTransactionsTick[k] == system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET)
                         {
                             entityPendingTransactionIndices[numberOfEntityPendingTransactionIndices++] = k;
                         }
@@ -3646,7 +3651,8 @@ static void beginEpoch()
     }
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
-        ((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
+        //((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick = 0;
+		entityPendingTransactionsTick[i] = 0;
     }
 
     setMem(solutionPublicationTicks, sizeof(solutionPublicationTicks), 0);
@@ -4543,9 +4549,9 @@ static void prepareNextTickTransactions()
         // Checks if any of the missing transactions is available in the entityPendingTransaction and remove unknownTransaction flag if found
         for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
         {
-            Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
-            if (pendingTransaction->tick == nextTick)
+            if (entityPendingTransactionsTick[i] == nextTick)
             {
+                Transaction* pendingTransaction = (Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE];
                 ACQUIRE(entityPendingTransactionsLock);
 
                 ASSERT(pendingTransaction->checkValidity());
@@ -5551,8 +5557,10 @@ static bool initialize()
     {
         if (!ts.init())
             return false;
-        if (!allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE,(void**)&entityPendingTransactions, __LINE__) ||
-            !allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * 32ULL,(void**)&entityPendingTransactionDigests , __LINE__))
+
+        setMem(entityPendingTransactionsTick, sizeof(entityPendingTransactionsTick), 0);
+        if (!allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE,(void**)&entityPendingTransactions, __LINE__, true, true) ||
+            !allocPoolWithErrorLog(L"entityPendingTransaction buffer", SPECTRUM_CAPACITY * 32ULL,(void**)&entityPendingTransactionDigests , __LINE__, true, true))
         {
             return false;
         }
@@ -5562,7 +5570,6 @@ static bool initialize()
         {
             return false;
         }
-        
 
         setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
 
@@ -5839,6 +5846,18 @@ static bool initialize()
             publicPeers[numberOfPublicPeers - 1].isFullnode = true;
         }
     }
+
+    for (unsigned int i = 0; i < knownPublicPeersDynamic.size() && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; i++)
+    {
+        const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(&knownPublicPeersDynamic[i]);
+        addPublicPeer(peer_ip);
+        if (numberOfPublicPeers > 0)
+        {
+            publicPeers[numberOfPublicPeers - 1].isHandshaked = true;
+            publicPeers[numberOfPublicPeers - 1].isFullnode = true;
+        }
+    }
+
     if (numberOfPublicPeers < 4)
     {
         setText(message, L"WARNING: Only ");
@@ -6137,7 +6156,7 @@ static void logInfo()
     }
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
-        if (((Transaction*)&entityPendingTransactions[i * MAX_TRANSACTION_SIZE])->tick > system.tick)
+        if (entityPendingTransactionsTick[i] > system.tick)
         {
             numberOfPendingTransactions++;
         }
@@ -6851,7 +6870,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             solutionProcessorFlags[i] = false;
         }
 
-        for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS; i++)
+        for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS_DYNAMIC; i++)
         {
             EFI_PROCESSOR_INFORMATION processorInformation;
             mpServicesProtocol->GetProcessorInfo(mpServicesProtocol, i, &processorInformation);
@@ -6899,10 +6918,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     debugLogOnlyMainProcessorRunning = false;
                     #endif
 
-                    if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
+                    if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC]
                         && !solutionProcessorFlags[i])
                     {
-                        solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS] = true;
+                        solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC] = true;
                         solutionProcessorFlags[i] = true;
                         solutionProcessorIDs[nSolutionProcessorIDs++] = i;
                     }
@@ -7445,7 +7464,79 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     return EFI_SUCCESS;
 }
 
-int main() {
+namespace Color {
+    constexpr auto reset = "\033[0m";
+    constexpr auto red = "\033[31m";
+    constexpr auto green = "\033[32m";
+    constexpr auto yellow = "\033[33m";
+    constexpr auto blue = "\033[34m";
+    constexpr auto magenta = "\033[35m";
+    constexpr auto cyan = "\033[36m";
+    constexpr auto bold = "\033[1m";
+}
+
+void processArgs(int argc, const char* argv[]) {
+#ifdef TESTNET
+    std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "TESNET" << std::endl;
+#else
+	std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "MAINNET" << std::endl;
+#endif
+
+    cxxopts::Options options("Qubic Core Lite", "The lite version of Qubic Core that can run directly on the OS without a UEFI environment.");
+    options.add_options()
+        ("p,peers", "Public peers", cxxopts::value<std::string>())
+        ("m,mode", "Core mode", cxxopts::value<std::string>())
+        ("t,threads", "Total Threads will be used by the core", cxxopts::value<int>())
+        ("st,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
+        ("v,verify-state", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
+    auto result = options.parse(argc, argv);
+
+    if (result.count("peers")) {
+        std::string peersStr = result["peers"].as<std::string>();
+        std::vector<std::string> peerList;
+        std::stringstream ss(peersStr);
+        std::string peer;
+        while (std::getline(ss, peer, ',')) {
+            peerList.push_back(peer);
+        }
+
+        for (size_t i = 0; i < peerList.size(); i++) {
+            IPv4Address address;
+            address.fromString(peerList[i]);
+            knownPublicPeersDynamic.push_back(address);
+        }
+    }
+
+    if (result.count("threads")) {
+        MAX_NUMBER_OF_PROCESSORS_DYNAMIC = result["threads"].as<int>();
+    }
+
+    if (result.count("solution-threads")) {
+        NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC = result["solution-threads"].as<int>();
+    }
+
+    if (result.count("mode")) {
+        std::vector<std::string> validModes = {"mainnet", "testnet"};
+        std::string modeStr = result["mode"].as<std::string>();
+        if (std::find(validModes.begin(), validModes.end(), modeStr) != validModes.end()) {
+            if (modeStr == "mainnet") {
+            } else if (modeStr == "testnet") {
+            }
+        } else {
+            std::cerr << "Invalid mode: " << modeStr << std::endl;
+            std::cerr << "Valid modes are: ";
+            for (const auto& m : validModes) {
+                std::cerr << m << " ";
+            }
+            std::cerr << std::endl;
+            exit(1);
+        }
+    }
+}
+
+int main(int argc, const char* argv[]) {
+	processArgs(argc, argv);
+
     Overload::initializeUefi();
     return efi_main(ih, st);
 }

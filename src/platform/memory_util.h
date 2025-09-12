@@ -10,10 +10,24 @@
 #include <cstdbool>
 #include <cstdio>
 
-static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long size, void** buffer, const int LINE) 
+inline void* qVirtualAlloc(const unsigned long long size, bool commitMem);
+inline void* qVirtualCommit(void* address, const unsigned long long size);
+inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size);
+
+// useVirtualMem indicates whether to use VirtualAlloc or malloc
+// commitMem indicates whether to commit memory when using VirtualAlloc
+// NOTE: commitMem only used if host machine have enough RAM+Pagefile, otherwise VirtualAlloc will fail
+static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long size, void** buffer, const int LINE, bool useVirtualMem = false, bool commitMem = false)
 {
     static unsigned long long totalMemoryUsed = 0;
-    *buffer = malloc(size);
+    static unsigned long long totalVirtualMemoryUsed = 0;
+    if (useVirtualMem) {
+		*buffer = qVirtualAlloc(size, commitMem);
+    }
+    else {
+        *buffer = malloc(size);
+    }
+
     if (*buffer == nullptr)
     {
         printf("Memory allocation failed for %ls on line %u\n", name, LINE);
@@ -21,23 +35,29 @@ static bool allocPoolWithErrorLog(const wchar_t* name, const unsigned long long 
     }
 
     // Zero out allocated memory
-    setMem(*buffer, size, 0);
+    if(!useVirtualMem)
+     setMem(*buffer, size, 0);
 
-    //totalMemoryUsed += size;
-    //setText(message, L"Memory allocated ");
-    //appendNumber(message, size / 1048576, TRUE);
-    //appendText(message, L" MiB for ");
-    //appendText(message, name);
-    //appendText(message, L"| Total memory used: ");
-    //appendNumber(message, totalMemoryUsed / 1048576, TRUE);
-    //appendText(message, L" MiB.");
-    //logToConsole(message);
+    if (useVirtualMem) {
+        totalVirtualMemoryUsed += size;
+    }
+    totalMemoryUsed += size;
+    // setText(message, L"Memory allocated ");
+    // appendNumber(message, size / 1048576, TRUE);
+    // appendText(message, L" MiB for ");
+    // appendText(message, name);
+    // appendText(message, L"| Total memory used: ");
+    // appendNumber(message, totalMemoryUsed / 1048576, TRUE);
+    // appendText(message, L" | ");
+    // appendNumber(message, totalVirtualMemoryUsed / 1048576, TRUE);
+    // appendText(message, L" MiB.");
+    // logToConsole(message);
     return true;
 }
 
 #else
 
-static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long size, void** buffer, const int LINE)
+static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long size, void** buffer, const int LINE, bool needZerOut = true)
     {
     EFI_STATUS status;
     CHAR16 message[512];
@@ -69,7 +89,7 @@ static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long s
             }
 #endif
     // Zero out allocated memory
-    if (*buffer != nullptr) {
+    if (*buffer != nullptr && needZerOut) {
         setMem(*buffer, size, 0);
     }
     return true;
