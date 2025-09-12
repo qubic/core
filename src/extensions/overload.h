@@ -901,19 +901,17 @@ struct Overload {
         serverAddr.sin_addr.s_addr = *((unsigned long*)tcpData->configData.AccessPoint.RemoteAddress.Addr);
         #endif
 
-#ifdef _MSC_VER
-        u_long mode = 1;
-        ioctlsocket(tcpData->socket, FIONBIO, &mode);
-#endif
-
         // connect in a thread
         std::thread connectThread([tcpData, serverAddr, ConnectionToken]() {
             if (connect(tcpData->socket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
                 ConnectionToken->CompletionToken.Status = EFI_ABORTED;
             }
             else {
-				// Must be 0 on success
-                ConnectionToken->CompletionToken.Status = 0;
+                ConnectionToken->CompletionToken.Status = EFI_SUCCESS;
+#ifdef _MSC_VER
+                u_long mode = 1;
+                ioctlsocket(tcpData->socket, FIONBIO, &mode);
+#endif
             }
             });
         connectThread.detach();

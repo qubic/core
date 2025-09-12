@@ -19,6 +19,8 @@
 // TODO: remove, only for debug output
 #include "system.h"
 
+#include <setjmp.h>
+
 #include <lib/platform_common/long_jump.h>
 
 
@@ -43,7 +45,7 @@ GLOBAL_VAR_DECL long contractLocalsStackLockWaitingCountMax;
 
 struct ContractExecErrorData
 {
-    LongJumpBuffer longJumpBuffer;
+    jmp_buf longJumpBuffer;
     unsigned int errorCode;
     unsigned int _paddingTo8;
 };
@@ -716,7 +718,7 @@ void QPI::QpiContextFunctionCall::__qpiAbort(unsigned int errorCode) const
     if (_entryPoint == USER_FUNCTION_CALL)
     {
         contractExecutionErrorData[_stackIndex].errorCode = errorCode;
-        LongJump(&contractExecutionErrorData[_stackIndex].longJumpBuffer, 1);
+        longjmp(contractExecutionErrorData[_stackIndex].longJumpBuffer, 1);
     }
     else
     {
@@ -1066,7 +1068,7 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
 
         // set error handler for canceling
         contractExecutionErrorData[_stackIndex].errorCode = NoContractError;
-        if (SetJump(&contractExecutionErrorData[_stackIndex].longJumpBuffer) > 0)
+        if (setjmp(contractExecutionErrorData[_stackIndex].longJumpBuffer) > 0)
         {
             // error handling code (long jump returns to here from somewhere inside the call of
             // contractUserFunctions() below)
