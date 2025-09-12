@@ -1,19 +1,37 @@
 using namespace QPI;
-//schedule:
-// FIXED CONSTANTS
 constexpr unsigned long long QUOTTERY_INITIAL_MAX_EVENT = 1024;
 constexpr unsigned long long QUOTTERY_INITIAL_CREATOR_AND_COUNT = 1024;
 constexpr unsigned long long QUOTTERY_MAX_EVENT = QUOTTERY_INITIAL_MAX_EVENT * X_MULTIPLIER;
-constexpr unsigned long long QUOTTERY_MAX_OPTION = 8;
 constexpr unsigned long long QUOTTERY_MAX_CREATOR_AND_COUNT = QUOTTERY_INITIAL_CREATOR_AND_COUNT * X_MULTIPLIER;
 constexpr unsigned long long QUOTTERY_MAX_ORACLE_PROVIDER = 8;
-constexpr unsigned long long QUOTTERY_MAX_SLOT_PER_OPTION_PER_BET = 2048;
 constexpr unsigned long long QUOTTERY_MAX_NUMBER_OF_USER = QUOTTERY_MAX_EVENT * 2048;
 
 constexpr unsigned long long QUOTTERY_PERCENT_DENOMINATOR = 1000; // 1000 == 100%
 constexpr unsigned long long QUOTTERY_HARD_CAP_CREATOR_FEE = 50; // 5%
 
 constexpr unsigned long long QUOTTERY_TICK_TO_KEEP_AFTER_END = 100ULL;
+
+// logging enum
+struct QuotteryLogger
+{
+    uint32 _contractIndex;
+    uint32 _type; // Assign a random unique (per contract) number to distinguish messages of different types
+    // Other data go here
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+struct QuotteryTradeLogger
+{
+    uint32 _contractIndex;
+    uint32 _type; // Assign a random unique (per contract) number to distinguish messages of different types
+    id A, B;
+    sint64 amount;
+    sint64 price0;
+    sint64 price1;
+    uint64 eid;
+    uint64 option;
+    char _terminator; // Only data before "_terminator" are logged
+};
 
 #define QTRY_INVALID_DATETIME 1
 #define QTRY_INVALID_USER 2
@@ -22,18 +40,22 @@ constexpr unsigned long long QUOTTERY_TICK_TO_KEEP_AFTER_END = 100ULL;
 #define QTRY_INSUFFICIENT_FUND 5
 #define QTRY_INVALID_EVENT_ID 6
 #define QTRY_INVALID_POSITION 7
+
 #define QTRY_MATCH_TYPE_0 8 // A0,B0
 #define QTRY_MATCH_TYPE_1 9 // A1,B1
 #define QTRY_MATCH_TYPE_2 10 // A0,A1
 #define QTRY_MATCH_TYPE_3 11 // B0,B1
-#define QTRY_MAX_AMOUNT 1000000000000LL * 200ULL
-struct QuotteryLogger
-{
-    uint32 _contractIndex;
-    uint32 _type; // Assign a random unique (per contract) number to distinguish messages of different types
-    // Other data go here
-    char _terminator; // Only data before "_terminator" are logged
-};
+#define QTRY_ADD_BID 12
+#define QTRY_ADD_ASK 13
+
+// macros:
+#define ASK_BIT 0
+#define BID_BIT 1
+#define EID_MASK 0x3FFFFFFFFFFFFFFFULL // (2^62 - 1)
+#define ORDER_KEY(option, trade_bit, eid) ((option<<63)|(trade_bit<<62)|(eid & EID_MASK))
+#define POS_KEY(option, eid) (((option)<<63)|(eid & EID_MASK)) // Adjust mask if more bits are available
+#define QTRY_MAX_AMOUNT (2000000000000LL) // 2 trillion
+
 
 struct QUOTTERY2
 {
@@ -50,16 +72,20 @@ public:
     };
     struct BasicInfo_output
     {
-        uint64 operationFee; // 4 digit number ABCD means AB.CD% | 1234 is 12.34%
-        uint64 shareholderFee; // 4 digit number ABCD means AB.CD% | 1234 is 12.34%
-        uint64 burnFee; // percentage
-        uint64 nIssuedEvent; // number of issued event
-        uint64 moneyFlow;
-        uint64 totalRevenue;
-        uint64 shareholdersRevenue;
+        // for percentage 1000 = 100% | 1 = 0.1%
+        uint64 operationFee;
+        uint64 shareholderFee;
+        uint64 burnFee;
+        uint64 nIssuedEvent; // number of issued event        
         uint64 creatorRevenue;
         uint64 oracleRevenue;
+
         uint64 operationRevenue;
+        uint64 distributedOperationRevenue;
+
+        uint64 shareholdersRevenue;
+        uint64 distributedShareholdersRevenue;
+
         uint64 burnedAmount;
         id gameOperator;
     };
@@ -85,7 +111,7 @@ public:
         Array<id, 2> option0Desc;
         Array<id, 2> option1Desc;
         /*8 oracle IDs*/
-        Array<id, 8> oracleId;
+        Array<id, QUOTTERY_MAX_ORACLE_PROVIDER> oracleId;
 
         // payment info
         uint64 type; // 0: QUs - 1: token (must be managed by QX)
@@ -93,23 +119,8 @@ public:
         uint64 assetName;
     };
 
-#define WHOLE_SHARE_PRICE 100000ULL
-#define ASK_BIT 0
-#define BID_BIT 1
-#define EID_MASK 0x3FFFFFFFFFFFFFFFULL // (2^62 - 1)
-#define ORDER_KEY(option, trade_bit, eid) ((option<<63)|(trade_bit<<62)|(eid & EID_MASK))
-#define POS_KEY(option, eid) (((option)<<63)|(eid & EID_MASK)) // Adjust mask if more bits are available
-
-#define GET_O(x) (x>>63)
-#define GET_T(x) ((x>>62) & 1)
-#define GET_E(x) (x & 0x3fffffffffffffffULL)
-
-#define IS_ASK(x) (GET_T(x) == ASK_BIT)
-#define IS_BID(x) (GET_T(x) == BID_BIT)
-
     HashMap<uint64, QtryEventInfo, QUOTTERY_MAX_EVENT> mEventInfo;
-    HashMap<uint64, Array<sint8, 8>, QUOTTERY_MAX_EVENT> mEventResult;
-    // contain info about token with key id(user_id_u64_0, user_id_u64_1, user_id_u64_2, 
+    HashMap<uint64, Array<sint8, QUOTTERY_MAX_ORACLE_PROVIDER>, QUOTTERY_MAX_EVENT> mEventResult;
     
     // qtry-v2: orders array
     struct QtryOrder
@@ -132,7 +143,8 @@ public:
         HashMap<id, CreatorInfo, QUOTTERY_MAX_CREATOR_AND_COUNT> eligibleCreators;
         HashMap<id, OracleInfo, QUOTTERY_MAX_CREATOR_AND_COUNT> eligibleOracles;
         HashMap<id, uint64, 8192 * X_MULTIPLIER> discountedFeeForUsers;
-        sint64 feePerDay; // in QUs
+        uint64 feePerDay; // in QUs
+        uint64 wholeSharePriceInQU;
     } mOperationParams;
 
     // gov struct
@@ -141,7 +153,6 @@ public:
         uint64 mShareHolderFee;
         uint64 mBurnFee;
         uint64 mOperationFee;
-        uint64 mTradeFee;
         id mOperationId;
     };
     QtryGOV mQtryGov;
@@ -167,32 +178,24 @@ public:
 
     Array<uint64, QUOTTERY_MAX_EVENT> mRecentActiveEvent;
 
-    struct QtryRevInfo
-    {
-        uint64 mTotal;
-        uint64 mDistributed;
-    };
-    QtryRevInfo mQtryRev;
-
     // other stats
     uint64 mCurrentEventID;
-    uint64 mTotalMoneyFlow; // total money flow thru this SC, this counts some bid orders may not matched in the whole event lifetime
 
-    // these totalRevenue are distributed in real time, no need to track "distributed" totalRevenue
-    uint64 mTotalRevenue; // is sum of all revenues + burned
     struct Paylist
     {
         uint64 creatorFee;
-        Array<uint64, 8> oracleFee;
+        Array<uint64, QUOTTERY_MAX_ORACLE_PROVIDER> oracleFee;
     };
     HashMap<uint64, Paylist, QUOTTERY_MAX_EVENT> mPaylist; // the pay list to send after resolving event
 
     uint64 mShareholdersRevenue;
     uint64 mDistributedShareholdersRevenue;
+    uint64 mOperationRevenue;
+    uint64 mDistributedOperationRevenue;
 
     uint64 mCreatorRevenue;
     uint64 mOracleRevenue;
-    uint64 mOperationRevenue;
+
     uint64 mBurnedAmount;
 
 
@@ -226,22 +229,139 @@ public:
         QtryEventInfo qei;
     };
 
-
-
-    struct GetEventInfo_locals
-    {
-        sint64 slotId;
-        uint64 baseId0, baseId1, u64Tmp;
-        uint32 i0, i1;
-    };
     /**
-     * @param eventId
-     * @return meta data of a event and its current state
+     * @brief Retrieves the metadata for a specific event.
+     * @param eventId The unique identifier of the event.
+     * @return The QtryEventInfo struct containing the event's details.
      */
-    PUBLIC_FUNCTION_WITH_LOCALS(GetEventInfo)
+    PUBLIC_FUNCTION(GetEventInfo)
     {
         setMemory(output.qei, 0);
         state.mEventInfo.get(input.eventId, output.qei);
+    }
+
+    struct GetCreatorInfo_input
+    {
+        id cid;
+    };
+    struct GetCreatorInfo_output
+    {
+        uint64 isCreator;
+        CreatorInfo ci;
+    };
+
+    /**
+     * @brief Retrieves the metadata for a specific creator
+     * @param uid of creator
+     * @return The CreatorInfo struct containing the details.
+     */
+    PUBLIC_FUNCTION(GetCreatorInfo)
+    {
+        setMemory(output, 0);
+        if (state.mOperationParams.eligibleCreators.get(input.cid, output.ci))
+        {
+            output.isCreator = 1;
+        }
+        else
+        {
+            output.isCreator = 0;
+        }
+    }
+
+    struct GetCreatorList_input{};
+    struct GetCreatorList_output
+    {
+        uint64 total;
+        Array<id, QUOTTERY_MAX_CREATOR_AND_COUNT> cid;
+        Array<CreatorInfo, QUOTTERY_MAX_CREATOR_AND_COUNT> aci;
+    };
+    struct GetCreatorList_locals
+    {
+        uint64 index;
+        id key;
+        CreatorInfo ci;
+    };
+    /**
+     * @brief Retrieves the metadata for all creators
+     */
+    PUBLIC_FUNCTION_WITH_LOCALS(GetCreatorList)
+    {
+        setMemory(output, 0);
+        locals.index = 0;
+        while (locals.index != NULL_INDEX)
+        {
+            locals.key = state.mOperationParams.eligibleCreators.key(locals.index);
+            if (locals.key != NULL_ID)
+            {
+                locals.ci = state.mOperationParams.eligibleCreators.value(locals.index);
+                output.cid.set(output.total, locals.key);
+                output.aci.set(output.total, locals.ci);
+                output.total++;
+            }
+            locals.index = state.mOperationParams.eligibleCreators.nextElementIndex(locals.index);
+        }
+    }
+
+    struct GetOracleInfo_input
+    {
+        id oid;
+    };
+    struct GetOracleInfo_output
+    {
+        uint64 isOracle;
+        OracleInfo oi;
+    };
+
+    /**
+     * @brief Retrieves the metadata for a specific oracle
+     * @param uid of oracle
+     * @return The OracleInfo struct containing the details.
+     */
+    PUBLIC_FUNCTION(GetOracleInfo)
+    {
+        setMemory(output, 0);
+        if (state.mOperationParams.eligibleOracles.get(input.oid, output.oi))
+        {
+            output.isOracle = 1;
+        }
+        else
+        {
+            output.isOracle = 0;
+        }
+    }
+
+    struct GetOracleList_input {};
+    struct GetOracleList_output
+    {
+        uint64 total;
+        Array<id, QUOTTERY_MAX_CREATOR_AND_COUNT> oid;
+        Array<OracleInfo, QUOTTERY_MAX_CREATOR_AND_COUNT> aoi;
+    };
+    struct GetOracleList_locals
+    {
+        uint64 index;
+        id key;
+        OracleInfo oi;
+    };
+    /**
+     * @brief Retrieves the metadata for all Oracles
+     */
+    PUBLIC_FUNCTION_WITH_LOCALS(GetOracleList)
+    {
+        setMemory(output, 0);
+        locals.index = 0;
+        while (locals.index != NULL_INDEX)
+        {
+            locals.key = state.mOperationParams.eligibleOracles.key(locals.index);
+            if (locals.key != NULL_ID)
+            {
+                locals.oi = state.mOperationParams.eligibleOracles.value(locals.index);
+                output.oid.set(output.total, locals.key);
+                output.aoi.set(output.total, locals.oi);
+                output.total++;
+            }
+            locals.index = state.mOperationParams.eligibleOracles.nextElementIndex(locals.index);
+        }
     }
 
     struct ValidateEvent_input
@@ -258,9 +378,12 @@ public:
         DateAndTime dt;
         bool status;
     };
-    /*
-    * @brief validate an event based on eventId
-    */
+
+    /**
+     * @brief Checks if an event is valid for trading (exists and is within its trading window).
+     * @param eventId The unique identifier of the event.
+     * @return 1 if the event is valid for trading, 0 otherwise.
+     */
     PRIVATE_FUNCTION_WITH_LOCALS(ValidateEvent)
     {
         output.isValid = 0;
@@ -284,6 +407,11 @@ public:
         return;
     }
     public:
+
+    /**
+     * @brief Helper to construct a unique key for the order book.
+     * Packs option, trade type (ask/bid), and event ID into a single uint64.
+     */
     static id MakeOrderKey(const uint64 eid, const uint64 option, const uint64 tradeBit)
     {
         id r;
@@ -293,6 +421,11 @@ public:
         r.u64._3 = ORDER_KEY(option, tradeBit, eid);
         return r;
     }
+
+    /**
+     * @brief Helper to construct a unique key for a user's position.
+     * Packs the user's ID with the option and event ID.
+     */
     static id MakePosKey(const id uid, const uint64 eid, const uint64 option)
     {
         id r = uid;
@@ -300,16 +433,25 @@ public:
         return r;
     }
 
+    /**
+     * @brief Checks if an option is valid (0 or 1).
+     */
     static bool isOptionValid(uint64 option)
     {
         return (option == 0 || option == 1);
     }
 
+    /**
+     * @brief Checks if an amount is within valid contract limits.
+     */
     static bool isAmountValid(uint64 amount)
     {
         return amount > 0 && amount < QTRY_MAX_AMOUNT;
     }
 
+    /**
+     * @brief Checks if a price is within valid contract limits.
+     */
     static bool isPriceValid(sint64 price)
     {
         return price > 0 && price < QTRY_MAX_AMOUNT;
@@ -331,9 +473,15 @@ public:
         id key;
         QtryOrder qo;
     };
-    /*
-    * @brief validate a position of an event - check if user actually owns this position
-    */
+    
+    /**
+     * @brief Validates that a user owns a sufficient amount of a specific position (shares).
+     * @param uid The user's ID.
+     * @param eventId The event ID.
+     * @param option The option (0 or 1).
+     * @param amount The amount to check for.
+     * @return 1 if the user's position is sufficient, 0 otherwise.
+     */
     PRIVATE_FUNCTION_WITH_LOCALS(ValidatePosition)
     {
         output.isValid = 0;
@@ -370,7 +518,13 @@ public:
         QtryOrder value;
     };
 
-    // transfer trading position from A to B
+    /**
+     * @brief Transfers a specified amount of a position from one user to another.
+     * @param from The sender of the position.
+     * @param to The receiver of the position.
+     * @param oi OrderInfo specifying the event and option.
+     * @param amount The amount of the position to transfer.
+     */
     PRIVATE_PROCEDURE_WITH_LOCALS(TransferPosition)
     {
         output.ok = false;
@@ -406,41 +560,6 @@ public:
         state.mPositionInfo.set(locals.keyTo, locals.value);
     }
 
-    struct CreatePosition_input
-    {
-        id uid;
-        OrderInfo oi;
-        sint64 amount;
-    };
-    struct CreatePosition_output
-    {
-        bit ok;
-    };
-    struct CreatePosition_locals
-    {
-        id key;
-        QtryOrder value;
-    };
-
-    // create a trading position
-    PRIVATE_PROCEDURE_WITH_LOCALS(CreatePosition)
-    {
-        output.ok = false;
-
-        locals.key = MakePosKey(input.uid, input.oi.eid, input.oi.option);
-
-        if (!state.mPositionInfo.get(locals.key, locals.value))
-        {
-            locals.value.amount = input.amount;
-            locals.value.entity = input.uid;
-            state.mPositionInfo.set(locals.key, locals.value);
-        }
-        else
-        {
-            // same position already exist, bug!
-        }
-    }
-
     struct UpdatePosition_input
     {
         id uid;
@@ -457,7 +576,14 @@ public:
         QtryOrder value;
     };
 
-    // Update position of an user
+    /**
+     * @brief Modifies a user's position by a specified amount (can be positive or negative).
+     * Creates the position if it does not exist for a positive change.
+     * Deletes the position if the amount becomes zero.
+     * @param uid The user's ID.
+     * @param oi OrderInfo specifying the event and option.
+     * @param amountChange The delta to apply to the user's position.
+     */
     PRIVATE_PROCEDURE_WITH_LOCALS(UpdatePosition)
     {
         output.ok = 0;
@@ -495,40 +621,7 @@ public:
             output.ok = 1;
         }
     }
-
-    struct RemovePosition_input
-    {
-        id uid;
-        OrderInfo oi;
-    };
-    struct RemovePosition_output
-    {
-        bit ok;
-    };
-    struct RemovePosition_locals
-    {
-        id key;
-        QtryOrder value;
-    };
-
-    // Update position of an user
-    PRIVATE_PROCEDURE_WITH_LOCALS(RemovePosition)
-    {
-        output.ok = 0;
-
-        locals.key = MakePosKey(input.uid, input.oi.eid, input.oi.option);
-
-        if (!state.mPositionInfo.get(locals.key, locals.value))
-        {
-            // bug, position not exist
-        }
-        else
-        {
-            state.mPositionInfo.removeByKey(locals.key);
-            output.ok = 1;
-        }
-    }
-
+    
     struct RewardTransfer_input
     {
         id receiver;
@@ -547,15 +640,23 @@ public:
         id key;
         sint64 total, feeTotal, fee, tmp;
         sint64 eindex, index, i;
-        uint64 rate, afterDiscountRate;
+        uint64 rate, afterDiscountRate, amountWithDiscount;
         Paylist pl;
-        Array<id, 8> oracleList;
+        Array<id, QUOTTERY_MAX_ORACLE_PROVIDER> oracleList;
     };
 
-    // transfer QUs from Qtry to "outside"
-    // Qtry uses fee model that charging on the outflow
+    /**
+     * @brief Handles all outgoing transfers from the contract. It calculates and deducts fees
+     * for shareholders, operations, creators, and oracles before sending the net amount.
+     * @param receiver The recipient of the funds.
+     * @param eid The associated event ID for fee calculation.
+     * @param amount The gross amount to transfer.
+     * @param needChargeFee If true, fees are calculated and deducted.
+     */
     PRIVATE_PROCEDURE_WITH_LOCALS(RewardTransfer)
     {
+        if (input.amount <= 0 || input.amount >= MAX_AMOUNT) return;
+        if (input.receiver == NULL_ID) return;
         // at the moment, it only handles QUs
         // in future it will also handle a stablecoin here
         locals.total = input.amount;
@@ -576,13 +677,14 @@ public:
 
             if (locals.afterDiscountRate)
             {
+                locals.amountWithDiscount = smul((uint64)input.amount, locals.afterDiscountRate); // guaranteed not overflow - maxima=2*1e12*1000
                 // shareholders
-                locals.fee = div(input.amount * state.mQtryGov.mShareHolderFee * locals.afterDiscountRate, QUOTTERY_PERCENT_DENOMINATOR * QUOTTERY_PERCENT_DENOMINATOR);
+                locals.fee = div(smul(locals.amountWithDiscount, state.mQtryGov.mShareHolderFee), QUOTTERY_PERCENT_DENOMINATOR * QUOTTERY_PERCENT_DENOMINATOR);
                 locals.feeTotal += locals.fee;
                 state.mShareholdersRevenue += locals.fee;
 
                 // operation team
-                locals.fee = div(input.amount * state.mQtryGov.mOperationFee * locals.afterDiscountRate, QUOTTERY_PERCENT_DENOMINATOR * QUOTTERY_PERCENT_DENOMINATOR);
+                locals.fee = div(smul(locals.amountWithDiscount, state.mQtryGov.mOperationFee), QUOTTERY_PERCENT_DENOMINATOR * QUOTTERY_PERCENT_DENOMINATOR);
                 locals.feeTotal += locals.fee;
                 state.mOperationRevenue += locals.fee;
 
@@ -592,20 +694,20 @@ public:
                 if (locals.index != NULL_INDEX)
                 {
                     locals.rate = state.mOperationParams.eligibleCreators.value(locals.index).feeRate;
-                    locals.fee = div(input.amount * locals.rate * locals.afterDiscountRate, QUOTTERY_PERCENT_DENOMINATOR * QUOTTERY_PERCENT_DENOMINATOR);
+                    locals.fee = div(smul(locals.amountWithDiscount, locals.rate), QUOTTERY_PERCENT_DENOMINATOR * QUOTTERY_PERCENT_DENOMINATOR);
                     locals.feeTotal += locals.fee;
                     locals.pl.creatorFee += locals.fee;
                 }
 
                 // oracles
                 locals.oracleList = state.mEventInfo.value(locals.eindex).oracleId;
-                for (locals.i = 0; locals.i < 8; locals.i++)
+                for (locals.i = 0; locals.i < QUOTTERY_MAX_ORACLE_PROVIDER; locals.i++)
                 {
                     locals.index = state.mOperationParams.eligibleOracles.getElementIndex(locals.oracleList.get(locals.i));
                     if (locals.index != NULL_INDEX)
                     {
                         locals.rate = state.mOperationParams.eligibleOracles.value(locals.index).feeRate;
-                        locals.fee = div(input.amount * locals.rate * locals.afterDiscountRate, QUOTTERY_PERCENT_DENOMINATOR * QUOTTERY_PERCENT_DENOMINATOR);
+                        locals.fee = div(smul(locals.amountWithDiscount, locals.rate), QUOTTERY_PERCENT_DENOMINATOR * QUOTTERY_PERCENT_DENOMINATOR);
                         locals.tmp = locals.pl.oracleFee.get(locals.i);
                         locals.tmp += locals.fee;
                         locals.feeTotal += locals.fee;
@@ -613,6 +715,7 @@ public:
                     }
                 }
             }
+            state.mPaylist.set(input.eid, locals.pl);
         }
 
         qpi.transfer(input.receiver, locals.total - locals.feeTotal);
@@ -643,8 +746,6 @@ public:
         sint64 matchedPrice;
         sint64 matchedPrice0;
         sint64 matchedPrice1;
-        OrderInfo oi;
-        QtryOrder qo;
 
         id key;
 
@@ -657,10 +758,17 @@ public:
         TransferPosition_input tpi;
         TransferPosition_output tpo;
 
-        QuotteryLogger log;
+        QuotteryTradeLogger log;
     };
 
-    // only invoke when recently added order is any of (A0, A1, B0, B1)
+    /**
+     * @brief The core matching engine. It checks for all possible matches:
+     * 1. Traditional Ask vs. Bid for the same option.
+     * 2. MERGE: An Ask for option 0 matches an Ask for option 1, effectively liquidating both positions.
+     * 3. MINT: A Bid for option 0 matches a Bid for option 1, creating new positions for both parties.
+     * @param eventId The event to perform matching on.
+     * @param justAddedIndex The index of the most recently added order, used for price discovery.
+     */
     PRIVATE_PROCEDURE_WITH_LOCALS(MatchingOrders)
     {
         /*Initialize data*/
@@ -706,9 +814,8 @@ public:
         // Option 0: ask match with bid
         if (locals.A0.price <= locals.B0.price && locals.A0.index != NULL_INDEX && locals.B0.index != NULL_INDEX)
         {
-            locals.log = QuotteryLogger{ 0, QTRY_MATCH_TYPE_0 ,0 };
-            LOG_INFO(locals.log);
             // bid > ask
+            locals.matchedAmount = min(locals.A0.qo.amount, locals.B0.qo.amount);
             if (locals.A0.justAdded)
             {
                 locals.matchedPrice = locals.B0.price;
@@ -717,9 +824,10 @@ public:
             {
                 locals.matchedPrice = locals.A0.price;
             }
-            locals.matchedAmount = min(locals.A0.qo.amount, locals.B0.qo.amount);
+            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_0, locals.A0.qo.entity, locals.B0.qo.entity, locals.matchedAmount, locals.matchedPrice, 0, input.eventId, 0, 0 };
+            LOG_INFO(locals.log);
 
-            locals.ti.amount = locals.matchedPrice * locals.matchedAmount;
+            locals.ti.amount = smul((uint64)locals.matchedPrice, (uint64)locals.matchedAmount);
             locals.ti.eid = input.eventId;
             locals.ti.receiver = locals.A0.qo.entity;
             locals.ti.needChargeFee = 1;
@@ -736,7 +844,7 @@ public:
             if (locals.B0.justAdded && locals.B0.price > locals.matchedPrice)
             {
                 // refund <~ not charging fees
-                locals.ti.amount = (locals.B0.price - locals.matchedPrice) * locals.matchedAmount;
+                locals.ti.amount = smul((locals.B0.price - locals.matchedPrice), locals.matchedAmount);
                 locals.ti.eid = input.eventId;
                 locals.ti.receiver = locals.B0.qo.entity;
                 locals.ti.needChargeFee = 0;
@@ -774,9 +882,7 @@ public:
         // Option 1: ask match with bid
         if (locals.A1.price <= locals.B1.price && locals.A1.index != NULL_INDEX && locals.B1.index != NULL_INDEX)
         {
-            locals.log = QuotteryLogger{ 0, QTRY_MATCH_TYPE_1 ,0 };
-            LOG_INFO(locals.log);
-            // bid > ask
+            locals.matchedAmount = min(locals.A1.qo.amount, locals.B1.qo.amount);
             if (locals.A1.justAdded)
             {
                 locals.matchedPrice = locals.B1.price;
@@ -785,9 +891,10 @@ public:
             {
                 locals.matchedPrice = locals.A1.price;
             }
-            locals.matchedAmount = min(locals.A1.qo.amount, locals.B1.qo.amount);
+            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_1, locals.A1.qo.entity, locals.B1.qo.entity, locals.matchedAmount, locals.matchedPrice, 0, input.eventId, 1, 0 };
+            LOG_INFO(locals.log);
 
-            locals.ti.amount = locals.matchedPrice * locals.matchedAmount;
+            locals.ti.amount = smul((uint64)locals.matchedPrice, (uint64)locals.matchedAmount);
             locals.ti.eid = input.eventId;
             locals.ti.receiver = locals.A1.qo.entity;
             locals.ti.needChargeFee = 1;
@@ -804,7 +911,7 @@ public:
             if (locals.B1.justAdded && locals.B1.price > locals.matchedPrice)
             {
                 // refund <~ not charging fees
-                locals.ti.amount = (locals.B1.price - locals.matchedPrice) * locals.matchedAmount;
+                locals.ti.amount = smul((locals.B1.price - locals.matchedPrice), locals.matchedAmount);
                 locals.ti.eid = input.eventId;
                 locals.ti.receiver = locals.B1.qo.entity;
                 locals.ti.needChargeFee = 0;
@@ -840,24 +947,25 @@ public:
         }
 
         // Scenario 2: MERGE - both want to sell
-        // A0 and A1 want to exit => A0.price + A1.price < WHOLE_SHARE_PRICE
-        if (locals.A0.price + locals.A1.price <= WHOLE_SHARE_PRICE && locals.A0.index != NULL_INDEX && locals.A1.index != NULL_INDEX)
+        // A0 and A1 want to exit => A0.price + A1.price < state.mOperationParams.wholeSharePriceInQU
+        if (locals.A0.price + locals.A1.price <= (sint64)state.mOperationParams.wholeSharePriceInQU && locals.A0.index != NULL_INDEX && locals.A1.index != NULL_INDEX)
         {
-            locals.log = QuotteryLogger{ 0, QTRY_MATCH_TYPE_2 ,0 };
-            LOG_INFO(locals.log);
+            locals.matchedAmount = min(locals.A0.qo.amount, locals.A1.qo.amount);
             if (locals.A0.justAdded)
             {
-                locals.matchedPrice0 = WHOLE_SHARE_PRICE - locals.A1.price;
+                locals.matchedPrice0 = state.mOperationParams.wholeSharePriceInQU - locals.A1.price;
                 locals.matchedPrice1 = locals.A1.price;
             }
             else
             {
                 locals.matchedPrice0 = locals.A0.price;
-                locals.matchedPrice1 = WHOLE_SHARE_PRICE - locals.A0.price;
+                locals.matchedPrice1 = state.mOperationParams.wholeSharePriceInQU - locals.A0.price;
             }
-            locals.matchedAmount = min(locals.A0.qo.amount, locals.A1.qo.amount);
+            
+            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_2, locals.A0.qo.entity, locals.A1.qo.entity, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, input.eventId, 2, 0 };
+            LOG_INFO(locals.log);
 
-            locals.ti.amount = locals.matchedPrice0 * locals.matchedAmount;
+            locals.ti.amount = smul(locals.matchedPrice0, locals.matchedAmount);
             locals.ti.eid = input.eventId;
             locals.ti.receiver = locals.A0.qo.entity;
             locals.ti.needChargeFee = 1;
@@ -869,7 +977,7 @@ public:
             locals.upi.uid = locals.A0.qo.entity;
             CALL(UpdatePosition, locals.upi, locals.upo);
 
-            locals.ti.amount = locals.matchedPrice1 * locals.matchedAmount;
+            locals.ti.amount = smul(locals.matchedPrice1, locals.matchedAmount);
             locals.ti.eid = input.eventId;
             locals.ti.receiver = locals.A1.qo.entity;
             locals.ti.needChargeFee = 1;
@@ -911,22 +1019,23 @@ public:
         }
 
         // Scenario 3: MINT - both want to buy
-        if (locals.B0.price + locals.B1.price >= WHOLE_SHARE_PRICE && locals.B0.index != NULL_INDEX && locals.B1.index != NULL_INDEX)
+        if (locals.B0.price + locals.B1.price >= (sint64)state.mOperationParams.wholeSharePriceInQU && locals.B0.index != NULL_INDEX && locals.B1.index != NULL_INDEX)
         {
-            locals.log = QuotteryLogger{ 0, QTRY_MATCH_TYPE_3 ,0 };
-            LOG_INFO(locals.log);
+            locals.matchedAmount = min(locals.B0.qo.amount, locals.B1.qo.amount);
             if (locals.B0.justAdded)
             {
-                locals.matchedPrice0 = WHOLE_SHARE_PRICE - locals.B1.price;
+                locals.matchedPrice0 = state.mOperationParams.wholeSharePriceInQU - locals.B1.price;
                 locals.matchedPrice1 = locals.B1.price;
             }
             else
             {
                 locals.matchedPrice0 = locals.B0.price;
-                locals.matchedPrice1 = WHOLE_SHARE_PRICE - locals.B0.price;
+                locals.matchedPrice1 = state.mOperationParams.wholeSharePriceInQU - locals.B0.price;
             }
+            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_3, locals.B0.qo.entity, locals.B1.qo.entity, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, input.eventId, 2, 0 };
+            LOG_INFO(locals.log);
             // update position
-            locals.matchedAmount = min(locals.B0.qo.amount, locals.B1.qo.amount);
+            
             locals.upi.amountChange = locals.matchedAmount;
             locals.upi.oi.eid = input.eventId;
             locals.upi.oi.option = 0;
@@ -942,7 +1051,7 @@ public:
             if (locals.B1.justAdded && locals.B1.price > locals.matchedPrice1)
             {
                 // refund <~ not charging fees
-                locals.ti.amount = (locals.B1.price - locals.matchedPrice1) * locals.matchedAmount;
+                locals.ti.amount = smul((locals.B1.price - locals.matchedPrice1), locals.matchedAmount);
                 locals.ti.eid = input.eventId;
                 locals.ti.receiver = locals.B1.qo.entity;
                 locals.ti.needChargeFee = 0;
@@ -952,7 +1061,7 @@ public:
             if (locals.B0.justAdded && locals.B0.price > locals.matchedPrice0)
             {
                 // refund <~ not charging fees
-                locals.ti.amount = (locals.B0.price - locals.matchedPrice0) * locals.matchedAmount;
+                locals.ti.amount = smul((locals.B0.price - locals.matchedPrice0), locals.matchedAmount);
                 locals.ti.eid = input.eventId;
                 locals.ti.receiver = locals.B0.qo.entity;
                 locals.ti.needChargeFee = 0;
@@ -1003,13 +1112,7 @@ public:
         id key;
         // temp variables
         uint64 index;
-        sint64 leftAmount;
         sint64 price;
-        sint64 fairPrice;
-        sint64 targetPrice;
-        sint64 matchedAmount;
-        sint64 total;
-        sint64 fee;
         bit flag;
         QtryOrder order;
 
@@ -1025,8 +1128,17 @@ public:
         MatchingOrders_output moo;
 
         QuotteryLogger log;
+        QuotteryTradeLogger tradeLog;
     };
 
+    /**
+     * @brief PUBLIC PROCEDURE
+     * Allows a user to place an ask (sell) order for a position they own.
+     * @param eventId The event to place the order on.
+     * @param option The option (0 or 1) to sell.
+     * @param amount The number of shares to sell.
+     * @param price The price per share.
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(AddToAskOrder)
     {
         if (qpi.invocationReward() > 0)
@@ -1046,7 +1158,7 @@ public:
         if (!locals.veo.isValid)
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_EVENT_ID ,0 };
-            LOG_INFO(locals.log);
+            LOG_WARNING(locals.log);
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
@@ -1058,11 +1170,14 @@ public:
         if (!locals.vpo.isValid)
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_POSITION, 0};
-            LOG_INFO(locals.log);
+            LOG_WARNING(locals.log);
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
         
+        locals.tradeLog = QuotteryTradeLogger{ 0, QTRY_ADD_ASK, qpi.invocator(), NULL_ID, (sint64)input.amount, (sint64)input.price, 0, input.eventId, input.option, 0 };
+        LOG_INFO(locals.tradeLog);
+
         locals.key = MakeOrderKey(input.eventId, input.option, ASK_BIT);
         locals.index = state.mABOrders.headIndex(locals.key, -input.price);
         locals.flag = false;
@@ -1150,6 +1265,14 @@ public:
         ValidatePosition_output vpo;
     };
 
+    /**
+     * @brief PUBLIC PROCEDURE
+     * Allows a user to remove an existing ask (sell) order from the order book.
+     * @param eventId The event of the order.
+     * @param option The option (0 or 1) of the order.
+     * @param amount The amount to remove.
+     * @param price The price of the order to remove.
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(RemoveAskOrder)
     {
         if (qpi.invocationReward() > 0)
@@ -1233,6 +1356,7 @@ public:
         bit flag;
         QtryOrder order;
         sint64 price;
+        sint64 amountToRemove;
 
         ValidateEvent_input vei;
         ValidateEvent_output veo;
@@ -1241,6 +1365,14 @@ public:
         RewardTransfer_output rto;
     };
 
+    /**
+     * @brief PUBLIC PROCEDURE
+     * Allows a user to remove an existing bid (buy) order and get a refund of their locked funds.
+     * @param eventId The event of the order.
+     * @param option The option (0 or 1) of the order.
+     * @param amount The amount to remove.
+     * @param price The price of the order to remove.
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(RemoveBidOrder)
     {
         if (qpi.invocationReward() > 0)
@@ -1274,26 +1406,24 @@ public:
                 locals.flag = true;
                 if (locals.order.entity == qpi.invocator())
                 {
+                    locals.amountToRemove = min(input.amount, locals.order.amount);
                     // same entity => update => exit
-                    if (locals.order.amount >= input.amount) // only process if the user really has order >= input.amount
+                    locals.order.amount -= locals.amountToRemove;
+                    if (locals.order.amount)
                     {
-                        locals.order.amount -= input.amount;
-                        if (locals.order.amount)
-                        {
-                            state.mABOrders.replace(locals.index, locals.order);
-                        }
-                        else
-                        {
-                            state.mABOrders.remove(locals.index);
-                        }
-                        // refund
-                        locals.rti.amount = input.amount * input.price;
-                        locals.rti.eid = input.eventId;
-                        locals.rti.needChargeFee = 0;
-                        locals.rti.receiver = qpi.invocator();
-                        CALL(RewardTransfer, locals.rti, locals.rto);
-                        output.status = 1;
+                        state.mABOrders.replace(locals.index, locals.order);
                     }
+                    else
+                    {
+                        state.mABOrders.remove(locals.index);
+                    }
+                    // refund
+                    locals.rti.amount = smul(locals.amountToRemove, input.price);
+                    locals.rti.eid = input.eventId;
+                    locals.rti.needChargeFee = 0;
+                    locals.rti.receiver = qpi.invocator();
+                    CALL(RewardTransfer, locals.rti, locals.rto);
+                    output.status = 1;
                     return;
                 }
                 locals.index = state.mABOrders.nextElementIndex(locals.index);
@@ -1321,13 +1451,8 @@ public:
         id key;
         // temp variables
         uint64 index;
-        sint64 leftAmount;
         sint64 price;
-        sint64 fairPrice;
-        sint64 targetPrice;
-        sint64 matchedAmount;
-        sint64 total;
-        sint64 fee;
+        uint64 totalCost;
         bit flag;
         QtryOrder order;
 
@@ -1336,33 +1461,40 @@ public:
         ValidateEvent_input vei;
         ValidateEvent_output veo;
 
-        ValidatePosition_input vpi;
-        ValidatePosition_output vpo;
-
         MatchingOrders_input moi;
         MatchingOrders_output moo;
+
+        QuotteryTradeLogger log;
     };
 
+    /**
+     * @brief PUBLIC PROCEDURE
+     * Allows a user to place a bid (buy) order, locking funds to back it.
+     * Triggers the matching engine after the order is placed.
+     * @param eventId The event to place the order on.
+     * @param option The option (0 or 1) to buy.
+     * @param amount The number of shares to buy.
+     * @param price The price per share.
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(AddToBidOrder)
     {
         if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price))
         {
             return;
         }
-        
+        locals.totalCost = smul(input.amount, input.price);
         // verify enough amount
-        if (input.amount * input.price > qpi.invocationReward())
+        if (locals.totalCost > (uint64)qpi.invocationReward())
         {
             qpi.refundIfPossible();
             return;
         }
 
         // return changes
-        if (input.amount * input.price < qpi.invocationReward())
+        if (locals.totalCost < (uint64)qpi.invocationReward())
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount * input.price);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.totalCost);
         }
-
         locals.oi.eid = input.eventId;
         locals.oi.option = input.option;
         locals.oi.tradeBit = BID_BIT;
@@ -1373,6 +1505,9 @@ public:
         {
             return;
         }
+        
+        locals.log = QuotteryTradeLogger{ 0, QTRY_ADD_BID, qpi.invocator(), NULL_ID, (sint64)input.amount, (sint64)input.price, 0, input.eventId, input.option, 0};
+        LOG_INFO(locals.log);
 
         locals.key = MakeOrderKey(input.eventId, input.option, BID_BIT);
         locals.index = state.mABOrders.headIndex(locals.key, input.price);
@@ -1443,7 +1578,7 @@ public:
     {
         uint64 eventId;
         QtryEventInfo qei;
-        Array<sint8, 8> result;
+        Array<sint8, QUOTTERY_MAX_ORACLE_PROVIDER> result;
     };
     struct TryFinalizeEvent_output
     {
@@ -1451,30 +1586,35 @@ public:
 
     struct TryFinalizeEvent_locals
     {
-        sint32 i0, i1;
         sint32 totalOP, vote0Count, vote1Count, i, threshold;
         uint64 winOption;
         sint64 index;
         uint64 winCondition;
         uint64 loseCondition;
-        uint64 bid0Condition;
-        uint64 bid1Condition;
-        uint64 ask0Condition;
-        uint64 ask1Condition;
         id key;
         QtryOrder value;
+        QtryEventInfo qei;
+        Paylist pl;
         sint64 price;
         
         RewardTransfer_input rti;
         RewardTransfer_output rto;
     };
 
+    /**
+     * @brief PRIVATE PROCEDURE
+     * Attempts to finalize an event. It tallies oracle votes and, if a majority is reached,
+     * pays out winners, removes losing positions, and clears all remaining orders from the book.
+     * @param eventId The event to finalize.
+     * @param qei The event's metadata.
+     * @param result An array of oracle votes.
+     */
     PRIVATE_PROCEDURE_WITH_LOCALS(TryFinalizeEvent)
     {
         locals.totalOP = 0;
         locals.vote0Count = 0;
         locals.vote1Count = 0;
-        for (locals.i = 0; locals.i < 8; locals.i++)
+        for (locals.i = 0; locals.i < QUOTTERY_MAX_ORACLE_PROVIDER; locals.i++)
         {
             if (input.qei.oracleId.get(locals.i) != NULL_ID) locals.totalOP++;
             if (input.result.get(locals.i) == 0) locals.vote0Count++;
@@ -1494,7 +1634,7 @@ public:
         locals.index = 0;
         locals.winCondition = POS_KEY(locals.winOption, input.eventId);
         locals.loseCondition = POS_KEY(1ULL - locals.winOption, input.eventId);
-        while (locals.index != NULL_INDEX) // TODO: maybe don't need to scan all
+        while (locals.index != NULL_INDEX)
         {
             locals.key = state.mPositionInfo.key(locals.index);
             if (locals.key != NULL_ID)
@@ -1503,7 +1643,7 @@ public:
                 {
                     // send money to this
                     state.mPositionInfo.get(locals.key, locals.value);
-                    locals.rti.amount = WHOLE_SHARE_PRICE * locals.value.amount;
+                    locals.rti.amount = smul((uint64)state.mOperationParams.wholeSharePriceInQU, (uint64)locals.value.amount);
                     locals.rti.eid = input.eventId;
                     locals.rti.receiver = locals.value.entity;
                     locals.rti.needChargeFee = 1;
@@ -1550,7 +1690,7 @@ public:
             locals.price = state.mABOrders.priority(locals.index);
             // refund to users
             locals.rti.receiver = locals.value.entity;
-            locals.rti.amount = locals.value.amount * locals.price;
+            locals.rti.amount = smul(locals.value.amount, locals.price);
             locals.rti.eid = input.eventId;
             locals.rti.needChargeFee = 0;
             CALL(RewardTransfer, locals.rti, locals.rto);
@@ -1568,7 +1708,7 @@ public:
             locals.price = state.mABOrders.priority(locals.index);
             // refund to users
             locals.rti.receiver = locals.value.entity;
-            locals.rti.amount = locals.value.amount * locals.price;
+            locals.rti.amount = smul(locals.value.amount, locals.price);
             locals.rti.eid = input.eventId;
             locals.rti.needChargeFee = 0;
             CALL(RewardTransfer, locals.rti, locals.rto);
@@ -1576,7 +1716,28 @@ public:
             state.mABOrders.remove(locals.index);
             locals.index = state.mABOrders.headIndex(locals.key);
         }
+        // distribute fee to creator and oracles
+        state.mPaylist.get(input.eventId, locals.pl);
+        state.mEventInfo.get(input.eventId, locals.qei);
+        
+        locals.rti.receiver = locals.qei.creator;
+        locals.rti.amount = locals.pl.creatorFee;
+        locals.rti.eid = input.eventId;
+        locals.rti.needChargeFee = 0;
+        CALL(RewardTransfer, locals.rti, locals.rto);
 
+        for (locals.i = 0; locals.i < QUOTTERY_MAX_ORACLE_PROVIDER; locals.i++)
+        {
+            locals.key = locals.qei.oracleId.get(locals.i);
+            if (locals.key != NULL_ID)
+            {
+                locals.rti.receiver = locals.key;
+                locals.rti.amount = locals.pl.oracleFee.get(locals.i);
+                locals.rti.eid = input.eventId;
+                locals.rti.needChargeFee = 0;
+                CALL(RewardTransfer, locals.rti, locals.rto);
+            }
+        }
         state.mABOrders.cleanupIfNeeded();
         state.mEventInfo.removeByKey(input.eventId);
         state.mEventInfo.cleanupIfNeeded();
@@ -1584,23 +1745,30 @@ public:
     /**************************************/
     /************VIEW FUNCTIONS************/
     /**************************************/
+    
     /**
+     * @brief PUBLIC VIEW FUNCTION
+     * Returns a high-level overview of the contract's state and financial health.
      */
     PUBLIC_FUNCTION(BasicInfo)
     {
         setMemory(output, 0);
         output.operationFee = state.mQtryGov.mOperationFee;
-        output.gameOperator = state.mQtryGov.mOperationId;
         output.shareholderFee = state.mQtryGov.mShareHolderFee;
         output.burnFee = state.mQtryGov.mBurnFee;
-        output.moneyFlow = state.mTotalMoneyFlow;
-        output.totalRevenue = state.mTotalRevenue;
-        output.shareholdersRevenue = state.mShareholdersRevenue;
+        output.nIssuedEvent = state.mCurrentEventID;
         output.creatorRevenue = state.mCreatorRevenue;
         output.oracleRevenue = state.mOracleRevenue;
+
         output.operationRevenue = state.mOperationRevenue;
-        output.nIssuedEvent = state.mCurrentEventID;
+        output.distributedOperationRevenue = state.mDistributedOperationRevenue;
+        
+        output.shareholdersRevenue = state.mShareholdersRevenue;
+        output.distributedShareholdersRevenue = state.mDistributedShareholdersRevenue;
+
         output.burnedAmount = state.mBurnedAmount;
+
+        output.gameOperator = state.mQtryGov.mOperationId;
     }
 
     struct GetActiveEvent_input
@@ -1614,11 +1782,13 @@ public:
 
     struct GetActiveEvent_locals
     {
-        sint64 i, c;
+        sint64 i;
     };
     /**
-     * @return a list of active eventID.
-     * (This function only returns active event ids **in the last 128**. To get more active event ids, client needs to track it themself via logging)
+     * @brief PUBLIC VIEW FUNCTION
+     * Returns a list of recently active event IDs. Note: this is a limited-size
+     * list for performance; clients should monitor logs for a complete list.
+     * @return A list of up to 128 active event IDs.
      */
     PUBLIC_FUNCTION_WITH_LOCALS(GetActiveEvent)
     {
@@ -1632,23 +1802,7 @@ public:
             }
         }
     }
-
-    /**************************************/
-    /************CORE FUNCTIONS************/
-    /**************************************/
-    /**
-    * Create a event
-    * if the provided info is failed to create a event, fund will be returned to invocator.
-    * @param eventDesc (32 bytes): event description 32 bytes
-    * @param optionDesc (256 bytes): option descriptions, 32 bytes for each option from 0 to 7, leave empty(zeroes) for unused memory space
-    * @param oracleProviderId (256 bytes): oracle provider IDs, 32 bytes for each ID from 0 to 7, leave empty(zeroes) for unused memory space
-    * @param oracleFees (32 bytes): the fee for oracle providers, 4 bytes(uint32) for each ID from 0 to 7, leave empty(zeroes) for unused memory space
-    * @param closeDate (4 bytes): date in quotteryData format, thefirst byte is year, the second byte is month, the third byte is day(in month), the fourth byte is 0.
-    * @param endDate (4 bytes): date in quotteryData format, thefirst byte is year, the second byte is month, the third byte is day(in month), the fourth byte is 0.
-    * @param amountPerSlot (8 bytes): amount of qu per event slot
-    * @param maxEventSlotPerOption (4 bytes): maximum event slot per option
-    * @param numberOfOption (4 bytes): number of options(outcomes) of the event
-    */
+    
     struct CreateEvent_input
     {
         QtryEventInfo qei;
@@ -1664,21 +1818,26 @@ public:
         
         QtryEventInfo qei;
         Array<sint8, 8> zeroResult;
-        sint64 index;
         bit found;
         CreatorInfo ci;
         OracleInfo oi;
         QuotteryLogger log;
         sint32 i;
+        Paylist pl;
     };
 
+    /**
+     * @brief PUBLIC PROCEDURE
+     * Creates a new prediction market event. Can only be called by an eligible creator.
+     * @param qei A struct containing all event details, including description, dates, and oracles.
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(CreateEvent)
     {
         // only allow users to create event
         if (qpi.invocator() != qpi.originator())
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_USER ,0 };
-            LOG_INFO(locals.log);
+            LOG_WARNING(locals.log);
             if(qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
@@ -1687,12 +1846,12 @@ public:
         if (!locals.found)
         {
             locals.log = QuotteryLogger{ 0, QTRY_NOT_ELIGIBLE_USER ,0 };
-            LOG_INFO(locals.log);
+            LOG_WARNING(locals.log);
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
-        for (locals.i = 0; locals.i < 8; locals.i++)
+        for (locals.i = 0; locals.i < QUOTTERY_MAX_ORACLE_PROVIDER; locals.i++)
         {
             if (input.qei.oracleId.get(locals.i) != NULL_ID)
             {
@@ -1700,7 +1859,7 @@ public:
                 if (!locals.found)
                 {
                     locals.log = QuotteryLogger{ 0, QTRY_NOT_ELIGIBLE_ORACLE ,0 };
-                    LOG_INFO(locals.log);
+                    LOG_WARNING(locals.log);
                     if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
                     return;
                 }
@@ -1711,7 +1870,7 @@ public:
         if (input.qei.endDate < locals.dtNow || input.qei.closeDate < locals.dtNow || input.qei.endDate < input.qei.closeDate)
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_DATETIME ,0 };
-            LOG_INFO(locals.log);
+            LOG_WARNING(locals.log);
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
@@ -1719,13 +1878,13 @@ public:
         locals.duration = input.qei.endDate - locals.dtNow;
         locals.duration = divUp(locals.duration, 86400000ULL); // 86400000 ms per day
 
-        locals.fee = locals.duration * state.mOperationParams.feePerDay;
+        locals.fee = smul(locals.duration, state.mOperationParams.feePerDay);
 
         // fee is higher than sent amount, exit
         if (locals.fee > qpi.invocationReward())
         {
             locals.log = QuotteryLogger{ 0, QTRY_INSUFFICIENT_FUND ,0 };
-            LOG_INFO(locals.log);
+            LOG_WARNING(locals.log);
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
@@ -1736,19 +1895,19 @@ public:
         locals.qei.creator = qpi.invocator();
 
         state.mEventInfo.set(locals.qei.eid, locals.qei);
-        for (locals.i = 0; locals.i < 8; locals.i++)
+        for (locals.i = 0; locals.i < QUOTTERY_MAX_ORACLE_PROVIDER; locals.i++)
         {
             locals.zeroResult.set(locals.i, -1);
         }
         state.mEventResult.set(locals.qei.eid, locals.zeroResult);
-        
 
-        state.mTotalRevenue += locals.fee;
         if (qpi.invocationReward() > locals.fee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.fee);
         }
         state.mRecentActiveEvent.set(mod(locals.qei.eid, QUOTTERY_MAX_EVENT), locals.qei.eid);
+        setMemory(locals.pl, 0);
+        state.mPaylist.set(locals.qei.eid, locals.pl);
     }
 
     struct PublishResult_locals
@@ -1758,7 +1917,6 @@ public:
         sint32 oracleIndex;
         sint32 i;
         QuotteryLogger log;
-        OracleInfo oi;
         DateAndTime dtNow;
 
         TryFinalizeEvent_input fei;
@@ -1774,18 +1932,18 @@ public:
     {
     };
     /**
-    * Publish result of a event (Oracle Provider only)
-    * After the vote is updated, it will try to finalize the event, see TryFinalizeEvent
-    * @param eventId (4 bytes)
-    * @param option (4 bytes): winning option
-    */
+     * @brief PUBLIC PROCEDURE
+     * Allows an authorized oracle to submit a result for an event. Triggers event finalization if enough votes are cast.
+     * @param eventId The event to submit a result for.
+     * @param option The winning option (0 or 1).
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(PublishResult)
     {
         // only allow users to publish result
         if (qpi.invocator() != qpi.originator())
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_USER,0 };
-            LOG_INFO(locals.log);
+            LOG_WARNING(locals.log);
             return;
         }
         if (!isOptionValid(input.option))
@@ -1804,7 +1962,7 @@ public:
         }
 
         locals.found = 0;
-        for (locals.i = 0; locals.i < 8; locals.i++)
+        for (locals.i = 0; locals.i < QUOTTERY_MAX_ORACLE_PROVIDER; locals.i++)
         {
             if (locals.qei.oracleId.get(locals.i) != NULL_ID && locals.qei.oracleId.get(locals.i) == qpi.invocator())
             {
@@ -1817,7 +1975,7 @@ public:
         if (!locals.found)
         {
             locals.log = QuotteryLogger{ 0, QTRY_NOT_ELIGIBLE_ORACLE ,0 };
-            LOG_INFO(locals.log);
+            LOG_WARNING(locals.log);
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
@@ -1846,16 +2004,19 @@ public:
     {
         QtryEventInfo qei;
         DateAndTime dtNow;
+        DateAndTime dtThreshold;
         TryFinalizeEvent_input fei;
         TryFinalizeEvent_output feo;
-        Array<sint8, 8> result;
+        Array<sint8, QUOTTERY_MAX_ORACLE_PROVIDER> result;
         sint32 i;
     };
     /**
-    * Resolve result for an event (Game Operator only)
-    * In emergency cases (pass endDate without result from oracle), operation team can publish result and resolve the event
-    * @param eventId (16 bytes)
-    */
+     * @brief PUBLIC PROCEDURE (Admin Only)
+     * Allows the game operator to manually resolve an event after a grace period.
+     * This is a fallback for cases where oracles fail to reach consensus.
+     * @param eventId The event to resolve.
+     * @param option The winning option to set.
+     */
     PUBLIC_PROCEDURE_WITH_LOCALS(ResolveEvent)
     {
         // game operator invocation only. In any case that oracle providers can't reach consensus or unable to broadcast result after a long period,
@@ -1873,13 +2034,14 @@ public:
             return;
         }
         locals.dtNow = qpi.now();
-        if (locals.dtNow < locals.qei.endDate + 24ULL * 86400000ULL) // game operator can only resolve the game 1 day after endDate
+        locals.dtThreshold = locals.qei.endDate + 24ULL * 3600000ULL;
+        if (locals.dtNow < locals.dtThreshold) // game operator can only resolve the game 1 day after endDate
         {
             return;
         }
 
         locals.result = state.mEventResult.value(input.eventId);
-        for (locals.i = 0; locals.i < 8; locals.i++)
+        for (locals.i = 0; locals.i < QUOTTERY_MAX_ORACLE_PROVIDER; locals.i++)
         {
             locals.result.set(locals.i, (uint8)(input.option)); // set all results same
         }
@@ -1901,9 +2063,7 @@ public:
     {
         struct QtryOrderWithPrice
         {
-            QtryOrder qo; 
-            /*id entity;
-            sint64 amount;*/
+            QtryOrder qo;
             sint64 price;
         };
         Array<QtryOrderWithPrice, 256> orders;
@@ -1914,6 +2074,16 @@ public:
         id key;        
         GetOrders_output::QtryOrderWithPrice order;
     };
+
+    /**
+     * @brief PUBLIC VIEW FUNCTION
+     * Retrieves a paginated list of orders from the order book for a specific side of an event.
+     * @param eventId The event to query.
+     * @param option The option (0 or 1).
+     * @param isBid 1 for bids (buy orders), 0 for asks (sell orders).
+     * @param offset The number of orders to skip (for pagination).
+     * @return A list of up to 256 orders with their price and amount.
+     */
     PUBLIC_FUNCTION_WITH_LOCALS(GetOrders)
     {
         setMemory(output, 0);
@@ -1949,6 +2119,13 @@ public:
         uint64 ops; // 0 remove, 1 set (add/update)
     };
     struct UpdateCreatorList_output {};
+    /**
+     * @brief PUBLIC PROCEDURE (Admin Only)
+     * Adds, updates, or removes an eligible event creator.
+     * @param creatorId The ID of the creator to modify.
+     * @param ci The creator's info, including fee rate.
+     * @param ops 0 to remove, 1 to add/update.
+     */
     PUBLIC_PROCEDURE(UpdateCreatorList)
     {
         if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -1965,7 +2142,6 @@ public:
             {
                 if (state.mOperationParams.eligibleCreators.population() < QUOTTERY_MAX_CREATOR_AND_COUNT)
                 {
-                    //TODO: log here
                     state.mOperationParams.eligibleCreators.set(input.creatorId, input.ci);
                 }
             }
@@ -1987,7 +2163,13 @@ public:
         uint64 ops; // 0 remove, 1 set (add/update)
     };
     struct UpdateOracleList_output {};
-
+    /**
+     * @brief PUBLIC PROCEDURE (Admin Only)
+     * Adds, updates, or removes an eligible oracle.
+     * @param oracleId The ID of the oracle to modify.
+     * @param oi The oracle's info, including fee rate.
+     * @param ops 0 to remove, 1 to add/update.
+     */
     PUBLIC_PROCEDURE(UpdateOracleList)
     {
         if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -2004,7 +2186,6 @@ public:
             {
                 if (state.mOperationParams.eligibleOracles.population() < QUOTTERY_MAX_CREATOR_AND_COUNT)
                 {
-                    //TODO: log here
                     state.mOperationParams.eligibleOracles.set(input.oracleId, input.oi);
                 }
             }
@@ -2027,7 +2208,13 @@ public:
         uint64 ops; // 0 remove, 1 set (add/update)
     };
     struct UpdateFeeDiscountList_output {};
-
+    /**
+     * @brief PUBLIC PROCEDURE (Admin Only)
+     * Adds, updates, or removes a user from the fee discount list.
+     * @param userId The ID of the user to modify.
+     * @param newFeeRate The new discount percentage.
+     * @param ops 0 to remove, 1 to add/update.
+     */
     PUBLIC_PROCEDURE(UpdateFeeDiscountList)
     {
         if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -2049,7 +2236,11 @@ public:
         uint64 newFee;
     };
     struct UpdateFeePerDay_output {};
-
+    /**
+     * @brief PUBLIC PROCEDURE (Admin Only)
+     * Updates the daily fee required to create an event.
+     * @param newFee The new fee per day in QUs.
+     */
     PUBLIC_PROCEDURE(UpdateFeePerDay)
     {
         if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -2082,9 +2273,11 @@ public:
 
     BEGIN_EPOCH()
     {
+        
 #ifdef NO_UEFI
         // for unit test
         state.mCurrentEventID = 0;
+        state.mOperationParams.wholeSharePriceInQU = 100000ULL;
         state.mOperationParams.feePerDay = 1000;
         state.mOperationParams.eligibleCreators.cleanup();
         state.mOperationParams.eligibleOracles.cleanup();
@@ -2104,8 +2297,35 @@ public:
 #endif
     }
 
-    END_EPOCH()
+    struct END_EPOCH_locals
     {
-        // all dividends are paid in real time
+        uint64 payout, total, burn;
+    };
+    END_EPOCH_WITH_LOCALS()
+    {
+        // distribute to QTRY shareholders
+        if ((state.mShareholdersRevenue - state.mDistributedShareholdersRevenue - state.mBurnedAmount > 676) && (state.mShareholdersRevenue > state.mDistributedShareholdersRevenue + state.mBurnedAmount))
+        {
+            // burn fee will be applied on shareholder revenue
+            locals.total = state.mShareholdersRevenue - state.mDistributedShareholdersRevenue - state.mBurnedAmount;
+            locals.burn = div(smul(locals.total, state.mQtryGov.mBurnFee), QUOTTERY_PERCENT_DENOMINATOR);
+            qpi.burn(locals.burn);
+
+            state.mBurnedAmount += locals.burn;
+            locals.total = state.mShareholdersRevenue - state.mDistributedShareholdersRevenue - state.mBurnedAmount;
+            locals.payout = div(locals.total, (uint64)NUMBER_OF_COMPUTORS);
+
+            if (qpi.distributeDividends(locals.payout))
+            {
+                state.mDistributedShareholdersRevenue += smul(locals.payout, (uint64)NUMBER_OF_COMPUTORS);
+            }
+        }
+        // distribute to operation team
+        if (state.mOperationRevenue > state.mDistributedOperationRevenue)
+        {
+            locals.payout = state.mOperationRevenue - state.mDistributedOperationRevenue;
+            qpi.transfer(state.mQtryGov.mOperationId, locals.payout);
+            state.mDistributedOperationRevenue += locals.payout;
+        }
     }
 };

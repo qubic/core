@@ -208,8 +208,8 @@ TEST(QTRYTest, MakeCreatorAndOracleList)
     uint64 ops = 1; //add
     for (int i = 0; i < QUOTTERY_MAX_CREATOR_AND_COUNT + 1; i++)
     {
-        qtry.UpdateCreator(creators[i], "TestCreator0", 1000+i, ops);
-        qtry.UpdateOracle(oracles[i], "TestOracle0", 1000+i*2, ops);
+        qtry.UpdateCreator(creators[i], "TestCreator0", 10+(i%2), ops);
+        qtry.UpdateOracle(oracles[i], "TestOracle0", 10+(i%3), ops);
     }
     auto state = qtry.getState();
     id c_name = id::zero();
@@ -228,8 +228,8 @@ TEST(QTRYTest, MakeCreatorAndOracleList)
             index = state->mOperationParams.eligibleOracles.getElementIndex(oracles[i]);
             auto oi = state->mOperationParams.eligibleOracles.value(index);
 
-            EXPECT_TRUE(ci.feeRate == 1000 + i);
-            EXPECT_TRUE(oi.feeRate == 1000 + i * 2);
+            EXPECT_TRUE(ci.feeRate == 10 + (i%2));
+            EXPECT_TRUE(oi.feeRate == 10 + (i%3));
 
             EXPECT_TRUE(c_name == ci.name);
             EXPECT_TRUE(o_name == oi.name);
@@ -245,8 +245,8 @@ TEST(QTRYTest, MakeCreatorAndOracleList)
     ops = 0; //remove
     for (int i = 0; i < QUOTTERY_MAX_CREATOR_AND_COUNT/2; i++)
     {
-        qtry.UpdateCreator(creators[i], "TestCreator888", 1234, ops);
-        qtry.UpdateOracle(oracles[i], "TestOracle999", 1234, ops);
+        qtry.UpdateCreator(creators[i], "TestCreator888", 10 + i%2, ops);
+        qtry.UpdateOracle(oracles[i], "TestOracle999", 10 + i%3, ops);
     }
     for (int i = QUOTTERY_MAX_CREATOR_AND_COUNT/2; i < QUOTTERY_MAX_CREATOR_AND_COUNT; i++)
     {
@@ -258,8 +258,8 @@ TEST(QTRYTest, MakeCreatorAndOracleList)
         index = state->mOperationParams.eligibleOracles.getElementIndex(oracles[i]);
         auto oi = state->mOperationParams.eligibleOracles.value(index);
 
-        EXPECT_TRUE(ci.feeRate == 1000 + i);
-        EXPECT_TRUE(oi.feeRate == 1000 + i * 2);
+        EXPECT_TRUE(ci.feeRate == 10 + (i%2));
+        EXPECT_TRUE(oi.feeRate == 10 + (i%3));
 
         EXPECT_TRUE(c_name == ci.name);
         EXPECT_TRUE(o_name == oi.name);
@@ -268,13 +268,13 @@ TEST(QTRYTest, MakeCreatorAndOracleList)
     ops = 2; //update
     for (int i = 0; i < QUOTTERY_MAX_CREATOR_AND_COUNT / 2; i++)
     {
-        qtry.UpdateCreator(creators[i], "TestCreator111", 1234 + i, ops);
-        qtry.UpdateOracle(oracles[i], "TestOracle222", 1234+i, ops);
+        qtry.UpdateCreator(creators[i], "TestCreator111", 6 + i%2, ops);
+        qtry.UpdateOracle(oracles[i], "TestOracle222", 6+i%3, ops);
     }
     for (int i = QUOTTERY_MAX_CREATOR_AND_COUNT / 2; i < QUOTTERY_MAX_CREATOR_AND_COUNT; i++)
     {
-        qtry.UpdateCreator(creators[i], "TestCreator888", 1234 + i, ops);
-        qtry.UpdateOracle(oracles[i], "TestOracle999", 1234 + i, ops);
+        qtry.UpdateCreator(creators[i], "TestCreator888", 6 + i%2, ops);
+        qtry.UpdateOracle(oracles[i], "TestOracle999", 6 + i%3, ops);
     }
     memcpy(c_name.m256i_i8, "TestCreator888", 14);
     memcpy(o_name.m256i_i8, "TestOracle999", 13);
@@ -295,8 +295,8 @@ TEST(QTRYTest, MakeCreatorAndOracleList)
             index = state->mOperationParams.eligibleOracles.getElementIndex(oracles[i]);
             auto oi = state->mOperationParams.eligibleOracles.value(index);
 
-            EXPECT_TRUE(ci.feeRate == 1234 + i);
-            EXPECT_TRUE(oi.feeRate == 1234 + i);
+            EXPECT_TRUE(ci.feeRate == 6 + i%2);
+            EXPECT_TRUE(oi.feeRate == 6 + i%3);
 
             EXPECT_TRUE(c_name == ci.name);
             EXPECT_TRUE(o_name == oi.name);
@@ -340,8 +340,8 @@ TEST(QTRYTest, CreateEvent)
     uint64 ops = 1; //add
     for (int i = 0; i < 8; i++)
     {
-        qtry.UpdateCreator(creators[i], "TestCreator" + std::to_string(i), 1000 + i, ops);
-        qtry.UpdateOracle(oracles[i], "TestOracle" + std::to_string(i), 1000 + i * 2, ops);
+        qtry.UpdateCreator(creators[i], "TestCreator" + std::to_string(i), 6 + i, ops);
+        qtry.UpdateOracle(oracles[i], "TestOracle" + std::to_string(i), 6 + i * 2, ops);
     }
     for (int i = 0; i < 8; i++) cei.qei.oracleId.set(i, oracles[i]);
 
@@ -483,7 +483,7 @@ TEST(QTRYTest, MatchingOrders)
     for (int i = 0; i < 16; i++)
     {
         traders[i] = id::randomValue();
-        increaseEnergy(traders[i], 100ULL * 1e9);
+        increaseEnergy(traders[i], 100LL * 1000000000LL);
     }
     // bid: 100 shares option 0 for 40000
     qtry.AddBidOrder(0, 100, 0, 40000ULL, traders[0]);
@@ -526,8 +526,8 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddAskOrder(0, 40, 1, 20000, traders[1]);
     sint64 b0_bal = getBalance(traders[0]);
     sint64 b1_bal = getBalance(traders[1]);
-    EXPECT_TRUE(b0_bal == (100000000000ULL - 100ULL * 40000 + 40ULL * 70000));
-    EXPECT_TRUE(b1_bal == (100000000000ULL - 100ULL * 60000 + 40ULL * 30000));
+    EXPECT_TRUE(b0_bal == (100000000000ULL - 100LL * 40000 + 40ULL * 70000));
+    EXPECT_TRUE(b1_bal == (100000000000ULL - 100LL * 60000 + 40ULL * 30000));
 
     // b0 has 60 shares opt0, 10 is in order
     // b1 has 60 shares opt1, 0 is in order
@@ -732,8 +732,8 @@ TEST(QTRYTest, CompleteCycle)
     {
         creators[i] = id::randomValue();
         oracles[i] = id::randomValue();
-        increaseEnergy(creators[i], 100ULL * 1e9);
-        increaseEnergy(oracles[i], 100ULL * 1e9);
+        increaseEnergy(creators[i], 100LL * 1000000000LL);
+        increaseEnergy(oracles[i], 100LL * 1000000000LL);
     }
     auto state = qtry.getState();
     uint64 ops = 1; //add
@@ -746,12 +746,10 @@ TEST(QTRYTest, CompleteCycle)
     for (int i = 0; i < 16; i++)
     {
         traders[i] = id::randomValue();
-        increaseEnergy(traders[i], 100ULL * 1e9);
+        increaseEnergy(traders[i], 100LL * 1000000000LL);
     }
 
     for (int i = 0; i < 8; i++) cei.qei.oracleId.set(i, oracles[i]);
-
-
 
     // normal event
     DateAndTime dt = wrapped_now();
@@ -858,7 +856,7 @@ TEST(QTRYTest, CompleteCycle)
     {
         total += getBalance(traders[i]);
     }
-    EXPECT_TRUE(total == 16 * 1e9 * 100ULL);
+    EXPECT_TRUE(total == 16 * 1000000000LL * 100LL);
 }
 
 TEST(QTRYTest, OperationFunction)
@@ -890,13 +888,13 @@ TEST(QTRYTest, OperationFunction)
     // add
     for (int i = 0; i < QUOTTERY_MAX_CREATOR_AND_COUNT; i++)
     {
-        qtry.UpdateFeeDiscountList(traders[i], 1000+i, 1);
+        qtry.UpdateFeeDiscountList(traders[i], 9+i%2, 1);
     }
     for (int i = 0; i < QUOTTERY_MAX_CREATOR_AND_COUNT; i++)
     {
         uint64 value;
         EXPECT_TRUE(state->mOperationParams.discountedFeeForUsers.get(traders[i], value));
-        EXPECT_TRUE(value == 1000 + i);
+        EXPECT_TRUE(value == 9 + i%2);
     }
     // remove again
     for (int i = 0; i < QUOTTERY_MAX_CREATOR_AND_COUNT; i++)
@@ -921,8 +919,8 @@ TEST(QTRYTest, ResolveEvent)
     {
         creators[i] = id::randomValue();
         oracles[i] = id::randomValue();
-        increaseEnergy(creators[i], 100ULL * 1e9);
-        increaseEnergy(oracles[i], 100ULL * 1e9);
+        increaseEnergy(creators[i], 100LL * 1000000000LL);
+        increaseEnergy(oracles[i], 100LL * 1000000000LL);
     }
     auto state = qtry.getState();
     uint64 ops = 1; //add
@@ -935,7 +933,7 @@ TEST(QTRYTest, ResolveEvent)
     for (int i = 0; i < 16; i++)
     {
         traders[i] = id::randomValue();
-        increaseEnergy(traders[i], 100ULL * 1e9);
+        increaseEnergy(traders[i], 100LL * 1000000000LL);
     }
 
     for (int i = 0; i < 8; i++) cei.qei.oracleId.set(i, oracles[i]);
@@ -1004,5 +1002,5 @@ TEST(QTRYTest, ResolveEvent)
     {
         total += getBalance(traders[i]);
     }
-    EXPECT_TRUE(total == 16 * 1e9 * 100ULL);
+    EXPECT_TRUE(total == 16 * 1000000000LL * 100LL);
 }
