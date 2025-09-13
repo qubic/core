@@ -87,6 +87,7 @@ public:
         uint64 distributedShareholdersRevenue;
 
         uint64 burnedAmount;
+        uint64 feePerDay;
         id gameOperator;
     };
 
@@ -1767,7 +1768,7 @@ public:
         output.distributedShareholdersRevenue = state.mDistributedShareholdersRevenue;
 
         output.burnedAmount = state.mBurnedAmount;
-
+        output.feePerDay = state.mOperationParams.feePerDay;
         output.gameOperator = state.mQtryGov.mOperationId;
     }
 
