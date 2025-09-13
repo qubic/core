@@ -2,7 +2,9 @@
 
 #include "contract_testing.h"
 
+constexpr uint16 PROCEDURE_INDEX_BUY_TICKET = 1;
 constexpr uint16 PROCEDURE_INDEX_SET_TICKET_PRICE = 2;
+constexpr uint16 PROCEDURE_INDEX_SET_FEE_PRECENT = 3;
 constexpr uint16 FUNCTION_INDEX_GET_FEES = 1;
 constexpr uint16 FUNCTION_INDEX_GET_PLAYERS = 2;
 constexpr uint16 FUNCTION_INDEX_GET_WINNERS = 3;
@@ -19,6 +21,7 @@ public:
         EXPECT_EQ(fees.distributionFeePercent, distributionFeePercent);
         EXPECT_EQ(fees.teamFeePercent, teamFeePercent);
         EXPECT_EQ(fees.winnerFeePercent, winnerFeePercent);
+        EXPECT_EQ(fees.burnPrecent, burnPrecent);
     }
 
     void Check_Players(const GetPlayers_output &output) {
@@ -44,14 +47,14 @@ public:
         }
     }
 
-    void RandomlyAddPlayers(unsigned int maxNewPlayers) {
+    void RandomlyAddPlayers(uint64 maxNewPlayers) {
         unsigned int newPlayers = mod<uint64>(maxNewPlayers, players.capacity());
         for (unsigned int i = 0; i < newPlayers; ++i) {
             players.add(id::randomValue());
         }
     }
 
-    void RandomlyAddWinners(unsigned int maxNewWinners) {
+    void RandomlyAddWinners(uint64 maxNewWinners) {
         unsigned int newWinners = mod<uint64>(maxNewWinners, winners.capacity());
 
         winnersInfoNextEmptyIndex = 0;
@@ -64,6 +67,22 @@ public:
             wi.winnerAddress = id::randomValue();
             winners.set(winnersInfoNextEmptyIndex++, wi);
         }
+    }
+
+    void SetSelling() {
+        currentState = EState::SELLING;
+    }
+
+    void SetLocked() {
+        currentState = EState::LOCKED;
+    }
+
+    uint64 PlayersPopulation() {
+        return players.population();
+    }
+
+    uint64 GetTicketPrice() {
+        return ticketPrice;
     }
 };
 
@@ -111,6 +130,20 @@ public:
         callFunction(RL_CONTRACT_INDEX, FUNCTION_INDEX_GET_WINNERS, input, output);
         return output;
     }
+
+    RL::SetFeePrecent_output SetFeePrecent(const id &authAddress, const RL::SetFeePrecent_input &feePrecent) {
+        RL::SetFeePrecent_output output;
+
+        invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_SET_FEE_PRECENT, feePrecent, output, authAddress, 0);
+        return output;
+    }
+
+    RL::BuyTicket_output BuyTicket(const id &user, uint64 reward) {
+        RL::BuyTicket_input input;
+        RL::BuyTicket_output output;
+        invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_BUY_TICKET, input, output, user, reward);
+        return output;
+    }
 };
 
 TEST(ContractRandomLottery, SetTicketPrice) {
@@ -129,6 +162,57 @@ TEST(ContractRandomLottery, SetTicketPrice) {
     increaseEnergy(randomUser, 100);
     EXPECT_EQ(ctl.SetTicketPrice(randomUser, invalidPrice), (uint8) RL::EReturnCode::ACCESS_DENIED);
     ctl.getState()->Check_TicketPrice(validPrice);
+}
+
+TEST(ContractRandomLottery, SetFeePrecent) {
+    ContractTestingRL ctl;
+
+    RL::SetFeePrecent_input validFeePrecent;
+    validFeePrecent.burnPrecent = 2;
+    validFeePrecent.teamFeePercent = 10;
+    validFeePrecent.distributionFeePercent = 20;
+    const uint8 validWinnerFeePercent = 100 - validFeePrecent.distributionFeePercent - validFeePrecent.
+                                        teamFeePercent - validFeePrecent.burnPrecent;
+
+    RL::SetFeePrecent_input invalidFeePrecent;
+    invalidFeePrecent.burnPrecent = 2;
+    invalidFeePrecent.teamFeePercent = 10;
+    invalidFeePrecent.distributionFeePercent = 100;
+
+    auto CheckWithValidData = [&]() {
+        const RL::GetFees_output feesOutput = ctl.GetFees();
+        EXPECT_EQ(feesOutput.returnCode, (uint8) RL::EReturnCode::SUCCESS);
+        EXPECT_EQ(feesOutput.burnPrecent, validFeePrecent.burnPrecent);
+        EXPECT_EQ(feesOutput.teamFeePercent, validFeePrecent.teamFeePercent);
+        EXPECT_EQ(feesOutput.distributionFeePercent, validFeePrecent.distributionFeePercent);
+        EXPECT_EQ(feesOutput.winnerFeePercent, validWinnerFeePercent);
+    };
+
+
+    // Valid data
+    {
+        increaseEnergy(RL_OWNER_ADDRESS, 100);
+        EXPECT_EQ(ctl.SetFeePrecent(RL_OWNER_ADDRESS, validFeePrecent).returnCode, (uint8) RL::EReturnCode::SUCCESS);
+        CheckWithValidData();
+    }
+
+    // Access denied
+    {
+        const id randomUser = id::randomValue();
+        increaseEnergy(randomUser, 100);
+
+        EXPECT_EQ(ctl.SetFeePrecent(randomUser, invalidFeePrecent).returnCode, (uint8) RL::EReturnCode::ACCESS_DENIED);
+
+        CheckWithValidData();
+    }
+
+    // Invalid precent value
+    {
+        EXPECT_EQ(ctl.SetFeePrecent(RL_OWNER_ADDRESS, invalidFeePrecent).returnCode,
+                  (uint8) RL::EReturnCode::FEE_INVALID_PRECENT_VALUE);
+
+        CheckWithValidData();
+    }
 }
 
 TEST(ContractRandomLottery, GetFees) {
@@ -156,4 +240,58 @@ TEST(ContractRandomLottery, GetWinners) {
     ctl.getState()->RandomlyAddWinners(10);
     RL::GetWinners_output winnersOutput = ctl.GetWinners();
     ctl.getState()->Check_Winners(winnersOutput);
+}
+
+TEST(ContractRandomLottery, BuyTicket) {
+    ContractTestingRL ctl;
+
+    const uint64 ticketPrice = ctl.getState()->GetTicketPrice();
+
+    // 1. Attempt when state is LOCKED
+    {
+        id userLocked = id::randomValue();
+        increaseEnergy(userLocked, ticketPrice * 2);
+        RL::BuyTicket_output out = ctl.BuyTicket(userLocked, ticketPrice);
+        EXPECT_EQ(out.returnCode, (uint8) RL::EReturnCode::TICKET_SELLING_CLOSED);
+        EXPECT_EQ(ctl.getState()->PlayersPopulation(), 0);
+    }
+
+    // Switch to SELLING state
+    ctl.getState()->SetSelling();
+
+    // 2. Loop over several users
+    constexpr uint64 userCount = 5;
+
+    uint64 expectedPlayers = 0;
+
+    for (uint16 i = 0; i < userCount; ++i) {
+        id u = id::randomValue();
+        // Give enough energy for multiple attempts
+        increaseEnergy(u, ticketPrice * 5);
+
+        // (a) Invalid price (should NOT add player)
+        {
+            RL::BuyTicket_output outInvalid = ctl.BuyTicket(u, ticketPrice - 1);
+            EXPECT_EQ(outInvalid.returnCode, (uint8) RL::EReturnCode::TICKET_INVALID_PRICE);
+            EXPECT_EQ(ctl.getState()->PlayersPopulation(), expectedPlayers);
+        }
+
+        // (b) Valid purchase
+        {
+            RL::BuyTicket_output outOk = ctl.BuyTicket(u, ticketPrice);
+            EXPECT_EQ(outOk.returnCode, (uint8) RL::EReturnCode::SUCCESS);
+            ++expectedPlayers;
+            EXPECT_EQ(ctl.getState()->PlayersPopulation(), expectedPlayers);
+        }
+
+        // (c) Duplicate purchase
+        {
+            auto outDup = ctl.BuyTicket(u, ticketPrice);
+            EXPECT_EQ(outDup.returnCode, (uint8) RL::EReturnCode::TICKET_ALREADY_PURCHASED);
+            EXPECT_EQ(ctl.getState()->PlayersPopulation(), expectedPlayers);
+        }
+    }
+
+    // 3. Sanity: ensure all stored users really counted
+    EXPECT_EQ(expectedPlayers, userCount);
 }

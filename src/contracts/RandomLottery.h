@@ -35,6 +35,9 @@ public:
         // Access
         ACCESS_DENIED = 5,
 
+        // Precent
+        FEE_INVALID_PRECENT_VALUE = 6,
+
         UNKNOW_ERROR = UINT8_MAX
     };
 
@@ -52,6 +55,8 @@ public:
         uint8 teamFeePercent = 0;
         uint8 distributionFeePercent = 0;
         uint8 winnerFeePercent = 0;
+        uint8 burnPrecent = 0;
+
         uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
     };
 
@@ -74,6 +79,19 @@ public:
 
     struct SetTicketPrice_output {
         uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+    };
+
+    struct SetTicketPriceInner_input {
+        SetTicketPrice_input setTicketPriceInput;
+    };
+
+    struct SetTicketPriceInner_output {
+        uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+    };
+
+    struct SetTicketPrice_locals {
+        SetTicketPriceInner_input setTicketPriceInnerInput;
+        SetTicketPriceInner_output setTicketPriceInnerOutput;
     };
 
     struct WinnerInfo {
@@ -144,6 +162,39 @@ public:
         Entity entity;
     };
 
+
+    struct SetFeePrecent_input {
+        uint8 teamFeePercent = 0;
+        uint8 distributionFeePercent = 0;
+        uint8 burnPrecent = 0;
+    };
+
+    struct SetFeePrecent_output {
+        uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+    };
+
+    struct SetFeePrecentInner_input {
+        SetFeePrecent_input setFeePrecentInput = {};
+    };
+
+    struct SetFeePrecentInner_output {
+        uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+    };
+
+    struct SetFeePrecent_locals {
+        SetFeePrecentInner_input setFeePrecentInnerInput = {};
+        SetFeePrecentInner_output setFeePrecentInnerOutput = {};
+    };
+
+
+    struct INITIALIZE_locals {
+        SetFeePrecentInner_input setFeePrecentInnerInput = {};
+        SetFeePrecentInner_output setFeePrecentInnerOutput = {};
+
+        SetTicketPriceInner_input setTicketPriceInnerInput = {};
+        SetTicketPriceInner_output setTicketPriceInnerOutput = {};
+    };
+
 public:
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES() {
         REGISTER_USER_FUNCTION(GetFees, 1);
@@ -151,25 +202,26 @@ public:
         REGISTER_USER_FUNCTION(GetWinners, 3);
         REGISTER_USER_PROCEDURE(BuyTicket, 1);
         REGISTER_USER_PROCEDURE(SetTicketPrice, 2);
+        REGISTER_USER_PROCEDURE(SetFeePrecent, 3);
     }
 
-    INITIALIZE() {
+    INITIALIZE_WITH_LOCALS() {
         // Address
         state.teamAddress = RL_DEV_ADDRESS;
         state.ownerAddress = RL_OWNER_ADDRESS;
 
-        // Burn
-        state.teamBP = 0;
-        state.distributionBP = 2;
-        state.winnerBP = 2;
+        // Fee precents
+        locals.setFeePrecentInnerInput.setFeePrecentInput.burnPrecent = 2;
+        locals.setFeePrecentInnerInput.setFeePrecentInput.teamFeePercent = 10;
+        locals.setFeePrecentInnerInput.setFeePrecentInput.distributionFeePercent = 20;
+        CALL(SetFeePrecentInner, locals.setFeePrecentInnerInput, locals.setFeePrecentInnerOutput);
 
-        // Fee
-        state.teamFeePercent = 10 - state.teamBP;
-        state.distributionFeePercent = 20 - state.distributionBP;
-        state.winnerFeePercent = 100 - state.teamFeePercent - state.distributionFeePercent - state.winnerBP;
+        // Tick price
+        locals.setTicketPriceInnerInput.setTicketPriceInput.newTicketPrice = 1000000;
+        CALL(SetTicketPriceInner, locals.setTicketPriceInnerInput, locals.setTicketPriceInnerOutput);
 
-        // Ticket
-        state.ticketPrice = 1000000;
+        // State
+        state.currentState = EState::LOCKED;
     }
 
     BEGIN_EPOCH() {
@@ -197,10 +249,9 @@ public:
 
             if (locals.getWinnerOutput.winnerAddress != id::zero()) {
                 // Calculate fees
-                locals.teamFee = locals.revenue * state.teamFeePercent;
-                locals.distributionFee = locals.revenue * state.distributionFeePercent;
-                locals.winnerAmount = locals.revenue - locals.teamFee - locals.distributionFee;
-                locals.burnedAmount = locals.revenue - locals.teamFee - locals.distributionFee - locals.winnerAmount;
+                locals.winnerAmount = div<uint64>(locals.revenue * state.winnerFeePercent, 100Ull);
+                locals.teamFee = div<uint64>(locals.revenue * state.teamFeePercent, 100Ull);
+                locals.distributionFee = div<uint64>(locals.revenue * state.distributionFeePercent, 100ULL);
 
                 // Transfer to team
                 if (locals.teamFee > 0) {
@@ -216,8 +267,13 @@ public:
                     qpi.transfer(locals.getWinnerOutput.winnerAddress, locals.winnerAmount);
                 }
 
-                // Burn
+                // Burn the entire remaining balance.
+                // We do this instead of calculating percentages, because division rounding
+                // might otherwise leave a few qus on the account.
                 if (locals.burnedAmount > 0) {
+                    qpi.getEntity(SELF, locals.entity);
+                    locals.burnedAmount = locals.entity.incomingAmount - locals.entity.outgoingAmount;
+
                     qpi.burn(locals.burnedAmount);
                 }
 
@@ -236,6 +292,7 @@ public:
         output.teamFeePercent = state.teamFeePercent;
         output.distributionFeePercent = state.distributionFeePercent;
         output.winnerFeePercent = state.winnerFeePercent;
+        output.burnPrecent = state.burnPrecent;
     }
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetPlayers) {
@@ -284,6 +341,8 @@ public:
 
         // Invalid price
         if (qpi.invocationReward() != state.ticketPrice && qpi.invocationReward() > 0) {
+            output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
+
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
             state.players.remove(qpi.invocator());
@@ -291,21 +350,31 @@ public:
         }
     }
 
-    PUBLIC_PROCEDURE(SetTicketPrice) {
+    PUBLIC_PROCEDURE_WITH_LOCALS(SetTicketPrice) {
         if (qpi.invocator() != state.ownerAddress) {
             output.returnCode = static_cast<uint8>(EReturnCode::ACCESS_DENIED);
             return;
         }
 
-        if (input.newTicketPrice == 0) {
-            output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
+        locals.setTicketPriceInnerInput.setTicketPriceInput = input;
+
+        CALL(SetTicketPriceInner, locals.setTicketPriceInnerInput, locals.setTicketPriceInnerOutput);
+        output.returnCode = locals.setTicketPriceInnerOutput.returnCode;
+    }
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(SetFeePrecent) {
+        if (qpi.invocator() != state.ownerAddress) {
+            output.returnCode = static_cast<uint8>(EReturnCode::ACCESS_DENIED);
             return;
         }
 
-        state.ticketPrice = input.newTicketPrice;
+        locals.setFeePrecentInnerInput.setFeePrecentInput = input;
+
+        CALL(SetFeePrecentInner, locals.setFeePrecentInnerInput, locals.setFeePrecentInnerOutput);
+        output.returnCode = locals.setFeePrecentInnerOutput.returnCode;
     }
 
-protected:
+private:
     PRIVATE_PROCEDURE_WITH_LOCALS(FillWinnersInfo) {
         if (input.winnerAddress == id::zero()) {
             return;
@@ -339,6 +408,28 @@ protected:
         output.index = locals.randomIndex;
     }
 
+    PRIVATE_PROCEDURE(SetFeePrecentInner) {
+        if (input.setFeePrecentInput.teamFeePercent + input.setFeePrecentInput.distributionFeePercent + input.
+            setFeePrecentInput.burnPrecent > 100) {
+            output.returnCode = static_cast<uint8>(EReturnCode::FEE_INVALID_PRECENT_VALUE);
+            return;
+        }
+
+        state.teamFeePercent = input.setFeePrecentInput.teamFeePercent;
+        state.distributionFeePercent = input.setFeePrecentInput.distributionFeePercent;
+        state.burnPrecent = input.setFeePrecentInput.burnPrecent;
+        state.winnerFeePercent = 100 - state.teamFeePercent - state.distributionFeePercent - state.burnPrecent;
+    }
+
+    PRIVATE_PROCEDURE(SetTicketPriceInner) {
+        if (input.setTicketPriceInput.newTicketPrice == 0) {
+            output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
+            return;
+        }
+
+        state.ticketPrice = input.setTicketPriceInput.newTicketPrice;
+    }
+
 protected:
     // Address
     id teamAddress = id::zero();
@@ -350,9 +441,7 @@ protected:
     uint8 winnerFeePercent = 0;
 
     // Burned percent
-    uint8 teamBP = 0;
-    uint8 distributionBP = 0;
-    uint8 winnerBP = 0;
+    uint8 burnPrecent = 0;
 
     // Ticket price
     uint64 ticketPrice = 0;
