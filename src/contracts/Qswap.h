@@ -230,6 +230,17 @@ public:
 		sint64 assetAmountIn;
 	};
 
+	struct TransferShareManagementRights_input
+	{
+		Asset asset;
+		sint64 numberOfShares;
+		uint32 newManagingContractIndex;
+	};
+	struct TransferShareManagementRights_output
+	{
+		sint64 transferredNumberOfShares;
+	};
+
 protected:
 	uint32 swapFeeRate; 		// e.g. 30: 0.3% (base: 10_000)
 	uint32 teamFeeRate;			// e.g. 20: 20% (base: 100)
@@ -1982,6 +1993,46 @@ protected:
 		output.success = true;
 	}
 
+	PUBLIC_PROCEDURE(TransferShareManagementRights)
+	{
+		if (qpi.invocationReward() < QSWAP_FEE_BASE_100)
+		{
+			return ;
+		}
+
+		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		{
+			// not enough shares available
+			output.transferredNumberOfShares = 0;
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+		}
+		else
+		{
+			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+				input.newManagingContractIndex, input.newManagingContractIndex, QSWAP_FEE_BASE_100) < 0)
+			{
+				// error
+				output.transferredNumberOfShares = 0;
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+			}
+			else
+			{
+				// success
+				output.transferredNumberOfShares = input.numberOfShares;
+				if (qpi.invocationReward() > QSWAP_FEE_BASE_100)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  QSWAP_FEE_BASE_100);
+				}
+			}
+		}
+	}
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		// functions
@@ -2005,6 +2056,7 @@ protected:
 		REGISTER_USER_PROCEDURE(SwapExactAssetForQu, 8);
 		REGISTER_USER_PROCEDURE(SwapAssetForExactQu, 9);
 		REGISTER_USER_PROCEDURE(SetTeamInfo, 10);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 11);
 	}
 
 	INITIALIZE()
@@ -2036,4 +2088,8 @@ protected:
 			}
 		}
 	}
+	PRE_ACQUIRE_SHARES()
+    {
+		output.allowTransfer = true;
+    }
 };

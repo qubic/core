@@ -1,5 +1,35 @@
 using namespace QPI;
 
+// Log types enum for QX contract
+enum QXLogInfo {
+    QXSuccess = 0,
+    QXInsufficientFunds = 1,
+    QXInvalidInput = 2,
+    QXAssetIssued = 3,
+    QXTransferSuccess = 4,
+    QXTransferFailed = 5,
+    QXAskOrderAdded = 6,
+    QXAskOrderRemoved = 7,
+    QXBidOrderAdded = 8,
+    QXBidOrderRemoved = 9,
+    QXTradeExecuted = 10,
+    QXManagementRightsTransferred = 11,
+    QXManagementRightsTransferFailed = 12,
+    QXInsufficientShares = 13,
+    QXInvalidPrice = 14,
+    QXInvalidAmount = 15
+};
+
+struct QXLogger
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    id sourcePublicKey;
+    id destinationPublicKey;
+    sint64 amount;
+    sint8 _terminator;
+};
+
 struct QX2
 {
 };
@@ -469,9 +499,13 @@ protected:
 		}
 	}
 
-
-	PUBLIC_PROCEDURE(IssueAsset)
+	struct IssueAsset_locals
 	{
+		QXLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(IssueAsset)
+	{	
 		if (qpi.invocationReward() < state._assetIssuanceFee)
 		{
 			if (qpi.invocationReward() > 0)
@@ -480,6 +514,9 @@ protected:
 			}
 
 			output.issuedNumberOfShares = 0;
+			
+			locals.log = {SELF_INDEX, QXInsufficientFunds, qpi.invocator(), SELF, qpi.invocationReward(), 0};
+			LOG_INFO(locals.log);
 		}
 		else
 		{
@@ -490,11 +527,20 @@ protected:
 			state._earnedAmount += state._assetIssuanceFee;
 
 			output.issuedNumberOfShares = qpi.issueAsset(input.assetName, qpi.invocator(), input.numberOfDecimalPlaces, input.numberOfShares, input.unitOfMeasurement);
+			
+			locals.log = {SELF_INDEX, QXAssetIssued, qpi.invocator(), SELF, output.issuedNumberOfShares, 0};
+			LOG_INFO(locals.log);
 		}
 	}
 
-	PUBLIC_PROCEDURE(TransferShareOwnershipAndPossession)
+	struct TransferShareOwnershipAndPossession_locals
 	{
+		QXLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareOwnershipAndPossession)
+	{
+		
 		if (qpi.invocationReward() < state._transferFee)
 		{
 			if (qpi.invocationReward() > 0)
@@ -503,6 +549,9 @@ protected:
 			}
 
 			output.transferredNumberOfShares = 0;
+			
+			locals.log = {SELF_INDEX, QXInsufficientFunds, qpi.invocator(), SELF, qpi.invocationReward(), 0};
+			LOG_INFO(locals.log);
 		}
 		else
 		{
@@ -518,16 +567,36 @@ protected:
 			if (qpi.numberOfPossessedShares(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
 			{
 				output.transferredNumberOfShares = 0;
+				
+				locals.log = {SELF_INDEX, QXInsufficientShares, qpi.invocator(), input.newOwnerAndPossessor, input.numberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 			else
 			{
 				output.transferredNumberOfShares = qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newOwnerAndPossessor) < 0 ? 0 : input.numberOfShares;
+				
+				if (output.transferredNumberOfShares > 0)
+				{
+					locals.log = {SELF_INDEX, QXTransferSuccess, qpi.invocator(), input.newOwnerAndPossessor, output.transferredNumberOfShares, 0};
+					LOG_INFO(locals.log);
+				}
+				else
+				{
+					locals.log = {SELF_INDEX, QXTransferFailed, qpi.invocator(), input.newOwnerAndPossessor, input.numberOfShares, 0};
+					LOG_INFO(locals.log);
+				}
 			}
 		}
 	}
 
-	PUBLIC_PROCEDURE(AddToAskOrder)
+	struct AddToAskOrder_locals
 	{
+		QXLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(AddToAskOrder)
+	{
+		
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -537,6 +606,17 @@ protected:
 			|| input.numberOfShares <= 0)
 		{
 			output.addedNumberOfShares = 0;
+			
+			if (input.price <= 0)
+			{
+				locals.log = {SELF_INDEX, QXInvalidPrice, qpi.invocator(), SELF, input.price, 0};
+				LOG_INFO(locals.log);
+			}
+			if (input.numberOfShares <= 0)
+			{
+				locals.log = {SELF_INDEX, QXInvalidAmount, qpi.invocator(), SELF, input.numberOfShares, 0};
+				LOG_INFO(locals.log);
+			}
 		}
 		else
 		{
@@ -546,6 +626,9 @@ protected:
 			if (qpi.numberOfPossessedShares(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) - state._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
 			{
 				output.addedNumberOfShares = 0;
+				
+				locals.log = {SELF_INDEX, QXInsufficientShares, qpi.invocator(), SELF, input.numberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 			else
 			{
@@ -688,12 +771,20 @@ protected:
 						state._entityOrders.add(qpi.invocator(), state._entityOrder, -input.price);
 					}
 				}
+				
+				locals.log = {SELF_INDEX, QXAskOrderAdded, qpi.invocator(), SELF, output.addedNumberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 		}
 	}
-
-	PUBLIC_PROCEDURE(AddToBidOrder)
+	struct AddToBidOrder_locals
 	{
+		QXLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(AddToBidOrder)
+	{
+		
 		if (input.price <= 0
 			|| input.numberOfShares <= 0
 			|| qpi.invocationReward() < input.price * input.numberOfShares)
@@ -703,6 +794,22 @@ protected:
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			
+			if (input.price <= 0)
+			{
+				locals.log = {SELF_INDEX, QXInvalidPrice, qpi.invocator(), SELF, input.price, 0};
+				LOG_INFO(locals.log);
+			}
+			if (input.numberOfShares <= 0)
+			{
+				locals.log = {SELF_INDEX, QXInvalidAmount, qpi.invocator(), SELF, input.numberOfShares, 0};
+				LOG_INFO(locals.log);
+			}
+			if (qpi.invocationReward() < input.price * input.numberOfShares)
+			{
+				locals.log = {SELF_INDEX, QXInsufficientFunds, qpi.invocator(), SELF, qpi.invocationReward(), 0};
+				LOG_INFO(locals.log);
 			}
 		}
 		else
@@ -858,12 +965,21 @@ protected:
 					state._entityOrder.numberOfShares = input.numberOfShares;
 					state._entityOrders.add(qpi.invocator(), state._entityOrder, input.price);
 				}
+				
+				locals.log = {SELF_INDEX, QXBidOrderAdded, qpi.invocator(), SELF, output.addedNumberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 		}
 	}
 
-	PUBLIC_PROCEDURE(RemoveFromAskOrder)
+	struct RemoveFromAskOrder_locals
 	{
+		QXLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(RemoveFromAskOrder)
+	{
+		
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -873,6 +989,17 @@ protected:
 			|| input.numberOfShares <= 0)
 		{
 			output.removedNumberOfShares = 0;
+			
+			if (input.price <= 0)
+			{
+				locals.log = {SELF_INDEX, QXInvalidPrice, qpi.invocator(), SELF, input.price, 0};
+				LOG_INFO(locals.log);
+			}
+			if (input.numberOfShares <= 0)
+			{
+				locals.log = {SELF_INDEX, QXInvalidAmount, qpi.invocator(), SELF, input.numberOfShares, 0};
+				LOG_INFO(locals.log);
+			}
 		}
 		else
 		{
@@ -941,16 +1068,27 @@ protected:
 			if (state._elementIndex == NULL_INDEX) // No other ask orders for the same asset at the same price found
 			{
 				output.removedNumberOfShares = 0;
+				
+				locals.log = {SELF_INDEX, QXInvalidInput, qpi.invocator(), SELF, input.numberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 			else
 			{
 				output.removedNumberOfShares = input.numberOfShares;
+				
+				locals.log = {SELF_INDEX, QXAskOrderRemoved, qpi.invocator(), SELF, output.removedNumberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 		}
 	}
-
-	PUBLIC_PROCEDURE(RemoveFromBidOrder)
+	struct RemoveFromBidOrder_locals
 	{
+		QXLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(RemoveFromBidOrder)
+	{
+		
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -960,6 +1098,17 @@ protected:
 			|| input.numberOfShares <= 0)
 		{
 			output.removedNumberOfShares = 0;
+			
+			if (input.price <= 0)
+			{
+				locals.log = {SELF_INDEX, QXInvalidPrice, qpi.invocator(), SELF, input.price, 0};
+				LOG_INFO(locals.log);
+			}
+			if (input.numberOfShares <= 0)
+			{
+				locals.log = {SELF_INDEX, QXInvalidAmount, qpi.invocator(), SELF, input.numberOfShares, 0};
+				LOG_INFO(locals.log);
+			}
 		}
 		else
 		{
@@ -1028,18 +1177,30 @@ protected:
 			if (state._elementIndex == NULL_INDEX) // No other bid orders for the same asset at the same price found
 			{
 				output.removedNumberOfShares = 0;
+				
+				locals.log = {SELF_INDEX, QXInvalidInput, qpi.invocator(), SELF, input.numberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 			else
 			{
 				output.removedNumberOfShares = input.numberOfShares;
 
 				qpi.transfer(qpi.invocator(), input.price * input.numberOfShares);
+				
+				locals.log = {SELF_INDEX, QXBidOrderRemoved, qpi.invocator(), SELF, output.removedNumberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 		}
 	}
 
-	PUBLIC_PROCEDURE(TransferShareManagementRights)
+	struct TransferShareManagementRights_locals
 	{
+		QXLogger log;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
+	{
+		
 		// no fee
 		if (qpi.invocationReward() > 0)
 		{
@@ -1053,6 +1214,9 @@ protected:
 		{
 			// not enough shares available
 			output.transferredNumberOfShares = 0;
+			
+			locals.log = {SELF_INDEX, QXInsufficientShares, qpi.invocator(), SELF, input.numberOfShares, 0};
+			LOG_INFO(locals.log);
 		}
 		else
 		{
@@ -1061,11 +1225,17 @@ protected:
 			{
 				// error
 				output.transferredNumberOfShares = 0;
+				
+				locals.log = {SELF_INDEX, QXManagementRightsTransferFailed, qpi.invocator(), SELF, input.numberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 			else
 			{
 				// success
 				output.transferredNumberOfShares = input.numberOfShares;
+				
+				locals.log = {SELF_INDEX, QXManagementRightsTransferred, qpi.invocator(), SELF, output.transferredNumberOfShares, 0};
+				LOG_INFO(locals.log);
 			}
 		}
 	}
