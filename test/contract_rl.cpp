@@ -144,6 +144,14 @@ public:
         invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_BUY_TICKET, input, output, user, reward);
         return output;
     }
+
+    void BeginEpoch() {
+        callSystemProcedure(RL_CONTRACT_INDEX, BEGIN_EPOCH);
+    }
+
+    void EndEpoch() {
+        callSystemProcedure(RL_CONTRACT_INDEX, END_EPOCH);
+    }
 };
 
 TEST(ContractRandomLottery, SetTicketPrice) {
@@ -187,7 +195,6 @@ TEST(ContractRandomLottery, SetFeePrecent) {
         EXPECT_EQ(feesOutput.distributionFeePercent, validFeePrecent.distributionFeePercent);
         EXPECT_EQ(feesOutput.winnerFeePercent, validWinnerFeePercent);
     };
-
 
     // Valid data
     {
@@ -294,4 +301,129 @@ TEST(ContractRandomLottery, BuyTicket) {
 
     // 3. Sanity: ensure all stored users really counted
     EXPECT_EQ(expectedPlayers, userCount);
+}
+
+TEST(ContractRandomLottery, EndEpoch) {
+    ContractTestingRL ctl;
+
+    // Утилиты
+    auto contractAddress = id(RL_CONTRACT_INDEX, 0, 0, 0);
+    const uint64 ticketPrice = ctl.getState()->GetTicketPrice();
+
+    auto fees = ctl.GetFees();
+    const uint8 teamPercent = fees.teamFeePercent; // 10
+    const uint8 distributionPercent = fees.distributionFeePercent; // 20
+    const uint8 burnPercent = fees.burnPrecent; // 2
+    const uint8 winnerPercent = fees.winnerFeePercent; // 68
+
+    // --- 1. Случай: 0 игроков ---
+    {
+        ctl.BeginEpoch();
+        EXPECT_EQ(ctl.getState()->PlayersPopulation(), 0u);
+
+        RL::GetWinners_output before = ctl.GetWinners();
+        EXPECT_EQ(before.numberOfWinners, 0u);
+
+        ctl.EndEpoch();
+
+        RL::GetWinners_output after = ctl.GetWinners();
+        EXPECT_EQ(after.numberOfWinners, 0u);
+        EXPECT_EQ(ctl.getState()->PlayersPopulation(), 0u);
+    }
+
+    // --- 2. Случай: 1 игрок (должен получить возврат) ---
+    {
+        ctl.BeginEpoch();
+
+        id solo = id::randomValue();
+        increaseEnergy(solo, ticketPrice);
+        uint64 balanceBefore = getBalance(solo);
+
+        auto out = ctl.BuyTicket(solo, ticketPrice);
+        EXPECT_EQ(out.returnCode, (uint8) RL::EReturnCode::SUCCESS);
+        EXPECT_EQ(ctl.getState()->PlayersPopulation(), 1u);
+        EXPECT_EQ(getBalance(solo), balanceBefore - ticketPrice);
+
+        ctl.EndEpoch();
+
+        // Рефанд
+        EXPECT_EQ(getBalance(solo), balanceBefore);
+        EXPECT_EQ(ctl.getState()->PlayersPopulation(), 0u);
+
+        RL::GetWinners_output winners = ctl.GetWinners();
+        EXPECT_EQ(winners.numberOfWinners, 0u);
+    }
+
+    // --- 3. Случай: >1 игрока (розыгрыш + распределение) ---
+    {
+        ctl.BeginEpoch();
+
+        const uint32 N = 5;
+        std::vector < id > players;
+        players.reserve(N);
+
+        struct PlayerInfo {
+            id addr;
+            uint64 balanceBefore;
+            uint64 balanceAfterBuy;
+        };
+        std::vector < PlayerInfo > infos;
+
+        for (uint32 i = 0; i < N; ++i) {
+            id p = id::randomValue();
+            increaseEnergy(p, ticketPrice * 2);
+            uint64 bBefore = getBalance(p);
+            auto out = ctl.BuyTicket(p, ticketPrice);
+            EXPECT_EQ(out.returnCode, (uint8) RL::EReturnCode::SUCCESS);
+            EXPECT_EQ(getBalance(p), bBefore - ticketPrice);
+            infos.push_back({p, bBefore, bBefore - ticketPrice});
+            players.push_back(p);
+        }
+
+        EXPECT_EQ(ctl.getState()->PlayersPopulation(), N);
+
+        uint64 contractBalanceBefore = getBalance(contractAddress);
+        EXPECT_EQ(contractBalanceBefore, ticketPrice * N);
+
+        uint64 teamBalanceBefore = getBalance(RL_DEV_ADDRESS);
+
+        RL::GetWinners_output winnersBefore = ctl.GetWinners();
+        uint64 winnersCountBefore = winnersBefore.numberOfWinners;
+
+        ctl.EndEpoch();
+
+        // После окончания продажи очищены
+        EXPECT_EQ(ctl.getState()->PlayersPopulation(), 0u);
+
+        RL::GetWinners_output winnersAfter = ctl.GetWinners();
+        EXPECT_EQ(winnersAfter.numberOfWinners, winnersCountBefore + 1);
+
+        // Последняя запись (индекс winnersCountBefore)
+        const RL::WinnerInfo wi = winnersAfter.winners.get(winnersCountBefore);
+        EXPECT_NE(wi.winnerAddress, id::zero());
+        EXPECT_EQ(wi.revenue, (ticketPrice * N * winnerPercent) / 100);
+
+        // Победитель среди игроков
+        bool found = false;
+        for (auto &inf: infos) {
+            if (inf.addr == wi.winnerAddress) {
+                found = true;
+            }
+        }
+        EXPECT_TRUE(found);
+
+        // Проверка начисления выигрыша победителю
+        for (auto &inf: infos) {
+            uint64 bal = getBalance(inf.addr);
+            if (inf.addr == wi.winnerAddress) {
+                EXPECT_EQ(bal, inf.balanceAfterBuy + wi.revenue);
+            } else {
+                EXPECT_EQ(bal, inf.balanceAfterBuy); // без изменений
+            }
+        }
+
+        // Проверка комиссии команды
+        uint64 teamFeeExpected = (ticketPrice * N * teamPercent) / 100;
+        EXPECT_EQ(getBalance(RL_DEV_ADDRESS), teamBalanceBefore + teamFeeExpected);
+    }
 }

@@ -131,7 +131,7 @@ public:
     };
 
     struct GetWinner_locals {
-        uint64 randomIndex = 0;
+        uint64 randomNum = 0;
     };
 
     struct GetWinners_input {
@@ -270,12 +270,12 @@ public:
                 // Burn the entire remaining balance.
                 // We do this instead of calculating percentages, because division rounding
                 // might otherwise leave a few qus on the account.
-                if (locals.burnedAmount > 0) {
+                {
                     qpi.getEntity(SELF, locals.entity);
                     locals.burnedAmount = locals.entity.incomingAmount - locals.entity.outgoingAmount;
-
                     qpi.burn(locals.burnedAmount);
                 }
+
 
                 // Record winner info
                 locals.fillWinnersInfoInput.winnerAddress = locals.getWinnerOutput.winnerAddress;
@@ -397,15 +397,18 @@ private:
             return;
         }
 
-        _rdrand64_step(&locals.randomIndex);
-        locals.randomIndex = mod<uint64>(locals.randomIndex, state.players.population());
+        _rdrand64_step(&locals.randomNum);
+        locals.randomNum = mod<uint64>(locals.randomNum, state.players.population());
 
-        if (state.players.isEmptySlot(locals.randomIndex)) {
-            return;
+        for (sint64 i = 0, j = 0; i < state.players.capacity(); ++i) {
+            if (!state.players.isEmptySlot(i)) {
+                if (j++ == locals.randomNum) {
+                    output.winnerAddress = state.players.key(i);
+                    output.index = i;
+                    break;
+                }
+            }
         }
-
-        output.winnerAddress = state.players.key(locals.randomIndex);
-        output.index = locals.randomIndex;
     }
 
     PRIVATE_PROCEDURE(SetFeePrecentInner) {
