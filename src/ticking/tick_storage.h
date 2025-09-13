@@ -9,6 +9,12 @@
 #include "platform/debugging.h"
 
 #include "public_settings.h"
+#include "extensions/utils.h"
+#include "platform/virtual_memory.h"
+
+#define TD00_AS_NUMBER 13511005047095412ULL
+#define TICK_AS_NUMBER 30118247716683892ULL
+#define DATA_AS_NUMBER 27303570963497060ULL
 
 #if TICK_STORAGE_AUTOSAVE_MODE
 static unsigned short SNAPSHOT_METADATA_FILE_NAME[] = L"snapshotMetadata.???";
@@ -62,9 +68,13 @@ private:
 
     // Allocated tick data buffer with tickDataLength elements (includes current and previous epoch data)
     inline static TickData* tickDataPtr = nullptr;
+    // SWAP: should reserve another tickData SwapVm instance for requestProcessor to avoid affect ticking process
+    inline static SwapVirtualMemory<TickData, TD00_AS_NUMBER, DATA_AS_NUMBER, 5, 3> tickDataSwapVM;
 
     // Allocated ticks buffer with ticksLength elements (includes current and previous epoch data)
     inline static Tick* ticksPtr = nullptr;
+    // SWAP: should reserve another ticks SwapVm instance for requestProcessor to avoid affect ticking process
+    inline static SwapVirtualMemory<Tick, TICK_AS_NUMBER, DATA_AS_NUMBER, NUMBER_OF_COMPUTORS * 5, 3> ticksSwapVM;
 
     // Allocated tickTransactions buffer with tickTransactionsSize bytes (includes current and previous epoch data)
     inline static unsigned char* tickTransactionsPtr = nullptr;
@@ -473,6 +483,11 @@ public:
             return false;
         }
 
+#ifdef USE_SWAP
+        tickDataSwapVM.init();
+        ticksSwapVM.init();
+#endif
+
         ASSERT(tickDataLock == 0);
         setMem((void*)ticksLocks, sizeof(ticksLocks), 0);
         ASSERT(tickTransactionsLock == 0);
@@ -826,8 +841,12 @@ public:
             else
                 return nullptr;
 
-			qVirtualCommit(tickDataPtr + index, sizeof(TickData));
+#ifdef USE_SWAP
+            TickData* td = tickDataSwapVM.getPtr(index);
+#else
+            qVirtualCommit(tickDataPtr + index, sizeof(TickData));
             TickData* td = tickDataPtr + index;
+#endif
             // td->epoch == 0: not yet received or temporarily disabled
             // td->epoch == INVALIDATED_TICK_DATA: invalidated by this node
             // in both cases, this data shouldn't be sent out
@@ -841,31 +860,48 @@ public:
         inline static TickData& getByTickInCurrentEpoch(unsigned int tick)
         {
             ASSERT(tickInCurrentEpochStorage(tick));
+#ifdef USE_SWAP
+            return tickDataSwapVM.getRef(tickToIndexCurrentEpoch(tick));
+#else
             qVirtualCommit(tickDataPtr + tickToIndexCurrentEpoch(tick), sizeof(TickData));
             return tickDataPtr[tickToIndexCurrentEpoch(tick)];
+#endif
         }
 
         // Get tick data by tick in previous epoch (checking tick with ASSERT)
         inline static TickData& getByTickInPreviousEpoch(unsigned int tick)
         {
             ASSERT(tickInPreviousEpochStorage(tick));
+#ifdef USE_SWAP
+            return tickDataSwapVM.getRef(tickToIndexPreviousEpoch(tick));
+#else
+            qVirtualCommit(tickDataPtr + tickToIndexPreviousEpoch(tick), sizeof(TickData));
             return tickDataPtr[tickToIndexPreviousEpoch(tick)];
+#endif
         }
 
         // Get tick data at index independent of epoch (checking index with ASSERT)
         inline TickData& operator[](unsigned int index)
         {
             ASSERT(index < tickDataLength);
-			qVirtualCommit(tickDataPtr + (index), sizeof(TickData));
+#ifdef USE_SWAP
+            return tickDataSwapVM.getRef(index);
+#else
+            qVirtualCommit(tickDataPtr + (index), sizeof(TickData));
             return tickDataPtr[index];
+#endif
         }
 
         // Get tick data at index independent of epoch (checking index with ASSERT)
         inline const TickData& operator[](unsigned int index) const
         {
             ASSERT(index < tickDataLength);
-			qVirtualCommit(tickDataPtr + (index), sizeof(TickData));
+#ifdef USE_SWAP
+            return tickDataSwapVM.getRef(index);
+#else
+            qVirtualCommit(tickDataPtr + (index), sizeof(TickData));
             return tickDataPtr[index];
+#endif
         }
     } tickData;
 
@@ -888,40 +924,62 @@ public:
         inline static Tick* getByTickIndex(unsigned int tickIndex)
         {
             ASSERT(tickIndex < tickDataLength);
-			qVirtualCommit(ticksPtr + tickIndex * NUMBER_OF_COMPUTORS, NUMBER_OF_COMPUTORS * sizeof(Tick));
+#ifdef USE_SWAP
+            return ticksSwapVM.getPtr(tickIndex * NUMBER_OF_COMPUTORS);
+#else
+            qVirtualCommit(ticksPtr + tickIndex * NUMBER_OF_COMPUTORS, NUMBER_OF_COMPUTORS * sizeof(Tick));
             return ticksPtr + tickIndex * NUMBER_OF_COMPUTORS;
+#endif
         }
 
         // Return pointer to array of one Tick per computor in current epoch by tick (checking tick with ASSERT)
         inline static Tick* getByTickInCurrentEpoch(unsigned int tick)
         {
             ASSERT(tickInCurrentEpochStorage(tick));
-			qVirtualCommit(ticksPtr + tickToIndexCurrentEpoch(tick) * NUMBER_OF_COMPUTORS, NUMBER_OF_COMPUTORS * sizeof(Tick));
+#ifdef USE_SWAP
+            return ticksSwapVM.getPtr(tickToIndexCurrentEpoch(tick) * NUMBER_OF_COMPUTORS);
+#else
+            qVirtualCommit(ticksPtr + tickToIndexCurrentEpoch(tick) * NUMBER_OF_COMPUTORS, NUMBER_OF_COMPUTORS * sizeof(Tick));
             return ticksPtr + tickToIndexCurrentEpoch(tick) * NUMBER_OF_COMPUTORS;
+#endif
         }
 
         // Return pointer to array of one Tick per computor in previous epoch by tick (checking tick with ASSERT)
         inline static Tick* getByTickInPreviousEpoch(unsigned int tick)
         {
             ASSERT(tickInPreviousEpochStorage(tick));
-			qVirtualCommit(ticksPtr + tickToIndexPreviousEpoch(tick) * NUMBER_OF_COMPUTORS, NUMBER_OF_COMPUTORS * sizeof(Tick));
+#ifdef USE_SWAP
+            return ticksSwapVM.getPtr(tickToIndexPreviousEpoch(tick) * NUMBER_OF_COMPUTORS);
+#else
+            qVirtualCommit(ticksPtr + tickToIndexPreviousEpoch(tick) * NUMBER_OF_COMPUTORS, NUMBER_OF_COMPUTORS * sizeof(Tick));
             return ticksPtr + tickToIndexPreviousEpoch(tick) * NUMBER_OF_COMPUTORS;
+#endif
         }
 
         // Get ticks element at offset (checking offset with ASSERT)
         inline Tick& operator[](unsigned int offset)
         {
+#ifdef USE_SWAP
+            ASSERT(FALSE);
+            logToConsole(L"operator[] for ticks using swap is disabled");
+#else
             ASSERT(offset < ticksLength);
 			qVirtualCommit(ticksPtr + offset, sizeof(Tick));
             return ticksPtr[offset];
+#endif
         }
 
         // Get ticks element at offset (checking offset with ASSERT)
         inline const Tick& operator[](unsigned int offset) const
         {
+#ifdef USE_SWAP
+            ASSERT(FALSE);
+            logToConsole(L"operator[] for ticks using swap is disabled");
+#else
             ASSERT(offset < ticksLength);
 			qVirtualCommit(ticksPtr + offset, sizeof(Tick));
             return ticksPtr[offset];
+#endif
         }
     } ticks;
 
