@@ -5,6 +5,7 @@
 #ifdef NO_UEFI
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #endif
 #include <lib/platform_common/processor.h>
 #include <lib/platform_common/compiler_optimization.h>
@@ -36,7 +37,7 @@ class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
 
 #ifndef _MSC_VER
-bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, const CHAR16 *mode) {
+bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, const CHAR16 *mode, bool createFileIfNotExist = false) {
     if (!file) return EINVAL;
 
     std::setlocale(LC_ALL, "");
@@ -52,6 +53,14 @@ bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, con
 
     // Try to open
     std::string fullPath = directoryUtf8.empty() ? fileNameUtf8 : (directoryUtf8 + "/" + fileNameUtf8);
+    if (createFileIfNotExist && !std::filesystem::exists(fullPath))
+    {
+        std::ofstream ofs(fullPath);
+        if (!ofs)
+        {
+            return errno;
+        }
+    }
     FILE* f = std::fopen(fullPath.c_str(), modeUtf8.c_str());
 
     if (!f) return errno;
@@ -284,7 +293,7 @@ static long long load(const CHAR16* fileName, unsigned long long totalSize, unsi
 #ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
 #else
-        print_wstr(L"Error opening file %s!\n", wchar_to_string((fileName)).c_str());
+        print_wstr(L"Error opening file in load %s!\n", wchar_to_string((fileName)).c_str());
 #endif
         return -1;
     }
@@ -370,12 +379,12 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
     {
         createDir(directory);
     }
-    if (_wfopen_s(&file, fileName, directory, L"wb") != 0 || !file)
+    if (_wfopen_s(&file, fileName, directory, L"wb", true) != 0 || !file)
     {
 #ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
 #else
-        print_wstr(L"Error opening file %s!\n", wchar_to_string((fileName)).c_str());
+        print_wstr(L"Error opening file in save %s!\n", wchar_to_string((fileName)).c_str());
 #endif
         return -1;
     }

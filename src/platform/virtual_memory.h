@@ -32,8 +32,9 @@ inline constexpr const T& min(const T& left, const T& right)
 template <typename T, unsigned long long prefixName, unsigned long long pageDirectory, unsigned long long pageCapacity = 100000, unsigned long long numCachePage = 128>
 class VirtualMemory
 {
+protected:
     const unsigned long long pageSize = sizeof(T) * pageCapacity;
-private:
+
     // on RAM
     T* currentPage = NULL; // current page is cache[0]
     T* cache[numCachePage + 1];
@@ -481,32 +482,6 @@ public:
         return result;
     }
 
-    // NOTE: if getPtr is used, all other operations need to be SEQUENCE even they are reading operations (get, getMany)
-    // because reading operations may flush the page T* live into disk and change cache page state
-    T* getPtr(unsigned long long index)
-    {
-        T* result = nullptr;
-        ACQUIRE(memLock);
-        if (index >= currentId) // out of bound
-        {
-            RELEASE(memLock);
-            return result;
-        }
-        unsigned long long requested_page_id = index / pageCapacity;
-        int cache_page_idx = loadPageToCache(requested_page_id);
-        if (cache_page_idx == -1)
-        {
-#if !defined(NDEBUG)
-            addDebugMessage(L"Invalid cache page index, return zeroes array");
-#endif
-            RELEASE(memLock);
-            return result;
-        }
-        result = &cache[cache_page_idx][index % pageCapacity];
-        RELEASE(memLock);
-        return result;
-    }
-
     // return array[index]
     // if index is not in current page it will try to find it in cache
     // if index is not in cache it will load the page to most outdated cache
@@ -676,5 +651,212 @@ public:
         lastAccessedTimestamp[0] = now_ms();
         RELEASE(memLock);
         return ret;
+    }
+};
+
+template <typename T, unsigned long long prefixName, unsigned long long pageDirectory, unsigned long long pageCapacity = 100000, unsigned long long numCachePage = 128>
+class SwapVirtualMemory : private VirtualMemory<T, prefixName, pageDirectory, pageCapacity, numCachePage>
+{
+    using VMBase = VirtualMemory<T, prefixName, pageDirectory, pageCapacity, numCachePage>;
+    using VMBase::currentPageId;
+    using VMBase::pageSize;
+    using VMBase::pageDir;
+    using VMBase::cache;
+    using VMBase::cachePageId;
+    using VMBase::lastAccessedTimestamp;
+    using VMBase::memLock;
+    using VMBase::generatePageName;
+    using VMBase::findCachePage;
+    using VMBase::loadPageToCache;
+    using VMBase::getMostOutdatedCachePage;
+
+protected:
+    bool isPageWrittenToDisk[1024 * 1024]; // if current page is written to disk
+    static constexpr unsigned long long INVALID_PAGE_ID = -1;
+public:
+    SwapVirtualMemory()
+    {
+        VMBase();
+    }
+
+    bool init()
+    {
+        bool ok = VMBase::init();
+        setMem(isPageWrittenToDisk, sizeof(isPageWrittenToDisk), 0);
+        return ok;
+    }
+
+    void writePageToDisk(unsigned long long pageId)
+    {
+        CHAR16 pageName[64];
+        generatePageName(pageName, pageId);
+
+        int cache_idx = findCachePage(pageId);
+        if (cache_idx == -1)
+        {
+            logToConsole(L"Error in writeCachePageToDisk: page not found on cache");
+            return;
+        }
+        unsigned char *pageBuffer = (unsigned char*)cache[cache_idx];
+
+#if defined(NO_UEFI) && !defined(REAL_NODE)
+        auto sz = save(pageName, pageSize, (unsigned char*)pageBuffer, pageDir);
+#else
+        auto sz = asyncSave(pageName, pageSize, (unsigned char*)pageBuffer, pageDir, true);
+#endif
+
+#if !defined(NDEBUG)
+        if (sz != pageSize)
+        {
+            addDebugMessage(L"Failed to store virtualMemory to disk. Old data maybe lost");
+        }
+        else
+        {
+            CHAR16 debugMsg[128];
+            unsigned long long tmp = prefixName;
+            debugMsg[0] = L'[';
+            copyMem(debugMsg + 1, &tmp, 8);
+            debugMsg[5] = L']';
+            debugMsg[6] = L' ';
+            debugMsg[7] = 0;
+            appendText(debugMsg, L"page ");
+            appendNumber(debugMsg, currentPageId, true);
+            appendText(debugMsg, L" is written into disk");
+            addDebugMessage(debugMsg);
+        }
+#endif
+
+        isPageWrittenToDisk[pageId] = true;
+    }
+
+    int loadPageToCacheAndTryToPersist(unsigned long long pageId)
+    {
+        int cache_page_id = findCachePage(pageId);
+
+        if (cache_page_id != -1)
+        {
+            return cache_page_id;
+        }
+        CHAR16 pageName[64];
+        generatePageName(pageName, pageId);
+        cache_page_id = getMostOutdatedCachePageExceptCurrentPage();
+        if (cachePageId[cache_page_id] != INVALID_PAGE_ID && !isPageWrittenToDisk[cachePageId[cache_page_id]])
+        {
+            writePageToDisk(cachePageId[cache_page_id]);
+        }
+#if defined(NO_UEFI) && !defined(REAL_NODE)
+        auto sz = load(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
+        lastAccessedTimestamp[cache_page_id] = now_ms();
+#else
+#if !defined(NDEBUG)
+        {
+            CHAR16 debugMsg[128];
+            setText(debugMsg, L"Trying to load OLD page: ");
+            appendNumber(debugMsg, pageId, true);
+            addDebugMessage(debugMsg);
+        }
+#endif
+        unsigned long long sz = 0;
+        if (isPageWrittenToDisk[pageId])
+        {
+            sz = asyncLoad(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
+        } else
+        {
+            sz = pageSize;
+            setMem(cache[cache_page_id], pageSize, 0);
+        }
+        if (sz != pageSize)
+        {
+#if !defined(NDEBUG)
+            addDebugMessage(L"Failed to load virtualMemory from disk");
+#endif
+            return -1;
+        }
+        lastAccessedTimestamp[cache_page_id] = now_ms();
+#endif
+        cachePageId[cache_page_id] = pageId;
+#if !defined(NDEBUG)
+        {
+            CHAR16 debugMsg[128];
+            unsigned long long tmp = prefixName;
+            debugMsg[0] = L'[';
+            copyMem(debugMsg + 1, &tmp, 8);
+            debugMsg[5] = L']';
+            debugMsg[6] = L' ';
+            debugMsg[7] = 0;
+            appendText(debugMsg, L"Load complete. Page ");
+            appendNumber(debugMsg, pageId, true);
+            appendText(debugMsg, L" is loaded into slot ");
+            appendNumber(debugMsg, cache_page_id, true);
+            addDebugMessage(debugMsg);
+        }
+#endif
+        return cache_page_id;
+    }
+
+    T& getRef(unsigned long long index)
+    {
+        T result;
+        ACQUIRE(memLock);
+
+        unsigned long long requested_page_id = index / pageCapacity;
+        currentPageId = requested_page_id > currentPageId ? requested_page_id : currentPageId;
+        int cache_page_idx = loadPageToCacheAndTryToPersist(requested_page_id);
+        if (cache_page_idx == -1)
+        {
+#if !defined(NDEBUG)
+            addDebugMessage(L"Invalid cache page index, return zeroes array");
+#endif
+            setMem(&result, sizeof(T), 0);
+            RELEASE(memLock);
+            return result;
+        }
+        T& resultRef = cache[cache_page_idx][index % pageCapacity];
+        RELEASE(memLock);
+        return resultRef;
+    }
+
+    // NOTE: if getPtr is used, all other operations need to be SEQUENCE even they are reading operations (get, getMany)
+    // because reading operations may flush the page T* live into disk and change cache page state
+    T* getPtr(unsigned long long index)
+    {
+        T* result = nullptr;
+        ACQUIRE(memLock);
+
+        unsigned long long requested_page_id = index / pageCapacity;
+        currentPageId = requested_page_id > currentPageId ? requested_page_id : currentPageId;
+        int cache_page_idx = loadPageToCacheAndTryToPersist(requested_page_id);
+        if (cache_page_idx == -1)
+        {
+#if !defined(NDEBUG)
+            addDebugMessage(L"Invalid cache page index, return zeroes array");
+#endif
+            RELEASE(memLock);
+            return result;
+        }
+        result = &cache[cache_page_idx][index % pageCapacity];
+        RELEASE(memLock);
+        return result;
+    }
+
+    // return the most outdated cache page
+    int getMostOutdatedCachePageExceptCurrentPage()
+    {
+        int min_index = 0;
+        for (int i = 0; i <= numCachePage; i++)
+        {
+            if (lastAccessedTimestamp[i] == 0)
+            {
+                return i;
+            }
+            if ((lastAccessedTimestamp[i] < lastAccessedTimestamp[min_index]) || (lastAccessedTimestamp[i] == lastAccessedTimestamp[min_index] && cachePageId[i] < cachePageId[min_index]))
+            {
+                if (cachePageId[i] != currentPageId) // skip current page
+                {
+                    min_index = i;
+                }
+            }
+        }
+        return min_index;
     }
 };
