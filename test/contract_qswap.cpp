@@ -29,6 +29,7 @@ constexpr uint32 SWAP_QU_FOR_EXACT_ASSET_IDX = 7;
 constexpr uint32 SWAP_EXACT_ASSET_FOR_QU_IDX = 8;
 constexpr uint32 SWAP_ASSET_FOR_EXACT_QU_IDX = 9;
 constexpr uint32 SET_TEAM_INFO_IDX = 10;
+constexpr uint32 TRANSFER_SHARE_MANAGEMENT_RIGHTS_IDX = 11;
 
 
 class QswapChecker : public QSWAP
@@ -203,6 +204,13 @@ public:
 		return output;
 	}
 
+    QSWAP::TransferShareManagementRights_output transferShareManagementRights(const id& invocator, QSWAP::TransferShareManagementRights_input input, uint64 inputValue)
+    {
+        QSWAP::TransferShareManagementRights_output output;
+        invokeUserProcedure(QSWAP_CONTRACT_INDEX, TRANSFER_SHARE_MANAGEMENT_RIGHTS_IDX, input, output, invocator, inputValue);
+        return output;
+    }
+
     QSWAP::QuoteExactQuInput_output quoteExactQuInput(QSWAP::QuoteExactQuInput_input input) 
     {
 		QSWAP::QuoteExactQuInput_output output;
@@ -323,7 +331,7 @@ TEST(ContractSwap, QuoteTest)
 2. issue duplicate asset
 3. issue asset with invalid input params, such as numberOfShares: 0
 */
-TEST(ContractSwap, IssueAsset)
+TEST(ContractSwap, IssueAssetAndTransferShareManagementRights)
 {
     ContractTestingQswap qswap;
 
@@ -349,6 +357,15 @@ TEST(ContractSwap, IssueAsset)
         EXPECT_EQ(qswap.transferAsset(issuer, ts_input), transferAmount);
         EXPECT_EQ(numberOfPossessedShares(assetName, issuer, newId, newId, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), transferAmount);
         // printf("%lld\n", getBalance(QSWAP_CONTRACT_ID));
+        increaseEnergy(issuer, 100);
+        uint64 qswapIdBalance = getBalance(QSWAP_CONTRACT_ID);
+        uint64 issuerBalance = getBalance(issuer);
+        QSWAP::TransferShareManagementRights_input tsr_input = {Asset{issuer, assetName}, transferAmount, QX_CONTRACT_INDEX};
+        EXPECT_EQ(qswap.transferShareManagementRights(issuer, tsr_input, 100).transferredNumberOfShares, transferAmount);
+        EXPECT_EQ(getBalance(id(QX_CONTRACT_INDEX, 0, 0, 0)), 100);
+        EXPECT_EQ(getBalance(QSWAP_CONTRACT_ID), qswapIdBalance);
+        EXPECT_EQ(getBalance(issuer), issuerBalance - 100);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), transferAmount);
     }
 
     // 1. not enough energy for asset issue fee

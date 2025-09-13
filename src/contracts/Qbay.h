@@ -2171,7 +2171,6 @@ protected:
 			{
 				// success
 				output.transferredNumberOfShares = input.numberOfShares;
-				qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), state.transferRightsFee);
 				if (qpi.invocationReward() > state.transferRightsFee)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.transferRightsFee);
@@ -2500,6 +2499,11 @@ protected:
 		state.marketPlaceOwner = ID(_R, _K, _D, _H, _C, _M, _R, _J, _Y, _C, _G, _K, _P, _D, _U, _Y, _R, _X, _G, _D, _Y, _Z, _C, _I, _Z, _I, _T, _A, _H, _Y, _O, _V, _G, _I, _U, _T, _K, _N, _D, _T, _E, _H, _P, _C, _C, _L, _W, _L, _Z, _X, _S, _H, _N, _F, _P, _D);
 		state.transferRightsFee = 1000000;
 
+	}
+
+	BEGIN_EPOCH()
+	{
+		state.transferRightsFee = 100;
 	}
 
 	struct END_EPOCH_locals
