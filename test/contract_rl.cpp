@@ -108,14 +108,6 @@ public:
         return (RLChecker *) contractStates[RL_CONTRACT_INDEX];
     }
 
-    uint8 SetTicketPrice(const id &authAddress, const uint64 &newPrice) {
-        RL::SetTicketPrice_input input{newPrice};
-        RL::SetTicketPrice_output output;
-
-        invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_SET_TICKET_PRICE, input, output, authAddress, 0);
-        return output.returnCode;
-    }
-
     RL::GetFees_output GetFees() {
         RL::GetFees_input input;
         RL::GetFees_output output;
@@ -140,13 +132,6 @@ public:
         return output;
     }
 
-    RL::SetFeePrecent_output SetFeePrecent(const id &authAddress, const RL::SetFeePrecent_input &feePrecent) {
-        RL::SetFeePrecent_output output;
-
-        invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_SET_FEE_PRECENT, feePrecent, output, authAddress, 0);
-        return output;
-    }
-
     RL::BuyTicket_output BuyTicket(const id &user, uint64 reward) {
         RL::BuyTicket_input input;
         RL::BuyTicket_output output;
@@ -162,71 +147,6 @@ public:
         callSystemProcedure(RL_CONTRACT_INDEX, END_EPOCH);
     }
 };
-
-TEST(ContractRandomLottery, SetTicketPrice) {
-    ContractTestingRL ctl;
-
-    constexpr uint64 validPrice = 3333;
-    constexpr uint64 invalidPrice = 2222;
-
-    increaseEnergy(RL_OWNER_ADDRESS, 100);
-    EXPECT_EQ(ctl.SetTicketPrice(RL_OWNER_ADDRESS, validPrice), (uint8) RL::EReturnCode::SUCCESS);
-    ctl.getState()->Check_TicketPrice(validPrice);
-
-    EXPECT_EQ(ctl.SetTicketPrice(RL_OWNER_ADDRESS, 0), (uint8) RL::EReturnCode::TICKET_INVALID_PRICE);
-
-    const id randomUser = id::randomValue();
-    increaseEnergy(randomUser, 100);
-    EXPECT_EQ(ctl.SetTicketPrice(randomUser, invalidPrice), (uint8) RL::EReturnCode::ACCESS_DENIED);
-    ctl.getState()->Check_TicketPrice(validPrice);
-}
-
-TEST(ContractRandomLottery, SetFeePrecent) {
-    ContractTestingRL ctl;
-
-    RL::SetFeePrecent_input validFeePrecent;
-    validFeePrecent.burnPrecent = 2;
-    validFeePrecent.teamFeePercent = 10;
-    validFeePrecent.distributionFeePercent = 20;
-    const uint8 validWinnerFeePercent = 100 - validFeePrecent.distributionFeePercent - validFeePrecent.teamFeePercent -
-                                        validFeePrecent.burnPrecent;
-
-    RL::SetFeePrecent_input invalidFeePrecent;
-    invalidFeePrecent.burnPrecent = 2;
-    invalidFeePrecent.teamFeePercent = 10;
-    invalidFeePrecent.distributionFeePercent = 100;
-
-    auto CheckWithValidData = [&]() {
-        const RL::GetFees_output feesOutput = ctl.GetFees();
-        EXPECT_EQ(feesOutput.returnCode, (uint8) RL::EReturnCode::SUCCESS);
-        EXPECT_EQ(feesOutput.burnPrecent, validFeePrecent.burnPrecent);
-        EXPECT_EQ(feesOutput.teamFeePercent, validFeePrecent.teamFeePercent);
-        EXPECT_EQ(feesOutput.distributionFeePercent, validFeePrecent.distributionFeePercent);
-        EXPECT_EQ(feesOutput.winnerFeePercent, validWinnerFeePercent);
-    };
-
-    // Owner sets valid fee percents
-    {
-        increaseEnergy(RL_OWNER_ADDRESS, 100);
-        EXPECT_EQ(ctl.SetFeePrecent(RL_OWNER_ADDRESS, validFeePrecent).returnCode, (uint8) RL::EReturnCode::SUCCESS);
-        CheckWithValidData();
-    }
-
-    // Unauthorized address denied
-    {
-        const id randomUser = id::randomValue();
-        increaseEnergy(randomUser, 100);
-        EXPECT_EQ(ctl.SetFeePrecent(randomUser, invalidFeePrecent).returnCode, (uint8) RL::EReturnCode::ACCESS_DENIED);
-        CheckWithValidData();
-    }
-
-    // Invalid sum of percents (>100)
-    {
-        EXPECT_EQ(ctl.SetFeePrecent(RL_OWNER_ADDRESS, invalidFeePrecent).returnCode,
-                  (uint8) RL::EReturnCode::FEE_INVALID_PRECENT_VALUE);
-        CheckWithValidData();
-    }
-}
 
 TEST(ContractRandomLottery, GetFees) {
     ContractTestingRL ctl;

@@ -112,27 +112,6 @@ public:
         uint64 arrayIndex = 0;
     };
 
-    struct SetTicketPrice_input {
-        uint64 newTicketPrice = 0;
-    };
-
-    struct SetTicketPrice_output {
-        uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
-    };
-
-    struct SetTicketPriceInner_input {
-        SetTicketPrice_input setTicketPriceInput;
-    };
-
-    struct SetTicketPriceInner_output {
-        uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
-    };
-
-    struct SetTicketPrice_locals {
-        SetTicketPriceInner_input setTicketPriceInnerInput;
-        SetTicketPriceInner_output setTicketPriceInnerOutput;
-    };
-
     /**
      * @brief Stored winner snapshot for an epoch.
      */
@@ -194,37 +173,6 @@ public:
         Entity entity;
     };
 
-    struct SetFeePrecent_input {
-        uint8 teamFeePercent = 0;
-        uint8 distributionFeePercent = 0;
-        uint8 burnPrecent = 0;
-    };
-
-    struct SetFeePrecent_output {
-        uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
-    };
-
-    struct SetFeePrecentInner_input {
-        SetFeePrecent_input setFeePrecentInput = {};
-    };
-
-    struct SetFeePrecentInner_output {
-        uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
-    };
-
-    struct SetFeePrecent_locals {
-        SetFeePrecentInner_input setFeePrecentInnerInput = {};
-        SetFeePrecentInner_output setFeePrecentInnerOutput = {};
-    };
-
-    struct INITIALIZE_locals {
-        SetFeePrecentInner_input setFeePrecentInnerInput = {};
-        SetFeePrecentInner_output setFeePrecentInnerOutput = {};
-
-        SetTicketPriceInner_input setTicketPriceInnerInput = {};
-        SetTicketPriceInner_output setTicketPriceInnerOutput = {};
-    };
-
 public:
     /**
      * @brief Registers all externally callable functions and procedures with their numeric identifiers.
@@ -235,29 +183,26 @@ public:
         REGISTER_USER_FUNCTION(GetPlayers, 2);
         REGISTER_USER_FUNCTION(GetWinners, 3);
         REGISTER_USER_PROCEDURE(BuyTicket, 1);
-        REGISTER_USER_PROCEDURE(SetTicketPrice, 2);
-        REGISTER_USER_PROCEDURE(SetFeePrecent, 3);
     }
 
     /**
      * @brief Contract initialization hook.
      * Sets default fees, ticket price, addresses, and locks the lottery (no selling yet).
      */
-    INITIALIZE_WITH_LOCALS() {
+    INITIALIZE() {
         // Addresses
         state.teamAddress = RL_DEV_ADDRESS;
         state.ownerAddress = RL_OWNER_ADDRESS;
 
         // Default fee percentages (sum <= 100; winner percent derived)
-        state.burnPrecent = 0; // (Will be overridden by inner call)
-        locals.setFeePrecentInnerInput.setFeePrecentInput.burnPrecent = 2;
-        locals.setFeePrecentInnerInput.setFeePrecentInput.teamFeePercent = 10;
-        locals.setFeePrecentInnerInput.setFeePrecentInput.distributionFeePercent = 20;
-        CALL(SetFeePrecentInner, locals.setFeePrecentInnerInput, locals.setFeePrecentInnerOutput);
+        state.teamFeePercent = 10;
+        state.distributionFeePercent = 20;
+        state.burnPrecent = 2;
+        state.winnerFeePercent = 100 - state.teamFeePercent - state.distributionFeePercent - state.burnPrecent;
 
         // Default ticket price
-        locals.setTicketPriceInnerInput.setTicketPriceInput.newTicketPrice = 1000000;
-        CALL(SetTicketPriceInner, locals.setTicketPriceInnerInput, locals.setTicketPriceInnerOutput);
+        state.ticketPrice = 1000000;
+
 
         // Start locked
         state.currentState = EState::LOCKED;
@@ -399,33 +344,6 @@ public:
         }
     }
 
-    /**
-     * @brief Owner-only: updates ticket price (must be > 0).
-     */
-    PUBLIC_PROCEDURE_WITH_LOCALS(SetTicketPrice) {
-        if (qpi.invocator() != state.ownerAddress) {
-            output.returnCode = static_cast<uint8>(EReturnCode::ACCESS_DENIED);
-            return;
-        }
-        locals.setTicketPriceInnerInput.setTicketPriceInput = input;
-        CALL(SetTicketPriceInner, locals.setTicketPriceInnerInput, locals.setTicketPriceInnerOutput);
-        output.returnCode = locals.setTicketPriceInnerOutput.returnCode;
-    }
-
-    /**
-     * @brief Owner-only: sets fee distribution (sum of team + distribution + burn <= 100).
-     * Winner share auto-computed as remainder.
-     */
-    PUBLIC_PROCEDURE_WITH_LOCALS(SetFeePrecent) {
-        if (qpi.invocator() != state.ownerAddress) {
-            output.returnCode = static_cast<uint8>(EReturnCode::ACCESS_DENIED);
-            return;
-        }
-        locals.setFeePrecentInnerInput.setFeePrecentInput = input;
-        CALL(SetFeePrecentInner, locals.setFeePrecentInnerInput, locals.setFeePrecentInnerOutput);
-        output.returnCode = locals.setFeePrecentInnerOutput.returnCode;
-    }
-
 private:
     /**
      * @brief Internal: records a winner into the cyclic winners array.
@@ -451,8 +369,8 @@ private:
         if (state.players.population() == 0) {
             return;
         }
-        _rdrand64_step(&locals.randomNum);
-        locals.randomNum = mod<uint64>(locals.randomNum, state.players.population());
+
+        locals.randomNum = mod<uint64>(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.players.population());
         for (sint64 i = 0, j = 0; i < state.players.capacity(); ++i) {
             if (!state.players.isEmptySlot(i)) {
                 if (j++ == locals.randomNum) {
@@ -462,33 +380,6 @@ private:
                 }
             }
         }
-    }
-
-    /**
-     * @brief Internal: validates and applies fee percentages.
-     */
-    PRIVATE_PROCEDURE(SetFeePrecentInner) {
-        if (input.setFeePrecentInput.teamFeePercent
-            + input.setFeePrecentInput.distributionFeePercent
-            + input.setFeePrecentInput.burnPrecent > 100) {
-            output.returnCode = static_cast<uint8>(EReturnCode::FEE_INVALID_PRECENT_VALUE);
-            return;
-        }
-        state.teamFeePercent = input.setFeePrecentInput.teamFeePercent;
-        state.distributionFeePercent = input.setFeePrecentInput.distributionFeePercent;
-        state.burnPrecent = input.setFeePrecentInput.burnPrecent;
-        state.winnerFeePercent = 100 - state.teamFeePercent - state.distributionFeePercent - state.burnPrecent;
-    }
-
-    /**
-     * @brief Internal: validates and sets ticket price.
-     */
-    PRIVATE_PROCEDURE(SetTicketPriceInner) {
-        if (input.setTicketPriceInput.newTicketPrice == 0) {
-            output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
-            return;
-        }
-        state.ticketPrice = input.setTicketPriceInput.newTicketPrice;
     }
 
 protected:
