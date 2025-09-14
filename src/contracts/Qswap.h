@@ -1,5 +1,15 @@
 using namespace QPI;
 
+// Log types enum for QSWAP contract
+enum QSWAPLogInfo {
+    QSWAPAddLiquidity = 4,
+    QSWAPRemoveLiquidity = 5,
+    QSWAPSwapExactQuForAsset = 6,
+    QSWAPSwapQuForExactAsset = 7,
+    QSWAPSwapExactAssetForQu = 8,
+    QSWAPSwapAssetForExactQu = 9
+};
+
 // FIXED CONSTANTS
 constexpr uint64 QSWAP_INITIAL_MAX_POOL = 16384;
 constexpr uint64 QSWAP_MAX_POOL = QSWAP_INITIAL_MAX_POOL * X_MULTIPLIER;
@@ -10,6 +20,39 @@ constexpr uint32 QSWAP_FEE_BASE_100 = 100;
 
 struct QSWAP2 
 {
+};
+
+// Logging message structures for QSWAP procedures
+struct QSWAPAddLiquidityMessage
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    id assetIssuer;
+    uint64 assetName;
+    sint64 userIncreaseLiquidity;
+    sint64 quAmount;
+    sint64 assetAmount;
+    sint8 _terminator;
+};
+
+struct QSWAPRemoveLiquidityMessage
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    sint64 quAmount;
+    sint64 assetAmount;
+    sint8 _terminator;
+};
+
+struct QSWAPSwapMessage
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    id assetIssuer;
+    uint64 assetName;
+    sint64 assetAmountIn;
+    sint64 assetAmountOut;
+    sint8 _terminator;
 };
 
 struct QSWAP : public ContractBase
@@ -270,6 +313,11 @@ protected:
 
 	Array<PoolBasicState, QSWAP_MAX_POOL> mPoolBasicStates;
 	Collection<LiquidityInfo, QSWAP_MAX_POOL * QSWAP_MAX_USER_PER_POOL> mLiquidities;
+
+	// Logging message variables
+	QSWAPAddLiquidityMessage _addLiquidityMessage;
+	QSWAPRemoveLiquidityMessage _removeLiquidityMessage;
+	QSWAPSwapMessage _swapMessage;
 
 	inline static sint64 min(sint64 a, sint64 b) 
 	{
@@ -1221,6 +1269,16 @@ protected:
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 
+		// Log AddLiquidity procedure
+		state._addLiquidityMessage._contractIndex = SELF_INDEX;
+		state._addLiquidityMessage._type = QSWAPAddLiquidity;
+		state._addLiquidityMessage.assetIssuer = input.assetIssuer;
+		state._addLiquidityMessage.assetName = input.assetName;
+		state._addLiquidityMessage.userIncreaseLiquidity = output.userIncreaseLiquidity;
+		state._addLiquidityMessage.quAmount = output.quAmount;
+		state._addLiquidityMessage.assetAmount = output.assetAmount;
+		LOG_INFO(state._addLiquidityMessage);
+
 		if (qpi.invocationReward() > locals.quTransferAmount)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.quTransferAmount);
@@ -1357,6 +1415,13 @@ protected:
 		locals.poolBasicState.reservedAssetAmount -= locals.burnAssetAmount;
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log RemoveLiquidity procedure
+		state._removeLiquidityMessage._contractIndex = SELF_INDEX;
+		state._removeLiquidityMessage._type = QSWAPRemoveLiquidity;
+		state._removeLiquidityMessage.quAmount = output.quAmount;
+		state._removeLiquidityMessage.assetAmount = output.assetAmount;
+		LOG_INFO(state._removeLiquidityMessage);
 	}
 
 	struct SwapExactQuForAsset_locals
@@ -1477,6 +1542,15 @@ protected:
 		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToTeam.low) - sint64(locals.feeToProtocol.low);
 		locals.poolBasicState.reservedAssetAmount -= locals.assetAmountOut;
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapExactQuForAsset procedure
+		state._swapMessage._contractIndex = SELF_INDEX;
+		state._swapMessage._type = QSWAPSwapExactQuForAsset;
+		state._swapMessage.assetIssuer = input.assetIssuer;
+		state._swapMessage.assetName = input.assetName;
+		state._swapMessage.assetAmountIn = locals.quAmountIn;
+		state._swapMessage.assetAmountOut = output.assetAmountOut;
+		LOG_INFO(state._swapMessage);
 	}
 
 	struct SwapQuForExactAsset_locals
@@ -1612,6 +1686,15 @@ protected:
 		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToTeam.low) - sint64(locals.feeToProtocol.low);
 		locals.poolBasicState.reservedAssetAmount -= input.assetAmountOut;
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapQuForExactAsset procedure
+		state._swapMessage._contractIndex = SELF_INDEX;
+		state._swapMessage._type = QSWAPSwapQuForExactAsset;
+		state._swapMessage.assetIssuer = input.assetIssuer;
+		state._swapMessage.assetName = input.assetName;
+		state._swapMessage.assetAmountIn = output.quAmountIn;
+		state._swapMessage.assetAmountOut = input.assetAmountOut;
+		LOG_INFO(state._swapMessage);
 	}
 
 	struct SwapExactAssetForQu_locals
@@ -1766,6 +1849,15 @@ protected:
 		state.protocolEarnedFee += locals.feeToProtocol.low;
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapExactAssetForQu procedure
+		state._swapMessage._contractIndex = SELF_INDEX;
+		state._swapMessage._type = QSWAPSwapExactAssetForQu;
+		state._swapMessage.assetIssuer = input.assetIssuer;
+		state._swapMessage.assetName = input.assetName;
+		state._swapMessage.assetAmountIn = input.assetAmountIn;
+		state._swapMessage.assetAmountOut = output.quAmountOut;
+		LOG_INFO(state._swapMessage);
 	}
 
 	struct SwapAssetForExactQu_locals
@@ -1914,6 +2006,15 @@ protected:
 		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToTeam.low);
 		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToProtocol.low);
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapAssetForExactQu procedure
+		state._swapMessage._contractIndex = SELF_INDEX;
+		state._swapMessage._type = QSWAPSwapAssetForExactQu;
+		state._swapMessage.assetIssuer = input.assetIssuer;
+		state._swapMessage.assetName = input.assetName;
+		state._swapMessage.assetAmountIn = output.assetAmountIn;
+		state._swapMessage.assetAmountOut = input.quAmountOut;
+		LOG_INFO(state._swapMessage);
 	}
 
 	struct TransferShareOwnershipAndPossession_locals
