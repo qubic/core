@@ -654,6 +654,9 @@ public:
     }
 };
 
+// SwapVirtualMemory don't use append operations, it acts like a continuous chunk of memory that can be read and written randomly
+// it will try to persist pages that are not written to disk when loading a page to cache (when there is no empty cache slot)
+// NOTE: pages in cache may not be written to disk yet
 template <typename T, unsigned long long prefixName, unsigned long long pageDirectory, unsigned long long pageCapacity = 100000, unsigned long long numCachePage = 128>
 class SwapVirtualMemory : private VirtualMemory<T, prefixName, pageDirectory, pageCapacity, numCachePage>
 {
@@ -837,6 +840,64 @@ public:
         result = &cache[cache_page_idx][index % pageCapacity];
         RELEASE(memLock);
         return result;
+    }
+
+    unsigned long long getVmStateSize()
+    {
+        return pageSize * (numCachePage + 1) + sizeof(isPageWrittenToDisk) + sizeof(cachePageId) + 8;
+    }
+
+    unsigned long long dumpVMState(unsigned char* buffer)
+    {
+        ACQUIRE(memLock);
+        unsigned long long ret = 0;
+        for (int i = 0; i <= numCachePage; i++)
+        {
+            copyMem(buffer, cache[i], pageSize);
+        }
+        ret += numCachePage * pageSize;
+        buffer += numCachePage * pageSize;
+
+        copyMem(buffer, isPageWrittenToDisk, sizeof(isPageWrittenToDisk));
+        ret += sizeof(isPageWrittenToDisk);
+        buffer += sizeof(isPageWrittenToDisk);
+
+        copyMem(buffer, cachePageId, sizeof(cachePageId));
+        ret += sizeof(cachePageId);
+        buffer += sizeof(cachePageId);
+
+        *((unsigned long long*)buffer) = currentPageId;
+        buffer += 8;
+        ret += 8;
+        RELEASE(memLock);
+        return ret;
+    }
+
+    unsigned long long loadVMState(unsigned char* buffer)
+    {
+        ACQUIRE(memLock);
+        unsigned long long ret = 0;
+        for (int i = 0; i <= numCachePage; i++)
+        {
+            copyMem(cache[i], buffer, pageSize);
+            buffer += pageSize;
+        }
+        ret += numCachePage * pageSize;
+
+        copyMem(isPageWrittenToDisk, buffer, sizeof(isPageWrittenToDisk));
+        buffer += sizeof(isPageWrittenToDisk);
+        ret += sizeof(isPageWrittenToDisk);
+
+        copyMem(cachePageId, buffer, sizeof(cachePageId));
+        buffer += sizeof(cachePageId);
+        ret += sizeof(cachePageId);
+
+        currentPageId = *((unsigned long long*)buffer);
+        buffer += 8;
+        ret += 8;
+
+        RELEASE(memLock);
+        return ret;
     }
 
     // return the most outdated cache page

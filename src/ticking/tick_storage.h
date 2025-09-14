@@ -17,11 +17,11 @@
 #define DATA_AS_NUMBER 27303570963497060ULL
 
 #if TICK_STORAGE_AUTOSAVE_MODE
-static unsigned short SNAPSHOT_METADATA_FILE_NAME[] = L"snapshotMetadata.???";
-static unsigned short SNAPSHOT_TICK_DATA_FILE_NAME[] = L"snapshotTickdata.???";
-static unsigned short SNAPSHOT_TICKS_FILE_NAME[] = L"snapshotTicks.???";
-static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
-static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
+static wchar_t SNAPSHOT_METADATA_FILE_NAME[] = L"snapshotMetadata.???";
+static wchar_t SNAPSHOT_TICK_DATA_FILE_NAME[] = L"snapshotTickdata.???";
+static wchar_t SNAPSHOT_TICKS_FILE_NAME[] = L"snapshotTicks.???";
+static wchar_t SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
+static wchar_t SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
 #endif
 constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
@@ -147,6 +147,27 @@ private:
     }
     bool saveTickData(unsigned long long nTick, CHAR16* directory = NULL)
     {
+#ifdef USE_SWAP
+        void *buffer = nullptr;
+        if (!allocPoolWithErrorLog(L"tickDataBuffer", tickDataSwapVM.getVmStateSize(), &buffer, __LINE__))
+        {
+            return false;
+        }
+        unsigned long long sz = tickDataSwapVM.dumpVMState((unsigned char*)buffer);
+        if (sz != tickDataSwapVM.getVmStateSize())
+        {
+            logToConsole(L"Something went wrong when dumping tickData VM state");
+            freePool(buffer);
+            return false;
+        }
+        auto writtenSize = saveLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, tickDataSwapVM.getVmStateSize(), (unsigned char*)buffer, directory);
+        if (writtenSize != tickDataSwapVM.getVmStateSize())
+        {
+            return false;
+        }
+        freePool(buffer);
+        return true;
+#else
         long long totalWriteSize = nTick * sizeof(TickData);
         auto sz = saveLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalWriteSize, (unsigned char*)tickDataPtr, directory);
         if (sz != totalWriteSize)
@@ -154,9 +175,31 @@ private:
             return false;
         }
         return true;
+#endif
     }
     bool saveTicks(unsigned long long nTick, CHAR16* directory = NULL)
     {
+#ifdef USE_SWAP
+        void *buffer = nullptr;
+        if (!allocPoolWithErrorLog(L"ticksBuffer", ticksSwapVM.getVmStateSize(), &buffer, __LINE__))
+        {
+            return false;
+        }
+        unsigned long long sz = ticksSwapVM.dumpVMState((unsigned char*)buffer);
+        if (sz != ticksSwapVM.getVmStateSize())
+        {
+            logToConsole(L"Something went wrong when dumping ticks VM state");
+            freePool(buffer);
+            return false;
+        }
+        auto writtenSize = saveLargeFile(SNAPSHOT_TICKS_FILE_NAME, ticksSwapVM.getVmStateSize(), (unsigned char*)buffer, directory);
+        if (writtenSize != ticksSwapVM.getVmStateSize())
+        {
+            return false;
+        }
+        freePool(buffer);
+        return true;
+#else
         long long totalWriteSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
         auto sz = saveLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalWriteSize, (unsigned char*)ticksPtr, directory);
         if (sz != totalWriteSize)
@@ -164,6 +207,7 @@ private:
             return false;
         }
         return true;
+#endif
     }
     bool saveTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
     {
@@ -247,6 +291,30 @@ private:
     }
     bool loadTickData(unsigned long long nTick, CHAR16* directory = NULL)
     {
+#ifdef USE_SWAP
+        unsigned long long totalLoadSize = tickDataSwapVM.getVmStateSize();
+        void *buffer = nullptr;
+        if (!allocPoolWithErrorLog(L"tickDataBuffer", totalLoadSize, &buffer, __LINE__))
+        {
+            return false;
+        }
+        auto sz = loadLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalLoadSize, (unsigned char*)buffer, directory);
+        if (sz != totalLoadSize)
+        {
+            logToConsole(L"Error loading tickData from file");
+            freePool(buffer);
+            return false;
+        }
+        unsigned long long res = tickDataSwapVM.loadVMState((unsigned char*)buffer);
+        freePool(buffer);
+        if (res != totalLoadSize)
+        {
+            logToConsole(L"Error loading tickData VM state");
+            return false;
+        }
+
+        return true;
+#else
         long long totalLoadSize = nTick * sizeof(TickData);
         auto sz = loadLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalLoadSize, (unsigned char*)tickDataPtr, directory);
         if (sz != totalLoadSize)
@@ -254,9 +322,34 @@ private:
             return false;
         }
         return true;
+#endif
     }
     bool loadTicks(unsigned long long nTick, CHAR16* directory = NULL)
     {
+#ifdef USE_SWAP
+        unsigned long long totalLoadSize = ticksSwapVM.getVmStateSize();
+        void *buffer = nullptr;
+        if (!allocPoolWithErrorLog(L"ticksBuffer", totalLoadSize, &buffer, __LINE__))
+        {
+            return false;
+        }
+        auto sz = loadLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalLoadSize, (unsigned char*)buffer, directory);
+        if (sz != totalLoadSize)
+        {
+            logToConsole(L"Error loading ticks from file");
+            freePool(buffer);
+            return false;
+        }
+        unsigned long long res = ticksSwapVM.loadVMState((unsigned char*)buffer);
+        freePool(buffer);
+        if (res != totalLoadSize)
+        {
+            logToConsole(L"Error loading ticks VM state");
+            return false;
+        }
+
+        return true;
+#else
         long long totalLoadSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
         auto sz = loadLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalLoadSize, (unsigned char*)ticksPtr, directory);
         if (sz != totalLoadSize)
@@ -265,6 +358,8 @@ private:
         }
         return true;
     }
+#endif
+
     bool loadTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
     {
         long long totalLoadSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;

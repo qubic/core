@@ -490,6 +490,12 @@ struct Overload {
                 if (input.size() == 1 && input[0] == 'p') {
                     Key->ScanCode = 0x48;
                 }
+
+                // map ESC key
+                if (input.size() == 1 && input[0] == 27)
+                {
+                    Key->ScanCode = 0x17;
+                }
             }
 
             return EFI_SUCCESS;
