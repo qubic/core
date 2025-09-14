@@ -4035,7 +4035,7 @@ static bool saveAllNodeStates()
     setText(message, L"Saving system to system.snp");
     logToConsole(message);
 
-    static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
+    static wchar_t SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
     long long savedSize = save(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
     if (savedSize != sizeof(system))
     {
@@ -4216,7 +4216,7 @@ static bool loadAllNodeStates()
         }
     }
 
-    static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
+    static wchar_t SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
     loadedSize = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
     if (loadedSize != sizeof(system))
     {
