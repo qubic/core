@@ -2,7 +2,7 @@ using namespace QPI;
 constexpr unsigned long long QUOTTERY_INITIAL_MAX_EVENT = 1024;
 constexpr unsigned long long QUOTTERY_INITIAL_CREATOR_AND_COUNT = 1024;
 constexpr unsigned long long QUOTTERY_MAX_EVENT = QUOTTERY_INITIAL_MAX_EVENT * X_MULTIPLIER;
-constexpr unsigned long long QUOTTERY_MAX_CREATOR_AND_COUNT = QUOTTERY_INITIAL_CREATOR_AND_COUNT * X_MULTIPLIER;
+constexpr unsigned long long QUOTTERY_MAX_CREATOR_AND_COUNT = 512 * X_MULTIPLIER;
 constexpr unsigned long long QUOTTERY_MAX_ORACLE_PROVIDER = 8;
 constexpr unsigned long long QUOTTERY_MAX_NUMBER_OF_USER = QUOTTERY_MAX_EVENT * 2048;
 
@@ -2251,11 +2251,18 @@ public:
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
+        // FUNCTION (view)
         REGISTER_USER_FUNCTION(BasicInfo, 1);
         REGISTER_USER_FUNCTION(GetEventInfo, 2);
         REGISTER_USER_FUNCTION(GetOrders, 3);
         REGISTER_USER_FUNCTION(GetActiveEvent, 4);
+        REGISTER_USER_FUNCTION(GetCreatorInfo, 5);
+        REGISTER_USER_FUNCTION(GetCreatorList, 6);
+        REGISTER_USER_FUNCTION(GetOracleInfo, 7);
+        REGISTER_USER_FUNCTION(GetOracleList, 8);
+        
 
+        // PROCEDURE
         REGISTER_USER_PROCEDURE(CreateEvent, 1);
         REGISTER_USER_PROCEDURE(AddToAskOrder, 2);
         REGISTER_USER_PROCEDURE(RemoveAskOrder, 3);

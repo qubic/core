@@ -32,6 +32,19 @@ public:
         increaseEnergy(owner, 1000000000ULL);
         beginEpoch();
         updateEtalonTime(0);
+
+        // initialize for gtest
+        auto state = getState();
+        state->mOperationParams.feePerDay = 11337;
+        state->mOperationParams.eligibleCreators.cleanup();
+        state->mOperationParams.eligibleOracles.cleanup();
+        state->mOperationParams.discountedFeeForUsers.cleanup();
+        state->mOperationParams.wholeSharePriceInQU = 100000;
+        setMemory(state->mQtryGov, 0);
+        state->mQtryGov.mOperationId = owner;
+        state->mQtryGov.mBurnFee = 0;
+        state->mQtryGov.mOperationFee = 0;
+        state->mQtryGov.mShareHolderFee = 0;
     }
     QUOTTERY* getState()
     {
