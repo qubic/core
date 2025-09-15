@@ -13,7 +13,17 @@
 #include "extensions/utils.h"
 #endif
 
-//#define TESTNET
+////////////////// USER CONFIGURABLE OPTIONS (default is for local testnet without swap feature) \\\\\\\\\\\\\\\\
+
+#define TESTNET // COMMENT this line if you want to compile for mainnet
+
+// this option enables using disk as RAM to reduce hardware requirement for qubic core node
+// it is highly recommended to enable this option if you want to run a full mainnet node on SSD
+// UNCOMMENT this line to enable it
+// #define USE_SWAP
+
+//////////////////////////////////////////////////////////////
+
 #define REAL_NODE
 #define NO_UEFI
 #define SINGLE_COMPILE_UNIT
@@ -7538,6 +7548,12 @@ unsigned long long getTotalRam()
     // gFullExternalEventTime
     totalRam += gNumberOfFullExternalMiningEvents * sizeof(FullExternallEvent);
 
+    // tick storage
+    totalRam += ts.getTickDataSize();
+    totalRam += ts.getTicksSize();
+    totalRam += ts.getTickTransactionOffsetSize();
+    totalRam += ts.getTickTransactionsDigestPtrSize();
+
     return totalRam;
 }
 
@@ -7546,8 +7562,8 @@ void processArgs(int argc, const char* argv[]) {
     std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "TESNET" << std::endl;
 #else
 	std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "MAINNET" << std::endl;
-    std::cout << Color::green << "[INFO] " << Color::reset << "Total RAM required: " << getTotalRam() / (1024 * 1024 * 1024) << " GB" << std::endl;
 #endif
+    std::cout << Color::green << "[INFO] " << Color::reset << "Total RAM required: " << getTotalRam() / (1024 * 1024 * 1024) << " GB" << std::endl;
 
     cxxopts::Options options("Qubic Core Lite", "The lite version of Qubic Core that can run directly on the OS without a UEFI environment.");
     options.add_options()

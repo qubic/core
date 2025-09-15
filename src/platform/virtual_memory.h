@@ -33,7 +33,7 @@ template <typename T, unsigned long long prefixName, unsigned long long pageDire
 class VirtualMemory
 {
 protected:
-    const unsigned long long pageSize = sizeof(T) * pageCapacity;
+    unsigned long long pageSize = sizeof(T) * pageCapacity;
 
     // on RAM
     T* currentPage = NULL; // current page is cache[0]
@@ -654,10 +654,16 @@ public:
     }
 };
 
+enum SwapMode
+{
+    INDEX_MODE = 0, // for stride access pattern (ideally for TickData, Ticks)
+    OFFSET_MODE = 1 // for random access pattern using offset (ideally for Transaction)
+};
+
 // SwapVirtualMemory don't use append operations, it acts like a continuous chunk of memory that can be read and written randomly
 // it will try to persist pages that are not written to disk when loading a page to cache (when there is no empty cache slot)
 // NOTE: pages in cache may not be written to disk yet
-template <typename T, unsigned long long prefixName, unsigned long long pageDirectory, unsigned long long pageCapacity = 100000, unsigned long long numCachePage = 128>
+template <typename T, unsigned long long prefixName, unsigned long long pageDirectory, unsigned long long pageCapacity = 100000, unsigned long long numCachePage = 128, SwapMode mode = INDEX_MODE>
 class SwapVirtualMemory : private VirtualMemory<T, prefixName, pageDirectory, pageCapacity, numCachePage>
 {
     using VMBase = VirtualMemory<T, prefixName, pageDirectory, pageCapacity, numCachePage>;
@@ -673,21 +679,18 @@ class SwapVirtualMemory : private VirtualMemory<T, prefixName, pageDirectory, pa
     using VMBase::loadPageToCache;
     using VMBase::getMostOutdatedCachePage;
 
-protected:
-    bool isPageWrittenToDisk[1024 * 1024]; // if current page is written to disk
-    static constexpr unsigned long long INVALID_PAGE_ID = -1;
-public:
-    SwapVirtualMemory()
-    {
-        VMBase();
-    }
+    static constexpr unsigned long long MAX_PAGE = 1024 * 1024; // max 1 million pages, can be adjusted later
 
-    bool init()
-    {
-        bool ok = VMBase::init();
-        setMem(isPageWrittenToDisk, sizeof(isPageWrittenToDisk), 0);
-        return ok;
-    }
+private:
+    // used for index mode
+    bool isPageWrittenToDisk[MAX_PAGE]; // if current page is written to disk
+    static constexpr unsigned long long INVALID_PAGE_ID = -1;
+
+    // used for offset mode
+    unsigned long long maxBytesPerPage;
+    unsigned long long maxBytesPerElement;
+    unsigned long long pageUnusedBytes[MAX_PAGE];
+    static constexpr unsigned long long INVALID_UNUSED_BYTES = -1;
 
     void writePageToDisk(unsigned long long pageId)
     {
@@ -797,7 +800,54 @@ public:
         return cache_page_id;
     }
 
+    // return the most outdated cache page
+    int getMostOutdatedCachePageExceptCurrentPage()
+    {
+        int min_index = 0;
+        for (int i = 0; i <= numCachePage; i++)
+        {
+            if (lastAccessedTimestamp[i] == 0)
+            {
+                return i;
+            }
+            if ((lastAccessedTimestamp[i] < lastAccessedTimestamp[min_index]) || (lastAccessedTimestamp[i] == lastAccessedTimestamp[min_index] && cachePageId[i] < cachePageId[min_index]))
+            {
+                if (cachePageId[i] != currentPageId) // skip current page
+                {
+                    min_index = i;
+                }
+            }
+        }
+        return min_index;
+    }
+public:
+    SwapVirtualMemory()
+    {
+        VMBase();
+    }
+
+    bool init(unsigned int extraBytesPerElement)
+    requires (mode == SwapMode::OFFSET_MODE)
+    {
+        maxBytesPerPage = pageCapacity * (sizeof(T) + extraBytesPerElement);
+        maxBytesPerElement = (sizeof(T) + extraBytesPerElement);
+        pageSize = maxBytesPerPage;
+        setMem(isPageWrittenToDisk, sizeof(isPageWrittenToDisk), 0);
+        setMem(pageUnusedBytes, sizeof(pageUnusedBytes), 0xff);
+        bool ok = VMBase::init();
+        return ok;
+    }
+
+    bool init()
+    requires (mode == SwapMode::INDEX_MODE)
+    {
+        setMem(isPageWrittenToDisk, sizeof(isPageWrittenToDisk), 0);
+        bool ok = VMBase::init();
+        return ok;
+    }
+
     T& getRef(unsigned long long index)
+    requires (mode == SwapMode::INDEX_MODE)
     {
         T result;
         ACQUIRE(memLock);
@@ -822,6 +872,7 @@ public:
     // NOTE: if getPtr is used, all other operations need to be SEQUENCE even they are reading operations (get, getMany)
     // because reading operations may flush the page T* live into disk and change cache page state
     T* getPtr(unsigned long long index)
+    requires (mode == SwapMode::INDEX_MODE)
     {
         T* result = nullptr;
         ACQUIRE(memLock);
@@ -842,9 +893,55 @@ public:
         return result;
     }
 
+    T* operator[](unsigned long long offset)
+    requires (mode == SwapMode::OFFSET_MODE)
+    {
+        T* result = nullptr;
+        ACQUIRE(memLock);
+        unsigned long long pageId = offset / maxBytesPerPage;
+        unsigned long long totalUnusedBytesOfPreviousPages = 0;
+        for (unsigned long long i = 0; i < pageId; i++)
+        {
+            if (pageUnusedBytes[i] == INVALID_UNUSED_BYTES)
+            {
+                continue;
+            }
+            totalUnusedBytesOfPreviousPages += pageUnusedBytes[i];
+        }
+        pageId = (offset + totalUnusedBytesOfPreviousPages) / maxBytesPerPage;
+        unsigned long long offsetInPage = (offset + totalUnusedBytesOfPreviousPages) % maxBytesPerPage;
+        // to avoid crossing page boundary, we skip the unused bytes in this page and move to next page
+        if (maxBytesPerPage - offsetInPage < maxBytesPerElement)
+        {
+            pageUnusedBytes[pageId] = maxBytesPerPage - offsetInPage;
+            offsetInPage = 0;
+            pageId++;
+        }
+        currentPageId = pageId > currentPageId ? pageId : currentPageId;
+        int cache_page_idx = loadPageToCacheAndTryToPersist(pageId);
+        if (cache_page_idx == -1)
+        {
+#if !defined(NDEBUG)
+            addDebugMessage(L"Invalid cache page index, return zeroes array");
+#endif
+            RELEASE(memLock);
+            return result;
+        }
+        unsigned char *pageBuffer = (unsigned char*)cache[cache_page_idx];
+        result = (T*)(pageBuffer + offsetInPage);
+        RELEASE(memLock);
+        return result;
+    }
+
     unsigned long long getVmStateSize()
     {
-        return pageSize * (numCachePage + 1) + sizeof(isPageWrittenToDisk) + sizeof(cachePageId) + 8;
+        if (mode == SwapMode::OFFSET_MODE)
+        {
+            return pageSize * (numCachePage + 1) + sizeof(isPageWrittenToDisk) + sizeof(pageUnusedBytes) + sizeof(cachePageId) + 8;
+        } else
+        {
+            return pageSize * (numCachePage + 1) + sizeof(isPageWrittenToDisk) + sizeof(cachePageId) + 8;
+        }
     }
 
     unsigned long long dumpVMState(unsigned char* buffer)
@@ -854,13 +951,20 @@ public:
         for (int i = 0; i <= numCachePage; i++)
         {
             copyMem(buffer, cache[i], pageSize);
+            buffer += pageSize;
         }
-        ret += numCachePage * pageSize;
-        buffer += numCachePage * pageSize;
+        ret += (numCachePage+1) * pageSize;
 
         copyMem(buffer, isPageWrittenToDisk, sizeof(isPageWrittenToDisk));
         ret += sizeof(isPageWrittenToDisk);
         buffer += sizeof(isPageWrittenToDisk);
+
+        if (mode == SwapMode::OFFSET_MODE)
+        {
+            copyMem(buffer, pageUnusedBytes, sizeof(pageUnusedBytes));
+            ret += sizeof(pageUnusedBytes);
+            buffer += sizeof(pageUnusedBytes);
+        }
 
         copyMem(buffer, cachePageId, sizeof(cachePageId));
         ret += sizeof(cachePageId);
@@ -882,11 +986,18 @@ public:
             copyMem(cache[i], buffer, pageSize);
             buffer += pageSize;
         }
-        ret += numCachePage * pageSize;
+        ret += (numCachePage+1) * pageSize;
 
         copyMem(isPageWrittenToDisk, buffer, sizeof(isPageWrittenToDisk));
         buffer += sizeof(isPageWrittenToDisk);
         ret += sizeof(isPageWrittenToDisk);
+
+        if (mode == SwapMode::OFFSET_MODE)
+        {
+            copyMem(pageUnusedBytes, buffer, sizeof(pageUnusedBytes));
+            buffer += sizeof(pageUnusedBytes);
+            ret += sizeof(pageUnusedBytes);
+        }
 
         copyMem(cachePageId, buffer, sizeof(cachePageId));
         buffer += sizeof(cachePageId);
@@ -898,26 +1009,5 @@ public:
 
         RELEASE(memLock);
         return ret;
-    }
-
-    // return the most outdated cache page
-    int getMostOutdatedCachePageExceptCurrentPage()
-    {
-        int min_index = 0;
-        for (int i = 0; i <= numCachePage; i++)
-        {
-            if (lastAccessedTimestamp[i] == 0)
-            {
-                return i;
-            }
-            if ((lastAccessedTimestamp[i] < lastAccessedTimestamp[min_index]) || (lastAccessedTimestamp[i] == lastAccessedTimestamp[min_index] && cachePageId[i] < cachePageId[min_index]))
-            {
-                if (cachePageId[i] != currentPageId) // skip current page
-                {
-                    min_index = i;
-                }
-            }
-        }
-        return min_index;
     }
 };
