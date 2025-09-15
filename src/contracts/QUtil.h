@@ -55,6 +55,10 @@ constexpr uint64 QUTILLogTypeNotAuthorized = 20;                    // Not autho
 constexpr uint64 QUTILLogTypeInsufficientFundsForCancel = 21;       // Not have enough funds for poll calcellation
 constexpr uint64 QUTILLogTypeMaxPollsReached = 22;                  // Max epoch per epoch reached
 
+// Fee per shareholder for DistributeQuToShareholders()
+constexpr sint64 QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER = 5;
+
+
 struct QUTILLogger
 {
     uint32 contractId; // to distinguish bw SCs
@@ -1207,6 +1211,79 @@ public:
         output = qpi.numberOfShares(input);
     }
 
+    struct DistributeQuToShareholders_input
+    {
+        Asset asset;
+    };
+    struct DistributeQuToShareholders_output
+    {
+        sint64 shareholders;
+        sint64 totalShares;
+        sint64 amountPerShare;
+        sint64 fees;
+    };
+    struct DistributeQuToShareholders_locals
+    {
+        AssetPossessionIterator iter;
+        sint64 payBack;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(DistributeQuToShareholders)
+    {
+        // 1. Compute fee (increases linear with number of shareholders)
+        // 1.1. Count shareholders and shares
+        for (locals.iter.begin(input.asset); !locals.iter.reachedEnd(); locals.iter.next())
+        {
+            if (locals.iter.numberOfPossessedShares() > 0)
+            {
+                ++output.shareholders;
+                output.totalShares += locals.iter.numberOfPossessedShares();
+            }
+        }
+
+        // 1.2. Cancel if there are no shareholders
+        if (output.shareholders == 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        // 1.3. Compute fee (proportional to number of shareholders)
+        output.fees = output.shareholders * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
+
+        // 1.4. Compute QU per share
+        output.amountPerShare = div<sint64>(qpi.invocationReward() - output.fees, output.totalShares);
+
+        // 1.5. Cancel if amount is not sufficient to pay fees and at least one QU per share
+        if (output.amountPerShare <= 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        // 1.6. compute payback QU (remainder of distribution)
+        locals.payBack = qpi.invocationReward() - output.totalShares * output.amountPerShare - output.fees;
+        ASSERT(locals.payBack >= 0);
+
+        // 2. Distribute to shareholders
+        for (locals.iter.begin(input.asset); !locals.iter.reachedEnd(); locals.iter.next())
+        {
+            if (locals.iter.numberOfPossessedShares() > 0)
+            {
+                qpi.transfer(locals.iter.possessor(), locals.iter.numberOfPossessedShares() * output.amountPerShare);
+            }
+        }
+
+        // 3. Burn fee
+        qpi.burn(output.fees);
+
+        // 4. pay back QU that cannot be evenly distributed
+        if (locals.payBack > 0)
+        {
+            qpi.transfer(qpi.invocator(), locals.payBack);
+        }
+    }
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
@@ -1222,5 +1299,6 @@ public:
         REGISTER_USER_PROCEDURE(CreatePoll, 4);
         REGISTER_USER_PROCEDURE(Vote, 5);
         REGISTER_USER_PROCEDURE(CancelPoll, 6);
+        REGISTER_USER_PROCEDURE(DistributeQuToShareholders, 7);
     }
 };
