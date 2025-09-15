@@ -23,7 +23,12 @@
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
+// The tick duration used for timing and scheduling logic.
 #define TARGET_TICK_DURATION 1000
+
+// The tick duration used to calculate the size of memory buffers.
+// This determines the memory footprint of the application.
+#define TICK_DURATION_FOR_ALLOCATION_MS 500
 #define TRANSACTION_SPARSENESS 1
 
 // Below are 2 variables that are used for auto-F5 feature:
@@ -37,7 +42,7 @@
 
 #define NEXT_TICK_TIMEOUT_THRESHOLD 5ULL // Multiplier of TARGET_TICK_DURATION for the system to discard next tick in tickData.
                                          // This will lead to zero `expectedNextTickTransactionDigest` in consensus
-             
+
 #define PEER_REFRESHING_PERIOD 120000ULL
 #if AUTO_FORCE_NEXT_TICK_THRESHOLD != 0
 static_assert(NEXT_TICK_TIMEOUT_THRESHOLD < AUTO_FORCE_NEXT_TICK_THRESHOLD, "Timeout threshold must be smaller than auto F5 threshold");
@@ -94,7 +99,7 @@ static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
-#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60ULL * 60 * 24 * 7 * 1000) / TICK_DURATION_FOR_ALLOCATION_MS) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
