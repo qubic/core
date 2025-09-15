@@ -12,10 +12,10 @@
 using namespace QPI;
 
 // Maximum number of players allowed in the lottery.
-constexpr uint16 MAX_NUMBER_OF_PLAYERS = 1024;
+constexpr uint16 RL_MAX_NUMBER_OF_PLAYERS = 1024;
 
 /// Maximum number of winners kept in the on-chain winners history buffer.
-constexpr uint16 MAX_NUMBER_OF_WINNERS_IN_HISTORY = 1024;
+constexpr uint16 RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY = 1024;
 
 /**
  * @brief Developer address for the RandomLottery contract.
@@ -101,7 +101,7 @@ public:
     };
 
     struct GetPlayers_output {
-        Array<id, MAX_NUMBER_OF_PLAYERS> players;
+        Array<id, RL_MAX_NUMBER_OF_PLAYERS> players;
         uint16 numberOfPlayers = 0;
         uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
     };
@@ -148,7 +148,7 @@ public:
     };
 
     struct GetWinners_output {
-        Array<WinnerInfo, MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
+        Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
         uint64 numberOfWinners = 0;
         uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
     };
@@ -350,7 +350,7 @@ private:
         if (input.winnerAddress == id::zero()) {
             return;
         }
-        if (MAX_NUMBER_OF_WINNERS_IN_HISTORY >= state.winners.capacity() - 1) {
+        if (RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY >= state.winners.capacity() - 1) {
             state.winnersInfoNextEmptyIndex = 0;
         }
         locals.winnerInfo.winnerAddress = input.winnerAddress;
@@ -425,15 +425,15 @@ protected:
 
     /**
      * @brief Set of players participating in the current lottery epoch.
-     * Maximum capacity is defined by MAX_NUMBER_OF_PLAYERS.
+     * Maximum capacity is defined by RL_MAX_NUMBER_OF_PLAYERS.
      */
-    HashSet<id, MAX_NUMBER_OF_PLAYERS> players = {};
+    HashSet<id, RL_MAX_NUMBER_OF_PLAYERS> players = {};
 
     /**
      * @brief Circular buffer storing the history of winners.
-     * Maximum capacity is defined by MAX_NUMBER_OF_WINNERS_IN_HISTORY.
+     * Maximum capacity is defined by RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY.
      */
-    Array<WinnerInfo, MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners = {};
+    Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners = {};
 
     /**
      * @brief Index pointing to the next empty slot in the winners array.
