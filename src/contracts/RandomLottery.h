@@ -108,6 +108,7 @@ public:
 
     struct GetPlayers_locals {
         uint64 arrayIndex = 0;
+        sint32 i = 0;
     };
 
     /**
@@ -142,6 +143,8 @@ public:
 
     struct GetWinner_locals {
         uint64 randomNum = 0;
+        sint32 i = 0;
+        sint32 j = 0;
     };
 
     struct GetWinners_input {
@@ -169,6 +172,8 @@ public:
 
         uint64 revenue = 0;
         Entity entity;
+
+        sint32 i = 0;
     };
 
 public:
@@ -222,9 +227,9 @@ public:
 
         // Single-player edge case: refund instead of drawing.
         if (state.players.population() == 1) {
-            for (sint32 i = 0; i < state.players.capacity(); ++i) {
-                if (!state.players.isEmptySlot(i)) {
-                    qpi.transfer(state.players.key(i), state.ticketPrice);
+            for (locals.i = 0; locals.i < state.players.capacity(); ++locals.i) {
+                if (!state.players.isEmptySlot(locals.i)) {
+                    qpi.transfer(state.players.key(locals.i), state.ticketPrice);
                     break;
                 }
             }
@@ -240,24 +245,26 @@ public:
                 locals.winnerAmount = div<uint64>(locals.revenue * state.winnerFeePercent, 100ULL);
                 locals.teamFee = div<uint64>(locals.revenue * state.teamFeePercent, 100ULL);
                 locals.distributionFee = div<uint64>(locals.revenue * state.distributionFeePercent, 100ULL);
+                locals.burnedAmount = div<uint64>(locals.revenue * state.burnPrecent, 100ULL);
 
                 // Team fee
                 if (locals.teamFee > 0) {
                     qpi.transfer(state.teamAddress, locals.teamFee);
                 }
+
                 // Distribution fee
                 if (locals.distributionFee > 0) {
                     qpi.distributeDividends(div<uint64>(locals.distributionFee, uint64(NUMBER_OF_COMPUTORS)));
                 }
+
                 // Winner payout
                 if (locals.winnerAmount > 0) {
                     qpi.transfer(locals.getWinnerOutput.winnerAddress, locals.winnerAmount);
                 }
 
-                // Burn all residual (handles rounding dust).
+                // Burn remainder
+                if (locals.burnedAmount > 0)
                 {
-                    qpi.getEntity(SELF, locals.entity);
-                    locals.burnedAmount = locals.entity.incomingAmount - locals.entity.outgoingAmount;
                     qpi.burn(locals.burnedAmount);
                 }
 
@@ -292,9 +299,10 @@ public:
         if (output.numberOfPlayers == 0) {
             return;
         }
-        for (sint64 i = 0; i < state.players.capacity(); ++i) {
-            if (!state.players.isEmptySlot(i)) {
-                output.players.set(locals.arrayIndex++, state.players.key(i));
+        locals.i = 0;
+        for (locals.i = 0; locals.i < state.players.capacity(); ++locals.i) {
+            if (!state.players.isEmptySlot(locals.i)) {
+                output.players.set(locals.arrayIndex++, state.players.key(locals.i));
             }
         }
     }
@@ -369,11 +377,11 @@ private:
         }
 
         locals.randomNum = mod<uint64>(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.players.population());
-        for (sint64 i = 0, j = 0; i < state.players.capacity(); ++i) {
-            if (!state.players.isEmptySlot(i)) {
-                if (j++ == locals.randomNum) {
-                    output.winnerAddress = state.players.key(i);
-                    output.index = i;
+        for (locals.i = 0, locals.j = 0; locals.i < state.players.capacity(); ++locals.i) {
+            if (!state.players.isEmptySlot(locals.i)) {
+                if (locals.j++ == locals.randomNum) {
+                    output.winnerAddress = state.players.key(locals.i);
+                    output.index = locals.i;
                     break;
                 }
             }
