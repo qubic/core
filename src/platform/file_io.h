@@ -40,8 +40,6 @@ static AsyncFileIO* gAsyncFileIO = NULL;
 bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, const CHAR16 *mode, bool createFileIfNotExist = false) {
     if (!file) return EINVAL;
 
-    std::setlocale(LC_ALL, "");
-
     // Convert filename
     std::string fileNameUtf8 = wchar_to_string(fileName);
 
@@ -64,7 +62,8 @@ bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, con
     FILE* f = std::fopen(fullPath.c_str(), modeUtf8.c_str());
 
     if (!f) return errno;
-        *file = f;
+
+    *file = f;
 
     return 0;
 }

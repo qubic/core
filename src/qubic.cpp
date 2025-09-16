@@ -2072,7 +2072,7 @@ static void updateNumberOfTickTransactions()
 // In this test, the processors calling requestProcessor() were stuck before entering the function.
 // Probably, this was caused by a bug in the optimizer, because disabling the optimizer solved the
 // problem.
-OPTIMIZE_OFF()
+// OPTIMIZE_OFF()
 static void requestProcessor(void* ProcedureArgument, unsigned long long processorNumber)
 {
     enableAVX();
@@ -3059,7 +3059,6 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
     return false;
 }
 
-OPTIMIZE_OFF()
 static void processTick(unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -3215,7 +3214,12 @@ static void processTick(unsigned long long processorNumber)
         }
         PROFILE_SCOPE_END();
     }
-
+    else
+    {
+        setText(message, L"Processed a empty tick | Tick: ");
+        appendNumber(message, system.tick, true);
+        logToConsole(message);
+    }
     PROFILE_NAMED_SCOPE_BEGIN("processTick(): END_TICK");
     logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
@@ -4219,6 +4223,7 @@ static bool loadAllNodeStates()
     gCustomMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.customMiningSharesCounterData);
 
     // update own computor indices
+    numberOfOwnComputorIndices = 0;
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
         for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
@@ -4922,7 +4927,7 @@ static bool isTickTimeOut()
 // In this test, the processor calling tickProcessor() was stuck before entering the function.
 // Probably, this was caused by a bug in the optimizer, because disabling the optimizer solved the
 // problem.
-OPTIMIZE_OFF()
+// OPTIMIZE_OFF()
 static void tickProcessor(void*, unsigned long long processorNumber)
 {
     enableAVX();
