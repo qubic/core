@@ -231,6 +231,7 @@ public:
         id currentId;
         sint64 t;
         uint64 useNext;
+        uint64 totalNumTransfers;
         QUTILLogger logger;
     };
 
@@ -500,9 +501,33 @@ public:
     {
         locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_TRIGGERED };
         LOG_INFO(locals.logger);
-        state.total = input.amt0 + input.amt1 + input.amt2 + input.amt3 + input.amt4 + input.amt5 + input.amt6 + input.amt7 + input.amt8 + input.amt9 + input.amt10 + input.amt11 + input.amt12 + input.amt13 + input.amt14 + input.amt15 + input.amt16 + input.amt17 + input.amt18 + input.amt19 + input.amt20 + input.amt21 + input.amt22 + input.amt23 + input.amt24 + QUTIL_STM1_INVOCATION_FEE;
-        // invalid amount (<0), return fund and exit
-        if ((input.amt0 < 0) || (input.amt1 < 0) || (input.amt2 < 0) || (input.amt3 < 0) || (input.amt4 < 0) || (input.amt5 < 0) || (input.amt6 < 0) || (input.amt7 < 0) || (input.amt8 < 0) || (input.amt9 < 0) || (input.amt10 < 0) || (input.amt11 < 0) || (input.amt12 < 0) || (input.amt13 < 0) || (input.amt14 < 0) || (input.amt15 < 0) || (input.amt16 < 0) || (input.amt17 < 0) || (input.amt18 < 0) || (input.amt19 < 0) || (input.amt20 < 0) || (input.amt21 < 0) || (input.amt22 < 0) || (input.amt23 < 0) || (input.amt24 < 0))
+
+         // invalid amount (<0 or >= MAX_AMOUNT), return fund and exit
+        if ((input.amt0 < 0) || (input.amt0 >= MAX_AMOUNT)
+            || (input.amt1 < 0) || (input.amt1 >= MAX_AMOUNT)
+            || (input.amt2 < 0) || (input.amt2 >= MAX_AMOUNT)
+            || (input.amt3 < 0) || (input.amt3 >= MAX_AMOUNT)
+            || (input.amt4 < 0) || (input.amt4 >= MAX_AMOUNT)
+            || (input.amt5 < 0) || (input.amt5 >= MAX_AMOUNT)
+            || (input.amt6 < 0) || (input.amt6 >= MAX_AMOUNT)
+            || (input.amt7 < 0) || (input.amt7 >= MAX_AMOUNT)
+            || (input.amt8 < 0) || (input.amt8 >= MAX_AMOUNT)
+            || (input.amt9 < 0) || (input.amt9 >= MAX_AMOUNT)
+            || (input.amt10 < 0) || (input.amt10 >= MAX_AMOUNT)
+            || (input.amt11 < 0) || (input.amt11 >= MAX_AMOUNT)
+            || (input.amt12 < 0) || (input.amt12 >= MAX_AMOUNT)
+            || (input.amt13 < 0) || (input.amt13 >= MAX_AMOUNT)
+            || (input.amt14 < 0) || (input.amt14 >= MAX_AMOUNT)
+            || (input.amt15 < 0) || (input.amt15 >= MAX_AMOUNT)
+            || (input.amt16 < 0) || (input.amt16 >= MAX_AMOUNT)
+            || (input.amt17 < 0) || (input.amt17 >= MAX_AMOUNT)
+            || (input.amt18 < 0) || (input.amt18 >= MAX_AMOUNT)
+            || (input.amt19 < 0) || (input.amt19 >= MAX_AMOUNT)
+            || (input.amt20 < 0) || (input.amt20 >= MAX_AMOUNT)
+            || (input.amt21 < 0) || (input.amt21 >= MAX_AMOUNT)
+            || (input.amt22 < 0) || (input.amt22 >= MAX_AMOUNT)
+            || (input.amt23 < 0) || (input.amt23 >= MAX_AMOUNT)
+            || (input.amt24 < 0) || (input.amt24 >= MAX_AMOUNT))
         {
             locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_INVALID_AMOUNT_NUMBER };
             output.returnCode = QUTIL_STM1_INVALID_AMOUNT_NUMBER;
@@ -512,9 +537,40 @@ public:
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
         }
+
+        // Make sure that the sum of all amounts does not overflow and is equal to qpi.invocationReward()
+        state.total = qpi.invocationReward();
+        state.total -= input.amt0; if (state.total < 0) goto exit;
+        state.total -= input.amt1; if (state.total < 0) goto exit;
+        state.total -= input.amt2; if (state.total < 0) goto exit;
+        state.total -= input.amt3; if (state.total < 0) goto exit;
+        state.total -= input.amt4; if (state.total < 0) goto exit;
+        state.total -= input.amt5; if (state.total < 0) goto exit;
+        state.total -= input.amt6; if (state.total < 0) goto exit;
+        state.total -= input.amt7; if (state.total < 0) goto exit;
+        state.total -= input.amt8; if (state.total < 0) goto exit;
+        state.total -= input.amt9; if (state.total < 0) goto exit;
+        state.total -= input.amt10; if (state.total < 0) goto exit;
+        state.total -= input.amt11; if (state.total < 0) goto exit;
+        state.total -= input.amt12; if (state.total < 0) goto exit;
+        state.total -= input.amt13; if (state.total < 0) goto exit;
+        state.total -= input.amt14; if (state.total < 0) goto exit;
+        state.total -= input.amt15; if (state.total < 0) goto exit;
+        state.total -= input.amt16; if (state.total < 0) goto exit;
+        state.total -= input.amt17; if (state.total < 0) goto exit;
+        state.total -= input.amt18; if (state.total < 0) goto exit;
+        state.total -= input.amt19; if (state.total < 0) goto exit;
+        state.total -= input.amt20; if (state.total < 0) goto exit;
+        state.total -= input.amt21; if (state.total < 0) goto exit;
+        state.total -= input.amt22; if (state.total < 0) goto exit;
+        state.total -= input.amt23; if (state.total < 0) goto exit;
+        state.total -= input.amt24; if (state.total < 0) goto exit;
+        state.total -= QUTIL_STM1_INVOCATION_FEE; if (state.total < 0) goto exit;
+
         // insufficient or too many qubic transferred, return fund and exit (we don't want to return change)
-        if (qpi.invocationReward() != state.total)
+        if (state.total != 0)
         {
+        exit:
             locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_WRONG_FUND };
             LOG_INFO(locals.logger);
             output.returnCode = QUTIL_STM1_WRONG_FUND;
@@ -675,7 +731,7 @@ public:
             LOG_INFO(locals.logger);
             qpi.transfer(input.dst24, input.amt24);
         }
-        locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, state.total, QUTIL_STM1_SUCCESS };
+        locals.logger = QUTILLogger{ 0,  0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_STM1_SUCCESS};
         LOG_INFO(locals.logger);
         output.returnCode = QUTIL_STM1_SUCCESS;
         qpi.burn(QUTIL_STM1_INVOCATION_FEE);
@@ -695,7 +751,8 @@ public:
         output.total = 0;
 
         // Number of addresses and transfers is > 0 and total transfers do not exceed limit (including 2 transfers from invocator to contract and contract to invocator)
-        if (input.dstCount <= 0 || input.numTransfersEach <= 0 || input.dstCount * input.numTransfersEach + 2 > CONTRACT_ACTION_TRACKER_SIZE)
+        locals.totalNumTransfers = smul((uint64)input.dstCount, (uint64)input.numTransfersEach);
+        if (input.dstCount <= 0 || input.numTransfersEach <= 0 || locals.totalNumTransfers > CONTRACT_ACTION_TRACKER_SIZE - 2)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -708,7 +765,7 @@ public:
         }
 
         // Check the fund is enough
-        if (qpi.invocationReward() < input.dstCount * input.numTransfersEach)
+        if ((uint64)qpi.invocationReward() < locals.totalNumTransfers)
         {
             if (qpi.invocationReward() > 0)
             {
