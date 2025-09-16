@@ -2826,7 +2826,7 @@ static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTrans
     // TODO
 }
 
-static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, const m256i& dataLock, unsigned long long processorNumber)
+static void processTickTransaction(const Transaction* transaction, const unsigned long long txOffset, const m256i& transactionDigest, const m256i& dataLock, unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
 
@@ -2837,7 +2837,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
     // Record the tx with digest
     ts.transactionsDigestAccess.acquireLock();
-    ts.transactionsDigestAccess.insertTransaction(transactionDigest, transaction);
+    ts.transactionsDigestAccess.insertTransaction(transactionDigest, txOffset);
     ts.transactionsDigestAccess.releaseLock();
 
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
@@ -3202,7 +3202,7 @@ static void processTick(unsigned long long processorNumber)
                 {
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
                     logger.registerNewTx(transaction->tick, transactionIndex);
-                    processTickTransaction(transaction, nextTickData.transactionDigests[transactionIndex], nextTickData.timelock, processorNumber);
+                    processTickTransaction(transaction, tsCurrentTickTransactionOffsets[transactionIndex], nextTickData.transactionDigests[transactionIndex], nextTickData.timelock, processorNumber);
                 }
                 else
                 {
@@ -3996,6 +3996,13 @@ static bool saveAllNodeStates()
     appendNumber(directory, system.epoch, false);
 
     logToConsole(L"Start saving node states from main thread");
+
+    // First remove old snapshot data
+    if (!removeDir(directory))
+    {
+        logToConsole(L"Failed to remove old snapshot data");
+        return false;
+    }
 
     // Mark current snapshot metadata as invalid at the beginning.
     // Any reasons make the valid metadata can not be overwritten at the final step will keep this invalid file

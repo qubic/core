@@ -667,6 +667,7 @@ template <typename T, unsigned long long prefixName, unsigned long long pageDire
 class SwapVirtualMemory : private VirtualMemory<T, prefixName, pageDirectory, pageCapacity, numCachePage>
 {
     using VMBase = VirtualMemory<T, prefixName, pageDirectory, pageCapacity, numCachePage>;
+    using VMBase::currentPage;
     using VMBase::currentPageId;
     using VMBase::pageSize;
     using VMBase::pageDir;
@@ -806,7 +807,7 @@ private:
         int min_index = 0;
         for (int i = 0; i <= numCachePage; i++)
         {
-            if (lastAccessedTimestamp[i] == 0)
+            if (lastAccessedTimestamp[i] == 0 && cachePageId[i] != currentPageId)
             {
                 return i;
             }
@@ -1009,5 +1010,10 @@ public:
 
         RELEASE(memLock);
         return ret;
+    }
+
+    const T* getCurrentPagePtr()
+    {
+        return currentPage;
     }
 };

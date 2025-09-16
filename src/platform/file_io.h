@@ -75,8 +75,17 @@ static void addDebugMessage(const CHAR16* msg);
 static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI
-    logToConsole(L"NO_UEFI implementation of getFileSize() is missing! No valid file size returned!");
-    return -1;
+    std::string dirNameStr = wchar_to_string(directory);
+    std::string fileNameStr = wchar_to_string(fileName);
+    std::filesystem::path filePath;
+    filePath = dirNameStr + "/" + fileNameStr;
+
+    if (!std::filesystem::exists(filePath))
+    {
+        return -1;
+    }
+
+    return std::filesystem::file_size(filePath);
 #else
     EFI_STATUS status;
     EFI_FILE_PROTOCOL* file;
@@ -277,6 +286,22 @@ static bool removeFile(CHAR16* directory, CHAR16* fileName)
         return false;
     }
     return true;
+#endif
+}
+
+static bool removeDir(CHAR16* dirName)
+{
+#ifdef NO_UEFI
+    ASSERT(isMainProcessor());
+    std::string dirNameStr = wchar_to_string(dirName);
+    if (!std::filesystem::exists(dirNameStr) || !std::filesystem::is_directory(dirNameStr))
+    {
+        return true;
+    }
+    return std::filesystem::remove_all(dirNameStr) > 0;
+#else
+    logToConsole(L"removeDir is not supported in UEFI mode");
+    return false;
 #endif
 }
 

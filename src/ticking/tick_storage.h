@@ -566,6 +566,28 @@ public:
             initMetaData(epoch);
             return 2;
         }
+
+        // Rebuild the transaction digest hashmap
+        for (auto i = metaData.tickBegin; i < metaData.tickEnd; i++)
+        {
+            TickData *tickData = TickDataAccess::getByTickIfNotEmpty(i);
+            if (!tickData)
+            {
+                continue;
+            }
+            for (int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
+            {
+                unsigned long long &offset = tickTransactionOffsets(i, j);
+                if (offset)
+                {
+                    transactionsDigestAccess.insertTransaction(tickData->transactionDigests[j], offset);
+                } else
+                {
+                    break;
+                }
+            }
+        }
+
         return 0;
     }
 
@@ -632,7 +654,7 @@ public:
 		constexpr auto total = tickDataSize + ticksSize + tickTransactionsSize + tickTransactionOffsetsSize + (tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry));
 
         // will be used no matter USE_SWAP is enabled or not
-        if (!allocPoolWithErrorLog(L"tickTransactionOffset", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__, true, true)
+        if (!allocPoolWithErrorLog(L"tickTransactionOffset", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__, false, true)
             || !allocPoolWithErrorLog(L"tickTransactionsDigestPtr", tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry), (void**)&tickTransactionsDigestPtr, __LINE__, true, true))
         {
             return false;
@@ -1235,14 +1257,14 @@ public:
         struct HashMapEntry
         {
             m256i digest; // isZero mean not occupied
-            const Transaction* transaction;
+            unsigned long long offset;
         };
         unsigned long long hashFunc(const m256i& digest)
         {
             return digest.m256i_u32[7] % tickTransactionOffsetsLengthCurrentEpoch;
         }
 
-        void insertTransaction(const m256i& digest, const Transaction* transaction)
+        void insertTransaction(const m256i& digest, const unsigned long long offset)
         {
             // Zero digest. No further process
             if (isZero(digest))
@@ -1263,7 +1285,7 @@ public:
                     return;
                 }
             }
-            pHashMap[index].transaction = transaction;
+            pHashMap[index].offset = offset;
             pHashMap[index].digest = digest;
         }
 
@@ -1282,7 +1304,8 @@ public:
             {
                 if (pHashMap[index].digest == digest)
                 {
-                    return pHashMap[index].transaction;
+                    // SWAP: should load the page containing the transaction
+                    return tickTransactionsSwapVM[pHashMap[index].offset];
                 }
                 index = (index + 1) % tickTransactionOffsetsLengthCurrentEpoch;
                 if (index == original_index)
