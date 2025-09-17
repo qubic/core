@@ -88,6 +88,8 @@ public:
 
         uint64 burnedAmount;
         uint64 feePerDay;
+        uint64 wholeSharePriceInQU;
+
         id gameOperator;
     };
 
@@ -122,7 +124,7 @@ public:
 
     HashMap<uint64, QtryEventInfo, QUOTTERY_MAX_EVENT> mEventInfo;
     HashMap<uint64, Array<sint8, QUOTTERY_MAX_ORACLE_PROVIDER>, QUOTTERY_MAX_EVENT> mEventResult;
-    
+
     // qtry-v2: orders array
     struct QtryOrder
     {
@@ -269,7 +271,7 @@ public:
         }
     }
 
-    struct GetCreatorList_input{};
+    struct GetCreatorList_input {};
     struct GetCreatorList_output
     {
         uint64 total;
@@ -407,7 +409,7 @@ public:
         output.isValid = 1;
         return;
     }
-    public:
+public:
 
     /**
      * @brief Helper to construct a unique key for the order book.
@@ -474,7 +476,7 @@ public:
         id key;
         QtryOrder qo;
     };
-    
+
     /**
      * @brief Validates that a user owns a sufficient amount of a specific position (shares).
      * @param uid The user's ID.
@@ -622,7 +624,7 @@ public:
             output.ok = 1;
         }
     }
-    
+
     struct RewardTransfer_input
     {
         id receiver;
@@ -662,7 +664,7 @@ public:
         // in future it will also handle a stablecoin here
         locals.total = input.amount;
         locals.feeTotal = 0;
-        
+
         if (input.needChargeFee)
         {
             locals.eindex = state.mEventInfo.getElementIndex(input.eid);
@@ -833,7 +835,7 @@ public:
             locals.ti.receiver = locals.A0.qo.entity;
             locals.ti.needChargeFee = 1;
             CALL(RewardTransfer, locals.ti, locals.to);
-            
+
             locals.tpi.amount = locals.matchedAmount;
             locals.tpi.oi.eid = input.eventId;
             locals.tpi.oi.option = 0;
@@ -962,7 +964,7 @@ public:
                 locals.matchedPrice0 = locals.A0.price;
                 locals.matchedPrice1 = state.mOperationParams.wholeSharePriceInQU - locals.A0.price;
             }
-            
+
             locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_2, locals.A0.qo.entity, locals.A1.qo.entity, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, input.eventId, 2, 0 };
             LOG_INFO(locals.log);
 
@@ -1036,7 +1038,7 @@ public:
             locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_3, locals.B0.qo.entity, locals.B1.qo.entity, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, input.eventId, 2, 0 };
             LOG_INFO(locals.log);
             // update position
-            
+
             locals.upi.amountChange = locals.matchedAmount;
             locals.upi.oi.eid = input.eventId;
             locals.upi.oi.option = 0;
@@ -1096,7 +1098,7 @@ public:
             return;
         }
     }
-    public:
+public:
     struct AddToAskOrder_input
     {
         uint64 eventId;
@@ -1170,12 +1172,12 @@ public:
         CALL(ValidatePosition, locals.vpi, locals.vpo);
         if (!locals.vpo.isValid)
         {
-            locals.log = QuotteryLogger{ 0, QTRY_INVALID_POSITION, 0};
+            locals.log = QuotteryLogger{ 0, QTRY_INVALID_POSITION, 0 };
             LOG_WARNING(locals.log);
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        
+
         locals.tradeLog = QuotteryTradeLogger{ 0, QTRY_ADD_ASK, qpi.invocator(), NULL_ID, (sint64)input.amount, (sint64)input.price, 0, input.eventId, input.option, 0 };
         LOG_INFO(locals.tradeLog);
 
@@ -1506,8 +1508,8 @@ public:
         {
             return;
         }
-        
-        locals.log = QuotteryTradeLogger{ 0, QTRY_ADD_BID, qpi.invocator(), NULL_ID, (sint64)input.amount, (sint64)input.price, 0, input.eventId, input.option, 0};
+
+        locals.log = QuotteryTradeLogger{ 0, QTRY_ADD_BID, qpi.invocator(), NULL_ID, (sint64)input.amount, (sint64)input.price, 0, input.eventId, input.option, 0 };
         LOG_INFO(locals.log);
 
         locals.key = MakeOrderKey(input.eventId, input.option, BID_BIT);
@@ -1569,7 +1571,7 @@ public:
             return;
         }
     }
-    
+
     /**
     * finalize an event
     * If there are 51%+ votes agree with the same result, the event will be finalized.
@@ -1597,7 +1599,7 @@ public:
         QtryEventInfo qei;
         Paylist pl;
         sint64 price;
-        
+
         RewardTransfer_input rti;
         RewardTransfer_output rto;
     };
@@ -1663,7 +1665,7 @@ public:
         state.mPositionInfo.cleanupIfNeeded();
         // cleaning all ABOrder
         locals.index = 0;
-        
+
         // deleting ask 0
         locals.key = MakeOrderKey(input.eventId, 0, ASK_BIT);
         locals.index = state.mABOrders.headIndex(locals.key);
@@ -1695,7 +1697,7 @@ public:
             locals.rti.eid = input.eventId;
             locals.rti.needChargeFee = 0;
             CALL(RewardTransfer, locals.rti, locals.rto);
-            
+
             state.mABOrders.remove(locals.index);
             locals.index = state.mABOrders.headIndex(locals.key);
         }
@@ -1720,7 +1722,7 @@ public:
         // distribute fee to creator and oracles
         state.mPaylist.get(input.eventId, locals.pl);
         state.mEventInfo.get(input.eventId, locals.qei);
-        
+
         locals.rti.receiver = locals.qei.creator;
         locals.rti.amount = locals.pl.creatorFee;
         locals.rti.eid = input.eventId;
@@ -1746,7 +1748,7 @@ public:
     /**************************************/
     /************VIEW FUNCTIONS************/
     /**************************************/
-    
+
     /**
      * @brief PUBLIC VIEW FUNCTION
      * Returns a high-level overview of the contract's state and financial health.
@@ -1763,12 +1765,15 @@ public:
 
         output.operationRevenue = state.mOperationRevenue;
         output.distributedOperationRevenue = state.mDistributedOperationRevenue;
-        
+
         output.shareholdersRevenue = state.mShareholdersRevenue;
         output.distributedShareholdersRevenue = state.mDistributedShareholdersRevenue;
 
         output.burnedAmount = state.mBurnedAmount;
+
         output.feePerDay = state.mOperationParams.feePerDay;
+        output.wholeSharePriceInQU = state.mOperationParams.wholeSharePriceInQU;
+
         output.gameOperator = state.mQtryGov.mOperationId;
     }
 
@@ -1803,7 +1808,7 @@ public:
             }
         }
     }
-    
+
     struct CreateEvent_input
     {
         QtryEventInfo qei;
@@ -1816,7 +1821,7 @@ public:
         DateAndTime dtNow;
         uint64 duration;
         sint64 fee;
-        
+
         QtryEventInfo qei;
         Array<sint8, 8> zeroResult;
         bit found;
@@ -1839,7 +1844,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_USER ,0 };
             LOG_WARNING(locals.log);
-            if(qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
 
@@ -1889,7 +1894,7 @@ public:
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        
+
         locals.qei = input.qei;
         locals.qei.eid = state.mCurrentEventID++;
         locals.qei.openDate = locals.dtNow;
@@ -1981,7 +1986,7 @@ public:
             return;
         }
 
-        
+
         state.mEventResult.get(input.eventId, locals.fei.result);
         locals.fei.result.set(locals.oracleIndex, (uint8)(input.option));
         state.mEventResult.set(input.eventId, locals.fei.result);
@@ -2048,7 +2053,7 @@ public:
         }
 
         state.mEventResult.set(input.eventId, locals.result);
-        
+
         locals.fei.eventId = input.eventId;
         CALL(TryFinalizeEvent, locals.fei, locals.feo);
     }
@@ -2072,7 +2077,7 @@ public:
     struct GetOrders_locals
     {
         sint64 i, c, sign;
-        id key;        
+        id key;
         GetOrders_output::QtryOrderWithPrice order;
     };
 
@@ -2091,7 +2096,14 @@ public:
         if (input.option < 0 || input.option > 1) return;
         if (!state.mEventInfo.contains(input.eventId)) return;
         locals.key = MakeOrderKey(input.eventId, input.option, input.isBid);
-        locals.i = state.mABOrders.headIndex(locals.key, 0);
+        if (input.isBid)
+        {
+            locals.i = state.mABOrders.headIndex(locals.key);
+        }
+        else
+        {
+            locals.i = state.mABOrders.headIndex(locals.key, 0);
+        }
         locals.c = 0;
         if (input.isBid) locals.sign = 1;
         else locals.sign = -1;
@@ -2260,7 +2272,7 @@ public:
         REGISTER_USER_FUNCTION(GetCreatorList, 6);
         REGISTER_USER_FUNCTION(GetOracleInfo, 7);
         REGISTER_USER_FUNCTION(GetOracleList, 8);
-        
+
 
         // PROCEDURE
         REGISTER_USER_PROCEDURE(CreateEvent, 1);
@@ -2269,40 +2281,36 @@ public:
         REGISTER_USER_PROCEDURE(AddToBidOrder, 4);
         REGISTER_USER_PROCEDURE(RemoveBidOrder, 5);
         REGISTER_USER_PROCEDURE(PublishResult, 6);
-        
+
         // operation team proc
         REGISTER_USER_PROCEDURE(ResolveEvent, 7);
         REGISTER_USER_PROCEDURE(UpdateCreatorList, 8);
         REGISTER_USER_PROCEDURE(UpdateOracleList, 9);
         REGISTER_USER_PROCEDURE(UpdateFeeDiscountList, 10);
         REGISTER_USER_PROCEDURE(UpdateFeePerDay, 11);
-        
+
     }
 
     BEGIN_EPOCH()
     {
-        
-#ifdef NO_UEFI
-        // for unit test
-        state.mCurrentEventID = 0;
-        state.mOperationParams.wholeSharePriceInQU = 100000ULL;
-        state.mOperationParams.feePerDay = 1000;
-        state.mOperationParams.eligibleCreators.cleanup();
-        state.mOperationParams.eligibleOracles.cleanup();
-        state.mOperationParams.discountedFeeForUsers.cleanup();
-        setMemory(state.mQtryGov, 0);
-        state.mQtryGov.mOperationId = id(0, 1, 2, 3);
-#else
-        if (qpi.epoch() == 999)
+        // TODO: reinitialize after proposal getting passed
+        if (qpi.epoch() == 178)
         {
-            state.mOperationParams.feePerDay = 1000;
+            state.mOperationParams.feePerDay = 11337;
             state.mOperationParams.eligibleCreators.cleanup();
             state.mOperationParams.eligibleOracles.cleanup();
-            state.mOperationParams.discountedFeeForUsers.cleanup();            
+            state.mOperationParams.discountedFeeForUsers.cleanup();
             setMemory(state.mQtryGov, 0);
-            state.mQtryGov.mOperationId = id(0, 1, 2, 3); // set later
+            state.mQtryGov.mOperationId = ID(_M, _E, _F, _K, _Y, _F, _C, _D, _X, _D, _U, _I, _L, _C, _A, _J,
+                _K, _O, _I, _K, _W, _Q, _A, _P, _E, _N, _J, _D, _U, _H, _S, _S,
+                _Y, _P, _B, _R, _W, _F, _O, _T, _L, _A, _L, _I, _L, _A, _Y, _W,
+                _Q, _F, _D, _S, _I, _T, _J, _E); // testnet ARB
+            state.mQtryGov.mBurnFee = 1;
+            state.mQtryGov.mOperationFee = 5; // 0.5%
+            state.mQtryGov.mShareHolderFee = 10; // 1%
+            state.mOperationParams.wholeSharePriceInQU = 100000;
+            state.mRecentActiveEvent.setAll(NULL_INDEX);
         }
-#endif
     }
 
     struct END_EPOCH_locals
