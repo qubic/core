@@ -100,6 +100,13 @@ public:
         callFunction(QUTIL_CONTRACT_INDEX, 6, input, output);
         return output;
     }
+
+    QUTIL::DistributeQuToShareholders_output distributeQuToShareholders(const id& invocator, const Asset& asset, sint64 amount) {
+        QUTIL::DistributeQuToShareholders_input input{ asset };
+        QUTIL::DistributeQuToShareholders_output output;
+        invokeUserProcedure(QUTIL_CONTRACT_INDEX, 7, input, output, invocator, amount);
+        return output;
+    }
 };
 
 // Helper function to generate random ID
@@ -1574,4 +1581,166 @@ TEST(QUtilTest, MultipleVoters_ShareTransfers_EligibilityTest)
     EXPECT_EQ(result.voter_count.get(0), 2);
     EXPECT_EQ(result.voter_count.get(1), 2);
     EXPECT_EQ(result.voter_count.get(2), 3);
+}
+
+TEST(QUtilTest, DistributeQuToShareholders)
+{
+    ContractTestingQUtil qutil;
+ 
+    id distributor = generateRandomId();
+    id issuer = generateRandomId();
+    std::vector<id> shareholder(10);
+    for (auto& v : shareholder)
+    {
+        v = generateRandomId();
+    }
+
+    increaseEnergy(issuer, 4000000000); // for issuance and transfers
+    increaseEnergy(distributor, 10000000000);
+
+    // Issue 3 asset
+    unsigned long long assetNameA = assetNameFromString("ASSETA");
+    unsigned long long assetNameB = assetNameFromString("ASSETB");
+    unsigned long long assetNameC = assetNameFromString("ASSETC");
+    Asset assetA = { issuer, assetNameA };
+    Asset assetB = { issuer, assetNameB };
+    Asset assetC = { issuer, assetNameC };
+    qutil.issueAsset(issuer, assetNameA, 10);
+    qutil.issueAsset(issuer, assetNameB, 10000);
+    qutil.issueAsset(issuer, assetNameC, 10000000);
+
+    // Distribute assets
+    // shareholder 0-2: 1 A, 500 B, 500 C
+    for (int i = 0; i < 3; i++)
+    {
+        qutil.transferAsset(issuer, shareholder[i], assetA, 1);
+        qutil.transferAsset(issuer, shareholder[i], assetB, 500);
+        qutil.transferAsset(issuer, shareholder[i], assetC, 600);
+    }
+    // shareholder 3-5: 0 A, 2000 B, 500 C
+    for (int i = 3; i < 6; i++)
+    {
+        qutil.transferAsset(issuer, shareholder[i], assetB, 2000);
+        qutil.transferAsset(issuer, shareholder[i], assetC, 500);
+    }
+    // shareholder 6-9: 1 A, 500 B, 0 C
+    for (int i = 6; i < 10; i++)
+    {
+        qutil.transferAsset(issuer, shareholder[i], assetA, 1);
+        qutil.transferAsset(issuer, shareholder[i], assetB, 500);
+    }
+
+    QUTIL::DistributeQuToShareholders_output output;
+    sint64 distributorBalanceBefore, shareholderBalanceBefore;
+
+    // Error case 1: asset without shareholders
+    distributorBalanceBefore = getBalance(distributor);
+    shareholderBalanceBefore = getBalance(shareholder[0]);
+    output = qutil.distributeQuToShareholders(distributor, { distributor, assetNameA }, 10000000);
+    EXPECT_EQ(getBalance(distributor), distributorBalanceBefore);
+    EXPECT_EQ(getBalance(shareholder[0]), shareholderBalanceBefore);
+    EXPECT_EQ(output.shareholders, 0);
+    EXPECT_EQ(output.totalShares, 0);
+    EXPECT_EQ(output.amountPerShare, 0);
+    EXPECT_EQ(output.fees, 0);
+
+    // Error case 2: amount too low to pay fee
+    distributorBalanceBefore = getBalance(distributor);
+    shareholderBalanceBefore = getBalance(shareholder[0]);
+    output = qutil.distributeQuToShareholders(distributor, assetA, 1);
+    EXPECT_EQ(getBalance(distributor), distributorBalanceBefore);
+    EXPECT_EQ(getBalance(shareholder[0]), shareholderBalanceBefore);
+    EXPECT_EQ(output.shareholders, 8);
+    EXPECT_EQ(output.totalShares, 10);
+    EXPECT_LE(output.amountPerShare, 0);
+    EXPECT_EQ(output.fees, 8 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER);
+
+    // Error case 3: amount too low to pay 1 QU per share
+    distributorBalanceBefore = getBalance(distributor);
+    shareholderBalanceBefore = getBalance(shareholder[0]);
+    output = qutil.distributeQuToShareholders(distributor, assetA, 8 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER + 9);
+    EXPECT_EQ(getBalance(distributor), distributorBalanceBefore);
+    EXPECT_EQ(getBalance(shareholder[0]), shareholderBalanceBefore);
+    EXPECT_EQ(output.shareholders, 8);
+    EXPECT_EQ(output.totalShares, 10);
+    EXPECT_EQ(output.amountPerShare, 0);
+    EXPECT_EQ(output.fees, 8 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER);
+
+    // Success case with assetA + exactly calculated amount
+    sint64 amountPerShare = 50;
+    sint64 totalAmount = 10 * amountPerShare + 8 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
+    distributorBalanceBefore = getBalance(distributor);
+    shareholderBalanceBefore = getBalance(shareholder[0]);
+    output = qutil.distributeQuToShareholders(distributor, assetA, totalAmount);
+    EXPECT_EQ(getBalance(distributor), distributorBalanceBefore - totalAmount);
+    EXPECT_EQ(getBalance(shareholder[0]), shareholderBalanceBefore + amountPerShare);
+    EXPECT_EQ(output.shareholders, 8);
+    EXPECT_EQ(output.totalShares, 10);
+    EXPECT_EQ(output.amountPerShare, amountPerShare);
+    EXPECT_EQ(output.fees, 8 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER);
+
+    // Success case with assetA + amount with some QUs that cannot be evenly distributed and are refundet
+    amountPerShare = 100;
+    totalAmount = 10 * amountPerShare + 8 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
+    distributorBalanceBefore = getBalance(distributor);
+    shareholderBalanceBefore = getBalance(shareholder[0]);
+    output = qutil.distributeQuToShareholders(distributor, assetA, totalAmount + 7);
+    EXPECT_EQ(getBalance(distributor), distributorBalanceBefore - totalAmount);
+    EXPECT_EQ(getBalance(shareholder[0]), shareholderBalanceBefore + amountPerShare);
+    EXPECT_EQ(output.shareholders, 8);
+    EXPECT_EQ(output.totalShares, 10);
+    EXPECT_EQ(output.amountPerShare, amountPerShare);
+    EXPECT_EQ(output.fees, 8 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER);
+
+    // Success case with assetB + exactly calculated amount
+    amountPerShare = 1000;
+    totalAmount = 10000 * amountPerShare + 11 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
+    distributorBalanceBefore = getBalance(distributor);
+    shareholderBalanceBefore = getBalance(shareholder[0]);
+    output = qutil.distributeQuToShareholders(distributor, assetB, totalAmount);
+    EXPECT_EQ(getBalance(distributor), distributorBalanceBefore - totalAmount);
+    EXPECT_EQ(getBalance(shareholder[0]), shareholderBalanceBefore + 500 * amountPerShare);
+    EXPECT_EQ(output.shareholders, 11);
+    EXPECT_EQ(output.totalShares, 10000);
+    EXPECT_EQ(output.amountPerShare, amountPerShare);
+    EXPECT_EQ(output.fees, 11 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER);
+
+    // Success case with assetB + amount with some QUs that cannot be evenly distributed and are refundet
+    amountPerShare = 42;
+    totalAmount = 10000 * amountPerShare + 11 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
+    distributorBalanceBefore = getBalance(distributor);
+    shareholderBalanceBefore = getBalance(shareholder[0]);
+    output = qutil.distributeQuToShareholders(distributor, assetB, totalAmount + 9999);
+    EXPECT_EQ(getBalance(distributor), distributorBalanceBefore - totalAmount);
+    EXPECT_EQ(getBalance(shareholder[0]), shareholderBalanceBefore + 500 * amountPerShare);
+    EXPECT_EQ(output.shareholders, 11);
+    EXPECT_EQ(output.totalShares, 10000);
+    EXPECT_EQ(output.amountPerShare, amountPerShare);
+    EXPECT_EQ(output.fees, 11 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER);
+
+    // Success case with assetC + exactly calculated amount (fee is minimal)
+    amountPerShare = 123;
+    totalAmount = 10000000 * amountPerShare + 7 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
+    distributorBalanceBefore = getBalance(distributor);
+    shareholderBalanceBefore = getBalance(shareholder[0]);
+    output = qutil.distributeQuToShareholders(distributor, assetC, totalAmount);
+    EXPECT_EQ(getBalance(distributor), distributorBalanceBefore - totalAmount);
+    EXPECT_EQ(getBalance(shareholder[0]), shareholderBalanceBefore + 600 * amountPerShare);
+    EXPECT_EQ(output.shareholders, 7);
+    EXPECT_EQ(output.totalShares, 10000000);
+    EXPECT_EQ(output.amountPerShare, amountPerShare);
+    EXPECT_EQ(output.fees, 7 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER);
+
+    // Success case with assetC + non-minimal fee (fee payed too much is donation for running QUTIL -> burned with fee)
+    amountPerShare = 654;
+    totalAmount = 10000000 * amountPerShare + 7 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
+    distributorBalanceBefore = getBalance(distributor);
+    shareholderBalanceBefore = getBalance(shareholder[0]);
+    output = qutil.distributeQuToShareholders(distributor, assetC, totalAmount + 123456);
+    EXPECT_EQ(getBalance(distributor), distributorBalanceBefore - totalAmount);
+    EXPECT_EQ(getBalance(shareholder[0]), shareholderBalanceBefore + 600 * amountPerShare);
+    EXPECT_EQ(output.shareholders, 7);
+    EXPECT_EQ(output.totalShares, 10000000);
+    EXPECT_EQ(output.amountPerShare, amountPerShare);
+    EXPECT_EQ(output.fees, 7 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER);
 }

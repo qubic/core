@@ -32,7 +32,12 @@
 #define TARGET_TICK_DURATION 7000
 #define TRANSACTION_SPARSENESS 4
 #else
+// The tick duration used for timing and scheduling logic.
 #define TARGET_TICK_DURATION 1000
+
+// The tick duration used to calculate the size of memory buffers.
+// This determines the memory footprint of the application.
+#define TICK_DURATION_FOR_ALLOCATION_MS 500
 #define TRANSACTION_SPARSENESS 1
 #endif
 
@@ -51,7 +56,7 @@
 
 #define NEXT_TICK_TIMEOUT_THRESHOLD 5ULL // Multiplier of TARGET_TICK_DURATION for the system to discard next tick in tickData.
                                          // This will lead to zero `expectedNextTickTransactionDigest` in consensus
-             
+
 #define PEER_REFRESHING_PERIOD 120000ULL
 #if AUTO_FORCE_NEXT_TICK_THRESHOLD != 0
 static_assert(NEXT_TICK_TIMEOUT_THRESHOLD < AUTO_FORCE_NEXT_TICK_THRESHOLD, "Timeout threshold must be smaller than auto F5 threshold");
@@ -70,12 +75,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 259
+#define VERSION_B 260
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 178
-#define TICK 32420000
+#define EPOCH 179
+#define TICK 32742000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -116,7 +121,7 @@ static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
 #define TESTNET_EPOCH_DURATION 3000
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH TESTNET_EPOCH_DURATION + 2
 #else
-#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60 * 60 * 24 * 7) / (TARGET_TICK_DURATION / 1000)) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60ULL * 60 * 24 * 7 * 1000) / TICK_DURATION_FOR_ALLOCATION_MS) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
 #endif
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
@@ -128,11 +133,11 @@ static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal c
 // List of start-end for full external computation times. The event must not be overlap.
 // Format is DoW-hh-mm-ss in hex format, total 4 bytes, each use 1 bytes
 // DoW: Day of the week 0: Sunday, 1 = Monday ...
-static unsigned long long gFullExternalComputationTimes[][2] =
+static unsigned int gFullExternalComputationTimes[][2] =
 {
-    {0x040C0000ULL, 0x050C0000ULL}, // Thu 12:00:00 - Fri 12:00:00
-    {0x060C0000ULL, 0x000C0000ULL}, // Sat 12:00:00 - Sun 12:00:00
-    {0x010C0000ULL, 0x020C0000ULL}, // Mon 12:00:00 - Tue 12:00:00
+    {0x040C0000U, 0x050C0000U}, // Thu 12:00:00 - Fri 12:00:00
+    {0x060C0000U, 0x000C0000U}, // Sat 12:00:00 - Sun 12:00:00
+    {0x010C0000U, 0x020C0000U}, // Mon 12:00:00 - Tue 12:00:00
 };
 
 #define STACK_SIZE 4194304

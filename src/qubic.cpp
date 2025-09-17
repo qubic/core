@@ -21,8 +21,6 @@
 #define system qsystem
 #endif
 
-// #define NO_QDRAW
-
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -1412,7 +1410,7 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
     respondContractIPO.contractIndex = request->contractIndex;
     respondContractIPO.tick = system.tick;
     if (request->contractIndex >= contractCount
-        || system.epoch >= contractDescriptions[request->contractIndex].constructionEpoch)
+        || system.epoch != (contractDescriptions[request->contractIndex].constructionEpoch - 1))
     {
         setMem(respondContractIPO.publicKeys, sizeof(respondContractIPO.publicKeys), 0);
         setMem(respondContractIPO.prices, sizeof(respondContractIPO.prices), 0);
@@ -2530,7 +2528,7 @@ static void processTickTransactionContractIPO(const Transaction* transaction, co
     ASSERT(!transaction->amount && transaction->inputSize == sizeof(ContractIPOBid));
     ASSERT(spectrumIndex >= 0);
     ASSERT(contractIndex < contractCount);
-    ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
+    ASSERT(system.epoch == (contractDescriptions[contractIndex].constructionEpoch - 1));
 
     ContractIPOBid* contractIPOBid = (ContractIPOBid*)transaction->inputPtr();
     bidInContractIPO(contractIPOBid->price, contractIPOBid->quantity, transaction->sourcePublicKey, spectrumIndex, contractIndex);
@@ -2937,7 +2935,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     && contractIndex < contractCount)
                 {
                     // Contract transactions
-                    if (system.epoch < contractDescriptions[contractIndex].constructionEpoch)
+                    if (system.epoch == (contractDescriptions[contractIndex].constructionEpoch - 1))
                     {
                         // IPO
                         if (!transaction->amount
@@ -2946,7 +2944,8 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                             processTickTransactionContractIPO(transaction, spectrumIndex, contractIndex);
                         }
                     }
-                    else if (system.epoch < contractDescriptions[contractIndex].destructionEpoch)
+                    else if (system.epoch >= contractDescriptions[contractIndex].constructionEpoch 
+                        && system.epoch < contractDescriptions[contractIndex].destructionEpoch)
                     {
                         // Regular contract procedure invocation
                         moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);

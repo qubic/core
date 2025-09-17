@@ -374,7 +374,7 @@ static inline __m512i load512Bits(const unsigned char* array, unsigned long long
 static inline __m256i load256Bits(const unsigned char* array, unsigned long long bitLocation)
 {
     const unsigned long long byteIndex = bitLocation >> 3;
-    const unsigned long long bitOffset = bitLocation & 7ULL;
+    const int bitOffset = (int)(bitLocation & 7ULL);
 
     // Load a 256-bit (32-byte) vector starting at the byte index.
     const __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(array + byteIndex));
