@@ -202,6 +202,7 @@ protected:
                 {
                     locals.rand = qpi.K12(qpi.getPrevSpectrumDigest());
                     locals.winner = state._participants.get(mod(locals.rand.u64._0, state._participantCount));
+                    qpi.burn(state._participantCount);
                     qpi.transfer(locals.winner, state._pot);
                     state._lastWinner = locals.winner;
                     state._lastWinAmount = state._pot;
