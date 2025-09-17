@@ -25,11 +25,8 @@ constexpr uint16 RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY = 1024;
  *  If clang reports 'ID' undeclared here, include the QPI identity / address utilities first.
  */
 static const id RL_DEV_ADDRESS = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L,
-                                    _A,
-                                    _K, _F, _T, _D, _X, _C, _R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y,
-                                    _Q,
-                                    _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E, _U, _E, _J, _J);
-
+                                    _A, _K, _F, _T, _D, _X, _C, _R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E,
+                                    _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 /// Owner address (currently identical to developer address; can be split in future revisions).
 static const id RL_OWNER_ADDRESS = RL_DEV_ADDRESS;
 
@@ -263,8 +260,7 @@ public:
                 }
 
                 // Burn remainder
-                if (locals.burnedAmount > 0)
-                {
+                if (locals.burnedAmount > 0) {
                     qpi.burn(locals.burnedAmount);
                 }
 
