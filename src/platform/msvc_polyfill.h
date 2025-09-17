@@ -11,17 +11,19 @@
 #else
 
 /* Unsigned: returns low 64 bits; writes high 64 bits to *hi if hi != NULL */
-static inline uint64_t _umul128(uint64_t a, uint64_t b, uint64_t *hi) {
+template <typename T>
+static inline T _umul128(T a, T b, T *hi) {
     __uint128_t r = (__uint128_t)a * (__uint128_t)b;
-    if (hi) *hi = (uint64_t)(r >> (unsigned int)64);
-    return (uint64_t)r;
+    if (hi) *hi = (T)(r >> (unsigned int)64);
+    return (T)r;
 }
 
 /* Signed: returns low 64 bits; writes high 64 bits to *hi (signed high) if hi != NULL */
-static inline int64_t _mul128(int64_t a, int64_t b, int64_t *hi) {
+template <typename T>
+static inline T _mul128(T a, T b, T *hi) {
     __int128 r = ( __int128)a * ( __int128)b;
-    if (hi) *hi = (int64_t)(r >> 64);
-    return (int64_t)r;
+    if (hi) *hi = (T)(r >> 64);
+    return (T)r;
 }
 #endif /* _MSC_VER */
 

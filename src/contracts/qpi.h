@@ -900,7 +900,7 @@ namespace QPI
 	inline static sint64 smul(sint64 a, sint64 b)
 	{
 		sint64 hi, lo;
-		lo = _mul128(a, b, (int64_t*)&hi);
+		lo = _mul128(a, b, &hi);
 		if (hi != (lo >> 63))
 		{
 			return ((a > 0) == (b > 0)) ? INT64_MAX : INT64_MIN;
@@ -911,7 +911,7 @@ namespace QPI
 	inline static uint64 smul(uint64 a, uint64 b)
 	{
 		uint64 hi, lo;
-		lo = _umul128(a, b, (uint64_t*)&hi);
+		lo = _umul128(a, b, &hi);
 		if (hi != 0)
 		{
 			return UINT64_MAX;
