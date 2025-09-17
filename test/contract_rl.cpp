@@ -352,7 +352,11 @@ TEST(ContractRandomLottery, EndEpoch) {
         uint64 teamFeeExpected = (ticketPrice * N * teamPercent) / 100;
         EXPECT_EQ(getBalance(RL_DEV_ADDRESS), teamBalanceBefore + teamFeeExpected);
 
-        // All remaining balance burned (contract should be emptied)
-        EXPECT_EQ(getBalance(contractAddress), 0u);
+        // Burn
+        uint64 burnExpected = contractBalanceBefore - ((contractBalanceBefore * burnPercent) / 100) - (
+                                  (((contractBalanceBefore * distributionPercent) / 100) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS) - (
+                                  (contractBalanceBefore * teamPercent) / 100) - (
+                                  (contractBalanceBefore * winnerPercent) / 100);
+        EXPECT_EQ(getBalance(contractAddress), burnExpected);
     }
 }

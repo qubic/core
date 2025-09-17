@@ -222,6 +222,8 @@ public:
     END_EPOCH_WITH_LOCALS() {
         state.currentState = EState::LOCKED;
 
+        state.players.cleanup();
+
         // Single-player edge case: refund instead of drawing.
         if (state.players.population() == 1) {
             for (locals.i = 0; locals.i < state.players.capacity(); ++locals.i) {
@@ -291,16 +293,15 @@ public:
      */
     PUBLIC_FUNCTION_WITH_LOCALS(GetPlayers) {
         locals.arrayIndex = 0;
-        output.numberOfPlayers = state.players.population();
-        if (output.numberOfPlayers == 0) {
-            return;
-        }
+
         locals.i = 0;
         for (locals.i = 0; locals.i < state.players.capacity(); ++locals.i) {
             if (!state.players.isEmptySlot(locals.i)) {
                 output.players.set(locals.arrayIndex++, state.players.key(locals.i));
             }
         }
+
+        output.numberOfPlayers = locals.arrayIndex;
     }
 
     /**
@@ -367,7 +368,9 @@ private:
     /**
      * @brief Internal: pseudo-random selection of a winner index using hardware RNG.
      */
-    PRIVATE_FUNCTION_WITH_LOCALS(GetWinner) {
+    PRIVATE_PROCEDURE_WITH_LOCALS(GetWinner) {
+        state.players.cleanup();
+
         if (state.players.population() == 0) {
             return;
         }
