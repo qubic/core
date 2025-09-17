@@ -11,6 +11,7 @@
 #include <codecvt>
 #include <locale>
 #include "extensions/utils.h"
+#include "platform/msvc_polyfill.h"
 #endif
 
 #define TESTNET
