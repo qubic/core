@@ -40,7 +40,7 @@ inline auto NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC = NUMBER_OF_SOLUTION_PROCESSOR
 
 // The tick duration used to calculate the size of memory buffers.
 // This determines the memory footprint of the application.
-#define TICK_DURATION_FOR_ALLOCATION_MS 500
+#define TICK_DURATION_FOR_ALLOCATION_MS 1000
 #define TRANSACTION_SPARSENESS 1
 #endif
 

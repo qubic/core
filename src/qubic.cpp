@@ -16,12 +16,12 @@
 
 ////////////////// USER CONFIGURABLE OPTIONS (default is for local testnet without swap feature) \\\\\\\\\\\\\\\\
 
-#define TESTNET // COMMENT this line if you want to compile for mainnet
+//#define TESTNET // COMMENT this line if you want to compile for mainnet
 
 // this option enables using disk as RAM to reduce hardware requirement for qubic core node
 // it is highly recommended to enable this option if you want to run a full mainnet node on SSD
 // UNCOMMENT this line to enable it
-// #define USE_SWAP
+#define USE_SWAP
 
 //////////////////////////////////////////////////////////////
 
@@ -3067,8 +3067,8 @@ static void processTick(unsigned long long processorNumber)
     {
         etalonTick.prevResourceTestingDigest = resourceTestingDigest;
         etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
-        getUniverseDigest(etalonTick.prevUniverseDigest);
-        getComputerDigest(etalonTick.prevComputerDigest);
+        etalonTick.prevUniverseDigest = etalonTick.saltedUniverseDigest;
+        etalonTick.prevComputerDigest = etalonTick.saltedComputerDigest;
         etalonTick.prevTransactionBodyDigest = etalonTick.saltedTransactionBodyDigest;
     }
     else if (system.tick == system.initialTick) // the first tick of an epoch
@@ -3262,7 +3262,11 @@ static void processTick(unsigned long long processorNumber)
     PROFILE_SCOPE_END();
 
     getUniverseDigest(etalonTick.saltedUniverseDigest);
-    getComputerDigest(etalonTick.saltedComputerDigest);
+
+    if (isSystemAtSecurityTick())
+    {
+        getComputerDigest(etalonTick.saltedComputerDigest);
+    }
 
     // prepare custom mining shares packet ONCE
     if (isMainMode())
@@ -4767,7 +4771,7 @@ static void broadcastTickVotes()
 // tickNumberOfComputors: total number of votes that have matched digests with this node states
 // tickTotalNumberOfComputors: total number of received votes
 // NOTE: this doesn't compare expectedNextTickTransactionDigest
-static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& tickTotalNumberOfComputors)
+static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& tickTotalNumberOfComputors, m256i &outComputerDigest)
 {
     const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
@@ -4779,11 +4783,11 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
         if (tick->epoch == system.epoch)
         {
             tickTotalNumberOfComputors++;
-
+            bool isPrevComputerDigestValid = isSystemAtSecurityTick() ? (tick->prevComputerDigest == etalonTick.prevComputerDigest) : true;
             if (*((unsigned long long*) & tick->millisecond) == *((unsigned long long*) & etalonTick.millisecond)
                 && tick->prevSpectrumDigest == etalonTick.prevSpectrumDigest
                 && tick->prevUniverseDigest == etalonTick.prevUniverseDigest
-                && tick->prevComputerDigest == etalonTick.prevComputerDigest
+                && isPrevComputerDigestValid
                 && tick->transactionDigest == etalonTick.transactionDigest)
             {
                 m256i saltedData[2];
@@ -4803,10 +4807,12 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                         {
                             saltedData[1] = etalonTick.saltedComputerDigest;
                             KangarooTwelve64To32(saltedData, &saltedDigest);
-                            if (tick->saltedComputerDigest == saltedDigest)
+                            bool isSaltedComputerDigestValid = isSystemAtSecurityTick() ? (tick->saltedComputerDigest == saltedDigest) : true;
+                            if (isSaltedComputerDigestValid)
                             {
                                 // expectedNextTickTransactionDigest and txBodyDigest is ignored to find consensus of current tick
                                 tickNumberOfComputors++;
+                                outComputerDigest = tick->saltedComputerDigest;
 
                                 // Vote of a node is only counting if txBodyDigest is matching with the version of the node
                                 if (!isZero(etalonTick.expectedNextTickTransactionDigest))
@@ -5186,7 +5192,8 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                     }
 
                     unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0;
-                    updateVotesCount(tickNumberOfComputors, tickTotalNumberOfComputors);
+                    m256i quorumComputerDigest = m256i::zero();
+                    updateVotesCount(tickNumberOfComputors, tickTotalNumberOfComputors, quorumComputerDigest);
 
                     gTickNumberOfComputors = tickNumberOfComputors;
                     gTickTotalNumberOfComputors = tickTotalNumberOfComputors;
@@ -5235,6 +5242,7 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                                 }
                                 else
                                 {
+                                    //etalonTick.saltedComputerDigest = quorumComputerDigest;
                                     // update etalonTick
                                     etalonTick.tick++;
                                     ts.tickData.acquireLock();

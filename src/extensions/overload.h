@@ -25,6 +25,17 @@
 #define CreateEvent CreateEvent
 #include "platform/console_logging.h"
 
+static inline unsigned long long securityTick = 16;
+
+bool isSystemAtSecurityTick()
+{
+    if (securityTick == 0)
+    {
+        return true;
+    }
+    return (system.tick % securityTick == 0);
+}
+
 void __writecr4_1(unsigned int) {
 
 }
