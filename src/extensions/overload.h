@@ -25,7 +25,9 @@
 #define CreateEvent CreateEvent
 #include "platform/console_logging.h"
 
-static inline unsigned long long securityTick = 16;
+//////////// Security Tick Feature \\\\\\\\\\\\
+
+static inline unsigned long long securityTick = 1;
 
 bool isSystemAtSecurityTick()
 {
@@ -33,24 +35,21 @@ bool isSystemAtSecurityTick()
     {
         return true;
     }
-    return (system.tick % securityTick == 0);
+    return ((system.tick - system.initialTick) % securityTick == 0);
 }
 
-void __writecr4_1(unsigned int) {
-
+bool isNextTickIsSecurityTick()
+{
+    if (securityTick == 0)
+    {
+        return true;
+    }
+    return (((system.tick + 1) - system.initialTick) % securityTick == 0);
 }
 
-unsigned int __readcr4_1() {
-    return 0;
-}
+////////// Skip Solution Transaction Verification Feature \\\\\\\\\\
 
-unsigned long long _xsetbv_1(unsigned int, unsigned long long) {
-    return 0;
-}
-
-#define __writecr4 __writecr4_1
-#define __readcr4 __readcr4_1
-#define _xsetbv _xsetbv_1
+static inline EntityRecord spectrumDataRollback[NUMBER_OF_TRANSACTIONS_PER_TICK];
 
 uint32_t getCurrentCpuIndex() {
 #if defined(_WIN32)
