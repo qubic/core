@@ -5150,7 +5150,8 @@ void reprocessSolutionTransaction(unsigned long long processorNumber)
             {
                 while (true)
                 {
-                    misalignedState = 1;
+                    logToConsole(L"Error: transaction missing in tickTransaction storage during reprocessSolutionTransaction()");
+                    bs->Stall(1'000'000);
                 }
             }
         }
@@ -5230,7 +5231,7 @@ static void tickProcessor(void*, unsigned long long processorNumber)
             ts.tickData.releaseLock();
 
             // This time lock ensures tickData is crafted 2 ticks "ago"
-            if (nextTickData.epoch == system.epoch)
+            if (nextTickData.epoch == system.epoch && isSystemAtSecurityTick())
             {
                 m256i timelockPreimage[3];
                 timelockPreimage[0] = etalonTick.prevSpectrumDigest;
@@ -5398,8 +5399,10 @@ static void tickProcessor(void*, unsigned long long processorNumber)
             {
                 // if we have problem regarding lacking of tickData, then wait for MAIN loop to fetch those missing data
                 // Here only need to update the stats and rerun the loop again
+#ifdef TESTNET
                 gTickNumberOfComputors = 0;
                 gTickTotalNumberOfComputors = countCurrentTickVote();
+#endif
             }
             else
             {
