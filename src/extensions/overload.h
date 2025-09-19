@@ -31,7 +31,11 @@ static inline unsigned long long securityTick = 1;
 
 bool isSystemAtSecurityTick()
 {
-    if (securityTick == 0)
+#ifdef TESTNET
+    return true;
+#endif
+
+    if (securityTick == 0 || system.tick == system.initialTick)
     {
         return true;
     }
@@ -40,7 +44,11 @@ bool isSystemAtSecurityTick()
 
 bool isNextTickIsSecurityTick()
 {
-    if (securityTick == 0)
+#ifdef TESTNET
+    return true;
+#endif
+
+    if (securityTick == 0 || system.tick == system.initialTick)
     {
         return true;
     }
