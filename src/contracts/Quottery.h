@@ -268,8 +268,10 @@ public:
         setMemory(output.aqei, 0);
         for (locals.i = 0; locals.i < 128; locals.i++)
         {
-            state.mEventInfo.get(input.eventIds.get(locals.i), locals.qei);
-            output.aqei.set(locals.i, locals.qei);
+            if (state.mEventInfo.get(input.eventIds.get(locals.i), locals.qei))
+            {
+                output.aqei.set(locals.i, locals.qei);
+            }
         }
     }
 
