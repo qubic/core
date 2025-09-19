@@ -243,6 +243,36 @@ public:
         state.mEventInfo.get(input.eventId, output.qei);
     }
 
+    struct GetEventInfoBatch_input
+    {
+        Array<uint64, 128> eventIds;
+    };
+    struct GetEventInfoBatch_output
+    {
+        Array<QtryEventInfo, 128> aqei;
+    };
+
+    struct GetEventInfoBatch_locals
+    {
+        uint64 i;
+        QtryEventInfo qei;
+    };
+
+    /**
+     * @brief Retrieves the metadata for 64 specific events.
+     * @param array of eventId 
+     * @return The array of QtryEventInfo struct containing the event's details.
+     */
+    PUBLIC_FUNCTION_WITH_LOCALS(GetEventInfoBatch)
+    {
+        setMemory(output.aqei, 0);
+        for (locals.i = 0; locals.i < 128; locals.i++)
+        {
+            state.mEventInfo.get(input.eventIds.get(locals.i), locals.qei);
+            output.aqei.set(locals.i, locals.qei);
+        }
+    }
+
     struct GetCreatorInfo_input
     {
         id cid;
