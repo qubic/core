@@ -245,11 +245,11 @@ public:
 
     struct GetEventInfoBatch_input
     {
-        Array<uint64, 128> eventIds;
+        Array<uint64, 64> eventIds;
     };
     struct GetEventInfoBatch_output
     {
-        Array<QtryEventInfo, 128> aqei;
+        Array<QtryEventInfo, 64> aqei;
     };
 
     struct GetEventInfoBatch_locals
@@ -2302,7 +2302,7 @@ public:
         REGISTER_USER_FUNCTION(GetCreatorList, 6);
         REGISTER_USER_FUNCTION(GetOracleInfo, 7);
         REGISTER_USER_FUNCTION(GetOracleList, 8);
-
+        REGISTER_USER_FUNCTION(GetEventInfoBatch, 9);
 
         // PROCEDURE
         REGISTER_USER_PROCEDURE(CreateEvent, 1);
