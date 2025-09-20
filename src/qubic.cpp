@@ -5411,6 +5411,8 @@ static void tickProcessor(void*, unsigned long long processorNumber)
             }
             else if (mustSkip)
             {
+                gTickNumberOfComputors = 0;
+                gTickTotalNumberOfComputors = 0;
             }
             else
             {
