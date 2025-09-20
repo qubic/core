@@ -4386,6 +4386,8 @@ static int findCurrentDigestsFromNextTickVotes(m256i &spectrumDigest, unsigned i
     const unsigned int nextTickIndex = ts.tickToIndexCurrentEpoch(nextTick);
     const Tick* tsCompTicks = ts.ticks.getByTickIndex(nextTickIndex);
     unsigned int numberOfUniqueCurrentSpectrumDigests = 0;
+    setMem(uniqueCurrentSpectrumDigests, sizeof(uniqueCurrentSpectrumDigests), 0);
+    setMem(uniqueCurrentSpectrumDigestCounters, sizeof(uniqueCurrentSpectrumDigestCounters), 0);
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
         if (tsCompTicks[i].epoch == system.epoch)
@@ -4441,6 +4443,11 @@ static int findCurrentDigestsFromNextTickVotes(m256i &spectrumDigest, unsigned i
 
         if (totalUniqueCurrentSpectrumDigestCounter < NUMBER_OF_COMPUTORS)
         {
+            setText(message, L"Not enough votes to decide current digests from next tick votes: ");
+            appendNumber(message, totalUniqueCurrentSpectrumDigestCounter, false);
+            appendText(message, L"/");
+            appendNumber(message, uniqueCurrentSpectrumDigestCounters[mostPopularUniqueCurrentSpectrumDigestIndex], false);
+            logToConsole(message);
             return 2;
         }
 
@@ -5395,14 +5402,15 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                 tickDataSuits = true;
             }
 
-            if (!tickDataSuits || mustSkip)
+            if (!tickDataSuits)
             {
                 // if we have problem regarding lacking of tickData, then wait for MAIN loop to fetch those missing data
                 // Here only need to update the stats and rerun the loop again
-#ifdef TESTNET
                 gTickNumberOfComputors = 0;
                 gTickTotalNumberOfComputors = countCurrentTickVote();
-#endif
+            }
+            else if (mustSkip)
+            {
             }
             else
             {
