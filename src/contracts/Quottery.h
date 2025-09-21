@@ -1842,6 +1842,58 @@ public:
         }
     }
 
+    struct GetUserPosition_input
+    {
+        id uid;
+    };
+    struct GetUserPosition_output
+    {
+        sint64 count;
+        struct PositionInfo
+        {
+            uint64 eo; //packed eventId and option bit
+            uint64 amount;
+        };
+        Array<PositionInfo, QUOTTERY_MAX_EVENT * 2> p;
+    };
+
+    struct GetUserPosition_locals
+    {
+        uint64 k, e;
+        id key;
+        QtryOrder qo;
+        sint64 i;
+        GetUserPosition_output::PositionInfo pi;
+    };
+    /**
+     * @brief PUBLIC VIEW FUNCTION
+     * Returns all positions of an ID
+     */
+    PUBLIC_FUNCTION_WITH_LOCALS(GetUserPosition)
+    {
+        setMemory(output, 0);
+        output.count = 0;
+        for (locals.i = 0; locals.i < QUOTTERY_MAX_EVENT; locals.i++)
+        {
+            locals.e = state.mRecentActiveEvent.get(locals.i);
+            locals.key = MakePosKey(input.uid, locals.e, 0);
+            if (state.mPositionInfo.get(locals.key, locals.qo))
+            {
+                locals.pi.amount = locals.qo.amount;
+                locals.pi.eo = POS_KEY(0, locals.e);
+                output.p.set(output.count++, locals.pi);
+            }
+
+            locals.key = MakePosKey(input.uid, locals.e, 1);
+            if (state.mPositionInfo.get(locals.key, locals.qo))
+            {
+                locals.pi.amount = locals.qo.amount;
+                locals.pi.eo = POS_KEY(1, locals.e);
+                output.p.set(output.count++, locals.pi);
+            }
+        }
+    }
+
     struct CreateEvent_input
     {
         QtryEventInfo qei;
