@@ -919,6 +919,71 @@ TEST(QTRYTest, OperationFunction)
         EXPECT_FALSE(state->mOperationParams.discountedFeeForUsers.contains(traders[i]));
     }
 }
+TEST(QTRYTest, CreateEventOverflow)
+{
+    ContractTestingQtry qtry;
+    // add some oracles and creator
+    QUOTTERY::CreateEvent_input cei;
+    std::vector<id> creators(8);
+    std::vector<id> oracles(8);
+    // test #1: overload the array
+    for (int i = 0; i < 8; i++)
+    {
+        creators[i] = id::randomValue();
+        oracles[i] = id::randomValue();
+        increaseEnergy(creators[i], 100LL * 1000000000LL);
+        increaseEnergy(oracles[i], 100LL * 1000000000LL);
+    }
+    auto state = qtry.getState();
+    uint64 ops = 1; //add
+    for (int i = 0; i < 8; i++)
+    {
+        qtry.UpdateCreator(creators[i], "TestCreator" + std::to_string(i), 0, ops);
+        qtry.UpdateOracle(oracles[i], "TestOracle" + std::to_string(i), 0, ops);
+    }
+    id traders[16];
+    for (int i = 0; i < 16; i++)
+    {
+        traders[i] = id::randomValue();
+        increaseEnergy(traders[i], 100LL * 1000000000LL);
+    }
+
+    for (int i = 0; i < 8; i++) cei.qei.oracleId.set(i, oracles[i]);
+
+    // normal event
+    DateAndTime dt = wrapped_now();
+    DateAndTime dt_close = dt + 3600000ULL; // + 1 hour
+    DateAndTime dt_end = dt + 3600000ULL * 2; // + 2 hour
+
+    std::string desc = "This is a test event from GTEST. Test event 2025-09-01";
+    std::string opt0 = "Awesome test";
+    std::string opt1 = "Perfect test";
+    cei.qei.eid = -1;
+    cei.qei.openDate = dt + (-1000000);
+    cei.qei.closeDate = dt_close;
+    cei.qei.endDate = dt_end;
+    std::vector<id> v_desc(4, id::zero());
+    std::vector<id> v_o0(2, id::zero());
+    std::vector<id> v_o1(2, id::zero());
+    memcpy(v_desc[0].m256i_i8, desc.data(), desc.size());
+    memcpy(v_o0[0].m256i_i8, opt0.data(), opt0.size());
+    memcpy(v_o1[0].m256i_i8, opt1.data(), opt1.size());
+    for (int i = 0; i < 4; i++) cei.qei.desc.set(i, v_desc[i]);
+    for (int i = 0; i < 2; i++)
+    {
+        cei.qei.option0Desc.set(i, v_o0[i]);
+        cei.qei.option1Desc.set(i, v_o1[i]);
+    }
+    cei.qei.assetIssuer = id::zero();
+    cei.qei.assetName = 0;
+
+    for (int i = 0; i < QUOTTERY_MAX_EVENT * 2; i++)
+    {
+        qtry.CreateEvent(cei, creators[0], state->mOperationParams.feePerDay);
+    }
+    EXPECT_TRUE(state->mCurrentEventID == QUOTTERY_MAX_EVENT);
+    EXPECT_TRUE(state->mEventInfo.population() == QUOTTERY_MAX_EVENT);
+}
 
 TEST(QTRYTest, ResolveEvent)
 {
