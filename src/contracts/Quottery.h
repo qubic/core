@@ -435,6 +435,7 @@ public:
         {
             return;
         }
+
         if (locals.dt > locals.qei.closeDate) // now > end_date
         {
             return;
@@ -1539,6 +1540,7 @@ public:
         CALL(ValidateEvent, locals.vei, locals.veo);
         if (!locals.veo.isValid)
         {
+            qpi.refundIfPossible();
             return;
         }
 
