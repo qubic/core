@@ -663,6 +663,7 @@ enum SwapMode
 // SwapVirtualMemory don't use append operations, it acts like a continuous chunk of memory that can be read and written randomly
 // it will try to persist pages that are not written to disk when loading a page to cache (when there is no empty cache slot)
 // NOTE: pages in cache may not be written to disk yet
+// NOTE: DO NOT CREATE INSTANCE IN FUNCTION STACK, IT WILL CAUSE STACK OVERFLOW
 template <typename T, unsigned long long prefixName, unsigned long long pageDirectory, unsigned long long pageCapacity = 100000, unsigned long long numCachePage = 128, SwapMode mode = INDEX_MODE>
 class SwapVirtualMemory : private VirtualMemory<T, prefixName, pageDirectory, pageCapacity, numCachePage>
 {
@@ -901,7 +902,7 @@ public:
         ACQUIRE(memLock);
         unsigned long long pageId = offset / maxBytesPerPage;
         unsigned long long totalUnusedBytesOfPreviousPages = 0;
-        for (unsigned long long i = 0; i < pageId; i++)
+        for (unsigned long long i = 0; i <= pageId; i++)
         {
             if (pageUnusedBytes[i] == INVALID_UNUSED_BYTES)
             {
