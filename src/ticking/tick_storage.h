@@ -228,27 +228,6 @@ private:
     }
     bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
     {
-#ifdef USE_SWAP
-        void *buffer = nullptr;
-        if (!allocPoolWithErrorLog(L"transactionsBuffer", tickTransactionsSwapVM.getVmStateSize(), &buffer, __LINE__))
-        {
-            return false;
-        }
-        unsigned long long sz = tickTransactionsSwapVM.dumpVMState((unsigned char*)buffer);
-        if (sz != tickTransactionsSwapVM.getVmStateSize())
-        {
-            logToConsole(L"Something went wrong when dumping tickData VM state");
-            freePool(buffer);
-            return false;
-        }
-        auto writtenSize = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, tickTransactionsSwapVM.getVmStateSize(), (unsigned char*)buffer, directory);
-        if (writtenSize != tickTransactionsSwapVM.getVmStateSize())
-        {
-            return false;
-        }
-        freePool(buffer);
-        return true;
-#else
         unsigned int toTick = tickBegin + (unsigned int)(nTick);
         unsigned long long toPtr = 0;
         outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
@@ -276,7 +255,29 @@ private:
             toPtr = maxOffset;
             outNextTickTransactionOffset = maxOffset;
         }
-        
+#ifdef USE_SWAP
+        void *buffer = nullptr;
+        if (!allocPoolWithErrorLog(L"transactionsBuffer", tickTransactionsSwapVM.getVmStateSize(), &buffer, __LINE__))
+        {
+            return false;
+        }
+        unsigned long long sz = tickTransactionsSwapVM.dumpVMState((unsigned char*)buffer);
+        if (sz != tickTransactionsSwapVM.getVmStateSize())
+        {
+            logToConsole(L"Something went wrong when dumping tickData VM state");
+            freePool(buffer);
+            return false;
+        }
+        auto writtenSize = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, tickTransactionsSwapVM.getVmStateSize(), (unsigned char*)buffer, directory);
+        if (writtenSize != tickTransactionsSwapVM.getVmStateSize())
+        {
+            outTotalTransactionSize = -1;
+            return false;
+        }
+        freePool(buffer);
+        outTotalTransactionSize = writtenSize;
+        return true;
+#else
         // saving from the first tx of from tick to the last tx of (totick)
         long long totalWriteSize = toPtr;
         unsigned char* ptr = tickTransactionsPtr;
