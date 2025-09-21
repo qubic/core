@@ -267,7 +267,7 @@ public:
     PUBLIC_FUNCTION_WITH_LOCALS(GetEventInfoBatch)
     {
         setMemory(output.aqei, 0);
-        for (locals.i = 0; locals.i < 128; locals.i++)
+        for (locals.i = 0; locals.i < 64; locals.i++)
         {
             if (state.mEventInfo.get(input.eventIds.get(locals.i), locals.qei))
             {
