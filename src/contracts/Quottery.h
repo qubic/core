@@ -1,7 +1,7 @@
 using namespace QPI;
 constexpr unsigned long long QUOTTERY_INITIAL_MAX_EVENT = 1024;
 constexpr unsigned long long QUOTTERY_INITIAL_CREATOR_AND_COUNT = 1024;
-constexpr unsigned long long QUOTTERY_MAX_EVENT = QUOTTERY_INITIAL_MAX_EVENT * X_MULTIPLIER;
+constexpr unsigned long long QUOTTERY_MAX_EVENT = QUOTTERY_INITIAL_MAX_EVENT * X_MULTIPLIER; // Maximum number of concurrent events (at the same time)
 constexpr unsigned long long QUOTTERY_MAX_CREATOR_AND_COUNT = 512 * X_MULTIPLIER;
 constexpr unsigned long long QUOTTERY_MAX_ORACLE_PROVIDER = 8;
 constexpr unsigned long long QUOTTERY_MAX_NUMBER_OF_USER = QUOTTERY_MAX_EVENT * 2048;
@@ -40,6 +40,7 @@ struct QuotteryTradeLogger
 #define QTRY_INSUFFICIENT_FUND 5
 #define QTRY_INVALID_EVENT_ID 6
 #define QTRY_INVALID_POSITION 7
+#define QTRY_OUT_OF_MEMORY 8
 
 #define QTRY_MATCH_TYPE_0 8 // A0,B0
 #define QTRY_MATCH_TYPE_1 9 // A1,B1
@@ -1194,7 +1195,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_EVENT_ID ,0 };
             LOG_WARNING(locals.log);
-            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.refundIfPossible();
             return;
         }
         locals.vpi.uid = qpi.invocator();
@@ -1206,7 +1207,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_POSITION, 0 };
             LOG_WARNING(locals.log);
-            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.refundIfPossible();
             return;
         }
 
@@ -1832,7 +1833,7 @@ public:
     {
         setMemory(output, 0);
         output.count = 0;
-        for (locals.i = 0; locals.i < QUOTTERY_MAX_EVENT; locals.i++)
+        for (locals.i = 0; locals.i < QUOTTERY_MAX_EVENT && output.count < 128; locals.i++)
         {
             if (state.mEventInfo.contains(state.mRecentActiveEvent.get(locals.i)))
             {
@@ -1876,7 +1877,15 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_USER ,0 };
             LOG_WARNING(locals.log);
-            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.refundIfPossible();
+            return;
+        }
+
+        if (state.mEventInfo.population() >= QUOTTERY_MAX_EVENT)
+        {
+            locals.log = QuotteryLogger{ 0, QTRY_OUT_OF_MEMORY ,0 };
+            LOG_WARNING(locals.log);
+            qpi.refundIfPossible();
             return;
         }
 
@@ -1885,7 +1894,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_NOT_ELIGIBLE_USER ,0 };
             LOG_WARNING(locals.log);
-            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.refundIfPossible();
             return;
         }
 
@@ -1898,7 +1907,7 @@ public:
                 {
                     locals.log = QuotteryLogger{ 0, QTRY_NOT_ELIGIBLE_ORACLE ,0 };
                     LOG_WARNING(locals.log);
-                    if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                    qpi.refundIfPossible();
                     return;
                 }
             }
@@ -1909,7 +1918,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_DATETIME ,0 };
             LOG_WARNING(locals.log);
-            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.refundIfPossible();
             return;
         }
 
@@ -1923,7 +1932,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INSUFFICIENT_FUND ,0 };
             LOG_WARNING(locals.log);
-            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.refundIfPossible();
             return;
         }
 
@@ -2014,7 +2023,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_NOT_ELIGIBLE_ORACLE ,0 };
             LOG_WARNING(locals.log);
-            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            qpi.refundIfPossible();
             return;
         }
 
@@ -2173,7 +2182,7 @@ public:
      */
     PUBLIC_PROCEDURE(UpdateCreatorList)
     {
-        if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        qpi.refundIfPossible();
         if (qpi.invocator() != state.mQtryGov.mOperationId) return;
         if (input.ci.feeRate > QUOTTERY_HARD_CAP_CREATOR_FEE || input.ci.feeRate < 0) return;
         if (input.ops == 0)
@@ -2217,7 +2226,7 @@ public:
      */
     PUBLIC_PROCEDURE(UpdateOracleList)
     {
-        if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        qpi.refundIfPossible();
         if (qpi.invocator() != state.mQtryGov.mOperationId) return;
         if (input.oi.feeRate > QUOTTERY_HARD_CAP_CREATOR_FEE || input.oi.feeRate < 0) return;
         if (input.ops == 0)
@@ -2262,7 +2271,7 @@ public:
      */
     PUBLIC_PROCEDURE(UpdateFeeDiscountList)
     {
-        if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        qpi.refundIfPossible();
         if (qpi.invocator() != state.mQtryGov.mOperationId) return;
         if (input.ops == 0)
         {
@@ -2288,7 +2297,7 @@ public:
      */
     PUBLIC_PROCEDURE(UpdateFeePerDay)
     {
-        if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        qpi.refundIfPossible();
         if (qpi.invocator() != state.mQtryGov.mOperationId) return;
         state.mOperationParams.feePerDay = input.newFee;
     }
