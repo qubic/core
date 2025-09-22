@@ -243,7 +243,7 @@ private:
                     if (this->tickTransactionOffsets(tick, idx))
                     {
                         unsigned long long offset = this->tickTransactionOffsets(tick, idx);
-                        Transaction* tx = (Transaction*)(tickTransactionsPtr + offset);
+                        Transaction* tx = TickTransactionsAccess::ptr(offset);
                         unsigned long long tmp = offset + tx->totalSize();
                         if (tmp > maxOffset){
                             maxOffset = tmp;

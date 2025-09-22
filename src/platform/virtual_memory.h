@@ -258,7 +258,8 @@ public:
             cache[0] = currentPage;
             for (int i = 1; i <= numCachePage; i++)
             {
-                cache[i] = (T*)(((char*)cache[i - 1]) + (pageCapacity * pageSize));
+                char *tmp = (char*)cache[0];
+                cache[i] = (T*)(tmp + i * pageSize);
             }
         }
 
@@ -838,7 +839,7 @@ public:
     {
         ASSERT(extraBytesPerElement >= 0);
         pageSize = maxBytesPerPage;
-        if (!allocPoolWithErrorLog(L"SwapVM.IsPageWrittenToDisk", sizeof(bool) * MAX_PAGE, (void**)&isPageWrittenToDisk, __LINE__))
+        if (!allocPoolWithErrorLog(L"SwapVM.IsPageWrittenToDisk", isPageWrittenToDiskSize, (void**)&isPageWrittenToDisk, __LINE__))
         {
             return false;
         }
@@ -857,7 +858,7 @@ public:
     bool init()
     requires (mode == SwapMode::INDEX_MODE)
     {
-        if (!allocPoolWithErrorLog(L"SwapVM.IsPageWrittenToDisk", sizeof(bool) * MAX_PAGE, (void**)&isPageWrittenToDisk, __LINE__))
+        if (!allocPoolWithErrorLog(L"SwapVM.IsPageWrittenToDisk", isPageWrittenToDiskSize, (void**)&isPageWrittenToDisk, __LINE__))
         {
             return false;
         }
@@ -933,7 +934,7 @@ public:
         }
 
         // To avoid cross page access, if the remaining bytes in this page is less than maxBytesPerElement,
-        // we will use extra buffer to store the element
+        // we will tmp use extra buffer to store the element
         if (maxBytesPerPage - offsetInPage < maxBytesPerElement) {
             T* thisPageExtraBuffer = (T*)((unsigned char *)pageExtraBytesBuffer + pageId * maxBytesPerElement);
             if (pageHasExtraBytes[pageId]) {
@@ -956,7 +957,7 @@ public:
                 lastestPageExtraBytesOffsetAccessed[pageId] = offset;
                 pageHasExtraBytes[pageId] = true;
                 RELEASE(memLock);
-                return pageExtraBytesBuffer + pageId * maxBytesPerElement;
+                return thisPageExtraBuffer;
             }
         }
 
@@ -969,14 +970,12 @@ public:
 
     unsigned long long getVmStateSize()
     {
+        unsigned long long totalOffsetModeExtraSize = 0;
         if (mode == SwapMode::OFFSET_MODE)
         {
-            unsigned long long totalOffsetModeExtraSize = pageExtraBytesBufferSize + pageHasExtraBytesBufferSize + lastestPageExtraBytesOffsetAccessedBufferSize;
-            return pageSize * (numCachePage + 1) + sizeof(isPageWrittenToDisk)  + sizeof(cachePageId) + 8 + totalOffsetModeExtraSize;
-        } else
-        {
-            return pageSize * (numCachePage + 1) + sizeof(isPageWrittenToDisk) + sizeof(cachePageId) + 8;
+            totalOffsetModeExtraSize = pageExtraBytesBufferSize + pageHasExtraBytesBufferSize + lastestPageExtraBytesOffsetAccessedBufferSize;
         }
+        return pageSize * (numCachePage + 1) + isPageWrittenToDiskSize  + sizeof(cachePageId) + 8 + totalOffsetModeExtraSize;
     }
 
     unsigned long long dumpVMState(unsigned char* buffer)
