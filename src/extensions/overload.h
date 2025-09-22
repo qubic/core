@@ -613,11 +613,20 @@ struct Overload {
 
         const auto& fragment = Token->Packet.TxData->FragmentTable[0];
         int totalSentBytes = 0;
+        unsigned long long totalNanoseconds = 0;
+        auto startTime = std::chrono::high_resolution_clock::now();
+        auto endTime = std::chrono::high_resolution_clock::now();
         while (totalSentBytes < fragment.FragmentLength) {
 #ifdef _MSC_VER
 #define MSG_NOSIGNAL 0
 #define MSG_DONTWAIT 0
 #endif
+            endTime = std::chrono::high_resolution_clock::now();
+            totalNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
+            if (totalNanoseconds > 1'000'000'000) { // 1 seconds timeout
+                Token->CompletionToken.Status = -1;
+                return EFI_TIMEOUT;
+            }
             int sentBytes = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_NOSIGNAL | MSG_DONTWAIT);
             if (sentBytes == 0) {
                 // connection closed
@@ -705,12 +714,20 @@ struct Overload {
         int totalReceivedBytes = 0;
         memset(buffer, 0, sizeof(buffer));
         Token->Packet.RxData->DataLength = 0;
-
+        unsigned long long totalNanoseconds = 0;
+        auto startTime = std::chrono::high_resolution_clock::now();
+        auto endTime = std::chrono::high_resolution_clock::now();
         while (true)
         {
 #ifdef _MSC_VER
 #define MSG_DONTWAIT 0
 #endif
+            endTime = std::chrono::high_resolution_clock::now();
+            totalNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
+            if (totalNanoseconds > 1'000'000'000) { // 1 seconds timeout
+                Token->CompletionToken.Status = -1;
+                return EFI_TIMEOUT;
+            }
             int bytes = recv(tcpData->socket, buffer, sizeof(buffer), MSG_DONTWAIT);
             if (bytes > 0)
             {
