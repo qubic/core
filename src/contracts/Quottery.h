@@ -117,6 +117,7 @@ public:
         /*8 oracle IDs*/
         Array<id, QUOTTERY_MAX_ORACLE_PROVIDER> oracleId;
 
+        sint64 wholeShareAmount;
         // payment info
         uint64 type; // 0: QUs - 1: token (must be managed by QX)
         id assetIssuer;
@@ -148,7 +149,8 @@ public:
         HashMap<id, OracleInfo, QUOTTERY_MAX_CREATOR_AND_COUNT> eligibleOracles;
         HashMap<id, uint64, 8192 * X_MULTIPLIER> discountedFeeForUsers;
         uint64 feePerDay; // in QUs
-        uint64 wholeSharePriceInQU;
+        uint64 opWholeSharePriceInQU;
+        uint64 opWholeSharePriceInUSD;
     } mOperationParams;
 
     // gov struct
@@ -778,6 +780,7 @@ public:
         * B1 => highest amount of QUs they bid for option 1
         */
         DetailedOrderInfo A0, A1, B0, B1;
+        QtryEventInfo qei;
 
         sint64 matchedAmount;
         sint64 matchedPrice;
@@ -821,6 +824,8 @@ public:
 
         locals.key = MakeOrderKey(input.eventId, 1, BID_BIT);
         locals.B1.index = state.mABOrders.headIndex(locals.key);
+
+        state.mEventInfo.get(input.eventId, locals.qei);
 
         if (locals.A0.index != NULL_INDEX)
         {
@@ -985,18 +990,19 @@ public:
 
         // Scenario 2: MERGE - both want to sell
         // A0 and A1 want to exit => A0.price + A1.price < state.mOperationParams.wholeSharePriceInQU
-        if (locals.A0.price + locals.A1.price <= (sint64)state.mOperationParams.wholeSharePriceInQU && locals.A0.index != NULL_INDEX && locals.A1.index != NULL_INDEX)
+
+        if (locals.A0.price + locals.A1.price <= locals.qei.wholeShareAmount && locals.A0.index != NULL_INDEX && locals.A1.index != NULL_INDEX)
         {
             locals.matchedAmount = min(locals.A0.qo.amount, locals.A1.qo.amount);
             if (locals.A0.justAdded)
             {
-                locals.matchedPrice0 = state.mOperationParams.wholeSharePriceInQU - locals.A1.price;
+                locals.matchedPrice0 = locals.qei.wholeShareAmount - locals.A1.price;
                 locals.matchedPrice1 = locals.A1.price;
             }
             else
             {
                 locals.matchedPrice0 = locals.A0.price;
-                locals.matchedPrice1 = state.mOperationParams.wholeSharePriceInQU - locals.A0.price;
+                locals.matchedPrice1 = locals.qei.wholeShareAmount - locals.A0.price;
             }
 
             locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_2, locals.A0.qo.entity, locals.A1.qo.entity, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, input.eventId, 2, 0 };
@@ -1056,18 +1062,18 @@ public:
         }
 
         // Scenario 3: MINT - both want to buy
-        if (locals.B0.price + locals.B1.price >= (sint64)state.mOperationParams.wholeSharePriceInQU && locals.B0.index != NULL_INDEX && locals.B1.index != NULL_INDEX)
+        if (locals.B0.price + locals.B1.price >= locals.qei.wholeShareAmount && locals.B0.index != NULL_INDEX && locals.B1.index != NULL_INDEX)
         {
             locals.matchedAmount = min(locals.B0.qo.amount, locals.B1.qo.amount);
             if (locals.B0.justAdded)
             {
-                locals.matchedPrice0 = state.mOperationParams.wholeSharePriceInQU - locals.B1.price;
+                locals.matchedPrice0 = locals.qei.wholeShareAmount - locals.B1.price;
                 locals.matchedPrice1 = locals.B1.price;
             }
             else
             {
                 locals.matchedPrice0 = locals.B0.price;
-                locals.matchedPrice1 = state.mOperationParams.wholeSharePriceInQU - locals.B0.price;
+                locals.matchedPrice1 = locals.qei.wholeShareAmount - locals.B0.price;
             }
             locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_3, locals.B0.qo.entity, locals.B1.qo.entity, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, input.eventId, 2, 0 };
             LOG_INFO(locals.log);
@@ -1151,6 +1157,7 @@ public:
         uint64 index;
         sint64 price;
         bit flag;
+        QtryEventInfo qei;
         QtryOrder order;
 
         OrderInfo oi;
@@ -1182,10 +1189,7 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
-        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, state.mOperationParams.wholeSharePriceInQU))
-        {
-            return;
-        }
+
         locals.oi.eid = input.eventId;
         locals.oi.option = input.option;
         locals.oi.tradeBit = ASK_BIT;
@@ -1196,9 +1200,19 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_EVENT_ID ,0 };
             LOG_WARNING(locals.log);
-            qpi.refundIfPossible();
             return;
         }
+
+        if (!state.mEventInfo.get(input.eventId, locals.qei))
+        {
+            return;
+        }
+
+        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, locals.qei.wholeShareAmount))
+        {
+            return;
+        }
+
         locals.vpi.uid = qpi.invocator();
         locals.vpi.amount = input.amount;
         locals.vpi.eventId = input.eventId;
@@ -1208,7 +1222,6 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_POSITION, 0 };
             LOG_WARNING(locals.log);
-            qpi.refundIfPossible();
             return;
         }
 
@@ -1292,6 +1305,7 @@ public:
         id key;
         sint64 index;
         bit flag;
+        QtryEventInfo qei;
         QtryOrder order;
         sint64 price;
 
@@ -1316,10 +1330,6 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
-        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, state.mOperationParams.wholeSharePriceInQU))
-        {
-            return;
-        }
 
         locals.vei.eventId = input.eventId;
         CALL(ValidateEvent, locals.vei, locals.veo);
@@ -1327,6 +1337,17 @@ public:
         {
             return;
         }
+
+        if (!state.mEventInfo.get(input.eventId, locals.qei))
+        {
+            return;
+        }
+
+        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, locals.qei.wholeShareAmount))
+        {
+            return;
+        }
+
         locals.vpi.uid = qpi.invocator();
         locals.vpi.amount = input.amount;
         locals.vpi.eventId = input.eventId;
@@ -1391,6 +1412,7 @@ public:
         id key;
         sint64 index;
         bit flag;
+        QtryEventInfo qei;
         QtryOrder order;
         sint64 price;
         sint64 amountToRemove;
@@ -1416,14 +1438,20 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
-        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, state.mOperationParams.wholeSharePriceInQU))
-        {
-            return;
-        }
 
         locals.vei.eventId = input.eventId;
         CALL(ValidateEvent, locals.vei, locals.veo);
         if (!locals.veo.isValid)
+        {
+            return;
+        }
+
+        if (!state.mEventInfo.get(input.eventId, locals.qei))
+        {
+            return;
+        }
+
+        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, locals.qei.wholeShareAmount))
         {
             return;
         }
@@ -1492,6 +1520,7 @@ public:
         uint64 totalCost;
         bit flag;
         QtryOrder order;
+        QtryEventInfo qei;
 
         OrderInfo oi;
 
@@ -1515,10 +1544,26 @@ public:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(AddToBidOrder)
     {
-        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, state.mOperationParams.wholeSharePriceInQU))
+        locals.vei.eventId = input.eventId;
+        CALL(ValidateEvent, locals.vei, locals.veo);
+        if (!locals.veo.isValid)
         {
+            qpi.refundIfPossible();
             return;
         }
+
+        if (!state.mEventInfo.get(input.eventId, locals.qei))
+        {
+            qpi.refundIfPossible();
+            return;
+        }
+
+        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, locals.qei.wholeShareAmount))
+        {
+            qpi.refundIfPossible();
+            return;
+        }
+
         locals.totalCost = smul(input.amount, input.price);
         // verify enough amount
         if (locals.totalCost > (uint64)qpi.invocationReward())
@@ -1536,13 +1581,7 @@ public:
         locals.oi.option = input.option;
         locals.oi.tradeBit = BID_BIT;
 
-        locals.vei.eventId = input.eventId;
-        CALL(ValidateEvent, locals.vei, locals.veo);
-        if (!locals.veo.isValid)
-        {
-            qpi.refundIfPossible();
-            return;
-        }
+        
 
         locals.log = QuotteryTradeLogger{ 0, QTRY_ADD_BID, qpi.invocator(), NULL_ID, (sint64)input.amount, (sint64)input.price, 0, input.eventId, input.option, 0 };
         LOG_INFO(locals.log);
@@ -1649,6 +1688,7 @@ public:
      */
     PRIVATE_PROCEDURE_WITH_LOCALS(TryFinalizeEvent)
     {
+        state.mEventInfo.get(input.eventId, locals.qei);
         locals.totalOP = 0;
         locals.vote0Count = 0;
         locals.vote1Count = 0;
@@ -1681,7 +1721,7 @@ public:
                 {
                     // send money to this
                     state.mPositionInfo.get(locals.key, locals.value);
-                    locals.rti.amount = smul((uint64)state.mOperationParams.wholeSharePriceInQU, (uint64)locals.value.amount);
+                    locals.rti.amount = smul((uint64)locals.qei.wholeShareAmount, (uint64)locals.value.amount);
                     locals.rti.eid = input.eventId;
                     locals.rti.receiver = locals.value.entity;
                     locals.rti.needChargeFee = 1;
@@ -1756,7 +1796,6 @@ public:
         }
         // distribute fee to creator and oracles
         state.mPaylist.get(input.eventId, locals.pl);
-        state.mEventInfo.get(input.eventId, locals.qei);
 
         locals.rti.receiver = locals.qei.creator;
         locals.rti.amount = locals.pl.creatorFee;
@@ -1807,7 +1846,7 @@ public:
         output.burnedAmount = state.mBurnedAmount;
 
         output.feePerDay = state.mOperationParams.feePerDay;
-        output.wholeSharePriceInQU = state.mOperationParams.wholeSharePriceInQU;
+        output.wholeSharePriceInQU = state.mOperationParams.opWholeSharePriceInQU;
 
         output.gameOperator = state.mQtryGov.mOperationId;
     }
@@ -1994,6 +2033,7 @@ public:
         locals.qei.eid = state.mCurrentEventID++;
         locals.qei.openDate = locals.dtNow;
         locals.qei.creator = qpi.invocator();
+        locals.qei.wholeShareAmount = state.mOperationParams.opWholeSharePriceInQU;
 
         state.mEventInfo.set(locals.qei.eid, locals.qei);
         for (locals.i = 0; locals.i < QUOTTERY_MAX_ORACLE_PROVIDER; locals.i++)
@@ -2404,7 +2444,7 @@ public:
             state.mQtryGov.mBurnFee = 1;
             state.mQtryGov.mOperationFee = 5; // 0.5%
             state.mQtryGov.mShareHolderFee = 10; // 1%
-            state.mOperationParams.wholeSharePriceInQU = 100000;
+            state.mOperationParams.opWholeSharePriceInQU = 100000;
             state.mRecentActiveEvent.setAll(NULL_INDEX);
         }
     }
