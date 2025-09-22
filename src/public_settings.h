@@ -7,9 +7,9 @@
 
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
 // random seed is now obtained from spectrumDigests
-
+#define TESTNET
 #define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 12
+#define NUMBER_OF_SOLUTION_PROCESSORS 2 // do not increase this, because there may be issues due to too fast ticking
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
@@ -24,18 +24,18 @@
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
 // The tick duration used for timing and scheduling logic.
-#define TARGET_TICK_DURATION 1000
+#define TARGET_TICK_DURATION 7000
 
 // The tick duration used to calculate the size of memory buffers.
 // This determines the memory footprint of the application.
-#define TICK_DURATION_FOR_ALLOCATION_MS 750
-#define TRANSACTION_SPARSENESS 1
+#define TICK_DURATION_FOR_ALLOCATION_MS 7000
+#define TRANSACTION_SPARSENESS 4
 
 // Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
 #define PENDING_TXS_POOL_NUM_TICKS (1000 * 60 * 10ULL / TICK_DURATION_FOR_ALLOCATION_MS) // 10 minutes
 
 // Below are 2 variables that are used for auto-F5 feature:
-#define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
+#define AUTO_FORCE_NEXT_TICK_THRESHOLD 20ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
                                             // to prevent bad actor causing misalignment.
                                             // depends on actual tick time of the network, operators should set this number randomly in this range [12, 26]
                                             // eg: If AUTO_FORCE_NEXT_TICK_THRESHOLD is 8 and TARGET_TICK_DURATION is 2, then the system will start "auto F5 procedure" after 16 seconds after receveing 451+ votes
@@ -72,8 +72,8 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 #define TICK 39180000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
-#define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
-#define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"
+#define ARBITRATOR "MEFKYFCDXDUILCAJKOIKWQAPENJDUHSSYPBRWFOTLALILAYWQFDSITJELLHG"
+#define DISPATCHER "DISPAPLNOYSWXCJMZEMFUNCCMMJANGQPYJDSEXZTTBFSUEPYPEKCICADBUCJ"
 
 static unsigned short SYSTEM_FILE_NAME[] = L"system";
 static unsigned short SYSTEM_END_OF_EPOCH_FILE_NAME[] = L"system.eoe";
@@ -91,17 +91,19 @@ static constexpr unsigned long long NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be
 static constexpr unsigned long long NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long POPULATION_THRESHOLD = NUMBER_OF_INPUT_NEURONS + NUMBER_OF_OUTPUT_NEURONS + NUMBER_OF_MUTATIONS; // P
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
-static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
+static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = NUMBER_OF_OUTPUT_NEURONS / 2 + NUMBER_OF_OUTPUT_NEURONS / 2 * 5 / 100;
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x00095CBEU // around 7000 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x07FFFFFFU // around 32 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
-#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60ULL * 60 * 24 * 7 * 1000) / TICK_DURATION_FOR_ALLOCATION_MS) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
+#define TESTNET_EPOCH_DURATION 3000
+
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH (TESTNET_EPOCH_DURATION + 5)
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
@@ -114,9 +116,10 @@ static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal c
 // DoW: Day of the week 0: Sunday, 1 = Monday ...
 static unsigned int gFullExternalComputationTimes[][2] =
 {
-    {0x040C0000U, 0x050C0000U}, // Thu 12:00:00 - Fri 12:00:00
-    {0x060C0000U, 0x000C0000U}, // Sat 12:00:00 - Sun 12:00:00
-    {0x010C0000U, 0x020C0000U}, // Mon 12:00:00 - Tue 12:00:00
+    // only do 30 min intervals in the testnet
+    {0x040C0000U, 0x040C1E00U}, // Thu 12:00:00 - Thu 12:30:00
+    {0x060C0000U, 0x060C1E00U}, // Sat 12:00:00 - Sat 12:30:00
+    {0x010C0000U, 0x010C1E00U}, // Mon 12:00:00 - Mon 12:30:00
 };
 
 #define STACK_SIZE 4194304
