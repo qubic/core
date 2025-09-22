@@ -75,16 +75,16 @@ private:
     // Allocated tick data buffer with tickDataLength elements (includes current and previous epoch data)
     inline static TickData* tickDataPtr = nullptr;
     // SWAP: should reserve another tickData SwapVm instance for requestProcessor to avoid affect ticking process
-    inline static SwapVirtualMemory<TickData, TD00_AS_NUMBER, DATA_AS_NUMBER, TICK_DATA_PAGE_CAPACITY, CACHE_PAGE> tickDataSwapVM;
+    inline static SwapVirtualMemory<TickData, TD00_AS_NUMBER, DATA_AS_NUMBER, TICK_DATA_PAGE_CAPACITY, CACHE_PAGE, SwapMode::INDEX_MODE, 0> tickDataSwapVM;
 
     // Allocated ticks buffer with ticksLength elements (includes current and previous epoch data)
     inline static Tick* ticksPtr = nullptr;
     // SWAP: should reserve another ticks SwapVm instance for requestProcessor to avoid affect ticking process
-    inline static SwapVirtualMemory<Tick, TICK_AS_NUMBER, DATA_AS_NUMBER, TICKS_PAGE_CAPACITY, CACHE_PAGE> ticksSwapVM;
+    inline static SwapVirtualMemory<Tick, TICK_AS_NUMBER, DATA_AS_NUMBER, TICKS_PAGE_CAPACITY, CACHE_PAGE, SwapMode::INDEX_MODE, 0> ticksSwapVM;
 
     // Allocated tickTransactions buffer with tickTransactionsSize bytes (includes current and previous epoch data)
     inline static unsigned char* tickTransactionsPtr = nullptr;
-    inline static SwapVirtualMemory<Transaction, TX00_AS_NUMBER, DATA_AS_NUMBER, TRANSACTION_PAGE_CAPACITY, CACHE_PAGE, SwapMode::OFFSET_MODE> tickTransactionsSwapVM;
+    inline static SwapVirtualMemory<Transaction, TX00_AS_NUMBER, DATA_AS_NUMBER, TRANSACTION_PAGE_CAPACITY, CACHE_PAGE, SwapMode::OFFSET_MODE, MAX_INPUT_SIZE + SIGNATURE_SIZE> tickTransactionsSwapVM;
 
     // Allocated tickTransactionOffsets buffer with tickTransactionOffsetsLength elements (includes current and previous epoch data)
     inline static unsigned long long* tickTransactionOffsetsPtr = nullptr;
@@ -672,7 +672,7 @@ public:
 #ifdef USE_SWAP
         tickDataSwapVM.init();
         ticksSwapVM.init();
-        tickTransactionsSwapVM.init(MAX_INPUT_SIZE + SIGNATURE_SIZE);
+        tickTransactionsSwapVM.init();
 #endif
 
         ASSERT(tickDataLock == 0);
