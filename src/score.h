@@ -139,16 +139,6 @@ static void extract64Bits(unsigned long long number, char* output)
     }
 }
 
-static char convertMaskValue(unsigned char pos, unsigned char neg)
-{
-    /*
-    value = +1  if  pos=1 , neg=0
-    value = -1  if  pos=0 , neg=1
-    value =  0  otherwise
-    */
-    return (char)(pos - neg);
-}
-
 static void setBitValue(unsigned char* data, unsigned long long bitIdx, unsigned char bitValue)
 {
     // (data[bitIdx >> 3] & ~(1u << (bitIdx & 7u))). Set the bit at data[bitIdx >> 3] byte become zeros
