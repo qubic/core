@@ -489,9 +489,9 @@ public:
     /**
      * @brief Checks if a price is within valid contract limits.
      */
-    static bool isPriceValid(sint64 price)
+    static bool isPriceValid(sint64 price, sint64 wholeSharePrice)
     {
-        return price > 0 && price < QTRY_MAX_AMOUNT;
+        return price > 0 && price < wholeSharePrice;
     }
 
     struct ValidatePosition_input
@@ -1182,7 +1182,7 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
-        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price))
+        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, state.mOperationParams.wholeSharePriceInQU))
         {
             return;
         }
@@ -1316,7 +1316,7 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
-        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price))
+        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, state.mOperationParams.wholeSharePriceInQU))
         {
             return;
         }
@@ -1416,7 +1416,7 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
-        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price))
+        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, state.mOperationParams.wholeSharePriceInQU))
         {
             return;
         }
@@ -1515,7 +1515,7 @@ public:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(AddToBidOrder)
     {
-        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price))
+        if (!isOptionValid(input.option) || !isAmountValid(input.amount) || !isPriceValid(input.price, state.mOperationParams.wholeSharePriceInQU))
         {
             return;
         }
@@ -2368,6 +2368,7 @@ public:
         REGISTER_USER_FUNCTION(GetOracleInfo, 7);
         REGISTER_USER_FUNCTION(GetOracleList, 8);
         REGISTER_USER_FUNCTION(GetEventInfoBatch, 9);
+        REGISTER_USER_FUNCTION(GetUserPosition, 10);
 
         // PROCEDURE
         REGISTER_USER_PROCEDURE(CreateEvent, 1);
