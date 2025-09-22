@@ -116,12 +116,13 @@ public:
         Array<id, 2> option1Desc;
         /*8 oracle IDs*/
         Array<id, QUOTTERY_MAX_ORACLE_PROVIDER> oracleId;
+        sint64 isOM; // is oracle machine
 
-        sint64 wholeShareAmount;
         // payment info
         uint64 type; // 0: QUs - 1: token (must be managed by QX)
         id assetIssuer;
         uint64 assetName;
+        sint64 wholeShareAmount;
     };
 
     HashMap<uint64, QtryEventInfo, QUOTTERY_MAX_EVENT> mEventInfo;
@@ -700,7 +701,7 @@ public:
         // in future it will also handle a stablecoin here
         locals.total = input.amount;
         locals.feeTotal = 0;
-
+        
         if (input.needChargeFee)
         {
             locals.eindex = state.mEventInfo.getElementIndex(input.eid);
@@ -757,6 +758,7 @@ public:
             state.mPaylist.set(input.eid, locals.pl);
         }
 
+        // TODO: implement QUSD transfers here
         qpi.transfer(input.receiver, locals.total - locals.feeTotal);
     }
 
@@ -2033,7 +2035,20 @@ public:
         locals.qei.eid = state.mCurrentEventID++;
         locals.qei.openDate = locals.dtNow;
         locals.qei.creator = qpi.invocator();
-        locals.qei.wholeShareAmount = state.mOperationParams.opWholeSharePriceInQU;
+        locals.qei.isOM = 0;
+        // TODO: for oracle machine result, creator may need to pay upfront here
+
+        if (locals.qei.type == 0)
+        {
+            locals.qei.wholeShareAmount = state.mOperationParams.opWholeSharePriceInQU;
+        }
+        else
+        {
+            // TODO: update this when QUSD goes live
+            // locals.qei.wholeShareAmount = state.mOperationParams.opWholeSharePriceInUSD;
+            locals.qei.wholeShareAmount = state.mOperationParams.opWholeSharePriceInQU;
+        }
+        
 
         state.mEventInfo.set(locals.qei.eid, locals.qei);
         for (locals.i = 0; locals.i < QUOTTERY_MAX_ORACLE_PROVIDER; locals.i++)
@@ -2479,5 +2494,32 @@ public:
             qpi.transfer(state.mQtryGov.mOperationId, locals.payout);
             state.mDistributedOperationRevenue += locals.payout;
         }
+    }
+
+    // placeholders and todos for QUSD
+    struct ApproveQUSDTransferRight_locals
+    {
+
+    };
+    struct ApproveQUSDTransferRight_input
+    {
+        sint64 amount;
+    };
+
+    struct ApproveQUSDTransferRight_output
+    {
+        sint64 amount;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(ApproveQUSDTransferRight)
+    {
+        //TODO: get the permission to transfer QUSD feeless
+    }
+
+    struct END_TICK_locals
+    {
+    };
+    END_TICK_WITH_LOCALS()
+    {
+        //TODO: placeholder for oracle machine checking
     }
 };
