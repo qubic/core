@@ -716,7 +716,7 @@ private:
 #if defined(NO_UEFI) && !defined(REAL_NODE)
         auto sz = save(pageName, pageSize, (unsigned char*)pageBuffer, pageDir);
 #else
-        auto sz = asyncSave(pageName, pageSize, (unsigned char*)pageBuffer, pageDir, true);
+        auto sz = save(pageName, pageSize, (unsigned char*)pageBuffer, pageDir);
 #endif
 
 #if !defined(NDEBUG)
@@ -773,7 +773,7 @@ private:
         unsigned long long sz = 0;
         if (isPageWrittenToDisk[pageId])
         {
-            sz = asyncLoad(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
+            sz = load(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
         } else
         {
             sz = pageSize;
