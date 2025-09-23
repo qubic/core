@@ -5148,7 +5148,7 @@ void reprocessSolutionTransaction(unsigned long long processorNumber)
                         ACQUIRE(spectrumLock);
                         spectrum[spectrumIndex].incomingAmount -= transaction->amount;
                         spectrum[spectrumIndex].numberOfIncomingTransfers--;
-                        spectrum[spectrumIndex].latestIncomingTransferTick = system.tick;
+                        spectrum[spectrumIndex].latestIncomingTransferTick = spectrumDataRollback[transactionIndex].latestIncomingTransferTick;
 
                         spectrumInfo.totalAmount -= transaction->amount;
                         RELEASE(spectrumLock);
