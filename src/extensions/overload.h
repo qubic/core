@@ -58,6 +58,7 @@ bool isNextTickIsSecurityTick()
 ////////// Skip Solution Transaction Verification Feature \\\\\\\\\\
 
 static inline EntityRecord spectrumDataRollback[NUMBER_OF_TRANSACTIONS_PER_TICK];
+unsigned int resourceTestingDigestRollback = 0;
 
 uint32_t getCurrentCpuIndex() {
 #if defined(_WIN32)

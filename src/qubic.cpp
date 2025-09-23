@@ -3239,8 +3239,10 @@ static void processTick(unsigned long long processorNumber)
         }
 #endif
         solutionTotalExecutionTicks = __rdtsc() - solutionProcessStartTick; // for tracking the time processing solutions
-        // Reset spectrum rollback data
+
+        // Setup spectrum rollback data
         setMem(spectrumDataRollback, 0, sizeof(spectrumDataRollback));
+        resourceTestingDigestRollback = resourceTestingDigest;
 
         // Process all transaction of the tick
         PROFILE_NAMED_SCOPE_BEGIN("processTick(): process transactions");
@@ -5287,7 +5289,10 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                     if (etalonTick.saltedSpectrumDigest != spectrumDigestFromQuorum)
                     {
                         logToConsole(L"Invalid solutions detected, reprocessing solutions...");
+                        resourceTestingDigest = resourceTestingDigestRollback;
+                        etalonTick.saltedResourceTestingDigest = resourceTestingDigest;
                         reprocessSolutionTransaction(processorNumber);
+                        etalonTick.saltedResourceTestingDigest = resourceTestingDigest;
 
                         // Update etalonTick.saltedSpectrumDigest
                         unsigned int digestIndex;
