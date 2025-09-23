@@ -5418,7 +5418,7 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                 // if we have problem regarding lacking of tickData, then wait for MAIN loop to fetch those missing data
                 // Here only need to update the stats and rerun the loop again
                 gTickNumberOfComputors = 0;
-                gTickTotalNumberOfComputors = countCurrentTickVote();
+                gTickTotalNumberOfComputors = 0;
             }
             else if (mustSkip)
             {
