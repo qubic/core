@@ -909,7 +909,7 @@ public:
     bool isMainThread()
     {
 #if defined(NO_UEFI) && !defined(REAL_NODE)
-        return false;
+        return true;
 #else
         unsigned long long processorNumber;
         mpFileSystemMPServices->WhoAmI(mpFileSystemMPServices, &processorNumber);
@@ -919,7 +919,7 @@ public:
 
     void sleep(unsigned long long ms)
     {
-#ifdef NO_UEFI
+#ifdef NO_UEFI && !defined(REAL_NODE)
         _mm_pause();
 #else
         bs->Stall(ms);

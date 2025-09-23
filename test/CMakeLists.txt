@@ -43,8 +43,8 @@ add_executable(
   # qpi_hash_map.cpp
   # score_cache.cpp
   # score.cpp
-  # spectrum.cpp
-  # stdlib_impl.cpp
+        spectrum.cpp
+  stdlib_impl.cpp
   # tick_storage.cpp
   # tx_status_request.cpp
   # vote_counter.cpp
@@ -55,7 +55,15 @@ apply_test_compiler_flags(qubic_core_tests)
 
 # Add additional test-specific flags if needed
 if(IS_CLANG OR IS_GCC)
-  target_compile_options(qubic_core_tests PRIVATE -mrdrnd)
+  target_compile_options(
+          qubic_core_tests
+          PRIVATE
+          -mrdrnd -Wno-error
+          -mbmi
+          -mlzcnt
+          -fshort-wchar
+          -w
+  )
 endif()
 
 

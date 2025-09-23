@@ -3,6 +3,8 @@
 // Helper functions for wchar_t strings in linux (linux expects 32-bit wchar_t, while we use 16-bit wchar_t everywhere else)
 #ifndef _MSC_VER
 #include <stdarg.h>
+#include <codecvt>
+
 std::string wchar_to_string(const wchar_t* wstr) {
     if (!wstr)
     {

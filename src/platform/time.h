@@ -12,7 +12,7 @@ GLOBAL_VAR_DECL EFI_TIME utcTime;
 #ifdef NO_UEFI
 
 // Defined in test/stdlib_impl.cpp
-void updateTime();
+static void updateTime();
 
 #else
 
