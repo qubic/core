@@ -28,7 +28,7 @@
 
 // The tick duration used to calculate the size of memory buffers.
 // This determines the memory footprint of the application.
-#define TICK_DURATION_FOR_ALLOCATION_MS 500
+#define TICK_DURATION_FOR_ALLOCATION_MS 750
 #define TRANSACTION_SPARSENESS 1
 
 // Below are 2 variables that are used for auto-F5 feature:
