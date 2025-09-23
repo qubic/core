@@ -4423,21 +4423,28 @@ static int findCurrentDigestsFromNextTickVotes(m256i &spectrumDigest, unsigned i
     if (uniqueCurrentSpectrumDigestCounters[mostPopularUniqueCurrentSpectrumDigestIndex] >= QUORUM)
     {
         spectrumDigest = uniqueCurrentSpectrumDigests[mostPopularUniqueCurrentSpectrumDigestIndex];
-
-        // for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-        // {
-        //     if (tsCompTicks[i].prevSpectrumDigest == spectrumDigest)
-        //     {
-        //         resourceTestingDigest = tsCompTicks[i].prevResourceTestingDigest;
-        //         break;
-        //     }
-        // }
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            if (tsCompTicks[i].prevSpectrumDigest == spectrumDigest)
+            {
+                resourceTestingDigest = tsCompTicks[i].prevResourceTestingDigest;
+                break;
+            }
+        }
         return 1;
     } else
     {
         if (isZero(targetNextTickDataDigest) && uniqueCurrentSpectrumDigestCounters[mostPopularUniqueCurrentSpectrumDigestIndex] > NUMBER_OF_COMPUTORS - QUORUM)
         {
             spectrumDigest = uniqueCurrentSpectrumDigests[mostPopularUniqueCurrentSpectrumDigestIndex];
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                if (tsCompTicks[i].prevSpectrumDigest == spectrumDigest)
+                {
+                    resourceTestingDigest = tsCompTicks[i].prevResourceTestingDigest;
+                    break;
+                }
+            }
             return 1;
         }
 
@@ -4930,9 +4937,7 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                 KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &saltedDigest, sizeof(resourceTestingDigest));
                 // ignore verify saltedResourceTestingDigest on MAINNET
                 bool isSaltedResourceTestingDigestValid = true;
-#ifdef TESTNET
                 isSaltedResourceTestingDigestValid = tick->saltedResourceTestingDigest == saltedDigest.m256i_u32[0];
-#endif
                 if (isSaltedResourceTestingDigestValid)
                 {
                     saltedData[1] = etalonTick.saltedSpectrumDigest;
@@ -5328,7 +5333,8 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                     }
                     else
                     {
-                        //etalonTick.saltedResourceTestingDigest = resourceTestingDigestFromQuorum;
+                        resourceTestingDigest = resourceTestingDigestFromQuorum;
+                        etalonTick.saltedResourceTestingDigest = resourceTestingDigest;
                     }
                 }
                 else if (status == 2)
