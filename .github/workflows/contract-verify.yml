@@ -20,6 +20,7 @@ on:
 jobs:
   contract_verify_job:
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # Sometimes the parser can get stuck
     name: Verify smart contract files
     steps:
       # Checkout repo to use files of the repo as input for container action
@@ -32,6 +33,6 @@ jobs:
           echo "contract-filepaths=$files" >> "$GITHUB_OUTPUT"
       - name: Contract verify action step
         id: verify
-        uses: Franziska-Mueller/qubic-contract-verify@v0.3.3-beta
+        uses: Franziska-Mueller/qubic-contract-verify@v1.0.0
         with:
           filepaths: '${{ steps.filepaths.outputs.contract-filepaths }}'
