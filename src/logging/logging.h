@@ -576,12 +576,14 @@ public:
 #endif
     }
 
+    // updateTick is called right after _tick is processed
     static void updateTick(unsigned int _tick)
     {
 #if ENABLED_LOGGING
         ASSERT((_tick == lastUpdatedTick + 1) || (_tick == tickBegin));
+        ASSERT(_tick >= tickBegin);
 #if LOG_STATE_DIGEST
-        unsigned long long index = lastUpdatedTick - tickBegin;
+        unsigned long long index = _tick - tickBegin;
         XKCP::KangarooTwelve_Final(&k12, digests[index].m256i_u8, (const unsigned char*)"", 0);
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
