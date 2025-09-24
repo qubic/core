@@ -40,7 +40,7 @@ inline auto NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC = NUMBER_OF_SOLUTION_PROCESSOR
 
 // The tick duration used to calculate the size of memory buffers.
 // This determines the memory footprint of the application.
-#define TICK_DURATION_FOR_ALLOCATION_MS 1000
+#define TICK_DURATION_FOR_ALLOCATION_MS 750
 #define TRANSACTION_SPARSENESS 1
 #endif
 
@@ -78,12 +78,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 260
+#define VERSION_B 261
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 179
-#define TICK 32742000
+#define EPOCH 180
+#define TICK 33232000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -101,7 +101,7 @@ static wchar_t CUSTOM_MINING_V2_CACHE_FILE_NAME[] = L"custom_mining_v2_cache.???
 
 static constexpr unsigned long long NUMBER_OF_INPUT_NEURONS = 512;     // K
 static constexpr unsigned long long NUMBER_OF_OUTPUT_NEURONS = 512;    // L
-static constexpr unsigned long long NUMBER_OF_TICKS = 600;               // N
+static constexpr unsigned long long NUMBER_OF_TICKS = 1000;               // N
 static constexpr unsigned long long NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long POPULATION_THRESHOLD = NUMBER_OF_INPUT_NEURONS + NUMBER_OF_OUTPUT_NEURONS + NUMBER_OF_MUTATIONS; // P
