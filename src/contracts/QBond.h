@@ -1214,7 +1214,7 @@ private:
         if (state._qearnIncomeAmount > 0 && state._epochMbondInfoMap.get((uint16) (qpi.epoch() - 53), locals.tempMbondInfo))
         {
             locals.totalReward = state._qearnIncomeAmount - locals.tempMbondInfo.totalStaked * QBOND_MBOND_PRICE;
-            locals.rewardPerMBond = div(locals.totalReward, locals.tempMbondInfo.totalStaked);
+            locals.rewardPerMBond = QPI::div(locals.totalReward, locals.tempMbondInfo.totalStaked);
             
             locals.tempAsset.assetName = locals.tempMbondInfo.name;
             locals.tempAsset.issuer = SELF;
