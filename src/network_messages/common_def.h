@@ -2,7 +2,7 @@
 
 #define SIGNATURE_SIZE 64
 #ifdef TESTNET
-#define NUMBER_OF_TRANSACTIONS_PER_TICK 64 // Must be 2^N
+#define NUMBER_OF_TRANSACTIONS_PER_TICK 1024 // Must be 2^N
 #else
 #define NUMBER_OF_TRANSACTIONS_PER_TICK 1024 // Must be 2^N
 #endif

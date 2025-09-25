@@ -25,6 +25,10 @@
 #define CreateEvent CreateEvent
 #include "platform/console_logging.h"
 
+//////////// Tick Delay Feature \\\\\\\\\\\\\
+
+static inline unsigned long long tickDelay = 0;
+
 //////////// Security Tick Feature \\\\\\\\\\\\
 
 static inline unsigned long long securityTick = 1;

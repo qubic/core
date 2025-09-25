@@ -16,7 +16,7 @@
 
 ////////////////// USER CONFIGURABLE OPTIONS (default is for local testnet without swap feature) \\\\\\\\\\\\\\\\
 
-//#define TESTNET // COMMENT this line if you want to compile for mainnet
+#define TESTNET // COMMENT this line if you want to compile for mainnet
 
 // this option enables using disk as RAM to reduce hardware requirement for qubic core node
 // it is highly recommended to enable this option if you want to run a full mainnet node on SSD
@@ -3108,6 +3108,12 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
 static void processTick(unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
+
+#ifdef TESTNET
+    if (tickDelay > 0) {
+        bs->Stall(tickDelay * 1'000);
+    }
+#endif
 
     if (system.tick > system.initialTick)
     {
@@ -7930,6 +7936,7 @@ void processArgs(int argc, const char* argv[]) {
         ("p,peers", "Public peers", cxxopts::value<std::string>())
         ("m,mode", "Core mode", cxxopts::value<std::string>())
         ("t,threads", "Total Threads will be used by the core", cxxopts::value<int>())
+        ("d,ticking-delay", "Delay ticking process by milliseconds", cxxopts::value<int>())
         ("l,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
         ("s,security-tick", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
     auto result = options.parse(argc, argv);
@@ -7961,6 +7968,11 @@ void processArgs(int argc, const char* argv[]) {
     if (result.count("security-tick")) {
         securityTick = result["security-tick"].as<int>();
         logColorToScreen("INFO", "Security tick set to " + std::to_string(securityTick));
+    }
+
+    if (result.count("ticking-delay")) {
+        tickDelay = result["ticking-delay"].as<int>();
+        logColorToScreen("INFO", "Ticking delay set to " + std::to_string(tickDelay) + " ms");
     }
 
     if (result.count("mode")) {
