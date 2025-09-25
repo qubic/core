@@ -6048,6 +6048,20 @@ static bool initialize()
             {
                 increaseEnergy(broadcastedComputors.computors.publicKeys[i], 10'000'000'000);
             }
+
+            // Give custom seeds money
+            for (unsigned int i = 0; i < sizeof(customSeeds) / sizeof(customSeeds[0]); i++)
+            {
+                m256i privateKey;
+                m256i publicKey;
+                m256i subseed;
+                getSubseed(customSeeds[0], subseed.m256i_u8);
+                getPrivateKey(subseed.m256i_u8, privateKey.m256i_u8);
+                getPublicKey(privateKey.m256i_u8, publicKey.m256i_u8);
+                increaseEnergy(publicKey, 10'000'000'000);
+
+                ASSERT(energy(::spectrumIndex(publicKey)) == 10'000'000'000);
+            }
             
             constexpr bool canObmitLoadNodeState = true;
 #else
