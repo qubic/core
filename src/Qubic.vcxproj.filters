@@ -276,6 +276,9 @@
     <ClInclude Include="contracts\Qdraw.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\RandomLottery.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
