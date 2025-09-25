@@ -227,9 +227,15 @@ struct SpectrumStats
 /*
  * LOGGING IMPLEMENTATION
  */
+#ifdef TESTNET
+#define LOG_BUFFER_PAGE_SIZE 30000000ULL
+#define PMAP_LOG_PAGE_SIZE 3000000ULL
+#define IMAP_LOG_PAGE_SIZE 1000ULL
+#else
 #define LOG_BUFFER_PAGE_SIZE 300000000ULL
 #define PMAP_LOG_PAGE_SIZE 30000000ULL
 #define IMAP_LOG_PAGE_SIZE 10000ULL
+#endif
 #define VM_NUM_CACHE_PAGE 8
  // Virtual memory with 100'000'000 items per page and 4 pages on cache
 #if defined(NO_UEFI) && !defined(REAL_NODE)
