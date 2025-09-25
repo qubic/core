@@ -205,7 +205,7 @@ public:
 		uint64 burnedAmount = 0;
 
 		uint64 revenue = 0;
-		Entity entity;
+		Entity entity = {};
 
 		sint32 i = 0;
 	};
@@ -309,9 +309,9 @@ public:
 				locals.fillWinnersInfoInput.revenue = locals.winnerAmount;
 				FillWinnersInfo(qpi, state, locals.fillWinnersInfoInput, locals.fillWinnersInfoOutput, locals.fillWinnersInfoLocals);
 			}
-			// Return funds to players if no winner could be selected (should be impossible).
 			else
 			{
+				// Return funds to players if no winner could be selected (should be impossible).
 				ReturnAllTickets(qpi, state, locals.returnAllTicketsInput, locals.returnAllTicketsOutput, locals.returnAllTicketsLocals);
 			}
 		}

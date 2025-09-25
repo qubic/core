@@ -22,7 +22,7 @@ public:
 
 	void checkFees(const GetFees_output& fees)
 	{
-		EXPECT_EQ(fees.returnCode, (uint8)EReturnCode::SUCCESS);
+		EXPECT_EQ(fees.returnCode, static_cast<uint8>(EReturnCode::SUCCESS));
 
 		EXPECT_EQ(fees.distributionFeePercent, distributionFeePercent);
 		EXPECT_EQ(fees.teamFeePercent, teamFeePercent);
@@ -30,14 +30,13 @@ public:
 		EXPECT_EQ(fees.burnPercent, burnPercent);
 	}
 
-	void checkPlayers(const GetPlayers_output& output)
+	void checkPlayers(const GetPlayers_output& output) const
 	{
-		EXPECT_EQ(output.returnCode, (uint8)EReturnCode::SUCCESS);
+		EXPECT_EQ(output.returnCode, static_cast<uint8>(EReturnCode::SUCCESS));
 		EXPECT_EQ(output.players.capacity(), players.capacity());
-		EXPECT_EQ((uint64)output.numberOfPlayers, players.population());
+		EXPECT_EQ(static_cast<uint64>(output.numberOfPlayers), players.population());
 
-		uint64 playerArrayIndex = 0;
-		for (uint64 i = 0; i < players.capacity(); ++i)
+		for (uint64 i = 0, playerArrayIndex = 0; i < players.capacity(); ++i)
 		{
 			if (!players.isEmptySlot(i))
 			{
@@ -46,9 +45,9 @@ public:
 		}
 	}
 
-	void checkWinners(const GetWinners_output& output)
+	void checkWinners(const GetWinners_output& output) const
 	{
-		EXPECT_EQ(output.returnCode, (uint8)EReturnCode::SUCCESS);
+		EXPECT_EQ(output.returnCode, static_cast<uint8>(EReturnCode::SUCCESS));
 		EXPECT_EQ(output.winners.capacity(), winners.capacity());
 		EXPECT_EQ(output.numberOfWinners, winnersInfoNextEmptyIndex);
 
@@ -60,8 +59,8 @@ public:
 
 	void randomlyAddPlayers(uint64 maxNewPlayers)
 	{
-		unsigned int newPlayers = mod<uint64>(maxNewPlayers, players.capacity());
-		for (unsigned int i = 0; i < newPlayers; ++i)
+		const uint64 newPlayerCount = mod<uint64>(maxNewPlayers, players.capacity());
+		for (uint64 i = 0; i < newPlayerCount; ++i)
 		{
 			players.add(id::randomValue());
 		}
@@ -69,12 +68,12 @@ public:
 
 	void randomlyAddWinners(uint64 maxNewWinners)
 	{
-		unsigned int newWinners = mod<uint64>(maxNewWinners, winners.capacity());
+		const uint64 newWinnerCount = mod<uint64>(maxNewWinners, winners.capacity());
 
 		winnersInfoNextEmptyIndex = 0;
 		WinnerInfo wi;
 
-		for (unsigned int i = 0; i < newWinners; ++i)
+		for (uint64 i = 0; i < newWinnerCount; ++i)
 		{
 			wi.epoch = 1;
 			wi.tick = 1;
@@ -104,7 +103,7 @@ public:
 		callSystemProcedure(RL_CONTRACT_INDEX, INITIALIZE);
 	}
 
-	RLChecker* getState() { return (RLChecker*)contractStates[RL_CONTRACT_INDEX]; }
+	RLChecker* getState() { return reinterpret_cast<RLChecker*>(contractStates[RL_CONTRACT_INDEX]); }
 
 	RL::GetFees_output getFees()
 	{
@@ -173,7 +172,8 @@ TEST(ContractRandomLottery, GetWinners)
 	ContractTestingRL ctl;
 
 	// Populate winners history artificially
-	ctl.getState()->randomlyAddWinners(10);
+	constexpr uint64 maxNewWinners = 10;
+	ctl.getState()->randomlyAddWinners(maxNewWinners);
 	RL::GetWinners_output winnersOutput = ctl.getWinners();
 	ctl.getState()->checkWinners(winnersOutput);
 }
@@ -186,10 +186,10 @@ TEST(ContractRandomLottery, BuyTicket)
 
 	// 1. Attempt when state is LOCKED (should fail and refund invocation reward)
 	{
-		id userLocked = id::randomValue();
+		const id userLocked = id::randomValue();
 		increaseEnergy(userLocked, ticketPrice * 2);
 		RL::BuyTicket_output out = ctl.buyTicket(userLocked, ticketPrice);
-		EXPECT_EQ(out.returnCode, (uint8)RL::EReturnCode::TICKET_SELLING_CLOSED);
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_SELLING_CLOSED));
 		EXPECT_EQ(ctl.getState()->playersPopulation(), 0);
 	}
 
@@ -200,30 +200,30 @@ TEST(ContractRandomLottery, BuyTicket)
 	constexpr uint64 userCount = 5;
 	uint64 expectedPlayers = 0;
 
-	for (uint16 i = 0; i < userCount; ++i)
+	for (uint64 i = 0; i < userCount; ++i)
 	{
-		id u = id::randomValue();
-		increaseEnergy(u, ticketPrice * 5);
+		const id user = id::randomValue();
+		increaseEnergy(user, ticketPrice * 5);
 
 		// (a) Invalid price (wrong reward sent) — player not added
 		{
-			RL::BuyTicket_output outInvalid = ctl.buyTicket(u, ticketPrice - 1);
-			EXPECT_EQ(outInvalid.returnCode, (uint8)RL::EReturnCode::TICKET_INVALID_PRICE);
+			const RL::BuyTicket_output outInvalid = ctl.buyTicket(user, ticketPrice - 1);
+			EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_INVALID_PRICE));
 			EXPECT_EQ(ctl.getState()->playersPopulation(), expectedPlayers);
 		}
 
 		// (b) Valid purchase — player added
 		{
-			RL::BuyTicket_output outOk = ctl.buyTicket(u, ticketPrice);
-			EXPECT_EQ(outOk.returnCode, (uint8)RL::EReturnCode::SUCCESS);
+			const RL::BuyTicket_output outOk = ctl.buyTicket(user, ticketPrice);
+			EXPECT_EQ(outOk.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
 			++expectedPlayers;
 			EXPECT_EQ(ctl.getState()->playersPopulation(), expectedPlayers);
 		}
 
 		// (c) Duplicate purchase — rejected
 		{
-			RL::BuyTicket_output outDup = ctl.buyTicket(u, ticketPrice);
-			EXPECT_EQ(outDup.returnCode, (uint8)RL::EReturnCode::TICKET_ALREADY_PURCHASED);
+			const RL::BuyTicket_output outDup = ctl.buyTicket(user, ticketPrice);
+			EXPECT_EQ(outDup.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_ALREADY_PURCHASED));
 			EXPECT_EQ(ctl.getState()->playersPopulation(), expectedPlayers);
 		}
 	}
@@ -237,11 +237,11 @@ TEST(ContractRandomLottery, EndEpoch)
 	ContractTestingRL ctl;
 
 	// Helper: contract balance holder (SELF account)
-	auto contractAddress = id(RL_CONTRACT_INDEX, 0, 0, 0);
+	const id contractAddress = id(RL_CONTRACT_INDEX, 0, 0, 0);
 	const uint64 ticketPrice = ctl.getState()->getTicketPrice();
 
 	// Current fee configuration (set in INITIALIZE)
-	auto fees = ctl.getFees();
+	const RL::GetFees_output fees = ctl.getFees();
 	const uint8 teamPercent = fees.teamFeePercent;                 // Team commission percent
 	const uint8 distributionPercent = fees.distributionFeePercent; // Distribution (dividends) percent
 	const uint8 burnPercent = fees.burnPercent;                    // Burn percent
@@ -266,12 +266,12 @@ TEST(ContractRandomLottery, EndEpoch)
 	{
 		ctl.BeginEpoch();
 
-		id solo = id::randomValue();
+		const id solo = id::randomValue();
 		increaseEnergy(solo, ticketPrice);
-		uint64 balanceBefore = getBalance(solo);
+		const uint64 balanceBefore = getBalance(solo);
 
-		RL::BuyTicket_output out = ctl.buyTicket(solo, ticketPrice);
-		EXPECT_EQ(out.returnCode, (uint8)RL::EReturnCode::SUCCESS);
+		const RL::BuyTicket_output out = ctl.buyTicket(solo, ticketPrice);
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
 		EXPECT_EQ(ctl.getState()->playersPopulation(), 1u);
 		EXPECT_EQ(getBalance(solo), balanceBefore - ticketPrice);
 
@@ -281,7 +281,7 @@ TEST(ContractRandomLottery, EndEpoch)
 		EXPECT_EQ(getBalance(solo), balanceBefore);
 		EXPECT_EQ(ctl.getState()->playersPopulation(), 0u);
 
-		RL::GetWinners_output winners = ctl.getWinners();
+		const RL::GetWinners_output winners = ctl.getWinners();
 		EXPECT_EQ(winners.numberOfWinners, 0u);
 	}
 
@@ -289,7 +289,7 @@ TEST(ContractRandomLottery, EndEpoch)
 	{
 		ctl.BeginEpoch();
 
-		const uint32 N = 5;
+		constexpr uint32 N = 5;
 		struct PlayerInfo
 		{
 			id addr;
@@ -302,13 +302,13 @@ TEST(ContractRandomLottery, EndEpoch)
 		// Add N distinct players with valid purchases
 		for (uint32 i = 0; i < N; ++i)
 		{
-			id p = id::randomValue();
-			increaseEnergy(p, ticketPrice * 2);
-			uint64 bBefore = getBalance(p);
-			RL::BuyTicket_output out = ctl.buyTicket(p, ticketPrice);
-			EXPECT_EQ(out.returnCode, (uint8)RL::EReturnCode::SUCCESS);
-			EXPECT_EQ(getBalance(p), bBefore - ticketPrice);
-			infos.push_back({p, bBefore, bBefore - ticketPrice});
+			const id randomUser = id::randomValue();
+			increaseEnergy(randomUser, ticketPrice * 2);
+			const uint64 bBefore = getBalance(randomUser);
+			const RL::BuyTicket_output out = ctl.buyTicket(randomUser, ticketPrice);
+			EXPECT_EQ(out.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+			EXPECT_EQ(getBalance(randomUser), bBefore - ticketPrice);
+			infos.push_back({randomUser, bBefore, bBefore - ticketPrice});
 		}
 
 		EXPECT_EQ(ctl.getState()->playersPopulation(), N);
@@ -318,7 +318,7 @@ TEST(ContractRandomLottery, EndEpoch)
 
 		const uint64 teamBalanceBefore = getBalance(RL_DEV_ADDRESS);
 
-		RL::GetWinners_output winnersBefore = ctl.getWinners();
+		const RL::GetWinners_output winnersBefore = ctl.getWinners();
 		const uint64 winnersCountBefore = winnersBefore.numberOfWinners;
 
 		ctl.EndEpoch();
@@ -326,7 +326,7 @@ TEST(ContractRandomLottery, EndEpoch)
 		// Players reset after epoch end
 		EXPECT_EQ(ctl.getState()->playersPopulation(), 0u);
 
-		RL::GetWinners_output winnersAfter = ctl.getWinners();
+		const RL::GetWinners_output winnersAfter = ctl.getWinners();
 		EXPECT_EQ(winnersAfter.numberOfWinners, winnersCountBefore + 1);
 
 		// Newly appended winner info
@@ -336,7 +336,7 @@ TEST(ContractRandomLottery, EndEpoch)
 
 		// Winner address must be one of the players
 		bool found = false;
-		for (auto& inf : infos)
+		for (const PlayerInfo& inf : infos)
 		{
 			if (inf.addr == wi.winnerAddress)
 			{
@@ -347,27 +347,21 @@ TEST(ContractRandomLottery, EndEpoch)
 		EXPECT_TRUE(found);
 
 		// Check winner balance increment and others unchanged
-		for (auto& inf : infos)
+		for (const PlayerInfo& inf : infos)
 		{
-			uint64 bal = getBalance(inf.addr);
-			if (inf.addr == wi.winnerAddress)
-			{
-				EXPECT_EQ(bal, inf.balanceAfterBuy + wi.revenue);
-			}
-			else
-			{
-				EXPECT_EQ(bal, inf.balanceAfterBuy);
-			}
+			const uint64 bal = getBalance(inf.addr);
+			const uint64 balanceAfterBuy = inf.addr == wi.winnerAddress ? inf.balanceAfterBuy + wi.revenue : inf.balanceAfterBuy;
+			EXPECT_EQ(bal, balanceAfterBuy);
 		}
 
 		// Team fee transferred
-		uint64 teamFeeExpected = (ticketPrice * N * teamPercent) / 100;
+		const uint64 teamFeeExpected = (ticketPrice * N * teamPercent) / 100;
 		EXPECT_EQ(getBalance(RL_DEV_ADDRESS), teamBalanceBefore + teamFeeExpected);
 
 		// Burn
-		uint64 burnExpected = contractBalanceBefore - ((contractBalanceBefore * burnPercent) / 100) -
-		                      ((((contractBalanceBefore * distributionPercent) / 100) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS) -
-		                      ((contractBalanceBefore * teamPercent) / 100) - ((contractBalanceBefore * winnerPercent) / 100);
+		const uint64 burnExpected = contractBalanceBefore - ((contractBalanceBefore * burnPercent) / 100) -
+		                            ((((contractBalanceBefore * distributionPercent) / 100) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS) -
+		                            ((contractBalanceBefore * teamPercent) / 100) - ((contractBalanceBefore * winnerPercent) / 100);
 		EXPECT_EQ(getBalance(contractAddress), burnExpected);
 	}
 }
