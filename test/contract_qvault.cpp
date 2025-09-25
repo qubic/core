@@ -16,7 +16,6 @@ static constexpr uint64 QVAULT_MAX_REVENUE = 1000000000000ull;
 static constexpr uint64 QVAULT_MIN_REVENUE = 100000000000ull;;
 static const id QVAULT_CONTRACT_ID(QVAULT_CONTRACT_INDEX, 0, 0, 0);
 const id QVAULT_QCAP_ISSUER = ID(_Q, _C, _A, _P, _W, _M, _Y, _R, _S, _H, _L, _B, _J, _H, _S, _T, _T, _Z, _Q, _V, _C, _I, _B, _A, _R, _V, _O, _A, _S, _K, _D, _E, _N, _A, _S, _A, _K, _N, _O, _B, _R, _G, _P, _F, _W, _W, _K, _R, _C, _U, _V, _U, _A, _X, _Y, _E);
-const id QVAULT_adminAddress = ID(_H, _E, _C, _G, _U, _G, _H, _C, _J, _K, _Q, _O, _S, _D, _T, _M, _E, _H, _Q, _Y, _W, _D, _D, _T, _L, _F, _D, _A, _S, _Z, _K, _M, _G, _J, _L, _S, _R, _C, _S, _T, _H, _H, _A, _P, _P, _E, _D, _L, _G, _B, _L, _X, _J, _M, _N, _D);
 
 static unsigned long long random(unsigned long long minValue, unsigned long long maxValue)
 {
@@ -129,7 +128,7 @@ public:
         EXPECT_EQ(MKTP.get(index).amountOfShare, amountOfShare);
     }
 
-    void submitAlloPChecker(uint32 index, id proposer, uint32 reinvested, uint32 team, uint32 burn, uint32 distribute)
+    void submitAlloPChecker(uint32 index, id proposer, uint32 reinvested, uint32 burn, uint32 distribute)
     {
         EXPECT_EQ(AlloP.get(index).currentQuorumPercent, 670);
         EXPECT_EQ(AlloP.get(index).currentTotalVotingPower, 10000);
@@ -139,7 +138,6 @@ public:
         EXPECT_EQ(AlloP.get(index).proposer, proposer);
         EXPECT_EQ(AlloP.get(index).result, 5);
         EXPECT_EQ(AlloP.get(index).reinvested, reinvested);
-        EXPECT_EQ(AlloP.get(index).team, team);
         EXPECT_EQ(AlloP.get(index).burnQcap, burn);
         EXPECT_EQ(AlloP.get(index).distributed, distribute);
     }
@@ -553,13 +551,12 @@ public:
         return output.returnCode;
     }
 
-    uint32 submitAlloP(const id& address, uint32 reinvested, uint32 team, uint32 burn, uint32 distribute)
+    uint32 submitAlloP(const id& address, uint32 reinvested, uint32 burn, uint32 distribute)
     {
         QVAULT::submitAlloP_input input;
         QVAULT::submitAlloP_output output;
 
         input.reinvested = reinvested;
-        input.team = team;
         input.burn = burn ;
         input.distribute = distribute;
 
@@ -794,7 +791,7 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     // QvaultV2.getState()->submitMKTPChecker(0, stakers[0], 10000, 1000000000, assetNameFromString("QX"), 1, 5);
 
     increaseEnergy(stakers[0], 10000000);
-    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 20, 100, 400), QVAULT_NOT_IN_TIME);
+    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 120, 400), QVAULT_NOT_IN_TIME);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 6);
 
     setMemory(utcTime, 0);
@@ -804,19 +801,19 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     utcTime.Hour = 0;
     updateQpiTime();
 
-    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 20, 100, 400), QVAULT_NOT_IN_TIME);
-    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 6);
-
-    setMemory(utcTime, 0);
-    utcTime.Year = 2029;
-    utcTime.Month = 1;
-    utcTime.Day = 3;
-    utcTime.Hour = 0;
-    updateQpiTime();
-
-    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 0, 120, 400), QVAULT_SUCCESS);
+    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 120, 400), QVAULT_SUCCESS);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 7);
-    QvaultV2.getState()->submitAlloPChecker(0, stakers[0], 450, 0, 120, 400);
+
+    setMemory(utcTime, 0);
+    utcTime.Year = 2029;
+    utcTime.Month = 1;
+    utcTime.Day = 3;
+    utcTime.Hour = 0;
+    updateQpiTime();
+
+    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 120, 400), QVAULT_SUCCESS);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 8);
+    QvaultV2.getState()->submitAlloPChecker(0, stakers[0], 450, 120, 400);
 
     EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 1, 0, 1), QVAULT_SUCCESS);
     QvaultV2.getState()->voteInProposalChecker(0, 1, 10000, 0);

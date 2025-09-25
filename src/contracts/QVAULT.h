@@ -83,7 +83,7 @@ public:
     /**
      * Output structure for getData function
      * Contains comprehensive contract state information including:
-     * - Administrative data (admin address, fees)
+     * - Administrative data (fees)
      * - Financial data (funds, revenue, market cap)
      * - Staking data (staked amounts, voting power)
      * - Proposal counts for each type
@@ -92,7 +92,6 @@ public:
     struct getData_output
     {
         sint32 returnCode;                 // Status code indicating success or failure
-        id adminAddress;                    // Contract administrator address
         uint64 totalVotingPower;           // Total voting power across all stakers
         uint64 proposalCreateFund;          // Fund accumulated from proposal fees
         uint64 reinvestingFund;            // Fund available for reinvestment
@@ -107,7 +106,6 @@ public:
         uint32 shareholderDividend;        // Dividend percentage for shareholders (per mille)
         uint32 QCAPHolderPermille;         // Revenue allocation for QCAP holders (per mille)
         uint32 reinvestingPermille;        // Revenue allocation for reinvestment (per mille)
-        uint32 devPermille;                // Revenue allocation for development (per mille)
         uint32 burnPermille;               // Revenue allocation for burning (per mille)
         uint32 qcapBurnPermille;           // Revenue allocation for QCAP burning (per mille)
         uint32 numberOfStaker;             // Number of active stakers
@@ -296,7 +294,6 @@ public:
     /**
      * Input structure for submitAlloP (Allocation Proposal) function
      * @param reinvested Percentage for reinvestment (per mille)
-     * @param team Percentage for team development (per mille)
      * @param burn Percentage for burning (per mille)
      * @param distribute Percentage for distribution (per mille)
      * @param url URL containing proposal details (max 256 bytes)
@@ -305,7 +302,6 @@ public:
     struct submitAlloP_input
     {
         uint32 reinvested;
-        uint32 team;
         uint32 burn;
         uint32 distribute;
         Array<uint8, QVAULT_MAX_URLS_COUNT> url;
@@ -546,7 +542,6 @@ protected:
         uint32 currentQuorumPercent;    // Current quorum percentage
         uint32 reinvested;              // Percentage for reinvestment (per mille)
         uint32 distributed;             // Percentage for distribution (per mille)
-        uint32 team;                    // Percentage for team development (per mille)
         uint32 burnQcap;                // Percentage for QCAP burning (per mille)
         Array<uint8, QVAULT_MAX_URLS_COUNT> url;          // URL containing proposal details
         uint8 result;                   // Proposal result: 0=passed, 1=rejected, 2=insufficient quorum
@@ -557,7 +552,6 @@ protected:
 
     // Contract configuration and administration
     id QCAP_ISSUER;                    // Address that can issue QCAP tokens
-    id adminAddress;                    // Contract administrator address
 
     /**
      * Vote status information structure
@@ -601,7 +595,6 @@ protected:
     uint32 shareholderDividend;         // Dividend percentage for shareholders
     uint32 QCAPHolderPermille;          // Revenue allocation for QCAP holders
     uint32 reinvestingPermille;         // Revenue allocation for reinvestment
-    uint32 devPermille;                 // Revenue allocation for development
     uint32 burnPermille;                // Revenue allocation for burning
     uint32 qcapBurnPermille;            // Revenue allocation for QCAP burning
     uint32 totalQcapBurntAmount;        // Total QCAP tokens burned to date
@@ -624,6 +617,52 @@ protected:
     uint32 quorumPercent;               // Current quorum percentage for proposals
 
     /**
+     * @return pack qvault datetime data from year, month, day, hour, minute, second to a uint32
+     * year is counted from 24 (2024)
+     */
+     inline static void packQvaultDate(uint32 _year, uint32 _month, uint32 _day, uint32 _hour, uint32 _minute, uint32 _second, uint32& res)
+     {
+         res = ((_year - 24) << 26) | (_month << 22) | (_day << 17) | (_hour << 12) | (_minute << 6) | (_second);
+     }
+ 
+     inline static uint32 qvaultGetYear(uint32 data)
+     {
+         return ((data >> 26) + 24);
+     }
+     inline static uint32 qvaultGetMonth(uint32 data)
+     {
+         return ((data >> 22) & 0b1111);
+     }
+     inline static uint32 qvaultGetDay(uint32 data)
+     {
+         return ((data >> 17) & 0b11111);
+     }
+     inline static uint32 qvaultGetHour(uint32 data)
+     {
+         return ((data >> 12) & 0b11111);
+     }
+     inline static uint32 qvaultGetMinute(uint32 data)
+     {
+         return ((data >> 6) & 0b111111);
+     }
+     inline static uint32 qvaultGetSecond(uint32 data)
+     {
+         return (data & 0b111111);
+     }
+     /*
+     * @return unpack qvault datetime from uin32 to year, month, day, hour, minute, secon
+     */
+     inline static void unpackQvaultDate(uint8& _year, uint8& _month, uint8& _day, uint8& _hour, uint8& _minute, uint8& _second, uint32 data)
+     {
+         _year = qvaultGetYear(data); // 6 bits
+         _month = qvaultGetMonth(data); //4bits
+         _day = qvaultGetDay(data); //5bits
+         _hour = qvaultGetHour(data); //5bits
+         _minute = qvaultGetMinute(data); //6bits
+         _second = qvaultGetSecond(data); //6bits
+     }
+ 
+    /**
      * Local variables for getData function
      */
     struct getData_locals
@@ -642,7 +681,6 @@ protected:
      */
     PUBLIC_FUNCTION_WITH_LOCALS(getData)
     {
-        output.adminAddress = state.adminAddress;
         output.quorumPercent = state.quorumPercent;
         output.totalVotingPower = state.totalVotingPower;
         output.proposalCreateFund = state.proposalCreateFund;
@@ -651,7 +689,6 @@ protected:
         output.shareholderDividend = state.shareholderDividend;
         output.QCAPHolderPermille = state.QCAPHolderPermille;
         output.reinvestingPermille = state.reinvestingPermille;
-        output.devPermille = state.devPermille;
         output.burnPermille = state.burnPermille;
         output.qcapBurnPermille = state.qcapBurnPermille;
         output.numberOfStaker = state.numberOfStaker;
@@ -696,6 +733,7 @@ protected:
     {
         stakingInfo user;               // User staking information
         sint32 _t;                      // Loop counter variable
+        bool isNewStaker;               // Flag to check if the user is a new staker
     };
 
     /**
@@ -710,12 +748,6 @@ protected:
         if (input.amount > (uint32)qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX))
         {
             output.returnCode = QVAULT_INSUFFICIENT_QCAP;
-            return ;
-        }
-
-        if (qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, qpi.invocator(), qpi.invocator(), input.amount, SELF) < 0)
-        {
-            output.returnCode = QVAULT_ERROR_TRANSFER_ASSET;
             return ;
         }
 
@@ -737,11 +769,22 @@ protected:
             locals.user.amount = input.amount;
             locals.user.stakerAddress = qpi.invocator();
             state.numberOfStaker++;
+            locals.isNewStaker = 1;
         }
         else 
         {
             locals.user.amount = state.staker.get(locals._t).amount + input.amount;
             locals.user.stakerAddress = state.staker.get(locals._t).stakerAddress;
+        }
+
+        if (qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, qpi.invocator(), qpi.invocator(), input.amount, SELF) < 0)
+        {
+            if (locals.isNewStaker == 1)
+            {
+                state.numberOfStaker--;
+            }
+            output.returnCode = QVAULT_ERROR_TRANSFER_ASSET;
+            return ;
         }
 
         state.totalStakedQcapAmount += input.amount;
@@ -783,10 +826,15 @@ protected:
                 }
                 else if (state.staker.get(locals._t).amount >= input.amount)
                 {
+                    if (qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, input.amount, qpi.invocator()) < 0)
+                    {
+                        output.returnCode = QVAULT_INSUFFICIENT_QCAP;
+                        return ;
+                    }
+
                     locals.user.stakerAddress = state.staker.get(locals._t).stakerAddress;
                     locals.user.amount = state.staker.get(locals._t).amount - input.amount;
                     state.staker.set(locals._t, locals.user);
-                    qpi.transferShareOwnershipAndPossession(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, SELF, SELF, input.amount, qpi.invocator());
 
                     state.totalStakedQcapAmount -= input.amount;
                     output.returnCode = QVAULT_SUCCESS;
@@ -1297,8 +1345,8 @@ protected:
             return ;
         }
 
-        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-        QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
+        packQvaultDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+        unpackQvaultDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year == 25 && state.qcapSoldAmount + input.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
         {
             output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
@@ -1477,7 +1525,6 @@ protected:
      * Submits an Allocation Proposal (AlloP) to change revenue allocation percentages
      * Requires minimum voting power (10000) or QVAULT shares
      * Validates allocation percentages sum to 970 (per mille)
-     * Enforces time-based restrictions (burning after 2029, team allocation before 2026)
      * Charges proposal fee and creates new proposal record
      * 
      * @param input Allocation percentages and URL containing proposal details
@@ -1522,8 +1569,8 @@ protected:
             return ;
         }
 
-        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-        QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
+        packQvaultDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+        unpackQvaultDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year < 29 && input.burn != 0)
         {
             output.returnCode = QVAULT_NOT_IN_TIME;
@@ -1533,17 +1580,8 @@ protected:
             }
             return ;
         }
-        if (locals.year >= 26 && input.team != 0)
-        {
-            output.returnCode = QVAULT_NOT_IN_TIME;
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            return ;
-        }
 
-        if (input.burn + input.distribute + input.reinvested + input.team != QVAULT_SUM_OF_ALLOCATION_PERCENTAGES)
+        if (input.burn + input.distribute + input.reinvested != QVAULT_SUM_OF_ALLOCATION_PERCENTAGES)
         {
             output.returnCode = QVAULT_NOT_FAIR;
             if (qpi.invocationReward() > 0)
@@ -1592,7 +1630,6 @@ protected:
         locals.newProposal.burnQcap = input.burn;
         locals.newProposal.distributed = input.distribute;
         locals.newProposal.reinvested = input.reinvested;
-        locals.newProposal.team = input.team;
 
         state.AlloP.set(state.numberOfAlloP++, locals.newProposal);
         output.returnCode = QVAULT_SUCCESS;
@@ -1635,11 +1672,59 @@ protected:
             output.returnCode = QVAULT_INPUT_ERROR;
             return ;
         }
-        if (input.proposalId >= QVAULT_MAX_NUMBER_OF_PROPOSAL)
+        switch (input.proposalType)
         {
-            output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
-            return ;
+            case 1:
+                if (input.proposalId >= state.numberOfGP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 2:
+                if (input.proposalId >= state.numberOfQCP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 3:
+                if (input.proposalId >= state.numberOfIPOP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 4:
+                if (input.proposalId >= state.numberOfQEarnP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 5:
+                if (input.proposalId >= state.numberOfFundP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 6:
+                if (input.proposalId >= state.numberOfMKTP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 7:
+                if (input.proposalId >= state.numberOfAlloP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
         }
+
         if (state.countOfVote.get(qpi.invocator(), locals.countOfVote))
         {
             state.vote.get(qpi.invocator(), locals.newVoteList);
@@ -1829,8 +1914,8 @@ protected:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(buyQcap)
     {
-        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-        QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
+        packQvaultDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+        unpackQvaultDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year == 25 && state.qcapSoldAmount + input.amount > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
         {
             output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
@@ -2047,7 +2132,7 @@ public:
      */
     PUBLIC_FUNCTION(getGP)
     {
-        if (input.proposalId >= QVAULT_MAX_NUMBER_OF_PROPOSAL)
+        if (input.proposalId >= state.numberOfGP)
         {
             output.returnCode = QVAULT_INPUT_ERROR;
             return ;
@@ -2083,7 +2168,7 @@ public:
      */
     PUBLIC_FUNCTION(getQCP)
     {
-        if (input.proposalId >= QVAULT_MAX_NUMBER_OF_PROPOSAL)
+        if (input.proposalId >= state.numberOfQCP)
         {
             output.returnCode = QVAULT_INPUT_ERROR;
             return ;
@@ -2119,7 +2204,7 @@ public:
      */
     PUBLIC_FUNCTION(getIPOP)
     {
-        if (input.proposalId >= QVAULT_MAX_NUMBER_OF_PROPOSAL)
+        if (input.proposalId >= state.numberOfIPOP)
         {
             output.returnCode = QVAULT_INPUT_ERROR;
             return ;
@@ -2155,7 +2240,7 @@ public:
      */
     PUBLIC_FUNCTION(getQEarnP)
     {
-        if (input.proposalId >= QVAULT_MAX_NUMBER_OF_PROPOSAL)
+        if (input.proposalId >= state.numberOfQEarnP)
         {
             output.returnCode = QVAULT_INPUT_ERROR;
             return ;
@@ -2191,7 +2276,7 @@ public:
      */
     PUBLIC_FUNCTION(getFundP)
     {
-        if (input.proposalId >= QVAULT_MAX_NUMBER_OF_PROPOSAL)
+        if (input.proposalId >= state.numberOfFundP)
         {
             output.returnCode = QVAULT_INPUT_ERROR;
             return ;
@@ -2227,7 +2312,7 @@ public:
      */
     PUBLIC_FUNCTION(getMKTP)
     {
-        if (input.proposalId >= QVAULT_MAX_NUMBER_OF_PROPOSAL)
+        if (input.proposalId >= state.numberOfMKTP)
         {
             output.returnCode = QVAULT_INPUT_ERROR;
             return ;
@@ -2263,7 +2348,7 @@ public:
      */
     PUBLIC_FUNCTION(getAlloP)
     {
-        if (input.proposalId >= QVAULT_MAX_NUMBER_OF_PROPOSAL)
+        if (input.proposalId >= state.numberOfAlloP)
         {
             output.returnCode = QVAULT_INPUT_ERROR;
             return ;
@@ -2377,12 +2462,14 @@ public:
             {
                 if (state.votingPower.get(locals._t).amount >= QVAULT_MIN_VOTING_POWER)
                 {
+                    output.returnCode = QVAULT_SUCCESS;
                     output.status = 1;
                 }
                 else 
                 {
                     if (qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(input.address), AssetPossessionSelect::byPossessor(input.address)) > 0)
                     {
+                        output.returnCode = QVAULT_SUCCESS;
                         output.status = 1;
                     }
                     else
@@ -2391,14 +2478,13 @@ public:
                         output.status = 0;
                     }
                 }
-                output.returnCode = QVAULT_SUCCESS;
                 return ;
             }
         }
 
         if (qpi.numberOfShares(locals.qvaultShare, AssetOwnershipSelect::byOwner(input.address), AssetPossessionSelect::byPossessor(input.address)) > 0)
         {
-            output.returnCode = QVAULT_INSUFFICIENT_SHARE_OR_VOTING_POWER;
+            output.returnCode = QVAULT_SUCCESS;
             output.status = 1;
         }
         else 
@@ -2796,11 +2882,9 @@ public:
 	INITIALIZE()
     {
         state.QCAP_ISSUER = ID(_Q, _C, _A, _P, _W, _M, _Y, _R, _S, _H, _L, _B, _J, _H, _S, _T, _T, _Z, _Q, _V, _C, _I, _B, _A, _R, _V, _O, _A, _S, _K, _D, _E, _N, _A, _S, _A, _K, _N, _O, _B, _R, _G, _P, _F, _W, _W, _K, _R, _C, _U, _V, _U, _A, _X, _Y, _E);
-        state.adminAddress = ID(_H, _E, _C, _G, _U, _G, _H, _C, _J, _K, _Q, _O, _S, _D, _T, _M, _E, _H, _Q, _Y, _W, _D, _D, _T, _L, _F, _D, _A, _S, _Z, _K, _M, _G, _J, _L, _S, _R, _C, _S, _T, _H, _H, _A, _P, _P, _E, _D, _L, _G, _B, _L, _X, _J, _M, _N, _D);
         state.qcapSoldAmount = 1652235;
         state.transferRightsFee = 100;
         state.quorumPercent = 670;
-        state.devPermille = 20;
         state.qcapBurnPermille = 0;
         state.burnPermille = 0;
         state.QCAPHolderPermille = 500;
@@ -2865,7 +2949,6 @@ public:
                 state.QCAPHolderPermille = state.AlloP.get(locals._t).distributed;
                 state.reinvestingPermille = state.AlloP.get(locals._t).reinvested;
                 state.qcapBurnPermille = state.AlloP.get(locals._t).burnQcap;
-                state.devPermille = state.AlloP.get(locals._t).team;
                 break;
             }
             if (state.AlloP.get(locals._t).proposedEpoch + 2 < qpi.epoch())
@@ -2933,7 +3016,6 @@ public:
         uint64 paymentForShareholders;               // Payment amount for shareholders
         uint64 paymentForQCAPHolders;                // Payment amount for QCAP holders
         uint64 paymentForReinvest;                   // Payment amount for reinvestment
-        uint64 paymentForDevelopment;                // Payment amount for development
         uint64 amountOfBurn;                         // Amount to burn
         uint64 circulatedSupply;                     // Circulating supply of QCAP
         uint64 requiredFund;                         // Required fund amount
@@ -2962,10 +3044,8 @@ public:
         locals.paymentForReinvest = div(state.totalEpochRevenue * state.reinvestingPermille, 1000ULL);
         locals.paymentForQcapBurn = div(state.totalEpochRevenue * state.qcapBurnPermille, 1000ULL);
         locals.amountOfBurn = div(state.totalEpochRevenue * state.burnPermille, 1000ULL);
-        locals.paymentForDevelopment = state.totalEpochRevenue - locals.paymentForShareholders - locals.paymentForQCAPHolders - locals.paymentForReinvest - locals.paymentForQcapBurn - locals.amountOfBurn;
 
         qpi.distributeDividends(div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
-        qpi.transfer(state.adminAddress, locals.paymentForDevelopment);
         qpi.burn(locals.amountOfBurn);
 
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
@@ -3234,8 +3314,8 @@ public:
                 {
                     locals.updatedFundProposal.result = QVAULT_PROPOSAL_PASSED;
 
-                    QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-                    QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
+                    packQvaultDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+                    unpackQvaultDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
                     if (locals.year == 25 && state.qcapSoldAmount + locals.updatedFundProposal.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
                     {
                         locals.updatedFundProposal.result = QVAULT_PROPOSAL_INSUFFICIENT_QCAP;
@@ -3284,8 +3364,8 @@ public:
                 {
                     locals.updatedMKTProposal.result = QVAULT_PROPOSAL_PASSED;
 
-                    QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-                    QUOTTERY::unpackQuotteryDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
+                    packQvaultDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+                    unpackQvaultDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
                     if (locals.year == 25 && state.qcapSoldAmount + locals.updatedMKTProposal.amountOfQcap > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
                     {
                         locals.updatedMKTProposal.result = QVAULT_PROPOSAL_INSUFFICIENT_QCAP;
