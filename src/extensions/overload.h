@@ -209,7 +209,9 @@ bool allocatePool(unsigned long long size, void** buffer)
 
 void freePool(void* buffer)
 {
-    free(buffer);
+    if (buffer) {
+        free(buffer);
+    }
 }
 
 inline void closeEvent(EFI_EVENT Event)
