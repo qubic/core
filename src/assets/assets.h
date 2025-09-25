@@ -112,7 +112,7 @@ public: // TODO: make protected
             PROFILE_SCOPE();
 
             reset();
-            for (int index = 0; index < ASSETS_CAPACITY; index++)
+            for (int index = ASSETS_CAPACITY - 1; index >= 0; index--)
             {
                 switch (assets[index].varStruct.issuance.type)
                 {
